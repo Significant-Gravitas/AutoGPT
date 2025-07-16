@@ -1,9 +1,12 @@
 import re
+from pathlib import Path
 from typing import Any
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 from backend.util import json, text
+from backend.util.file import get_exec_file_path, store_media_file
+from backend.util.type import MediaFileType
 
 formatter = text.TextFormatter()
 
@@ -303,3 +306,140 @@ class TextReplaceBlock(Block):
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "output", input_data.text.replace(input_data.old, input_data.new)
+
+
+class FileReadBlock(Block):
+    class Input(BlockSchema):
+        file_input: MediaFileType = SchemaField(
+            description="The file to read from (URL, data URI, or local path)"
+        )
+        delimiter: str = SchemaField(
+            description="Delimiter to split the content into rows/chunks (e.g., '\\n' for lines)",
+            default="",
+            advanced=True,
+        )
+        size_limit: int = SchemaField(
+            description="Maximum size in bytes per chunk to yield (0 for no limit)",
+            default=0,
+            advanced=True,
+        )
+        row_limit: int = SchemaField(
+            description="Maximum number of rows to process (0 for no limit, requires delimiter)",
+            default=0,
+            advanced=True,
+        )
+        skip_size: int = SchemaField(
+            description="Number of characters to skip from the beginning of the file",
+            default=0,
+            advanced=True,
+        )
+        skip_rows: int = SchemaField(
+            description="Number of rows to skip from the beginning (requires delimiter)",
+            default=0,
+            advanced=True,
+        )
+
+    class Output(BlockSchema):
+        content: str = SchemaField(
+            description="The full content of the file or a chunk based on delimiter/limits"
+        )
+        chunk: str = SchemaField(description="Individual chunks when delimiter is used")
+
+    def __init__(self):
+        super().__init__(
+            id="3735a31f-7e18-4aca-9e90-08a7120674bc",
+            input_schema=FileReadBlock.Input,
+            output_schema=FileReadBlock.Output,
+            description="Reads a file and returns its content as a string, with optional chunking by delimiter and size limits",
+            categories={BlockCategory.TEXT, BlockCategory.DATA},
+            test_input={
+                "file_input": "data:text/plain;base64,SGVsbG8gV29ybGQ=",
+            },
+            test_output=[
+                ("content", "Hello World"),
+            ],
+        )
+
+    async def run(
+        self, input_data: Input, *, graph_exec_id: str, **_kwargs
+    ) -> BlockOutput:
+        # Store the media file properly (handles URLs, data URIs, etc.)
+        stored_file_path = await store_media_file(
+            graph_exec_id=graph_exec_id,
+            file=input_data.file_input,
+            return_content=False,
+        )
+
+        # Get full file path
+        file_path = get_exec_file_path(graph_exec_id, stored_file_path)
+
+        if not Path(file_path).exists():
+            raise ValueError(f"File does not exist: {file_path}")
+
+        # Read file content
+        try:
+            with open(file_path, "r", encoding="utf-8") as file:
+                content = file.read()
+        except UnicodeDecodeError:
+            # Try with different encodings
+            try:
+                with open(file_path, "r", encoding="latin-1") as file:
+                    content = file.read()
+            except Exception as e:
+                raise ValueError(f"Unable to read file: {e}")
+
+        # Apply skip_size (character-level skip)
+        if input_data.skip_size > 0:
+            content = content[input_data.skip_size :]
+
+        # Split content into items (by delimiter or treat as single item)
+        items = (
+            content.split(input_data.delimiter) if input_data.delimiter else [content]
+        )
+
+        # Apply skip_rows (item-level skip)
+        if input_data.skip_rows > 0:
+            items = items[input_data.skip_rows :]
+
+        # Apply row_limit (item-level limit)
+        if input_data.row_limit > 0:
+            items = items[: input_data.row_limit]
+
+        # Process each item and create chunks
+        def create_chunks(text, size_limit):
+            """Create chunks from text based on size_limit"""
+            if size_limit <= 0:
+                return [text] if text else []
+
+            chunks = []
+            for i in range(0, len(text), size_limit):
+                chunk = text[i : i + size_limit]
+                if chunk:  # Only add non-empty chunks
+                    chunks.append(chunk)
+            return chunks
+
+        # Process items and yield chunks
+        all_chunks = []
+        for item in items:
+            if item:  # Only process non-empty items
+                chunks = create_chunks(item, input_data.size_limit)
+                # Only yield as 'chunk' if we have a delimiter (multiple items)
+                if input_data.delimiter:
+                    for chunk in chunks:
+                        yield "chunk", chunk
+                all_chunks.extend(chunks)
+
+        # Yield the processed content
+        if all_chunks:
+            full_content = (
+                input_data.delimiter.join(items)
+                if input_data.delimiter
+                else "".join(items)
+            )
+
+            # Create chunks of the full content based on size_limit
+            content_chunks = create_chunks(full_content, input_data.size_limit)
+            for chunk in content_chunks:
+                yield "content", chunk
+        else:
+            yield "content", ""
