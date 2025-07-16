@@ -42,6 +42,7 @@ export async function createTestUser(
         userEmail,
         userPassword,
         ignoreOnboarding,
+        true,
       );
       return testUser;
     } finally {
