@@ -1,6 +1,7 @@
 from urllib.parse import parse_qs, urlparse
 
-from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api._api import YouTubeTranscriptApi
+from youtube_transcript_api._transcripts import FetchedTranscript
 from youtube_transcript_api.formatters import TextFormatter
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
@@ -61,23 +62,8 @@ class TranscribeYoutubeVideoBlock(Block):
         raise ValueError(f"Invalid YouTube URL: {url}")
 
     @staticmethod
-    def get_transcript(video_id: str):
-        try:
-            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-
-            if not transcript_list:
-                raise ValueError(f"No transcripts found for the video: {video_id}")
-
-            for transcript in transcript_list:
-                first_transcript = transcript_list.find_transcript(
-                    [transcript.language_code]
-                )
-                return YouTubeTranscriptApi.get_transcript(
-                    video_id, languages=[first_transcript.language_code]
-                )
-
-        except Exception:
-            raise ValueError(f"No transcripts found for the video: {video_id}")
+    def get_transcript(video_id: str) -> FetchedTranscript:
+        return YouTubeTranscriptApi().fetch(video_id=video_id)
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         video_id = self.extract_video_id(input_data.youtube_url)
