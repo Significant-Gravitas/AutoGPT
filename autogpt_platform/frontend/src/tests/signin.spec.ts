@@ -3,11 +3,33 @@
 import test from "@playwright/test";
 import { getTestUser } from "./utils/auth";
 import { LoginPage } from "./pages/login.page";
-import { hasUrl, isVisible } from "./utils/assertion";
+import { hasUrl, isHidden, isVisible } from "./utils/assertion";
 import { getSelectors } from "./utils/selectors";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/login");
+});
+
+test("check the navigation when logged out", async ({ page }) => {
+  const { getButton, getText, getLink } = getSelectors(page);
+
+  // Marketplace is by default the homepage
+  await page.goto("/");
+  await hasUrl(page, "/marketplace");
+
+  // Test marketplace link
+  const marketplaceLink = getLink("Marketplace");
+  await isVisible(marketplaceLink);
+  await marketplaceLink.click();
+  await hasUrl(page, "/marketplace");
+  await isVisible(getText("Explore AI agents", { exact: false }));
+
+  // Test login button
+  const loginBtn = getButton("Log In");
+  await isVisible(loginBtn);
+  await loginBtn.click();
+  await hasUrl(page, "/login");
+  await isHidden(loginBtn);
 });
 
 test("user can login successfully", async ({ page }) => {
