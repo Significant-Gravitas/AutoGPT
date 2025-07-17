@@ -19,6 +19,7 @@ from backend.server.model import (
     WSSubscribeGraphExecutionRequest,
     WSSubscribeGraphExecutionsRequest,
 )
+from backend.util.retry import continuous_retry
 from backend.util.service import AppProcess
 from backend.util.settings import AppEnvironment, Config, Settings
 
@@ -46,18 +47,11 @@ def get_connection_manager():
     return _connection_manager
 
 
+@continuous_retry()
 async def event_broadcaster(manager: ConnectionManager):
-    try:
-        event_queue = AsyncRedisExecutionEventBus()
-        async for event in event_queue.listen("*"):
-            await manager.send_execution_update(event)
-    except Exception as e:
-        logger.exception(
-            "Event broadcaster stopped due to error: %s. "
-            "Verify the Redis connection and restart the service.",
-            e,
-        )
-        raise
+    event_queue = AsyncRedisExecutionEventBus()
+    async for event in event_queue.listen("*"):
+        await manager.send_execution_update(event)
 
 
 async def authenticate_websocket(websocket: WebSocket) -> str:
