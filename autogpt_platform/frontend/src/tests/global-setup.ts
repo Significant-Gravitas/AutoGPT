@@ -20,7 +20,7 @@ async function globalSetup(config: FullConfig) {
     }
 
     // Create test users using signup page
-    const numberOfUsers = (config.workers || 1) + 3; // workers + buffer
+    const numberOfUsers = (config.workers || 1) + 8; // workers + buffer
     console.log(`👥 Creating ${numberOfUsers} test users via signup...`);
 
     const users = await createTestUsers(numberOfUsers);
