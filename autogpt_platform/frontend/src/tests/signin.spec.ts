@@ -24,6 +24,7 @@ test("check the navigation when logged out", async ({ page }) => {
   await hasUrl(page, "/marketplace");
   await isVisible(getText("Explore AI agents", { exact: false }));
 
+  // Test login button
   const loginBtn = getButton("Log In");
   await isVisible(loginBtn);
   await loginBtn.click();
