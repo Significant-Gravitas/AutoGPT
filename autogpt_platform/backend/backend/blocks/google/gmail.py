@@ -140,7 +140,11 @@ class GmailReadBlock(Block):
     ) -> BlockOutput:
         service = GmailReadBlock._build_service(credentials, **kwargs)
         messages = await asyncio.to_thread(
-            self._read_emails, service, input_data.query, input_data.max_results, credentials.scopes
+            self._read_emails,
+            service,
+            input_data.query,
+            input_data.max_results,
+            credentials.scopes,
         )
         for email in messages:
             yield "email", email
@@ -645,7 +649,7 @@ class GmailGetThreadBlock(Block):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         service = GmailReadBlock._build_service(credentials, **kwargs)
@@ -781,7 +785,7 @@ class GmailReplyBlock(Block):
             },
         )
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -790,7 +794,7 @@ class GmailReplyBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         service = GmailReadBlock._build_service(credentials, **kwargs)
-        message = self._reply(
+        message = await self._reply(
             service,
             input_data,
             graph_exec_id,
@@ -799,7 +803,7 @@ class GmailReplyBlock(Block):
         yield "threadId", message.get("threadId", input_data.threadId)
         yield "message", message
 
-    def _reply(self, service, input_data: Input, graph_exec_id: str) -> dict:
+    async def _reply(self, service, input_data: Input, graph_exec_id: str) -> dict:
         parent = (
             service.users()
             .messages()
@@ -867,7 +871,9 @@ class GmailReplyBlock(Block):
         )
 
         for attach in input_data.attachments:
-            local_path = store_media_file(graph_exec_id, attach, return_content=False)
+            local_path = await store_media_file(
+                graph_exec_id, attach, return_content=False
+            )
             abs_path = get_exec_file_path(graph_exec_id, local_path)
             part = MIMEBase("application", "octet-stream")
             with open(abs_path, "rb") as f:
