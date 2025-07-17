@@ -12,7 +12,6 @@ import { hasUrl } from "./utils/assertion";
 
 test.describe.configure({
   timeout: 60000,
-  mode: "parallel",
 });
 
 // Reason Ignore: admonishment is in the wrong place visually with correct prettier rules
