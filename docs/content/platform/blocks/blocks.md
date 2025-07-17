@@ -100,6 +100,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | Block Name | Description |
 |------------|-------------|
 | [Gmail Read](google/gmail.md#gmail-read) | Retrieves and reads emails from a Gmail account |
+| [Gmail Get Thread](google/gmail.md#gmail-get-thread) | Returns every message in a Gmail thread |
+| [Gmail Reply](google/gmail.md#gmail-reply) | Sends a reply that stays in the same thread |
 | [Gmail Send](google/gmail.md#gmail-send) | Sends emails using a Gmail account |
 | [Gmail List Labels](google/gmail.md#gmail-list-labels) | Retrieves all labels from a Gmail account |
 | [Gmail Add Label](google/gmail.md#gmail-add-label) | Adds a label to a specific email in a Gmail account |
