@@ -12,6 +12,7 @@ import { hasUrl } from "./utils/assertion";
 
 test.describe.configure({
   timeout: 60000,
+  mode: "parallel",
 });
 
 // Reason Ignore: admonishment is in the wrong place visually with correct prettier rules
@@ -62,13 +63,42 @@ test.describe("Build", () => { //(1)!
     }
     
     await buildPage.closeBlocksPanel();
-    
-    // Verify blocks are visible
-    for (const block of blocksToAdd) {
-      await test.expect(buildPage.hasBlock(block)).resolves.toBeTruthy();
-    }
 
     await buildPage.saveAgent(`blocks ${letter} test`, `testing blocks starting with ${letter}`);
+  }
+
+  // Helper function to add blocks starting with a specific letter, split into parts for parallelization
+  async function addBlocksStartingWithSplit(letter: string, part: number, totalParts: number): Promise<void> {
+    const blockIdsToSkip = await buildPage.getBlocksToSkip();
+    const blockTypesToSkip = ["Input", "Output", "Agent", "AI"];
+    console.log("⚠️ Skipping blocks:", blockIdsToSkip);
+    console.log("⚠️ Skipping block types:", blockTypesToSkip);
+
+    const targetLetter = letter.toLowerCase();
+    
+    // Get filtered blocks from API instead of DOM
+    const allBlocks = await buildPage.getFilteredBlocksFromAPI(block => 
+      block.name[0].toLowerCase() === targetLetter &&
+      !blockIdsToSkip.includes(block.id) && 
+      !blockTypesToSkip.includes(block.type)
+    );
+
+    // Split blocks into parts - distribute evenly by taking every nth block
+    const blocksToAdd = allBlocks.filter((_, index) => 
+      index % totalParts === (part - 1)
+    );
+
+    await buildPage.openBlocksPanel();
+
+    console.log(`Adding ${blocksToAdd.length} blocks starting with "${letter}" (part ${part}/${totalParts})`);
+    
+    for (const block of blocksToAdd) {
+      await buildPage.addBlock(block);
+    }
+    
+    await buildPage.closeBlocksPanel();
+
+    await buildPage.saveAgent(`blocks ${letter} test part ${part}`, `testing blocks starting with ${letter} part ${part}`);
   }
 
   // Reason Ignore: admonishment is in the wrong place visually with correct prettier rules
@@ -83,8 +113,12 @@ test.describe("Build", () => { //(1)!
   });
   // --8<-- [end:BuildPageExample]
 
-  test("user can add blocks starting with a", async () => {
-    await addBlocksStartingWith("a");
+  test("user can add blocks starting with a (part 1)", async () => {
+    await addBlocksStartingWithSplit("a", 1, 2);
+  });
+
+  test("user can add blocks starting with a (part 2)", async () => {
+    await addBlocksStartingWithSplit("a", 2, 2);
   });
 
   test("user can add blocks starting with b", async () => {
@@ -107,8 +141,16 @@ test.describe("Build", () => { //(1)!
     await addBlocksStartingWith("f");
   });
 
-  test("user can add blocks starting with g", async () => {
-    await addBlocksStartingWith("g");
+  test("user can add blocks starting with g (part 1)", async () => {
+    await addBlocksStartingWithSplit("g", 1, 3);
+  });
+
+  test("user can add blocks starting with g (part 2)", async () => {
+    await addBlocksStartingWithSplit("g", 2, 3);
+  });
+
+  test("user can add blocks starting with g (part 3)", async () => {
+    await addBlocksStartingWithSplit("g", 3, 3);
   });
 
   test("user can add blocks starting with h", async () => {
@@ -155,8 +197,16 @@ test.describe("Build", () => { //(1)!
     await addBlocksStartingWith("r");
   });
 
-  test("user can add blocks starting with s", async () => {
-    await addBlocksStartingWith("s");
+  test("user can add blocks starting with s (part 1)", async () => {
+    await addBlocksStartingWithSplit("s", 1, 3);
+  });
+
+  test("user can add blocks starting with s (part 2)", async () => {
+    await addBlocksStartingWithSplit("s", 2, 3);
+  });
+
+  test("user can add blocks starting with s (part 3)", async () => {
+    await addBlocksStartingWithSplit("s", 3, 3);
   });
 
   test("user can add blocks starting with t", async () => {

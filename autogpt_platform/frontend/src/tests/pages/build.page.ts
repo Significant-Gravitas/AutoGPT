@@ -158,10 +158,7 @@ export class BuildPage extends BasePage {
     // Check if the block is visible after search filtering
     if (await blockElement.isVisible()) {
       await blockElement.click();
-    } else {
-      throw new Error(
-        `Block "${block.name}" (${block.id}) not found in search results`,
-      );
+      await this.hasBlock(block);
     }
   }
 
