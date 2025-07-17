@@ -63,7 +63,7 @@ tenacity = "^9.1.2"
 todoist-api-python = "^2.1.7"
 tweepy = "^4.16.0"
 uvicorn = { extras = ["standard"], version = "^0.35.0" }
-websockets = "^14.2"
+websockets = "^15.0"
 youtube-transcript-api = "^0.6.2"
 zerobouncesdk = "^1.1.2"
 # NOTE: please insert new dependencies in their alphabetical location
