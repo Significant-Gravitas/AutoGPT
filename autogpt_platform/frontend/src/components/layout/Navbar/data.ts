@@ -1,6 +1,6 @@
-import { getServerUser } from "@/lib/supabase/server/getServerUser";
 import { prefetchGetV2GetUserProfileQuery } from "@/app/api/__generated__/endpoints/store/store";
 import { getQueryClient } from "@/lib/react-query/queryClient";
+import { getServerUser } from "@/lib/supabase/server/getServerUser";
 
 export async function getNavbarAccountData() {
   const { user } = await getServerUser();
@@ -13,7 +13,6 @@ export async function getNavbarAccountData() {
       isLoggedIn,
     };
   }
-
   try {
     await prefetchGetV2GetUserProfileQuery(queryClient);
   } catch (error) {
