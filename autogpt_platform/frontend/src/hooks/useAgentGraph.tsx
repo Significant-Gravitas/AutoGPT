@@ -67,24 +67,14 @@ export default function useAgentGraph(
     [],
   );
 
-  useEffect(() => {
-    if (!betaBlocks || !betaBlocks.length || !availableBlocks.length) return;
-
-    const filteredBlocks = availableBlocks.filter((block) => {
-      if (betaBlocks?.includes(block.name)) return false;
-      return true;
-    });
-
-    setAvailableBlocks(filteredBlocks);
-  }, [availableBlocks, betaBlocks]);
-
   // Load available blocks & flows
   useEffect(() => {
+    if (!betaBlocks) return;
     api
       .getBlocks()
       .then((blocks) => {
         const filteredBlocks = blocks.filter((block) => {
-          if (betaBlocks?.includes(block.name)) return false;
+          if (betaBlocks?.includes(block.id)) return false;
           return true;
         });
         setAvailableBlocks(filteredBlocks);
@@ -103,7 +93,7 @@ export default function useAgentGraph(
     return () => {
       api.disconnectWebSocket();
     };
-  }, [api]);
+  }, [api, betaBlocks]);
 
   // Subscribe to execution events
   useEffect(() => {

@@ -236,6 +236,7 @@ export function BlocksControl({
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="rounded-lg px-8 py-5 dark:bg-slate-800 dark:text-white"
                 data-id="blocks-control-search-input"
+                autoComplete="off"
               />
             </div>
             <div
