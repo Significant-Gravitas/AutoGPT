@@ -850,6 +850,7 @@ class GmailReplyBlock(Block):
         *,
         credentials: GoogleCredentials,
         graph_exec_id: str,
+        user_id: str,
         **kwargs,
     ) -> BlockOutput:
         service = GmailReadBlock._build_service(credentials, **kwargs)
@@ -857,12 +858,15 @@ class GmailReplyBlock(Block):
             service,
             input_data,
             graph_exec_id,
+            user_id,
         )
         yield "messageId", message["id"]
         yield "threadId", message.get("threadId", input_data.threadId)
         yield "message", message
 
-    async def _reply(self, service, input_data: Input, graph_exec_id: str) -> dict:
+    async def _reply(
+        self, service, input_data: Input, graph_exec_id: str, user_id: str
+    ) -> dict:
         parent = (
             service.users()
             .messages()
@@ -931,7 +935,10 @@ class GmailReplyBlock(Block):
 
         for attach in input_data.attachments:
             local_path = await store_media_file(
-                graph_exec_id, attach, return_content=False
+                user_id=user_id,
+                graph_exec_id=graph_exec_id,
+                file=attach,
+                return_content=False,
             )
             abs_path = get_exec_file_path(graph_exec_id, local_path)
             part = MIMEBase("application", "octet-stream")
