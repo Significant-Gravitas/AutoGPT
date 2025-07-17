@@ -28,6 +28,6 @@ export interface GraphModel {
   user_id: string;
   readonly input_schema: GraphModelInputSchema;
   readonly output_schema: GraphModelOutputSchema;
+  readonly has_external_trigger: boolean;
   readonly credentials_input_schema: GraphModelCredentialsInputSchema;
-  readonly has_webhook_trigger: boolean;
 }
