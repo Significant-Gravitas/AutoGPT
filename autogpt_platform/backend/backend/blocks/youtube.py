@@ -43,6 +43,7 @@ class TranscribeYoutubeVideoBlock(Block):
                     {"text": "Never gonna give you up"},
                     {"text": "Never gonna let you down"},
                 ],
+                "format_transcript": lambda transcript: "Never gonna give you up\nNever gonna let you down",
             },
         )
 
@@ -65,12 +66,17 @@ class TranscribeYoutubeVideoBlock(Block):
     def get_transcript(video_id: str) -> FetchedTranscript:
         return YouTubeTranscriptApi().fetch(video_id=video_id)
 
+    @staticmethod
+    def format_transcript(transcript: FetchedTranscript) -> str:
+        formatter = TextFormatter()
+        transcript_text = formatter.format_transcript(transcript)
+        return transcript_text
+
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         video_id = self.extract_video_id(input_data.youtube_url)
         yield "video_id", video_id
 
         transcript = self.get_transcript(video_id)
-        formatter = TextFormatter()
-        transcript_text = formatter.format_transcript(transcript)
+        transcript_text = self.format_transcript(transcript=transcript)
 
         yield "transcript", transcript_text
