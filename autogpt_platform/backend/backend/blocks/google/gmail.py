@@ -649,9 +649,62 @@ class GmailGetThreadBlock(Block):
             disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
             test_input={"threadId": "t1", "credentials": TEST_CREDENTIALS_INPUT},
             test_credentials=TEST_CREDENTIALS,
-            test_output=[("thread", {"id": "t1", "messages": []})],
+            test_output=[
+                (
+                    "thread",
+                    {
+                        "id": "188199feff9dc907",
+                        "messages": [
+                            {
+                                "id": "188199feff9dc907",
+                                "to": "nick@example.co",
+                                "body": "This email does not contain a text body.",
+                                "date": "Thu, 17 Jul 2025 19:22:36 +0100",
+                                "from_": "bent@example.co",
+                                "snippet": "have a funny looking car -- Bently, Community Administrator For AutoGPT",
+                                "subject": "car",
+                                "threadId": "188199feff9dc907",
+                                "attachments": [
+                                    {
+                                        "size": 5694,
+                                        "filename": "frog.jpg",
+                                        "content_type": "image/jpeg",
+                                        "attachment_id": "ANGjdJ_f777CvJ37TdHYSPIPPqJ0HVNgze1uM8alw5iiqTqAVXjsmBWxOWXrY3Z4W4rEJHfAcHVx54_TbtcZIVJJEqJfAD5LoUOK9_zKCRwwcTJ5TGgjsXcZNSnOJNazM-m4E6buo2-p0WNcA_hqQvuA36nzS31Olx3m2x7BaG1ILOkBcjlKJl4KCcR0AvnfK0S02k8i-bZVqII7XXrNp21f1BDolxH7tiEhkz3d5p-5Lbro24olgOWQwQk0SCJsTWWBMCVgbxU7oLt1QmPcjANxfpvh69Qfap3htvQxFa9P08NDI2YqQkry9yPxVR7ZBJQWrqO35EWmhNySEiX5pfG8SDRmfP9O_BqxTH35nEXmSOvZH9zb214iM-zfSoPSU1F5Fo71",
+                                    }
+                                ],
+                                "sizeEstimate": 14099,
+                            }
+                        ],
+                        "historyId": "645006",
+                    },
+                )
+            ],
             test_mock={
-                "_get_thread": lambda *args, **kwargs: {"id": "t1", "messages": []}
+                "_get_thread": lambda *args, **kwargs: {
+                    "id": "188199feff9dc907",
+                    "messages": [
+                        {
+                            "id": "188199feff9dc907",
+                            "to": "nick@example.co",
+                            "body": "This email does not contain a text body.",
+                            "date": "Thu, 17 Jul 2025 19:22:36 +0100",
+                            "from_": "bent@example.co",
+                            "snippet": "have a funny looking car -- Bently, Community Administrator For AutoGPT",
+                            "subject": "car",
+                            "threadId": "188199feff9dc907",
+                            "attachments": [
+                                {
+                                    "size": 5694,
+                                    "filename": "frog.jpg",
+                                    "content_type": "image/jpeg",
+                                    "attachment_id": "ANGjdJ_f777CvJ37TdHYSPIPPqJ0HVNgze1uM8alw5iiqTqAVXjsmBWxOWXrY3Z4W4rEJHfAcHVx54_TbtcZIVJJEqJfAD5LoUOK9_zKCRwwcTJ5TGgjsXcZNSnOJNazM-m4E6buo2-p0WNcA_hqQvuA36nzS31Olx3m2x7BaG1ILOkBcjlKJl4KCcR0AvnfK0S02k8i-bZVqII7XXrNp21f1BDolxH7tiEhkz3d5p-5Lbro24olgOWQwQk0SCJsTWWBMCVgbxU7oLt1QmPcjANxfpvh69Qfap3htvQxFa9P08NDI2YqQkry9yPxVR7ZBJQWrqO35EWmhNySEiX5pfG8SDRmfP9O_BqxTH35nEXmSOvZH9zb214iM-zfSoPSU1F5Fo71",
+                                }
+                            ],
+                            "sizeEstimate": 14099,
+                        }
+                    ],
+                    "historyId": "645006",
+                }
             },
         )
 
