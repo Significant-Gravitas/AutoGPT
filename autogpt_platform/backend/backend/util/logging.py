@@ -35,27 +35,43 @@ class TruncatedLogger:
 
     def info(self, msg: str, **extra):
         msg = self._wrap(msg, **extra)
-        self.logger.info(msg, extra=self._get_metadata(**extra))
+        truncated_extra = self._truncate_large_data(extra)
+        truncated_metadata = self._truncate_large_data(self.metadata)
+        self.logger.info(
+            msg, extra={"json_fields": {**truncated_metadata, **truncated_extra}}
+        )
 
     def warning(self, msg: str, **extra):
         msg = self._wrap(msg, **extra)
-        self.logger.warning(msg, extra=self._get_metadata(**extra))
+        truncated_extra = self._truncate_large_data(extra)
+        truncated_metadata = self._truncate_large_data(self.metadata)
+        self.logger.warning(
+            msg, extra={"json_fields": {**truncated_metadata, **truncated_extra}}
+        )
 
     def error(self, msg: str, **extra):
         msg = self._wrap(msg, **extra)
-        self.logger.error(msg, extra=self._get_metadata(**extra))
+        truncated_extra = self._truncate_large_data(extra)
+        truncated_metadata = self._truncate_large_data(self.metadata)
+        self.logger.error(
+            msg, extra={"json_fields": {**truncated_metadata, **truncated_extra}}
+        )
 
     def debug(self, msg: str, **extra):
         msg = self._wrap(msg, **extra)
-        self.logger.debug(msg, extra=self._get_metadata(**extra))
+        truncated_extra = self._truncate_large_data(extra)
+        truncated_metadata = self._truncate_large_data(self.metadata)
+        self.logger.debug(
+            msg, extra={"json_fields": {**truncated_metadata, **truncated_extra}}
+        )
 
     def exception(self, msg: str, **extra):
         msg = self._wrap(msg, **extra)
-        self.logger.exception(msg, extra=self._get_metadata(**extra))
-
-    def _get_metadata(self, **extra):
-        metadata = {**self.metadata, **extra}
-        return {"json_fields": metadata} if metadata else {}
+        truncated_extra = self._truncate_large_data(extra)
+        truncated_metadata = self._truncate_large_data(self.metadata)
+        self.logger.exception(
+            msg, extra={"json_fields": {**truncated_metadata, **truncated_extra}}
+        )
 
     def _wrap(self, msg: str, **extra):
         extra_msg = str(extra or "")
@@ -63,6 +79,15 @@ class TruncatedLogger:
         if len(text) > self.max_length:
             text = text[: self.max_length] + "..."
         return text
+
+    def _truncate_large_data(self, data, max_size=10000):
+        if isinstance(data, dict):
+            return {k: self._truncate_large_data(v, max_size) for k, v in data.items()}
+        elif isinstance(data, list):
+            return [self._truncate_large_data(v, max_size) for v in data[:100]]
+        elif isinstance(data, str) and len(data) > max_size:
+            return data[:max_size] + "... [truncated]"
+        return data
 
 
 class PrefixFilter(logging.Filter):
