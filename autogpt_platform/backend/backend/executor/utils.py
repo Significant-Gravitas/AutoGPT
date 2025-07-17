@@ -729,7 +729,8 @@ async def stop_graph_execution(
         ]:
             break
 
-        await asyncio.sleep(1.0)
+        if graph_exec.status == ExecutionStatus.RUNNING:
+            await asyncio.sleep(0.1)
 
     # Set the termination status if the graph is not stopped after the timeout.
     if graph_exec := await db.get_graph_execution_meta(
@@ -739,7 +740,10 @@ async def stop_graph_execution(
         # by setting the status to TERMINATED.
         node_execs = await db.get_node_executions(
             graph_exec_id=graph_exec_id,
-            statuses=[ExecutionStatus.QUEUED, ExecutionStatus.INCOMPLETE],
+            statuses=[
+                ExecutionStatus.QUEUED,
+                ExecutionStatus.RUNNING,
+            ],
             include_exec_data=False,
         )
 
