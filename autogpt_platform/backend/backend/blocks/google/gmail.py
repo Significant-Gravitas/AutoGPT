@@ -43,6 +43,12 @@ class Email(BaseModel):
     attachments: List[Attachment]
 
 
+class Thread(BaseModel):
+    id: str
+    messages: list[Email]
+    historyId: str
+
+
 class GmailReadBlock(Block):
     class Input(BlockSchema):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
@@ -628,7 +634,7 @@ class GmailGetThreadBlock(Block):
         threadId: str = SchemaField(description="Gmail thread ID")
 
     class Output(BlockSchema):
-        thread: dict = SchemaField(
+        thread: Thread = SchemaField(
             description="Gmail thread with decoded message bodies"
         )
         error: str = SchemaField(description="Error message if any")
@@ -656,7 +662,7 @@ class GmailGetThreadBlock(Block):
         thread = self._get_thread(service, input_data.threadId, credentials.scopes)
         yield "thread", thread
 
-    def _get_thread(self, service, thread_id: str, scopes: list[str] | None) -> dict:
+    def _get_thread(self, service, thread_id: str, scopes: list[str] | None) -> Thread:
         scopes = [s.lower() for s in (scopes or [])]
         format_type = (
             "metadata"
@@ -690,7 +696,7 @@ class GmailGetThreadBlock(Block):
                 sizeEstimate=msg.get("sizeEstimate", 0),
                 attachments=attachments,
             )
-            parsed_messages.append(email.dict())
+            parsed_messages.append(email.model_dump())
 
         thread["messages"] = parsed_messages
         return thread
