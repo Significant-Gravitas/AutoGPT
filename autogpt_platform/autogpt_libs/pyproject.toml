@@ -23,7 +23,7 @@ uvicorn = "^0.34.3"
 
 [tool.poetry.group.dev.dependencies]
 redis = "^5.2.1"
-ruff = "^0.12.2"
+ruff = "^0.12.3"
 
 [build-system]
 requires = ["poetry-core"]
