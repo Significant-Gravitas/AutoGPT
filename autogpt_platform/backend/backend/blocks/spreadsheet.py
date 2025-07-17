@@ -48,7 +48,7 @@ class ReadSpreadsheetBlock(Block):
             default_factory=list,
         )
         produce_singular_result: bool = SchemaField(
-            description="If True, yield individual 'row' outputs only (can be slow). If False, yield both 'rows' (all data) and individual 'row' outputs",
+            description="If True, yield individual 'row' outputs only (can be slow). If False, yield both 'rows' (all data)",
             default=False,
         )
 
