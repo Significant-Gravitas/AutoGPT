@@ -80,11 +80,22 @@ class TruncatedLogger:
             text = text[: self.max_length] + "..."
         return text
 
-    def _truncate_large_data(self, data, max_size=10000):
+    def _truncate_large_data(self, data, max_size=4000):
         if isinstance(data, dict):
-            return {k: self._truncate_large_data(v, max_size) for k, v in data.items()}
+            # For large dictionaries, limit the number of keys and truncate values
+            if len(data) > 20:
+                # Keep only first 20 keys for very large dictionaries
+                truncated_dict = {}
+                for i, (k, v) in enumerate(data.items()):
+                    if i >= 20:
+                        truncated_dict["... [additional_keys_truncated]"] = f"{len(data) - 20} more keys"
+                        break
+                    truncated_dict[k] = self._truncate_large_data(v, max_size)
+                return truncated_dict
+            else:
+                return {k: self._truncate_large_data(v, max_size) for k, v in data.items()}
         elif isinstance(data, list):
-            return [self._truncate_large_data(v, max_size) for v in data[:100]]
+            return [self._truncate_large_data(v, max_size) for v in data[:50]]
         elif isinstance(data, str) and len(data) > max_size:
             return data[:max_size] + "... [truncated]"
         return data
