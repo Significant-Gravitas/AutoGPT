@@ -68,9 +68,16 @@ class ReadSpreadsheetBlock(Block):
             description="Reads CSV and Excel files and outputs the data as a list of dictionaries and individual rows. Excel files are automatically converted to CSV format.",
             contributors=[ContributorDetails(name="Nicholas Tindle")],
             categories={BlockCategory.TEXT, BlockCategory.DATA},
-            test_input={
-                "contents": "a, b, c\n1,2,3\n4,5,6",
-            },
+            test_input=[
+                {
+                    "contents": "a, b, c\n1,2,3\n4,5,6",
+                    "produce_singular_result": False,
+                },
+                {
+                    "contents": "a, b, c\n1,2,3\n4,5,6",
+                    "produce_singular_result": True,
+                },
+            ],
             test_output=[
                 (
                     "rows",
