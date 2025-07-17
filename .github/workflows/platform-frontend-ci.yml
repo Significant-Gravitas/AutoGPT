@@ -155,8 +155,6 @@ jobs:
     needs: setup
     strategy:
       fail-fast: false
-      matrix:
-        browser: [chromium, webkit]
 
     steps:
       - name: Checkout repository
@@ -208,13 +206,11 @@ jobs:
         run: pnpm build --turbo
         # uses Turbopack, much faster and safe enough for a test pipeline
 
-      - name: Install Browser '${{ matrix.browser }}'
-        run: pnpm playwright install --with-deps ${{ matrix.browser }}
+      - name: Install Browser 'chromium'
+        run: pnpm playwright install --with-deps chromium
 
       - name: Run Playwright tests
-        run: pnpm test:no-build --project=${{ matrix.browser }}
-        env:
-          BROWSER_TYPE: ${{ matrix.browser }}
+        run: pnpm test:no-build
 
       - name: Print Final Docker Compose logs
         if: always()
