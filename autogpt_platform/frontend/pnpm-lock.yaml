@@ -247,8 +247,8 @@ importers:
         specifier: 0.6.4
         version: 0.6.4
       '@types/node':
-        specifier: 22.15.30
-        version: 22.15.30
+        specifier: 24.0.14
+        version: 24.0.14
       '@types/react':
         specifier: 18.3.17
         version: 18.3.17
@@ -284,10 +284,10 @@ importers:
         version: 1.14.2
       msw:
         specifier: 2.10.4
-        version: 2.10.4(@types/node@22.15.30)(typescript@5.8.3)
+        version: 2.10.4(@types/node@24.0.14)(typescript@5.8.3)
       msw-storybook-addon:
         specifier: 2.0.5
-        version: 2.0.5(msw@2.10.4(@types/node@22.15.30)(typescript@5.8.3))
+        version: 2.0.5(msw@2.10.4(@types/node@24.0.14)(typescript@5.8.3))
       orval:
         specifier: 7.10.0
         version: 7.10.0(openapi-types@12.1.3)
@@ -2901,8 +2901,8 @@ packages:
   '@types/negotiator@0.6.4':
     resolution: {integrity: sha512-elf6BsTq+AkyNsb2h5cGNst2Mc7dPliVoAPm1fXglC/BM3f2pFA40BaSSv3E5lyHteEawVKLP+8TwiY1DMNb3A==}
 
-  '@types/node@22.15.30':
-    resolution: {integrity: sha512-6Q7lr06bEHdlfplU6YRbgG1SFBdlsfNC4/lX+SkhiTs0cpJkOElmWls8PxDFv4yY/xKb8Y6SO0OmSX4wgqTZbA==}
+  '@types/node@24.0.14':
+    resolution: {integrity: sha512-4zXMWD91vBLGRtHK3YbIoFMia+1nqEz72coM42C5ETjnNCa/heoj7NT1G67iAfOqMmcfhuCZ4uNpyz8EjlAejw==}
 
   '@types/parse-json@4.0.2':
     resolution: {integrity: sha512-dISoDXWWQwUquiKsyZ4Ng+HX2KsPL7LyHKHQwgGFEA3IaKac4Obd+h2a/a6waisAoepJlBcx9paWqjA8/HVjCw==}
@@ -6796,8 +6796,8 @@ packages:
     resolution: {integrity: sha512-nWJ91DjeOkej/TA8pXQ3myruKpKEYgqvpw9lz4OPHj/NWFNluYrjbz9j01CJ8yKQd2g4jFoOkINCTW2I5LEEyw==}
     engines: {node: '>= 0.4'}
 
-  undici-types@6.21.0:
-    resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
+  undici-types@7.8.0:
+    resolution: {integrity: sha512-9UJ2xGDvQ43tYyVMpuHlsgApydB8ZKfVYTsLDhXkFL/6gfkp+U8xTGdh8pMJv1SpZna0zxG1DwsKZsreLbXBxw==}
 
   unicode-canonical-property-names-ecmascript@2.0.1:
     resolution: {integrity: sha512-dA8WbNeb2a6oQzAQ55YlT5vQAWGV9WXOsi3SskE3bcCdM0P4SDd+24zS/OCacdRq5BkdsRj9q3Pg6YyQoxIGqg==}
@@ -8190,17 +8190,17 @@ snapshots:
   '@img/sharp-win32-x64@0.34.2':
     optional: true
 
-  '@inquirer/confirm@5.1.13(@types/node@22.15.30)':
+  '@inquirer/confirm@5.1.13(@types/node@24.0.14)':
     dependencies:
-      '@inquirer/core': 10.1.14(@types/node@22.15.30)
-      '@inquirer/type': 3.0.7(@types/node@22.15.30)
+      '@inquirer/core': 10.1.14(@types/node@24.0.14)
+      '@inquirer/type': 3.0.7(@types/node@24.0.14)
     optionalDependencies:
-      '@types/node': 22.15.30
+      '@types/node': 24.0.14
 
-  '@inquirer/core@10.1.14(@types/node@22.15.30)':
+  '@inquirer/core@10.1.14(@types/node@24.0.14)':
     dependencies:
       '@inquirer/figures': 1.0.12
-      '@inquirer/type': 3.0.7(@types/node@22.15.30)
+      '@inquirer/type': 3.0.7(@types/node@24.0.14)
       ansi-escapes: 4.3.2
       cli-width: 4.1.0
       mute-stream: 2.0.0
@@ -8208,13 +8208,13 @@ snapshots:
       wrap-ansi: 6.2.0
       yoctocolors-cjs: 2.1.2
     optionalDependencies:
-      '@types/node': 22.15.30
+      '@types/node': 24.0.14
 
   '@inquirer/figures@1.0.12': {}
 
-  '@inquirer/type@3.0.7(@types/node@22.15.30)':
+  '@inquirer/type@3.0.7(@types/node@24.0.14)':
     optionalDependencies:
-      '@types/node': 22.15.30
+      '@types/node': 24.0.14
 
   '@isaacs/cliui@8.0.2':
     dependencies:
@@ -10060,7 +10060,7 @@ snapshots:
 
   '@types/connect@3.4.38':
     dependencies:
-      '@types/node': 22.15.30
+      '@types/node': 24.0.14
 
   '@types/cookie@0.6.0': {}
 
@@ -10113,7 +10113,7 @@ snapshots:
 
   '@types/es-aggregate-error@1.0.6':
     dependencies:
-      '@types/node': 22.15.30
+      '@types/node': 24.0.14
 
   '@types/eslint-scope@3.7.7':
     dependencies:
@@ -10159,13 +10159,13 @@ snapshots:
 
   '@types/mysql@2.15.26':
     dependencies:
-      '@types/node': 22.15.30
+      '@types/node': 24.0.14
 
   '@types/negotiator@0.6.4': {}
 
-  '@types/node@22.15.30':
+  '@types/node@24.0.14':
     dependencies:
-      undici-types: 6.21.0
+      undici-types: 7.8.0
 
   '@types/parse-json@4.0.2': {}
 
@@ -10175,7 +10175,7 @@ snapshots:
 
   '@types/pg@8.6.1':
     dependencies:
-      '@types/node': 22.15.30
+      '@types/node': 24.0.14
       pg-protocol: 1.10.3
       pg-types: 2.2.0
 
@@ -10208,7 +10208,7 @@ snapshots:
 
   '@types/tedious@4.0.14':
     dependencies:
-      '@types/node': 22.15.30
+      '@types/node': 24.0.14
 
   '@types/tough-cookie@4.0.5': {}
 
@@ -10220,7 +10220,7 @@ snapshots:
 
   '@types/ws@8.18.1':
     dependencies:
-      '@types/node': 22.15.30
+      '@types/node': 24.0.14
 
   '@typescript-eslint/eslint-plugin@8.36.0(@typescript-eslint/parser@8.36.0(eslint@8.57.1)(typescript@5.8.3))(eslint@8.57.1)(typescript@5.8.3)':
     dependencies:
@@ -12516,7 +12516,7 @@ snapshots:
 
   jest-worker@27.5.1:
     dependencies:
-      '@types/node': 22.15.30
+      '@types/node': 24.0.14
       merge-stream: 2.0.0
       supports-color: 8.1.1
 
@@ -13016,17 +13016,17 @@ snapshots:
 
   ms@2.1.3: {}
 
-  msw-storybook-addon@2.0.5(msw@2.10.4(@types/node@22.15.30)(typescript@5.8.3)):
+  msw-storybook-addon@2.0.5(msw@2.10.4(@types/node@24.0.14)(typescript@5.8.3)):
     dependencies:
       is-node-process: 1.2.0
-      msw: 2.10.4(@types/node@22.15.30)(typescript@5.8.3)
+      msw: 2.10.4(@types/node@24.0.14)(typescript@5.8.3)
 
-  msw@2.10.4(@types/node@22.15.30)(typescript@5.8.3):
+  msw@2.10.4(@types/node@24.0.14)(typescript@5.8.3):
     dependencies:
       '@bundled-es-modules/cookie': 2.0.1
       '@bundled-es-modules/statuses': 1.0.1
       '@bundled-es-modules/tough-cookie': 0.1.6
-      '@inquirer/confirm': 5.1.13(@types/node@22.15.30)
+      '@inquirer/confirm': 5.1.13(@types/node@24.0.14)
       '@mswjs/interceptors': 0.39.2
       '@open-draft/deferred-promise': 2.2.0
       '@open-draft/until': 2.1.0
@@ -14672,7 +14672,7 @@ snapshots:
       has-symbols: 1.1.0
       which-boxed-primitive: 1.1.1
 
-  undici-types@6.21.0: {}
+  undici-types@7.8.0: {}
 
   unicode-canonical-property-names-ecmascript@2.0.1: {}
 
