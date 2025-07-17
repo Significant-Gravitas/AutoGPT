@@ -248,6 +248,30 @@ export function useGetV1Login<
 }
 
 /**
+ * @summary Login
+ */
+export const prefetchGetV1LoginQuery = async <
+  TData = Awaited<ReturnType<typeof getV1Login>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  provider: string,
+  params?: GetV1LoginParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1Login>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1LoginQueryOptions(provider, params, options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * @summary Callback
  */
 export type postV1CallbackResponse200 = {
@@ -530,6 +554,32 @@ export function useGetV1ListCredentials<
 }
 
 /**
+ * @summary List Credentials
+ */
+export const prefetchGetV1ListCredentialsQuery = async <
+  TData = Awaited<ReturnType<typeof getV1ListCredentials>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1ListCredentials>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1ListCredentialsQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * @summary List Credentials By Provider
  */
 export type getV1ListCredentialsByProviderResponse200 = {
@@ -726,6 +776,36 @@ export function useGetV1ListCredentialsByProvider<
 
   return query;
 }
+
+/**
+ * @summary List Credentials By Provider
+ */
+export const prefetchGetV1ListCredentialsByProviderQuery = async <
+  TData = Awaited<ReturnType<typeof getV1ListCredentialsByProvider>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  provider: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1ListCredentialsByProvider>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1ListCredentialsByProviderQueryOptions(
+    provider,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * @summary Create Credentials
@@ -1045,6 +1125,38 @@ export function useGetV1GetCredential<
 
   return query;
 }
+
+/**
+ * @summary Get Credential
+ */
+export const prefetchGetV1GetCredentialQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetCredential>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  provider: string,
+  credId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetCredential>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetCredentialQueryOptions(
+    provider,
+    credId,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * @summary Delete Credentials
@@ -1594,6 +1706,32 @@ export function useGetV1ListProviders<
 }
 
 /**
+ * @summary List Providers
+ */
+export const prefetchGetV1ListProvidersQuery = async <
+  TData = Awaited<ReturnType<typeof getV1ListProviders>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1ListProviders>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1ListProvidersQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * Get all provider names in a structured format.
 
 This endpoint is specifically designed to expose the provider names
@@ -1770,6 +1908,32 @@ export function useGetV1GetProviderNames<
 
   return query;
 }
+
+/**
+ * @summary Get Provider Names
+ */
+export const prefetchGetV1GetProviderNamesQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetProviderNames>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetProviderNames>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetProviderNamesQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * Get provider names as constants.
@@ -1951,6 +2115,32 @@ export function useGetV1GetProviderConstants<
 }
 
 /**
+ * @summary Get Provider Constants
+ */
+export const prefetchGetV1GetProviderConstantsQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetProviderConstants>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetProviderConstants>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetProviderConstantsQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * Example endpoint that uses the CompleteProviderNames enum.
 
 This endpoint exists to ensure that the CompleteProviderNames enum is included
@@ -2129,3 +2319,29 @@ export function useGetV1GetProviderEnumExample<
 
   return query;
 }
+
+/**
+ * @summary Get Provider Enum Example
+ */
+export const prefetchGetV1GetProviderEnumExampleQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetProviderEnumExample>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetProviderEnumExample>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetProviderEnumExampleQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};

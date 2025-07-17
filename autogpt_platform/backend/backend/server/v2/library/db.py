@@ -187,7 +187,7 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
 async def get_library_agent_by_store_version_id(
     store_listing_version_id: str,
     user_id: str,
-):
+) -> library_model.LibraryAgent | None:
     """
     Get the library agent metadata for a given store listing version ID and user ID.
     """
@@ -202,7 +202,7 @@ async def get_library_agent_by_store_version_id(
     )
     if not store_listing_version:
         logger.warning(f"Store listing version not found: {store_listing_version_id}")
-        raise store_exceptions.AgentNotFoundError(
+        raise NotFoundError(
             f"Store listing version {store_listing_version_id} not found or invalid"
         )
 
@@ -214,12 +214,9 @@ async def get_library_agent_by_store_version_id(
             "agentGraphVersion": store_listing_version.agentGraphVersion,
             "isDeleted": False,
         },
-        include={"AgentGraph": True},
+        include=library_agent_include(user_id),
     )
-    if agent:
-        return library_model.LibraryAgent.from_db(agent)
-    else:
-        return None
+    return library_model.LibraryAgent.from_db(agent) if agent else None
 
 
 async def get_library_agent_by_graph_id(

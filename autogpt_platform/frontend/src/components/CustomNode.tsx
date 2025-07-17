@@ -719,7 +719,9 @@ export const CustomNode = React.memo(
       <div
         className={`${blockClasses} ${errorClass} ${statusClass}`}
         data-id={`custom-node-${id}`}
+        id={data.block_id}
         z-index={1}
+        data-testid={data.block_id}
         data-blockid={data.block_id}
         data-blockname={data.title}
         data-blocktype={data.blockType}
