@@ -1,59 +1,73 @@
 // auth.spec.ts
-import { test } from "./fixtures";
 
-test.describe("Authentication", () => {
-  test("user can login successfully", async ({ page, loginPage, testUser }) => {
-    await page.goto("/login");
-    await loginPage.login(testUser.email, testUser.password);
-    await test.expect(page).toHaveURL("/marketplace");
-    await test
-      .expect(page.getByTestId("profile-popout-menu-trigger"))
-      .toBeVisible();
-  });
+import test from "@playwright/test";
+import { getTestUser } from "./utils/auth";
+import { LoginPage } from "./pages/login.page";
+import { hasUrl, isVisible } from "./utils/assertion";
+import { getSelectors } from "./utils/selectors";
 
-  test("user can logout successfully", async ({
-    page,
-    loginPage,
-    testUser,
-  }) => {
-    await page.goto("/login");
-    await loginPage.login(testUser.email, testUser.password);
-    await test.expect(page).toHaveURL("/marketplace");
+test.beforeEach(async ({ page }) => {
+  await page.goto("/login");
+});
 
-    // Click on the profile menu trigger to open popout
-    await page.getByTestId("profile-popout-menu-trigger").click();
+test("user can login successfully", async ({ page }) => {
+  const testUser = await getTestUser();
+  const loginPage = new LoginPage(page);
+  const { getId, getButton, getText, getRole } = getSelectors(page);
 
-    // Wait for menu to be visible before clicking logout
-    await page.getByRole("button", { name: "Log out" }).waitFor({
-      state: "visible",
-      timeout: 5000,
-    });
+  await loginPage.login(testUser.email, testUser.password);
+  await hasUrl(page, "/marketplace");
 
-    // Click the logout button in the popout menu
-    await page.getByRole("button", { name: "Log out" }).click();
+  const accountMenuTrigger = getId("profile-popout-menu-trigger");
 
-    await test.expect(page).toHaveURL("/login");
-  });
+  await isVisible(accountMenuTrigger);
 
-  test("login in, then out, then in again", async ({
-    page,
-    loginPage,
-    testUser,
-  }) => {
-    await page.goto("/login");
-    await loginPage.login(testUser.email, testUser.password);
-    await test.expect(page).toHaveURL("/marketplace");
-    // Click on the profile menu trigger to open popout
-    await page.getByTestId("profile-popout-menu-trigger").click();
+  await accountMenuTrigger.click();
+  const accountMenuPopover = getRole("dialog");
+  await isVisible(accountMenuPopover);
 
-    // Click the logout button in the popout menu
-    await page.getByRole("button", { name: "Log out" }).click();
+  const username = testUser.email.split("@")[0];
+  await isVisible(getText(username));
 
-    await test.expect(page).toHaveURL("/login");
-    await loginPage.login(testUser.email, testUser.password);
-    await test.expect(page).toHaveURL("/marketplace");
-    await test
-      .expect(page.getByTestId("profile-popout-menu-trigger"))
-      .toBeVisible();
-  });
+  const logoutBtn = getButton("Log out");
+  await isVisible(logoutBtn);
+  await logoutBtn.click();
+});
+
+test("user can logout successfully", async ({ page }) => {
+  const testUser = await getTestUser();
+  const loginPage = new LoginPage(page);
+  const { getButton, getId } = getSelectors(page);
+
+  await loginPage.login(testUser.email, testUser.password);
+  await hasUrl(page, "/marketplace");
+
+  // Open account menu
+  await getId("profile-popout-menu-trigger").click();
+
+  // Logout
+  await getButton("Log out").click();
+  await hasUrl(page, "/login");
+});
+
+test("login in, then out, then in again", async ({ page }) => {
+  const testUser = await getTestUser();
+  const loginPage = new LoginPage(page);
+  const { getButton, getId } = getSelectors(page);
+
+  await loginPage.login(testUser.email, testUser.password);
+  await hasUrl(page, "/marketplace");
+
+  // Click on the profile menu trigger to open account menu
+  await getId("profile-popout-menu-trigger").click();
+
+  // Click the logout button in the popout menu
+  await getButton("Log out").click();
+
+  await test.expect(page).toHaveURL("/login");
+  await loginPage.login(testUser.email, testUser.password);
+  await test.expect(page).toHaveURL("/marketplace");
+  await test
+    .expect(page.getByTestId("profile-popout-menu-trigger"))
+    .toBeVisible();
 });

@@ -79,7 +79,23 @@ Once you have Docker and Docker Compose installed, you can proceed to the next s
     See <a href="https://github.com/supabase/supabase/issues/33816">supabase/supabase #33816</a> for additional context.
 </details>
 
-## Setup
+## Quick Setup with Auto Setup Script (Recommended)  
+If you're self-hosting AutoGPT locally, we recommend using our official setup script to simplify the process. This will install dependencies (like Docker), pull the latest code, and launch the app with minimal effort.
+
+For macOS/Linux:
+```
+curl -fsSL https://setup.agpt.co/install.sh -o install.sh && bash install.sh
+```
+
+For Windows (PowerShell):
+```
+powershell -c "iwr https://setup.agpt.co/install.bat -o install.bat; ./install.bat"
+```
+
+This method is ideal if you're setting up for development or testing and want to skip manual configuration.
+
+
+## Manual Setup
 
 ### Cloning the Repository
 The first step is cloning the AutoGPT repository to your computer.
