@@ -23,6 +23,7 @@ export default function LibrarySearchBar(): React.ReactNode {
         onChange={handleSearchInput}
         className="flex-1 border-none font-sans text-[16px] font-normal leading-7 shadow-none focus:shadow-none focus:ring-0"
         type="text"
+        data-testid="library-textbox"
         placeholder="Search agents"
       />
 

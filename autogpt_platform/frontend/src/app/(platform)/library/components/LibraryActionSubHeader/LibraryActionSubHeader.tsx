@@ -15,7 +15,10 @@ export default function LibraryActionSubHeader({
         <span className="font-poppin w-[96px] text-[18px] font-semibold leading-[28px] text-neutral-800">
           My agents
         </span>
-        <span className="w-[70px] font-sans text-[14px] font-normal leading-6">
+        <span
+          className="w-[70px] font-sans text-[14px] font-normal leading-6"
+          data-testid="agents-count"
+        >
           {agentCount} agents
         </span>
       </div>
