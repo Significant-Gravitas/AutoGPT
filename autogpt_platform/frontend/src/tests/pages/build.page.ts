@@ -57,6 +57,16 @@ export class BuildPage extends BasePage {
 
   async getBlocks(): Promise<Block[]> {
     console.log(`Getting available blocks from sidebar panel`);
+
+    // Clear any existing search to ensure we see all blocks
+    const searchInput = this.page.locator(
+      '[data-id="blocks-control-search-input"]',
+    );
+    await searchInput.clear();
+
+    // Wait for search to clear
+    await this.page.waitForTimeout(300);
+
     try {
       const blockFinder = this.page.locator('[data-id^="block-card-"]');
       await blockFinder.first().waitFor();
@@ -129,7 +139,30 @@ export class BuildPage extends BasePage {
 
   async addBlock(block: Block): Promise<void> {
     console.log(`Adding block ${block.name} (${block.id}) to agent`);
-    await this.page.getByTestId(`block-name-${block.id}`).click();
+
+    // Find the search input field and clear any existing search
+    const searchInput = this.page.locator(
+      '[data-id="blocks-control-search-input"]',
+    );
+    await searchInput.clear();
+
+    // Type the full block name to filter the results
+    await searchInput.fill(block.name);
+
+    // Wait a moment for the search results to update
+    await this.page.waitForTimeout(500);
+
+    // Try to click on the block if it appears in the search results
+    const blockElement = this.page.getByTestId(`block-name-${block.id}`);
+
+    // Check if the block is visible after search filtering
+    if (await blockElement.isVisible()) {
+      await blockElement.click();
+    } else {
+      throw new Error(
+        `Block "${block.name}" (${block.id}) not found in search results`,
+      );
+    }
   }
 
   async isRFNodeVisible(nodeId: string): Promise<boolean> {
@@ -204,6 +237,15 @@ export class BuildPage extends BasePage {
 
   async getBlocksForCategory(category: string): Promise<Block[]> {
     console.log(`Getting blocks for category: ${category}`);
+
+    // Clear any existing search to ensure we see all blocks in the category
+    const searchInput = this.page.locator(
+      '[data-id="blocks-control-search-input"]',
+    );
+    await searchInput.clear();
+
+    // Wait for search to clear
+    await this.page.waitForTimeout(300);
 
     // Select the category first
     await this.selectBlockCategory(category);
