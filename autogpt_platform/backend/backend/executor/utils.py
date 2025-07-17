@@ -685,7 +685,7 @@ async def stop_graph_execution(
     user_id: str,
     graph_exec_id: str,
     use_db_query: bool = True,
-    wait_timeout: float = 60.0,
+    wait_timeout: float = 15.0,
 ):
     """
     Mechanism:
@@ -720,33 +720,58 @@ async def stop_graph_execution(
             ExecutionStatus.FAILED,
         ]:
             # If graph execution is terminated/completed/failed, cancellation is complete
+            await get_async_execution_event_bus().publish(graph_exec)
             return
 
-        elif graph_exec.status in [
+        if graph_exec.status in [
             ExecutionStatus.QUEUED,
             ExecutionStatus.INCOMPLETE,
         ]:
-            # If the graph is still on the queue, we can prevent them from being executed
-            # by setting the status to TERMINATED.
-            node_execs = await db.get_node_executions(
-                graph_exec_id=graph_exec_id,
-                statuses=[ExecutionStatus.QUEUED, ExecutionStatus.INCOMPLETE],
-                include_exec_data=False,
-            )
-            await db.update_node_execution_status_batch(
+            break
+
+        if graph_exec.status == ExecutionStatus.RUNNING:
+            await asyncio.sleep(0.1)
+
+    # Set the termination status if the graph is not stopped after the timeout.
+    if graph_exec := await db.get_graph_execution_meta(
+        execution_id=graph_exec_id, user_id=user_id
+    ):
+        # If the graph is still on the queue, we can prevent them from being executed
+        # by setting the status to TERMINATED.
+        node_execs = await db.get_node_executions(
+            graph_exec_id=graph_exec_id,
+            statuses=[
+                ExecutionStatus.QUEUED,
+                ExecutionStatus.RUNNING,
+            ],
+            include_exec_data=False,
+        )
+
+        graph_exec.status = ExecutionStatus.TERMINATED
+        for node_exec in node_execs:
+            node_exec.status = ExecutionStatus.TERMINATED
+
+        await asyncio.gather(
+            # Update node execution statuses
+            db.update_node_execution_status_batch(
                 [node_exec.node_exec_id for node_exec in node_execs],
                 ExecutionStatus.TERMINATED,
-            )
-            await db.update_graph_execution_stats(
+            ),
+            # Publish node execution events
+            *[
+                get_async_execution_event_bus().publish(node_exec)
+                for node_exec in node_execs
+            ],
+        )
+        await asyncio.gather(
+            # Update graph execution status
+            db.update_graph_execution_stats(
                 graph_exec_id=graph_exec_id,
                 status=ExecutionStatus.TERMINATED,
-            )
-
-        await asyncio.sleep(1.0)
-
-    raise TimeoutError(
-        f"Timed out waiting for graph execution #{graph_exec_id} to terminate."
-    )
+            ),
+            # Publish graph execution event
+            get_async_execution_event_bus().publish(graph_exec),
+        )
 
 
 async def add_graph_execution(
