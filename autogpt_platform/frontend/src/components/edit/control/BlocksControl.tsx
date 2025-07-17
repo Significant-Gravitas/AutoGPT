@@ -99,8 +99,8 @@ export function BlocksControl({
       .sort((a, b) => a.name.localeCompare(b.name));
 
     const agentBlockList = flows
-      .map(
-        (flow): _Block => ({
+      .map((flow): _Block => {
+        return {
           id: SpecialBlockID.AGENT,
           name: flow.name,
           description:
@@ -119,8 +119,8 @@ export function BlocksControl({
             input_schema: flow.input_schema,
             output_schema: flow.output_schema,
           },
-        }),
-      )
+        };
+      })
       .map(
         (agentBlock): _Block => ({
           ...agentBlock,

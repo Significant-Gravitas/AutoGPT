@@ -29,6 +29,7 @@ import Ajv from "ajv";
 import { default as NextLink } from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
@@ -59,17 +60,35 @@ export default function useAgentGraph(
   const [xyNodes, setXYNodes] = useState<CustomNode[]>([]);
   const [xyEdges, setXYEdges] = useState<CustomEdge[]>([]);
   const { state, completeStep, incrementRuns } = useOnboarding();
+  const betaBlocks = useGetFlag(Flag.BETA_BLOCKS);
 
   const api = useMemo(
     () => new BackendAPI(process.env.NEXT_PUBLIC_AGPT_SERVER_URL!),
     [],
   );
 
+  useEffect(() => {
+    if (!betaBlocks || !betaBlocks.length || !availableBlocks.length) return;
+
+    const filteredBlocks = availableBlocks.filter((block) => {
+      if (betaBlocks?.includes(block.name)) return false;
+      return true;
+    });
+
+    setAvailableBlocks(filteredBlocks);
+  }, [availableBlocks, betaBlocks]);
+
   // Load available blocks & flows
   useEffect(() => {
     api
       .getBlocks()
-      .then((blocks) => setAvailableBlocks(blocks))
+      .then((blocks) => {
+        const filteredBlocks = blocks.filter((block) => {
+          if (betaBlocks?.includes(block.name)) return false;
+          return true;
+        });
+        setAvailableBlocks(filteredBlocks);
+      })
       .catch();
 
     api
