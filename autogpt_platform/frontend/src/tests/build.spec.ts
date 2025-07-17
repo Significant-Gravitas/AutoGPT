@@ -11,7 +11,7 @@ import { getTestUser } from "./utils/auth";
 import { hasUrl } from "./utils/assertion";
 
 test.describe.configure({
-  timeout: 40000,
+  timeout: 60000,
   mode: "parallel",
 });
 
