@@ -329,6 +329,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="A whitelist of trusted internal endpoints for the backend to make requests to.",
     )
 
+    max_message_size_limit: int = Field(
+        default=16 * 1024 * 1024,  # 16 MB
+        description="Maximum message size limit for communication with the message bus",
+    )
+
     backend_cors_allow_origins: List[str] = Field(default_factory=list)
 
     @field_validator("backend_cors_allow_origins")
