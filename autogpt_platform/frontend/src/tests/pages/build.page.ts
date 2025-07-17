@@ -452,7 +452,7 @@ export class BuildPage extends BasePage {
 
   async getDictionaryBlockDetails(): Promise<Block> {
     return {
-      id: "31d1064e-7446-4693-a7d4-65e5ca1180d1",
+      id: "dummy-id-1",
       name: "Add to Dictionary",
       description: "Add to Dictionary",
       type: "Standard",
@@ -571,7 +571,7 @@ export class BuildPage extends BasePage {
     await this.openBlocksPanel();
     const block = await this.getDictionaryBlockDetails();
 
-    await this.addBlock(block);
+    await this.page.getByText(block.name).click();
     await this.closeBlocksPanel();
     await expect(this.hasBlock(block)).resolves.toBeTruthy();
 
