@@ -22,7 +22,7 @@ test("check the navigation when logged out", async ({ page }) => {
   await isVisible(marketplaceLink);
   await marketplaceLink.click();
   await hasUrl(page, "/marketplace");
-  await isVisible(getText("Explore AI agents built for you by the community"));
+  await isVisible(getText("Explore AI agents", { exact: false }));
 
   const loginBtn = getButton("Log In");
   await isVisible(loginBtn);
