@@ -361,10 +361,11 @@ class FileReadBlock(Block):
         )
 
     async def run(
-        self, input_data: Input, *, graph_exec_id: str, **_kwargs
+        self, input_data: Input, *, graph_exec_id: str, user_id: str, **_kwargs
     ) -> BlockOutput:
         # Store the media file properly (handles URLs, data URIs, etc.)
         stored_file_path = await store_media_file(
+            user_id=user_id,
             graph_exec_id=graph_exec_id,
             file=input_data.file_input,
             return_content=False,
