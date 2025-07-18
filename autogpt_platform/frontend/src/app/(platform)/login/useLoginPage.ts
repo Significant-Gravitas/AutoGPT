@@ -1,23 +1,26 @@
 import { useTurnstile } from "@/hooks/useTurnstile";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { BehaveAs, getBehaveAs } from "@/lib/utils";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-import { login, providerLogin } from "./actions";
 import z from "zod";
-import { BehaveAs } from "@/lib/utils";
-import { getBehaveAs } from "@/lib/utils";
+import { login, providerLogin } from "./actions";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 
 export function useLoginPage() {
   const { supabase, user, isUserLoading } = useSupabase();
   const [feedback, setFeedback] = useState<string | null>(null);
   const [captchaKey, setCaptchaKey] = useState(0);
   const router = useRouter();
+  const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
   const isCloudEnv = getBehaveAs() === BehaveAs.CLOUD;
+  const isVercelPreview = process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
 
   const turnstile = useTurnstile({
     action: "login",
@@ -44,29 +47,53 @@ export function useLoginPage() {
 
   async function handleProviderLogin(provider: LoginProvider) {
     setIsGoogleLoading(true);
+
+    if (!turnstile.verified && !isVercelPreview) {
+      toast({
+        title: "Please complete the CAPTCHA challenge.",
+        variant: "info",
+      });
+
+      setIsGoogleLoading(false);
+      resetCaptcha();
+      return;
+    }
+
     try {
       const error = await providerLogin(provider);
       if (error) throw error;
       setFeedback(null);
     } catch (error) {
       resetCaptcha();
-      setFeedback(JSON.stringify(error));
-    } finally {
       setIsGoogleLoading(false);
+      const errorString = JSON.stringify(error);
+      if (errorString.includes("not_allowed")) {
+        setShowNotAllowedModal(true);
+      } else {
+        setFeedback(errorString);
+      }
     }
   }
 
   async function handleLogin(data: z.infer<typeof loginFormSchema>) {
     setIsLoading(true);
-    if (!turnstile.verified) {
-      setFeedback("Please complete the CAPTCHA challenge.");
+    if (!turnstile.verified && !isVercelPreview) {
+      toast({
+        title: "Please complete the CAPTCHA challenge.",
+        variant: "info",
+      });
+
       setIsLoading(false);
       resetCaptcha();
       return;
     }
 
     if (data.email.includes("@agpt.co")) {
-      setFeedback("Please use Google SSO to login using an AutoGPT email.");
+      toast({
+        title: "Please use Google SSO to login using an AutoGPT email.",
+        variant: "default",
+      });
+
       setIsLoading(false);
       resetCaptcha();
       return;
@@ -76,7 +103,11 @@ export function useLoginPage() {
     await supabase?.auth.refreshSession();
     setIsLoading(false);
     if (error) {
-      setFeedback(error);
+      toast({
+        title: error,
+        variant: "destructive",
+      });
+
       resetCaptcha();
       // Always reset the turnstile on any error
       turnstile.reset();
@@ -95,8 +126,10 @@ export function useLoginPage() {
     isCloudEnv,
     isUserLoading,
     isGoogleLoading,
+    showNotAllowedModal,
     isSupabaseAvailable: !!supabase,
     handleSubmit: form.handleSubmit(handleLogin),
     handleProviderLogin,
+    handleCloseNotAllowedModal: () => setShowNotAllowedModal(false),
   };
 }

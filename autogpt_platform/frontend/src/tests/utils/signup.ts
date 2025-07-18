@@ -1,40 +1,39 @@
 import { faker } from "@faker-js/faker";
 import { TestUser } from "./auth";
+import { getSelectors } from "./selectors";
+import { isVisible } from "./assertion";
+import { BuildPage } from "../pages/build.page";
 
-/**
- * Create a test user through signup page for test setup
- * @param page - Playwright page object
- * @param email - User email (optional, will generate if not provided)
- * @param password - User password (optional, will generate if not provided)
- * @param ignoreOnboarding - Skip onboarding and go to marketplace (default: true)
- * @returns Promise<TestUser> - Created user object
- */
 export async function signupTestUser(
   page: any,
   email?: string,
   password?: string,
   ignoreOnboarding: boolean = true,
+  withAgent: boolean = false,
 ): Promise<TestUser> {
   const userEmail = email || faker.internet.email();
   const userPassword = password || faker.internet.password({ length: 12 });
+
+  const { getText, getField, getRole, getButton, getId } = getSelectors(page);
 
   try {
     // Navigate to signup page
     await page.goto("http://localhost:3000/signup");
 
     // Wait for page to load
-    const emailInput = page.getByPlaceholder("m@example.com");
-    await emailInput.waitFor({ state: "visible", timeout: 10000 });
+    getText("Create a new account");
 
     // Fill form
+    const emailInput = getField("Email");
     await emailInput.fill(userEmail);
-    const passwordInputs = page.getByTitle("Password");
-    await passwordInputs.nth(0).fill(userPassword);
-    await passwordInputs.nth(1).fill(userPassword);
+    const passwordInput = page.locator("#password");
+    await passwordInput.fill(userPassword);
+    const confirmPasswordInput = page.locator("#confirmPassword");
+    await confirmPasswordInput.fill(userPassword);
 
     // Agree to terms and submit
-    await page.getByRole("checkbox").click();
-    const signupButton = page.getByRole("button", { name: "Sign up" });
+    await getRole("checkbox").click();
+    const signupButton = getButton("Sign up");
     await signupButton.click();
 
     // Wait for successful signup - could redirect to onboarding or marketplace
@@ -76,6 +75,18 @@ export async function signupTestUser(
         .waitFor({ state: "visible", timeout: 10000 });
     }
 
+    if (withAgent) {
+      // Create a dummy agent for each new user
+      const buildLink = getId("navbar-link-build");
+      await buildLink.click();
+
+      const blocksBtn = getId("blocks-control-blocks-button");
+      await isVisible(blocksBtn);
+
+      const buildPage = new BuildPage(page);
+      await buildPage.createDummyAgent();
+    }
+
     const testUser: TestUser = {
       email: userEmail,
       password: userPassword,
@@ -89,13 +100,6 @@ export async function signupTestUser(
   }
 }
 
-/**
- * Complete signup and navigate to marketplace
- * @param page - Playwright page object from MCP server
- * @param email - User email (optional, will generate if not provided)
- * @param password - User password (optional, will generate if not provided)
- * @returns Promise<TestUser> - Created user object
- */
 export async function signupAndNavigateToMarketplace(
   page: any,
   email?: string,
@@ -110,11 +114,6 @@ export async function signupAndNavigateToMarketplace(
   return testUser;
 }
 
-/**
- * Validate signup form behavior
- * @param page - Playwright page object from MCP server
- * @returns Promise<void>
- */
 export async function validateSignupForm(page: any): Promise<void> {
   console.log("🧪 Validating signup form...");
 
@@ -135,7 +134,7 @@ export async function validateSignupForm(page: any): Promise<void> {
 
   // Test invalid email
   console.log("❌ Testing invalid email...");
-  await page.getByPlaceholder("m@example.com").fill("invalid-email");
+  await page.getByLabel("Email").fill("invalid-email");
   await signupButton.click();
 
   // Should still be on signup page
@@ -149,18 +148,10 @@ export async function validateSignupForm(page: any): Promise<void> {
   console.log("✅ Signup form validation completed");
 }
 
-/**
- * Generate unique test email
- * @returns string - Unique test email
- */
 export function generateTestEmail(): string {
   return `test.${Date.now()}.${Math.random().toString(36).substring(7)}@example.com`;
 }
 
-/**
- * Generate secure test password
- * @returns string - Secure test password
- */
 export function generateTestPassword(): string {
   return faker.internet.password({ length: 12 });
 }

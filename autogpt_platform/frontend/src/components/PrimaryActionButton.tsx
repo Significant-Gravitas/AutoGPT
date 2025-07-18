@@ -1,18 +1,17 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { FaSpinner } from "react-icons/fa";
-import { Clock, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
+import { ClockIcon } from "@phosphor-icons/react";
 import { IconPlay, IconSquare } from "@/components/ui/icons";
 
 interface PrimaryActionBarProps {
-  onClickAgentOutputs: () => void;
+  onClickAgentOutputs?: () => void;
   onClickRunAgent?: () => void;
   onClickStopRun: () => void;
   onClickScheduleButton?: () => void;
   isRunning: boolean;
   isDisabled: boolean;
-  isScheduling: boolean;
   className?: string;
 }
 
@@ -23,7 +22,6 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
   onClickScheduleButton,
   isRunning,
   isDisabled,
-  isScheduling,
   className,
 }) => {
   const buttonClasses =
@@ -36,15 +34,17 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
       )}
     >
       <div className="flex gap-1 md:gap-4">
-        <Button
-          className={buttonClasses}
-          variant="outline"
-          size="primary"
-          onClick={onClickAgentOutputs}
-          title="View agent outputs"
-        >
-          <LogOut className="hidden size-5 md:flex" /> Agent Outputs
-        </Button>
+        {onClickAgentOutputs && (
+          <Button
+            className={buttonClasses}
+            variant="outline"
+            size="primary"
+            onClick={onClickAgentOutputs}
+            title="View agent outputs"
+          >
+            <LogOut className="hidden size-5 md:flex" /> Agent Outputs
+          </Button>
+        )}
 
         {!isRunning ? (
           <Button
@@ -82,15 +82,10 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
             variant="outline"
             size="primary"
             onClick={onClickScheduleButton}
-            disabled={isScheduling}
             title="Set up a run schedule for the agent"
             data-id="primary-action-schedule-agent"
           >
-            {isScheduling ? (
-              <FaSpinner className="animate-spin" />
-            ) : (
-              <Clock className="hidden h-5 w-5 md:flex" />
-            )}
+            <ClockIcon className="hidden h-5 w-5 md:flex" />
             Schedule Run
           </Button>
         )}

@@ -124,6 +124,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Time in seconds for how far back to check for the late executions.",
     )
 
+    block_error_rate_threshold: float = Field(
+        default=0.5,
+        description="Error rate threshold (0.0-1.0) for triggering block error alerts.",
+    )
+    block_error_rate_check_interval_secs: int = Field(
+        default=24 * 60 * 60,  # 24 hours
+        description="Interval in seconds between block error rate checks.",
+    )
+    block_error_include_top_blocks: int = Field(
+        default=3,
+        description="Number of top blocks with most errors to show when no blocks exceed threshold (0 to disable).",
+    )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="allow",
@@ -263,6 +276,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Whether to mark failed scans as clean or not",
     )
 
+    enable_example_blocks: bool = Field(
+        default=False,
+        description="Whether to enable example blocks in production",
+    )
+
     @field_validator("platform_base_url", "frontend_base_url")
     @classmethod
     def validate_platform_base_url(cls, v: str, info: ValidationInfo) -> str:
@@ -295,6 +313,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     trust_endpoints_for_requests: List[str] = Field(
         default_factory=list,
         description="A whitelist of trusted internal endpoints for the backend to make requests to.",
+    )
+
+    max_message_size_limit: int = Field(
+        default=16 * 1024 * 1024,  # 16 MB
+        description="Maximum message size limit for communication with the message bus",
     )
 
     backend_cors_allow_origins: List[str] = Field(default_factory=list)
