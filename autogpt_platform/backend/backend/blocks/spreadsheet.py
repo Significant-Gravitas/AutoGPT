@@ -92,7 +92,7 @@ class ReadSpreadsheetBlock(Block):
         )
 
     async def run(
-        self, input_data: Input, *, graph_exec_id: str, **_kwargs
+        self, input_data: Input, *, graph_exec_id: str, user_id: str, **_kwargs
     ) -> BlockOutput:
         import csv
         from io import StringIO
@@ -100,6 +100,7 @@ class ReadSpreadsheetBlock(Block):
         # Determine data source - prefer file_input if provided, otherwise use contents
         if input_data.file_input:
             stored_file_path = await store_media_file(
+                user_id=user_id,
                 graph_exec_id=graph_exec_id,
                 file=input_data.file_input,
                 return_content=False,

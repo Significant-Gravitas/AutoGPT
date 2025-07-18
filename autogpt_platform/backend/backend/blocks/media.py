@@ -44,12 +44,14 @@ class MediaDurationBlock(Block):
         input_data: Input,
         *,
         graph_exec_id: str,
+        user_id: str,
         **kwargs,
     ) -> BlockOutput:
         # 1) Store the input media locally
         local_media_path = await store_media_file(
             graph_exec_id=graph_exec_id,
             file=input_data.media_in,
+            user_id=user_id,
             return_content=False,
         )
         media_abspath = get_exec_file_path(graph_exec_id, local_media_path)
@@ -111,12 +113,14 @@ class LoopVideoBlock(Block):
         *,
         node_exec_id: str,
         graph_exec_id: str,
+        user_id: str,
         **kwargs,
     ) -> BlockOutput:
         # 1) Store the input video locally
         local_video_path = await store_media_file(
             graph_exec_id=graph_exec_id,
             file=input_data.video_in,
+            user_id=user_id,
             return_content=False,
         )
         input_abspath = get_exec_file_path(graph_exec_id, local_video_path)
@@ -149,6 +153,7 @@ class LoopVideoBlock(Block):
         video_out = await store_media_file(
             graph_exec_id=graph_exec_id,
             file=output_filename,
+            user_id=user_id,
             return_content=input_data.output_return_type == "data_uri",
         )
 
@@ -200,17 +205,20 @@ class AddAudioToVideoBlock(Block):
         *,
         node_exec_id: str,
         graph_exec_id: str,
+        user_id: str,
         **kwargs,
     ) -> BlockOutput:
         # 1) Store the inputs locally
         local_video_path = await store_media_file(
             graph_exec_id=graph_exec_id,
             file=input_data.video_in,
+            user_id=user_id,
             return_content=False,
         )
         local_audio_path = await store_media_file(
             graph_exec_id=graph_exec_id,
             file=input_data.audio_in,
+            user_id=user_id,
             return_content=False,
         )
 
@@ -239,6 +247,7 @@ class AddAudioToVideoBlock(Block):
         video_out = await store_media_file(
             graph_exec_id=graph_exec_id,
             file=output_filename,
+            user_id=user_id,
             return_content=input_data.output_return_type == "data_uri",
         )
 
