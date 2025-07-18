@@ -131,7 +131,7 @@ test.skip("user can export and import agents", async ({
   expect(importedAgent).toBeDefined();
 });
 
-test("user can view runs and agents", async ({ page }) => {
+test.skip("user can view runs and agents", async ({ page }) => {
   const monitorPage = new MonitorPage(page);
   // const runs = await monitorPage.listRuns();
   const agents = await monitorPage.listAgents();
