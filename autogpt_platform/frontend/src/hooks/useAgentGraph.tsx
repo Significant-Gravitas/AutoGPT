@@ -67,23 +67,19 @@ export default function useAgentGraph(
     [],
   );
 
+  // Load available blocks & flows
   useEffect(() => {
-    if (!betaBlocks) return;
     api
       .getBlocks()
       .then((blocks) => {
         const filteredBlocks = blocks.filter((block) => {
-          if (betaBlocks?.includes(block.id)) return false;
+          if (!betaBlocks) return true;
+          if (betaBlocks.includes(block.id)) return false;
           return true;
         });
         setAvailableBlocks(filteredBlocks);
       })
       .catch();
-  }, [betaBlocks, availableBlocks]);
-
-  // Load available blocks & flows
-  useEffect(() => {
-    api.getBlocks().then(setAvailableBlocks).catch();
 
     api
       .listGraphs()
