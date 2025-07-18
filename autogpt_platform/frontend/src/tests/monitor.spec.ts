@@ -19,7 +19,7 @@ test.describe.configure({
   mode: "parallel",
   timeout: 30000,
 });
-
+// --8<-- [start:AttachAgentId]
 test.beforeEach(async ({ page }, testInfo: TestInfo) => {
   const loginPage = new LoginPage(page);
   const testUser = await getTestUser();
@@ -44,6 +44,7 @@ test.beforeEach(async ({ page }, testInfo: TestInfo) => {
   const id = uuidv4();
   testInfo.attach("agent-id", { body: id });
 });
+// --8<-- [end:AttachAgentId]
 
 test.afterAll(async () => {
   // clear out the downloads folder
@@ -62,11 +63,13 @@ test.skip("user can export and import agents", async ({
   const monitorPage = new MonitorPage(page);
   const buildPage = new BuildPage(page);
 
+  // --8<-- [start:ReadAgentId]
   if (testInfo.attachments.length === 0 || !testInfo.attachments[0].body) {
     throw new Error("No agent id attached to the test");
   }
 
   const testAttachName = testInfo.attachments[0].body.toString();
+  // --8<-- [end:ReadAgentId]
   const agents = await monitorPage.listAgents();
 
   const downloadPromise = page.waitForEvent("download");
