@@ -5,6 +5,7 @@ import React from "react";
 import "./globals.css";
 
 import { Providers } from "@/app/providers";
+import ElevenLabsWidget from "@/components/ElevenLabsWidget";
 import TallyPopupSimple from "@/components/TallyPopup";
 import { GoogleAnalytics } from "@/components/analytics/google-analytics";
 import { Toaster } from "@/components/molecules/Toast/toaster";
@@ -42,6 +43,7 @@ export default async function RootLayout({
           <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
             {children}
             <TallyPopupSimple />
+            <ElevenLabsWidget />
 
             {/* React Query DevTools is only available in development */}
             {process.env.NEXT_PUBLIC_REACT_QUERY_DEVTOOL && (
