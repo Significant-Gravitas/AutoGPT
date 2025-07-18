@@ -14,12 +14,13 @@ import {
 } from "../PublishAgentSelectInfo";
 import { PublishAgentAwaitingReview } from "../PublishAgentAwaitingReview";
 import { Button } from "../Button";
-import { MyAgentsResponse } from "@/lib/autogpt-server-api";
+import { MyAgent } from "@/app/api/__generated__/models/myAgent";
 import { useRouter } from "next/navigation";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import LoadingBox, { LoadingSpinner } from "@/components/ui/loading";
 import { StoreSubmissionRequest } from "@/app/api/__generated__/models/storeSubmissionRequest";
+import { useGetV2GetMyAgents } from "@/app/api/__generated__/endpoints/store/store";
 interface PublishAgentPopoutProps {
   trigger?: React.ReactNode;
   openPopout?: boolean;
@@ -45,7 +46,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
   const [step, setStep] = React.useState<"select" | "info" | "review">(
     inputStep,
   );
-  const [myAgents, setMyAgents] = React.useState<MyAgentsResponse | null>(null);
+  const [allAgents, setAllAgents] = React.useState<MyAgent[]>([]);
   const [_, setSelectedAgent] = React.useState<string | null>(null);
   const [initialData, setInitialData] =
     React.useState<PublishAgentInfoInitialData>({
@@ -68,49 +69,49 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
   >(null);
   const [open, setOpen] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(1);
-  const [loading, setLoading] = React.useState(false);
   const [loadingMore, setLoadingMore] = React.useState(false);
   const [hasMore, setHasMore] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
 
   const api = useBackendAPI();
 
+  // Use the auto-generated API hook
+  const { data, error, isLoading, refetch } = useGetV2GetMyAgents(
+    {
+      page: currentPage,
+      page_size: 20,
+    },
+    {
+      query: {
+        enabled: open, // Only fetch when the popout is open
+      },
+    },
+  );
+
+  // Update allAgents when new data arrives
+  React.useEffect(() => {
+    if (data?.status === 200 && data.data) {
+      if (currentPage === 1) {
+        setAllAgents(data.data.agents);
+      } else {
+        setAllAgents((prev) => [...prev, ...data.data.agents]);
+      }
+      setHasMore(
+        data.data.pagination.current_page < data.data.pagination.total_pages,
+      );
+    }
+  }, [data, currentPage]);
+
   const fetchMyAgents = React.useCallback(
     async (page: number, append = false) => {
-      try {
-        if (append) {
-          setLoadingMore(true);
-        } else {
-          setLoading(true);
-        }
-        const response = await api.getMyAgents({
-          page,
-          page_size: 20,
-        });
-        setCurrentPage(response.pagination.current_page);
-        setHasMore(
-          response.pagination.current_page < response.pagination.total_pages,
-        );
-        setMyAgents((prev) =>
-          append && prev
-            ? {
-                agents: [...prev.agents, ...response.agents],
-                pagination: response.pagination,
-              }
-            : response,
-        );
-      } catch (error) {
-        console.error("Failed to load my agents:", error);
-        setError("Failed to load agents. Please try again.");
-      } finally {
-        if (append) {
-          setLoadingMore(false);
-        } else {
-          setLoading(false);
-        }
+      if (append) {
+        setLoadingMore(true);
+        setCurrentPage(page);
+      } else {
+        setCurrentPage(page);
+        setAllAgents([]);
       }
     },
-    [api],
+    [],
   );
 
   const popupId = React.useId();
@@ -128,10 +129,16 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
     if (open) {
       setCurrentPage(1);
       setHasMore(true);
-      setError(null);
-      fetchMyAgents(1);
+      setAllAgents([]);
     }
-  }, [open, fetchMyAgents]);
+  }, [open]);
+
+  // Handle loading state for pagination
+  React.useEffect(() => {
+    if (currentPage > 1 && !isLoading) {
+      setLoadingMore(false);
+    }
+  }, [currentPage, isLoading]);
 
   const handleClose = () => {
     setStep("select");
@@ -154,9 +161,9 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
   };
 
   const handleNextFromSelect = (agentId: string, agentVersion: number) => {
-    const selectedAgentData = myAgents?.agents.find(
+    const selectedAgentData = allAgents.find(
       (agent) => agent.agent_id === agentId,
-    );
+    ) as any;
 
     const name = selectedAgentData?.agent_name || "";
     const description = selectedAgentData?.description || "";
@@ -254,7 +261,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
         fetchMyAgents(currentPage + 1, true);
       }
     },
-    [hasMore, loadingMore, currentPage, fetchMyAgents],
+    [hasMore, loadingMore, currentPage],
   );
 
   const renderContent = () => {
@@ -264,15 +271,16 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
           <div className="flex min-h-screen items-center justify-center">
             <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl bg-white shadow-lg dark:bg-gray-800">
               <div className="h-full overflow-y-hidden">
-                {loading ? (
+                {isLoading && currentPage === 1 ? (
                   <LoadingBox className="p-8" />
                 ) : error ? (
                   <div className="flex flex-col items-center justify-center gap-4 p-8">
-                    <p className="text-red-600">{error}</p>
+                    <p className="text-red-600">
+                      Failed to load agents. Please try again.
+                    </p>
                     <Button
                       onClick={() => {
-                        setError(null);
-                        fetchMyAgents(1);
+                        refetch();
                       }}
                       variant="outline"
                     >
@@ -283,7 +291,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
                   <>
                     <PublishAgentSelect
                       agents={
-                        myAgents?.agents
+                        allAgents
                           .map((agent) => ({
                             name: agent.agent_name,
                             id: agent.agent_id,
