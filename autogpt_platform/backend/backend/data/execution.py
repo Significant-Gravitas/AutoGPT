@@ -40,6 +40,7 @@ from pydantic.fields import Field
 from backend.server.v2.store.exceptions import DatabaseError
 from backend.util import type as type_utils
 from backend.util.settings import Config
+from backend.util.truncate import truncate
 
 from .block import (
     BlockInput,
@@ -866,6 +867,7 @@ class ExecutionQueue(Generic[T]):
 class ExecutionEventType(str, Enum):
     GRAPH_EXEC_UPDATE = "graph_execution_update"
     NODE_EXEC_UPDATE = "node_execution_update"
+    ERROR_COMMS_UPDATE = "error_comms_update"
 
 
 class GraphExecutionEvent(GraphExecution):
@@ -900,11 +902,25 @@ class RedisExecutionEventBus(RedisEventBus[ExecutionEvent]):
 
     def publish_node_exec_update(self, res: NodeExecutionResult):
         event = NodeExecutionEvent.model_validate(res.model_dump())
-        self.publish_event(event, f"{res.user_id}/{res.graph_id}/{res.graph_exec_id}")
+        self._publish(event, f"{res.user_id}/{res.graph_id}/{res.graph_exec_id}")
 
     def publish_graph_exec_update(self, res: GraphExecution):
         event = GraphExecutionEvent.model_validate(res.model_dump())
-        self.publish_event(event, f"{res.user_id}/{res.graph_id}/{res.id}")
+        self._publish(event, f"{res.user_id}/{res.graph_id}/{res.id}")
+
+    def _publish(self, event: ExecutionEvent, channel: str):
+        """
+        truncate inputs and outputs to avoid large payloads
+        """
+        limit = config.max_message_size_limit // 2
+        if isinstance(event, GraphExecutionEvent):
+            event.inputs = truncate(event.inputs, limit)
+            event.outputs = truncate(event.outputs, limit)
+        elif isinstance(event, NodeExecutionEvent):
+            event.input_data = truncate(event.input_data, limit)
+            event.output_data = truncate(event.output_data, limit)
+
+        super().publish_event(event, channel)
 
     def listen(
         self, user_id: str, graph_id: str = "*", graph_exec_id: str = "*"
@@ -928,13 +944,30 @@ class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
 
     async def publish_node_exec_update(self, res: NodeExecutionResult):
         event = NodeExecutionEvent.model_validate(res.model_dump())
-        await self.publish_event(
-            event, f"{res.user_id}/{res.graph_id}/{res.graph_exec_id}"
-        )
+        await self._publish(event, f"{res.user_id}/{res.graph_id}/{res.graph_exec_id}")
 
     async def publish_graph_exec_update(self, res: GraphExecutionMeta):
-        event = GraphExecutionEvent.model_validate(res.model_dump())
-        await self.publish_event(event, f"{res.user_id}/{res.graph_id}/{res.id}")
+        # GraphExecutionEvent requires inputs and outputs fields that GraphExecutionMeta doesn't have
+        # Add default empty values for compatibility
+        event_data = res.model_dump()
+        event_data.setdefault("inputs", {})
+        event_data.setdefault("outputs", {})
+        event = GraphExecutionEvent.model_validate(event_data)
+        await self._publish(event, f"{res.user_id}/{res.graph_id}/{res.id}")
+
+    async def _publish(self, event: ExecutionEvent, channel: str):
+        """
+        truncate inputs and outputs to avoid large payloads
+        """
+        limit = config.max_message_size_limit // 2
+        if isinstance(event, GraphExecutionEvent):
+            event.inputs = truncate(event.inputs, limit)
+            event.outputs = truncate(event.outputs, limit)
+        elif isinstance(event, NodeExecutionEvent):
+            event.input_data = truncate(event.input_data, limit)
+            event.output_data = truncate(event.output_data, limit)
+
+        await super().publish_event(event, channel)
 
     async def listen(
         self, user_id: str, graph_id: str = "*", graph_exec_id: str = "*"

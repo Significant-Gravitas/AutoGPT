@@ -341,9 +341,8 @@ class FileReadBlock(Block):
 
     class Output(BlockSchema):
         content: str = SchemaField(
-            description="The full content of the file or a chunk based on delimiter/limits"
+            description="File content, yielded as individual chunks when delimiter or size limits are applied"
         )
-        chunk: str = SchemaField(description="Individual chunks when delimiter is used")
 
     def __init__(self):
         super().__init__(
@@ -361,10 +360,11 @@ class FileReadBlock(Block):
         )
 
     async def run(
-        self, input_data: Input, *, graph_exec_id: str, **_kwargs
+        self, input_data: Input, *, graph_exec_id: str, user_id: str, **_kwargs
     ) -> BlockOutput:
         # Store the media file properly (handles URLs, data URIs, etc.)
         stored_file_path = await store_media_file(
+            user_id=user_id,
             graph_exec_id=graph_exec_id,
             file=input_data.file_input,
             return_content=False,
@@ -418,19 +418,8 @@ class FileReadBlock(Block):
                     chunks.append(chunk)
             return chunks
 
-        # Process items and yield chunks
-        all_chunks = []
-        for item in items:
-            if item:  # Only process non-empty items
-                chunks = create_chunks(item, input_data.size_limit)
-                # Only yield as 'chunk' if we have a delimiter (multiple items)
-                if input_data.delimiter:
-                    for chunk in chunks:
-                        yield "chunk", chunk
-                all_chunks.extend(chunks)
-
-        # Yield the processed content
-        if all_chunks:
+        # Process items and yield as content chunks
+        if items:
             full_content = (
                 input_data.delimiter.join(items)
                 if input_data.delimiter

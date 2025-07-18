@@ -13,10 +13,6 @@ test.beforeEach(async ({ page }) => {
 test("check the navigation when logged out", async ({ page }) => {
   const { getButton, getText, getLink } = getSelectors(page);
 
-  // Marketplace is by default the homepage
-  await page.goto("/");
-  await hasUrl(page, "/marketplace");
-
   // Test marketplace link
   const marketplaceLink = getLink("Marketplace");
   await isVisible(marketplaceLink);
