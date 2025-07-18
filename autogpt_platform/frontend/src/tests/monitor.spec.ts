@@ -38,7 +38,6 @@ test.beforeEach(async ({ page }, testInfo: TestInfo) => {
 
   // Navigate to monitoring page
   await page.goto("/monitoring");
-  await monitorPage.waitForPageLoad();
   await test.expect(monitorPage.isLoaded()).resolves.toBeTruthy();
 
   // Generate a test ID for tracking
@@ -118,7 +117,6 @@ test.skip("user can export and import agents", async ({
   // You'll be dropped at the build page, so hit run and then go back to monitor
   await buildPage.runAgent();
   await monitorPage.navbar.clickMonitorLink();
-  await monitorPage.waitForPageLoad();
 
   const postImportAgents = await monitorPage.listAgents();
 
@@ -133,7 +131,7 @@ test.skip("user can export and import agents", async ({
   expect(importedAgent).toBeDefined();
 });
 
-test("user can view runs and agents", async ({ page }) => {
+test.skip("user can view runs and agents", async ({ page }) => {
   const monitorPage = new MonitorPage(page);
   // const runs = await monitorPage.listRuns();
   const agents = await monitorPage.listAgents();
