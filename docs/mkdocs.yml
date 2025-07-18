@@ -19,6 +19,7 @@ nav:
     - Agent Blocks: platform/agent-blocks.md
     - Build your own Blocks: platform/new_blocks.md
     - Using Ollama: platform/ollama.md
+    - Using AI/ML API: platform/aimlapi.md
     - Using D-ID: platform/d_id.md
     - Blocks: platform/blocks/blocks.md
     - Contributing:
