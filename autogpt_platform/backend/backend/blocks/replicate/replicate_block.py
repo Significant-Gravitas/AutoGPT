@@ -51,7 +51,6 @@ class ReplicateModelBlock(Block):
 
     class Output(BlockSchema):
         result: str = SchemaField(description="The output from the Replicate model")
-        prediction_id: str = SchemaField(description="ID of the prediction")
         status: str = SchemaField(description="Status of the prediction")
         model_name: str = SchemaField(description="Name of the model used")
         error: str = SchemaField(description="Error message if any", default="")
@@ -71,14 +70,12 @@ class ReplicateModelBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("result", str),
-                ("prediction_id", str),
                 ("status", str),
                 ("model_name", str),
             ],
             test_mock={
                 "run_model": lambda model_ref, model_inputs, api_key: (
-                    "Mock response from Replicate model",
-                    "mock_prediction_id",
+                    "Mock response from Replicate model"
                 )
             },
         )
@@ -106,7 +103,6 @@ class ReplicateModelBlock(Block):
                 model_ref, input_data.model_inputs, credentials.api_key
             )
             yield "result", result
-            # yield "prediction_id", prediction_id
             yield "status", "succeeded"
             yield "model_name", input_data.model_name
         except Exception as e:
