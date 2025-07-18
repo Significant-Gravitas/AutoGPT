@@ -6,7 +6,7 @@
       "type": "node-terminal",
       "request": "launch",
       "cwd": "${workspaceFolder}/autogpt_platform/frontend",
-      "command": "yarn dev"
+      "command": "pnpm dev"
     },
     {
       "name": "Frontend: Client Side",
@@ -19,7 +19,7 @@
       "type": "node-terminal",
 
       "request": "launch",
-      "command": "yarn dev",
+      "command": "pnpm dev",
       "cwd": "${workspaceFolder}/autogpt_platform/frontend",
       "serverReadyAction": {
         "pattern": "- Local:.+(https?://.+)",

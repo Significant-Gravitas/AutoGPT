@@ -131,7 +131,7 @@ async def admin_download_agent_file(
     Raises:
         HTTPException: If the agent is not found or an unexpected error occurs.
     """
-    graph_data = await backend.server.v2.store.db.get_agent(
+    graph_data = await backend.server.v2.store.db.get_agent_as_admin(
         user_id=user.user_id,
         store_listing_version_id=store_listing_version_id,
     )
