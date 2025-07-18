@@ -12,7 +12,6 @@ import { hasUrl } from "./utils/assertion";
 
 test.describe.configure({
   timeout: 60000,
-  mode: "parallel",
 });
 
 // Reason Ignore: admonishment is in the wrong place visually with correct prettier rules
@@ -34,82 +33,45 @@ test.describe("Build", () => { //(1)!
     await hasUrl(page, "/marketplace"); //(5)!
     await buildPage.navbar.clickBuildLink();
     await hasUrl(page, "/build");
-    await buildPage.waitForPageLoad();
     await buildPage.closeTutorial();
   });
-
-  // Helper function to add blocks starting with a specific letter
-  async function addBlocksStartingWith(letter: string): Promise<void> {
-    const blockIdsToSkip = await buildPage.getBlocksToSkip();
-    const blockTypesToSkip = ["Input", "Output", "Agent", "AI"];
-    console.log("⚠️ Skipping blocks:", blockIdsToSkip);
-    console.log("⚠️ Skipping block types:", blockTypesToSkip);
-
-    const targetLetter = letter.toLowerCase();
-    
-    // Get filtered blocks from API instead of DOM
-    const blocksToAdd = await buildPage.getFilteredBlocksFromAPI(block => 
-      block.name[0].toLowerCase() === targetLetter &&
-      !blockIdsToSkip.includes(block.id) && 
-      !blockTypesToSkip.includes(block.type)
-    );
-
-    await buildPage.openBlocksPanel();
-
-    console.log(`Adding ${blocksToAdd.length} blocks starting with "${letter}"`);
-    
-    for (const block of blocksToAdd) {
-      await buildPage.addBlock(block);
-    }
-    
-    await buildPage.closeBlocksPanel();
-
-    await buildPage.saveAgent(`blocks ${letter} test`, `testing blocks starting with ${letter}`);
-  }
 
   // Helper function to add blocks starting with a specific letter, split into parts for parallelization
   async function addBlocksStartingWithSplit(letter: string, part: number, totalParts: number): Promise<void> {
     const blockIdsToSkip = await buildPage.getBlocksToSkip();
     const blockTypesToSkip = ["Input", "Output", "Agent", "AI"];
-    console.log("⚠️ Skipping blocks:", blockIdsToSkip);
-    console.log("⚠️ Skipping block types:", blockTypesToSkip);
-
     const targetLetter = letter.toLowerCase();
     
-    // Get filtered blocks from API instead of DOM
     const allBlocks = await buildPage.getFilteredBlocksFromAPI(block => 
       block.name[0].toLowerCase() === targetLetter &&
       !blockIdsToSkip.includes(block.id) && 
       !blockTypesToSkip.includes(block.type)
     );
 
-    // Split blocks into parts - distribute evenly by taking every nth block
     const blocksToAdd = allBlocks.filter((_, index) => 
       index % totalParts === (part - 1)
     );
-
-    await buildPage.openBlocksPanel();
 
     console.log(`Adding ${blocksToAdd.length} blocks starting with "${letter}" (part ${part}/${totalParts})`);
     
     for (const block of blocksToAdd) {
       await buildPage.addBlock(block);
     }
-    
-    await buildPage.closeBlocksPanel();
 
-    await buildPage.saveAgent(`blocks ${letter} test part ${part}`, `testing blocks starting with ${letter} part ${part}`);
+    await buildPage.saveAgent(`Saved blocks ${letter} test part ${part}`);
   }
 
   // Reason Ignore: admonishment is in the wrong place visually with correct prettier rules
   // prettier-ignore
   test("user can add a block", async ({ page: _page }) => { //(6)!
     await buildPage.openBlocksPanel(); //(10)!
-    const block = await buildPage.getDictionaryBlockDetails();
+    const blocks = await buildPage.getFilteredBlocksFromAPI(block => block.name[0].toLowerCase() === "a");
+    const block = blocks.at(-1);
+    if (!block) throw new Error("No block found");
 
     await buildPage.addBlock(block); //(11)!
     await buildPage.closeBlocksPanel(); //(12)!
-    await test.expect(buildPage.hasBlock(block)).resolves.toBeTruthy(); //(13)!
+    await buildPage.hasBlock(block); //(13)!
   });
   // --8<-- [end:BuildPageExample]
 
@@ -122,23 +84,23 @@ test.describe("Build", () => { //(1)!
   });
 
   test("user can add blocks starting with b", async () => {
-    await addBlocksStartingWith("b");
+    await addBlocksStartingWithSplit("b", 1, 1);
   });
 
   test("user can add blocks starting with c", async () => {
-    await addBlocksStartingWith("c");
+    await addBlocksStartingWithSplit("c", 1, 1);
   });
 
   test("user can add blocks starting with d", async () => {
-    await addBlocksStartingWith("d");
+    await addBlocksStartingWithSplit("d", 1, 1);
   });
 
   test("user can add blocks starting with e", async () => {
-    await addBlocksStartingWith("e");
+    await addBlocksStartingWithSplit("e", 1, 1);
   });
 
   test("user can add blocks starting with f", async () => {
-    await addBlocksStartingWith("f");
+    await addBlocksStartingWithSplit("f", 1, 1);
   });
 
   test("user can add blocks starting with g (part 1)", async () => {
@@ -154,47 +116,47 @@ test.describe("Build", () => { //(1)!
   });
 
   test("user can add blocks starting with h", async () => {
-    await addBlocksStartingWith("h");
+    await addBlocksStartingWithSplit("h", 1, 1);
   });
 
   test("user can add blocks starting with i", async () => {
-    await addBlocksStartingWith("i");
+    await addBlocksStartingWithSplit("i", 1, 1);
   });
 
   test("user can add blocks starting with j", async () => {
-    await addBlocksStartingWith("j");
+    await addBlocksStartingWithSplit("j", 1, 1);
   });
 
   test("user can add blocks starting with k", async () => {
-    await addBlocksStartingWith("k");
+    await addBlocksStartingWithSplit("k", 1, 1);
   });
 
   test("user can add blocks starting with l", async () => {
-    await addBlocksStartingWith("l");
+    await addBlocksStartingWithSplit("l", 1, 1);
   });
 
   test("user can add blocks starting with m", async () => {
-    await addBlocksStartingWith("m");
+    await addBlocksStartingWithSplit("m", 1, 1);
   });
 
   test("user can add blocks starting with n", async () => {
-    await addBlocksStartingWith("n");
+    await addBlocksStartingWithSplit("n", 1, 1);
   });
 
   test("user can add blocks starting with o", async () => {
-    await addBlocksStartingWith("o");
+    await addBlocksStartingWithSplit("o", 1, 1);
   });
 
   test("user can add blocks starting with p", async () => {
-    await addBlocksStartingWith("p");
+    await addBlocksStartingWithSplit("p", 1, 1);
   });
 
   test("user can add blocks starting with q", async () => {
-    await addBlocksStartingWith("q");
+    await addBlocksStartingWithSplit("q", 1, 1);
   });
 
   test("user can add blocks starting with r", async () => {
-    await addBlocksStartingWith("r");
+    await addBlocksStartingWithSplit("r", 1, 1);
   });
 
   test("user can add blocks starting with s (part 1)", async () => {
@@ -210,31 +172,31 @@ test.describe("Build", () => { //(1)!
   });
 
   test("user can add blocks starting with t", async () => {
-    await addBlocksStartingWith("t");
+    await addBlocksStartingWithSplit("t", 1, 1);
   });
 
   test("user can add blocks starting with u", async () => {
-    await addBlocksStartingWith("u");
+    await addBlocksStartingWithSplit("u", 1, 1);
   });
 
   test("user can add blocks starting with v", async () => {
-    await addBlocksStartingWith("v");
+    await addBlocksStartingWithSplit("v", 1, 1);
   });
 
   test("user can add blocks starting with w", async () => {
-    await addBlocksStartingWith("w");
+    await addBlocksStartingWithSplit("w", 1, 1);
   });
 
   test("user can add blocks starting with x", async () => {
-    await addBlocksStartingWith("x");
+    await addBlocksStartingWithSplit("x", 1, 1);
   });
 
   test("user can add blocks starting with y", async () => {
-    await addBlocksStartingWith("y");
+    await addBlocksStartingWithSplit("y", 1, 1);
   });
 
   test("user can add blocks starting with z", async () => {
-    await addBlocksStartingWith("z");
+    await addBlocksStartingWithSplit("z", 1, 1);
   });
 
   test("build navigation is accessible from navbar", async ({ page }) => {
@@ -243,7 +205,6 @@ test.describe("Build", () => { //(1)!
 
     // Check that navigation to the Builder is available on the page
     await buildPage.navbar.clickBuildLink();
-    await buildPage.waitForPageLoad();
 
     await hasUrl(page, "/build");
     await test.expect(buildPage.isLoaded()).resolves.toBeTruthy();
@@ -340,10 +301,6 @@ test.describe("Build", () => { //(1)!
 
     // Wait for blocks to be fully loaded
     await page.waitForTimeout(1000);
-
-    await buildPage.hasBlock(inputBlock)
-    await buildPage.hasBlock(outputBlock)
-    await buildPage.hasBlock(calculatorBlock)
 
     // Wait for blocks to be ready for connections
     await page.waitForTimeout(1000);

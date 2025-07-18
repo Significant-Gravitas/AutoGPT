@@ -1,10 +1,16 @@
 import { LDProvider } from "launchdarkly-react-client-sdk";
 import { ReactNode } from "react";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { BehaveAs, getBehaveAs } from "@/lib/utils";
 
 export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
   const clientId = process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
-  const enabled = process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true";
+
+  const isCloud = getBehaveAs() === BehaveAs.CLOUD;
+
+  const enabled =
+    isCloud && process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true";
+
   const { user, isUserLoading } = useSupabase();
 
   if (!enabled) return <>{children}</>;
