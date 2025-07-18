@@ -67,7 +67,6 @@ export default function useAgentGraph(
     [],
   );
 
-  // Load available blocks & flows
   useEffect(() => {
     if (!betaBlocks) return;
     api
@@ -80,6 +79,11 @@ export default function useAgentGraph(
         setAvailableBlocks(filteredBlocks);
       })
       .catch();
+  }, [betaBlocks, availableBlocks]);
+
+  // Load available blocks & flows
+  useEffect(() => {
+    api.getBlocks().then(setAvailableBlocks).catch();
 
     api
       .listGraphs()

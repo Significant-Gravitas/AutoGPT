@@ -147,7 +147,7 @@ export class BuildPage extends BasePage {
     console.log(`Selecting block category: ${category}`);
     await this.page.getByText(category, { exact: true }).click();
     // Wait for the blocks to load after category selection
-    await this.page.waitForTimeout(500);
+    await this.page.waitForTimeout(3000);
   }
 
   async getBlocksForCategory(category: string): Promise<Block[]> {
