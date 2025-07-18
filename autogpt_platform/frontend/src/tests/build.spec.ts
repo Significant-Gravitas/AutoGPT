@@ -10,10 +10,6 @@ import { LoginPage } from "./pages/login.page";
 import { getTestUser } from "./utils/auth";
 import { hasUrl } from "./utils/assertion";
 
-test.describe.configure({
-  timeout: 60000,
-});
-
 // Reason Ignore: admonishment is in the wrong place visually with correct prettier rules
 // prettier-ignore
 test.describe("Build", () => { //(1)!
