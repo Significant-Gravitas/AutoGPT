@@ -61,7 +61,8 @@ class TruncatedLogger:
         extra_msg = str(extra or "")
         text = f"{self.prefix} {msg} {extra_msg}"
         if len(text) > self.max_length:
-            text = text[: self.max_length] + "..."
+            half = (self.max_length - 3) // 2
+            text = text[:half] + "..." + text[-half:]
         return text
 
 

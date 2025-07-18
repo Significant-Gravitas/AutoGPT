@@ -72,6 +72,7 @@ aiofiles = "^24.1.0"
 tiktoken = "^0.9.0"
 aioclamd = "^1.0.0"
 setuptools = "^80.9.0"
+gcloud-aio-storage = "^9.5.0"
 pandas = "^2.3.1"
 
 [tool.poetry.group.dev.dependencies]

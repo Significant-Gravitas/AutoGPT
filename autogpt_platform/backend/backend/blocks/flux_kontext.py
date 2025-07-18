@@ -129,6 +129,7 @@ class AIImageEditorBlock(Block):
         *,
         credentials: APIKeyCredentials,
         graph_exec_id: str,
+        user_id: str,
         **kwargs,
     ) -> BlockOutput:
         result = await self.run_model(
@@ -139,6 +140,7 @@ class AIImageEditorBlock(Block):
                 await store_media_file(
                     graph_exec_id=graph_exec_id,
                     file=input_data.input_image,
+                    user_id=user_id,
                     return_content=True,
                 )
                 if input_data.input_image
