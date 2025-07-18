@@ -216,7 +216,10 @@ class AppService(BaseAppService, ABC):
                     methods=["POST"],
                 )
         self.fastapi_app.add_api_route(
-            "/health_check", self.health_check, methods=["POST"]
+            "/health_check", self.health_check, methods=["POST", "GET"]
+        )
+        self.fastapi_app.add_api_route(
+            "/health_check_async", self.health_check, methods=["POST", "GET"]
         )
         self.fastapi_app.add_exception_handler(
             ValueError, self._handle_internal_http_error(400)
@@ -246,6 +249,9 @@ class AppServiceClient(ABC):
         pass
 
     def health_check(self):
+        pass
+
+    async def health_check_async(self):
         pass
 
     def close(self):
