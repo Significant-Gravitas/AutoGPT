@@ -1,6 +1,7 @@
 import { expect, Locator, Page } from "@playwright/test";
 import { BasePage } from "./base.page";
 import { Block as APIBlock } from "../../lib/autogpt-server-api/types";
+import { beautifyString } from "../../lib/utils";
 
 export interface Block {
   id: string;
@@ -14,6 +15,10 @@ export class BuildPage extends BasePage {
 
   constructor(page: Page) {
     super(page);
+  }
+
+  private getDisplayName(blockName: string): string {
+    return beautifyString(blockName).replace(/ Block$/, "");
   }
 
   async closeTutorial(): Promise<void> {
@@ -104,8 +109,9 @@ export class BuildPage extends BasePage {
       '[data-id="blocks-control-search-input"]',
     );
 
+    const displayName = this.getDisplayName(block.name);
     await searchInput.clear();
-    await searchInput.fill(block.name.slice(0, 2));
+    await searchInput.fill(displayName);
     await this.page.waitForTimeout(500);
 
     const blockCard = this.page.getByTestId(`block-name-${block.id}`);
@@ -115,7 +121,7 @@ export class BuildPage extends BasePage {
       expect(blockInEditor).toBeAttached();
     } else {
       console.log(
-        `❌ ❌  Block ${block.name}returned from the API but not found in block list`,
+        `❌ ❌  Block ${block.name} (display: ${displayName}) returned from the API but not found in block list`,
       );
     }
   }
