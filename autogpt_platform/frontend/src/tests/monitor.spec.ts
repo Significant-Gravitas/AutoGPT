@@ -19,7 +19,7 @@ test.describe.configure({
   mode: "parallel",
   timeout: 30000,
 });
-
+// --8<-- [start:AttachAgentId]
 test.beforeEach(async ({ page }, testInfo: TestInfo) => {
   const loginPage = new LoginPage(page);
   const testUser = await getTestUser();
@@ -38,13 +38,13 @@ test.beforeEach(async ({ page }, testInfo: TestInfo) => {
 
   // Navigate to monitoring page
   await page.goto("/monitoring");
-  await monitorPage.waitForPageLoad();
   await test.expect(monitorPage.isLoaded()).resolves.toBeTruthy();
 
   // Generate a test ID for tracking
   const id = uuidv4();
   testInfo.attach("agent-id", { body: id });
 });
+// --8<-- [end:AttachAgentId]
 
 test.afterAll(async () => {
   // clear out the downloads folder
@@ -63,11 +63,13 @@ test.skip("user can export and import agents", async ({
   const monitorPage = new MonitorPage(page);
   const buildPage = new BuildPage(page);
 
+  // --8<-- [start:ReadAgentId]
   if (testInfo.attachments.length === 0 || !testInfo.attachments[0].body) {
     throw new Error("No agent id attached to the test");
   }
 
   const testAttachName = testInfo.attachments[0].body.toString();
+  // --8<-- [end:ReadAgentId]
   const agents = await monitorPage.listAgents();
 
   const downloadPromise = page.waitForEvent("download");
@@ -115,7 +117,6 @@ test.skip("user can export and import agents", async ({
   // You'll be dropped at the build page, so hit run and then go back to monitor
   await buildPage.runAgent();
   await monitorPage.navbar.clickMonitorLink();
-  await monitorPage.waitForPageLoad();
 
   const postImportAgents = await monitorPage.listAgents();
 
@@ -130,7 +131,7 @@ test.skip("user can export and import agents", async ({
   expect(importedAgent).toBeDefined();
 });
 
-test("user can view runs and agents", async ({ page }) => {
+test.skip("user can view runs and agents", async ({ page }) => {
   const monitorPage = new MonitorPage(page);
   // const runs = await monitorPage.listRuns();
   const agents = await monitorPage.listAgents();

@@ -8,10 +8,4 @@ export class BasePage {
   constructor(protected page: Page) {
     this.navbar = new NavBar(page);
   }
-
-  async waitForPageLoad() {
-    // Common page load waiting logic
-    console.log(`waiting for page to load`);
-    await this.page.waitForLoadState("domcontentloaded", { timeout: 10_000 });
-  }
 }

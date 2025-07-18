@@ -1,33 +1,17 @@
 import os
 from enum import Enum
-from typing import Literal
 
 from pydantic import SecretStr
 from replicate.client import Client as ReplicateClient
-from replicate.helpers import FileOutput
 
+from backend.blocks.replicate._auth import (
+    TEST_CREDENTIALS,
+    TEST_CREDENTIALS_INPUT,
+    ReplicateCredentialsInput,
+)
+from backend.blocks.replicate._helper import ReplicateOutputs, extract_result
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import (
-    APIKeyCredentials,
-    CredentialsField,
-    CredentialsMetaInput,
-    SchemaField,
-)
-from backend.integrations.providers import ProviderName
-
-TEST_CREDENTIALS = APIKeyCredentials(
-    id="01234567-89ab-cdef-0123-456789abcdef",
-    provider="replicate",
-    api_key=SecretStr("mock-replicate-api-key"),
-    title="Mock Replicate API key",
-    expires_at=None,
-)
-TEST_CREDENTIALS_INPUT = {
-    "provider": TEST_CREDENTIALS.provider,
-    "id": TEST_CREDENTIALS.id,
-    "type": TEST_CREDENTIALS.type,
-    "title": TEST_CREDENTIALS.type,
-}
+from backend.data.model import APIKeyCredentials, CredentialsField, SchemaField
 
 
 # Model name enum
@@ -55,9 +39,7 @@ class ImageType(str, Enum):
 
 class ReplicateFluxAdvancedModelBlock(Block):
     class Input(BlockSchema):
-        credentials: CredentialsMetaInput[
-            Literal[ProviderName.REPLICATE], Literal["api_key"]
-        ] = CredentialsField(
+        credentials: ReplicateCredentialsInput = CredentialsField(
             description="The Replicate integration can be used with "
             "any API key with sufficient permissions for the blocks it is used on.",
         )
@@ -201,7 +183,7 @@ class ReplicateFluxAdvancedModelBlock(Block):
         client = ReplicateClient(api_token=api_key.get_secret_value())
 
         # Run the model with additional parameters
-        output: FileOutput | list[FileOutput] = await client.async_run(  # type: ignore This is because they changed the return type, and didn't update the type hint! It should be overloaded depending on the value of `use_file_output` to `FileOutput | list[FileOutput]` but it's `Any | Iterator[Any]`
+        output: ReplicateOutputs = await client.async_run(  # type: ignore This is because they changed the return type, and didn't update the type hint! It should be overloaded depending on the value of `use_file_output` to `FileOutput | list[FileOutput]` but it's `Any | Iterator[Any]`
             f"{model_name}",
             input={
                 "prompt": prompt,
@@ -217,21 +199,6 @@ class ReplicateFluxAdvancedModelBlock(Block):
             wait=False,  # don't arbitrarily return data:octect/stream or sometimes url depending on the model???? what is this api
         )
 
-        # Check if output is a list or a string and extract accordingly; otherwise, assign a default message
-        if isinstance(output, list) and len(output) > 0:
-            if isinstance(output[0], FileOutput):
-                result_url = output[0].url  # If output is a list, get the first element
-            else:
-                result_url = output[
-                    0
-                ]  # If output is a list and not a FileOutput, get the first element. Should never happen, but just in case.
-        elif isinstance(output, FileOutput):
-            result_url = output.url  # If output is a FileOutput, use the url
-        elif isinstance(output, str):
-            result_url = output  # If output is a string (for some reason due to their janky type hinting), use it directly
-        else:
-            result_url = (
-                "No output received"  # Fallback message if output is not as expected
-            )
+        result = extract_result(output)
 
-        return result_url
+        return result

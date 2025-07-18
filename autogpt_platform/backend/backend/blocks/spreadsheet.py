@@ -12,10 +12,12 @@ class ReadSpreadsheetBlock(Block):
             description="The contents of the CSV/spreadsheet data to read",
             placeholder="a, b, c\n1,2,3\n4,5,6",
             default=None,
+            advanced=False,
         )
         file_input: MediaFileType | None = SchemaField(
             description="CSV or Excel file to read from (URL, data URI, or local path). Excel files are automatically converted to CSV",
             default=None,
+            advanced=False,
         )
         delimiter: str = SchemaField(
             description="The delimiter used in the CSV/spreadsheet data",
@@ -45,6 +47,10 @@ class ReadSpreadsheetBlock(Block):
             description="The columns to skip from the start of the row",
             default_factory=list,
         )
+        produce_singular_result: bool = SchemaField(
+            description="If True, yield individual 'row' outputs only (can be slow). If False, yield both 'rows' (all data)",
+            default=False,
+        )
 
     class Output(BlockSchema):
         row: dict[str, str] = SchemaField(
@@ -62,9 +68,16 @@ class ReadSpreadsheetBlock(Block):
             description="Reads CSV and Excel files and outputs the data as a list of dictionaries and individual rows. Excel files are automatically converted to CSV format.",
             contributors=[ContributorDetails(name="Nicholas Tindle")],
             categories={BlockCategory.TEXT, BlockCategory.DATA},
-            test_input={
-                "contents": "a, b, c\n1,2,3\n4,5,6",
-            },
+            test_input=[
+                {
+                    "contents": "a, b, c\n1,2,3\n4,5,6",
+                    "produce_singular_result": False,
+                },
+                {
+                    "contents": "a, b, c\n1,2,3\n4,5,6",
+                    "produce_singular_result": True,
+                },
+            ],
             test_output=[
                 (
                     "rows",
@@ -79,7 +92,7 @@ class ReadSpreadsheetBlock(Block):
         )
 
     async def run(
-        self, input_data: Input, *, graph_exec_id: str, **_kwargs
+        self, input_data: Input, *, graph_exec_id: str, user_id: str, **_kwargs
     ) -> BlockOutput:
         import csv
         from io import StringIO
@@ -87,6 +100,7 @@ class ReadSpreadsheetBlock(Block):
         # Determine data source - prefer file_input if provided, otherwise use contents
         if input_data.file_input:
             stored_file_path = await store_media_file(
+                user_id=user_id,
                 graph_exec_id=graph_exec_id,
                 file=input_data.file_input,
                 return_content=False,
@@ -159,6 +173,8 @@ class ReadSpreadsheetBlock(Block):
 
         rows = [process_row(row) for row in reader]
 
-        yield "rows", rows
-        for processed_row in rows:
-            yield "row", processed_row
+        if input_data.produce_singular_result:
+            for processed_row in rows:
+                yield "row", processed_row
+        else:
+            yield "rows", rows

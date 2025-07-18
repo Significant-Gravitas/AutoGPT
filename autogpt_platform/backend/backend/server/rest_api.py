@@ -14,6 +14,7 @@ from autogpt_libs.feature_flag.client import (
     shutdown_launchdarkly,
 )
 from autogpt_libs.logging.utils import generate_uvicorn_config
+from autogpt_libs.utils.cache import thread_cached
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 
@@ -39,6 +40,7 @@ from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.server.external.api import external_app
 from backend.server.middleware.security import SecurityHeadersMiddleware
+from backend.util import json
 
 settings = backend.util.settings.Settings()
 logger = logging.getLogger(__name__)
@@ -151,7 +153,7 @@ def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
 
 async def validation_error_handler(
     request: fastapi.Request, exc: Exception
-) -> fastapi.responses.JSONResponse:
+) -> fastapi.responses.Response:
     logger.error(
         "Validation failed for %s %s: %s. Fix the request payload and try again.",
         request.method,
@@ -163,13 +165,19 @@ async def validation_error_handler(
         errors = exc.errors()  # type: ignore[call-arg]
     else:
         errors = str(exc)
-    return fastapi.responses.JSONResponse(
+
+    response_content = {
+        "message": f"Invalid data for {request.method} {request.url.path}",
+        "detail": errors,
+        "hint": "Ensure the request matches the API schema.",
+    }
+
+    content_json = json.dumps(response_content)
+
+    return fastapi.responses.Response(
+        content=content_json,
         status_code=422,
-        content={
-            "message": f"Invalid data for {request.method} {request.url.path}",
-            "detail": errors,
-            "hint": "Ensure the request matches the API schema.",
-        },
+        media_type="application/json",
     )
 
 
@@ -212,8 +220,19 @@ app.include_router(
 app.mount("/external-api", external_app)
 
 
+@thread_cached
+def get_db_async_client():
+    from backend.executor import DatabaseManagerAsyncClient
+
+    return backend.util.service.get_service_client(
+        DatabaseManagerAsyncClient,
+        health_check=False,
+    )
+
+
 @app.get(path="/health", tags=["health"], dependencies=[])
 async def health():
+    await get_db_async_client().health_check_async()
     return {"status": "healthy"}
 
 
