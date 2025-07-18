@@ -14,6 +14,7 @@ from autogpt_libs.feature_flag.client import (
     shutdown_launchdarkly,
 )
 from autogpt_libs.logging.utils import generate_uvicorn_config
+from autogpt_libs.utils.cache import thread_cached
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 
@@ -212,8 +213,19 @@ app.include_router(
 app.mount("/external-api", external_app)
 
 
+@thread_cached
+def get_db_async_client():
+    from backend.executor import DatabaseManagerAsyncClient
+
+    return backend.util.service.get_service_client(
+        DatabaseManagerAsyncClient,
+        health_check=False,
+    )
+
+
 @app.get(path="/health", tags=["health"], dependencies=[])
 async def health():
+    await get_db_async_client().health_check_async()
     return {"status": "healthy"}
 
 
