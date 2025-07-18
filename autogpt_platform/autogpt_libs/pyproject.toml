@@ -22,7 +22,7 @@ fastapi = "^0.116.1"
 uvicorn = "^0.35.0"
 
 [tool.poetry.group.dev.dependencies]
-redis = "^5.2.1"
+redis = "^6.2.0"
 ruff = "^0.12.3"
 
 [build-system]
