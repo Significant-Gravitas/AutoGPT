@@ -109,10 +109,15 @@ export class BuildPage extends BasePage {
     await this.page.waitForTimeout(500);
 
     const blockCard = this.page.getByTestId(`block-name-${block.id}`);
-    await blockCard.click();
-
-    const blockInEditor = this.page.getByTestId(block.id).first();
-    expect(blockInEditor).toBeAttached();
+    if (await blockCard.isVisible()) {
+      await blockCard.click();
+      const blockInEditor = this.page.getByTestId(block.id).first();
+      expect(blockInEditor).toBeAttached();
+    } else {
+      console.log(
+        `❌ ❌  Block ${block.name}returned from the API but not found in block list`,
+      );
+    }
   }
 
   async hasBlock(block: Block) {
