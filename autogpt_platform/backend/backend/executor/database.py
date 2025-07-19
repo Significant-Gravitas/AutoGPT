@@ -39,6 +39,7 @@ from backend.data.user import (
     get_active_user_ids_in_timerange,
     get_user_email_by_id,
     get_user_email_verification,
+    get_user_info_by_id,
     get_user_integrations,
     get_user_metadata,
     get_user_notification_preference,
@@ -123,6 +124,7 @@ class DatabaseManager(AppService):
     update_user_metadata = _(update_user_metadata)
     get_user_integrations = _(get_user_integrations)
     update_user_integrations = _(update_user_integrations)
+    get_user_info_by_id = _(get_user_info_by_id)
 
     # User Comms - async
     get_active_user_ids_in_timerange = _(get_active_user_ids_in_timerange)
@@ -183,6 +185,7 @@ class DatabaseManagerClient(AppServiceClient):
     update_user_metadata = _(d.update_user_metadata)
     get_user_integrations = _(d.get_user_integrations)
     update_user_integrations = _(d.update_user_integrations)
+    get_user_info_by_id = _(d.get_user_info_by_id)
 
     # User Comms - async
     get_active_user_ids_in_timerange = _(d.get_active_user_ids_in_timerange)
