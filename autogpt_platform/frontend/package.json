@@ -85,7 +85,7 @@
     "react-markdown": "9.0.3",
     "react-modal": "3.16.3",
     "react-shepherd": "6.1.8",
-    "recharts": "2.15.3",
+    "recharts": "3.1.0",
     "shepherd.js": "14.5.0",
     "sonner": "2.0.6",
     "tailwind-merge": "2.6.0",
