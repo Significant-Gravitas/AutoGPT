@@ -623,11 +623,8 @@ async def create_new_graph(
 
     graph = await graph_db.create_graph(graph, user_id=user_id)
 
-    # Create a library agent for the new graph
-    library_agent = await library_db.create_library_agent(graph, user_id)
-    _ = asyncio.create_task(
-        library_db.add_generated_agent_image(graph, library_agent.id)
-    )
+    # Create a library agents for the new graph
+    await library_db.create_library_agent(graph, user_id)
 
     graph = await on_graph_activate(graph, user_id=user_id)
     return graph
