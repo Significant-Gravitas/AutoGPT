@@ -31,7 +31,7 @@ integration_creds_manager = IntegrationCredentialsManager()
 async def list_library_agents(
     user_id: str,
     search_term: Optional[str] = None,
-    sort_by: library_model.LibraryAgentSort = library_model.LibraryAgentSort.UPDATED_AT,
+    sort_by: Optional[library_model.LibraryAgentSort] = None,
     page: int = 1,
     page_size: int = 50,
 ) -> library_model.LibraryAgentResponse:
@@ -41,7 +41,7 @@ async def list_library_agents(
     Args:
         user_id: The ID of the user whose LibraryAgents we want to retrieve.
         search_term: Optional string to filter agents by name/description.
-        sort_by: Sorting field (createdAt, updatedAt, isFavorite, isCreatedByUser).
+        sort_by: Sorting field (createdAt, updatedAt, lastExecuted).
         page: Current page (1-indexed).
         page_size: Number of items per page.
 
@@ -89,12 +89,23 @@ async def list_library_agents(
         ]
 
     # Determine sorting
-    order_by: prisma.types.LibraryAgentOrderByInput | None = None
+    order_by: (
+        prisma.types.LibraryAgentOrderByInput
+        | list[prisma.types.LibraryAgentOrderByInput]
+        | None
+    ) = None
 
     if sort_by == library_model.LibraryAgentSort.CREATED_AT:
         order_by = {"createdAt": "asc"}
     elif sort_by == library_model.LibraryAgentSort.UPDATED_AT:
         order_by = {"updatedAt": "desc"}
+    elif sort_by == library_model.LibraryAgentSort.LAST_EXECUTED:
+        # Sort by the most recent AgentGraph.Execution (startedAt) first.
+        # If no executions exist, fall back to sorting by updatedAt.
+        order_by = [
+            {"AgentGraph": {"Executions": {"startedAt": "desc"}}},  # FIXME: not supprted
+            {"updatedAt": "desc"},
+        ]
 
     try:
         library_agents = await prisma.models.LibraryAgent.prisma().find_many(
@@ -469,7 +480,7 @@ async def add_store_agent_to_library(
 
     Args:
         store_listing_version_id: The ID of the store listing version containing the agent.
-        user_id: The user’s library to which the agent is being added.
+        user_id: The user's library to which the agent is being added.
 
     Returns:
         The newly created LibraryAgent if successfully added, the existing corresponding one if any.
