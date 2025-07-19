@@ -5,23 +5,64 @@ data.start_date: the start date of the summary
 data.end_date: the end date of the summary
 data.total_credits_used: the total credits used during the summary
 data.total_executions: the total number of executions during the summary
-data.most_used_agent: the most used agent's nameduring the summary
+data.most_used_agent: the most used agent's name during the summary
 data.total_execution_time: the total execution time during the summary
 data.successful_runs: the total number of successful runs during the summary
 data.failed_runs: the total number of failed runs during the summary
 data.average_execution_time: the average execution time during the summary
-data.cost_breakdown: the cost breakdown during the summary
+data.cost_breakdown: the cost breakdown during the summary (dict mapping agent names to credit amounts)
 #}
 
-<h1>Weekly Summary</h1>
+<h1 style="color: #5D23BB; font-size: 32px; font-weight: 600; margin-bottom: 25px; margin-top: 0;">
+  Weekly Summary
+</h1>
 
-<p>Start Date: {{ data.start_date }}</p>
-<p>End Date: {{ data.end_date }}</p>
-<p>Total Credits Used: {{ data.total_credits_used }}</p>
-<p>Total Executions: {{ data.total_executions }}</p>
-<p>Most Used Agent: {{ data.most_used_agent }}</p>
-<p>Total Execution Time: {{ data.total_execution_time }}</p>
-<p>Successful Runs: {{ data.successful_runs }}</p>
-<p>Failed Runs: {{ data.failed_runs }}</p>
-<p>Average Execution Time: {{ data.average_execution_time }}</p>
-<p>Cost Breakdown: {{ data.cost_breakdown }}</p>
+<h2 style="color: #070629; font-size: 24px; font-weight: 500; margin-bottom: 20px;">
+  Your Agent Activity: {{ data.start_date.strftime('%B %-d') }} – {{ data.end_date.strftime('%B %-d') }}
+</h2>
+
+<div style="background-color: #ffffff; border-radius: 8px; padding: 20px; margin-bottom: 25px;">
+  <ul style="list-style-type: disc; padding-left: 20px; margin: 0;">
+    <li style="font-size: 16px; line-height: 1.8; margin-bottom: 8px;">
+      <strong>Total Executions:</strong> {{ data.total_executions }}
+    </li>
+    <li style="font-size: 16px; line-height: 1.8; margin-bottom: 8px;">
+      <strong>Total Credits Used:</strong> {{ data.total_credits_used|format("%.2f") }}
+    </li>
+    <li style="font-size: 16px; line-height: 1.8; margin-bottom: 8px;">
+      <strong>Total Execution Time:</strong> {{ data.total_execution_time|format("%.1f") }} seconds
+    </li>
+    <li style="font-size: 16px; line-height: 1.8; margin-bottom: 8px;">
+      <strong>Successful Runs:</strong> {{ data.successful_runs }}
+    </li>
+    <li style="font-size: 16px; line-height: 1.8; margin-bottom: 8px;">
+      <strong>Failed Runs:</strong> {{ data.failed_runs }}
+    </li>
+    <li style="font-size: 16px; line-height: 1.8; margin-bottom: 8px;">
+      <strong>Average Execution Time:</strong> {{ data.average_execution_time|format("%.1f") }} seconds
+    </li>
+    <li style="font-size: 16px; line-height: 1.8; margin-bottom: 8px;">
+      <strong>Most Used Agent:</strong> {{ data.most_used_agent }}
+    </li>
+    {% if data.cost_breakdown %}
+    <li style="font-size: 16px; line-height: 1.8; margin-bottom: 8px;">
+      <strong>Cost Breakdown:</strong>
+      <ul style="list-style-type: disc; padding-left: 40px; margin-top: 8px;">
+        {% for agent_name, credits in data.cost_breakdown.items() %}
+          <li style="font-size: 16px; line-height: 1.8; margin-bottom: 4px;">
+            {{ agent_name }}: {{ credits|format("%.2f") }} credits
+          </li>
+        {% endfor %}
+      </ul>
+    </li>
+    {% endif %}
+  </ul>
+</div>
+
+<p style="font-size: 16px; line-height: 165%; margin-top: 20px; margin-bottom: 10px;">
+  Thank you for being a part of the AutoGPT community! 🎉
+</p>
+
+<p style="font-size: 16px; line-height: 165%; margin-bottom: 0;">
+  Join the conversation on <a href="https://discord.gg/autogpt" style="color: #4285F4; text-decoration: underline;">Discord here</a>.
+</p>
