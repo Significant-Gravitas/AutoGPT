@@ -35,6 +35,7 @@ from autogpt_libs.utils.cache import thread_cached
 from prometheus_client import Gauge, start_http_server
 
 from backend.blocks.agent import AgentExecutorBlock
+from backend.blocks.ayrshare.post import AYRSHARE_NODE_IDS
 from backend.data import redis_client as redis
 from backend.data.block import (
     BlockData,
@@ -181,6 +182,10 @@ async def execute_node(
             user_id, credentials_meta.id
         )
         extra_exec_kwargs[field_name] = credentials
+
+    if node_block.id in AYRSHARE_NODE_IDS:
+        profile_key = creds_manager.store.get_ayrshare_profile_key(user_id)
+        extra_exec_kwargs["profile_key"] = profile_key
 
     output_size = 0
     try:

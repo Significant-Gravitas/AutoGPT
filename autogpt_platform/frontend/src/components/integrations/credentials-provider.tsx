@@ -65,8 +65,9 @@ export default function CredentialsProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [providers, setProviders] =
-    useState<CredentialsProvidersContextType | null>(null);
+  const [providers, setProviders] = useState<CredentialsProvidersContextType>(
+    {}, // Allow this not to be set and still be able to save the graph
+  );
   const [providerNames, setProviderNames] = useState<string[]>([]);
   const { isLoggedIn } = useSupabase();
   const api = useBackendAPI();
@@ -230,7 +231,7 @@ export default function CredentialsProvider({
 
   useEffect(() => {
     if (!isLoggedIn || providerNames.length === 0) {
-      if (isLoggedIn == false) setProviders(null);
+      if (isLoggedIn == false) setProviders({});
       return;
     }
 
