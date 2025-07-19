@@ -64,11 +64,12 @@ You can learn more under: [Build your own Blocks](platform/new_blocks.md)
 
 The platform comes pre-integrated with cutting-edge LLM providers:
 
-- OpenAI
-- Anthropic
-- AI/ML API
-- Groq
-- Llama
+- OpenAI - https://openai.com/
+- Anthropic - https://www.anthropic.com/
+- Groq - https://groq.com/
+- Llama - https://llamaindex.ai/
+- AI/ML API - [https://aimlapi.com/](https://aimlapi.com/?utm_source=autogpt&utm_medium=github&utm_campaign=integration)
+  - AI/ML API provides 300+ AI models including Deepseek, Gemini, ChatGPT. The models run at enterprise-grade rate limits and uptimes.
 
 ## License Overview 
 
