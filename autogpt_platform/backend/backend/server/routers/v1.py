@@ -621,13 +621,11 @@ async def create_new_graph(
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
 
-    graph = await graph_db.create_graph(graph, user_id=user_id)
-
-    # Create a library agents for the new graph
-    await library_db.create_library_agent(graph, user_id)
-
-    graph = await on_graph_activate(graph, user_id=user_id)
-    return graph
+    # The return value of the create graph & library function is intentionally not used here,
+    # as the graph already valid and no sub-graphs are returned back.
+    await graph_db.create_graph(graph, user_id=user_id)
+    await library_db.create_library_agent(graph, user_id=user_id)
+    return await on_graph_activate(graph, user_id=user_id)
 
 
 @v1_router.delete(
