@@ -1,5 +1,6 @@
+import asyncio
 import logging
-from typing import TYPE_CHECKING, Optional, cast
+from typing import TYPE_CHECKING, Optional, cast, overload
 
 from backend.data.block import BlockSchema
 from backend.data.graph import set_node_webhook
@@ -9,7 +10,7 @@ from . import get_webhook_manager, supports_webhooks
 from .utils import setup_webhook_for_block
 
 if TYPE_CHECKING:
-    from backend.data.graph import GraphModel, NodeModel
+    from backend.data.graph import BaseGraph, GraphModel, Node, NodeModel
     from backend.data.model import Credentials
 
     from ._base import BaseWebhooksManager
@@ -18,13 +19,29 @@ logger = logging.getLogger(__name__)
 credentials_manager = IntegrationCredentialsManager()
 
 
-async def on_graph_activate(graph: "GraphModel", user_id: str):
+async def on_graph_activate(graph: "GraphModel", user_id: str) -> "GraphModel":
     """
     Hook to be called when a graph is activated/created.
 
     ⚠️ Assuming node entities are not re-used between graph versions, ⚠️
     this hook calls `on_node_activate` on all nodes in this graph.
     """
+    graph = await _on_graph_activate(graph, user_id)
+    graph.sub_graphs = await asyncio.gather(
+        *(_on_graph_activate(sub_graph, user_id) for sub_graph in graph.sub_graphs)
+    )
+    return graph
+
+
+@overload
+async def _on_graph_activate(graph: "GraphModel", user_id: str) -> "GraphModel": ...
+
+
+@overload
+async def _on_graph_activate(graph: "BaseGraph", user_id: str) -> "BaseGraph": ...
+
+
+async def _on_graph_activate(graph: "BaseGraph | GraphModel", user_id: str):
     get_credentials = credentials_manager.cached_getter(user_id)
     updated_nodes = []
     for new_node in graph.nodes:
@@ -47,7 +64,7 @@ async def on_graph_activate(graph: "GraphModel", user_id: str):
             )
 
         updated_node = await on_node_activate(
-            graph.user_id, new_node, credentials=node_credentials
+            user_id, graph.id, new_node, credentials=node_credentials
         )
         updated_nodes.append(updated_node)
 
@@ -94,10 +111,11 @@ async def on_graph_deactivate(graph: "GraphModel", user_id: str):
 
 async def on_node_activate(
     user_id: str,
-    node: "NodeModel",
+    graph_id: str,
+    node: "Node",
     *,
     credentials: Optional["Credentials"] = None,
-) -> "NodeModel":
+) -> "Node":
     """Hook to be called when the node is activated/created"""
 
     if node.block.webhook_config:
@@ -105,7 +123,7 @@ async def on_node_activate(
             user_id=user_id,
             trigger_block=node.block,
             trigger_config=node.input_default,
-            for_graph_id=node.graph_id,
+            for_graph_id=graph_id,
         )
         if new_webhook:
             node = await set_node_webhook(node.id, new_webhook.id)
