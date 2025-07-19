@@ -14,11 +14,13 @@ import {
 } from "../PublishAgentSelectInfo";
 import { PublishAgentAwaitingReview } from "../PublishAgentAwaitingReview";
 import { Button } from "../Button";
-import { MyAgentsResponse } from "@/lib/autogpt-server-api";
+import { MyAgent } from "@/app/api/__generated__/models/myAgent";
 import { useRouter } from "next/navigation";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import LoadingBox, { LoadingSpinner } from "@/components/ui/loading";
 import { StoreSubmissionRequest } from "@/app/api/__generated__/models/storeSubmissionRequest";
+import { useGetV2GetMyAgents } from "@/app/api/__generated__/endpoints/store/store";
 interface PublishAgentPopoutProps {
   trigger?: React.ReactNode;
   openPopout?: boolean;
@@ -44,7 +46,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
   const [step, setStep] = React.useState<"select" | "info" | "review">(
     inputStep,
   );
-  const [myAgents, setMyAgents] = React.useState<MyAgentsResponse | null>(null);
+  const [allAgents, setAllAgents] = React.useState<MyAgent[]>([]);
   const [_, setSelectedAgent] = React.useState<string | null>(null);
   const [initialData, setInitialData] =
     React.useState<PublishAgentInfoInitialData>({
@@ -66,10 +68,54 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
     number | null
   >(null);
   const [open, setOpen] = React.useState(false);
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const [loadingMore, setLoadingMore] = React.useState(false);
+  const [hasMore, setHasMore] = React.useState(true);
+
+  const api = useBackendAPI();
+
+  // Use the auto-generated API hook
+  const { data, error, isLoading, refetch } = useGetV2GetMyAgents(
+    {
+      page: currentPage,
+      page_size: 20,
+    },
+    {
+      query: {
+        enabled: open, // Only fetch when the popout is open
+      },
+    },
+  );
+
+  // Update allAgents when new data arrives
+  React.useEffect(() => {
+    if (data?.status === 200 && data.data) {
+      if (currentPage === 1) {
+        setAllAgents(data.data.agents);
+      } else {
+        setAllAgents((prev) => [...prev, ...data.data.agents]);
+      }
+      setHasMore(
+        data.data.pagination.current_page < data.data.pagination.total_pages,
+      );
+    }
+  }, [data, currentPage]);
+
+  const fetchMyAgents = React.useCallback(
+    async (page: number, append = false) => {
+      if (append) {
+        setLoadingMore(true);
+        setCurrentPage(page);
+      } else {
+        setCurrentPage(page);
+        setAllAgents([]);
+      }
+    },
+    [],
+  );
 
   const popupId = React.useId();
   const router = useRouter();
-  const api = useBackendAPI();
 
   const { toast } = useToast();
 
@@ -81,18 +127,18 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
 
   React.useEffect(() => {
     if (open) {
-      const loadMyAgents = async () => {
-        try {
-          const response = await api.getMyAgents();
-          setMyAgents(response);
-        } catch (error) {
-          console.error("Failed to load my agents:", error);
-        }
-      };
-
-      loadMyAgents();
+      setCurrentPage(1);
+      setHasMore(true);
+      setAllAgents([]);
     }
-  }, [open, api]);
+  }, [open]);
+
+  // Handle loading state for pagination
+  React.useEffect(() => {
+    if (currentPage > 1 && !isLoading) {
+      setLoadingMore(false);
+    }
+  }, [currentPage, isLoading]);
 
   const handleClose = () => {
     setStep("select");
@@ -115,9 +161,9 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
   };
 
   const handleNextFromSelect = (agentId: string, agentVersion: number) => {
-    const selectedAgentData = myAgents?.agents.find(
+    const selectedAgentData = allAgents.find(
       (agent) => agent.agent_id === agentId,
-    );
+    ) as any;
 
     const name = selectedAgentData?.agent_name || "";
     const description = selectedAgentData?.description || "";
@@ -204,36 +250,77 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
     }
   };
 
+  const handleScroll = React.useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+      if (
+        hasMore &&
+        !loadingMore &&
+        scrollTop + clientHeight >= scrollHeight - 50
+      ) {
+        fetchMyAgents(currentPage + 1, true);
+      }
+    },
+    [hasMore, loadingMore, currentPage],
+  );
+
   const renderContent = () => {
     switch (step) {
       case "select":
         return (
           <div className="flex min-h-screen items-center justify-center">
             <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl bg-white shadow-lg dark:bg-gray-800">
-              <div className="h-full overflow-y-auto">
-                <PublishAgentSelect
-                  agents={
-                    myAgents?.agents
-                      .map((agent) => ({
-                        name: agent.agent_name,
-                        id: agent.agent_id,
-                        version: agent.agent_version,
-                        lastEdited: agent.last_edited,
-                        imageSrc:
-                          agent.agent_image || "https://picsum.photos/300/200",
-                      }))
-                      .sort(
-                        (a, b) =>
-                          new Date(b.lastEdited).getTime() -
-                          new Date(a.lastEdited).getTime(),
-                      ) || []
-                  }
-                  onSelect={handleAgentSelect}
-                  onCancel={handleClose}
-                  onNext={handleNextFromSelect}
-                  onClose={handleClose}
-                  onOpenBuilder={() => router.push("/build")}
-                />
+              <div className="h-full overflow-y-hidden">
+                {isLoading && currentPage === 1 ? (
+                  <LoadingBox className="p-8" />
+                ) : error ? (
+                  <div className="flex flex-col items-center justify-center gap-4 p-8">
+                    <p className="text-red-600">
+                      Failed to load agents. Please try again.
+                    </p>
+                    <Button
+                      onClick={() => {
+                        refetch();
+                      }}
+                      variant="outline"
+                    >
+                      Try Again
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <PublishAgentSelect
+                      agents={
+                        allAgents
+                          .map((agent) => ({
+                            name: agent.agent_name,
+                            id: agent.agent_id,
+                            version: agent.agent_version,
+                            lastEdited: agent.last_edited,
+                            imageSrc:
+                              agent.agent_image ||
+                              "https://picsum.photos/300/200",
+                          }))
+                          .sort(
+                            (a, b) =>
+                              new Date(b.lastEdited).getTime() -
+                              new Date(a.lastEdited).getTime(),
+                          ) || []
+                      }
+                      onSelect={handleAgentSelect}
+                      onCancel={handleClose}
+                      onNext={handleNextFromSelect}
+                      onClose={handleClose}
+                      onOpenBuilder={() => router.push("/build")}
+                      onListScroll={handleScroll}
+                    />
+                    {loadingMore && (
+                      <div className="flex items-center justify-center p-4">
+                        <LoadingSpinner className="size-6" />
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           </div>
