@@ -17,16 +17,6 @@ export interface UserPool {
   version: string;
 }
 
-// Using Playwright MCP server tools for browser automation
-// No need to manage browser instances manually
-
-/**
- * Create a new test user through signup page using Playwright MCP server
- * @param email - User email (optional, will generate if not provided)
- * @param password - User password (optional, will generate if not provided)
- * @param ignoreOnboarding - Skip onboarding and go to marketplace (default: true)
- * @returns Promise<TestUser> - Created user object
- */
 export async function createTestUser(
   email?: string,
   password?: string,
@@ -52,6 +42,7 @@ export async function createTestUser(
         userEmail,
         userPassword,
         ignoreOnboarding,
+        false,
       );
       return testUser;
     } finally {
@@ -65,24 +56,37 @@ export async function createTestUser(
   }
 }
 
-/**
- * Create multiple test users
- * @param count - Number of users to create
- * @returns Promise<TestUser[]> - Array of created users
- */
 export async function createTestUsers(count: number): Promise<TestUser[]> {
   console.log(`👥 Creating ${count} test users...`);
 
   const users: TestUser[] = [];
+  let consecutiveFailures = 0;
 
   for (let i = 0; i < count; i++) {
     try {
       const user = await createTestUser();
       users.push(user);
+      consecutiveFailures = 0; // Reset failure counter on success
       console.log(`✅ Created user ${i + 1}/${count}: ${user.email}`);
+
+      // Small delay to prevent overwhelming the system
+      if (i < count - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
     } catch (error) {
+      consecutiveFailures++;
       console.error(`❌ Failed to create user ${i + 1}/${count}:`, error);
-      // Continue creating other users even if one fails
+
+      // If we have too many consecutive failures, stop trying
+      if (consecutiveFailures >= 3) {
+        console.error(
+          `⚠️ Stopping after ${consecutiveFailures} consecutive failures`,
+        );
+        break;
+      }
+
+      // Add a longer delay after failure to let system recover
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }
 
@@ -90,11 +94,6 @@ export async function createTestUsers(count: number): Promise<TestUser[]> {
   return users;
 }
 
-/**
- * Save user pool to file system
- * @param users - Array of users to save
- * @param filePath - Path to save the file (optional)
- */
 export async function saveUserPool(
   users: TestUser[],
   filePath?: string,
@@ -123,11 +122,6 @@ export async function saveUserPool(
   }
 }
 
-/**
- * Load user pool from file system
- * @param filePath - Path to load from (optional)
- * @returns Promise<UserPool | null> - Loaded user pool or null if not found
- */
 export async function loadUserPool(
   filePath?: string,
 ): Promise<UserPool | null> {
@@ -158,27 +152,17 @@ export async function loadUserPool(
   }
 }
 
-/**
- * Clean up all test users from a pool
- * Note: When using signup page method, cleanup removes the user pool file
- * @param filePath - Path to load from (optional)
- */
-export async function cleanupTestUsers(filePath?: string): Promise<void> {
-  const defaultPath = path.resolve(process.cwd(), ".auth", "user-pool.json");
-  const finalPath = filePath || defaultPath;
-
-  console.log(`🧹 Cleaning up test users...`);
-
-  try {
-    if (fs.existsSync(finalPath)) {
-      fs.unlinkSync(finalPath);
-      console.log(`✅ Deleted user pool file: ${finalPath}`);
-    } else {
-      console.log(`⚠️ No user pool file found to cleanup`);
-    }
-  } catch (error) {
-    console.error(`❌ Failed to cleanup user pool:`, error);
+export async function getTestUser(): Promise<TestUser> {
+  const userPool = await loadUserPool();
+  if (!userPool) {
+    throw new Error("User pool not found");
   }
 
-  console.log(`🎉 Cleanup completed`);
+  if (userPool.users.length === 0) {
+    throw new Error("No users available in the pool");
+  }
+
+  // Return a random user from the pool
+  const randomIndex = Math.floor(Math.random() * userPool.users.length);
+  return userPool.users[randomIndex];
 }
