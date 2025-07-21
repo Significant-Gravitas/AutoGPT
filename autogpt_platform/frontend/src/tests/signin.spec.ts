@@ -46,7 +46,9 @@ test("user can login successfully", async ({ page }) => {
 
   const accountMenuUserEmail = getId("account-menu-user-email");
   await isVisible(accountMenuUserEmail);
-  await test.expect(accountMenuUserEmail).toHaveText(testUser.email);
+  await test
+    .expect(accountMenuUserEmail)
+    .toHaveText(testUser.email.split("@")[0].toLowerCase());
 
   const logoutBtn = getButton("Log out");
   await isVisible(logoutBtn);
