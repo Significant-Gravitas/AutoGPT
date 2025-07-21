@@ -134,7 +134,6 @@ model AgentGraph {
   StoreListingVersions StoreListingVersion[]
 
   @@id(name: "graphVersionId", [id, version])
-  @@index([id])
   @@index([userId, isActive])
 }
 
@@ -388,7 +387,6 @@ model AgentNodeExecution {
 
   @@index([agentGraphExecutionId, agentNodeId, executionStatus])
   @@index([addedTime, queuedTime])
-  @@index([agentGraphExecutionId])
 }
 
 // This model describes the output of an AgentNodeExecution.
@@ -414,7 +412,6 @@ model AgentNodeExecutionInputOutput {
   // Composite index for `upsert_execution_input`.
   @@index([name, time])
   @@index([agentPresetId])
-  @@index([referencedByInputExecId])
 }
 
 model AgentNodeExecutionKeyValueData {
@@ -751,7 +748,6 @@ model StoreListing {
   @@unique([owningUserId, slug])
   // Used in the view query
   @@index([isDeleted, hasApprovedVersion])
-  @@index([owningUserId])
 }
 
 model StoreListingVersion {
@@ -804,7 +800,6 @@ model StoreListingVersion {
   Reviews StoreListingReview[]
 
   @@unique([storeListingId, version])
-  @@index([storeListingId])
   @@index([storeListingId, submissionStatus, isAvailable])
   @@index([submissionStatus])
   @@index([reviewerId])
