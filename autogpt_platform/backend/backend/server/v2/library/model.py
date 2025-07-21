@@ -9,6 +9,7 @@ import pydantic
 import backend.data.block as block_model
 import backend.data.graph as graph_model
 import backend.server.model as server_model
+from backend.data.db import BaseDbModel
 from backend.data.model import CredentialsMetaInput, is_credentials_field_name
 from backend.integrations.providers import ProviderName
 
@@ -275,11 +276,11 @@ class TriggeredPresetSetupRequest(pydantic.BaseModel):
     )
 
 
-class LibraryAgentPreset(LibraryAgentPresetCreatable):
+class LibraryAgentPreset(LibraryAgentPresetCreatable, BaseDbModel):
     """Represents a preset configuration for a library agent."""
 
-    id: str
     user_id: str
+    created_at: datetime.datetime
     updated_at: datetime.datetime
 
     @classmethod
@@ -301,6 +302,7 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
         return cls(
             id=preset.id,
             user_id=preset.userId,
+            created_at=preset.createdAt,
             updated_at=preset.updatedAt,
             graph_id=preset.agentGraphId,
             graph_version=preset.agentGraphVersion,

@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Optional, cast
 
 from pydantic import JsonValue
 
+from backend.data.graph import set_node_webhook
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 from backend.util.settings import Config
@@ -144,3 +145,43 @@ async def setup_webhook_for_block(
         )
     logger.debug(f"Acquired webhook: {webhook}")
     return webhook, None
+
+
+async def migrate_legacy_triggered_graphs():
+    from prisma.models import AgentGraph
+
+    from backend.data.graph import AGENT_GRAPH_INCLUDE, GraphModel
+    from backend.server.v2.library.db import create_preset
+    from backend.server.v2.library.model import LibraryAgentPresetCreatable
+
+    triggered_graphs = [
+        GraphModel.from_db(_graph)
+        for _graph in await AgentGraph.prisma().find_many(
+            where={
+                "isActive": True,
+                "Nodes": {"some": {"NOT": [{"webhookId": None}]}},
+            },
+            include=AGENT_GRAPH_INCLUDE,
+        )
+    ]
+
+    for graph in triggered_graphs:
+        if not (trigger_node := graph.webhook_input_node):
+            continue
+
+        # Create a triggered preset for the graph
+        await create_preset(
+            graph.user_id,
+            LibraryAgentPresetCreatable(
+                graph_id=graph.id,
+                graph_version=graph.version,
+                inputs=trigger_node.input_default,
+                credentials={},  # FIXME
+                name=graph.name,
+                description=graph.description,
+                webhook_id=trigger_node.webhook_id,
+                is_active=True,
+            ),
+        )
+        # Detach webhook from the graph node
+        await set_node_webhook(trigger_node.id, None)
