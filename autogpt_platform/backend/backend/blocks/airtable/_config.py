@@ -68,8 +68,8 @@ if AIRTABLE_OAUTH_IS_CONFIGURED:
             AirtableScope.DATA_RECORD_COMMENTS_READ,
             AirtableScope.DATA_RECORD_COMMENTS_WRITE,
         ],
-        client_id_env_var="LINEAR_CLIENT_ID",
-        client_secret_env_var="LINEAR_CLIENT_SECRET",
+        client_id_env_var="AIRTABLE_CLIENT_ID",
+        client_secret_env_var="AIRTABLE_CLIENT_SECRET",
     )
 
 # Build the provider
