@@ -61,7 +61,10 @@ export function ActivityDropdown({
       </div>
 
       {/* Content */}
-      <ScrollArea className="min-h-[10rem]">
+      <ScrollArea
+        className="min-h-[10rem]"
+        data-testid="agent-activity-dropdown"
+      >
         {sortedExecutions.length > 0 ? (
           <div className="p-2">
             {sortedExecutions.map((execution) => (

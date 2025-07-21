@@ -326,14 +326,17 @@ export const startTutorial = (
     id: "press-run",
     title: "Press Run",
     text: "Start your first flow by pressing the Run button!",
-    attachTo: { element: '[data-id="primary-action-run-agent"]', on: "top" },
+    attachTo: {
+      element: '[data-testid="primary-action-run-agent"]',
+      on: "top",
+    },
     advanceOn: {
-      selector: '[data-id="primary-action-run-agent"]',
+      selector: '[data-testid="primary-action-run-agent"]',
       event: "click",
     },
     buttons: [],
     beforeShowPromise: () =>
-      waitForElement('[data-id="primary-action-run-agent"]'),
+      waitForElement('[data-testid="primary-action-run-agent"]'),
     when: {
       hide: () => {
         setTimeout(() => {
@@ -503,14 +506,17 @@ export const startTutorial = (
     id: "press-run-again",
     title: "Press Run Again",
     text: "Now, press the Run button again to execute the flow with the new Calculator Block added!",
-    attachTo: { element: '[data-id="primary-action-run-agent"]', on: "top" },
+    attachTo: {
+      element: '[data-testid="primary-action-run-agent"]',
+      on: "top",
+    },
     advanceOn: {
-      selector: '[data-id="primary-action-run-agent"]',
+      selector: '[data-testid="primary-action-run-agent"]',
       event: "click",
     },
     buttons: [],
     beforeShowPromise: () =>
-      waitForElement('[data-id="primary-action-run-agent"]'),
+      waitForElement('[data-testid="primary-action-run-agent"]'),
     when: {
       hide: () => {
         setTimeout(() => {

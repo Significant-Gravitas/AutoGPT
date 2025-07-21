@@ -1,40 +1,53 @@
-import test from "@playwright/test";
-import {
-  navigateToLibrary,
-  clickFirstAgent,
-  waitForAgentPageLoad,
-  runAgent,
-} from "./pages/library.page";
+import test, { expect } from "@playwright/test";
 import { hasTextContent, hasUrl, isVisible } from "./utils/assertion";
 import { getSelectors } from "./utils/selectors";
 import { getTestUser } from "./utils/auth";
 import { LoginPage } from "./pages/login.page";
+import { BuildPage } from "./pages/build.page";
+import * as LibraryPage from "./pages/library.page";
 
 test.beforeEach(async ({ page }) => {
   const loginPage = new LoginPage(page);
+  const buildPage = new BuildPage(page);
   const testUser = await getTestUser();
 
-  const { getText, getId } = getSelectors(page);
+  const { getId, getText } = getSelectors(page);
 
   await page.goto("/login");
   await loginPage.login(testUser.email, testUser.password);
   await hasUrl(page, "/marketplace");
-  await navigateToLibrary(page);
-  await hasUrl(page, new RegExp("/library"));
 
-  await clickFirstAgent(page);
-  await waitForAgentPageLoad(page);
+  await page.goto("/build");
+  await buildPage.closeTutorial();
+  await buildPage.openBlocksPanel();
 
-  // wait for page to load
-  const activityBtn = getId("agent-activity-button");
-  await isVisible(activityBtn);
-  await isVisible(getText("Run actions"));
+  const [dictionaryBlock] = await buildPage.getFilteredBlocksFromAPI(
+    (block) => block.name === "AddToDictionaryBlock",
+  );
+
+  const blockCard = getId(`block-name-${dictionaryBlock.id}`);
+  await blockCard.click();
+  const blockInEditor = getId(dictionaryBlock.id).first();
+  expect(blockInEditor).toBeAttached();
+
+  await buildPage.saveAgent("Test Agent", "Test Description");
+  await test
+    .expect(page)
+    .toHaveURL(({ searchParams }) => !!searchParams.get("flowID"));
+
+  // Wait for save to complete
+  await page.waitForTimeout(1000);
+
+  await page.goto("/library");
+  await LibraryPage.clickFirstAgent(page);
+  await LibraryPage.waitForAgentPageLoad(page);
+  await isVisible(getText("Test Agent"), 8000);
 });
 
 test("shows badge with count when agent is running", async ({ page }) => {
   const { getId } = getSelectors(page);
 
-  await runAgent(page);
+  await LibraryPage.clickRunButton(page);
 
   const badge = getId("agent-activity-badge");
   await isVisible(badge);
@@ -42,18 +55,19 @@ test("shows badge with count when agent is running", async ({ page }) => {
   await hasTextContent(badge, "1");
 });
 
-test("shows hover hint when agent is running", async ({ page }) => {
-  const { getId, getRole } = getSelectors(page);
-
-  await runAgent(page);
+test("displays the runs on the activity dropdown", async ({ page }) => {
+  const { getId } = getSelectors(page);
 
   const activityBtn = getId("agent-activity-button");
   await isVisible(activityBtn);
 
-  await activityBtn.hover();
+  await LibraryPage.clickRunButton(page);
 
-  const hint = getRole("tooltip");
-  await isVisible(hint);
+  await activityBtn.click();
 
-  await hasTextContent(hint, "1 running agent");
+  const dropdown = getId("agent-activity-dropdown");
+  await isVisible(dropdown);
+
+  await hasTextContent(dropdown, "Test Agent");
+  await hasTextContent(dropdown, "Started just now, a few seconds running");
 });
