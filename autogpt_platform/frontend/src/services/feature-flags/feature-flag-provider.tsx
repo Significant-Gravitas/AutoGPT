@@ -14,7 +14,9 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
   const isCloud = getBehaveAs() === BehaveAs.CLOUD;
   const enabled = isCloud && envEnabled && clientId && user;
 
-  console.log(`ld status ${enabled} iscloud ${isCloud}`);
+  console.log(
+    `ld status ${enabled} iscloud ${isCloud} envEnabled ${envEnabled} clientId ${clientId} user ${user}`,
+  );
 
   if (!enabled) return <>{children}</>;
 
