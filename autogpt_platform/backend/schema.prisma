@@ -608,9 +608,7 @@ view Creator {
   // - idx_store_listing_version_status on StoreListingVersion(storeListingId) WHERE submissionStatus = 'APPROVED'
   // - idx_slv_categories_gin - GIN index on StoreListingVersion(categories) WHERE submissionStatus = 'APPROVED'
   // - idx_slv_agent on StoreListingVersion(agentGraphId, agentGraphVersion) WHERE submissionStatus = 'APPROVED'
-  // - idx_store_listing_review_version on StoreListingReview(storeListingVersionId)
   // - idx_store_listing_version_approved_listing on StoreListingVersion(storeListingId, version) WHERE submissionStatus = 'APPROVED'
-  // - idx_agent_graph_execution_agent on AgentGraphExecution(agentGraphId)
   //
   // Materialized views used (refreshed every 15 minutes via pg_cron):
   // - mv_agent_run_counts - Pre-aggregated agent execution counts by agentGraphId
@@ -646,9 +644,7 @@ view StoreAgent {
   // - idx_store_listing_version_status on StoreListingVersion(storeListingId) WHERE submissionStatus = 'APPROVED'
   // - idx_slv_categories_gin - GIN index on StoreListingVersion(categories) WHERE submissionStatus = 'APPROVED' for array searches
   // - idx_slv_agent on StoreListingVersion(agentGraphId, agentGraphVersion) WHERE submissionStatus = 'APPROVED'
-  // - idx_store_listing_review_version on StoreListingReview(storeListingVersionId)
   // - idx_store_listing_version_approved_listing on StoreListingVersion(storeListingId, version) WHERE submissionStatus = 'APPROVED'
-  // - idx_agent_graph_execution_agent on AgentGraphExecution(agentGraphId)
   // - idx_profile_user on Profile(userId)
   //
   // Additional indexes from earlier migrations:
