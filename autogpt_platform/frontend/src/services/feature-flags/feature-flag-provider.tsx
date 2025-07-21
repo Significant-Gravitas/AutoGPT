@@ -1,3 +1,4 @@
+"use server";
 import { LDProvider } from "launchdarkly-react-client-sdk";
 import { ReactNode } from "react";
 // import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
@@ -14,13 +15,12 @@ export async function LaunchDarklyProvider({
 }) {
   console.log("LaunchDarklyProvider render");
   const { user: userS } = await getServerUser();
-  // const { user: userSup } = useSupabase();
   const isCloud = getBehaveAs() === BehaveAs.CLOUD;
   const enabled = isCloud && envEnabled && clientId && userS;
   const user = userS;
 
   console.log(
-    `ld status ${enabled} iscloud ${isCloud} envEnabled ${envEnabled} clientId ${clientId} user ${userS} `,
+    `ld status ${enabled} iscloud ${isCloud} envEnabled ${envEnabled} clientId ${clientId} user server ${userS} `,
   );
 
   if (!enabled) return <>{children}</>;
