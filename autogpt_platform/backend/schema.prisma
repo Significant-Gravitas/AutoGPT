@@ -54,8 +54,6 @@ model User {
   IntegrationWebhooks   IntegrationWebhook[]
   NotificationBatches   UserNotificationBatch[]
 
-  @@index([id])
-  @@index([email])
 }
 
 enum OnboardingStep {
@@ -99,7 +97,6 @@ model UserOnboarding {
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId])
 }
 
 // This model describes the Agent Graph/Flow (Multi Agent System).
@@ -135,6 +132,7 @@ model AgentGraph {
 
   @@id(name: "graphVersionId", [id, version])
   @@index([userId, isActive])
+  @@index([forkedFromId, forkedFromVersion])
 }
 
 ////////////////////////////////////////////////////////////
@@ -176,6 +174,8 @@ model AgentPreset {
   isDeleted Boolean @default(false)
 
   @@index([userId])
+  @@index([agentGraphId, agentGraphVersion])
+  @@index([webhookId])
 }
 
 enum NotificationType {
@@ -248,6 +248,8 @@ model LibraryAgent {
   isDeleted       Boolean @default(false)
 
   @@unique([userId, agentGraphId, agentGraphVersion])
+  @@index([agentGraphId, agentGraphVersion])
+  @@index([creatorId])
 }
 
 ////////////////////////////////////////////////////////////
@@ -361,6 +363,7 @@ model AgentGraphExecution {
   @@index([agentGraphId, agentGraphVersion])
   @@index([userId])
   @@index([createdAt])
+  @@index([agentPresetId])
 }
 
 // This model describes the execution of an AgentNode.
@@ -386,6 +389,7 @@ model AgentNodeExecution {
   stats Json?
 
   @@index([agentGraphExecutionId, agentNodeId, executionStatus])
+  @@index([agentNodeId, executionStatus])
   @@index([addedTime, queuedTime])
 }
 
@@ -446,7 +450,6 @@ model IntegrationWebhook {
   AgentNodes   AgentNode[]
   AgentPresets AgentPreset[]
 
-  @@index([userId])
 }
 
 model AnalyticsDetails {
@@ -470,8 +473,7 @@ model AnalyticsDetails {
   // Indexable field for any count based analytical measures like page order clicking, tutorial step completion, etc.
   dataIndex String?
 
-  @@index([userId, type], name: "analyticsDetails")
-  @@index([type])
+  @@index([userId, type])
 }
 
 ////////////////////////////////////////////////////////////
@@ -496,7 +498,6 @@ model AnalyticsMetrics {
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId])
 }
 
 ////////////////////////////////////////////////////////////
@@ -582,7 +583,6 @@ model Profile {
 
   LibraryAgents LibraryAgent[]
 
-  @@index([username])
   @@index([userId])
 }
 
@@ -748,6 +748,7 @@ model StoreListing {
   @@unique([owningUserId, slug])
   // Used in the view query
   @@index([isDeleted, hasApprovedVersion])
+  @@index([agentGraphId, agentGraphVersion])
 }
 
 model StoreListingVersion {
@@ -821,6 +822,7 @@ model StoreListingReview {
   comments String?
 
   @@unique([storeListingVersionId, reviewByUserId])
+  @@index([reviewByUserId])
 }
 
 enum SubmissionStatus {
@@ -856,9 +858,7 @@ model APIKey {
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([key])
-  @@index([prefix])
-  @@index([status])
+  @@index([prefix, name])
   @@index([userId, status])
 }
 
