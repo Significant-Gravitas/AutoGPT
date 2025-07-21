@@ -6,7 +6,7 @@ import { ThemeProviderProps } from "next-themes";
 import { BackendAPIProvider } from "@/lib/autogpt-server-api/context";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import CredentialsProvider from "@/components/integrations/credentials-provider";
-import { LaunchDarklyProvider } from "@/components/feature-flag/feature-flag-provider";
+import { LaunchDarklyProvider } from "@/services/feature-flags/feature-flag-provider";
 import OnboardingProvider from "@/components/onboarding/onboarding-provider";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { getQueryClient } from "@/lib/react-query/queryClient";

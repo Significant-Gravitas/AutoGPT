@@ -1,16 +1,21 @@
 import json
-from unittest.mock import AsyncMock, Mock
+from io import BytesIO
+from unittest.mock import AsyncMock, Mock, patch
 
 import autogpt_libs.auth.depends
 import fastapi
 import fastapi.testclient
+import pytest
 import pytest_mock
+import starlette.datastructures
+from fastapi import HTTPException, UploadFile
 from pytest_snapshot.plugin import Snapshot
 
 import backend.server.routers.v1 as v1_routes
 from backend.data.credit import AutoTopUpConfig
 from backend.data.graph import GraphModel
 from backend.server.conftest import TEST_USER_ID
+from backend.server.routers.v1 import upload_file
 from backend.server.utils import get_user_id
 
 app = fastapi.FastAPI()
@@ -391,3 +396,226 @@ def test_missing_required_field() -> None:
     """Test endpoint with missing required field"""
     response = client.post("/credits", json={})  # Missing credit_amount
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_upload_file_success():
+    """Test successful file upload."""
+    # Create mock upload file
+    file_content = b"test file content"
+    file_obj = BytesIO(file_content)
+    upload_file_mock = UploadFile(
+        filename="test.txt",
+        file=file_obj,
+        headers=starlette.datastructures.Headers({"content-type": "text/plain"}),
+    )
+
+    # Mock dependencies
+    with patch("backend.server.routers.v1.scan_content_safe") as mock_scan, patch(
+        "backend.server.routers.v1.get_cloud_storage_handler"
+    ) as mock_handler_getter:
+
+        mock_scan.return_value = None
+        mock_handler = AsyncMock()
+        mock_handler.store_file.return_value = "gcs://test-bucket/uploads/123/test.txt"
+        mock_handler_getter.return_value = mock_handler
+
+        # Mock file.read()
+        upload_file_mock.read = AsyncMock(return_value=file_content)
+
+        result = await upload_file(
+            file=upload_file_mock,
+            user_id="test-user-123",
+            provider="gcs",
+            expiration_hours=24,
+        )
+
+        # Verify result
+        assert result.file_uri == "gcs://test-bucket/uploads/123/test.txt"
+        assert result.file_name == "test.txt"
+        assert result.size == len(file_content)
+        assert result.content_type == "text/plain"
+        assert result.expires_in_hours == 24
+
+        # Verify virus scan was called
+        mock_scan.assert_called_once_with(file_content, filename="test.txt")
+
+        # Verify cloud storage operations
+        mock_handler.store_file.assert_called_once_with(
+            content=file_content,
+            filename="test.txt",
+            provider="gcs",
+            expiration_hours=24,
+            user_id="test-user-123",
+        )
+
+
+@pytest.mark.asyncio
+async def test_upload_file_no_filename():
+    """Test file upload without filename."""
+    file_content = b"test content"
+    file_obj = BytesIO(file_content)
+    upload_file_mock = UploadFile(
+        filename=None,
+        file=file_obj,
+        headers=starlette.datastructures.Headers(
+            {"content-type": "application/octet-stream"}
+        ),
+    )
+
+    with patch("backend.server.routers.v1.scan_content_safe") as mock_scan, patch(
+        "backend.server.routers.v1.get_cloud_storage_handler"
+    ) as mock_handler_getter:
+
+        mock_scan.return_value = None
+        mock_handler = AsyncMock()
+        mock_handler.store_file.return_value = (
+            "gcs://test-bucket/uploads/123/uploaded_file"
+        )
+        mock_handler_getter.return_value = mock_handler
+
+        upload_file_mock.read = AsyncMock(return_value=file_content)
+
+        result = await upload_file(file=upload_file_mock, user_id="test-user-123")
+
+        assert result.file_name == "uploaded_file"
+        assert result.content_type == "application/octet-stream"
+
+        # Verify virus scan was called with default filename
+        mock_scan.assert_called_once_with(file_content, filename="uploaded_file")
+
+
+@pytest.mark.asyncio
+async def test_upload_file_invalid_expiration():
+    """Test file upload with invalid expiration hours."""
+    file_obj = BytesIO(b"content")
+    upload_file_mock = UploadFile(
+        filename="test.txt",
+        file=file_obj,
+        headers=starlette.datastructures.Headers({"content-type": "text/plain"}),
+    )
+
+    # Test expiration too short
+    with pytest.raises(HTTPException) as exc_info:
+        await upload_file(
+            file=upload_file_mock, user_id="test-user-123", expiration_hours=0
+        )
+    assert exc_info.value.status_code == 400
+    assert "between 1 and 48" in exc_info.value.detail
+
+    # Test expiration too long
+    with pytest.raises(HTTPException) as exc_info:
+        await upload_file(
+            file=upload_file_mock, user_id="test-user-123", expiration_hours=49
+        )
+    assert exc_info.value.status_code == 400
+    assert "between 1 and 48" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_upload_file_virus_scan_failure():
+    """Test file upload when virus scan fails."""
+    file_content = b"malicious content"
+    file_obj = BytesIO(file_content)
+    upload_file_mock = UploadFile(
+        filename="virus.txt",
+        file=file_obj,
+        headers=starlette.datastructures.Headers({"content-type": "text/plain"}),
+    )
+
+    with patch("backend.server.routers.v1.scan_content_safe") as mock_scan:
+        # Mock virus scan to raise exception
+        mock_scan.side_effect = RuntimeError("Virus detected!")
+
+        upload_file_mock.read = AsyncMock(return_value=file_content)
+
+        with pytest.raises(RuntimeError, match="Virus detected!"):
+            await upload_file(file=upload_file_mock, user_id="test-user-123")
+
+
+@pytest.mark.asyncio
+async def test_upload_file_cloud_storage_failure():
+    """Test file upload when cloud storage fails."""
+    file_content = b"test content"
+    file_obj = BytesIO(file_content)
+    upload_file_mock = UploadFile(
+        filename="test.txt",
+        file=file_obj,
+        headers=starlette.datastructures.Headers({"content-type": "text/plain"}),
+    )
+
+    with patch("backend.server.routers.v1.scan_content_safe") as mock_scan, patch(
+        "backend.server.routers.v1.get_cloud_storage_handler"
+    ) as mock_handler_getter:
+
+        mock_scan.return_value = None
+        mock_handler = AsyncMock()
+        mock_handler.store_file.side_effect = RuntimeError("Storage error!")
+        mock_handler_getter.return_value = mock_handler
+
+        upload_file_mock.read = AsyncMock(return_value=file_content)
+
+        with pytest.raises(RuntimeError, match="Storage error!"):
+            await upload_file(file=upload_file_mock, user_id="test-user-123")
+
+
+@pytest.mark.asyncio
+async def test_upload_file_size_limit_exceeded():
+    """Test file upload when file size exceeds the limit."""
+    # Create a file that exceeds the default 256MB limit
+    large_file_content = b"x" * (257 * 1024 * 1024)  # 257MB
+    file_obj = BytesIO(large_file_content)
+    upload_file_mock = UploadFile(
+        filename="large_file.txt",
+        file=file_obj,
+        headers=starlette.datastructures.Headers({"content-type": "text/plain"}),
+    )
+
+    upload_file_mock.read = AsyncMock(return_value=large_file_content)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await upload_file(file=upload_file_mock, user_id="test-user-123")
+
+    assert exc_info.value.status_code == 400
+    assert "exceeds the maximum allowed size of 256MB" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_upload_file_gcs_not_configured_fallback():
+    """Test file upload fallback to base64 when GCS is not configured."""
+    file_content = b"test file content"
+    file_obj = BytesIO(file_content)
+    upload_file_mock = UploadFile(
+        filename="test.txt",
+        file=file_obj,
+        headers=starlette.datastructures.Headers({"content-type": "text/plain"}),
+    )
+
+    with patch("backend.server.routers.v1.scan_content_safe") as mock_scan, patch(
+        "backend.server.routers.v1.get_cloud_storage_handler"
+    ) as mock_handler_getter:
+
+        mock_scan.return_value = None
+        mock_handler = AsyncMock()
+        mock_handler.config.gcs_bucket_name = ""  # Simulate no GCS bucket configured
+        mock_handler_getter.return_value = mock_handler
+
+        upload_file_mock.read = AsyncMock(return_value=file_content)
+
+        result = await upload_file(file=upload_file_mock, user_id="test-user-123")
+
+        # Verify fallback behavior
+        assert result.file_name == "test.txt"
+        assert result.size == len(file_content)
+        assert result.content_type == "text/plain"
+        assert result.expires_in_hours == 24
+
+        # Verify file_uri is base64 data URI
+        expected_data_uri = "data:text/plain;base64,dGVzdCBmaWxlIGNvbnRlbnQ="
+        assert result.file_uri == expected_data_uri
+
+        # Verify virus scan was called
+        mock_scan.assert_called_once_with(file_content, filename="test.txt")
+
+        # Verify cloud storage methods were NOT called
+        mock_handler.store_file.assert_not_called()

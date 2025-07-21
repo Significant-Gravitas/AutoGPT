@@ -120,7 +120,9 @@ export class MonitorPage extends BasePage {
   async listRuns(filter?: Agent): Promise<Run[]> {
     console.log(`listing runs`);
     // Wait for the runs table to be loaded - look for table header "Agent"
-    await this.page.locator("[data-testid='flow-runs-list-body']").waitFor();
+    await this.page.locator("[data-testid='flow-runs-list-body']").waitFor({
+      timeout: 10000,
+    });
 
     // Get all run rows
     const rows = await this.page
