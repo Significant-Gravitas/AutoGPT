@@ -34,10 +34,19 @@ Make sure you have Node.js 16.10+ installed. Corepack is included with Node.js b
    pnpm i
    ```
 
-3. **Start the development server**:
+3. **Start the backend** (required for API query generation):
+
+   ```bash
+   cd .. && docker compose up -d
+   ```
+
+4. **Start the development server**:
+
    ```bash
    pnpm dev
    ```
+
+   The `dev` command automatically fetches the latest OpenAPI spec from the backend and generates the API client before starting the Next.js development server. This ensures the frontend queries are always in sync with the backend API.
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
@@ -45,9 +54,10 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 ### Subsequent Runs
 
-For subsequent development sessions, you only need to run:
+For subsequent development sessions, you need to ensure the backend is running and then start the frontend:
 
 ```bash
+cd autogpt_platform && docker compose up -d
 pnpm dev
 ```
 
@@ -55,7 +65,7 @@ Every time a new Front-end dependency is added by you or others, you will need t
 
 ### Available Scripts
 
-- `pnpm dev` - Start development server
+- `pnpm dev` - Start development server with automatic API client generation
 - `pnpm build` - Build for production
 - `pnpm start` - Start production server
 - `pnpm lint` - Run ESLint and Prettier checks
@@ -72,7 +82,7 @@ This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-opti
 ## 🔄 Data Fetching Strategy
 
 > [!NOTE]
-> You don't need to run the OpenAPI commands below to run the Front-end. You will only need to run them when adding or modifying endpoints on the Backend API and wanting to use those on the Frontend.
+> The API client is automatically generated when you run `pnpm dev` (requires backend to be running). You only need to run the manual OpenAPI commands below if you want to generate the client separately or if you're working with a modified backend API that isn't running locally.
 
 This project uses an auto-generated API client powered by [**Orval**](https://orval.dev/), which creates type-safe API clients from OpenAPI specifications.
 
