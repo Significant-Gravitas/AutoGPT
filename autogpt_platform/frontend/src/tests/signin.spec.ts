@@ -31,7 +31,7 @@ test("check the navigation when logged out", async ({ page }) => {
 test("user can login successfully", async ({ page }) => {
   const testUser = await getTestUser();
   const loginPage = new LoginPage(page);
-  const { getId, getButton, getText, getRole } = getSelectors(page);
+  const { getId, getButton, getRole } = getSelectors(page);
 
   await loginPage.login(testUser.email, testUser.password);
   await hasUrl(page, "/marketplace");
@@ -44,8 +44,11 @@ test("user can login successfully", async ({ page }) => {
   const accountMenuPopover = getRole("dialog");
   await isVisible(accountMenuPopover);
 
-  const username = testUser.email.split("@")[0];
-  await isVisible(getText(username));
+  const accountMenuUserEmail = getId("account-menu-user-email");
+  await isVisible(accountMenuUserEmail);
+  await test
+    .expect(accountMenuUserEmail)
+    .toHaveText(testUser.email.split("@")[0].toLowerCase());
 
   const logoutBtn = getButton("Log out");
   await isVisible(logoutBtn);
