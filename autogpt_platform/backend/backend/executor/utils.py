@@ -20,6 +20,7 @@ from backend.data.block import (
 )
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.cost import BlockCostType
+from backend.data.db import prisma
 from backend.data.execution import (
     AsyncRedisExecutionEventBus,
     ExecutionStatus,
@@ -684,7 +685,6 @@ def create_execution_queue_config() -> RabbitMQConfig:
 async def stop_graph_execution(
     user_id: str,
     graph_exec_id: str,
-    use_db_query: bool = True,
     wait_timeout: float = 15.0,
 ):
     """
@@ -695,7 +695,7 @@ async def stop_graph_execution(
     3. Update execution statuses in DB and set `error` outputs to `"TERMINATED"`.
     """
     queue_client = await get_async_execution_queue()
-    db = execution_db if use_db_query else get_db_async_client()
+    db = execution_db if prisma.is_connected() else get_db_async_client()
     await queue_client.publish_message(
         routing_key="",
         message=CancelExecutionEvent(graph_exec_id=graph_exec_id).model_dump_json(),
@@ -782,7 +782,6 @@ async def add_graph_execution(
     graph_version: Optional[int] = None,
     graph_credentials_inputs: Optional[dict[str, CredentialsMetaInput]] = None,
     nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
-    use_db_query: bool = True,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
@@ -801,8 +800,12 @@ async def add_graph_execution(
     Raises:
         ValueError: If the graph is not found or if there are validation errors.
     """
-    gdb = graph_db if use_db_query else get_db_async_client()
-    edb = execution_db if use_db_query else get_db_async_client()
+    if prisma.is_connected():
+        gdb = graph_db
+        edb = execution_db
+    else:
+        gdb = get_db_async_client()
+        edb = get_db_async_client()
 
     graph: GraphModel | None = await gdb.get_graph(
         graph_id=graph_id,

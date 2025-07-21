@@ -271,8 +271,7 @@ function ResetPasswordContent() {
               />
 
               {/* Turnstile CAPTCHA Component for reset email */}
-              {!sendEmailTurnstile.shouldRender &&
-              !sendEmailTurnstile.verified ? (
+              {!sendEmailTurnstile.verified ? (
                 <Turnstile
                   key={sendEmailCaptchaKey}
                   siteKey={sendEmailTurnstile.siteKey}
