@@ -16,7 +16,7 @@ from backend.blocks.ideogram import (
     StyleType,
     UpscaleOption,
 )
-from backend.data.graph import Graph
+from backend.data.graph import BaseGraph
 from backend.data.model import CredentialsMetaInput, ProviderName
 from backend.integrations.credentials_store import ideogram_credentials
 from backend.util.request import Requests
@@ -34,14 +34,14 @@ class ImageStyle(str, Enum):
     DIGITAL_ART = "digital art"
 
 
-async def generate_agent_image(agent: Graph | AgentGraph) -> io.BytesIO:
+async def generate_agent_image(agent: BaseGraph | AgentGraph) -> io.BytesIO:
     if settings.config.use_agent_image_generation_v2:
         return await generate_agent_image_v2(graph=agent)
     else:
         return await generate_agent_image_v1(agent=agent)
 
 
-async def generate_agent_image_v2(graph: Graph | AgentGraph) -> io.BytesIO:
+async def generate_agent_image_v2(graph: BaseGraph | AgentGraph) -> io.BytesIO:
     """
     Generate an image for an agent using Ideogram model.
     Returns:
@@ -99,7 +99,7 @@ async def generate_agent_image_v2(graph: Graph | AgentGraph) -> io.BytesIO:
     return io.BytesIO(response.content)
 
 
-async def generate_agent_image_v1(agent: Graph | AgentGraph) -> io.BytesIO:
+async def generate_agent_image_v1(agent: BaseGraph | AgentGraph) -> io.BytesIO:
     """
     Generate an image for an agent using Flux model via Replicate API.
 
