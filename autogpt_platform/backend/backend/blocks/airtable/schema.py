@@ -13,6 +13,7 @@ from backend.sdk import (
     SchemaField,
 )
 
+from ._api import TableFieldType, create_field, create_table, update_field, update_table
 from ._config import airtable
 
 
@@ -70,12 +71,10 @@ class AirtableCreateTableBlock(Block):
             description="Airtable API credentials"
         )
         base_id: str = SchemaField(description="The Airtable base ID")
-        table_definition: dict = SchemaField(
-            description="Table definition with name, description, fields, and views",
-            default={
-                "name": "New Table",
-                "fields": [{"name": "Name", "type": "singleLineText"}],
-            },
+        table_name: str = SchemaField(description="The name of the table to create")
+        table_fields: list[dict] = SchemaField(
+            description="Table fields with name, type, and options",
+            default=[{"name": "Name", "type": "singleLineText"}],
         )
 
     class Output(BlockSchema):
@@ -94,16 +93,12 @@ class AirtableCreateTableBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        api_key = credentials.api_key.get_secret_value()
-
-        # Create table
-        response = await Requests().post(
-            f"https://api.airtable.com/v0/meta/bases/{input_data.base_id}/tables",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json=input_data.table_definition,
+        table_data = await create_table(
+            credentials,
+            input_data.base_id,
+            input_data.table_name,
+            input_data.table_fields,
         )
-
-        table_data = response.json()
 
         yield "table", table_data
         yield "table_id", table_data.get("id", "")
@@ -120,8 +115,14 @@ class AirtableUpdateTableBlock(Block):
         )
         base_id: str = SchemaField(description="The Airtable base ID")
         table_id: str = SchemaField(description="The table ID to update")
-        patch: dict = SchemaField(
-            description="Properties to update (name, description)", default={}
+        table_name: str | None = SchemaField(
+            description="The name of the table to update", default=None
+        )
+        table_description: str | None = SchemaField(
+            description="The description of the table to update", default=None
+        )
+        date_dependency: dict | None = SchemaField(
+            description="The date dependency of the table to update", default=None
         )
 
     class Output(BlockSchema):
@@ -139,63 +140,19 @@ class AirtableUpdateTableBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        api_key = credentials.api_key.get_secret_value()
-
-        # Update table
-        response = await Requests().patch(
-            f"https://api.airtable.com/v0/meta/bases/{input_data.base_id}/tables/{input_data.table_id}",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json=input_data.patch,
+        table_data = await update_table(
+            credentials,
+            input_data.base_id,
+            input_data.table_id,
+            input_data.table_name,
+            input_data.table_description,
+            input_data.date_dependency,
         )
-
-        table_data = response.json()
 
         yield "table", table_data
 
 
-class AirtableDeleteTableBlock(Block):
-    """
-    Deletes a table from an Airtable base.
-    """
-
-    class Input(BlockSchema):
-        credentials: CredentialsMetaInput = airtable.credentials_field(
-            description="Airtable API credentials"
-        )
-        base_id: str = SchemaField(description="The Airtable base ID")
-        table_id: str = SchemaField(description="The table ID to delete")
-
-    class Output(BlockSchema):
-        deleted: bool = SchemaField(
-            description="Confirmation that the table was deleted"
-        )
-
-    def __init__(self):
-        super().__init__(
-            id="6b96c196-d0ad-4fb2-981f-7a330549bc22",
-            description="Delete a table from an Airtable base",
-            categories={BlockCategory.DATA},
-            input_schema=self.Input,
-            output_schema=self.Output,
-        )
-
-    async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
-    ) -> BlockOutput:
-        api_key = credentials.api_key.get_secret_value()
-
-        # Delete table
-        response = await Requests().delete(
-            f"https://api.airtable.com/v0/meta/bases/{input_data.base_id}/tables/{input_data.table_id}",
-            headers={"Authorization": f"Bearer {api_key}"},
-        )
-
-        deleted = response.status in [200, 204]
-
-        yield "deleted", deleted
-
-
-class AirtableAddFieldBlock(Block):
+class AirtableCreateFieldBlock(Block):
     """
     Adds a new field (column) to an existing Airtable table.
     """
@@ -206,9 +163,17 @@ class AirtableAddFieldBlock(Block):
         )
         base_id: str = SchemaField(description="The Airtable base ID")
         table_id: str = SchemaField(description="The table ID to add field to")
-        field_definition: dict = SchemaField(
-            description="Field definition with name, type, and options",
-            default={"name": "New Field", "type": "singleLineText"},
+        field_type: TableFieldType = SchemaField(
+            description="The type of the field to create",
+            default=TableFieldType.SINGLE_LINE_TEXT,
+            advanced=False,
+        )
+        name: str = SchemaField(description="The name of the field to create")
+        description: str | None = SchemaField(
+            description="The description of the field to create", default=None
+        )
+        options: dict[str, str] | None = SchemaField(
+            description="The options of the field to create", default=None
         )
 
     class Output(BlockSchema):
@@ -227,16 +192,13 @@ class AirtableAddFieldBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        api_key = credentials.api_key.get_secret_value()
-
-        # Add field
-        response = await Requests().post(
-            f"https://api.airtable.com/v0/meta/bases/{input_data.base_id}/tables/{input_data.table_id}/fields",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json=input_data.field_definition,
+        field_data = await create_field(
+            credentials,
+            input_data.base_id,
+            input_data.table_id,
+            input_data.field_type,
+            input_data.name,
         )
-
-        field_data = response.json()
 
         yield "field", field_data
         yield "field_id", field_data.get("id", "")
@@ -254,7 +216,14 @@ class AirtableUpdateFieldBlock(Block):
         base_id: str = SchemaField(description="The Airtable base ID")
         table_id: str = SchemaField(description="The table ID containing the field")
         field_id: str = SchemaField(description="The field ID to update")
-        patch: dict = SchemaField(description="Field properties to update", default={})
+        name: str | None = SchemaField(
+            description="The name of the field to update", default=None, advanced=False
+        )
+        description: str | None = SchemaField(
+            description="The description of the field to update",
+            default=None,
+            advanced=False,
+        )
 
     class Output(BlockSchema):
         field: dict = SchemaField(description="Updated field object")
@@ -271,58 +240,13 @@ class AirtableUpdateFieldBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        api_key = credentials.api_key.get_secret_value()
-
-        # Update field
-        response = await Requests().patch(
-            f"https://api.airtable.com/v0/meta/bases/{input_data.base_id}/tables/{input_data.table_id}/fields/{input_data.field_id}",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json=input_data.patch,
+        field_data = await update_field(
+            credentials,
+            input_data.base_id,
+            input_data.table_id,
+            input_data.field_id,
+            input_data.name,
+            input_data.description,
         )
-
-        field_data = response.json()
 
         yield "field", field_data
-
-
-class AirtableDeleteFieldBlock(Block):
-    """
-    Deletes a field from an Airtable table.
-    """
-
-    class Input(BlockSchema):
-        credentials: CredentialsMetaInput = airtable.credentials_field(
-            description="Airtable API credentials"
-        )
-        base_id: str = SchemaField(description="The Airtable base ID")
-        table_id: str = SchemaField(description="The table ID containing the field")
-        field_id: str = SchemaField(description="The field ID to delete")
-
-    class Output(BlockSchema):
-        deleted: bool = SchemaField(
-            description="Confirmation that the field was deleted"
-        )
-
-    def __init__(self):
-        super().__init__(
-            id="ca6ebacb-be8b-4c54-80a3-1fb519ad51c6",
-            description="Delete a field from an Airtable table",
-            categories={BlockCategory.DATA},
-            input_schema=self.Input,
-            output_schema=self.Output,
-        )
-
-    async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
-    ) -> BlockOutput:
-        api_key = credentials.api_key.get_secret_value()
-
-        # Delete field
-        response = await Requests().delete(
-            f"https://api.airtable.com/v0/meta/bases/{input_data.base_id}/tables/{input_data.table_id}/fields/{input_data.field_id}",
-            headers={"Authorization": f"Bearer {api_key}"},
-        )
-
-        deleted = response.status in [200, 204]
-
-        yield "deleted", deleted
