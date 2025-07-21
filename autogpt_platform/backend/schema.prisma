@@ -411,6 +411,7 @@ model AgentNodeExecutionInputOutput {
   @@index([referencedByOutputExecId])
   // Composite index for `upsert_execution_input`.
   @@index([name, time])
+  @@index([agentPresetId])
 }
 
 model AgentNodeExecutionKeyValueData {
