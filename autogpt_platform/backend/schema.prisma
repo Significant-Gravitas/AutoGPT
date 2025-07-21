@@ -599,7 +599,11 @@ view Creator {
 
   // Materialized views used (refreshed every 15 minutes via pg_cron):
   // - mv_agent_run_counts - Pre-aggregated agent execution counts by agentGraphId
+  //   * idx_mv_agent_run_counts (UNIQUE on agentGraphId) - Primary lookup
   // - mv_review_stats - Pre-aggregated review statistics (count, avg rating) by storeListingId
+  //   * idx_mv_review_stats (UNIQUE on storeListingId) - Primary lookup
+  //   * idx_mv_review_stats_rating (avg_rating DESC) - Sort by rating performance
+  //   * idx_mv_review_stats_count (review_count DESC) - Sort by review count performance
   //
   // Query strategy: Uses CTEs to efficiently aggregate creator statistics leveraging materialized views
 }
@@ -626,7 +630,11 @@ view StoreAgent {
 
   // Materialized views used (refreshed every 15 minutes via pg_cron):
   // - mv_agent_run_counts - Pre-aggregated agent execution counts by agentGraphId
+  //   * idx_mv_agent_run_counts (UNIQUE on agentGraphId) - Primary lookup
   // - mv_review_stats - Pre-aggregated review statistics (count, avg rating) by storeListingId
+  //   * idx_mv_review_stats (UNIQUE on storeListingId) - Primary lookup
+  //   * idx_mv_review_stats_rating (avg_rating DESC) - Sort by rating performance
+  //   * idx_mv_review_stats_count (review_count DESC) - Sort by review count performance
   //
   // Query strategy: Uses CTE for version aggregation and joins with materialized views for performance
 }

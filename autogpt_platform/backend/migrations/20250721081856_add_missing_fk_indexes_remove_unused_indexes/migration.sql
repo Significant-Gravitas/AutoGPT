@@ -94,6 +94,12 @@ CREATE INDEX "StoreListing_agentGraphId_agentGraphVersion_idx" ON "StoreListing"
 -- CreateIndex
 CREATE INDEX "StoreListingReview_reviewByUserId_idx" ON "StoreListingReview"("reviewByUserId");
 
+-- CreateIndex (Materialized View Performance Indexes)
+CREATE INDEX IF NOT EXISTS "idx_mv_review_stats_rating" ON "mv_review_stats" ("avg_rating" DESC);
+
+-- CreateIndex
+CREATE INDEX IF NOT EXISTS "idx_mv_review_stats_count" ON "mv_review_stats" ("review_count" DESC);
+
 -- RenameIndex (only if exists)
 DO $$
 BEGIN
