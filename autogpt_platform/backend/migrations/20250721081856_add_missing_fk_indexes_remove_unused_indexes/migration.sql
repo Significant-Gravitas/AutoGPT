@@ -61,6 +61,9 @@ DROP INDEX IF EXISTS "idx_store_listing_approved";
 -- DropIndex
 DROP INDEX IF EXISTS "idx_slv_categories_gin";
 
+-- DropIndex
+DROP INDEX IF EXISTS "idx_profile_user";
+
 -- CreateIndex
 CREATE INDEX "APIKey_prefix_name_idx" ON "APIKey"("prefix", "name");
 
