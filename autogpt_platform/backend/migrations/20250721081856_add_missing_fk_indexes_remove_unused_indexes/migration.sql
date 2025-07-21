@@ -1,38 +1,38 @@
 -- DropIndex
-DROP INDEX "APIKey_key_idx";
+DROP INDEX IF EXISTS "APIKey_key_idx";
 
 -- DropIndex
-DROP INDEX "APIKey_prefix_idx";
+DROP INDEX IF EXISTS "APIKey_prefix_idx";
 
 -- DropIndex
-DROP INDEX "APIKey_status_idx";
+DROP INDEX IF EXISTS "APIKey_status_idx";
 
 -- DropIndex
-DROP INDEX "idx_agent_graph_execution_agent";
+DROP INDEX IF EXISTS "idx_agent_graph_execution_agent";
 
 -- DropIndex
-DROP INDEX "AnalyticsDetails_type_idx";
+DROP INDEX IF EXISTS "AnalyticsDetails_type_idx";
 
 -- DropIndex
-DROP INDEX "AnalyticsMetrics_userId_idx";
+DROP INDEX IF EXISTS "AnalyticsMetrics_userId_idx";
 
 -- DropIndex
-DROP INDEX "IntegrationWebhook_userId_idx";
+DROP INDEX IF EXISTS "IntegrationWebhook_userId_idx";
 
 -- DropIndex
-DROP INDEX "Profile_username_idx";
+DROP INDEX IF EXISTS "Profile_username_idx";
 
 -- DropIndex
-DROP INDEX "idx_store_listing_review_version";
+DROP INDEX IF EXISTS "idx_store_listing_review_version";
 
 -- DropIndex
-DROP INDEX "User_email_idx";
+DROP INDEX IF EXISTS "User_email_idx";
 
 -- DropIndex
-DROP INDEX "User_id_idx";
+DROP INDEX IF EXISTS "User_id_idx";
 
 -- DropIndex
-DROP INDEX "UserOnboarding_userId_idx";
+DROP INDEX IF EXISTS "UserOnboarding_userId_idx";
 
 -- DropIndex
 DROP INDEX IF EXISTS "idx_store_listing_version_status";
@@ -91,5 +91,10 @@ CREATE INDEX "StoreListing_agentGraphId_agentGraphVersion_idx" ON "StoreListing"
 -- CreateIndex
 CREATE INDEX "StoreListingReview_reviewByUserId_idx" ON "StoreListingReview"("reviewByUserId");
 
--- RenameIndex
-ALTER INDEX "analyticsDetails" RENAME TO "AnalyticsDetails_userId_type_idx";
+-- RenameIndex (only if exists)
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'analyticsDetails') THEN
+        ALTER INDEX "analyticsDetails" RENAME TO "AnalyticsDetails_userId_type_idx";
+    END IF;
+END $$;
