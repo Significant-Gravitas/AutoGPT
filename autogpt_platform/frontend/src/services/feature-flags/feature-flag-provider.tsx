@@ -9,6 +9,7 @@ const clientId = process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
 const envEnabled = process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true";
 
 export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
+  console.log("LaunchDarklyProvider render");
   const { user } = useSupabase();
   const isCloud = getBehaveAs() === BehaveAs.CLOUD;
   const enabled = isCloud && envEnabled && clientId && user;
