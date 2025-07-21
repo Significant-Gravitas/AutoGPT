@@ -281,6 +281,20 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Whether to enable example blocks in production",
     )
 
+    cloud_storage_cleanup_interval_hours: int = Field(
+        default=6,
+        ge=1,
+        le=24,
+        description="Hours between cloud storage cleanup runs (1-24 hours)",
+    )
+
+    upload_file_size_limit_mb: int = Field(
+        default=256,
+        ge=1,
+        le=1024,
+        description="Maximum file size in MB for file uploads (1-1024 MB)",
+    )
+
     @field_validator("platform_base_url", "frontend_base_url")
     @classmethod
     def validate_platform_base_url(cls, v: str, info: ValidationInfo) -> str:
@@ -313,6 +327,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     trust_endpoints_for_requests: List[str] = Field(
         default_factory=list,
         description="A whitelist of trusted internal endpoints for the backend to make requests to.",
+    )
+
+    max_message_size_limit: int = Field(
+        default=16 * 1024 * 1024,  # 16 MB
+        description="Maximum message size limit for communication with the message bus",
     )
 
     backend_cors_allow_origins: List[str] = Field(default_factory=list)

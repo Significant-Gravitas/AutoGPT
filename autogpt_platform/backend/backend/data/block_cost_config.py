@@ -18,7 +18,8 @@ from backend.blocks.llm import (
     AITextSummarizerBlock,
     LlmModel,
 )
-from backend.blocks.replicate_flux_advanced import ReplicateFluxAdvancedModelBlock
+from backend.blocks.replicate.flux_advanced import ReplicateFluxAdvancedModelBlock
+from backend.blocks.replicate.replicate_block import ReplicateModelBlock
 from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
 from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.blocks.text_to_speech_block import UnrealTextToSpeechBlock
@@ -280,6 +281,18 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         )
     ],
     ReplicateFluxAdvancedModelBlock: [
+        BlockCost(
+            cost_amount=10,
+            cost_filter={
+                "credentials": {
+                    "id": replicate_credentials.id,
+                    "provider": replicate_credentials.provider,
+                    "type": replicate_credentials.type,
+                }
+            },
+        )
+    ],
+    ReplicateModelBlock: [
         BlockCost(
             cost_amount=10,
             cost_filter={

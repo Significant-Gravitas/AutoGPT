@@ -1,52 +1,47 @@
-import { test } from "./fixtures";
+import { LoginPage } from "./pages/login.page";
 import { ProfilePage } from "./pages/profile.page";
+import test, { expect } from "@playwright/test";
+import { getTestUser } from "./utils/auth";
+import { hasUrl } from "./utils/assertion";
 
-test.describe("Profile", () => {
-  let profilePage: ProfilePage;
+test.beforeEach(async ({ page }) => {
+  const loginPage = new LoginPage(page);
+  const testUser = await getTestUser();
 
-  test.beforeEach(async ({ page, loginPage, testUser }) => {
-    profilePage = new ProfilePage(page);
+  await page.goto("/login");
+  await loginPage.login(testUser.email, testUser.password);
+  await hasUrl(page, "/marketplace");
+});
 
-    // Start each test with login using worker auth
-    await page.goto("/login");
-    await loginPage.login(testUser.email, testUser.password);
-    await test.expect(page).toHaveURL("/marketplace");
-  });
+test("user can view their profile information", async ({ page }) => {
+  const profilePage = new ProfilePage(page);
 
-  test("user can view their profile information", async ({ page }) => {
-    await profilePage.navbar.clickProfileLink();
-    // workaround for #8788
-    // sleep for 10 seconds to allow page to load due to bug in our system
-    await page.waitForTimeout(10_000);
-    await page.reload();
-    await page.reload();
-    await test.expect(profilePage.isLoaded()).resolves.toBeTruthy();
-    await test.expect(page).toHaveURL(new RegExp("/profile"));
+  await profilePage.navbar.clickProfileLink();
 
-    // Verify email matches test worker's email
-    const displayedHandle = await profilePage.getDisplayedName();
-    test.expect(displayedHandle).not.toBeNull();
-    test.expect(displayedHandle).not.toBe("");
-    test.expect(displayedHandle).toBeDefined();
-  });
+  // workaround for #8788
+  // sleep for 10 seconds to allow page to load due to bug in our system
+  await page.waitForTimeout(10000);
+  await page.reload();
+  await page.reload();
+  await expect(profilePage.isLoaded()).resolves.toBeTruthy();
+  await hasUrl(page, new RegExp("/profile"));
 
-  test("profile navigation is accessible from navbar", async ({ page }) => {
-    await profilePage.navbar.clickProfileLink();
-    await test.expect(page).toHaveURL(new RegExp("/profile"));
-    await test.expect(profilePage.isLoaded()).resolves.toBeTruthy();
-  });
+  // Verify email matches test worker's email
+  const displayedHandle = await profilePage.getDisplayedName();
+  expect(displayedHandle).not.toBeNull();
+  expect(displayedHandle).not.toBe("");
+  expect(displayedHandle).toBeDefined();
+});
 
-  test("profile displays user Credential providers", async () => {
-    await profilePage.navbar.clickProfileLink();
+test("profile navigation is accessible from navbar", async ({ page }) => {
+  const profilePage = new ProfilePage(page);
 
-    // await test
-    //   .expect(page.getByTestId("profile-section-personal"))
-    //   .toBeVisible();
-    // await test
-    //   .expect(page.getByTestId("profile-section-settings"))
-    //   .toBeVisible();
-    // await test
-    //   .expect(page.getByTestId("profile-section-security"))
-    //   .toBeVisible();
-  });
+  await profilePage.navbar.clickProfileLink();
+  await hasUrl(page, new RegExp("/profile"));
+  await expect(profilePage.isLoaded()).resolves.toBeTruthy();
+});
+
+test("profile displays user Credential providers", async ({ page }) => {
+  const profilePage = new ProfilePage(page);
+  await profilePage.navbar.clickProfileLink();
 });

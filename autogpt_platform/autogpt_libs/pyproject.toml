@@ -11,19 +11,19 @@ python = ">=3.10,<4.0"
 colorama = "^0.4.6"
 expiringdict = "^1.2.2"
 google-cloud-logging = "^3.12.1"
-pydantic = "^2.11.4"
-pydantic-settings = "^2.9.1"
+pydantic = "^2.11.7"
+pydantic-settings = "^2.10.1"
 pyjwt = "^2.10.1"
-pytest-asyncio = "^0.26.0"
-pytest-mock = "^3.14.0"
-supabase = "^2.15.1"
-launchdarkly-server-sdk = "^9.11.1"
-fastapi = "^0.115.12"
-uvicorn = "^0.34.3"
+pytest-asyncio = "^1.1.0"
+pytest-mock = "^3.14.1"
+supabase = "^2.16.0"
+launchdarkly-server-sdk = "^9.12.0"
+fastapi = "^0.116.1"
+uvicorn = "^0.35.0"
 
 [tool.poetry.group.dev.dependencies]
 redis = "^5.2.1"
-ruff = "^0.12.2"
+ruff = "^0.12.3"
 
 [build-system]
 requires = ["poetry-core"]

@@ -49,6 +49,7 @@ export function AccountMenu({
       <PopoverContent
         id={popupId}
         className="flex flex-col items-start justify-start gap-4 rounded-[26px] bg-zinc-400/70 p-4 shadow backdrop-blur-2xl dark:bg-zinc-800/70"
+        data-testid="account-menu-popover"
       >
         {/* Header with avatar and user info */}
         <div className="inline-flex items-center justify-start gap-1 self-stretch">

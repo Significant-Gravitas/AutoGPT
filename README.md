@@ -49,6 +49,24 @@ We've moved to a fully maintained and regularly updated documentation site.
 
 This tutorial assumes you have Docker, VSCode, git and npm installed.
 
+---
+
+#### ⚡ Quick Setup with One-Line Script (Recommended for Local Hosting)
+
+Skip the manual steps and get started in minutes using our automatic setup script.
+
+For macOS/Linux:
+```
+curl -fsSL https://setup.agpt.co/install.sh -o install.sh && bash install.sh
+```
+
+For Windows (PowerShell):
+```
+powershell -c "iwr https://setup.agpt.co/install.bat -o install.bat; ./install.bat"
+```
+
+This will install dependencies, configure Docker, and launch your local instance — all in one go.
+
 ### 🧱 AutoGPT Frontend
 
 The AutoGPT frontend is where users interact with our powerful AI automation platform. It offers multiple ways to engage with and leverage our AI agents. This is the interface where you'll bring your AI automation ideas to life:

@@ -1105,7 +1105,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": { "$ref": "#/components/schemas/GraphModel" },
+                  "items": { "$ref": "#/components/schemas/GraphMeta" },
                   "type": "array",
                   "title": "Response Getv1List User Graphs"
                 }
@@ -1502,49 +1502,6 @@
       }
     },
     "/api/executions": {
-      "post": {
-        "tags": ["v1", "graphs"],
-        "summary": "Stop graph executions",
-        "operationId": "postV1Stop graph executions",
-        "parameters": [
-          {
-            "name": "graph_id",
-            "in": "query",
-            "required": true,
-            "schema": { "type": "string", "title": "Graph Id" }
-          },
-          {
-            "name": "graph_exec_id",
-            "in": "query",
-            "required": true,
-            "schema": { "type": "string", "title": "Graph Exec Id" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/GraphExecutionMeta"
-                  },
-                  "title": "Response Postv1Stop Graph Executions"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      },
       "get": {
         "tags": ["v1", "graphs"],
         "summary": "Get all executions",
@@ -1555,10 +1512,10 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/GraphExecutionMeta"
                   },
+                  "type": "array",
                   "title": "Response Getv1Get All Executions"
                 }
               }
@@ -3101,6 +3058,42 @@
         }
       }
     },
+    "/api/library/presets/setup-trigger": {
+      "post": {
+        "tags": ["v2", "presets"],
+        "summary": "Setup Trigger",
+        "description": "Sets up a webhook-triggered `LibraryAgentPreset` for a `LibraryAgent`.\nReturns the correspondingly created `LibraryAgentPreset` with `webhook_id` set.",
+        "operationId": "postV2SetupTrigger",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriggeredPresetSetupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryAgentPreset" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/library/presets/{preset_id}/execute": {
       "post": {
         "tags": ["v2", "presets", "presets"],
@@ -3474,55 +3467,6 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/LibraryAgent" }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/library/agents/{library_agent_id}/setup-trigger": {
-      "post": {
-        "tags": ["v2", "library", "private"],
-        "summary": "Setup Trigger",
-        "description": "Sets up a webhook-triggered `LibraryAgentPreset` for a `LibraryAgent`.\nReturns the correspondingly created `LibraryAgentPreset` with `webhook_id` set.",
-        "operationId": "postV2SetupTrigger",
-        "parameters": [
-          {
-            "name": "library_agent_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "ID of the library agent",
-              "title": "Library Agent Id"
-            },
-            "description": "ID of the library agent"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TriggeredPresetSetupParams"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/LibraryAgentPreset" }
               }
             }
           },
@@ -3924,10 +3868,21 @@
             "type": "object",
             "title": "Output Schema",
             "readOnly": true
+          },
+          "has_external_trigger": {
+            "type": "boolean",
+            "title": "Has External Trigger",
+            "readOnly": true
           }
         },
         "type": "object",
-        "required": ["name", "description", "input_schema", "output_schema"],
+        "required": [
+          "name",
+          "description",
+          "input_schema",
+          "output_schema",
+          "has_external_trigger"
+        ],
         "title": "BaseGraph"
       },
       "Body_postV1Callback": {
@@ -4496,6 +4451,68 @@
         ],
         "title": "GraphExecutionWithNodes"
       },
+      "GraphMeta": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "version": { "type": "integer", "title": "Version", "default": 1 },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "forked_from_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Forked From Id"
+          },
+          "forked_from_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Forked From Version"
+          },
+          "sub_graphs": {
+            "items": { "$ref": "#/components/schemas/BaseGraph-Output" },
+            "type": "array",
+            "title": "Sub Graphs",
+            "default": []
+          },
+          "user_id": { "type": "string", "title": "User Id" },
+          "input_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input Schema",
+            "readOnly": true
+          },
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Output Schema",
+            "readOnly": true
+          },
+          "has_external_trigger": {
+            "type": "boolean",
+            "title": "Has External Trigger",
+            "readOnly": true
+          },
+          "credentials_input_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Credentials Input Schema",
+            "readOnly": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "description",
+          "user_id",
+          "input_schema",
+          "output_schema",
+          "has_external_trigger",
+          "credentials_input_schema"
+        ],
+        "title": "GraphMeta"
+      },
       "GraphModel": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -4546,15 +4563,15 @@
             "title": "Output Schema",
             "readOnly": true
           },
+          "has_external_trigger": {
+            "type": "boolean",
+            "title": "Has External Trigger",
+            "readOnly": true
+          },
           "credentials_input_schema": {
             "additionalProperties": true,
             "type": "object",
             "title": "Credentials Input Schema",
-            "readOnly": true
-          },
-          "has_webhook_trigger": {
-            "type": "boolean",
-            "title": "Has Webhook Trigger",
             "readOnly": true
           }
         },
@@ -4565,8 +4582,8 @@
           "user_id",
           "input_schema",
           "output_schema",
-          "credentials_input_schema",
-          "has_webhook_trigger"
+          "has_external_trigger",
+          "credentials_input_schema"
         ],
         "title": "GraphModel"
       },
@@ -6241,7 +6258,7 @@
         "required": ["transactions", "next_transaction_time"],
         "title": "TransactionHistory"
       },
-      "TriggeredPresetSetupParams": {
+      "TriggeredPresetSetupRequest": {
         "properties": {
           "name": { "type": "string", "title": "Name" },
           "description": {
@@ -6249,6 +6266,8 @@
             "title": "Description",
             "default": ""
           },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
           "trigger_config": {
             "additionalProperties": true,
             "type": "object",
@@ -6263,8 +6282,8 @@
           }
         },
         "type": "object",
-        "required": ["name", "trigger_config"],
-        "title": "TriggeredPresetSetupParams"
+        "required": ["name", "graph_id", "graph_version", "trigger_config"],
+        "title": "TriggeredPresetSetupRequest"
       },
       "TurnstileVerifyRequest": {
         "properties": {

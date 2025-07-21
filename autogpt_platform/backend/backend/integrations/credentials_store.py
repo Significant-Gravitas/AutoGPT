@@ -3,18 +3,13 @@ import hashlib
 import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Optional
-
-from pydantic import SecretStr
-
-from backend.data.redis_client import get_redis_async
-
-if TYPE_CHECKING:
-    from backend.executor.database import DatabaseManagerAsyncClient
+from typing import Optional
 
 from autogpt_libs.utils.cache import thread_cached
 from autogpt_libs.utils.synchronize import AsyncRedisKeyedMutex
+from pydantic import SecretStr
 
+from backend.data.db import prisma
 from backend.data.model import (
     APIKeyCredentials,
     Credentials,
@@ -22,6 +17,7 @@ from backend.data.model import (
     OAuthState,
     UserIntegrations,
 )
+from backend.data.redis_client import get_redis_async
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -235,11 +231,16 @@ class IntegrationCredentialsStore:
 
     @property
     @thread_cached
-    def db_manager(self) -> "DatabaseManagerAsyncClient":
-        from backend.executor.database import DatabaseManagerAsyncClient
-        from backend.util.service import get_service_client
+    def db_manager(self):
+        if prisma.is_connected():
+            from backend.data import user
 
-        return get_service_client(DatabaseManagerAsyncClient)
+            return user
+        else:
+            from backend.executor.database import DatabaseManagerAsyncClient
+            from backend.util.service import get_service_client
+
+            return get_service_client(DatabaseManagerAsyncClient)
 
     # =============== USER-MANAGED CREDENTIALS =============== #
     async def add_creds(self, user_id: str, credentials: Credentials) -> None:

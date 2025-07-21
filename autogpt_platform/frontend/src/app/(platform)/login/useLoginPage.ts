@@ -20,6 +20,7 @@ export function useLoginPage() {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
   const isCloudEnv = getBehaveAs() === BehaveAs.CLOUD;
+  const isVercelPreview = process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
 
   const turnstile = useTurnstile({
     action: "login",
@@ -47,6 +48,17 @@ export function useLoginPage() {
   async function handleProviderLogin(provider: LoginProvider) {
     setIsGoogleLoading(true);
 
+    if (!turnstile.verified && !isVercelPreview) {
+      toast({
+        title: "Please complete the CAPTCHA challenge.",
+        variant: "info",
+      });
+
+      setIsGoogleLoading(false);
+      resetCaptcha();
+      return;
+    }
+
     try {
       const error = await providerLogin(provider);
       if (error) throw error;
@@ -65,10 +77,10 @@ export function useLoginPage() {
 
   async function handleLogin(data: z.infer<typeof loginFormSchema>) {
     setIsLoading(true);
-    if (!turnstile.verified) {
+    if (!turnstile.verified && !isVercelPreview) {
       toast({
         title: "Please complete the CAPTCHA challenge.",
-        variant: "default",
+        variant: "info",
       });
 
       setIsLoading(false);
