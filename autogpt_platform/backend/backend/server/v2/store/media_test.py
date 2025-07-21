@@ -1,5 +1,6 @@
 import io
 import unittest.mock
+from unittest.mock import AsyncMock
 
 import fastapi
 import pytest
@@ -21,15 +22,19 @@ def mock_settings(monkeypatch):
 
 @pytest.fixture
 def mock_storage_client(mocker):
-    mock_client = unittest.mock.MagicMock()
-    mock_bucket = unittest.mock.MagicMock()
-    mock_blob = unittest.mock.MagicMock()
+    # Mock the async gcloud.aio.storage.Storage client
+    mock_client = AsyncMock()
+    mock_client.upload = AsyncMock()
 
-    mock_client.bucket.return_value = mock_bucket
-    mock_bucket.blob.return_value = mock_blob
-    mock_blob.public_url = "http://test-url/media/laptop.jpeg"
+    # Mock the constructor to return our mock client
+    mocker.patch(
+        "backend.server.v2.store.media.async_storage.Storage", return_value=mock_client
+    )
 
-    mocker.patch("google.cloud.storage.Client", return_value=mock_client)
+    # Mock virus scanner to avoid actual scanning
+    mocker.patch(
+        "backend.server.v2.store.media.scan_content_safe", new_callable=AsyncMock
+    )
 
     return mock_client
 
@@ -46,10 +51,11 @@ async def test_upload_media_success(mock_settings, mock_storage_client):
 
     result = await backend.server.v2.store.media.upload_media("test-user", test_file)
 
-    assert result == "http://test-url/media/laptop.jpeg"
-    mock_bucket = mock_storage_client.bucket.return_value
-    mock_blob = mock_bucket.blob.return_value
-    mock_blob.upload_from_string.assert_called_once()
+    assert result.startswith(
+        "https://storage.googleapis.com/test-bucket/users/test-user/images/"
+    )
+    assert result.endswith(".jpeg")
+    mock_storage_client.upload.assert_called_once()
 
 
 async def test_upload_media_invalid_type(mock_settings, mock_storage_client):
@@ -62,9 +68,7 @@ async def test_upload_media_invalid_type(mock_settings, mock_storage_client):
     with pytest.raises(backend.server.v2.store.exceptions.InvalidFileTypeError):
         await backend.server.v2.store.media.upload_media("test-user", test_file)
 
-    mock_bucket = mock_storage_client.bucket.return_value
-    mock_blob = mock_bucket.blob.return_value
-    mock_blob.upload_from_string.assert_not_called()
+    mock_storage_client.upload.assert_not_called()
 
 
 async def test_upload_media_missing_credentials(monkeypatch):
@@ -92,10 +96,11 @@ async def test_upload_media_video_type(mock_settings, mock_storage_client):
 
     result = await backend.server.v2.store.media.upload_media("test-user", test_file)
 
-    assert result == "http://test-url/media/laptop.jpeg"
-    mock_bucket = mock_storage_client.bucket.return_value
-    mock_blob = mock_bucket.blob.return_value
-    mock_blob.upload_from_string.assert_called_once()
+    assert result.startswith(
+        "https://storage.googleapis.com/test-bucket/users/test-user/videos/"
+    )
+    assert result.endswith(".mp4")
+    mock_storage_client.upload.assert_called_once()
 
 
 async def test_upload_media_file_too_large(mock_settings, mock_storage_client):
@@ -132,7 +137,10 @@ async def test_upload_media_png_success(mock_settings, mock_storage_client):
     )
 
     result = await backend.server.v2.store.media.upload_media("test-user", test_file)
-    assert result == "http://test-url/media/laptop.jpeg"
+    assert result.startswith(
+        "https://storage.googleapis.com/test-bucket/users/test-user/images/"
+    )
+    assert result.endswith(".png")
 
 
 async def test_upload_media_gif_success(mock_settings, mock_storage_client):
@@ -143,7 +151,10 @@ async def test_upload_media_gif_success(mock_settings, mock_storage_client):
     )
 
     result = await backend.server.v2.store.media.upload_media("test-user", test_file)
-    assert result == "http://test-url/media/laptop.jpeg"
+    assert result.startswith(
+        "https://storage.googleapis.com/test-bucket/users/test-user/images/"
+    )
+    assert result.endswith(".gif")
 
 
 async def test_upload_media_webp_success(mock_settings, mock_storage_client):
@@ -154,7 +165,10 @@ async def test_upload_media_webp_success(mock_settings, mock_storage_client):
     )
 
     result = await backend.server.v2.store.media.upload_media("test-user", test_file)
-    assert result == "http://test-url/media/laptop.jpeg"
+    assert result.startswith(
+        "https://storage.googleapis.com/test-bucket/users/test-user/images/"
+    )
+    assert result.endswith(".webp")
 
 
 async def test_upload_media_webm_success(mock_settings, mock_storage_client):
@@ -165,7 +179,10 @@ async def test_upload_media_webm_success(mock_settings, mock_storage_client):
     )
 
     result = await backend.server.v2.store.media.upload_media("test-user", test_file)
-    assert result == "http://test-url/media/laptop.jpeg"
+    assert result.startswith(
+        "https://storage.googleapis.com/test-bucket/users/test-user/videos/"
+    )
+    assert result.endswith(".webm")
 
 
 async def test_upload_media_mismatched_signature(mock_settings, mock_storage_client):

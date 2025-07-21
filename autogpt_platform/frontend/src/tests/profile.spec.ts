@@ -20,7 +20,7 @@ test("user can view their profile information", async ({ page }) => {
 
   // workaround for #8788
   // sleep for 10 seconds to allow page to load due to bug in our system
-  await page.waitForTimeout(10_000);
+  await page.waitForTimeout(10000);
   await page.reload();
   await page.reload();
   await expect(profilePage.isLoaded()).resolves.toBeTruthy();

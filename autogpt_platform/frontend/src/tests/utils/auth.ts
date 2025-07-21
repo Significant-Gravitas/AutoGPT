@@ -42,6 +42,7 @@ export async function createTestUser(
         userEmail,
         userPassword,
         ignoreOnboarding,
+        false,
       );
       return testUser;
     } finally {
@@ -59,15 +60,33 @@ export async function createTestUsers(count: number): Promise<TestUser[]> {
   console.log(`👥 Creating ${count} test users...`);
 
   const users: TestUser[] = [];
+  let consecutiveFailures = 0;
 
   for (let i = 0; i < count; i++) {
     try {
       const user = await createTestUser();
       users.push(user);
+      consecutiveFailures = 0; // Reset failure counter on success
       console.log(`✅ Created user ${i + 1}/${count}: ${user.email}`);
+
+      // Small delay to prevent overwhelming the system
+      if (i < count - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
     } catch (error) {
+      consecutiveFailures++;
       console.error(`❌ Failed to create user ${i + 1}/${count}:`, error);
-      // Continue creating other users even if one fails
+
+      // If we have too many consecutive failures, stop trying
+      if (consecutiveFailures >= 3) {
+        console.error(
+          `⚠️ Stopping after ${consecutiveFailures} consecutive failures`,
+        );
+        break;
+      }
+
+      // Add a longer delay after failure to let system recover
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }
 

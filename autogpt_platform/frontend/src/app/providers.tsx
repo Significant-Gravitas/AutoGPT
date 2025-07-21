@@ -1,6 +1,6 @@
 "use client";
 
-import { LaunchDarklyProvider } from "@/components/feature-flag/feature-flag-provider";
+import { LaunchDarklyProvider } from "@/services/feature-flags/feature-flag-provider";
 import CredentialsProvider from "@/components/integrations/credentials-provider";
 import OnboardingProvider from "@/components/onboarding/onboarding-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";

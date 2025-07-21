@@ -304,6 +304,38 @@ export function useGetV2ListLibraryAgentsInfinite<
   return query;
 }
 
+/**
+ * @summary List Library Agents
+ */
+export const prefetchGetV2ListLibraryAgentsInfiniteQuery = async <
+  TData = Awaited<ReturnType<typeof getV2ListLibraryAgents>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  params?: GetV2ListLibraryAgentsParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<ReturnType<typeof getV2ListLibraryAgents>>,
+        TError,
+        TData,
+        QueryKey,
+        GetV2ListLibraryAgentsParams["page"]
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2ListLibraryAgentsInfiniteQueryOptions(
+    params,
+    options,
+  );
+
+  await queryClient.prefetchInfiniteQuery(queryOptions);
+
+  return queryClient;
+};
+
 export const getGetV2ListLibraryAgentsQueryOptions = <
   TData = Awaited<ReturnType<typeof getV2ListLibraryAgents>>,
   TError = HTTPValidationError,
@@ -449,6 +481,33 @@ export function useGetV2ListLibraryAgents<
 
   return query;
 }
+
+/**
+ * @summary List Library Agents
+ */
+export const prefetchGetV2ListLibraryAgentsQuery = async <
+  TData = Awaited<ReturnType<typeof getV2ListLibraryAgents>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  params?: GetV2ListLibraryAgentsParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2ListLibraryAgents>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2ListLibraryAgentsQueryOptions(params, options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * Add an agent from the marketplace to the user's library.
@@ -777,6 +836,36 @@ export function useGetV2GetLibraryAgent<
 
   return query;
 }
+
+/**
+ * @summary Get Library Agent
+ */
+export const prefetchGetV2GetLibraryAgentQuery = async <
+  TData = Awaited<ReturnType<typeof getV2GetLibraryAgent>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  libraryAgentId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2GetLibraryAgent>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2GetLibraryAgentQueryOptions(
+    libraryAgentId,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * Update the library agent with the given fields.
@@ -1271,6 +1360,38 @@ export function useGetV2GetLibraryAgentByGraphId<
 }
 
 /**
+ * @summary Get Library Agent By Graph Id
+ */
+export const prefetchGetV2GetLibraryAgentByGraphIdQuery = async <
+  TData = Awaited<ReturnType<typeof getV2GetLibraryAgentByGraphId>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  graphId: string,
+  params?: GetV2GetLibraryAgentByGraphIdParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2GetLibraryAgentByGraphId>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2GetLibraryAgentByGraphIdQueryOptions(
+    graphId,
+    params,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * Get Library Agent from Store Listing Version ID.
  * @summary Get Agent By Store ID
  */
@@ -1473,6 +1594,36 @@ export function useGetV2GetAgentByStoreId<
 
   return query;
 }
+
+/**
+ * @summary Get Agent By Store ID
+ */
+export const prefetchGetV2GetAgentByStoreIdQuery = async <
+  TData = Awaited<ReturnType<typeof getV2GetAgentByStoreId>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  storeListingVersionId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2GetAgentByStoreId>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2GetAgentByStoreIdQueryOptions(
+    storeListingVersionId,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * @summary Fork Library Agent

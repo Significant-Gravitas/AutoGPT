@@ -61,7 +61,7 @@ export async function runAgent(page: Page): Promise<void> {
 
 export async function waitForAgentPageLoad(page: Page): Promise<void> {
   await page.waitForURL(/.*\/library\/agents\/[^/]+/);
-  await page.waitForLoadState("networkidle");
+  await page.getByTestId("Run actions").isVisible();
 }
 
 export async function getAgentName(page: Page): Promise<string> {

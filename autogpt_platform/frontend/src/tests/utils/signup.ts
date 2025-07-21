@@ -9,6 +9,7 @@ export async function signupTestUser(
   email?: string,
   password?: string,
   ignoreOnboarding: boolean = true,
+  withAgent: boolean = false,
 ): Promise<TestUser> {
   const userEmail = email || faker.internet.email();
   const userPassword = password || faker.internet.password({ length: 12 });
@@ -74,15 +75,17 @@ export async function signupTestUser(
         .waitFor({ state: "visible", timeout: 10000 });
     }
 
-    // Create a dummy agent for each new user
-    const buildLink = getId("navbar-link-build");
-    await buildLink.click();
+    if (withAgent) {
+      // Create a dummy agent for each new user
+      const buildLink = getId("navbar-link-build");
+      await buildLink.click();
 
-    const blocksBtn = getId("blocks-control-blocks-button");
-    await isVisible(blocksBtn);
+      const blocksBtn = getId("blocks-control-blocks-button");
+      await isVisible(blocksBtn);
 
-    const buildPage = new BuildPage(page);
-    await buildPage.createDummyAgent();
+      const buildPage = new BuildPage(page);
+      await buildPage.createDummyAgent();
+    }
 
     const testUser: TestUser = {
       email: userEmail,
@@ -97,13 +100,6 @@ export async function signupTestUser(
   }
 }
 
-/**
- * Complete signup and navigate to marketplace
- * @param page - Playwright page object from MCP server
- * @param email - User email (optional, will generate if not provided)
- * @param password - User password (optional, will generate if not provided)
- * @returns Promise<TestUser> - Created user object
- */
 export async function signupAndNavigateToMarketplace(
   page: any,
   email?: string,
@@ -118,11 +114,6 @@ export async function signupAndNavigateToMarketplace(
   return testUser;
 }
 
-/**
- * Validate signup form behavior
- * @param page - Playwright page object from MCP server
- * @returns Promise<void>
- */
 export async function validateSignupForm(page: any): Promise<void> {
   console.log("🧪 Validating signup form...");
 
@@ -157,18 +148,10 @@ export async function validateSignupForm(page: any): Promise<void> {
   console.log("✅ Signup form validation completed");
 }
 
-/**
- * Generate unique test email
- * @returns string - Unique test email
- */
 export function generateTestEmail(): string {
   return `test.${Date.now()}.${Math.random().toString(36).substring(7)}@example.com`;
 }
 
-/**
- * Generate secure test password
- * @returns string - Secure test password
- */
 export function generateTestPassword(): string {
   return faker.internet.password({ length: 12 });
 }

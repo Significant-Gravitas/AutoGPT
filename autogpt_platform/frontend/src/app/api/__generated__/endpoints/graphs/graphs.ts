@@ -229,6 +229,32 @@ export function useGetV1ListUserGraphs<
 }
 
 /**
+ * @summary List user graphs
+ */
+export const prefetchGetV1ListUserGraphsQuery = async <
+  TData = Awaited<ReturnType<typeof getV1ListUserGraphs>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1ListUserGraphs>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1ListUserGraphsQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * @summary Create new graph
  */
 export type postV1CreateNewGraphResponse200 = {
@@ -579,6 +605,40 @@ export function useGetV1GetGraphVersion<
 }
 
 /**
+ * @summary Get graph version
+ */
+export const prefetchGetV1GetGraphVersionQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetGraphVersion>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  graphId: string,
+  version: number | null,
+  params?: GetV1GetGraphVersionParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetGraphVersion>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetGraphVersionQueryOptions(
+    graphId,
+    version,
+    params,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * @summary Get specific graph
  */
 export type getV1GetSpecificGraphResponse200 = {
@@ -799,6 +859,38 @@ export function useGetV1GetSpecificGraph<
 
   return query;
 }
+
+/**
+ * @summary Get specific graph
+ */
+export const prefetchGetV1GetSpecificGraphQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetSpecificGraph>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  graphId: string,
+  params?: GetV1GetSpecificGraphParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetSpecificGraph>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetSpecificGraphQueryOptions(
+    graphId,
+    params,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * @summary Delete graph permanently
@@ -1220,6 +1312,36 @@ export function useGetV1GetAllGraphVersions<
 
   return query;
 }
+
+/**
+ * @summary Get all graph versions
+ */
+export const prefetchGetV1GetAllGraphVersionsQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetAllGraphVersions>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  graphId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetAllGraphVersions>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetAllGraphVersionsQueryOptions(
+    graphId,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * @summary Set active graph version
@@ -1784,6 +1906,32 @@ export function useGetV1GetAllExecutions<
 }
 
 /**
+ * @summary Get all executions
+ */
+export const prefetchGetV1GetAllExecutionsQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetAllExecutions>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetAllExecutions>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetAllExecutionsQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * @summary Get graph executions
  */
 export type getV1GetGraphExecutionsResponse200 = {
@@ -1976,6 +2124,33 @@ export function useGetV1GetGraphExecutions<
 
   return query;
 }
+
+/**
+ * @summary Get graph executions
+ */
+export const prefetchGetV1GetGraphExecutionsQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetGraphExecutions>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  graphId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetGraphExecutions>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetGraphExecutionsQueryOptions(graphId, options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * @summary Get execution details
@@ -2190,6 +2365,38 @@ export function useGetV1GetExecutionDetails<
 
   return query;
 }
+
+/**
+ * @summary Get execution details
+ */
+export const prefetchGetV1GetExecutionDetailsQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetExecutionDetails>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  graphId: string,
+  graphExecId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetExecutionDetails>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetExecutionDetailsQueryOptions(
+    graphId,
+    graphExecId,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * @summary Delete graph execution

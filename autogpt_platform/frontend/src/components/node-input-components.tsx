@@ -79,7 +79,7 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
   className,
 }) => {
   object ||= ("default" in schema ? schema.default : null) ?? {};
-  return (
+  return schema.properties ? (
     <div className={cn(className, "w-full flex-col")}>
       {Object.entries(schema.properties).map(([propKey, propSchema]) => {
         const childKey = selfKey ? `${selfKey}.${propKey}` : propKey;
@@ -108,7 +108,7 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
         );
       })}
     </div>
-  );
+  ) : null;
 };
 
 export default NodeObjectInputTree;
@@ -644,7 +644,7 @@ const NodeOneOfDiscriminatorField: FC<{
         </SelectContent>
       </Select>
 
-      {chosenVariantSchema && (
+      {chosenVariantSchema && chosenVariantSchema.properties && (
         <div className={cn(className, "w-full flex-col")}>
           {Object.entries(chosenVariantSchema.properties).map(
             ([someKey, childSchema]) => {

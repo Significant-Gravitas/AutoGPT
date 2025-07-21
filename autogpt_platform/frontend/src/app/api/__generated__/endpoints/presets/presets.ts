@@ -244,6 +244,33 @@ export function useGetV2ListPresets<
 }
 
 /**
+ * @summary List presets
+ */
+export const prefetchGetV2ListPresetsQuery = async <
+  TData = Awaited<ReturnType<typeof getV2ListPresets>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  params: GetV2ListPresetsParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2ListPresets>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2ListPresetsQueryOptions(params, options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * Create a new preset for the current user.
  * @summary Create a new preset
  */
@@ -553,6 +580,36 @@ export function useGetV2GetASpecificPreset<
 
   return query;
 }
+
+/**
+ * @summary Get a specific preset
+ */
+export const prefetchGetV2GetASpecificPresetQuery = async <
+  TData = Awaited<ReturnType<typeof getV2GetASpecificPreset>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  presetId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2GetASpecificPreset>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2GetASpecificPresetQueryOptions(
+    presetId,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * Update an existing preset by its ID.
