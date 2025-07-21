@@ -1,3 +1,5 @@
+"use client";
+
 import { LDProvider } from "launchdarkly-react-client-sdk";
 import { ReactNode } from "react";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
