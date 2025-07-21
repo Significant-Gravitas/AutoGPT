@@ -1,5 +1,5 @@
-import { LDProvider } from "launchdarkly-react-client-sdk";
-import { ReactNode } from "react";
+import { LDProvider, useLDClient } from "launchdarkly-react-client-sdk";
+import { ReactNode, useEffect } from "react";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { BehaveAs, getBehaveAs } from "@/lib/utils";
 // import { getServerUser } from "@/lib/supabase/server/getServerUser";
@@ -7,13 +7,36 @@ import { BehaveAs, getBehaveAs } from "@/lib/utils";
 const clientId = process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
 const envEnabled = process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true";
 
+// Inner component that uses the LD client to update user context
+function LaunchDarklyUpdater({ children }: { children: ReactNode }) {
+  const { user, isUserLoading } = useSupabase();
+  const ldClient = useLDClient();
+
+  useEffect(() => {
+    // When user loading completes and we have a user, identify them
+    if (!isUserLoading && user && ldClient) {
+      console.log("Identifying user in LaunchDarkly:", user.id);
+      const userContext = {
+        kind: "user" as const,
+        key: user.id,
+        email: user.email,
+        anonymous: false,
+        custom: {
+          role: user.role,
+        },
+      };
+      ldClient.identify(userContext);
+    }
+  }, [user, isUserLoading, ldClient]);
+
+  return <>{children}</>;
+}
+
 export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
   console.log("LaunchDarklyProvider render");
-  // const { user: userS } = await getServerUser();
   const { user: userS, supabase } = useSupabase();
   const isCloud = getBehaveAs() === BehaveAs.CLOUD;
-  const enabled = isCloud && envEnabled && clientId && userS;
-  const user = userS;
+  const enabled = isCloud && envEnabled && clientId;
 
   supabase?.auth.getUser().then(({ data: { user: userR } }) => {
     console.log(`user from supabase ${userR}`);
@@ -23,32 +46,26 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
     `ld status ${enabled} iscloud ${isCloud} envEnabled ${envEnabled} clientId ${clientId} user server ${userS} `,
   );
 
+  // If LaunchDarkly is not enabled for this environment, just render children
   if (!enabled) return <>{children}</>;
 
-  const userContext = user
-    ? {
-        kind: "user",
-        key: user.id,
-        email: user.email,
-        anonymous: false,
-        custom: {
-          role: user.role,
-        },
-      }
-    : {
-        kind: "user",
-        key: "anonymous",
-        anonymous: true,
-      };
-  console.log(`user context ${userContext}`);
+  // Always start with anonymous context
+  // The LaunchDarklyUpdater will identify the user once they're loaded
+  const initialContext = {
+    kind: "user" as const,
+    key: "anonymous",
+    anonymous: true,
+  };
+
+  console.log(`initial context ${JSON.stringify(initialContext)}`);
 
   return (
     <LDProvider
       clientSideID={clientId}
-      context={userContext}
+      context={initialContext}
       reactOptions={{ useCamelCaseFlagKeys: false }}
     >
-      {children}
+      <LaunchDarklyUpdater>{children}</LaunchDarklyUpdater>
     </LDProvider>
   );
 }
