@@ -3,7 +3,6 @@ import { ReactNode } from "react";
 // import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { BehaveAs, getBehaveAs } from "@/lib/utils";
 import { getServerUser } from "@/lib/supabase/server/getServerUser";
-import { getCurrentUser } from "@/lib/supabase/actions";
 
 const clientId = process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
 const envEnabled = process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true";
@@ -15,13 +14,13 @@ export async function LaunchDarklyProvider({
 }) {
   console.log("LaunchDarklyProvider render");
   const { user: userS } = await getServerUser();
-  const { user: userC } = await getCurrentUser();
+  // const { user: userSup } = useSupabase();
   const isCloud = getBehaveAs() === BehaveAs.CLOUD;
-  const enabled = isCloud && envEnabled && clientId && userS && userC;
+  const enabled = isCloud && envEnabled && clientId && userS;
   const user = userS;
 
   console.log(
-    `ld status ${enabled} iscloud ${isCloud} envEnabled ${envEnabled} clientId ${clientId} user ${userS} userC ${userC}`,
+    `ld status ${enabled} iscloud ${isCloud} envEnabled ${envEnabled} clientId ${clientId} user ${userS} `,
   );
 
   if (!enabled) return <>{children}</>;
