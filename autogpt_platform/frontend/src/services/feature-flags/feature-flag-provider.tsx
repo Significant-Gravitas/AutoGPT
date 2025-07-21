@@ -1,3 +1,4 @@
+"use client";
 import { LDProvider, useLDClient } from "launchdarkly-react-client-sdk";
 import { ReactNode, useEffect } from "react";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
@@ -62,7 +63,7 @@ function LaunchDarklyUpdater({ children }: { children: ReactNode }) {
 
 export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
   console.log("[LaunchDarklyProvider] Render started");
-  const { user: userS, supabase, isUserLoading } = useSupabase();
+  const { user: userS, isUserLoading } = useSupabase();
   const isCloud = getBehaveAs() === BehaveAs.CLOUD;
   const enabled = isCloud && envEnabled && clientId;
 
@@ -77,16 +78,6 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
     userId: userS?.id,
     userEmail: userS?.email,
     userRole: userS?.role,
-  });
-
-  // Async check for user from supabase
-  supabase?.auth.getUser().then(({ data: { user: userR }, error }) => {
-    console.log("[LaunchDarklyProvider] Supabase auth.getUser result:", {
-      hasUser: !!userR,
-      userId: userR?.id,
-      userEmail: userR?.email,
-      error: error?.message,
-    });
   });
 
   // If LaunchDarkly is not enabled for this environment, just render children
