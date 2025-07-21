@@ -150,6 +150,64 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           exitOnceUploaded: true
 
+  api-queries-type-check:
+    runs-on: ubuntu-latest
+    needs: setup
+    strategy:
+      fail-fast: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "21"
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          large-packages: false # slow
+          docker-images: false # limited benefit
+
+      - name: Copy default supabase .env
+        run: |
+          cp ../.env.example ../.env
+
+      - name: Copy backend .env
+        run: |
+          cp ../backend/.env.example ../backend/.env
+
+      - name: Run docker compose
+        run: |
+          docker compose -f ../docker-compose.yml up -d
+
+      - name: Restore dependencies cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: ${{ needs.setup.outputs.cache-key }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup .env
+        run: cp .env.example .env
+
+      - name: Generate API queries
+        run: pnpm generate:api-all
+
+      - name: Run type-check
+        run: pnpm type-check
+
   test:
     runs-on: ubuntu-latest
     needs: setup
