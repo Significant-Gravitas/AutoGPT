@@ -39,11 +39,13 @@ class FileStoreBlock(Block):
         input_data: Input,
         *,
         graph_exec_id: str,
+        user_id: str,
         **kwargs,
     ) -> BlockOutput:
         yield "file_out", await store_media_file(
             graph_exec_id=graph_exec_id,
             file=input_data.file_in,
+            user_id=user_id,
             return_content=input_data.base_64,
         )
 

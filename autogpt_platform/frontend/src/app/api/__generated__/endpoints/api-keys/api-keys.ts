@@ -212,6 +212,32 @@ export function useGetV1ListUserApiKeys<
 }
 
 /**
+ * @summary List user API keys
+ */
+export const prefetchGetV1ListUserApiKeysQuery = async <
+  TData = Awaited<ReturnType<typeof getV1ListUserApiKeys>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1ListUserApiKeys>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1ListUserApiKeysQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * Create a new API key
  * @summary Create new API key
  */
@@ -518,6 +544,33 @@ export function useGetV1GetSpecificApiKey<
 
   return query;
 }
+
+/**
+ * @summary Get specific API key
+ */
+export const prefetchGetV1GetSpecificApiKeyQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetSpecificApiKey>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  keyId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetSpecificApiKey>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetSpecificApiKeyQueryOptions(keyId, options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * Revoke an API key

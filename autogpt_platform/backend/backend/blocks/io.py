@@ -447,6 +447,7 @@ class AgentFileInputBlock(AgentInputBlock):
         input_data: Input,
         *,
         graph_exec_id: str,
+        user_id: str,
         **kwargs,
     ) -> BlockOutput:
         if not input_data.value:
@@ -455,6 +456,7 @@ class AgentFileInputBlock(AgentInputBlock):
         yield "result", await store_media_file(
             graph_exec_id=graph_exec_id,
             file=input_data.value,
+            user_id=user_id,
             return_content=input_data.base_64,
         )
 

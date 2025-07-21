@@ -1,6 +1,11 @@
 import { Page } from "@playwright/test";
 import { LoginPage } from "../pages/login.page";
-import { TestUser } from "../fixtures/test-user.fixture";
+
+type TestUser = {
+  email: string;
+  password: string;
+  id?: string;
+};
 
 /**
  * Utility functions for signin/authentication tests
