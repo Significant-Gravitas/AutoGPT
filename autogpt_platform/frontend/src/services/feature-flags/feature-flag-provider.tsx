@@ -1,23 +1,23 @@
-"use server";
 import { LDProvider } from "launchdarkly-react-client-sdk";
 import { ReactNode } from "react";
-// import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { BehaveAs, getBehaveAs } from "@/lib/utils";
-import { getServerUser } from "@/lib/supabase/server/getServerUser";
+// import { getServerUser } from "@/lib/supabase/server/getServerUser";
 
 const clientId = process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
 const envEnabled = process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true";
 
-export async function LaunchDarklyProvider({
-  children,
-}: {
-  children: ReactNode;
-}) {
+export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
   console.log("LaunchDarklyProvider render");
-  const { user: userS } = await getServerUser();
+  // const { user: userS } = await getServerUser();
+  const { user: userS, supabase } = useSupabase();
   const isCloud = getBehaveAs() === BehaveAs.CLOUD;
   const enabled = isCloud && envEnabled && clientId && userS;
   const user = userS;
+
+  supabase?.auth.getUser().then(({ data: { user: userR } }) => {
+    console.log(`user from supabase ${userR}`);
+  });
 
   console.log(
     `ld status ${enabled} iscloud ${isCloud} envEnabled ${envEnabled} clientId ${clientId} user server ${userS} `,
