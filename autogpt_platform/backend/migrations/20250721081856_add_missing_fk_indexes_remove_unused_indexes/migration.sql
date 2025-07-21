@@ -34,6 +34,33 @@ DROP INDEX "User_id_idx";
 -- DropIndex
 DROP INDEX "UserOnboarding_userId_idx";
 
+-- DropIndex
+DROP INDEX IF EXISTS "idx_store_listing_version_status";
+
+-- DropIndex  
+DROP INDEX IF EXISTS "idx_slv_agent";
+
+-- DropIndex
+DROP INDEX IF EXISTS "idx_store_listing_version_approved_listing";
+
+-- DropIndex
+DROP INDEX IF EXISTS "StoreListing_agentId_owningUserId_idx";
+
+-- DropIndex
+DROP INDEX IF EXISTS "StoreListing_isDeleted_isApproved_idx";
+
+-- DropIndex
+DROP INDEX IF EXISTS "StoreListing_isDeleted_idx";
+
+-- DropIndex
+DROP INDEX IF EXISTS "StoreListingVersion_agentId_agentVersion_isDeleted_idx";
+
+-- DropIndex
+DROP INDEX IF EXISTS "idx_store_listing_approved";
+
+-- DropIndex
+DROP INDEX IF EXISTS "idx_slv_categories_gin";
+
 -- CreateIndex
 CREATE INDEX "APIKey_prefix_name_idx" ON "APIKey"("prefix", "name");
 
