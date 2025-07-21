@@ -6,7 +6,7 @@ import hashlib
 import hmac
 import logging
 from enum import Enum
-from typing import Any, Tuple
+from typing import Tuple
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -15,6 +15,14 @@ from backend.sdk import (
     ProviderName,
     Requests,
     Webhook,
+    update_webhook,
+)
+
+from ._api import (
+    WebhookFilters,
+    WebhookSpecification,
+    create_webhook,
+    list_webhook_payloads,
 )
 
 logger = logging.getLogger(__name__)
@@ -29,7 +37,9 @@ class AirtableWebhookManager(BaseWebhooksManager):
         TABLE_CHANGE = "table_change"
 
     @classmethod
-    async def validate_payload(cls, webhook: Webhook, request) -> Tuple[dict, str]:
+    async def validate_payload(
+        cls, webhook: Webhook, request, credentials: Credentials | None
+    ) -> Tuple[dict, str]:
         """Validate incoming webhook payload and signature."""
         payload = await request.json()
 
@@ -41,9 +51,9 @@ class AirtableWebhookManager(BaseWebhooksManager):
                 body = await request.body()
 
                 # Calculate expected signature
-                expected_mac = hmac.new(
-                    mac_secret.encode(), body, hashlib.sha256
-                ).hexdigest()
+                mac_secret_decoded = mac_secret.encode()
+                hmac_obj = hmac.new(mac_secret_decoded, body, hashlib.sha256)
+                expected_mac = f"hmac-sha256={hmac_obj.hexdigest()}"
 
                 # Get signature from headers
                 signature = request.headers.get("X-Airtable-Content-MAC")
@@ -51,9 +61,33 @@ class AirtableWebhookManager(BaseWebhooksManager):
                 if signature and not hmac.compare_digest(signature, expected_mac):
                     raise ValueError("Invalid webhook signature")
 
-        # Airtable sends the cursor in the payload
+        # Validate payload structure
+        required_fields = ["base", "webhook", "timestamp"]
+        if not all(field in payload for field in required_fields):
+            raise ValueError("Invalid webhook payload structure")
+
+        if "id" not in payload["base"] or "id" not in payload["webhook"]:
+            raise ValueError("Missing required IDs in webhook payload")
+
+        # get payload request parameters
+        base_id = webhook.config.get("base_id")
+        cursor = webhook.config.get("cursor")
+        webhook_id = webhook.config.get("webhook_id")
+
+        assert base_id is not None
+        assert webhook_id is not None
+        assert credentials is not None
+
+        response = await list_webhook_payloads(credentials, base_id, webhook_id, cursor)
+
+        # update webhook config
+        await update_webhook(
+            webhook.id,
+            config={"base_id": base_id, "cursor": response.cursor},
+        )
+
         event_type = "notification"
-        return payload, event_type
+        return response.model_dump(), event_type
 
     async def _register_webhook(
         self,
@@ -68,8 +102,6 @@ class AirtableWebhookManager(BaseWebhooksManager):
         if not isinstance(credentials, APIKeyCredentials):
             raise ValueError("Airtable webhooks require API key credentials")
 
-        api_key = credentials.api_key.get_secret_value()
-
         # Parse resource to get base_id and table_id/name
         # Resource format: "{base_id}/{table_id_or_name}"
         parts = resource.split("/", 1)
@@ -79,35 +111,30 @@ class AirtableWebhookManager(BaseWebhooksManager):
         base_id, table_id_or_name = parts
 
         # Prepare webhook specification
-        specification: dict[str, Any] = {
-            "options": {
-                "filters": {
-                    "dataTypes": events or ["tableData", "tableFields", "tableMetadata"]
-                }
-            }
-        }
-        # If specific table is provided, add to specification
-        if table_id_or_name and table_id_or_name != "*":
-            specification["options"]["filters"]["recordChangeScope"] = table_id_or_name
-
-        requset_data = {"notificationUrl": ingress_url, "specification": specification}
-        # Create webhook
-        response = await Requests().post(
-            f"https://api.airtable.com/v0/bases/{base_id}/webhooks",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json=requset_data,
+        webhook_specification = WebhookSpecification(
+            filters=WebhookFilters(
+                dataTypes=events or ["tableData", "tableFields", "tableMetadata"],
+            )
         )
 
-        webhook_data = response.json()
+        # Create webhook
+        webhook_data = await create_webhook(
+            credentials=credentials,
+            base_id=base_id,
+            webhook_specification=webhook_specification,
+            notification_url=ingress_url,
+        )
+
         webhook_id = webhook_data["id"]
         mac_secret = webhook_data.get("macSecretBase64")
 
         return webhook_id, {
+            "webhook_id": webhook_id,
             "base_id": base_id,
             "table_id_or_name": table_id_or_name,
             "events": events,
             "mac_secret": mac_secret,
-            "cursor": 1,  # Start from cursor 1
+            "cursor": 1,
             "expiration_time": webhook_data.get("expirationTime"),
         }
 
@@ -120,11 +147,15 @@ class AirtableWebhookManager(BaseWebhooksManager):
 
         api_key = credentials.api_key.get_secret_value()
         base_id = webhook.config.get("base_id")
+        webhook_id = webhook.config.get("webhook_id")
 
         if not base_id:
             raise ValueError("Missing base_id in webhook metadata")
 
+        if not webhook_id:
+            raise ValueError("Missing webhook_id in webhook metadata")
+
         await Requests().delete(
-            f"https://api.airtable.com/v0/bases/{base_id}/webhooks/{webhook.provider_webhook_id}",
+            f"https://api.airtable.com/v0/bases/{base_id}/webhooks/{webhook_id}",
             headers={"Authorization": f"Bearer {api_key}"},
         )

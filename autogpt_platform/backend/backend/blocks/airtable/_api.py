@@ -2,7 +2,7 @@ from enum import Enum
 from logging import getLogger
 from typing import Any
 
-from backend.sdk import APIKeyCredentials, BaseModel, Requests
+from backend.sdk import BaseModel, Credentials, Requests
 
 logger = getLogger(__name__)
 
@@ -529,13 +529,11 @@ class AirtableTimeZones(str, Enum):
 
 
 async def create_table(
-    credentials: APIKeyCredentials,
+    credentials: Credentials,
     base_id: str,
     table_name: str,
     table_fields: list[dict],
 ) -> dict:
-    api_key = credentials.api_key.get_secret_value()
-
     for field in table_fields:
         assert field.get("name"), "Field name is required"
         assert (
@@ -545,7 +543,7 @@ async def create_table(
 
     response = await Requests().post(
         f"https://api.airtable.com/v0/meta/bases/{base_id}/tables",
-        headers={"Authorization": f"Bearer {api_key}"},
+        headers={"Authorization": credentials.auth_header()},
         json={
             "name": table_name,
             "fields": table_fields,
@@ -556,14 +554,13 @@ async def create_table(
 
 
 async def update_table(
-    credentials: APIKeyCredentials,
+    credentials: Credentials,
     base_id: str,
     table_id: str,
     table_name: str | None = None,
     table_description: str | None = None,
     date_dependency: dict | None = None,
 ) -> dict:
-    api_key = credentials.api_key.get_secret_value()
 
     assert (
         table_name or table_description or date_dependency
@@ -579,7 +576,7 @@ async def update_table(
 
     response = await Requests().patch(
         f"https://api.airtable.com/v0/meta/bases/{base_id}/tables/{table_id}",
-        headers={"Authorization": f"Bearer {api_key}"},
+        headers={"Authorization": credentials.auth_header()},
         json=params,
     )
 
@@ -587,7 +584,7 @@ async def update_table(
 
 
 async def create_field(
-    credentials: APIKeyCredentials,
+    credentials: Credentials,
     base_id: str,
     table_id: str,
     field_type: TableFieldType,
@@ -595,7 +592,6 @@ async def create_field(
     description: str | None = None,
     options: dict[str, str] | None = None,
 ) -> dict[str, str | dict[str, str]]:
-    api_key = credentials.api_key.get_secret_value()
 
     assert (
         field_type in TABLE_FIELD_TYPES
@@ -610,21 +606,21 @@ async def create_field(
 
     response = await Requests().post(
         f"https://api.airtable.com/v0/meta/bases/{base_id}/tables/{table_id}/fields",
-        headers={"Authorization": f"Bearer {api_key}"},
+        headers={"Authorization": credentials.auth_header()},
         json=params,
     )
     return response.json()
 
 
 async def update_field(
-    credentials: APIKeyCredentials,
+    credentials: Credentials,
     base_id: str,
     table_id: str,
     field_id: str,
     name: str | None = None,
     description: str | None = None,
 ) -> dict[str, str]:
-    api_key = credentials.api_key.get_secret_value()
+
     assert name or description, "At least one of name or description must be provided"
     params: dict[str, str | dict[str, str]] = {}
     if name:
@@ -634,7 +630,7 @@ async def update_field(
 
     response = await Requests().patch(
         f"https://api.airtable.com/v0/meta/bases/{base_id}/tables/{table_id}/fields/{field_id}",
-        headers={"Authorization": f"Bearer {api_key}"},
+        headers={"Authorization": credentials.auth_header()},
         json=params,
     )
     return response.json()
@@ -646,7 +642,7 @@ async def update_field(
 
 
 async def list_records(
-    credentials: APIKeyCredentials,
+    credentials: Credentials,
     base_id: str,
     table_id_or_name: str,
     # Query parameters
@@ -663,7 +659,7 @@ async def list_records(
     return_fields_by_field_id: bool | None = None,
     record_metadata: list[str] | None = None,
 ) -> dict[str, list[dict[str, dict[str, str]]]]:
-    api_key = credentials.api_key.get_secret_value()
+
     params: dict[str, str | dict[str, str] | list[dict[str, str]] | list[str]] = {}
     if time_zone:
         params["timeZone"] = time_zone
@@ -692,28 +688,28 @@ async def list_records(
 
     response = await Requests().get(
         f"https://api.airtable.com/v0/{base_id}/{table_id_or_name}",
-        headers={"Authorization": f"Bearer {api_key}"},
+        headers={"Authorization": credentials.auth_header()},
         params=params,
     )
     return response.json()
 
 
 async def get_record(
-    credentials: APIKeyCredentials,
+    credentials: Credentials,
     base_id: str,
     table_id_or_name: str,
     record_id: str,
 ) -> dict[str, dict[str, dict[str, str]]]:
-    api_key = credentials.api_key.get_secret_value()
+
     response = await Requests().get(
         f"https://api.airtable.com/v0/{base_id}/{table_id_or_name}/{record_id}",
-        headers={"Authorization": f"Bearer {api_key}"},
+        headers={"Authorization": credentials.auth_header()},
     )
     return response.json()
 
 
 async def update_multiple_records(
-    credentials: APIKeyCredentials,
+    credentials: Credentials,
     base_id: str,
     table_id_or_name: str,
     records: list[dict[str, dict[str, str]]],
@@ -732,17 +728,16 @@ async def update_multiple_records(
 
     params["records"] = records
 
-    api_key = credentials.api_key.get_secret_value()
     response = await Requests().patch(
         f"https://api.airtable.com/v0/{base_id}/{table_id_or_name}",
-        headers={"Authorization": f"Bearer {api_key}"},
+        headers={"Authorization": credentials.auth_header()},
         json=params,
     )
     return response.json()
 
 
 async def update_record(
-    credentials: APIKeyCredentials,
+    credentials: Credentials,
     base_id: str,
     table_id_or_name: str,
     record_id: str,
@@ -758,17 +753,16 @@ async def update_record(
     if fields:
         params["fields"] = fields
 
-    api_key = credentials.api_key.get_secret_value()
     response = await Requests().patch(
         f"https://api.airtable.com/v0/{base_id}/{table_id_or_name}/{record_id}",
-        headers={"Authorization": f"Bearer {api_key}"},
+        headers={"Authorization": credentials.auth_header()},
         json=params,
     )
     return response.json()
 
 
 async def create_record(
-    credentials: APIKeyCredentials,
+    credentials: Credentials,
     base_id: str,
     table_id_or_name: str,
     fields: dict[str, Any] | None = None,
@@ -783,8 +777,6 @@ async def create_record(
             len(records) <= 10
         ), "Only up to 10 records can be provided when using records"
 
-    api_key = credentials.api_key.get_secret_value()
-
     params: dict[str, str | dict[str, Any] | list[dict[str, Any]]] = {}
     if fields:
         params["fields"] = fields
@@ -797,23 +789,22 @@ async def create_record(
 
     response = await Requests().post(
         f"https://api.airtable.com/v0/{base_id}/{table_id_or_name}",
-        headers={"Authorization": f"Bearer {api_key}"},
+        headers={"Authorization": credentials.auth_header()},
         json=params,
     )
     return response.json()
 
 
 async def delete_multiple_records(
-    credentials: APIKeyCredentials,
+    credentials: Credentials,
     base_id: str,
     table_id_or_name: str,
     records: list[str],
 ) -> dict[str, dict[str, dict[str, str]]]:
-    api_key = credentials.api_key.get_secret_value()
 
     response = await Requests().delete(
         f"https://api.airtable.com/v0/{base_id}/{table_id_or_name}",
-        headers={"Authorization": f"Bearer {api_key}"},
+        headers={"Authorization": credentials.auth_header()},
         # Note: Airtable API docs says this should be a query parameter,
         # but it actaully needs to be a body parameter
         params={"records": records},
@@ -822,26 +813,25 @@ async def delete_multiple_records(
 
 
 async def delete_record(
-    credentials: APIKeyCredentials,
+    credentials: Credentials,
     base_id: str,
     table_id_or_name: str,
     record_id: str,
 ) -> dict[str, dict[str, dict[str, str]]]:
-    api_key = credentials.api_key.get_secret_value()
+
     response = await Requests().delete(
         f"https://api.airtable.com/v0/{base_id}/{table_id_or_name}/{record_id}",
-        headers={"Authorization": f"Bearer {api_key}"},
+        headers={"Authorization": credentials.auth_header()},
     )
     return response.json()
 
 
 async def create_webhook(
-    credentials: APIKeyCredentials,
+    credentials: Credentials,
     base_id: str,
     webhook_specification: WebhookSpecification,
     notification_url: str | None = None,
 ) -> Any:
-    api_key = credentials.api_key.get_secret_value()
 
     params: dict[str, Any] = {
         "specification": {
@@ -859,33 +849,33 @@ async def create_webhook(
 
     response = await Requests().post(
         f"https://api.airtable.com/v0/bases/{base_id}/webhooks",
-        headers={"Authorization": f"Bearer {api_key}"},
+        headers={"Authorization": credentials.auth_header()},
         json=params,
     )
     return response.json()
 
 
 async def delete_webhook(
-    credentials: APIKeyCredentials,
+    credentials: Credentials,
     base_id: str,
     webhook_id: str,
 ) -> Any:
-    api_key = credentials.api_key.get_secret_value()
+
     response = await Requests().delete(
         f"https://api.airtable.com/v0/bases/{base_id}/webhooks/{webhook_id}",
-        headers={"Authorization": f"Bearer {api_key}"},
+        headers={"Authorization": credentials.auth_header()},
     )
     return response.json()
 
 
 async def list_webhook_payloads(
-    credentials: APIKeyCredentials,
+    credentials: Credentials,
     base_id: str,
     webhook_id: str,
     cursor: str | None = None,
     limit: int | None = None,
-) -> Any:
-    api_key = credentials.api_key.get_secret_value()
+) -> ListWebhookPayloadsResponse:
+
     query_string = ""
     if cursor:
         query_string += f"cursor={cursor}"
@@ -897,7 +887,7 @@ async def list_webhook_payloads(
 
     response = await Requests().get(
         f"https://api.airtable.com/v0/bases/{base_id}/webhooks/{webhook_id}/payloads{query_string}",
-        headers={"Authorization": f"Bearer {api_key}"},
+        headers={"Authorization": credentials.auth_header()},
     )
     try:
         logger.info(f"Response: {response.json()}")
@@ -914,38 +904,12 @@ async def list_webhook_payloads(
 
 
 async def list_webhooks(
-    credentials: APIKeyCredentials,
+    credentials: Credentials,
     base_id: str,
 ) -> Any:
-    api_key = credentials.api_key.get_secret_value()
+
     response = await Requests().get(
         f"https://api.airtable.com/v0/bases/{base_id}/webhooks",
-        headers={"Authorization": f"Bearer {api_key}"},
+        headers={"Authorization": credentials.auth_header()},
     )
     return response.json()
-
-
-if __name__ == "__main__":
-    from asyncio import run
-    from os import getenv
-    from uuid import uuid4
-
-    from backend.blocks.airtable._api import delete_webhook, list_webhooks
-    from backend.sdk import APIKeyCredentials, SecretStr
-
-    key = getenv("AIRTABLE_API_KEY")
-    if not key:
-        print("AIRTABLE_API_KEY is not set")
-        exit(1)
-
-    credentials = APIKeyCredentials(
-        provider="airtable",
-        api_key=SecretStr(key),
-    )
-    postfix = uuid4().hex[:4]
-    base_id = "appSbaQLkcYiIOqux"
-    response = run(list_webhooks(credentials, base_id))
-
-    for webhook in response.get("webhooks", []):
-        run(delete_webhook(credentials, base_id, webhook.get("id")))
-    assert True
