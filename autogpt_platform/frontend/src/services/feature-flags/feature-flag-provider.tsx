@@ -13,6 +13,8 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
   const isCloud = getBehaveAs() === BehaveAs.CLOUD;
   const enabled = isCloud && envEnabled && clientId && user;
 
+  console.log(`ld status ${enabled} iscloud ${isCloud}`);
+
   if (!enabled) return <>{children}</>;
 
   const userContext = user
@@ -30,6 +32,7 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
         key: "anonymous",
         anonymous: true,
       };
+  console.log(`user context ${userContext}`);
 
   return (
     <LDProvider
