@@ -11,10 +11,16 @@ from backend.sdk import (
     BlockOutput,
     BlockSchema,
     CredentialsMetaInput,
-    Requests,
     SchemaField,
 )
 
+from ._api import (
+    create_record,
+    delete_multiple_records,
+    get_record,
+    list_records,
+    update_multiple_records,
+)
 from ._config import airtable
 
 
@@ -67,36 +73,20 @@ class AirtableListRecordsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        api_key = credentials.api_key.get_secret_value()
-
-        # Build query parameters
-        params = {}
-        if input_data.filter_formula:
-            params["filterByFormula"] = input_data.filter_formula
-        if input_data.view:
-            params["view"] = input_data.view
-        if input_data.sort:
-            for i, sort_config in enumerate(input_data.sort):
-                params[f"sort[{i}][field]"] = sort_config.get("field", "")
-                params[f"sort[{i}][direction]"] = sort_config.get("direction", "asc")
-        if input_data.max_records:
-            params["maxRecords"] = input_data.max_records
-        if input_data.page_size:
-            params["pageSize"] = min(input_data.page_size, 100)
-        if input_data.offset:
-            params["offset"] = input_data.offset
-        if input_data.return_fields:
-            for i, field in enumerate(input_data.return_fields):
-                params[f"fields[{i}]"] = field
-
-        # Make request
-        response = await Requests().get(
-            f"https://api.airtable.com/v0/{input_data.base_id}/{input_data.table_id_or_name}",
-            headers={"Authorization": f"Bearer {api_key}"},
-            params=params,
+        data = await list_records(
+            credentials,
+            input_data.base_id,
+            input_data.table_id_or_name,
+            filter_by_formula=(
+                input_data.filter_formula if input_data.filter_formula else None
+            ),
+            view=input_data.view if input_data.view else None,
+            sort=input_data.sort if input_data.sort else None,
+            max_records=input_data.max_records if input_data.max_records else None,
+            page_size=min(input_data.page_size, 100) if input_data.page_size else None,
+            offset=input_data.offset if input_data.offset else None,
+            fields=input_data.return_fields if input_data.return_fields else None,
         )
-
-        data = response.json()
 
         yield "records", data.get("records", [])
         yield "offset", data.get("offset", None)
@@ -114,12 +104,11 @@ class AirtableGetRecordBlock(Block):
         base_id: str = SchemaField(description="The Airtable base ID")
         table_id_or_name: str = SchemaField(description="Table ID or name")
         record_id: str = SchemaField(description="The record ID to retrieve")
-        return_fields: list[str] = SchemaField(
-            description="Specific fields to return", default=[]
-        )
 
     class Output(BlockSchema):
-        record: dict = SchemaField(description="The record object")
+        id: str = SchemaField(description="The record ID")
+        fields: dict = SchemaField(description="The record fields")
+        created_time: str = SchemaField(description="The record created time")
 
     def __init__(self):
         super().__init__(
@@ -133,24 +122,16 @@ class AirtableGetRecordBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        api_key = credentials.api_key.get_secret_value()
-
-        # Build query parameters
-        params = {}
-        if input_data.return_fields:
-            for i, field in enumerate(input_data.return_fields):
-                params[f"fields[{i}]"] = field
-
-        # Make request
-        response = await Requests().get(
-            f"https://api.airtable.com/v0/{input_data.base_id}/{input_data.table_id_or_name}/{input_data.record_id}",
-            headers={"Authorization": f"Bearer {api_key}"},
-            params=params,
+        record = await get_record(
+            credentials,
+            input_data.base_id,
+            input_data.table_id_or_name,
+            input_data.record_id,
         )
 
-        record = response.json()
-
-        yield "record", record
+        yield "id", record.get("id", None)
+        yield "fields", record.get("fields", None)
+        yield "created_time", record.get("createdTime", None)
 
 
 class AirtableCreateRecordsBlock(Block):
@@ -171,12 +152,14 @@ class AirtableCreateRecordsBlock(Block):
             description="Automatically convert string values to appropriate types",
             default=False,
         )
-        return_fields: list[str] = SchemaField(
-            description="Specific fields to return in created records", default=[]
+        return_fields_by_field_id: bool | None = SchemaField(
+            description="Return fields by field ID",
+            default=None,
         )
 
     class Output(BlockSchema):
         records: list[dict] = SchemaField(description="Array of created record objects")
+        details: dict = SchemaField(description="Details of the created records")
 
     def __init__(self):
         super().__init__(
@@ -190,31 +173,20 @@ class AirtableCreateRecordsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        api_key = credentials.api_key.get_secret_value()
-
-        # Build request body
-        body = {
-            "records": [{"fields": record} for record in input_data.records],
-            "typecast": input_data.typecast,
-        }
-
-        # Build query parameters for return fields
-        params = {}
-        if input_data.return_fields:
-            for i, field in enumerate(input_data.return_fields):
-                params[f"fields[{i}]"] = field
-
-        # Make request
-        response = await Requests().post(
-            f"https://api.airtable.com/v0/{input_data.base_id}/{input_data.table_id_or_name}",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json=body,
-            params=params,
+        # The create_record API expects records in a specific format
+        data = await create_record(
+            credentials,
+            input_data.base_id,
+            input_data.table_id_or_name,
+            records=[{"fields": record} for record in input_data.records],
+            typecast=input_data.typecast if input_data.typecast else None,
+            return_fields_by_field_id=input_data.return_fields_by_field_id,
         )
 
-        data = response.json()
-
         yield "records", data.get("records", [])
+        details = data.get("details", None)
+        if details:
+            yield "details", details
 
 
 class AirtableUpdateRecordsBlock(Block):
@@ -227,16 +199,15 @@ class AirtableUpdateRecordsBlock(Block):
             description="Airtable API credentials"
         )
         base_id: str = SchemaField(description="The Airtable base ID")
-        table_id_or_name: str = SchemaField(description="Table ID or name")
+        table_id_or_name: str = SchemaField(
+            description="Table ID or name - It's better to use the table ID instead of the name"
+        )
         records: list[dict] = SchemaField(
             description="Array of records to update (each with 'id' and 'fields')"
         )
-        typecast: bool = SchemaField(
+        typecast: bool | None = SchemaField(
             description="Automatically convert string values to appropriate types",
-            default=False,
-        )
-        return_fields: list[str] = SchemaField(
-            description="Specific fields to return in updated records", default=[]
+            default=None,
         )
 
     class Output(BlockSchema):
@@ -254,101 +225,15 @@ class AirtableUpdateRecordsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        api_key = credentials.api_key.get_secret_value()
-
-        # Build request body
-        body = {
-            "records": [{"fields": record} for record in input_data.records],
-            "typecast": input_data.typecast,
-        }
-        # Build query parameters for return fields
-        params = {}
-        if input_data.return_fields:
-            for i, field in enumerate(input_data.return_fields):
-                params[f"fields[{i}]"] = field
-
-        # Make request
-        response = await Requests().patch(
-            f"https://api.airtable.com/v0/{input_data.base_id}/{input_data.table_id_or_name}",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json=body,
-            params=params,
+        # The update_multiple_records API expects records with id and fields
+        data = await update_multiple_records(
+            credentials,
+            input_data.base_id,
+            input_data.table_id_or_name,
+            records=input_data.records,
+            typecast=input_data.typecast if input_data.typecast else None,
+            return_fields_by_field_id=False,  # Use field names, not IDs
         )
-
-        data = response.json()
-
-        yield "records", data.get("records", [])
-
-
-class AirtableUpsertRecordsBlock(Block):
-    """
-    Creates or updates records in an Airtable table based on a merge field.
-
-    If a record with the same value in the merge field exists, it will be updated.
-    Otherwise, a new record will be created.
-    """
-
-    class Input(BlockSchema):
-        credentials: CredentialsMetaInput = airtable.credentials_field(
-            description="Airtable API credentials"
-        )
-        base_id: str = SchemaField(description="The Airtable base ID")
-        table_id_or_name: str = SchemaField(description="Table ID or name")
-        records: list[dict] = SchemaField(
-            description="Array of records to upsert (each with 'fields' object)"
-        )
-        merge_field: str = SchemaField(
-            description="Field to use for matching existing records"
-        )
-        typecast: bool = SchemaField(
-            description="Automatically convert string values to appropriate types",
-            default=False,
-        )
-        return_fields: list[str] = SchemaField(
-            description="Specific fields to return in upserted records", default=[]
-        )
-
-    class Output(BlockSchema):
-        records: list[dict] = SchemaField(
-            description="Array of created/updated record objects"
-        )
-
-    def __init__(self):
-        super().__init__(
-            id="99f78a9d-3418-429f-a6fb-9d2166638e99",
-            description="Create or update records based on a merge field",
-            categories={BlockCategory.DATA},
-            input_schema=self.Input,
-            output_schema=self.Output,
-        )
-
-    async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
-    ) -> BlockOutput:
-        api_key = credentials.api_key.get_secret_value()
-
-        # Build request body
-        body = {
-            "performUpsert": {"fieldsToMergeOn": [input_data.merge_field]},
-            "records": [{"fields": record} for record in input_data.records],
-            "typecast": input_data.typecast,
-        }
-
-        # Build query parameters for return fields
-        params = {}
-        if input_data.return_fields:
-            for i, field in enumerate(input_data.return_fields):
-                params[f"fields[{i}]"] = field
-
-        # Make request
-        response = await Requests().post(
-            f"https://api.airtable.com/v0/{input_data.base_id}/{input_data.table_id_or_name}",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json=body,
-            params=params,
-        )
-
-        data = response.json()
 
         yield "records", data.get("records", [])
 
@@ -363,8 +248,12 @@ class AirtableDeleteRecordsBlock(Block):
             description="Airtable API credentials"
         )
         base_id: str = SchemaField(description="The Airtable base ID")
-        table_id_or_name: str = SchemaField(description="Table ID or name")
-        record_ids: list[str] = SchemaField(description="Array of record IDs to delete")
+        table_id_or_name: str = SchemaField(
+            description="Table ID or name - It's better to use the table ID instead of the name"
+        )
+        record_ids: list[str] = SchemaField(
+            description="Array of upto 10 record IDs to delete"
+        )
 
     class Output(BlockSchema):
         records: list[dict] = SchemaField(description="Array of deletion results")
@@ -381,20 +270,14 @@ class AirtableDeleteRecordsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        api_key = credentials.api_key.get_secret_value()
+        if len(input_data.record_ids) > 10:
+            yield "error", "Only upto 10 record IDs can be deleted at a time"
+        else:
+            data = await delete_multiple_records(
+                credentials,
+                input_data.base_id,
+                input_data.table_id_or_name,
+                input_data.record_ids,
+            )
 
-        # Build query parameters
-        params = {}
-        for i, record_id in enumerate(input_data.record_ids):
-            params[f"records[{i}]"] = record_id
-
-        # Make request
-        response = await Requests().delete(
-            f"https://api.airtable.com/v0/{input_data.base_id}/{input_data.table_id_or_name}",
-            headers={"Authorization": f"Bearer {api_key}"},
-            params=params,
-        )
-
-        data = response.json()
-
-        yield "records", data.get("records", [])
+            yield "records", data.get("records", [])
