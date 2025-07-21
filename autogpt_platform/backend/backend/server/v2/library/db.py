@@ -282,7 +282,7 @@ async def add_generated_agent_image(
 async def create_library_agent(
     graph: graph_db.GraphModel,
     user_id: str,
-    create_library_for_sub_graphs: bool = True,
+    create_library_agents_for_sub_graphs: bool = True,
 ) -> list[library_model.LibraryAgent]:
     """
     Adds an agent to the user's library (LibraryAgent table).
@@ -290,6 +290,7 @@ async def create_library_agent(
     Args:
         agent: The agent/Graph to add to the library.
         user_id: The user to whom the agent will be added.
+        create_library_agents_for_sub_graphs: If True, creates LibraryAgent records for sub-graphs as well.
 
     Returns:
         The newly created LibraryAgent records.
@@ -304,7 +305,7 @@ async def create_library_agent(
         f"user #{user_id}"
     )
     graph_entries = (
-        [graph, *graph.sub_graphs] if create_library_for_sub_graphs else [graph]
+        [graph, *graph.sub_graphs] if create_library_agents_for_sub_graphs else [graph]
     )
 
     async with transaction() as tx:
