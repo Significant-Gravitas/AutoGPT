@@ -1,7 +1,12 @@
 import { test, expect } from "@playwright/test";
 import { MarketplacePage } from "./pages/marketplace.page";
 import { LoginPage } from "./pages/login.page";
-import { isVisible, hasUrl, hasMinCount, matchesUrl } from "./utils/assertion";
+import {
+  isVisible,
+  hasUrl,
+  hasMinCount,
+  matchesUrl,
+} from "./utils/assertion";
 import { TEST_CREDENTIALS } from "./credentials";
 
 test.describe("Marketplace – Basic Functionality", () => {
