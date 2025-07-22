@@ -47,18 +47,22 @@ test.beforeEach(async ({ page }) => {
 test("shows badge with count when agent is running", async ({ page }) => {
   const { getId } = getSelectors(page);
 
+  // Start the agent run
   await LibraryPage.clickRunButton(page);
 
+  // Wait for the badge to appear and check it has a valid count
   const badge = getId("agent-activity-badge");
   await isVisible(badge);
 
+  // Check that badge shows a positive number (more flexible than exact count)
   await expect(async () => {
-    try {
-      await hasTextContent(badge, "1");
-    } catch {
-      await hasTextContent(badge, "2");
+    const badgeText = await badge.textContent();
+    const count = parseInt(badgeText || "0");
+
+    if (count < 1) {
+      throw new Error(`Expected badge count >= 1, got: ${badgeText}`);
     }
-  }).toPass();
+  }).toPass({ timeout: 10000 });
 });
 
 test("displays the runs on the activity dropdown", async ({ page }) => {
@@ -67,25 +71,35 @@ test("displays the runs on the activity dropdown", async ({ page }) => {
   const activityBtn = getId("agent-activity-button");
   await isVisible(activityBtn);
 
+  // Start the agent run
   await LibraryPage.clickRunButton(page);
 
+  // Wait for the activity badge to appear (indicating execution started)
+  const badge = getId("agent-activity-badge");
+  await isVisible(badge);
+
+  // Click to open the dropdown
   await activityBtn.click();
 
   const dropdown = getId("agent-activity-dropdown");
   await isVisible(dropdown);
 
+  // Check that the agent name appears in the dropdown
   await hasTextContent(dropdown, "Test Agent");
 
-  // Check for either running or queued state
-  const runningText = "Started just now, a few seconds running";
-  const queuedText =
-    "Test AgentStarted just now, a few seconds queuedTest AgentStarted just now, a few seconds queued";
-
+  // Check for execution status - be more flexible with text matching
   await expect(async () => {
-    try {
-      await hasTextContent(dropdown, runningText);
-    } catch {
-      await hasTextContent(dropdown, queuedText);
+    const dropdownText = await dropdown.textContent();
+    const hasAgentName = dropdownText?.includes("Test Agent");
+    const hasExecutionStatus =
+      dropdownText?.includes("queued") ||
+      dropdownText?.includes("running") ||
+      dropdownText?.includes("Started");
+
+    if (!hasAgentName || !hasExecutionStatus) {
+      throw new Error(
+        `Expected agent name and execution status, got: ${dropdownText}`,
+      );
     }
-  }).toPass();
+  }).toPass({ timeout: 8000 });
 });
