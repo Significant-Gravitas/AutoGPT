@@ -83,15 +83,18 @@ export class MarketplacePage extends BasePage {
   }
 
   async getFeaturedAgentCards() {
-    return this.page.locator('[data-testid="featured-store-card"]');
+    const { getId } = getSelectors(this.page);
+    return getId("featured-store-card");
   }
 
   async getTopAgentCards() {
-    return this.page.locator('[data-testid="store-card"]');
+    const { getId } = getSelectors(this.page);
+    return getId("store-card");
   }
 
   async getCreatorProfiles() {
-    return this.page.locator('[data-testid="creator-card"]');
+    const { getId } = getSelectors(this.page);
+    return getId("creator-card");
   }
 
   async searchAndNavigate(query: string) {
@@ -101,11 +104,12 @@ export class MarketplacePage extends BasePage {
   }
 
   async waitForSearchResults() {
-    await this.page.waitForURL('**/marketplace/search**');
+    await this.page.waitForURL("**/marketplace/search**");
   }
 
   async getFirstFeaturedAgent() {
-    return this.page.locator('[data-testid="featured-store-card"]').first();
+    const { getId } = getSelectors(this.page);
+    return getId("featured-store-card").first();
   }
 
   async getFirstTopAgent() {
@@ -113,11 +117,13 @@ export class MarketplacePage extends BasePage {
   }
 
   async getFirstCreatorProfile() {
-    return this.page.locator('[data-testid="creator-card"]').first();
+    const { getId } = getSelectors(this.page);
+    return getId("creator-card").first();
   }
 
   async getSearchResultsCount() {
-    const storeCards = this.page.locator('[data-testid="store-card"]');
+    const { getId } = getSelectors(this.page);
+    const storeCards = getId("store-card");
     return await storeCards.count();
   }
 }
