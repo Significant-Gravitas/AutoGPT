@@ -6,7 +6,6 @@ import base64
 import hashlib
 import secrets
 import time
-from asyncio import run
 from typing import Optional
 
 from backend.sdk import BaseOAuthHandler, OAuth2Credentials, ProviderName, SecretStr
@@ -40,23 +39,19 @@ class AirtableOAuthHandler(BaseOAuthHandler):
         # Generate code_challenge if not provided (PKCE is required)
         code_challenge = self._generate_code_challenge()
         self.scopes = scopes
-        return run(
-            oauth_authorize(
-                self.client_id, self.redirect_uri, scopes, state, code_challenge
-            )
+        return oauth_authorize(
+            self.client_id, self.redirect_uri, scopes, state, code_challenge
         )
 
     async def exchange_code_for_tokens(
         self, code: str, scopes: list[str], code_verifier: Optional[str]
     ) -> OAuth2Credentials:
-        response: OAuthTokenResponse = run(
-            oauth_exchange_code_for_tokens(
-                client_id=self.client_id,
-                code=code,
-                code_verifier=self.code_verifier,
-                redirect_uri=self.redirect_uri,
-                client_secret=self.client_secret,
-            )
+        response: OAuthTokenResponse = await oauth_exchange_code_for_tokens(
+            client_id=self.client_id,
+            code=code,
+            code_verifier=self.code_verifier,
+            redirect_uri=self.redirect_uri,
+            client_secret=self.client_secret,
         )
 
         return OAuth2Credentials(
@@ -74,12 +69,10 @@ class AirtableOAuthHandler(BaseOAuthHandler):
         if credentials.refresh_token is None:
             raise ValueError("No refresh token available")
 
-        response: OAuthTokenResponse = run(
-            oauth_refresh_tokens(
-                client_id=self.client_id,
-                refresh_token=credentials.refresh_token.get_secret_value(),
-                client_secret=self.client_secret,
-            )
+        response: OAuthTokenResponse = await oauth_refresh_tokens(
+            client_id=self.client_id,
+            refresh_token=credentials.refresh_token.get_secret_value(),
+            client_secret=self.client_secret,
         )
 
         return OAuth2Credentials(

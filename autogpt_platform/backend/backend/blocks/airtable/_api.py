@@ -3,6 +3,10 @@ from enum import Enum
 from logging import getLogger
 from typing import Any
 
+# Need for the sync call for oauth login
+# all other calls use the Agpt Requests class
+import requests
+
 from backend.sdk import BaseModel, Credentials, Requests
 
 logger = getLogger(__name__)
@@ -1008,7 +1012,7 @@ class OAuthTokenResponse(BaseModel):
     refresh_expires_in: int
 
 
-async def oauth_authorize(
+def oauth_authorize(
     client_id: str,
     redirect_uri: str,
     scopes: list[str],
@@ -1046,11 +1050,11 @@ async def oauth_authorize(
     # Build the authorization URL
     base_url = "https://airtable.com/oauth2/v1/authorize"
 
-    response = await Requests().post(base_url, json=request_params.model_dump())
+    response = requests.post(base_url, json=request_params.model_dump())
     if response.ok:
-        return response.text()
+        return response.text
     else:
-        raise ValueError(f"Failed to authorize: {response.status} {response.text}")
+        raise ValueError(f"Failed to authorize: {response.status_code} {response.text}")
 
 
 async def oauth_exchange_code_for_tokens(
