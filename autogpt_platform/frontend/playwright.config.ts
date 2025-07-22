@@ -24,23 +24,26 @@ export default defineConfig({
   /* use more workers on CI. */
   workers: process.env.CI ? 4 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
-  reporter: [["html"], ["line"]],
+  reporter: [["list"], ["html", { open: "never" }]],
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
     baseURL: "http://localhost:3000/",
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
-    trace: "on-first-retry",
     screenshot: "only-on-failure",
     bypassCSP: true,
+
+    /* Helps debugging failures */
+    trace: "retain-on-failure",
+    video: "retain-on-failure",
   },
   /* Maximum time one test can run for */
   timeout: 25000,
 
   /* Configure web server to start automatically */
   webServer: {
-    command: "NEXT_PUBLIC_PW_TEST=true pnpm start",
+    command: "pnpm start",
     url: "http://localhost:3000",
     reuseExistingServer: !process.env.CI,
   },
