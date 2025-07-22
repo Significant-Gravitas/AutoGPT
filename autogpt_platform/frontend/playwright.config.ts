@@ -43,7 +43,7 @@ export default defineConfig({
 
   /* Configure web server to start automatically */
   webServer: {
-    command: "NEXT_PUBLIC_PW_TEST=true pnpm start",
+    command: "pnpm start",
     url: "http://localhost:3000",
     reuseExistingServer: !process.env.CI,
   },

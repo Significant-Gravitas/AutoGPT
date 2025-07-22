@@ -11,11 +11,17 @@ import { useState } from "react";
 import { ActivityDropdown } from "./components/ActivityDropdown";
 import { formatNotificationCount } from "./helpers";
 import { useAgentActivityDropdown } from "./useAgentActivityDropdown";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 export function AgentActivityDropdown() {
+  const isAgentActivityEnabled = useGetFlag(Flag.AGENT_ACTIVITY);
   const [isOpen, setIsOpen] = useState(false);
   const { activeExecutions, recentCompletions, recentFailures } =
     useAgentActivityDropdown();
+
+  if (!isAgentActivityEnabled) {
+    return null;
+  }
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>

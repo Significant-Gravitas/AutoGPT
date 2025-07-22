@@ -205,6 +205,8 @@ jobs:
       - name: Build frontend
         run: pnpm build --turbo
         # uses Turbopack, much faster and safe enough for a test pipeline
+        env:
+          NEXT_PUBLIC_PW_TEST: true
 
       - name: Install Browser 'chromium'
         run: pnpm playwright install --with-deps chromium
