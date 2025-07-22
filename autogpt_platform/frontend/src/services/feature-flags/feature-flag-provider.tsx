@@ -1,116 +1,71 @@
 "use client";
-import { LDProvider, useLDClient } from "launchdarkly-react-client-sdk";
-import { ReactNode, useEffect } from "react";
+
+import { LDProvider } from "launchdarkly-react-client-sdk";
+import type { ReactNode } from "react";
+import { useMemo } from "react";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { BehaveAs, getBehaveAs } from "@/lib/utils";
-// import { getServerUser } from "@/lib/supabase/server/getServerUser";
 
 const clientId = process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
 const envEnabled = process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true";
 
-// Inner component that uses the LD client to update user context
-function LaunchDarklyUpdater({ children }: { children: ReactNode }) {
-  const { user, isUserLoading } = useSupabase();
-  const ldClient = useLDClient();
-
-  useEffect(() => {
-    console.log("[LaunchDarklyUpdater] Effect triggered", {
-      isUserLoading,
-      hasUser: !!user,
-      userId: user?.id,
-      userEmail: user?.email,
-      hasLdClient: !!ldClient,
-    });
-
-    // When user loading completes and we have a user, identify them
-    if (!isUserLoading && user && ldClient) {
-      console.log("[LaunchDarklyUpdater] Identifying user in LaunchDarkly:", {
-        userId: user.id,
-        email: user.email,
-        role: user.role,
-      });
-
-      const userContext = {
-        kind: "user" as const,
-        key: user.id,
-        email: user.email,
-        anonymous: false,
-        custom: {
-          role: user.role,
-        },
-      };
-
-      ldClient
-        .identify(userContext)
-        .then(() => {
-          console.log("[LaunchDarklyUpdater] User identified successfully");
-        })
-        .catch((error) => {
-          console.error(
-            "[LaunchDarklyUpdater] Failed to identify user:",
-            error,
-          );
-        });
-    } else if (!isUserLoading && !user && ldClient) {
-      console.log(
-        "[LaunchDarklyUpdater] User loading complete but no user found, staying anonymous",
-      );
-    }
-  }, [user, isUserLoading, ldClient]);
-
-  return <>{children}</>;
-}
-
 export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
-  console.log("[LaunchDarklyProvider] Render started");
-  const { user: userS, isUserLoading } = useSupabase();
+  const { user, isUserLoading } = useSupabase();
   const isCloud = getBehaveAs() === BehaveAs.CLOUD;
-  const enabled = isCloud && envEnabled && clientId;
+  const isLaunchDarklyConfigured = isCloud && envEnabled && clientId;
 
-  // Log current state
-  console.log("[LaunchDarklyProvider] Current state:", {
-    enabled,
-    isCloud,
-    envEnabled,
-    clientId: clientId ? `${clientId.substring(0, 8)}...` : undefined,
-    isUserLoading,
-    hasUser: !!userS,
-    userId: userS?.id,
-    userEmail: userS?.email,
-    userRole: userS?.role,
-  });
+  // Create the context memoized, and it will change reactively based on the user's authentication state
+  const ldContext = useMemo(() => {
+    // While loading, or if there's no authenticated user, use an anonymous context
+    if (isUserLoading || !user) {
+      console.log("[LaunchDarklyProvider] Using anonymous context", {
+        isUserLoading,
+        hasUser: !!user,
+      });
+      return {
+        kind: "user" as const,
+        key: "anonymous",
+        anonymous: true,
+      };
+    }
 
-  // If LaunchDarkly is not enabled for this environment, just render children
-  if (!enabled) {
-    console.log(
-      "[LaunchDarklyProvider] Not enabled, rendering children without LD",
-    );
+    // Once the user is loaded, create the authenticated context
+    console.log("[LaunchDarklyProvider] Using authenticated context", {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+    });
+    return {
+      kind: "user" as const,
+      key: user.id,
+      ...(user.email && { email: user.email }),
+      anonymous: false,
+      custom: {
+        ...(user.role && { role: user.role }),
+      },
+    };
+  }, [user, isUserLoading]);
+
+  // If LaunchDarkly isn't configured for this environment, don't render the provider
+  if (!isLaunchDarklyConfigured) {
+    console.log("[LaunchDarklyProvider] Not configured for this environment", {
+      isCloud,
+      envEnabled,
+      hasClientId: !!clientId,
+    });
     return <>{children}</>;
   }
 
-  // Always start with anonymous context
-  // The LaunchDarklyUpdater will identify the user once they're loaded
-  const initialContext = {
-    kind: "user" as const,
-    key: "anonymous",
-    anonymous: true,
-  };
-
-  console.log(
-    "[LaunchDarklyProvider] Initializing with anonymous context:",
-    initialContext,
-  );
-
+  // The LDProvider is now always rendered (if configured), but its context
+  // prop will change from anonymous to authenticated, triggering the SDK to update
   return (
     <LDProvider
       clientSideID={clientId}
-      context={initialContext}
+      context={ldContext}
       reactOptions={{ useCamelCaseFlagKeys: false }}
-      options={{
-        bootstrap: "localStorage",
-      }}
+      options={{ bootstrap: "localStorage" }}
     >
-      <LaunchDarklyUpdater>{children}</LaunchDarklyUpdater>
+      {children}
     </LDProvider>
   );
 }

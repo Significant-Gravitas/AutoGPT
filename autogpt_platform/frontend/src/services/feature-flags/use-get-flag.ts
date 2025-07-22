@@ -12,6 +12,10 @@ export function useGetFlag(flag: Flag) {
   const currentFlags = useFlags<FlagValues>();
   const flagValue = currentFlags[flag];
   console.log(`currentFlags ${currentFlags} flagValue ${flagValue}`);
+  console.log(`useGetFlag called for flag: ${flag}`, {
+    flagValue,
+    currentFlags,
+  });
   if (!flagValue) return null;
   return flagValue;
 }
