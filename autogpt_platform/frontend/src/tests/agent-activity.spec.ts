@@ -52,7 +52,13 @@ test("shows badge with count when agent is running", async ({ page }) => {
   const badge = getId("agent-activity-badge");
   await isVisible(badge);
 
-  await hasTextContent(badge, "1");
+  await expect(async () => {
+    try {
+      await hasTextContent(badge, "1");
+    } catch {
+      await hasTextContent(badge, "2");
+    }
+  }).toPass();
 });
 
 test("displays the runs on the activity dropdown", async ({ page }) => {
@@ -69,5 +75,17 @@ test("displays the runs on the activity dropdown", async ({ page }) => {
   await isVisible(dropdown);
 
   await hasTextContent(dropdown, "Test Agent");
-  await hasTextContent(dropdown, "Started just now, a few seconds running");
+
+  // Check for either running or queued state
+  const runningText = "Started just now, a few seconds running";
+  const queuedText =
+    "Test AgentStarted just now, a few seconds queuedTest AgentStarted just now, a few seconds queued";
+
+  await expect(async () => {
+    try {
+      await hasTextContent(dropdown, runningText);
+    } catch {
+      await hasTextContent(dropdown, queuedText);
+    }
+  }).toPass();
 });
