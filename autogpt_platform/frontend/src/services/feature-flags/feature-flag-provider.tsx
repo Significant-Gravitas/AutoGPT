@@ -14,9 +14,7 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
   const isCloud = getBehaveAs() === BehaveAs.CLOUD;
   const isLaunchDarklyConfigured = isCloud && envEnabled && clientId;
 
-  // Create the context memoized, and it will change reactively based on the user's authentication state
-  const ldContext = useMemo(() => {
-    // While loading, or if there's no authenticated user, use an anonymous context
+  const context = useMemo(() => {
     if (isUserLoading || !user) {
       console.debug("[LaunchDarklyProvider] Using anonymous context", {
         isUserLoading,
@@ -29,7 +27,6 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    // Once the user is loaded, create the authenticated context
     console.debug("[LaunchDarklyProvider] Using authenticated context", {
       userId: user.id,
       email: user.email,
@@ -46,7 +43,6 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
     };
   }, [user, isUserLoading]);
 
-  // If LaunchDarkly isn't configured for this environment, don't render the provider
   if (!isLaunchDarklyConfigured) {
     console.debug(
       "[LaunchDarklyProvider] Not configured for this environment",
@@ -59,15 +55,12 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
     return <>{children}</>;
   }
 
-  // The LDProvider is now always rendered (if configured), but its context
-  // prop will change from anonymous to authenticated, triggering the SDK to update
   return (
     <LDProvider
       // Add this key prop. It will be 'anonymous' when logged out,
-      // and the user's ID when logged in.
-      key={ldContext.key}
+      key={context.key}
       clientSideID={clientId}
-      context={ldContext}
+      context={context}
       reactOptions={{ useCamelCaseFlagKeys: false }}
       options={{ bootstrap: "localStorage" }}
     >
