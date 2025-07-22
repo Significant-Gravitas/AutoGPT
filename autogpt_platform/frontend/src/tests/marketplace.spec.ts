@@ -5,7 +5,7 @@ import { isVisible, hasUrl, hasMinCount, matchesUrl, hasTextContent } from "./ut
 import { TEST_CREDENTIALS } from "./credentials";
 
 test.describe("Marketplace – Basic Functionality", () => {
-  test("user can access marketplace page when logged out", async ({ page }) => {
+  test("User can access marketplace page when logged out", async ({ page }) => {
     const marketplacePage = new MarketplacePage(page);
     
     await marketplacePage.goto();
@@ -15,7 +15,7 @@ test.describe("Marketplace – Basic Functionality", () => {
     await isVisible(marketplaceTitle);
   });
 
-  test("user can access marketplace page when logged in", async ({ page }) => {
+  test("User can access marketplace page when logged in", async ({ page }) => {
     const loginPage = new LoginPage(page);
     const marketplacePage = new MarketplacePage(page);
     
@@ -30,7 +30,7 @@ test.describe("Marketplace – Basic Functionality", () => {
     await isVisible(marketplaceTitle);
   });
 
-  test("featured agents, top agents, and featured creators are visible", async ({ page }) => {
+  test("Featured agents, top agents, and featured creators are visible", async ({ page }) => {
     const marketplacePage = new MarketplacePage(page);
     await marketplacePage.goto();
     
@@ -50,7 +50,7 @@ test.describe("Marketplace – Basic Functionality", () => {
     await hasMinCount(creatorProfiles, 1);
   });
 
-  test("can navigate and interact with marketplace elements", async ({ page }) => {
+  test("Can navigate and interact with marketplace elements", async ({ page }) => {
     const marketplacePage = new MarketplacePage(page);
     await marketplacePage.goto();
     
@@ -73,7 +73,7 @@ test.describe("Marketplace – Basic Functionality", () => {
     await matchesUrl(page, /\/marketplace\/creator\/.+/);
   });
   
-  test("complete search flow works correctly", async ({ page }) => {
+  test("Complete search flow works correctly", async ({ page }) => {
     const marketplacePage = new MarketplacePage(page);
     await marketplacePage.goto();
   
@@ -98,7 +98,7 @@ test.describe("Marketplace – Basic Functionality", () => {
 });
 
 test.describe("Marketplace – Edge Cases", () => {
-  test("search for non-existent item shows no results", async ({ page }) => {
+  test("Search for non-existent item shows no results", async ({ page }) => {
     const marketplacePage = new MarketplacePage(page);
     await marketplacePage.goto();
   
