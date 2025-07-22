@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future
@@ -885,12 +886,14 @@ class NodeExecutionProgress:
         self.output: dict[str, list[ExecutionOutputEntry]] = defaultdict(list)
         self.tasks: dict[str, Future] = {}
         self.on_done_task = on_done_task
+        self._lock = threading.Lock()
 
     def add_task(self, node_exec_id: str, task: Future):
         self.tasks[node_exec_id] = task
 
     def add_output(self, output: ExecutionOutputEntry):
-        self.output[output.node_exec_id].append(output)
+        with self._lock:
+            self.output[output.node_exec_id].append(output)
 
     def pop_output(self) -> ExecutionOutputEntry | None:
         exec_id = self._next_exec()
@@ -900,8 +903,9 @@ class NodeExecutionProgress:
         if self._pop_done_task(exec_id):
             return self.pop_output()
 
-        if next_output := self.output[exec_id]:
-            return next_output.pop(0)
+        with self._lock:
+            if next_output := self.output[exec_id]:
+                return next_output.pop(0)
 
         return None
 
@@ -966,8 +970,9 @@ class NodeExecutionProgress:
         if not task.done():
             return False
 
-        if self.output[exec_id]:
-            return False
+        with self._lock:
+            if self.output[exec_id]:
+                return False
 
         if task := self.tasks.pop(exec_id):
             try:
