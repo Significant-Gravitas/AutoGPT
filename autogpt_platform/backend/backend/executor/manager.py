@@ -783,11 +783,13 @@ class Executor:
 
                         # node evaluation future -----------------
                         if inflight_eval := running_node_evaluation.get(node_id):
-                            try:
-                                inflight_eval.result()
-                                running_node_evaluation.pop(node_id)
-                            except TimeoutError:
+                            if not inflight_eval.done():
                                 continue
+                            try:
+                                inflight_eval.result(timeout=0)
+                                running_node_evaluation.pop(node_id)
+                            except Exception as e:
+                                log_metadata.error(f"Node eval #{node_id} failed: {e}")
 
                         # node execution future ---------------------------
                         if inflight_exec.is_done():
