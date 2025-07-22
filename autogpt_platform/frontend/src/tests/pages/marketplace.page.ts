@@ -101,7 +101,7 @@ export class MarketplacePage extends BasePage {
   }
 
   async waitForSearchResults() {
-    await this.page.waitForURL('**/marketplace/search**');
+    await this.page.waitForURL("**/marketplace/search**");
   }
 
   async getFirstFeaturedAgent() {
