@@ -151,7 +151,7 @@ jobs:
           exitOnceUploaded: true
 
   test:
-    runs-on: big-boi
+    runs-on: ubuntu-latest
     needs: setup
     strategy:
       fail-fast: false
