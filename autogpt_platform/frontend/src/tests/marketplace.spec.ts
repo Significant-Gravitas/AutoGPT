@@ -1,12 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { MarketplacePage } from "./pages/marketplace.page";
 import { LoginPage } from "./pages/login.page";
-import {
-  isVisible,
-  hasUrl,
-  hasMinCount,
-  matchesUrl,
-} from "./utils/assertion";
+import { isVisible, hasUrl, hasMinCount, matchesUrl } from "./utils/assertion";
 import { TEST_CREDENTIALS } from "./credentials";
 
 test.describe("Marketplace – Basic Functionality", () => {
@@ -42,7 +37,7 @@ test.describe("Marketplace – Basic Functionality", () => {
     await marketplacePage.goto();
 
     const featuredAgentsSection =
-    await marketplacePage.getFeaturedAgentsSection();
+      await marketplacePage.getFeaturedAgentsSection();
     await isVisible(featuredAgentsSection);
     const featuredAgentCards = await marketplacePage.getFeaturedAgentCards();
     await hasMinCount(featuredAgentCards, 1);

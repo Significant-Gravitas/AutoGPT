@@ -51,7 +51,7 @@ test.describe("Marketplace Creator Page – Basic Functionality", () => {
     const creatorTitle = getId("creator-title");
     await isVisible(creatorTitle);
 
-    const creatorDescription = getId("creator-description")
+    const creatorDescription = getId("creator-description");
     await isVisible(creatorDescription);
   });
 
@@ -64,11 +64,12 @@ test.describe("Marketplace Creator Page – Basic Functionality", () => {
     const firstCreatorProfile = await marketplacePage.getFirstCreatorProfile();
     await firstCreatorProfile.click();
     await page.waitForURL("**/marketplace/creator/**");
-    const firstAgent = page.locator('[data-testid="store-card"]:visible').first();
-    
+    const firstAgent = page
+      .locator('[data-testid="store-card"]:visible')
+      .first();
+
     await firstAgent.click();
     await page.waitForURL("**/marketplace/agent/**");
     await matchesUrl(page, /\/marketplace\/agent\/.+/);
-    
   });
 });

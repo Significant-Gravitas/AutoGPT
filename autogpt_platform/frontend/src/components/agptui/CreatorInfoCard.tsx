@@ -40,12 +40,11 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
             {username.charAt(0)}
           </AvatarFallback>
         </Avatar>
-        <div
-          className="flex w-full flex-col items-start justify-start gap-1.5"
-        >
+        <div className="flex w-full flex-col items-start justify-start gap-1.5">
           <div
-          data-testid="creator-title"
-          className="w-full font-poppins text-[35px] font-medium leading-10 text-neutral-900 dark:text-neutral-100 sm:text-[35px] sm:leading-10">
+            data-testid="creator-title"
+            className="w-full font-poppins text-[35px] font-medium leading-10 text-neutral-900 dark:text-neutral-100 sm:text-[35px] sm:leading-10"
+          >
             {username}
           </div>
           <div className="w-full text-lg font-normal leading-6 text-neutral-800 dark:text-neutral-200 sm:text-xl sm:leading-7">
