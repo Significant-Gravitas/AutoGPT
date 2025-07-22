@@ -60,6 +60,9 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
   // prop will change from anonymous to authenticated, triggering the SDK to update
   return (
     <LDProvider
+      // Add this key prop. It will be 'anonymous' when logged out,
+      // and the user's ID when logged in.
+      key={ldContext.key}
       clientSideID={clientId}
       context={ldContext}
       reactOptions={{ useCamelCaseFlagKeys: false }}
