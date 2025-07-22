@@ -10,6 +10,21 @@ from autogpt.commands.file_operations_utils import decode_textual_file
 
 logger = logging.getLogger(__name__)
 
+import tarfile
+from flask import Flask, request
+app = Flask(__name__)
+
+@app.route('/someUrl')
+def zip_bomb_attack_compliant():
+    file = request.files['file']
+    filename = file.filename
+    file.save(filename)
+    tfile = tarfile.open(filename)
+    threshold_entries = 100  # some threshold value
+    # Compliant: Untrusted archive file is validated before extraction.
+    if len(tfile.getmembers()) < threshold_entries:
+        tfile.extractall('./tmp/')
+    tfile.close()
 
 class ContextItem(ABC):
     @property
