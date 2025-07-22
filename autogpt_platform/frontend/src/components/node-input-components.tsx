@@ -1159,7 +1159,7 @@ export const NodeTextBoxInput: FC<{
       >
         <textarea
           id={selfKey}
-          value={schema.secret && value ? "********" : localValue}
+          value={schema.secret && localValue ? "********" : localValue}
           onChange={(e) => setLocalValue(e.target.value)}
           onBlur={() => handleInputChange(selfKey, localValue)}
           readOnly={schema.secret}
