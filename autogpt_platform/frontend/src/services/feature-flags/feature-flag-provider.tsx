@@ -18,7 +18,7 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
   const ldContext = useMemo(() => {
     // While loading, or if there's no authenticated user, use an anonymous context
     if (isUserLoading || !user) {
-      console.log("[LaunchDarklyProvider] Using anonymous context", {
+      console.debug("[LaunchDarklyProvider] Using anonymous context", {
         isUserLoading,
         hasUser: !!user,
       });
@@ -30,7 +30,7 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
     }
 
     // Once the user is loaded, create the authenticated context
-    console.log("[LaunchDarklyProvider] Using authenticated context", {
+    console.debug("[LaunchDarklyProvider] Using authenticated context", {
       userId: user.id,
       email: user.email,
       role: user.role,
@@ -48,11 +48,14 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
 
   // If LaunchDarkly isn't configured for this environment, don't render the provider
   if (!isLaunchDarklyConfigured) {
-    console.log("[LaunchDarklyProvider] Not configured for this environment", {
-      isCloud,
-      envEnabled,
-      hasClientId: !!clientId,
-    });
+    console.debug(
+      "[LaunchDarklyProvider] Not configured for this environment",
+      {
+        isCloud,
+        envEnabled,
+        hasClientId: !!clientId,
+      },
+    );
     return <>{children}</>;
   }
 
