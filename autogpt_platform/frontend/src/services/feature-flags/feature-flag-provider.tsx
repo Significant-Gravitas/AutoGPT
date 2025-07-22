@@ -3,6 +3,8 @@
 import { LDProvider } from "launchdarkly-react-client-sdk";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
+import type { ReactNode } from "react";
+import { useMemo } from "react";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { BehaveAs, getBehaveAs } from "@/lib/utils";
 
@@ -11,11 +13,17 @@ const envEnabled = process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true";
 
 export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
   const { user, isUserLoading } = useSupabase();
+  const { user, isUserLoading } = useSupabase();
   const isCloud = getBehaveAs() === BehaveAs.CLOUD;
+  const isLaunchDarklyConfigured = isCloud && envEnabled && clientId;
   const isLaunchDarklyConfigured = isCloud && envEnabled && clientId;
 
   const context = useMemo(() => {
     if (isUserLoading || !user) {
+      console.debug("[LaunchDarklyProvider] Using anonymous context", {
+        isUserLoading,
+        hasUser: !!user,
+      });
       return {
         kind: "user" as const,
         key: "anonymous",
@@ -23,6 +31,11 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
       };
     }
 
+    console.debug("[LaunchDarklyProvider] Using authenticated context", {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+    });
     return {
       kind: "user" as const,
       key: user.id,
@@ -35,6 +48,14 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
   }, [user, isUserLoading]);
 
   if (!isLaunchDarklyConfigured) {
+    console.debug(
+      "[LaunchDarklyProvider] Not configured for this environment",
+      {
+        isCloud,
+        envEnabled,
+        hasClientId: !!clientId,
+      },
+    );
     return <>{children}</>;
   }
 
@@ -42,9 +63,13 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
     <LDProvider
       // Add this key prop. It will be 'anonymous' when logged out,
       key={context.key}
+      // Add this key prop. It will be 'anonymous' when logged out,
+      key={context.key}
       clientSideID={clientId}
       context={context}
+      context={context}
       reactOptions={{ useCamelCaseFlagKeys: false }}
+      options={{ bootstrap: "localStorage" }}
       options={{ bootstrap: "localStorage" }}
     >
       {children}
