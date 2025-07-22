@@ -28,13 +28,16 @@ from ._api import (
 logger = logging.getLogger(__name__)
 
 
+class AirtableWebhookType(str, Enum):
+    TABLE_DATA = "tableData"
+    TABLE_FIELDS = "tableFields"
+    TABLE_METADATA = "tableMetadata"
+
+
 class AirtableWebhookManager(BaseWebhooksManager):
     """Webhook manager for Airtable API."""
 
     PROVIDER_NAME = ProviderName("airtable")
-
-    class WebhookType(str, Enum):
-        TABLE_CHANGE = "table_change"
 
     @classmethod
     async def validate_payload(
@@ -113,7 +116,12 @@ class AirtableWebhookManager(BaseWebhooksManager):
         # Prepare webhook specification
         webhook_specification = WebhookSpecification(
             filters=WebhookFilters(
-                dataTypes=events or ["tableData", "tableFields", "tableMetadata"],
+                # System only seems to support a string event filter and not
+                dataTypes=[
+                    AirtableWebhookType.TABLE_DATA,
+                    AirtableWebhookType.TABLE_FIELDS,
+                    AirtableWebhookType.TABLE_METADATA,
+                ],
             )
         )
 

@@ -1,3 +1,4 @@
+import base64
 from enum import Enum
 from logging import getLogger
 from typing import Any
@@ -913,3 +914,237 @@ async def list_webhooks(
         headers={"Authorization": credentials.auth_header()},
     )
     return response.json()
+
+
+class OAuthAuthorizeRequest(BaseModel):
+    """OAuth authorization request parameters for Airtable.
+
+    Parameters:
+        client_id: An opaque string that identifies your integration with Airtable
+        redirect_uri: The URI for the authorize response redirect. Must exactly match a redirect URI
+            associated with your integration. HTTPS is required for any URI beside localhost.
+        response_type: The string "code"
+        scope: A space delimited list of unique scopes. All scopes must be valid Airtable defined scopes
+            that have been selected for your integration. At least one scope is required.
+        state: A cryptographically generated, opaque string for CSRF protection
+        code_challenge: The base64 url-encoding of the sha256 of the code_verifier. Protects against
+            man-in-the-middle grant code injection attacks. Part of the PKCE extension of OAuth.
+        code_challenge_method: The string "S256"
+    """
+
+    client_id: str
+    redirect_uri: str
+    response_type: str = "code"
+    scope: str
+    state: str
+    code_challenge: str
+    code_challenge_method: str = "S256"
+
+
+class OAuthTokenRequest(BaseModel):
+    """OAuth token request parameters for Airtable.
+
+    These parameters must be formatted via application/x-www-form-urlencoded encoding.
+
+    Parameters:
+        code: The grant code generated during the authorization request. Can only be used once.
+        client_id: The client_id used in the authorization request that generated the code.
+            Optional if your integration has a client_secret. Used to prevent MITM attacks.
+        redirect_uri: The redirect_uri used in the authorization request that generated the code.
+            Used to prevent MITM attacks.
+        grant_type: The string "authorization_code".
+        code_verifier: A cryptographically generated, opaque string used to generate the
+            code_challenge parameter in the authorization request that generated the code.
+    """
+
+    code: str
+    client_id: str
+    redirect_uri: str
+    grant_type: str = "authorization_code"
+    code_verifier: str
+
+
+class OAuthRefreshTokenRequest(BaseModel):
+    """OAuth token refresh request parameters for Airtable.
+
+    These parameters must be formatted via application/x-www-form-urlencoded encoding.
+
+    Parameters:
+        refresh_token: The saved refresh token from the previous token grant.
+        client_id: Required if your integration does not have a client_secret.
+            Used to prevent MITM attacks.
+        grant_type: The string "refresh_token".
+        scope: If specified, a subset of the token's existing scopes. Optional.
+    """
+
+    refresh_token: str
+    client_id: str | None = None
+    grant_type: str = "refresh_token"
+    scope: str | None = None
+
+
+class OAuthTokenResponse(BaseModel):
+    """OAuth token response from Airtable.
+
+    Successful response has HTTP status code 200 (OK).
+
+    Parameters:
+        access_token: An opaque string. Can be used to make requests to the Airtable API on behalf
+            of the user, and cannot be recovered if lost.
+        refresh_token: An opaque string. Can be used to request a new access token after the current
+            one expires.
+        token_type: The string "Bearer " (space intentional)
+        scope: A string that is a space delimited list of scopes granted to this access token. Can be
+            recovered using the get userId and scopes endpoint.
+        expires_in: An integer. Time in seconds until the access token expires (expected value is 60 minutes).
+        refresh_expires_in: An integer. Time in seconds until the refresh token expires (expected value is 60 days).
+    """
+
+    access_token: str
+    refresh_token: str
+    token_type: str
+    scope: str
+    expires_in: int
+    refresh_expires_in: int
+
+
+async def oauth_authorize(
+    client_id: str,
+    redirect_uri: str,
+    scopes: list[str],
+    state: str,
+    code_challenge: str,
+    code_challenge_method: str = "S256",
+    response_type: str = "code",
+) -> str:
+    """
+    Generate the OAuth authorization URL for Airtable.
+
+    Args:
+        client_id: An opaque string that identifies your integration with Airtable
+        redirect_uri: The URI for the authorize response redirect
+        scope: A space delimited list of unique scopes
+        state: A cryptographically generated, opaque string for CSRF protection
+        code_challenge: The base64 url-encoding of the sha256 of the code_verifier
+        code_challenge_method: The string "S256" (default)
+        response_type: The string "code" (default)
+
+    Returns:
+        The authorization URL that the user should visit
+    """
+    # Validate the request parameters
+    request_params = OAuthAuthorizeRequest(
+        client_id=client_id,
+        redirect_uri=redirect_uri,
+        response_type=response_type,
+        scope=", ".join(scopes),
+        state=state,
+        code_challenge=code_challenge,
+        code_challenge_method=code_challenge_method,
+    )
+
+    # Build the authorization URL
+    base_url = "https://airtable.com/oauth2/v1/authorize"
+
+    response = await Requests().post(base_url, json=request_params.model_dump())
+    if response.ok:
+        return response.text()
+    else:
+        raise ValueError(f"Failed to authorize: {response.status} {response.text}")
+
+
+async def oauth_exchange_code_for_tokens(
+    client_id: str,
+    code_verifier: bytes,
+    code: str,
+    redirect_uri: str,
+    client_secret: str | None = None,
+) -> OAuthTokenResponse:
+    """
+    Exchange an authorization code for access and refresh tokens.
+
+    Args:
+        client_id: The Airtable integration client ID.
+        code_verifier: The original code_verifier (required for PKCE).
+        code: The authorization code returned by Airtable.
+        redirect_uri: The redirect URI used during authorization.
+        client_secret: Integration client secret if available (optional).
+
+    Returns:
+        Parsed JSON response containing the access token, refresh token, scope, etc.
+    """
+
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+    # Add Authorization header for confidential clients
+    if client_secret:
+        credentials_encoded = base64.urlsafe_b64encode(
+            f"{client_id}:{client_secret}".encode()
+        ).decode()
+        headers["Authorization"] = f"Basic {credentials_encoded}"
+
+    data = OAuthTokenRequest(
+        code=code,
+        client_id=client_id,
+        redirect_uri=redirect_uri,
+        grant_type="authorization_code",
+        code_verifier=code_verifier.decode("utf-8"),
+    ).model_dump()
+
+    response = await Requests().post(
+        "https://airtable.com/oauth2/v1/token",
+        headers=headers,
+        data=data,
+    )
+
+    if response.ok:
+        return OAuthTokenResponse.model_validate(response.json())
+    raise ValueError(
+        f"Failed to exchange code for tokens: {response.status} {response.text}"
+    )
+
+
+# NEW helper for refreshing tokens
+async def oauth_refresh_tokens(
+    client_id: str,
+    refresh_token: str,
+    client_secret: str | None = None,
+) -> OAuthTokenResponse:
+    """
+    Refresh an expired (or soon-to-expire) access token.
+
+    Args:
+        client_id: The Airtable integration client ID.
+        refresh_token: The refresh token previously issued by Airtable.
+        client_secret: Integration client secret if available (optional).
+
+    Returns:
+        Parsed JSON response containing the new tokens and metadata.
+    """
+
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+
+    if client_secret:
+        credentials_encoded = base64.urlsafe_b64encode(
+            f"{client_id}:{client_secret}".encode()
+        ).decode()
+        headers["Authorization"] = f"Basic {credentials_encoded}"
+
+    data = OAuthRefreshTokenRequest(
+        refresh_token=refresh_token,
+        client_id=client_id,
+        grant_type="refresh_token",
+    ).model_dump()
+
+    response = await Requests().post(
+        "https://airtable.com/oauth2/v1/token",
+        headers=headers,
+        data=data,
+    )
+
+    if response.ok:
+        return OAuthTokenResponse.model_validate(response.json())
+    raise ValueError(f"Failed to refresh tokens: {response.status} {response.text}")
