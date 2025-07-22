@@ -2,6 +2,7 @@ import { expect, Locator, Page } from "@playwright/test";
 import { BasePage } from "./base.page";
 import { Block as APIBlock } from "../../lib/autogpt-server-api/types";
 import { beautifyString } from "../../lib/utils";
+import { isVisible } from "../utils/assertion";
 
 export interface Block {
   id: string;
@@ -341,13 +342,13 @@ export class BuildPage extends BasePage {
 
   async isRunButtonEnabled(): Promise<boolean> {
     console.log(`checking if run button is enabled`);
-    const runButton = this.page.locator('[data-id="primary-action-run-agent"]');
+    const runButton = this.page.getByTestId("primary-action-run-agent");
     return await runButton.isEnabled();
   }
 
   async runAgent(): Promise<void> {
     console.log(`clicking run button`);
-    const runButton = this.page.locator('[data-id="primary-action-run-agent"]');
+    const runButton = this.page.getByTestId("primary-action-run-agent");
     await runButton.click();
   }
 
@@ -433,6 +434,25 @@ export class BuildPage extends BasePage {
   async createDummyAgent() {
     await this.closeTutorial();
     await this.openBlocksPanel();
+    const dictionaryBlock = await this.getDictionaryBlockDetails();
+
+    const searchInput = this.page.locator(
+      '[data-id="blocks-control-search-input"]',
+    );
+
+    const displayName = this.getDisplayName(dictionaryBlock.name);
+    await searchInput.clear();
+
+    await isVisible(this.page.getByText("Output"));
+
+    await searchInput.fill(displayName);
+
+    const blockCard = this.page.getByTestId(`block-name-${dictionaryBlock.id}`);
+    if (await blockCard.isVisible()) {
+      await blockCard.click();
+      const blockInEditor = this.page.getByTestId(dictionaryBlock.id).first();
+      expect(blockInEditor).toBeAttached();
+    }
 
     await this.saveAgent("Test Agent", "Test Description");
     await expect(this.isRunButtonEnabled()).resolves.toBeTruthy();
