@@ -47,11 +47,9 @@ class AirtableOAuthHandler(BaseOAuthHandler):
     ) -> str:
         # Generate code_challenge if not provided (PKCE is required)
         code_challenge = self._generate_code_challenge()
-        if scopes:
-            self.scopes = scopes
-
+        scopes = [str(v) for v in self.scopes]
         return oauth_authorize(
-            self.client_id, self.redirect_uri, self.scopes, state, code_challenge
+            self.client_id, self.redirect_uri, scopes, state, code_challenge
         )
 
     async def exchange_code_for_tokens(
