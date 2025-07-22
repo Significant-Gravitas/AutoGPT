@@ -9,11 +9,9 @@ from enum import Enum
 from typing import Tuple
 
 from backend.sdk import (
-    APIKeyCredentials,
     BaseWebhooksManager,
     Credentials,
     ProviderName,
-    Requests,
     Webhook,
     update_webhook,
 )
@@ -22,6 +20,7 @@ from ._api import (
     WebhookFilters,
     WebhookSpecification,
     create_webhook,
+    delete_webhook,
     list_webhook_payloads,
 )
 
@@ -39,12 +38,15 @@ class AirtableWebhookManager(BaseWebhooksManager):
 
     PROVIDER_NAME = ProviderName("airtable")
 
-
     @classmethod
     async def validate_payload(
         cls, webhook: Webhook, request, credentials: Credentials | None
     ) -> Tuple[dict, str]:
         """Validate incoming webhook payload and signature."""
+
+        if not credentials:
+            raise ValueError("Missing credentials in webhook metadata")
+
         payload = await request.json()
 
         # Verify webhook signature using HMAC-SHA256
@@ -72,15 +74,11 @@ class AirtableWebhookManager(BaseWebhooksManager):
 
         if "id" not in payload["base"] or "id" not in payload["webhook"]:
             raise ValueError("Missing required IDs in webhook payload")
+        base_id = payload["base"]["id"]
+        webhook_id = payload["webhook"]["id"]
 
         # get payload request parameters
-        base_id = webhook.config.get("base_id")
-        cursor = webhook.config.get("cursor")
-        webhook_id = webhook.config.get("webhook_id")
-
-        assert base_id is not None
-        assert webhook_id is not None
-        assert credentials is not None
+        cursor = webhook.config.get("cursor", 1)
 
         response = await list_webhook_payloads(credentials, base_id, webhook_id, cursor)
 
@@ -103,8 +101,6 @@ class AirtableWebhookManager(BaseWebhooksManager):
         secret: str,
     ) -> Tuple[str, dict]:
         """Register webhook with Airtable API."""
-        if not isinstance(credentials, APIKeyCredentials):
-            raise ValueError("Airtable webhooks require API key credentials")
 
         # Parse resource to get base_id and table_id/name
         # Resource format: "{base_id}/{table_id_or_name}"
@@ -146,10 +142,7 @@ class AirtableWebhookManager(BaseWebhooksManager):
         self, webhook: Webhook, credentials: Credentials
     ) -> None:
         """Deregister webhook from Airtable API."""
-        if not isinstance(credentials, APIKeyCredentials):
-            raise ValueError("Airtable webhooks require API key credentials")
 
-        api_key = credentials.api_key.get_secret_value()
         base_id = webhook.config.get("base_id")
         webhook_id = webhook.config.get("webhook_id")
 
@@ -159,7 +152,4 @@ class AirtableWebhookManager(BaseWebhooksManager):
         if not webhook_id:
             raise ValueError("Missing webhook_id in webhook metadata")
 
-        await Requests().delete(
-            f"https://api.airtable.com/v0/bases/{base_id}/webhooks/{webhook_id}",
-            headers={"Authorization": f"Bearer {api_key}"},
-        )
+        await delete_webhook(credentials, base_id, webhook_id)

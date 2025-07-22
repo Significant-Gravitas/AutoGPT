@@ -1,17 +1,28 @@
 from backend.sdk import (
+    BaseModel,
     Block,
     BlockCategory,
     BlockOutput,
     BlockSchema,
     BlockType,
     BlockWebhookConfig,
+    CredentialsMetaInput,
     ProviderName,
     SchemaField,
 )
 
 from ._api import WebhookPayload
 from ._config import airtable
-from ._webhook import AirtableWebhookEvent
+
+
+class AirtableEventSelector(BaseModel):
+    """
+    Selects the Airtable webhook event to trigger on.
+    """
+
+    tableData: bool = True
+    tableFields: bool = True
+    tableMetadata: bool = True
 
 
 class AirtableWebhookTriggerBlock(Block):
@@ -22,16 +33,13 @@ class AirtableWebhookTriggerBlock(Block):
     """
 
     class Input(BlockSchema):
-        base_id: str = SchemaField(
-            description="Airtable base ID"
+        credentials: CredentialsMetaInput = airtable.credentials_field(
+            description="Airtable API credentials"
         )
-        table_id_or_name: str = SchemaField(
-            description="Airtable table ID or name"
-        )
-        payloads: list[WebhookPayload] = SchemaField(
-            description="Airtable webhook payload"
-        )
-        events: AirtableWebhookEvent = SchemaField(
+        base_id: str = SchemaField(description="Airtable base ID")
+        table_id_or_name: str = SchemaField(description="Airtable table ID or name")
+        payload: dict = SchemaField(description="Airtable webhook payload")
+        events: AirtableEventSelector = SchemaField(
             description="Airtable webhook event filter"
         )
 
@@ -39,24 +47,28 @@ class AirtableWebhookTriggerBlock(Block):
         payload: WebhookPayload = SchemaField(description="Airtable webhook payload")
 
     def __init__(self):
-        example_payload = [
-                    WebhookPayload(
-                        actionMetadata={
-                            "source": "client",
-                            "sourceMetadata": {
-                                "user": {
-                                    "id": "usr00000000000000",
-                                    "email": "foo@bar.com", 
-                                    "permissionLevel": "create"
-                                }
+        example_payload = {
+            "payloads": [
+                {
+                    "timestamp": "2022-02-01T21:25:05.663Z",
+                    "baseTransactionNumber": 4,
+                    "actionMetadata": {
+                        "source": "client",
+                        "sourceMetadata": {
+                            "user": {
+                                "id": "usr00000000000000",
+                                "email": "foo@bar.com",
+                                "permissionLevel": "create",
                             }
                         },
-                        baseTransactionNumber=4,
-                        payloadFormat="v0",
-                        timestamp="2022-02-01T21:25:05.663Z"
-                    )
-                ]
-        
+                    },
+                    "payloadFormat": "v0",
+                }
+            ],
+            "cursor": 5,
+            "mightHaveMore": False,
+        }
+
         super().__init__(
             id="d0180ce6-ccb9-48c7-8256-b39e93e62801",
             description="Starts a flow whenever Airtable emits a webhook event",
@@ -72,17 +84,28 @@ class AirtableWebhookTriggerBlock(Block):
                 resource_format="{base_id}/{table_id_or_name}",
             ),
             test_input={
+                "credentials": airtable.get_test_credentials().model_dump(),
                 "base_id": "app1234567890",
                 "table_id_or_name": "table1234567890",
-                "events": [AirtableWebhookEvent.TABLE_DATA, AirtableWebhookEvent.TABLE_FIELDS, AirtableWebhookEvent.TABLE_METADATA],
-                "payloads": example_payload,
+                "events": AirtableEventSelector(
+                    tableData=True,
+                    tableFields=True,
+                    tableMetadata=False,
+                ).model_dump(),
+                "payload": example_payload,
             },
             test_credentials=airtable.get_test_credentials(),
             test_output=[
-                ("payload", example_payload[0]),
+                (
+                    "payload",
+                    WebhookPayload.model_validate(example_payload["payloads"][0]),
+                ),
             ],
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        for payload in input_data.payloads:
-            yield "payload", payload
+        if len(input_data.payload["payloads"]) > 0:
+            for item in input_data.payload["payloads"]:
+                yield "payload", WebhookPayload.model_validate(item)
+        else:
+            yield "error", "No valid payloads found in webhook payload"
