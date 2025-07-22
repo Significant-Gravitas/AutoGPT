@@ -16,6 +16,7 @@ from ._api import (
     oauth_exchange_code_for_tokens,
     oauth_refresh_tokens,
 )
+from ._config import AirtableScope
 
 
 class AirtableOAuthHandler(BaseOAuthHandler):
@@ -24,12 +25,20 @@ class AirtableOAuthHandler(BaseOAuthHandler):
     """
 
     PROVIDER_NAME = ProviderName("airtable")
+    DEFAULT_SCOPES = [
+        AirtableScope.DATA_RECORDS_READ,
+        AirtableScope.DATA_RECORDS_WRITE,
+        AirtableScope.SCHEMA_BASES_READ,
+        AirtableScope.SCHEMA_BASES_WRITE,
+        AirtableScope.WEBHOOK_MANAGE,
+    ]
 
     def __init__(self, client_id: str, client_secret: Optional[str], redirect_uri: str):
         self.client_id = client_id
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
         self.code_verifier = self._generate_code_verifier()
+        self.scopes = self.DEFAULT_SCOPES
         self.auth_base_url = "https://airtable.com/oauth2/v1/authorize"
         self.token_url = "https://airtable.com/oauth2/v1/token"
 
@@ -38,9 +47,11 @@ class AirtableOAuthHandler(BaseOAuthHandler):
     ) -> str:
         # Generate code_challenge if not provided (PKCE is required)
         code_challenge = self._generate_code_challenge()
-        self.scopes = scopes
+        if scopes:
+            self.scopes = scopes
+
         return oauth_authorize(
-            self.client_id, self.redirect_uri, scopes, state, code_challenge
+            self.client_id, self.redirect_uri, self.scopes, state, code_challenge
         )
 
     async def exchange_code_for_tokens(

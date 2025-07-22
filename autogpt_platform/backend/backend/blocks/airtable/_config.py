@@ -65,8 +65,9 @@ if AIRTABLE_OAUTH_IS_CONFIGURED:
         scopes=[
             AirtableScope.DATA_RECORDS_READ,
             AirtableScope.DATA_RECORDS_WRITE,
-            AirtableScope.DATA_RECORD_COMMENTS_READ,
-            AirtableScope.DATA_RECORD_COMMENTS_WRITE,
+            AirtableScope.SCHEMA_BASES_READ,
+            AirtableScope.SCHEMA_BASES_WRITE,
+            AirtableScope.WEBHOOK_MANAGE,
         ],
         client_id_env_var="AIRTABLE_CLIENT_ID",
         client_secret_env_var="AIRTABLE_CLIENT_SECRET",
