@@ -1038,7 +1038,7 @@ def oauth_authorize(
         client_id=client_id,
         redirect_uri=redirect_uri,
         response_type=response_type,
-        scope=", ".join(scopes),
+        scope=" ".join(scopes),
         state=state,
         code_challenge=code_challenge,
         code_challenge_method=code_challenge_method,
@@ -1119,6 +1119,7 @@ async def oauth_refresh_tokens(
 
     Returns:
         Parsed JSON response containing the new tokens and metadata.
+        https://airtable.com/oauth2/v1/authorize?client_id=7642abbb-8fbc-494c-b6e0-58484364e28c&redirect_uri=https%3A%2F%2Fdev-builder.agpt.co%2Fauth%2Fintegrations%2Foauth_callback&response_type=code&scope=&state=OcmqX6Y5MTkhHLc6vkbR6uEtSiZHawzEUcxDscqkWRk&code_challenge=v2Ly1CcG8UkCXJ2n--TEKZc6HeKaN1wrZLgIr_qVnJ8&code_challenge_method=S256
     """
 
     headers = {
