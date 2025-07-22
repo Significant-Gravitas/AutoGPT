@@ -38,7 +38,7 @@ class AirtableWebhookTriggerBlock(Block):
         )
         base_id: str = SchemaField(description="Airtable base ID")
         table_id_or_name: str = SchemaField(description="Airtable table ID or name")
-        payload: dict = SchemaField(description="Airtable webhook payload")
+        payload: dict = SchemaField(hidden=True, default_factory=dict)
         events: AirtableEventSelector = SchemaField(
             description="Airtable webhook event filter"
         )
