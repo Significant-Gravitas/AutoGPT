@@ -30,51 +30,6 @@ export function formatTimeAgo(dateStr: string): string {
   return `${diffDays}d ago`;
 }
 
-export function getStatusDisplayText(
-  execution: GeneratedGraphExecutionMeta,
-): string {
-  switch (execution.status) {
-    case AgentExecutionStatus.QUEUED:
-      return "Queued";
-    case AgentExecutionStatus.RUNNING:
-      return "Running";
-    case AgentExecutionStatus.COMPLETED:
-      return "Completed";
-    case AgentExecutionStatus.FAILED:
-      return "Failed";
-    case AgentExecutionStatus.TERMINATED:
-      return "Stopped";
-    case AgentExecutionStatus.INCOMPLETE:
-      return "Incomplete";
-    default:
-      return execution.status;
-  }
-}
-
-export function getStatusColorClass(
-  execution: GeneratedGraphExecutionMeta,
-): string {
-  switch (execution.status) {
-    case AgentExecutionStatus.QUEUED:
-      return "text-yellow-600";
-    case AgentExecutionStatus.RUNNING:
-      return "text-blue-600";
-    case AgentExecutionStatus.COMPLETED:
-      return "text-green-600";
-    case AgentExecutionStatus.FAILED:
-    case AgentExecutionStatus.TERMINATED:
-      return "text-red-600";
-    case AgentExecutionStatus.INCOMPLETE:
-      return "text-gray-600";
-    default:
-      return "text-gray-600";
-  }
-}
-
-export function truncateGraphId(graphId: string, length: number = 8): string {
-  return `${graphId.slice(0, length)}...`;
-}
-
 export function getExecutionDuration(
   execution: GeneratedGraphExecutionMeta,
 ): string {
@@ -106,10 +61,6 @@ export function getExecutionDuration(
     return `${durationMin}m ${durationSec % SECONDS_PER_MINUTE}s`;
   const durationHr = Math.floor(durationMin / MINUTES_PER_HOUR);
   return `${durationHr}h ${durationMin % MINUTES_PER_HOUR}m`;
-}
-
-export function shouldShowNotificationBadge(totalCount: number): boolean {
-  return totalCount > 0;
 }
 
 export function formatNotificationCount(count: number): string {

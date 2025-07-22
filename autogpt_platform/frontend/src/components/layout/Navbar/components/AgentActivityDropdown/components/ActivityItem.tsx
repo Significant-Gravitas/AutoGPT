@@ -91,9 +91,12 @@ export function ActivityItem({ execution }: Props) {
       role="button"
     >
       {/* Icon + Agent Name */}
-      <div className="flex items-center space-x-3">
+      <div className="flex items-center space-x-2">
         {getStatusIcon()}
-        <Text variant="body-medium" className="truncate text-gray-900">
+        <Text
+          variant="body-medium"
+          className="max-w-[16rem] truncate text-gray-900"
+        >
           {execution.agent_name}
         </Text>
       </div>
