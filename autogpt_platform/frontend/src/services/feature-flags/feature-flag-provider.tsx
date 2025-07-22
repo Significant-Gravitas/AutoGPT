@@ -16,10 +16,6 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
 
   const context = useMemo(() => {
     if (isUserLoading || !user) {
-      console.debug("[LaunchDarklyProvider] Using anonymous context", {
-        isUserLoading,
-        hasUser: !!user,
-      });
       return {
         kind: "user" as const,
         key: "anonymous",
@@ -27,11 +23,6 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    console.debug("[LaunchDarklyProvider] Using authenticated context", {
-      userId: user.id,
-      email: user.email,
-      role: user.role,
-    });
     return {
       kind: "user" as const,
       key: user.id,
@@ -44,14 +35,6 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
   }, [user, isUserLoading]);
 
   if (!isLaunchDarklyConfigured) {
-    console.debug(
-      "[LaunchDarklyProvider] Not configured for this environment",
-      {
-        isCloud,
-        envEnabled,
-        hasClientId: !!clientId,
-      },
-    );
     return <>{children}</>;
   }
 
