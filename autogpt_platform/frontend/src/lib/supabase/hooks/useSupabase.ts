@@ -3,6 +3,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import { User } from "@supabase/supabase-js";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   getCurrentUser,
   refreshSession,
@@ -12,14 +13,17 @@ import {
 } from "../actions";
 import {
   broadcastLogout,
+  broadcastWebSocketCleanup,
   getRedirectPath,
   isLogoutEvent,
+  isWebSocketCleanupEvent,
   setupSessionEventListeners,
 } from "../helpers";
 
 export function useSupabase() {
   const router = useRouter();
   const pathname = usePathname();
+  const api = useBackendAPI();
   const [user, setUser] = useState<User | null>(null);
   const [isUserLoading, setIsUserLoading] = useState(true);
   const lastValidationRef = useRef<number>(0);
@@ -45,6 +49,12 @@ export function useSupabase() {
   }, []);
 
   async function logOut(options: ServerLogoutOptions = {}) {
+    // Broadcast WebSocket cleanup to all tabs first
+    broadcastWebSocketCleanup();
+
+    // Clean up WebSocket in current tab
+    api.disconnectWebSocket();
+
     broadcastLogout();
 
     try {
@@ -137,6 +147,13 @@ export function useSupabase() {
     }
   }
 
+  function handleWebSocketCleanup(e: StorageEvent) {
+    if (!isWebSocketCleanupEvent(e)) return;
+
+    // Disconnect WebSocket connections to prevent reconnection errors
+    api.disconnectWebSocket();
+  }
+
   function handleVisibilityChange() {
     if (document.visibilityState === "visible") {
       validateSessionServer();
@@ -156,7 +173,10 @@ export function useSupabase() {
     const eventListeners = setupSessionEventListeners(
       handleVisibilityChange,
       handleFocus,
-      handleCrossTabLogout,
+      (e: StorageEvent) => {
+        handleCrossTabLogout(e);
+        handleWebSocketCleanup(e);
+      },
     );
 
     return () => {
