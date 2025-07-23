@@ -1,6 +1,3 @@
-import base64
-import hashlib
-import secrets
 from os import getenv
 from uuid import uuid4
 
@@ -307,4 +304,3 @@ async def test_webhook_management():
     assert response is not None, f"Checking list webhook payloads response: {response}"
 
     response = await delete_webhook(credentials, base_id, webhook_id)
-
