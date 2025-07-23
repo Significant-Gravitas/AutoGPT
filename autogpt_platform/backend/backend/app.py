@@ -1,6 +1,10 @@
 import logging
 from typing import TYPE_CHECKING
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 if TYPE_CHECKING:
     from backend.util.process import AppProcess
 

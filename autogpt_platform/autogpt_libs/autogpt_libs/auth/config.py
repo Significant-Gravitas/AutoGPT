@@ -1,7 +1,5 @@
 import os
 
-from dotenv import load_dotenv
-
 
 class Settings:
     def __init__(self):
@@ -13,7 +11,5 @@ class Settings:
     def is_configured(self) -> bool:
         return bool(self.JWT_SECRET_KEY)
 
-
-load_dotenv()
 
 settings = Settings()
