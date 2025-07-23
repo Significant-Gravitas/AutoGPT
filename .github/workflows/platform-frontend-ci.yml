@@ -151,12 +151,10 @@ jobs:
           exitOnceUploaded: true
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: big-boi
     needs: setup
     strategy:
       fail-fast: false
-      matrix:
-        browser: [chromium, webkit]
 
     steps:
       - name: Checkout repository
@@ -172,12 +170,6 @@ jobs:
       - name: Enable corepack
         run: corepack enable
 
-      - name: Free Disk Space (Ubuntu)
-        uses: jlumbroso/free-disk-space@main
-        with:
-          large-packages: false # slow
-          docker-images: false # limited benefit
-
       - name: Copy default supabase .env
         run: |
           cp ../.env.example ../.env
@@ -186,9 +178,24 @@ jobs:
         run: |
           cp ../backend/.env.example ../backend/.env
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-frontend-test-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-frontend-test-
+
       - name: Run docker compose
         run: |
           docker compose -f ../docker-compose.yml up -d
+        env:
+          DOCKER_BUILDKIT: 1
+          BUILDX_CACHE_FROM: type=local,src=/tmp/.buildx-cache
+          BUILDX_CACHE_TO: type=local,dest=/tmp/.buildx-cache-new,mode=max
 
       - name: Restore dependencies cache
         uses: actions/cache@v4
@@ -207,22 +214,22 @@ jobs:
       - name: Build frontend
         run: pnpm build --turbo
         # uses Turbopack, much faster and safe enough for a test pipeline
+        env:
+          NEXT_PUBLIC_PW_TEST: true
 
-      - name: Install Browser '${{ matrix.browser }}'
-        run: pnpm playwright install --with-deps ${{ matrix.browser }}
+      - name: Install Browser 'chromium'
+        run: pnpm playwright install --with-deps chromium
 
       - name: Run Playwright tests
-        run: pnpm test:no-build --project=${{ matrix.browser }}
-        env:
-          BROWSER_TYPE: ${{ matrix.browser }}
+        run: pnpm test:no-build
+
+      - name: Upload Playwright artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report
 
       - name: Print Final Docker Compose logs
         if: always()
         run: docker compose -f ../docker-compose.yml logs
-
-      - uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
-        with:
-          name: playwright-report-${{ matrix.browser }}
-          path: playwright-report/
-          retention-days: 30

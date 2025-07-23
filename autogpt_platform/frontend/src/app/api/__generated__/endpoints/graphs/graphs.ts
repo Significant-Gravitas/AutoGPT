@@ -39,6 +39,8 @@ import type { Graph } from "../../models/graph";
 
 import type { GraphExecutionMeta } from "../../models/graphExecutionMeta";
 
+import type { GraphMeta } from "../../models/graphMeta";
+
 import type { GraphModel } from "../../models/graphModel";
 
 import type { HTTPValidationError } from "../../models/hTTPValidationError";
@@ -46,8 +48,6 @@ import type { HTTPValidationError } from "../../models/hTTPValidationError";
 import type { PostV1ExecuteGraphAgentParams } from "../../models/postV1ExecuteGraphAgentParams";
 
 import type { PostV1StopGraphExecution200 } from "../../models/postV1StopGraphExecution200";
-
-import type { PostV1StopGraphExecutionsParams } from "../../models/postV1StopGraphExecutionsParams";
 
 import type { SetGraphActiveVersion } from "../../models/setGraphActiveVersion";
 
@@ -59,7 +59,7 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
  * @summary List user graphs
  */
 export type getV1ListUserGraphsResponse200 = {
-  data: GraphModel[];
+  data: GraphMeta[];
   status: 200;
 };
 
@@ -227,6 +227,32 @@ export function useGetV1ListUserGraphs<
 
   return query;
 }
+
+/**
+ * @summary List user graphs
+ */
+export const prefetchGetV1ListUserGraphsQuery = async <
+  TData = Awaited<ReturnType<typeof getV1ListUserGraphs>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1ListUserGraphs>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1ListUserGraphsQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * @summary Create new graph
@@ -579,6 +605,40 @@ export function useGetV1GetGraphVersion<
 }
 
 /**
+ * @summary Get graph version
+ */
+export const prefetchGetV1GetGraphVersionQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetGraphVersion>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  graphId: string,
+  version: number | null,
+  params?: GetV1GetGraphVersionParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetGraphVersion>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetGraphVersionQueryOptions(
+    graphId,
+    version,
+    params,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * @summary Get specific graph
  */
 export type getV1GetSpecificGraphResponse200 = {
@@ -799,6 +859,38 @@ export function useGetV1GetSpecificGraph<
 
   return query;
 }
+
+/**
+ * @summary Get specific graph
+ */
+export const prefetchGetV1GetSpecificGraphQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetSpecificGraph>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  graphId: string,
+  params?: GetV1GetSpecificGraphParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetSpecificGraph>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetSpecificGraphQueryOptions(
+    graphId,
+    params,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * @summary Delete graph permanently
@@ -1222,6 +1314,36 @@ export function useGetV1GetAllGraphVersions<
 }
 
 /**
+ * @summary Get all graph versions
+ */
+export const prefetchGetV1GetAllGraphVersionsQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetAllGraphVersions>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  graphId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetAllGraphVersions>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetAllGraphVersionsQueryOptions(
+    graphId,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * @summary Set active graph version
  */
 export type putV1SetActiveGraphVersionResponse200 = {
@@ -1611,130 +1733,6 @@ export const usePostV1StopGraphExecution = <
   return useMutation(mutationOptions, queryClient);
 };
 /**
- * @summary Stop graph executions
- */
-export type postV1StopGraphExecutionsResponse200 = {
-  data: GraphExecutionMeta[];
-  status: 200;
-};
-
-export type postV1StopGraphExecutionsResponse422 = {
-  data: HTTPValidationError;
-  status: 422;
-};
-
-export type postV1StopGraphExecutionsResponseComposite =
-  | postV1StopGraphExecutionsResponse200
-  | postV1StopGraphExecutionsResponse422;
-
-export type postV1StopGraphExecutionsResponse =
-  postV1StopGraphExecutionsResponseComposite & {
-    headers: Headers;
-  };
-
-export const getPostV1StopGraphExecutionsUrl = (
-  params: PostV1StopGraphExecutionsParams,
-) => {
-  const normalizedParams = new URLSearchParams();
-
-  Object.entries(params || {}).forEach(([key, value]) => {
-    if (value !== undefined) {
-      normalizedParams.append(key, value === null ? "null" : value.toString());
-    }
-  });
-
-  const stringifiedParams = normalizedParams.toString();
-
-  return stringifiedParams.length > 0
-    ? `/api/executions?${stringifiedParams}`
-    : `/api/executions`;
-};
-
-export const postV1StopGraphExecutions = async (
-  params: PostV1StopGraphExecutionsParams,
-  options?: RequestInit,
-): Promise<postV1StopGraphExecutionsResponse> => {
-  return customMutator<postV1StopGraphExecutionsResponse>(
-    getPostV1StopGraphExecutionsUrl(params),
-    {
-      ...options,
-      method: "POST",
-    },
-  );
-};
-
-export const getPostV1StopGraphExecutionsMutationOptions = <
-  TError = HTTPValidationError,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof postV1StopGraphExecutions>>,
-    TError,
-    { params: PostV1StopGraphExecutionsParams },
-    TContext
-  >;
-  request?: SecondParameter<typeof customMutator>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof postV1StopGraphExecutions>>,
-  TError,
-  { params: PostV1StopGraphExecutionsParams },
-  TContext
-> => {
-  const mutationKey = ["postV1StopGraphExecutions"];
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation &&
-      "mutationKey" in options.mutation &&
-      options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
-
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof postV1StopGraphExecutions>>,
-    { params: PostV1StopGraphExecutionsParams }
-  > = (props) => {
-    const { params } = props ?? {};
-
-    return postV1StopGraphExecutions(params, requestOptions);
-  };
-
-  return { mutationFn, ...mutationOptions };
-};
-
-export type PostV1StopGraphExecutionsMutationResult = NonNullable<
-  Awaited<ReturnType<typeof postV1StopGraphExecutions>>
->;
-
-export type PostV1StopGraphExecutionsMutationError = HTTPValidationError;
-
-/**
- * @summary Stop graph executions
- */
-export const usePostV1StopGraphExecutions = <
-  TError = HTTPValidationError,
-  TContext = unknown,
->(
-  options?: {
-    mutation?: UseMutationOptions<
-      Awaited<ReturnType<typeof postV1StopGraphExecutions>>,
-      TError,
-      { params: PostV1StopGraphExecutionsParams },
-      TContext
-    >;
-    request?: SecondParameter<typeof customMutator>;
-  },
-  queryClient?: QueryClient,
-): UseMutationResult<
-  Awaited<ReturnType<typeof postV1StopGraphExecutions>>,
-  TError,
-  { params: PostV1StopGraphExecutionsParams },
-  TContext
-> => {
-  const mutationOptions = getPostV1StopGraphExecutionsMutationOptions(options);
-
-  return useMutation(mutationOptions, queryClient);
-};
-/**
  * @summary Get all executions
  */
 export type getV1GetAllExecutionsResponse200 = {
@@ -1906,6 +1904,32 @@ export function useGetV1GetAllExecutions<
 
   return query;
 }
+
+/**
+ * @summary Get all executions
+ */
+export const prefetchGetV1GetAllExecutionsQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetAllExecutions>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetAllExecutions>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetAllExecutionsQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * @summary Get graph executions
@@ -2100,6 +2124,33 @@ export function useGetV1GetGraphExecutions<
 
   return query;
 }
+
+/**
+ * @summary Get graph executions
+ */
+export const prefetchGetV1GetGraphExecutionsQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetGraphExecutions>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  graphId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetGraphExecutions>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetGraphExecutionsQueryOptions(graphId, options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * @summary Get execution details
@@ -2314,6 +2365,38 @@ export function useGetV1GetExecutionDetails<
 
   return query;
 }
+
+/**
+ * @summary Get execution details
+ */
+export const prefetchGetV1GetExecutionDetailsQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetExecutionDetails>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  graphId: string,
+  graphExecId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetExecutionDetails>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetExecutionDetailsQueryOptions(
+    graphId,
+    graphExecId,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * @summary Delete graph execution

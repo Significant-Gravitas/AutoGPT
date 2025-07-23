@@ -208,6 +208,32 @@ export function useGetV1ListAvailableBlocks<
 }
 
 /**
+ * @summary List available blocks
+ */
+export const prefetchGetV1ListAvailableBlocksQuery = async <
+  TData = Awaited<ReturnType<typeof getV1ListAvailableBlocks>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1ListAvailableBlocks>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1ListAvailableBlocksQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * @summary Execute graph block
  */
 export type postV1ExecuteGraphBlockResponse200 = {
