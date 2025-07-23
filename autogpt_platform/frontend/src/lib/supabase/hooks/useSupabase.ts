@@ -47,10 +47,7 @@ export function useSupabase() {
   }, []);
 
   async function logOut(options: ServerLogoutOptions = {}) {
-    // Clean up WebSocket in current tab first
     api.disconnectWebSocket();
-
-    // Broadcast logout to all other tabs (they will also clean up WebSockets)
     broadcastLogout();
 
     try {

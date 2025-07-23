@@ -1117,7 +1117,7 @@ export default class BackendAPI {
   }
 
   async connectWebSocket(): Promise<void> {
-    this.isIntentionallyDisconnected = false; // Reset flag when intentionally connecting
+    this.isIntentionallyDisconnected = false;
     return (this.wsConnecting ??= new Promise(async (resolve, reject) => {
       try {
         let token = "";
