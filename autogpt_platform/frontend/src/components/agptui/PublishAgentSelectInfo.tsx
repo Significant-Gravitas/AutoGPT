@@ -204,6 +204,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             Title
           </label>
           <input
+          data-testid={"agent-title-input"}
             id="title"
             type="text"
             placeholder="Agent name"
@@ -221,6 +222,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             Subheader
           </label>
           <input
+            data-testid={"agent-subheader-input"}
             id="subheader"
             type="text"
             placeholder="A tagline for your agent"
@@ -238,6 +240,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             Slug
           </label>
           <input
+            data-testid={"agent-slug-input"}
             id="slug"
             type="text"
             placeholder="URL-friendly name for your agent"
@@ -277,9 +280,11 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                   onClick={handleAddImage}
                   variant="ghost"
                   className="flex h-[70px] w-[100px] flex-col items-center justify-center rounded-md bg-neutral-200 hover:bg-neutral-300 dark:bg-neutral-700 dark:hover:bg-neutral-600"
+                  data-testid="add-image-btn"
                 >
                   <label htmlFor="image-upload" className="cursor-pointer">
                     <input
+                      data-testid={"agent-image-input"}
                       id="image-upload"
                       type="file"
                       accept="image/*"
@@ -374,6 +379,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
           </label>
           <input
             id="youtube"
+            data-testid={"agent-youtube-input"}
             type="text"
             placeholder="Paste a video link here"
             value={youtubeLink}
@@ -392,6 +398,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
           <select
             id="category"
             value={category}
+            data-testid={"agent-category-select"}
             onChange={(e) => setCategory(e.target.value)}
             className="w-full appearance-none rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-5 font-sans text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
           >
@@ -419,6 +426,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
           </label>
           <textarea
             id="description"
+            data-testid={"agent-description-textarea"}
             placeholder="Describe your agent and what it does"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -436,6 +444,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
           Back
         </Button>
         <Button
+          data-testid={"agent-submit-button"}
           onClick={handleSubmit}
           size="lg"
           className="w-full bg-neutral-800 text-white hover:bg-neutral-900 dark:bg-neutral-600 dark:hover:bg-neutral-500 sm:flex-1"

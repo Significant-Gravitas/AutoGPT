@@ -105,6 +105,7 @@ export const PublishAgentAwaitingReview: React.FC<
           Done
         </Button>
         <Button
+        data-testid={"view-progrss-btn"}
           onClick={onViewProgress}
           className="h-12 w-full rounded-[59px] bg-neutral-800 text-white hover:bg-neutral-900 dark:bg-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-600 sm:flex-1"
         >

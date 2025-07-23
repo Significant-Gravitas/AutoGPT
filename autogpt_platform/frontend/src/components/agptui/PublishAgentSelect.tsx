@@ -119,6 +119,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
                           handleAgentClick(agent.name, agent.id, agent.version);
                         }
                       }}
+                      data-testid={"agent-to-select"}
                       tabIndex={0}
                       role="button"
                       aria-pressed={selectedAgentId === agent.id}
@@ -151,6 +152,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
               Back
             </Button>
             <Button
+            data-testid={"next-button"}
               onClick={() => {
                 if (selectedAgentId && selectedAgentVersion) {
                   onNext(selectedAgentId, selectedAgentVersion);

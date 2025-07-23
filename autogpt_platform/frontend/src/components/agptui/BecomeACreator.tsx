@@ -44,6 +44,7 @@ export const BecomeACreator: React.FC<BecomeACreatorProps> = ({
         <PublishAgentPopout
           trigger={
             <button
+              data-testid={"become-a-creator-btn"}
               onClick={handleButtonClick}
               className="inline-flex h-[48px] cursor-pointer items-center justify-center rounded-[38px] bg-neutral-800 px-8 py-3 transition-colors hover:bg-neutral-700 dark:bg-neutral-700 dark:hover:bg-neutral-600 md:h-[56px] md:px-10 md:py-4 lg:h-[68px] lg:px-12 lg:py-5"
             >
