@@ -180,6 +180,7 @@ export default function AgentRunDetailsView({
                 </>
               ),
               callback: runAgain,
+              dataTestId: "run-again-button",
             },
           ]
         : []),
