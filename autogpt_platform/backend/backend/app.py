@@ -38,7 +38,7 @@ def main(**kwargs):
     from backend.server.ws_api import WebsocketServer
 
     run_processes(
-        DatabaseManager(),
+        DatabaseManager().set_log_level("warning"),
         ExecutionManager(),
         Scheduler(),
         NotificationManager(),
