@@ -13,10 +13,8 @@ import {
 } from "../actions";
 import {
   broadcastLogout,
-  broadcastWebSocketCleanup,
   getRedirectPath,
   isLogoutEvent,
-  isWebSocketCleanupEvent,
   setupSessionEventListeners,
 } from "../helpers";
 
@@ -49,12 +47,10 @@ export function useSupabase() {
   }, []);
 
   async function logOut(options: ServerLogoutOptions = {}) {
-    // Broadcast WebSocket cleanup to all tabs first
-    broadcastWebSocketCleanup();
-
-    // Clean up WebSocket in current tab
+    // Clean up WebSocket in current tab first
     api.disconnectWebSocket();
 
+    // Broadcast logout to all other tabs (they will also clean up WebSockets)
     broadcastLogout();
 
     try {
@@ -137,6 +133,8 @@ export function useSupabase() {
   function handleCrossTabLogout(e: StorageEvent) {
     if (!isLogoutEvent(e)) return;
 
+    api.disconnectWebSocket();
+
     // Clear local state immediately
     setUser(null);
     router.refresh();
@@ -145,13 +143,6 @@ export function useSupabase() {
     if (redirectPath) {
       router.push(redirectPath);
     }
-  }
-
-  function handleWebSocketCleanup(e: StorageEvent) {
-    if (!isWebSocketCleanupEvent(e)) return;
-
-    // Disconnect WebSocket connections to prevent reconnection errors
-    api.disconnectWebSocket();
   }
 
   function handleVisibilityChange() {
@@ -173,10 +164,7 @@ export function useSupabase() {
     const eventListeners = setupSessionEventListeners(
       handleVisibilityChange,
       handleFocus,
-      (e: StorageEvent) => {
-        handleCrossTabLogout(e);
-        handleWebSocketCleanup(e);
-      },
+      handleCrossTabLogout,
     );
 
     return () => {

@@ -14,7 +14,6 @@ export const ADMIN_PAGES = ["/admin"] as const;
 
 export const STORAGE_KEYS = {
   LOGOUT: "supabase-logout",
-  WEBSOCKET_CLEANUP: "websocket-cleanup",
 } as const;
 
 export function getCookieSettings(): Partial<CookieOptions> {
@@ -47,20 +46,6 @@ export function broadcastLogout(): void {
 
 export function isLogoutEvent(event: StorageEvent): boolean {
   return event.key === STORAGE_KEYS.LOGOUT;
-}
-
-// WebSocket cleanup utilities
-export function broadcastWebSocketCleanup(): void {
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(
-      STORAGE_KEYS.WEBSOCKET_CLEANUP,
-      Date.now().toString(),
-    );
-  }
-}
-
-export function isWebSocketCleanupEvent(event: StorageEvent): boolean {
-  return event.key === STORAGE_KEYS.WEBSOCKET_CLEANUP;
 }
 
 // Redirect utilities
