@@ -97,6 +97,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry.scripts]
 app = "backend.app:main"
 rest = "backend.rest:main"
+db = "backend.db:main"
 ws = "backend.ws:main"
 scheduler = "backend.scheduler:main"
 executor = "backend.exec:main"
