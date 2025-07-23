@@ -152,7 +152,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
               Back
             </Button>
             <Button
-            data-testid={"next-button"}
+              data-testid={"next-button"}
               onClick={() => {
                 if (selectedAgentId && selectedAgentVersion) {
                   onNext(selectedAgentId, selectedAgentVersion);

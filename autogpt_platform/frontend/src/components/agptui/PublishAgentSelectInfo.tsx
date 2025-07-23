@@ -204,7 +204,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             Title
           </label>
           <input
-          data-testid={"agent-title-input"}
+            data-testid={"agent-title-input"}
             id="title"
             type="text"
             placeholder="Agent name"
