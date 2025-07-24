@@ -5,17 +5,16 @@ import { TEST_CREDENTIALS } from "./credentials";
 import { getSelectors } from "./utils/selectors";
 import { hasUrl, isVisible } from "./utils/assertion";
 
-test.beforeEach(async ({ page }) => {
-  const loginPage = new LoginPage(page);
-  await page.goto("/login");
-  await loginPage.login(TEST_CREDENTIALS.email, TEST_CREDENTIALS.password);
-  await hasUrl(page, "/marketplace");
-});
 
 test("User can publish an agent through the complete flow", async ({
   page,
 }) => {
   const { getId, getText } = getSelectors(page);
+
+  const loginPage = new LoginPage(page);
+  await page.goto("/login");
+  await loginPage.login(TEST_CREDENTIALS.email, TEST_CREDENTIALS.password);
+  await hasUrl(page, "/marketplace");
 
   await page.goto("/marketplace");
   await getId("become-a-creator-btn").click();
@@ -63,4 +62,37 @@ test("User can publish an agent through the complete flow", async ({
   await agentName.waitFor({ state: "visible" });
   await expect(agentStatus).toHaveText("Awaiting review");
   await expect(agentName).toHaveText(agentTitle);
+});
+
+test("Should display appropriate content in agent creation popout when user is logged out", async ({ page }) => {
+  const { getId, getText } = getSelectors(page);
+
+  await page.goto("/marketplace");
+  await getId("become-a-creator-btn").click();
+
+  await isVisible(getText("Uh-oh.. It seems like you don't have any agents in your library."));
+});
+
+test("Should show error when required agent title is missing", async ({ page }) => {
+  const { getId, getText } = getSelectors(page);
+
+  const loginPage = new LoginPage(page);
+  await page.goto("/login");
+  await loginPage.login(TEST_CREDENTIALS.email, TEST_CREDENTIALS.password);
+  await hasUrl(page, "/marketplace");
+
+  await page.goto("/marketplace");
+  await getId("become-a-creator-btn").click();
+
+  await getId("agent-to-select").first().click();
+  await getId("next-button").click();
+
+  await isVisible(getText("Write a bit of details about your agent"));
+
+  await getId("agent-subheader-input").fill("Test Agent Subheader");
+  await getId("agent-slug-input").fill("test-agent-slug");
+
+  await getId("agent-submit-button").click();
+
+  await isVisible(getText(/missing|required/i));
 });
