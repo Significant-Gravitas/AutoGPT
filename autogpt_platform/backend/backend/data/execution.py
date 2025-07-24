@@ -619,19 +619,7 @@ async def update_graph_execution_stats(
         stats_dict = stats.model_dump()
         if isinstance(stats_dict.get("error"), Exception):
             stats_dict["error"] = str(stats_dict["error"])
-        # Safely serialize stats to avoid malformed GraphQL requests
-        try:
-            update_data["stats"] = SafeJson(stats_dict)
-        except Exception as e:
-            logger.error(f"Failed to serialize execution stats: {e}")
-            # Fallback to basic stats without problematic fields
-            basic_stats = {
-                "walltime": getattr(stats, "walltime", 0),
-                "cputime": getattr(stats, "cputime", 0),
-                "node_count": getattr(stats, "node_count", 0),
-                "node_error_count": getattr(stats, "node_error_count", 0),
-            }
-            update_data["stats"] = SafeJson(basic_stats)
+        update_data["stats"] = SafeJson(stats_dict)
 
     if status:
         update_data["executionStatus"] = status
