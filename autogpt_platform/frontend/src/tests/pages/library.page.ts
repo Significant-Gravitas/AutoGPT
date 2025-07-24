@@ -397,10 +397,7 @@ export class LibraryPage extends BasePage {
   }
 
   async isPaginationWorking(): Promise<boolean> {
-    console.log(`checking if pagination is working`);
-
     const newAgentsLoaded = await this.scrollAndWaitForNewAgents();
-
     return newAgentsLoaded > 0;
   }
 }

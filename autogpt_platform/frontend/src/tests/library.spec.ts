@@ -62,25 +62,17 @@ test.describe("Library", () => {
 
     const paginationResult = await libraryPage.testPagination();
 
-    // Verify pagination loaded more agents (if available)
     if (paginationResult.initialCount >= 10) {
-      // If we have enough agents, pagination should work
-      test
-        .expect(paginationResult.finalCount)
+      expect(paginationResult.finalCount)
         .toBeGreaterThanOrEqual(paginationResult.initialCount);
-      test.expect(paginationResult.hasMore).toBeTruthy();
-    } else {
-      // If we don't have enough agents, pagination might not trigger
+      expect(paginationResult.hasMore).toBeTruthy();
     }
 
-    // Test that pagination is working by checking scroll behavior
     await libraryPage.isPaginationWorking();
 
-    // Get all agents with pagination
     const allAgents = await libraryPage.getAgentsWithPagination();
     test.expect(allAgents.length).toBeGreaterThan(0);
 
-    // Verify agent count matches displayed count
     const displayedCount = await libraryPage.getAgentCount();
     test.expect(allAgents.length).toEqual(displayedCount);
   });
