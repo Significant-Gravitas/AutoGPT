@@ -3,7 +3,6 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Annotated, Any, Generic, Optional, TypeVar, Union
 
-from prisma import Json
 from prisma.enums import NotificationType
 from prisma.models import NotificationEvent, UserNotificationBatch
 from prisma.types import (
@@ -16,6 +15,7 @@ from prisma.types import (
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from backend.server.v2.store.exceptions import DatabaseError
+from backend.util.json import SafeJson
 from backend.util.logging import TruncatedLogger
 
 from .db import transaction
@@ -395,7 +395,7 @@ async def create_or_add_to_user_notification_batch(
             raise ValueError("Notification data must be provided")
 
         # Serialize the data
-        json_data: Json = Json(notification_data.data.model_dump())
+        json_data: SafeJson = SafeJson(notification_data.data.model_dump())
 
         # First try to find existing batch
         existing_batch = await UserNotificationBatch.prisma().find_unique(
@@ -409,44 +409,40 @@ async def create_or_add_to_user_notification_batch(
         )
 
         if not existing_batch:
-            async with transaction() as tx:
-                notification_event = await tx.notificationevent.create(
-                    data=NotificationEventCreateInput(
-                        type=notification_type,
-                        data=json_data,
-                    )
-                )
-
-                # Create new batch
-                resp = await tx.usernotificationbatch.create(
-                    data=UserNotificationBatchCreateInput(
-                        userId=user_id,
-                        type=notification_type,
-                        Notifications={"connect": [{"id": notification_event.id}]},
-                    ),
-                    include={"Notifications": True},
-                )
-                return UserNotificationBatchDTO.from_db(resp)
-        else:
-            async with transaction() as tx:
-                notification_event = await tx.notificationevent.create(
-                    data=NotificationEventCreateInput(
-                        type=notification_type,
-                        data=json_data,
-                        UserNotificationBatch={"connect": {"id": existing_batch.id}},
-                    )
-                )
-                # Add to existing batch
-                resp = await tx.usernotificationbatch.update(
-                    where={"id": existing_batch.id},
-                    data={
-                        "Notifications": {"connect": [{"id": notification_event.id}]}
+            resp = await UserNotificationBatch.prisma().create(
+                data=UserNotificationBatchCreateInput(
+                    userId=user_id,
+                    type=notification_type,
+                    Notifications={
+                        "create": [
+                            NotificationEventCreateInput(
+                                type=notification_type,
+                                data=json_data,
+                            )
+                        ]
                     },
-                    include={"Notifications": True},
-                )
+                ),
+                include={"Notifications": True},
+            )
+            return UserNotificationBatchDTO.from_db(resp)
+        else:
+            resp = await UserNotificationBatch.prisma().update(
+                where={"id": existing_batch.id},
+                data={
+                    "Notifications": {
+                        "create": [
+                            NotificationEventCreateInput(
+                                type=notification_type,
+                                data=json_data,
+                            )
+                        ]
+                    }
+                },
+                include={"Notifications": True},
+            )
             if not resp:
                 raise DatabaseError(
-                    f"Failed to add notification event {notification_event.id} to existing batch {existing_batch.id}"
+                    f"Failed to add notification event to existing batch {existing_batch.id}"
                 )
             return UserNotificationBatchDTO.from_db(resp)
     except Exception as e:

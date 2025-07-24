@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from typing import Any, cast
 
 import stripe
-from prisma import Json
 from prisma.enums import (
     CreditRefundRequestStatus,
     CreditTransactionType,
@@ -37,6 +36,7 @@ from backend.notifications.notifications import queue_notification_async
 from backend.server.model import Pagination
 from backend.server.v2.admin.model import UserHistoryResponse
 from backend.util.exceptions import InsufficientBalanceError
+from backend.util.json import SafeJson
 from backend.util.retry import func_retry
 from backend.util.settings import Settings
 
@@ -279,7 +279,7 @@ class UserCreditBase(ABC):
         self,
         transaction_key: str,
         user_id: str,
-        metadata: Json,
+        metadata: SafeJson,
         new_transaction_key: str | None = None,
     ):
         transaction = await CreditTransaction.prisma().find_first_or_raise(
@@ -316,7 +316,7 @@ class UserCreditBase(ABC):
         transaction_key: str | None = None,
         ceiling_balance: int | None = None,
         fail_insufficient_credits: bool = True,
-        metadata: Json = Json({}),
+        metadata: SafeJson = SafeJson({}),
     ) -> tuple[int, str]:
         """
         Add a new transaction for the user.
@@ -399,7 +399,7 @@ class UserCredit(UserCreditBase):
             user_id=user_id,
             amount=-cost,
             transaction_type=CreditTransactionType.USAGE,
-            metadata=Json(metadata.model_dump()),
+            metadata=SafeJson(metadata.model_dump()),
         )
 
         # Auto top-up if balance is below threshold.
@@ -439,7 +439,7 @@ class UserCredit(UserCreditBase):
                 amount=credits,
                 transaction_type=CreditTransactionType.GRANT,
                 transaction_key=f"REWARD-{user_id}-{step.value}",
-                metadata=Json(
+                metadata=SafeJson(
                     {"reason": f"Reward for completing {step.value} onboarding step."}
                 ),
             )
@@ -531,7 +531,7 @@ class UserCredit(UserCreditBase):
             amount=-request.amount,
             transaction_type=CreditTransactionType.REFUND,
             transaction_key=request.id,
-            metadata=Json(request),
+            metadata=SafeJson(request),
             fail_insufficient_credits=False,
         )
 
@@ -669,7 +669,7 @@ class UserCredit(UserCreditBase):
             is_active=False,
             transaction_key=key,
             ceiling_balance=ceiling_balance,
-            metadata=(Json(metadata)),
+            metadata=(SafeJson(metadata)),
         )
 
         customer_id = await get_stripe_customer_id(user_id)
@@ -693,7 +693,7 @@ class UserCredit(UserCreditBase):
                     },
                 )
                 if setup_intent.status == "succeeded":
-                    successful_transaction = Json({"setup_intent": setup_intent})
+                    successful_transaction = SafeJson({"setup_intent": setup_intent})
                     new_transaction_key = setup_intent.id
                     break
             else:
@@ -711,7 +711,9 @@ class UserCredit(UserCreditBase):
                     },
                 )
                 if payment_intent.status == "succeeded":
-                    successful_transaction = Json({"payment_intent": payment_intent})
+                    successful_transaction = SafeJson(
+                        {"payment_intent": payment_intent}
+                    )
                     new_transaction_key = payment_intent.id
                     break
 
@@ -766,7 +768,7 @@ class UserCredit(UserCreditBase):
             transaction_type=CreditTransactionType.TOP_UP,
             transaction_key=checkout_session.id,
             is_active=False,
-            metadata=Json(checkout_session),
+            metadata=SafeJson(checkout_session),
         )
 
         return checkout_session.url or ""
@@ -822,7 +824,7 @@ class UserCredit(UserCreditBase):
                 transaction_key=credit_transaction.transactionKey,
                 new_transaction_key=new_transaction_key,
                 user_id=credit_transaction.userId,
-                metadata=Json(checkout_session),
+                metadata=SafeJson(checkout_session),
             )
 
     async def get_credits(self, user_id: str) -> int:
@@ -935,7 +937,7 @@ class BetaUserCredit(UserCredit):
                 amount=max(self.num_user_credits_refill - balance, 0),
                 transaction_type=CreditTransactionType.GRANT,
                 transaction_key=f"MONTHLY-CREDIT-TOP-UP-{cur_time}",
-                metadata=Json({"reason": "Monthly credit refill"}),
+                metadata=SafeJson({"reason": "Monthly credit refill"}),
             )
             return balance
         except UniqueViolationError:
@@ -1012,7 +1014,7 @@ async def get_stripe_customer_id(user_id: str) -> str:
 async def set_auto_top_up(user_id: str, config: AutoTopUpConfig):
     await User.prisma().update(
         where={"id": user_id},
-        data={"topUpConfig": Json(config.model_dump())},
+        data={"topUpConfig": SafeJson(config.model_dump())},
     )
 
 

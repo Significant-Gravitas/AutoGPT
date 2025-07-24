@@ -3,7 +3,6 @@ from typing import Any, Optional
 
 import prisma
 import pydantic
-from prisma import Json
 from prisma.enums import OnboardingStep
 from prisma.models import UserOnboarding
 from prisma.types import UserOnboardingCreateInput, UserOnboardingUpdateInput
@@ -14,6 +13,7 @@ from backend.data.credit import get_user_credit_model
 from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
 from backend.server.v2.store.model import StoreAgentDetails
+from backend.util.json import SafeJson
 
 # Mapping from user reason id to categories to search for when choosing agent to show
 REASON_MAPPING: dict[str, list[str]] = {
@@ -79,7 +79,7 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     if data.selectedStoreListingVersionId is not None:
         update["selectedStoreListingVersionId"] = data.selectedStoreListingVersionId
     if data.agentInput is not None:
-        update["agentInput"] = Json(data.agentInput)
+        update["agentInput"] = SafeJson(data.agentInput)
     if data.onboardingAgentExecutionId is not None:
         update["onboardingAgentExecutionId"] = data.onboardingAgentExecutionId
     if data.agentRuns is not None:

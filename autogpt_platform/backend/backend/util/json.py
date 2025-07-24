@@ -3,6 +3,7 @@ from typing import Any, Type, TypeGuard, TypeVar, overload
 
 import jsonschema
 from fastapi.encoders import jsonable_encoder
+from prisma import Json
 from pydantic import BaseModel
 
 from .type import type_match
@@ -95,3 +96,11 @@ def convert_pydantic_to_json(output_data: Any) -> Any:
     if is_list_of_basemodels(output_data):
         return [item.model_dump() for item in output_data]
     return output_data
+
+
+class SafeJson(Json):
+    """Safely serialize data and extend Prisma's Json type."""
+
+    def __new__(cls, data: Any):
+        """Create a new SafeJson instance with safely serialized data."""
+        return super().__new__(cls, json.loads(dumps(data)))

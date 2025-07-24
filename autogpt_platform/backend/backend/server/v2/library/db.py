@@ -22,6 +22,7 @@ from backend.data.model import CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import on_graph_activate
 from backend.util.exceptions import NotFoundError
+from backend.util.json import SafeJson
 from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
@@ -704,7 +705,7 @@ async def create_preset(
                 InputPresets={
                     "create": [
                         prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
-                            name=name, data=prisma.fields.Json(data)
+                            name=name, data=SafeJson(data)
                         )
                         for name, data in {
                             **preset.inputs,
@@ -814,7 +815,7 @@ async def update_preset(
                 update_data["InputPresets"] = {
                     "create": [
                         prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
-                            name=name, data=prisma.fields.Json(data)
+                            name=name, data=SafeJson(data)
                         )
                         for name, data in {
                             **inputs,
