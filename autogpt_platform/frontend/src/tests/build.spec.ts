@@ -257,7 +257,6 @@ test.describe("Build", () => { //(1)!
     // Ensure the run button is enabled
     await test.expect(buildPage.isRunButtonEnabled()).resolves.toBeTruthy();
 
-
     await buildPage.runAgent();
     await buildPage.waitForCompletionBadge();
     await test

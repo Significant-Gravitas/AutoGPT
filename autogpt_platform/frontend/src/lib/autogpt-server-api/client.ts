@@ -1169,12 +1169,6 @@ export default class BackendAPI {
             this.wsOnDisconnectHandlers.forEach((handler) => handler());
           }
 
-          // Only attempt to reconnect if this wasn't an intentional disconnection
-          if (!wasIntentional) {
-            setTimeout(() => this.connectWebSocket().then(resolve), 1000);
-          }
-        };
-
         this.webSocket.onerror = (error) => {
           if (this.webSocket?.state == "connected") {
             console.error("[BackendAPI] WebSocket error:", error);
