@@ -1141,6 +1141,7 @@ export default class BackendAPI {
           this.webSocket!.state = "connected";
           console.info("[BackendAPI] WebSocket connected to", this.wsUrl);
           this._startWSHeartbeat(); // Start heartbeat when connection opens
+          this._clearDisconnectIntent(); // Clear disconnect intent when connected
           this.wsOnConnectHandlers.forEach((handler) => handler());
           resolve();
         };
@@ -1163,11 +1164,10 @@ export default class BackendAPI {
           this.wsConnecting = null;
 
           const wasIntentional =
-            this.isIntentionallyDisconnected || this._isRecentLogoutEvent();
+            this.isIntentionallyDisconnected || this._hasDisconnectIntent();
 
-          if (wasIntentional) {
-            this.wsOnDisconnectHandlers.forEach((handler) => handler());
-          } else {
+          // Only call disconnect handlers if the disconnection was not intentional
+          if (!wasIntentional) {
             this.wsOnDisconnectHandlers.forEach((handler) => handler());
             setTimeout(() => this.connectWebSocket().then(resolve), 1000);
           }
@@ -1194,20 +1194,23 @@ export default class BackendAPI {
     }
   }
 
-  private _isRecentLogoutEvent(): boolean {
+  private _hasDisconnectIntent(): boolean {
     if (!isClient) return false;
 
     try {
-      const logoutTimestamp = localStorage.getItem("supabase-logout");
-      if (!logoutTimestamp) return false;
-
-      const logoutTime = parseInt(logoutTimestamp, 10);
-      const now = Date.now();
-
-      // Consider logout recent if it happened within the last 5 seconds
-      return now - logoutTime < 5000;
+      return localStorage.getItem("websocket-disconnect-intent") === "true";
     } catch {
       return false;
+    }
+  }
+
+  private _clearDisconnectIntent(): void {
+    if (!isClient) return;
+
+    try {
+      localStorage.removeItem("websocket-disconnect-intent");
+    } catch {
+      // Ignore errors
     }
   }
 

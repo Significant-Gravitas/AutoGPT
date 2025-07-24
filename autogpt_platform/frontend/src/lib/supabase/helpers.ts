@@ -14,6 +14,7 @@ export const ADMIN_PAGES = ["/admin"] as const;
 
 export const STORAGE_KEYS = {
   LOGOUT: "supabase-logout",
+  WEBSOCKET_DISCONNECT_INTENT: "websocket-disconnect-intent",
 } as const;
 
 export function getCookieSettings(): Partial<CookieOptions> {
@@ -46,6 +47,35 @@ export function broadcastLogout(): void {
 
 export function isLogoutEvent(event: StorageEvent): boolean {
   return event.key === STORAGE_KEYS.LOGOUT;
+}
+
+// WebSocket disconnect intent utilities
+export function setWebSocketDisconnectIntent(): void {
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(
+      STORAGE_KEYS.WEBSOCKET_DISCONNECT_INTENT,
+      "true",
+    );
+  }
+}
+
+export function clearWebSocketDisconnectIntent(): void {
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(STORAGE_KEYS.WEBSOCKET_DISCONNECT_INTENT);
+  }
+}
+
+export function hasWebSocketDisconnectIntent(): boolean {
+  if (typeof window === "undefined") return false;
+
+  try {
+    return (
+      window.localStorage.getItem(STORAGE_KEYS.WEBSOCKET_DISCONNECT_INTENT) ===
+      "true"
+    );
+  } catch {
+    return false;
+  }
 }
 
 // Redirect utilities
