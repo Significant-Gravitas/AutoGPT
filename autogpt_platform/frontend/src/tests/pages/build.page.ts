@@ -403,6 +403,15 @@ export class BuildPage extends BasePage {
     };
   }
 
+  async getCalculatorBlockDetails(): Promise<Block> {
+    return {
+      id: "dummy-id-2",
+      name: "Calculator",
+      description: "Calculator",
+      type: "Standard",
+    };
+  }
+
   async waitForSaveDialogClose(): Promise<void> {
     console.log(`waiting for save dialog to close`);
 

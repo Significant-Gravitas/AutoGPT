@@ -1,5 +1,6 @@
-import { Page } from "@playwright/test";
 import { BasePage } from "./base.page";
+import { Locator, Page } from "@playwright/test";
+import { getSelectors } from "../utils/selectors";
 
 export interface Agent {
   id: string;
@@ -35,27 +36,18 @@ export class LibraryPage extends BasePage {
   }
 
   async getAgentCount(): Promise<number> {
-    console.log(`getting agent count`);
-    try {
-      const countText = await this.page
-        .locator("text=/\\d+ agents/")
-        .textContent();
-      const match = countText?.match(/(\d+) agents/);
-      return match ? parseInt(match[1], 10) : 0;
-    } catch (error) {
-      console.error("Error getting agent count:", error);
-      return 0;
-    }
+    const { getId } = getSelectors(this.page);
+    const countText = await getId("agents-count").textContent();
+    const match = countText?.match(/^(\d+)/);
+    return match ? parseInt(match[1], 10) : 0;
   }
 
   async searchAgents(searchTerm: string): Promise<void> {
     console.log(`searching for agents with term: ${searchTerm}`);
-    const searchInput = this.page.getByRole("textbox", {
-      name: "Search agents",
-    });
+    const { getRole } = getSelectors(this.page);
+    const searchInput = getRole("textbox", "Search agents");
     await searchInput.fill(searchTerm);
 
-    // Wait for search results to update
     await this.page.waitForTimeout(500);
   }
 
@@ -82,17 +74,14 @@ export class LibraryPage extends BasePage {
   }
 
   async selectSortOption(
+    page: Page,
     sortOption: "Creation Date" | "Last Modified",
   ): Promise<void> {
-    console.log(`selecting sort option: ${sortOption}`);
+    const { getRole } = getSelectors(page);
+    await getRole("combobox").click();
 
-    // Click the sort dropdown
-    await this.page.getByRole("combobox").click();
+    await getRole("option", sortOption).click();
 
-    // Select the option
-    await this.page.getByRole("option", { name: sortOption }).click();
-
-    // Wait for results to update
     await this.page.waitForTimeout(500);
   }
 
@@ -169,62 +158,42 @@ export class LibraryPage extends BasePage {
   }
 
   async getAgents(): Promise<Agent[]> {
-    console.log(`getting all agents from library`);
-    try {
-      const agents: Agent[] = [];
+    const { getId } = getSelectors(this.page);
+    const agents: Agent[] = [];
 
-      // Wait for agents to load
-      await this.page.waitForTimeout(1000);
+    await getId("library-agent-card").first().waitFor({ state: "visible", timeout: 10_000 });
+    const agentCards = await getId("library-agent-card").all();
 
-      // Get all agent cards
-      const agentCards = await this.page.getByTestId("agent-card").all();
+    for (const card of agentCards) {
+      const name = await card.locator("h3").textContent();
+      const description = await card.locator("p").textContent();
+      const seeRunsLink = card.locator("a", { hasText: "See runs" });
+      const openInBuilderLink = card.locator("a", {
+        hasText: "Open in builder",
+      });
 
-      console.log("Total number of agents : ", agentCards.length);
+      const seeRunsUrl = await seeRunsLink.getAttribute("href");
+      const openInBuilderUrl = await openInBuilderLink.getAttribute("href");
 
-      for (const card of agentCards) {
-        try {
-          const nameElement = card.locator("h3");
-          const descriptionElement = card.locator("p");
-          const seeRunsLink = card.locator("a", { hasText: "See runs" });
-          const openInBuilderLink = card.locator("a", {
-            hasText: "Open in builder",
-          });
+      if (name && description && seeRunsUrl && openInBuilderUrl) {
+        const idMatch = seeRunsUrl.match(/\/library\/agents\/([^\/]+)/);
+        const id = idMatch ? idMatch[1] : "";
 
-          const name = await nameElement.textContent();
-          const description = await descriptionElement.textContent();
-          const seeRunsUrl = await seeRunsLink.getAttribute("href");
-          const openInBuilderUrl = await openInBuilderLink.getAttribute("href");
-
-          if (name && description && seeRunsUrl && openInBuilderUrl) {
-            // Extract agent ID from the URL
-            const idMatch = seeRunsUrl.match(/\/library\/agents\/([^\/]+)/);
-            const id = idMatch ? idMatch[1] : "";
-
-            agents.push({
-              id,
-              name: name.trim(),
-              description: description.trim(),
-              seeRunsUrl,
-              openInBuilderUrl,
-            });
-          }
-        } catch (error) {
-          console.error("Error processing agent card:", error);
-        }
+        agents.push({
+          id,
+          name: name.trim(),
+          description: description.trim(),
+          seeRunsUrl,
+          openInBuilderUrl,
+        });
       }
-
-      console.log(`found ${agents.length} agents`);
-      return agents;
-    } catch (error) {
-      console.error("Error getting agents:", error);
-      return [];
     }
+
+    console.log(`found ${agents.length} agents`);
+    return agents;
   }
 
   async clickAgent(agent: Agent): Promise<void> {
-    console.log(`clicking on agent: ${agent.name}`);
-
-    // Click on the agent name/title
     await this.page
       .getByRole("heading", { name: agent.name, level: 3 })
       .click();
@@ -248,31 +217,12 @@ export class LibraryPage extends BasePage {
     await builderLink.click();
   }
 
-  async isAgentVisible(agent: Agent): Promise<boolean> {
-    console.log(`checking if agent ${agent.name} is visible`);
-    try {
-      const agentHeading = this.page.getByRole("heading", {
-        name: agent.name,
-        level: 3,
-      });
-      return await agentHeading.isVisible();
-    } catch {
-      return false;
-    }
-  }
 
   async waitForAgentsToLoad(): Promise<void> {
-    console.log(`waiting for agents to load`);
-
-    // Wait for either agents to appear or the "0 agents" text to appear
+    const { getId } = getSelectors(this.page);
     await Promise.race([
-      this.page
-        .getByTestId("agent-card")
-        .first()
-        .waitFor({ state: "visible", timeout: 10_000 }),
-      this.page
-        .getByTestId("agents-count")
-        .waitFor({ state: "visible", timeout: 10_000 }),
+      getId("library-agent-card").first().waitFor({ state: "visible", timeout: 10_000 }),
+      getId("agents-count").waitFor({ state: "visible", timeout: 10_000 }),
     ]);
   }
 
@@ -304,13 +254,9 @@ export class LibraryPage extends BasePage {
   }
 
   async hasNoAgentsMessage(): Promise<boolean> {
-    console.log(`checking for no agents message`);
-    try {
-      const noAgentsText = this.page.locator("text=/0 agents/");
-      return await noAgentsText.isVisible();
-    } catch {
-      return false;
-    }
+    const { getText } = getSelectors(this.page);
+    const noAgentsText = getText("0 agents");
+    return noAgentsText !== null;
   }
 
   async scrollToBottom(): Promise<void> {
@@ -457,9 +403,7 @@ export class LibraryPage extends BasePage {
 
     return newAgentsLoaded > 0;
   }
-=======
-import { Locator, Page } from "@playwright/test";
-import { getSelectors } from "../utils/selectors";
+}
 
 // Locator functions
 export function getLibraryTab(page: Page): Locator {
