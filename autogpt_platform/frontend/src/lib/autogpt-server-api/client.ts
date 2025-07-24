@@ -1161,20 +1161,22 @@ export default class BackendAPI {
 
           this._stopWSHeartbeat(); // Stop heartbeat when connection closes
           this.wsConnecting = null;
-
           // Only call disconnect handlers if this wasn't an intentional disconnection
           const wasIntentional =
             this.isIntentionallyDisconnected || this._isRecentLogoutEvent();
-          if (!wasIntentional) {
+
+          if (wasIntentional) {
             this.wsOnDisconnectHandlers.forEach((handler) => handler());
+          } else {
+            setTimeout(() => this.connectWebSocket().then(resolve), 5000);
           }
+        };
 
         this.webSocket.onerror = (error) => {
           if (this.webSocket?.state == "connected") {
             console.error("[BackendAPI] WebSocket error:", error);
           }
         };
-
         this.webSocket.onmessage = (event) => this._handleWSMessage(event);
       } catch (error) {
         console.error("[BackendAPI] Error connecting to WebSocket:", error);
