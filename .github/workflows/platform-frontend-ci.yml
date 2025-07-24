@@ -214,9 +214,12 @@ jobs:
       - name: Create E2E test data
         run: |
           echo "Creating E2E test data..."
-          docker compose -f ../docker-compose.yml exec -T rest_server python -m backend.test.e2e_test_data || {
-            echo "E2E test data creation failed, checking logs..."
-            docker compose -f ../docker-compose.yml logs rest_server
+          docker compose -f ../docker-compose.yml exec -T rest_server sh -c "cd /app/autogpt_platform && python backend/test/e2e_test_data.py" || {
+            echo "❌ E2E test data creation failed!"
+            echo "📋 Checking container logs for more details..."
+            docker compose -f ../docker-compose.yml logs --tail=50 rest_server
+            echo "🔍 Checking if the script file exists..."
+            docker compose -f ../docker-compose.yml exec -T rest_server ls -la /app/autogpt_platform/backend/test/
             exit 1
           }
 
