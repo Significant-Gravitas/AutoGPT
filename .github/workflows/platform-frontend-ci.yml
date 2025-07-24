@@ -37,7 +37,7 @@ jobs:
 
       - name: Generate cache key
         id: cache-key
-        run: echo "key=${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}" >> $GITHUB_OUTPUT
+        run: echo "key=${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/package.json') }}" >> $GITHUB_OUTPUT
 
       - name: Cache dependencies
         uses: actions/cache@v4
@@ -45,6 +45,7 @@ jobs:
           path: ~/.pnpm-store
           key: ${{ steps.cache-key.outputs.key }}
           restore-keys: |
+            ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
             ${{ runner.os }}-pnpm-
 
       - name: Install dependencies
@@ -72,6 +73,7 @@ jobs:
           path: ~/.pnpm-store
           key: ${{ needs.setup.outputs.cache-key }}
           restore-keys: |
+            ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
             ${{ runner.os }}-pnpm-
 
       - name: Install dependencies
@@ -102,6 +104,7 @@ jobs:
           path: ~/.pnpm-store
           key: ${{ needs.setup.outputs.cache-key }}
           restore-keys: |
+            ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
             ${{ runner.os }}-pnpm-
 
       - name: Install dependencies
@@ -136,6 +139,7 @@ jobs:
           path: ~/.pnpm-store
           key: ${{ needs.setup.outputs.cache-key }}
           restore-keys: |
+            ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
             ${{ runner.os }}-pnpm-
 
       - name: Install dependencies
@@ -185,7 +189,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-frontend-test-${{ github.sha }}
+          key: ${{ runner.os }}-buildx-frontend-test-${{ hashFiles('autogpt_platform/docker-compose.yml', 'autogpt_platform/backend/Dockerfile', 'autogpt_platform/backend/pyproject.toml', 'autogpt_platform/backend/poetry.lock') }}
           restore-keys: |
             ${{ runner.os }}-buildx-frontend-test-
 
@@ -242,6 +246,7 @@ jobs:
           path: ~/.pnpm-store
           key: ${{ needs.setup.outputs.cache-key }}
           restore-keys: |
+            ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
             ${{ runner.os }}-pnpm-
 
       - name: Install dependencies
