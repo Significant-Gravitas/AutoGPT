@@ -166,6 +166,7 @@ class AirtableOAuthHandler(BaseOAuthHandler):
                 refresh_token_expires_at=int(time.time()) + response.refresh_expires_in,
                 provider=self.PROVIDER_NAME,
                 scopes=self.scopes,
+                username="Airtable User",
             )
             logger.debug(f"New access token expires in {response.expires_in} seconds")
             logger.debug(
