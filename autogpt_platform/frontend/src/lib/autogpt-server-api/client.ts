@@ -1166,7 +1166,6 @@ export default class BackendAPI {
           const wasIntentional =
             this.isIntentionallyDisconnected || this._hasDisconnectIntent();
 
-          // Only call disconnect handlers if the disconnection was not intentional
           if (!wasIntentional) {
             this.wsOnDisconnectHandlers.forEach((handler) => handler());
             setTimeout(() => this.connectWebSocket().then(resolve), 1000);

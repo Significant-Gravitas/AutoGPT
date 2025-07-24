@@ -123,7 +123,7 @@ export function useSupabase() {
       }
 
       setUser(serverUser);
-      clearWebSocketDisconnectIntent(); // Clear disconnect intent when user session is valid
+      clearWebSocketDisconnectIntent();
       return serverUser;
     } catch (error) {
       console.error("Get user error:", error);
