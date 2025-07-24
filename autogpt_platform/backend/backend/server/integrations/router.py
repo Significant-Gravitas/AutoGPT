@@ -276,7 +276,7 @@ class CredentialsDeletionNeedsConfirmationResponse(BaseModel):
 
 class AyrshareSSOResponse(BaseModel):
     sso_url: str = Field(..., description="The SSO URL for Ayrshare integration")
-    expire_at: str = Field(..., description="ISO timestamp when the URL expires")
+    expires_at: str = Field(..., description="ISO timestamp when the URL expires")
 
 
 @router.delete("/{provider}/credentials/{cred_id}")
@@ -603,7 +603,7 @@ async def get_ayrshare_sso_url(
     )
 
     private_key = settings.secrets.ayrshare_jwt_key
-
+    expiry_minutes = 2880
     try:
         logger.debug(f"Generating Ayrshare JWT for user {user_id}")
         jwt_response = await client.generate_jwt(
@@ -624,7 +624,7 @@ async def get_ayrshare_sso_url(
                 SocialPlatform.SNAPCHAT,
                 SocialPlatform.THREADS,
             ],
-            expires_in=2880,
+            expires_in=expiry_minutes,
             verify=True,
         )
     except Exception as e:
@@ -633,9 +633,9 @@ async def get_ayrshare_sso_url(
             status_code=HTTP_502_BAD_GATEWAY, detail="Failed to generate JWT"
         )
 
-    expire_at = datetime.now(timezone.utc) + timedelta(minutes=2880)
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=expiry_minutes)
     return AyrshareSSOResponse(
-        sso_url=jwt_response.url, expire_at=expire_at.isoformat()
+        sso_url=jwt_response.url, expires_at=expires_at.isoformat()
     )
 
 

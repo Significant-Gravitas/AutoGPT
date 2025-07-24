@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Optional
+
+from pydantic import BaseModel
 
 from backend.util.exceptions import MissingConfigError
 from backend.util.request import Requests
@@ -37,8 +38,7 @@ class SocialPlatform(str, Enum):
     THREADS = "threads"
 
 
-@dataclass
-class EmailConfig:
+class EmailConfig(BaseModel):
     to: str
     subject: Optional[str] = None
     body: Optional[str] = None
@@ -46,8 +46,7 @@ class EmailConfig:
     from_email: Optional[str] = None
 
 
-@dataclass
-class JWTResponse:
+class JWTResponse(BaseModel):
     status: str
     title: str
     token: str
@@ -56,8 +55,7 @@ class JWTResponse:
     expiresIn: Optional[str] = None
 
 
-@dataclass
-class ProfileResponse:
+class ProfileResponse(BaseModel):
     status: str
     title: str
     refId: str
@@ -65,8 +63,7 @@ class ProfileResponse:
     messagingActive: Optional[bool] = None
 
 
-@dataclass
-class PostResponse:
+class PostResponse(BaseModel):
     status: str
     id: str
     refId: str
@@ -77,28 +74,24 @@ class PostResponse:
     errors: Optional[list[str]] = None
 
 
-@dataclass
-class AutoHashtag:
+class AutoHashtag(BaseModel):
     max: Optional[int] = None
     position: Optional[str] = None
 
 
-@dataclass
-class FirstComment:
+class FirstComment(BaseModel):
     text: str
     platforms: Optional[list[SocialPlatform]] = None
 
 
-@dataclass
-class AutoSchedule:
+class AutoSchedule(BaseModel):
     interval: str
     platforms: Optional[list[SocialPlatform]] = None
     startDate: Optional[str] = None
     endDate: Optional[str] = None
 
 
-@dataclass
-class AutoRepost:
+class AutoRepost(BaseModel):
     interval: str
     platforms: Optional[list[SocialPlatform]] = None
     startDate: Optional[str] = None
@@ -189,7 +182,7 @@ class AyrshareClient:
         if expires_in is not None:
             payload["expiresIn"] = expires_in
         if email is not None:
-            payload["email"] = email.__dict__
+            payload["email"] = email.model_dump(exclude_none=True)
 
         response = await self._requests.post(
             self.JWT_ENDPOINT, json=payload, headers=headers
@@ -382,7 +375,7 @@ class AyrshareClient:
         if schedule_date:
             payload["scheduleDate"] = schedule_date
         if first_comment:
-            first_comment_dict = first_comment.__dict__.copy()
+            first_comment_dict = first_comment.model_dump(exclude_none=True)
             if first_comment.platforms:
                 first_comment_dict["platforms"] = [
                     p.value for p in first_comment.platforms
@@ -393,20 +386,20 @@ class AyrshareClient:
         if shorten_links is not None:
             payload["shortenLinks"] = shorten_links
         if auto_schedule:
-            auto_schedule_dict = auto_schedule.__dict__.copy()
+            auto_schedule_dict = auto_schedule.model_dump(exclude_none=True)
             if auto_schedule.platforms:
                 auto_schedule_dict["platforms"] = [
                     p.value for p in auto_schedule.platforms
                 ]
             payload["autoSchedule"] = auto_schedule_dict
         if auto_repost:
-            auto_repost_dict = auto_repost.__dict__.copy()
+            auto_repost_dict = auto_repost.model_dump(exclude_none=True)
             if auto_repost.platforms:
                 auto_repost_dict["platforms"] = [p.value for p in auto_repost.platforms]
             payload["autoRepost"] = auto_repost_dict
         if auto_hashtag:
             payload["autoHashtag"] = (
-                auto_hashtag.__dict__
+                auto_hashtag.model_dump(exclude_none=True)
                 if isinstance(auto_hashtag, AutoHashtag)
                 else auto_hashtag
             )

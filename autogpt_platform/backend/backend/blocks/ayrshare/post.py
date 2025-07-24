@@ -361,7 +361,6 @@ class PostToXBlock(Block):
         # Override post field to include X-specific information
         post: str = SchemaField(
             description="The post text (max 280 chars, up to 25,000 for Premium users). Use @handle to mention users. Use \\n\\n for thread breaks.",
-            default="",
             advanced=False,
         )
 
@@ -374,11 +373,10 @@ class PostToXBlock(Block):
 
         # X-specific options
         reply_to_id: str = SchemaField(
-            description="ID of the tweet to reply to", default="", advanced=True
+            description="ID of the tweet to reply to", advanced=True
         )
         quote_tweet_id: str = SchemaField(
             description="ID of the tweet to quote (low-level Tweet ID)",
-            default="",
             advanced=True,
         )
         poll_options: list[str] = SchemaField(
@@ -2372,7 +2370,7 @@ class PostToXBlock(Block):
 #             yield "error", str(e)
 
 
-AYRSHARE_NODE_IDS = [
+AYRSHARE_BLOCK_IDS = [
     # PostToBlueskyBlock().id,
     # PostToFacebookBlock().id,
     PostToXBlock().id,
