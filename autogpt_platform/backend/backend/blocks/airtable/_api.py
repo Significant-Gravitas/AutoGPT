@@ -803,13 +803,10 @@ async def delete_multiple_records(
     table_id_or_name: str,
     records: list[str],
 ) -> dict[str, dict[str, dict[str, str]]]:
-
+    query_string = "&".join([f"records[]={record}" for record in records])
     response = await Requests().delete(
-        f"https://api.airtable.com/v0/{base_id}/{table_id_or_name}",
+        f"https://api.airtable.com/v0/{base_id}/{table_id_or_name}?{query_string}",
         headers={"Authorization": credentials.auth_header()},
-        # Note: Airtable API docs says this should be a query parameter,
-        # but it actaully needs to be a body parameter
-        params={"records": records},
     )
     return response.json()
 
