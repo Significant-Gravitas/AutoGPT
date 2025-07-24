@@ -128,7 +128,7 @@ Be part of the revolution! **AutoGPT** is here to stay, at the forefront of AI i
 
 **Licensing:**
 
-MIT License: The majority of the AutoGPT repository is under the MIT License.
+MIT License: All files outside of autogpt_platform folder are under the MIT License.
 
 Polyform Shield License: This license applies to the autogpt_platform folder. 
 
