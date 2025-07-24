@@ -1015,8 +1015,6 @@ def make_oauth_authorize_url(
     scopes: list[str],
     state: str,
     code_challenge: str,
-    code_challenge_method: str = "S256",
-    response_type: str = "code",
 ) -> str:
     """
     Generate the OAuth authorization URL for Airtable.
@@ -1037,11 +1035,9 @@ def make_oauth_authorize_url(
     request_params = OAuthAuthorizeRequest(
         client_id=client_id,
         redirect_uri=redirect_uri,
-        response_type=response_type,
         scope=" ".join(scopes),
         state=state,
         code_challenge=code_challenge,
-        code_challenge_method=code_challenge_method,
     )
 
     # Build the authorization URL
