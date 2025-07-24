@@ -886,7 +886,7 @@ export const CustomNode = React.memo(
                   ))}
                 {data.uiType === BlockUIType.AYRSHARE ? (
                   <>
-                    {generateAyrshareSSOHandles(api)}
+                    {generateAyrshareSSOHandles()}
                     {generateInputHandles(
                       data.inputSchema,
                       BlockUIType.STANDARD,

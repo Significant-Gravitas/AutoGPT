@@ -10,5 +10,5 @@ export interface AyrshareSSOResponse {
   /** The SSO URL for Ayrshare integration */
   sso_url: string;
   /** ISO timestamp when the URL expires */
-  expire_at: string;
+  expires_at: string;
 }

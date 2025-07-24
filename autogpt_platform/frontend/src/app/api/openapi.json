@@ -3873,14 +3873,14 @@
             "title": "Sso Url",
             "description": "The SSO URL for Ayrshare integration"
           },
-          "expire_at": {
+          "expires_at": {
             "type": "string",
-            "title": "Expire At",
+            "title": "Expires At",
             "description": "ISO timestamp when the URL expires"
           }
         },
         "type": "object",
-        "required": ["sso_url", "expire_at"],
+        "required": ["sso_url", "expires_at"],
         "title": "AyrshareSSOResponse"
       },
       "BaseGraph-Input": {
