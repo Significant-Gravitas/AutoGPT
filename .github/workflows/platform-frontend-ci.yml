@@ -214,14 +214,27 @@ jobs:
       - name: Create E2E test data
         run: |
           echo "Creating E2E test data..."
-          docker compose -f ../docker-compose.yml exec -T rest_server sh -c "cd /app/autogpt_platform && python backend/test/e2e_test_data.py" || {
-            echo "❌ E2E test data creation failed!"
-            echo "📋 Checking container logs for more details..."
-            docker compose -f ../docker-compose.yml logs --tail=50 rest_server
-            echo "🔍 Checking if the script file exists..."
-            docker compose -f ../docker-compose.yml exec -T rest_server ls -la /app/autogpt_platform/backend/test/
-            exit 1
-          }
+          # First try to run the script from inside the container
+          if docker compose -f ../docker-compose.yml exec -T rest_server test -f /app/autogpt_platform/backend/test/e2e_test_data.py; then
+            echo "✅ Found e2e_test_data.py in container, running it..."
+            docker compose -f ../docker-compose.yml exec -T rest_server sh -c "cd /app/autogpt_platform && python backend/test/e2e_test_data.py" || {
+              echo "❌ E2E test data creation failed!"
+              docker compose -f ../docker-compose.yml logs --tail=50 rest_server
+              exit 1
+            }
+          else
+            echo "⚠️ e2e_test_data.py not found in container, copying and running..."
+            # Copy the script into the container and run it
+            docker cp ../backend/test/e2e_test_data.py $(docker compose -f ../docker-compose.yml ps -q rest_server):/tmp/e2e_test_data.py || {
+              echo "❌ Failed to copy script to container"
+              exit 1
+            }
+            docker compose -f ../docker-compose.yml exec -T rest_server sh -c "cd /app/autogpt_platform && python /tmp/e2e_test_data.py" || {
+              echo "❌ E2E test data creation failed!"
+              docker compose -f ../docker-compose.yml logs --tail=50 rest_server
+              exit 1
+            }
+          fi
 
       - name: Restore dependencies cache
         uses: actions/cache@v4
