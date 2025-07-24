@@ -98,9 +98,17 @@ def convert_pydantic_to_json(output_data: Any) -> Any:
     return output_data
 
 
-class SafeJson(Json):
-    """Safely serialize data and extend Prisma's Json type."""
-
-    def __new__(cls, data: Any):
-        """Create a new SafeJson instance with safely serialized data."""
-        return super().__new__(cls, json.loads(dumps(data)))
+def SafeJson(data: Any) -> Json:
+    """Safely serialize data and return Prisma's Json type."""
+    if isinstance(data, BaseModel):
+        return Json(
+            data.model_dump(
+                mode="json",
+                warnings="error",
+                exclude_none=True,
+                fallback=lambda v: None,
+            )
+        )
+    # Round-trip through JSON to ensure proper serialization with fallback for non-serializable values
+    json_string = dumps(data, default=lambda v: None)
+    return Json(json.loads(json_string))

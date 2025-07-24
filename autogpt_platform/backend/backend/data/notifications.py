@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Annotated, Any, Generic, Optional, TypeVar, Union
 
+from prisma import Json
 from prisma.enums import NotificationType
 from prisma.models import NotificationEvent, UserNotificationBatch
 from prisma.types import (
@@ -395,7 +396,7 @@ async def create_or_add_to_user_notification_batch(
             raise ValueError("Notification data must be provided")
 
         # Serialize the data
-        json_data: SafeJson = SafeJson(notification_data.data.model_dump())
+        json_data: Json = SafeJson(notification_data.data.model_dump())
 
         # First try to find existing batch
         existing_batch = await UserNotificationBatch.prisma().find_unique(

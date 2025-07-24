@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any, cast
 
 import stripe
+from prisma import Json
 from prisma.enums import (
     CreditRefundRequestStatus,
     CreditTransactionType,
@@ -279,7 +280,7 @@ class UserCreditBase(ABC):
         self,
         transaction_key: str,
         user_id: str,
-        metadata: SafeJson,
+        metadata: Json,
         new_transaction_key: str | None = None,
     ):
         transaction = await CreditTransaction.prisma().find_first_or_raise(
@@ -316,7 +317,7 @@ class UserCreditBase(ABC):
         transaction_key: str | None = None,
         ceiling_balance: int | None = None,
         fail_insufficient_credits: bool = True,
-        metadata: SafeJson = SafeJson({}),
+        metadata: Json = SafeJson({}),
     ) -> tuple[int, str]:
         """
         Add a new transaction for the user.
