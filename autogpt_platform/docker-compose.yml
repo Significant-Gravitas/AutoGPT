@@ -190,4 +190,3 @@ services:
       - redis
       - rabbitmq
       - clamav
-      - database_manager
