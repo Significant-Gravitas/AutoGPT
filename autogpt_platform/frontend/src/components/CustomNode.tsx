@@ -57,6 +57,7 @@ import {
 import { Key } from "@phosphor-icons/react";
 import useCredits from "@/hooks/useCredits";
 import { getV1GetAyrshareSsoUrl } from "@/app/api/__generated__/endpoints/integrations/integrations";
+import { toast } from "@/components/molecules/Toast/use-toast";
 
 export type ConnectionData = Array<{
   edge_id: string;
@@ -258,7 +259,11 @@ export const CustomNode = React.memo(
             );
           }
         } catch (error) {
-          console.error("Error getting SSO URL:", error);
+          toast({
+            title: "Error",
+            description: `Error getting SSO URL: ${error}`,
+            variant: "destructive",
+          });
         } finally {
           setIsLoading(false);
         }
