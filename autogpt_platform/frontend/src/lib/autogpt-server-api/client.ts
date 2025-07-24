@@ -75,6 +75,7 @@ export default class BackendAPI {
   private wsOnConnectHandlers: Set<() => void> = new Set();
   private wsOnDisconnectHandlers: Set<() => void> = new Set();
   private wsMessageHandlers: Record<string, Set<(data: any) => void>> = {};
+  private isIntentionallyDisconnected: boolean = false;
 
   readonly HEARTBEAT_INTERVAL = 100_000; // 100 seconds
   readonly HEARTBEAT_TIMEOUT = 10_000; // 10 seconds
@@ -1116,6 +1117,7 @@ export default class BackendAPI {
   }
 
   async connectWebSocket(): Promise<void> {
+    this.isIntentionallyDisconnected = false;
     return (this.wsConnecting ??= new Promise(async (resolve, reject) => {
       try {
         let token = "";
@@ -1160,8 +1162,11 @@ export default class BackendAPI {
           this._stopWSHeartbeat(); // Stop heartbeat when connection closes
           this.wsConnecting = null;
           this.wsOnDisconnectHandlers.forEach((handler) => handler());
-          // Attempt to reconnect after a delay
-          setTimeout(() => this.connectWebSocket().then(resolve), 1000);
+
+          // Only attempt to reconnect if this wasn't an intentional disconnection
+          if (!this.isIntentionallyDisconnected) {
+            setTimeout(() => this.connectWebSocket().then(resolve), 1000);
+          }
         };
 
         this.webSocket.onerror = (error) => {
@@ -1179,6 +1184,7 @@ export default class BackendAPI {
   }
 
   disconnectWebSocket() {
+    this.isIntentionallyDisconnected = true;
     this._stopWSHeartbeat(); // Stop heartbeat when disconnecting
     if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
       this.webSocket.close();
