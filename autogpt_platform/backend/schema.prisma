@@ -53,9 +53,6 @@ model User {
   APIKeys               APIKey[]
   IntegrationWebhooks   IntegrationWebhook[]
   NotificationBatches   UserNotificationBatch[]
-
-  @@index([id])
-  @@index([email])
 }
 
 enum OnboardingStep {
@@ -98,8 +95,6 @@ model UserOnboarding {
 
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
 }
 
 // This model describes the Agent Graph/Flow (Multi Agent System).
@@ -135,6 +130,7 @@ model AgentGraph {
 
   @@id(name: "graphVersionId", [id, version])
   @@index([userId, isActive])
+  @@index([forkedFromId, forkedFromVersion])
 }
 
 ////////////////////////////////////////////////////////////
@@ -176,6 +172,8 @@ model AgentPreset {
   isDeleted Boolean @default(false)
 
   @@index([userId])
+  @@index([agentGraphId, agentGraphVersion])
+  @@index([webhookId])
 }
 
 enum NotificationType {
@@ -248,6 +246,8 @@ model LibraryAgent {
   isDeleted       Boolean @default(false)
 
   @@unique([userId, agentGraphId, agentGraphVersion])
+  @@index([agentGraphId, agentGraphVersion])
+  @@index([creatorId])
 }
 
 ////////////////////////////////////////////////////////////
@@ -361,6 +361,7 @@ model AgentGraphExecution {
   @@index([agentGraphId, agentGraphVersion])
   @@index([userId])
   @@index([createdAt])
+  @@index([agentPresetId])
 }
 
 // This model describes the execution of an AgentNode.
@@ -386,6 +387,7 @@ model AgentNodeExecution {
   stats Json?
 
   @@index([agentGraphExecutionId, agentNodeId, executionStatus])
+  @@index([agentNodeId, executionStatus])
   @@index([addedTime, queuedTime])
 }
 
@@ -411,15 +413,17 @@ model AgentNodeExecutionInputOutput {
   @@index([referencedByOutputExecId])
   // Composite index for `upsert_execution_input`.
   @@index([name, time])
+  @@index([agentPresetId])
 }
 
 model AgentNodeExecutionKeyValueData {
-  userId                String
-  key                   String
-  agentNodeExecutionId  String
-  data                  Json?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime? @updatedAt
+  userId               String
+  key                  String
+  agentNodeExecutionId String
+  data                 Json?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime? @updatedAt
+
   @@id([userId, key])
 }
 
@@ -444,8 +448,6 @@ model IntegrationWebhook {
 
   AgentNodes   AgentNode[]
   AgentPresets AgentPreset[]
-
-  @@index([userId])
 }
 
 model AnalyticsDetails {
@@ -469,8 +471,7 @@ model AnalyticsDetails {
   // Indexable field for any count based analytical measures like page order clicking, tutorial step completion, etc.
   dataIndex String?
 
-  @@index([userId, type], name: "analyticsDetails")
-  @@index([type])
+  @@index([userId, type])
 }
 
 ////////////////////////////////////////////////////////////
@@ -494,8 +495,6 @@ model AnalyticsMetrics {
   // Link to User model
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
 }
 
 ////////////////////////////////////////////////////////////
@@ -581,7 +580,6 @@ model Profile {
 
   LibraryAgents LibraryAgent[]
 
-  @@index([username])
   @@index([userId])
 }
 
@@ -599,21 +597,13 @@ view Creator {
   agent_runs   Int
   is_featured  Boolean
 
-  // Note: Prisma doesn't support indexes on views, but the following indexes exist in the database:
-  // 
-  // Optimized indexes (partial indexes to reduce size and improve performance):
-  // - idx_profile_user on Profile(userId)
-  // - idx_store_listing_approved on StoreListing(owningUserId) WHERE isDeleted = false AND hasApprovedVersion = true
-  // - idx_store_listing_version_status on StoreListingVersion(storeListingId) WHERE submissionStatus = 'APPROVED'
-  // - idx_slv_categories_gin - GIN index on StoreListingVersion(categories) WHERE submissionStatus = 'APPROVED'
-  // - idx_slv_agent on StoreListingVersion(agentGraphId, agentGraphVersion) WHERE submissionStatus = 'APPROVED'
-  // - idx_store_listing_review_version on StoreListingReview(storeListingVersionId)
-  // - idx_store_listing_version_approved_listing on StoreListingVersion(storeListingId, version) WHERE submissionStatus = 'APPROVED'
-  // - idx_agent_graph_execution_agent on AgentGraphExecution(agentGraphId)
-  //
   // Materialized views used (refreshed every 15 minutes via pg_cron):
   // - mv_agent_run_counts - Pre-aggregated agent execution counts by agentGraphId
+  //   * idx_mv_agent_run_counts (UNIQUE on agentGraphId) - Primary lookup
   // - mv_review_stats - Pre-aggregated review statistics (count, avg rating) by storeListingId
+  //   * idx_mv_review_stats (UNIQUE on storeListingId) - Primary lookup
+  //   * idx_mv_review_stats_rating (avg_rating DESC) - Sort by rating performance
+  //   * idx_mv_review_stats_count (review_count DESC) - Sort by review count performance
   //
   // Query strategy: Uses CTEs to efficiently aggregate creator statistics leveraging materialized views
 }
@@ -638,28 +628,13 @@ view StoreAgent {
   rating           Float
   versions         String[]
 
-  // Note: Prisma doesn't support indexes on views, but the following indexes exist in the database:
-  // 
-  // Optimized indexes (partial indexes to reduce size and improve performance):
-  // - idx_store_listing_approved on StoreListing(owningUserId) WHERE isDeleted = false AND hasApprovedVersion = true
-  // - idx_store_listing_version_status on StoreListingVersion(storeListingId) WHERE submissionStatus = 'APPROVED'
-  // - idx_slv_categories_gin - GIN index on StoreListingVersion(categories) WHERE submissionStatus = 'APPROVED' for array searches
-  // - idx_slv_agent on StoreListingVersion(agentGraphId, agentGraphVersion) WHERE submissionStatus = 'APPROVED'
-  // - idx_store_listing_review_version on StoreListingReview(storeListingVersionId)
-  // - idx_store_listing_version_approved_listing on StoreListingVersion(storeListingId, version) WHERE submissionStatus = 'APPROVED'
-  // - idx_agent_graph_execution_agent on AgentGraphExecution(agentGraphId)
-  // - idx_profile_user on Profile(userId)
-  //
-  // Additional indexes from earlier migrations:
-  // - StoreListing_agentId_owningUserId_idx
-  // - StoreListing_isDeleted_isApproved_idx (replaced by idx_store_listing_approved)
-  // - StoreListing_isDeleted_idx
-  // - StoreListing_agentId_key (unique on agentGraphId)
-  // - StoreListingVersion_agentId_agentVersion_isDeleted_idx
-  //
   // Materialized views used (refreshed every 15 minutes via pg_cron):
   // - mv_agent_run_counts - Pre-aggregated agent execution counts by agentGraphId
+  //   * idx_mv_agent_run_counts (UNIQUE on agentGraphId) - Primary lookup
   // - mv_review_stats - Pre-aggregated review statistics (count, avg rating) by storeListingId
+  //   * idx_mv_review_stats (UNIQUE on storeListingId) - Primary lookup
+  //   * idx_mv_review_stats_rating (avg_rating DESC) - Sort by rating performance
+  //   * idx_mv_review_stats_count (review_count DESC) - Sort by review count performance
   //
   // Query strategy: Uses CTE for version aggregation and joins with materialized views for performance
 }
@@ -747,6 +722,7 @@ model StoreListing {
   @@unique([owningUserId, slug])
   // Used in the view query
   @@index([isDeleted, hasApprovedVersion])
+  @@index([agentGraphId, agentGraphVersion])
 }
 
 model StoreListingVersion {
@@ -820,6 +796,7 @@ model StoreListingReview {
   comments String?
 
   @@unique([storeListingVersionId, reviewByUserId])
+  @@index([reviewByUserId])
 }
 
 enum SubmissionStatus {
@@ -855,9 +832,7 @@ model APIKey {
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([key])
-  @@index([prefix])
-  @@index([status])
+  @@index([prefix, name])
   @@index([userId, status])
 }
 

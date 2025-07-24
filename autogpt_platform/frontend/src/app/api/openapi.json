@@ -18,8 +18,9 @@
             "in": "path",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/ProviderName",
-              "title": "The provider to initiate an OAuth flow for"
+              "type": "string",
+              "title": "The provider to initiate an OAuth flow for",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
             }
           },
           {
@@ -64,8 +65,9 @@
             "in": "path",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/ProviderName",
-              "title": "The target provider for this OAuth exchange"
+              "type": "string",
+              "title": "The target provider for this OAuth exchange",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
             }
           }
         ],
@@ -133,8 +135,9 @@
             "in": "path",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/ProviderName",
-              "title": "The provider to list credentials for"
+              "type": "string",
+              "title": "The provider to list credentials for",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
             }
           }
         ],
@@ -173,8 +176,9 @@
             "in": "path",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/ProviderName",
-              "title": "The provider to create credentials for"
+              "type": "string",
+              "title": "The provider to create credentials for",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
             }
           }
         ],
@@ -253,8 +257,9 @@
             "in": "path",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/ProviderName",
-              "title": "The provider to retrieve credentials for"
+              "type": "string",
+              "title": "The provider to retrieve credentials for",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
             }
           },
           {
@@ -315,8 +320,9 @@
             "in": "path",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/ProviderName",
-              "title": "The provider to delete credentials for"
+              "type": "string",
+              "title": "The provider to delete credentials for",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
             }
           },
           {
@@ -380,8 +386,9 @@
             "in": "path",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/ProviderName",
-              "title": "Provider where the webhook was registered"
+              "type": "string",
+              "title": "Provider where the webhook was registered",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
             }
           },
           {
@@ -430,6 +437,86 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/integrations/providers": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "List Providers",
+        "description": "Get a list of all available provider names.\n\nReturns both statically defined providers (from ProviderName enum)\nand dynamically registered providers (from SDK decorators).\n\nNote: The complete list of provider names is also available as a constant\nin the generated TypeScript client via PROVIDER_NAMES.",
+        "operationId": "getV1ListProviders",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "type": "string" },
+                  "type": "array",
+                  "title": "Response Getv1Listproviders"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/integrations/providers/names": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "Get Provider Names",
+        "description": "Get all provider names in a structured format.\n\nThis endpoint is specifically designed to expose the provider names\nin the OpenAPI schema so that code generators like Orval can create\nappropriate TypeScript constants.",
+        "operationId": "getV1GetProviderNames",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderNamesResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/integrations/providers/constants": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "Get Provider Constants",
+        "description": "Get provider names as constants.\n\nThis endpoint returns a model with provider names as constants,\nspecifically designed for OpenAPI code generation tools to create\nTypeScript constants.",
+        "operationId": "getV1GetProviderConstants",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProviderConstants" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/integrations/providers/enum-example": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "Get Provider Enum Example",
+        "description": "Example endpoint that uses the CompleteProviderNames enum.\n\nThis endpoint exists to ensure that the CompleteProviderNames enum is included\nin the OpenAPI schema, which will cause Orval to generate it as a\nTypeScript enum/constant.",
+        "operationId": "getV1GetProviderEnumExample",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderEnumResponse"
+                }
               }
             }
           }
@@ -1018,7 +1105,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": { "$ref": "#/components/schemas/GraphModel" },
+                  "items": { "$ref": "#/components/schemas/GraphMeta" },
                   "type": "array",
                   "title": "Response Getv1List User Graphs"
                 }
@@ -1415,49 +1502,6 @@
       }
     },
     "/api/executions": {
-      "post": {
-        "tags": ["v1", "graphs"],
-        "summary": "Stop graph executions",
-        "operationId": "postV1Stop graph executions",
-        "parameters": [
-          {
-            "name": "graph_id",
-            "in": "query",
-            "required": true,
-            "schema": { "type": "string", "title": "Graph Id" }
-          },
-          {
-            "name": "graph_exec_id",
-            "in": "query",
-            "required": true,
-            "schema": { "type": "string", "title": "Graph Exec Id" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/GraphExecutionMeta"
-                  },
-                  "title": "Response Postv1Stop Graph Executions"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      },
       "get": {
         "tags": ["v1", "graphs"],
         "summary": "Get all executions",
@@ -1468,10 +1512,10 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/GraphExecutionMeta"
                   },
+                  "type": "array",
                   "title": "Response Getv1Get All Executions"
                 }
               }
@@ -3014,6 +3058,42 @@
         }
       }
     },
+    "/api/library/presets/setup-trigger": {
+      "post": {
+        "tags": ["v2", "presets"],
+        "summary": "Setup Trigger",
+        "description": "Sets up a webhook-triggered `LibraryAgentPreset` for a `LibraryAgent`.\nReturns the correspondingly created `LibraryAgentPreset` with `webhook_id` set.",
+        "operationId": "postV2SetupTrigger",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriggeredPresetSetupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryAgentPreset" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/library/presets/{preset_id}/execute": {
       "post": {
         "tags": ["v2", "presets", "presets"],
@@ -3387,55 +3467,6 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/LibraryAgent" }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/library/agents/{library_agent_id}/setup-trigger": {
-      "post": {
-        "tags": ["v2", "library", "private"],
-        "summary": "Setup Trigger",
-        "description": "Sets up a webhook-triggered `LibraryAgentPreset` for a `LibraryAgent`.\nReturns the correspondingly created `LibraryAgentPreset` with `webhook_id` set.",
-        "operationId": "postV2SetupTrigger",
-        "parameters": [
-          {
-            "name": "library_agent_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "ID of the library agent",
-              "title": "Library Agent Id"
-            },
-            "description": "ID of the library agent"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TriggeredPresetSetupParams"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/LibraryAgentPreset" }
               }
             }
           },
@@ -3837,10 +3868,21 @@
             "type": "object",
             "title": "Output Schema",
             "readOnly": true
+          },
+          "has_external_trigger": {
+            "type": "boolean",
+            "title": "Has External Trigger",
+            "readOnly": true
           }
         },
         "type": "object",
-        "required": ["name", "description", "input_schema", "output_schema"],
+        "required": [
+          "name",
+          "description",
+          "input_schema",
+          "output_schema",
+          "has_external_trigger"
+        ],
         "title": "BaseGraph"
       },
       "Body_postV1Callback": {
@@ -4101,7 +4143,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
           },
-          "provider": { "$ref": "#/components/schemas/ProviderName" },
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "Provider name for integrations. Can be any string value, including custom provider names."
+          },
           "type": {
             "type": "string",
             "enum": ["api_key", "oauth2", "user_password", "host_scoped"],
@@ -4405,6 +4451,68 @@
         ],
         "title": "GraphExecutionWithNodes"
       },
+      "GraphMeta": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "version": { "type": "integer", "title": "Version", "default": 1 },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "forked_from_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Forked From Id"
+          },
+          "forked_from_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Forked From Version"
+          },
+          "sub_graphs": {
+            "items": { "$ref": "#/components/schemas/BaseGraph-Output" },
+            "type": "array",
+            "title": "Sub Graphs",
+            "default": []
+          },
+          "user_id": { "type": "string", "title": "User Id" },
+          "input_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input Schema",
+            "readOnly": true
+          },
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Output Schema",
+            "readOnly": true
+          },
+          "has_external_trigger": {
+            "type": "boolean",
+            "title": "Has External Trigger",
+            "readOnly": true
+          },
+          "credentials_input_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Credentials Input Schema",
+            "readOnly": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "description",
+          "user_id",
+          "input_schema",
+          "output_schema",
+          "has_external_trigger",
+          "credentials_input_schema"
+        ],
+        "title": "GraphMeta"
+      },
       "GraphModel": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -4455,15 +4563,15 @@
             "title": "Output Schema",
             "readOnly": true
           },
+          "has_external_trigger": {
+            "type": "boolean",
+            "title": "Has External Trigger",
+            "readOnly": true
+          },
           "credentials_input_schema": {
             "additionalProperties": true,
             "type": "object",
             "title": "Credentials Input Schema",
-            "readOnly": true
-          },
-          "has_webhook_trigger": {
-            "type": "boolean",
-            "title": "Has Webhook Trigger",
             "readOnly": true
           }
         },
@@ -4474,8 +4582,8 @@
           "user_id",
           "input_schema",
           "output_schema",
-          "credentials_input_schema",
-          "has_webhook_trigger"
+          "has_external_trigger",
+          "credentials_input_schema"
         ],
         "title": "GraphModel"
       },
@@ -4820,7 +4928,11 @@
       },
       "LibraryAgentTriggerInfo": {
         "properties": {
-          "provider": { "$ref": "#/components/schemas/ProviderName" },
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "Provider name for integrations. Can be any string value, including custom provider names."
+          },
           "config_schema": {
             "additionalProperties": true,
             "type": "object",
@@ -5623,51 +5735,44 @@
         "required": ["name", "username", "description", "links"],
         "title": "ProfileDetails"
       },
-      "ProviderName": {
-        "type": "string",
-        "enum": [
-          "aiml_api",
-          "anthropic",
-          "apollo",
-          "compass",
-          "discord",
-          "d_id",
-          "e2b",
-          "exa",
-          "fal",
-          "generic_webhook",
-          "github",
-          "google",
-          "google_maps",
-          "groq",
-          "http",
-          "hubspot",
-          "ideogram",
-          "jina",
-          "linear",
-          "llama_api",
-          "medium",
-          "mem0",
-          "notion",
-          "nvidia",
-          "ollama",
-          "openai",
-          "openweathermap",
-          "open_router",
-          "pinecone",
-          "reddit",
-          "replicate",
-          "revid",
-          "screenshotone",
-          "slant3d",
-          "smartlead",
-          "smtp",
-          "twitter",
-          "todoist",
-          "unreal_speech",
-          "zerobounce"
-        ],
-        "title": "ProviderName"
+      "ProviderConstants": {
+        "properties": {
+          "PROVIDER_NAMES": {
+            "additionalProperties": { "type": "string" },
+            "type": "object",
+            "title": "Provider Names",
+            "description": "All available provider names as a constant mapping"
+          }
+        },
+        "type": "object",
+        "title": "ProviderConstants",
+        "description": "Model that exposes all provider names as a constant in the OpenAPI schema.\nThis is designed to be converted by Orval into a TypeScript constant."
+      },
+      "ProviderEnumResponse": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "A provider name from the complete list of providers"
+          }
+        },
+        "type": "object",
+        "required": ["provider"],
+        "title": "ProviderEnumResponse",
+        "description": "Response containing a provider from the enum."
+      },
+      "ProviderNamesResponse": {
+        "properties": {
+          "providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Providers",
+            "description": "List of all available provider names"
+          }
+        },
+        "type": "object",
+        "title": "ProviderNamesResponse",
+        "description": "Response containing list of all provider names."
       },
       "RefundRequest": {
         "properties": {
@@ -6153,7 +6258,7 @@
         "required": ["transactions", "next_transaction_time"],
         "title": "TransactionHistory"
       },
-      "TriggeredPresetSetupParams": {
+      "TriggeredPresetSetupRequest": {
         "properties": {
           "name": { "type": "string", "title": "Name" },
           "description": {
@@ -6161,6 +6266,8 @@
             "title": "Description",
             "default": ""
           },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
           "trigger_config": {
             "additionalProperties": true,
             "type": "object",
@@ -6175,8 +6282,8 @@
           }
         },
         "type": "object",
-        "required": ["name", "trigger_config"],
-        "title": "TriggeredPresetSetupParams"
+        "required": ["name", "graph_id", "graph_version", "trigger_config"],
+        "title": "TriggeredPresetSetupRequest"
       },
       "TurnstileVerifyRequest": {
         "properties": {
@@ -6441,7 +6548,11 @@
         "properties": {
           "id": { "type": "string", "title": "Id" },
           "user_id": { "type": "string", "title": "User Id" },
-          "provider": { "$ref": "#/components/schemas/ProviderName" },
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "Provider name for integrations. Can be any string value, including custom provider names."
+          },
           "credentials_id": { "type": "string", "title": "Credentials Id" },
           "webhook_type": { "type": "string", "title": "Webhook Type" },
           "resource": { "type": "string", "title": "Resource" },

@@ -3,7 +3,7 @@ import os
 import uuid
 
 import fastapi
-from google.cloud import storage
+from gcloud.aio import storage as async_storage
 
 import backend.server.v2.store.exceptions
 from backend.util.exceptions import MissingConfigError
@@ -33,21 +33,28 @@ async def check_media_exists(user_id: str, filename: str) -> str | None:
     if not settings.config.media_gcs_bucket_name:
         raise MissingConfigError("GCS media bucket is not configured")
 
-    storage_client = storage.Client()
-    bucket = storage_client.bucket(settings.config.media_gcs_bucket_name)
+    async_client = async_storage.Storage()
+    bucket_name = settings.config.media_gcs_bucket_name
 
     # Check images
     image_path = f"users/{user_id}/images/{filename}"
-    image_blob = bucket.blob(image_path)
-    if image_blob.exists():
-        return image_blob.public_url
+    try:
+        await async_client.download_metadata(bucket_name, image_path)
+        # If we get here, the file exists - construct public URL
+        return f"https://storage.googleapis.com/{bucket_name}/{image_path}"
+    except Exception:
+        # File doesn't exist, continue to check videos
+        pass
 
     # Check videos
     video_path = f"users/{user_id}/videos/{filename}"
-
-    video_blob = bucket.blob(video_path)
-    if video_blob.exists():
-        return video_blob.public_url
+    try:
+        await async_client.download_metadata(bucket_name, video_path)
+        # If we get here, the file exists - construct public URL
+        return f"https://storage.googleapis.com/{bucket_name}/{video_path}"
+    except Exception:
+        # File doesn't exist
+        pass
 
     return None
 
@@ -170,16 +177,19 @@ async def upload_media(
         storage_path = f"users/{user_id}/{media_type}/{unique_filename}"
 
         try:
-            storage_client = storage.Client()
-            bucket = storage_client.bucket(settings.config.media_gcs_bucket_name)
-            blob = bucket.blob(storage_path)
-            blob.content_type = content_type
+            async_client = async_storage.Storage()
+            bucket_name = settings.config.media_gcs_bucket_name
 
             file_bytes = await file.read()
             await scan_content_safe(file_bytes, filename=unique_filename)
-            blob.upload_from_string(file_bytes, content_type=content_type)
 
-            public_url = blob.public_url
+            # Upload using pure async client
+            await async_client.upload(
+                bucket_name, storage_path, file_bytes, content_type=content_type
+            )
+
+            # Construct public URL
+            public_url = f"https://storage.googleapis.com/{bucket_name}/{storage_path}"
 
             logger.info(f"Successfully uploaded file to: {storage_path}")
             return public_url

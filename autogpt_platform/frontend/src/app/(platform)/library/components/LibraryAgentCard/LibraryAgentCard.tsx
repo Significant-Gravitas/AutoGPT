@@ -21,7 +21,8 @@ export default function LibraryAgentCard({
 }: LibraryAgentCardProps) {
   return (
     <div
-      data-testid="agent-card"
+      data-testid="library-agent-card"
+      data-agent-id={id}
       className="inline-flex w-full max-w-[434px] flex-col items-start justify-start gap-2.5 rounded-[26px] bg-white transition-all duration-300 hover:shadow-lg dark:bg-transparent dark:hover:shadow-gray-700"
     >
       <Link

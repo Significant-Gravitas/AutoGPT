@@ -74,7 +74,6 @@ class AgentExecutorBlock(Block):
             user_id=input_data.user_id,
             inputs=input_data.inputs,
             nodes_input_masks=input_data.nodes_input_masks,
-            use_db_query=False,
         )
 
         logger = execution_utils.LogMetadata(
@@ -198,7 +197,6 @@ class AgentExecutorBlock(Block):
             await execution_utils.stop_graph_execution(
                 graph_exec_id=graph_exec_id,
                 user_id=user_id,
-                use_db_query=False,
             )
             logger.info(f"Execution {log_id} stopped successfully.")
         except Exception as e:

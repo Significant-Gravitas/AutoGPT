@@ -39,20 +39,10 @@ async function globalSetup(config: FullConfig) {
         "📋 No existing user pool found - proceeding with user creation",
       );
 
-      // Create test users using signup page
-      const numberOfUsers = (config.workers || 1) + 3; // workers + buffer
-      console.log(`🔄 Creating ${numberOfUsers} test users via signup...`);
-      console.log(
-        `   📊 Breakdown: ${config.workers || 1} workers + 3 buffer users`,
-      );
-
-      const userCreationStartTime = Date.now();
-      const users = await createTestUsers(numberOfUsers);
-      const userCreationDuration = Date.now() - userCreationStartTime;
-
-      if (users.length === 0) {
-        throw new Error("Failed to create any test users");
-      }
+    // Create test users using signup page
+    const numberOfUsers = (config.workers || 1) + 8; // workers + buffer
+    console.log(`👥 Creating ${numberOfUsers} test users via signup...`);
+    console.log("⏳ Note: This may take a few minutes in CI environments");
 
       // Save user pool
       console.log(`🔄 Saving user pool to filesystem...`);
@@ -68,19 +58,16 @@ async function globalSetup(config: FullConfig) {
       console.log(`   💾 Save took: ${saveDuration}ms`);
     }
 
-    console.log("\n🏗️ Phase 2: Agent Pool Setup");
-    console.log("=".repeat(50));
+    // Require at least a minimum number of users for tests to work
+    const minUsers = Math.max(config.workers || 1, 2);
+    if (users.length < minUsers) {
+      throw new Error(
+        `Only created ${users.length} users but need at least ${minUsers} for tests to run properly`,
+      );
+    }
 
-    // Create test agents for library tests
-    console.log("🔄 Initializing test agents for library tests...");
-    const agentCreationStartTime = Date.now();
-    await createAndSaveTestAgents();
-    const agentCreationDuration = Date.now() - agentCreationStartTime;
-
-    console.log("✅ Agent creation phase completed successfully!");
-    console.log(
-      `   ⏰ Agent setup took: ${agentCreationDuration}ms (${(agentCreationDuration / 1000).toFixed(2)}s)`,
-    );
+    // Save user pool
+    await saveUserPool(users);
 
     const totalSetupDuration = Date.now() - setupStartTime;
     console.log("\n🎉 Global Setup Summary");
@@ -97,11 +84,10 @@ async function globalSetup(config: FullConfig) {
     console.error("\n❌ Global Setup Failed");
     console.error("=".repeat(50));
     console.error("❌ Global setup failed:", error);
-    console.error(
-      `   ⏰ Setup duration before failure: ${totalSetupDuration}ms`,
-    );
-    console.error(`   🕐 Failed at: ${new Date().toLocaleTimeString()}`);
-    console.error("=".repeat(50));
+    console.error("💡 This is likely due to:");
+    console.error("   1. Backend services not fully ready");
+    console.error("   2. Network timeouts in CI environment");
+    console.error("   3. Database or authentication issues");
     throw error;
   }
 }

@@ -56,25 +56,8 @@ export default function SignupPage() {
   const termsError = form.formState.errors.agreeToTerms?.message;
 
   return (
-    <div className="mt-24 flex h-full min-h-[85vh] flex-col items-center justify-center md:mt-0">
+    <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
       <AuthCard title="Create a new account">
-        {isCloudEnv ? (
-          <>
-            <div className="mb-2 w-full">
-              <GoogleOAuthButton
-                onClick={() => handleProviderSignup("google")}
-                isLoading={isGoogleLoading}
-                disabled={isLoading}
-              />
-            </div>
-            <div className="mb-3 flex w-full items-center">
-              <div className="h-px flex-1 bg-gray-300"></div>
-              <span className="text-md mx-3 text-gray-500">or</span>
-              <div className="h-px flex-1 bg-gray-300"></div>
-            </div>
-          </>
-        ) : null}
-
         <Form {...form}>
           <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">
             <FormField
@@ -180,16 +163,18 @@ export default function SignupPage() {
             />
 
             {/* Turnstile CAPTCHA Component */}
-            <Turnstile
-              key={captchaKey}
-              siteKey={turnstile.siteKey}
-              onVerify={turnstile.handleVerify}
-              onExpire={turnstile.handleExpire}
-              onError={turnstile.handleError}
-              setWidgetId={turnstile.setWidgetId}
-              action="signup"
-              shouldRender={turnstile.shouldRender}
-            />
+            {!turnstile.verified ? (
+              <Turnstile
+                key={captchaKey}
+                siteKey={turnstile.siteKey}
+                onVerify={turnstile.handleVerify}
+                onExpire={turnstile.handleExpire}
+                onError={turnstile.handleError}
+                setWidgetId={turnstile.setWidgetId}
+                action="signup"
+                shouldRender={turnstile.shouldRender}
+              />
+            ) : null}
 
             <Button
               variant="primary"
@@ -201,6 +186,13 @@ export default function SignupPage() {
             </Button>
           </form>
         </Form>
+        {isCloudEnv ? (
+          <GoogleOAuthButton
+            onClick={() => handleProviderSignup("google")}
+            isLoading={isGoogleLoading}
+            disabled={isLoading}
+          />
+        ) : null}
         <AuthFeedback
           type="signup"
           message={feedback}
