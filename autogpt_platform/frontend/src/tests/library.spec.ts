@@ -71,9 +71,6 @@ test.describe("Library", () => {
       test.expect(paginationResult.hasMore).toBeTruthy();
     } else {
       // If we don't have enough agents, pagination might not trigger
-      console.log(
-        `Only ${paginationResult.initialCount} agents available, pagination may not be needed`,
-      );
     }
 
     // Test that pagination is working by checking scroll behavior
@@ -86,10 +83,6 @@ test.describe("Library", () => {
     // Verify agent count matches displayed count
     const displayedCount = await libraryPage.getAgentCount();
     test.expect(allAgents.length).toEqual(displayedCount);
-
-    console.log(
-      `Pagination test completed: ${allAgents.length} total agents loaded`,
-    );
   });
 
   test("sorting works correctly", async ({page}) => {
@@ -215,9 +208,6 @@ test.describe("Library", () => {
         .toEqual(allPaginatedResults.length);
 
     } else {
-      console.log(
-        `Only ${searchPaginationResult.initialCount} search results available, pagination may not be needed`,
-      );
     }
 
     await libraryPage.scrollAndWaitForNewAgents();
