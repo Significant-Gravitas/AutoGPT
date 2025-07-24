@@ -37,7 +37,7 @@ jobs:
 
       - name: Generate cache key
         id: cache-key
-        run: echo "key=${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}" >> $GITHUB_OUTPUT
+        run: echo "key=${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}" >> $GITHUB_OUTPUT
 
       - name: Cache dependencies
         uses: actions/cache@v4
@@ -196,6 +196,29 @@ jobs:
           DOCKER_BUILDKIT: 1
           BUILDX_CACHE_FROM: type=local,src=/tmp/.buildx-cache
           BUILDX_CACHE_TO: type=local,dest=/tmp/.buildx-cache-new,mode=max
+
+      - name: Move cache
+        run: |
+          rm -rf /tmp/.buildx-cache
+          if [ -d "/tmp/.buildx-cache-new" ]; then
+            mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+          fi
+
+      - name: Wait for services to be ready
+        run: |
+          echo "Waiting for rest_server to be ready..."
+          timeout 60 sh -c 'until curl -f http://localhost:8006/health 2>/dev/null; do sleep 2; done' || echo "Rest server health check timeout, continuing..."
+          echo "Waiting for database to be ready..."
+          timeout 60 sh -c 'until docker compose -f ../docker-compose.yml exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done' || echo "Database ready check timeout, continuing..."
+
+      - name: Create E2E test data
+        run: |
+          echo "Creating E2E test data..."
+          docker compose -f ../docker-compose.yml exec -T rest_server python -m backend.test.e2e_test_data || {
+            echo "E2E test data creation failed, checking logs..."
+            docker compose -f ../docker-compose.yml logs rest_server
+            exit 1
+          }
 
       - name: Restore dependencies cache
         uses: actions/cache@v4
