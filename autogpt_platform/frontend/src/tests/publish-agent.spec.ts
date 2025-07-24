@@ -1,5 +1,5 @@
 import path from "path";
-import test from "@playwright/test";
+import test, { expect } from "@playwright/test";
 import { LoginPage } from "./pages/login.page";
 import { TEST_CREDENTIALS } from "./credentials";
 import { getSelectors } from "./utils/selectors";
@@ -28,7 +28,8 @@ test("User can publish an agent through the complete flow", async ({
 
   // 2. Adding details of agent
   await isVisible(getText("Write a bit of details about your agent"));
-  await getId("agent-title-input").fill("Test Agent Title");
+  const agentTitle = "Test Agent Title";
+  await getId("agent-title-input").fill(agentTitle);
   await getId("agent-subheader-input").fill("Test Agent Subheader");
   await getId("agent-slug-input").fill("test-agent-slug");
 
@@ -54,4 +55,12 @@ test("User can publish an agent through the complete flow", async ({
   await getId("view-progrss-btn").click();
 
   await hasUrl(page, "/profile/dashboard");
+
+  // 4. Check if agent is published
+  const agentStatus = getId("agent-status").first();
+  const agentName = getId("agent-name").first();
+  await agentStatus.waitFor({ state: "visible" });
+  await agentName.waitFor({ state: "visible" });
+  await expect(agentStatus).toHaveText("Awaiting review");
+  await expect(agentName).toHaveText(agentTitle);
 });
