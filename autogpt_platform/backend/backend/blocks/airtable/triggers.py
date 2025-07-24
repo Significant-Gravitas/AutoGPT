@@ -70,6 +70,8 @@ class AirtableWebhookTriggerBlock(Block):
         }
 
         super().__init__(
+            # NOTE: This is disabled whilst the webhook system is finalised.
+            disabled=False,
             id="d0180ce6-ccb9-48c7-8256-b39e93e62801",
             description="Starts a flow whenever Airtable emits a webhook event",
             categories={BlockCategory.INPUT},
