@@ -1,9 +1,6 @@
 import { type CookieOptions } from "@supabase/ssr";
 import { SupabaseClient } from "@supabase/supabase-js";
 
-// Detect if we're in a Playwright test environment
-const isTest = process.env.NEXT_PUBLIC_PW_TEST === "true";
-
 export const PROTECTED_PAGES = [
   "/monitor",
   "/build",
@@ -20,12 +17,6 @@ export const STORAGE_KEYS = {
 } as const;
 
 export function getCookieSettings(): Partial<CookieOptions> {
-  if (isTest)
-    return {
-      secure: false,
-      sameSite: "lax",
-    };
-
   return {
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
