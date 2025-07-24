@@ -1161,10 +1161,16 @@ export default class BackendAPI {
 
           this._stopWSHeartbeat(); // Stop heartbeat when connection closes
           this.wsConnecting = null;
-          this.wsOnDisconnectHandlers.forEach((handler) => handler());
+
+          // Only call disconnect handlers if this wasn't an intentional disconnection
+          const wasIntentional =
+            this.isIntentionallyDisconnected || this._isRecentLogoutEvent();
+          if (!wasIntentional) {
+            this.wsOnDisconnectHandlers.forEach((handler) => handler());
+          }
 
           // Only attempt to reconnect if this wasn't an intentional disconnection
-          if (!this.isIntentionallyDisconnected) {
+          if (!wasIntentional) {
             setTimeout(() => this.connectWebSocket().then(resolve), 1000);
           }
         };
@@ -1188,6 +1194,23 @@ export default class BackendAPI {
     this._stopWSHeartbeat(); // Stop heartbeat when disconnecting
     if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
       this.webSocket.close();
+    }
+  }
+
+  private _isRecentLogoutEvent(): boolean {
+    if (!isClient) return false;
+
+    try {
+      const logoutTimestamp = localStorage.getItem("supabase-logout");
+      if (!logoutTimestamp) return false;
+
+      const logoutTime = parseInt(logoutTimestamp, 10);
+      const now = Date.now();
+
+      // Consider logout recent if it happened within the last 5 seconds
+      return now - logoutTime < 5000;
+    } catch {
+      return false;
     }
   }
 

@@ -227,8 +227,8 @@ export default function AgentRunsPage(): React.ReactElement {
             <LoadingSpinner className="ml-1.5 size-3.5" />
           </div>
         ),
-        duration: Infinity, // show until connection is re-established
-        dismissable: false,
+        duration: 5000,
+        dismissable: true,
       });
     });
     const cancelConnectHandler = api.onWebSocketConnect(() => {
