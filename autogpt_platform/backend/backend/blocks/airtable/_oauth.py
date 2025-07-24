@@ -11,7 +11,7 @@ from backend.sdk import BaseOAuthHandler, OAuth2Credentials, ProviderName, Secre
 
 from ._api import (
     OAuthTokenResponse,
-    oauth_authorize,
+    make_oauth_authorize_url,
     oauth_exchange_code_for_tokens,
     oauth_refresh_tokens,
 )
@@ -94,7 +94,7 @@ class AirtableOAuthHandler(BaseOAuthHandler):
             raise ValueError("No code challenge provided")
 
         try:
-            url = oauth_authorize(
+            url = make_oauth_authorize_url(
                 self.client_id, self.redirect_uri, scopes, state, code_challenge
             )
             logger.debug(f"Generated OAuth URL: {url}")

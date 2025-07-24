@@ -1009,7 +1009,7 @@ class OAuthTokenResponse(BaseModel):
     refresh_expires_in: int
 
 
-def oauth_authorize(
+def make_oauth_authorize_url(
     client_id: str,
     redirect_uri: str,
     scopes: list[str],
