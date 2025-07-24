@@ -391,9 +391,6 @@ async def create_or_add_to_user_notification_batch(
     notification_data: NotificationEventModel,
 ) -> UserNotificationBatchDTO:
     try:
-        logger.info(
-            f"Creating or adding to notification batch for {user_id} with type {notification_type} and data {notification_data}"
-        )
         if not notification_data.data:
             raise ValueError("Notification data must be provided")
 

@@ -7,7 +7,7 @@ from googleapiclient.discovery import build
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from backend.util.settings import AppEnvironment, Settings
+from backend.util.settings import Settings
 
 from ._auth import (
     GOOGLE_OAUTH_IS_CONFIGURED,
@@ -19,10 +19,7 @@ from ._auth import (
 )
 
 settings = Settings()
-GOOGLE_SHEETS_DISABLED = (
-    not GOOGLE_OAUTH_IS_CONFIGURED
-    or settings.config.app_env == AppEnvironment.PRODUCTION
-)
+GOOGLE_SHEETS_DISABLED = not GOOGLE_OAUTH_IS_CONFIGURED
 
 
 def parse_a1_notation(a1: str) -> tuple[str | None, str]:
