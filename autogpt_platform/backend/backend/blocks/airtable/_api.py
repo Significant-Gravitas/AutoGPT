@@ -1042,7 +1042,7 @@ def make_oauth_authorize_url(
 
     # Build the authorization URL
     base_url = "https://airtable.com/oauth2/v1/authorize"
-    query_string = urlencode(request_params.model_dump(exclude_unset=True))
+    query_string = urlencode(request_params.model_dump(exclude_none=True))
 
     return f"{base_url}?{query_string}"
 
@@ -1084,7 +1084,7 @@ async def oauth_exchange_code_for_tokens(
         redirect_uri=redirect_uri,
         grant_type="authorization_code",
         code_verifier=code_verifier.decode("utf-8"),
-    ).model_dump(exclude_unset=True)
+    ).model_dump(exclude_none=True)
 
     response = await Requests().post(
         "https://airtable.com/oauth2/v1/token",
@@ -1132,7 +1132,7 @@ async def oauth_refresh_tokens(
         refresh_token=refresh_token,
         client_id=client_id,
         grant_type="refresh_token",
-    ).model_dump(exclude_unset=True)
+    ).model_dump(exclude_none=True)
 
     response = await Requests().post(
         "https://airtable.com/oauth2/v1/token",
