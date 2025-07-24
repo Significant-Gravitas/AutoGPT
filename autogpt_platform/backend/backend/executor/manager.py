@@ -1069,11 +1069,12 @@ class ExecutionManager(AppProcess):
         run_client = SyncRabbitMQ(create_execution_queue_config())
         run_client.connect()
         run_channel = run_client.get_channel()
-        run_channel.basic_qos(prefetch_count=self.pool_size)
+        run_channel.basic_qos(prefetch_count=1)
         run_channel.basic_consume(
             queue=GRAPH_EXECUTION_QUEUE_NAME,
             on_message_callback=self._handle_run_message,
             auto_ack=False,
+            consumer_tag="graph_execution_consumer",
         )
         logger.info(f"[{self.service_name}] ⏳ Starting to consume run messages...")
         run_channel.start_consuming()
@@ -1124,6 +1125,13 @@ class ExecutionManager(AppProcess):
         body: bytes,
     ):
         delivery_tag = method.delivery_tag
+
+        # Check if we can accept more runs
+        self._cleanup_completed_runs()
+        if len(self.active_graph_runs) >= self.pool_size:
+            channel.basic_nack(delivery_tag, requeue=True)
+            return
+
         try:
             graph_exec_entry = GraphExecutionEntry.model_validate_json(body)
         except Exception as e:
@@ -1153,9 +1161,6 @@ class ExecutionManager(AppProcess):
         def _on_run_done(f: Future):
             logger.info(f"[{self.service_name}] Run completed for {graph_exec_id}")
             try:
-                self.active_graph_runs.pop(graph_exec_id, None)
-                active_runs_gauge.set(len(self.active_graph_runs))
-                utilization_gauge.set(len(self.active_graph_runs) / self.pool_size)
                 if exec_error := f.exception():
                     logger.error(
                         f"[{self.service_name}] Execution for {graph_exec_id} failed: {exec_error}"
@@ -1169,10 +1174,30 @@ class ExecutionManager(AppProcess):
                     )
             except BaseException as e:
                 logger.exception(
-                    f"[{self.service_name}] Error acknowledging message: {e}"
+                    f"[{self.service_name}] Error in run completion callback: {e}"
                 )
+            finally:
+                self._cleanup_completed_runs()
 
         future.add_done_callback(_on_run_done)
+
+    def _cleanup_completed_runs(self, log=logger.info) -> list[str]:
+        """Remove completed futures from active_graph_runs and update metrics"""
+        completed_runs = []
+        for graph_exec_id, (future, _) in self.active_graph_runs.items():
+            if future.done():
+                completed_runs.append(graph_exec_id)
+
+        for geid in completed_runs:
+            log(f"[{self.service_name}] ✅ Cleaned up completed run {geid}")
+            self.active_graph_runs.pop(geid, None)
+
+        # Update metrics
+        active_count = len(self.active_graph_runs)
+        active_runs_gauge.set(active_count)
+        utilization_gauge.set(active_count / self.pool_size)
+
+        return completed_runs
 
     def cleanup(self):
         super().cleanup()
@@ -1189,6 +1214,9 @@ class ExecutionManager(AppProcess):
         if hasattr(self, "executor"):
             log(f"{prefix} ⏳ Shutting down GraphExec pool...")
             self.executor.shutdown(cancel_futures=True, wait=False)
+
+        log(f"{prefix} ⏳ Cleaning up active graph runs...")
+        self._cleanup_completed_runs(log=log)
 
         log(f"{prefix} ⏳ Disconnecting Redis...")
         redis.disconnect()
