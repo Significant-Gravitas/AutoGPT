@@ -763,10 +763,6 @@ export default class BackendAPI {
     await this._request("DELETE", `/library/presets/${presetID}`);
   }
 
-  getAyrshareSSOUrl(): Promise<{ sso_url: string; expire_at: string }> {
-    return this._get("/integrations/ayrshare/sso_url");
-  }
-
   executeLibraryAgentPreset(
     presetID: LibraryAgentPresetID,
     inputs?: { [key: string]: any },

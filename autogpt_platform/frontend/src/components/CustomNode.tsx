@@ -31,7 +31,7 @@ import {
   parseKeys,
   setNestedProperty,
 } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { Switch } from "@/components/ui/switch";
 import { TextRenderer } from "@/components/ui/render";
 import { history } from "./history";
@@ -54,8 +54,9 @@ import {
   CopyIcon,
   ExitIcon,
 } from "@radix-ui/react-icons";
-import { FaKey } from "react-icons/fa";
+import { Key } from "@phosphor-icons/react";
 import useCredits from "@/hooks/useCredits";
+import { getV1GetAyrshareSsoUrl } from "@/app/api/__generated__/endpoints/integrations/integrations";
 
 export type ConnectionData = Array<{
   edge_id: string;
@@ -243,17 +244,17 @@ export const CustomNode = React.memo(
       return renderHandles(schema.properties);
     };
 
-    const generateAyrshareSSOHandles = (
-      api: ReturnType<typeof useBackendAPI>,
-    ) => {
+    const generateAyrshareSSOHandles = () => {
       const handleSSOLogin = async () => {
         setIsLoading(true);
         try {
-          const { sso_url } = await api.getAyrshareSSOUrl();
+          const {
+            data: { sso_url },
+          } = await getV1GetAyrshareSsoUrl();
           const popup = window.open(sso_url, "_blank", "popup=true");
           if (!popup) {
             throw new Error(
-              "Failed to open popup window. Please allow popups for this site.",
+              "Please allow popups for this site to be able to login with Ayrshare",
             );
           }
         } catch (error) {
@@ -276,7 +277,7 @@ export const CustomNode = React.memo(
               "Loading..."
             ) : (
               <>
-                <FaKey className="mr-2 h-4 w-4" />
+                <Key className="mr-2 h-4 w-4" />
                 Connect Social Media Accounts
               </>
             )}

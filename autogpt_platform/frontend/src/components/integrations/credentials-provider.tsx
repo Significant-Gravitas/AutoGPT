@@ -65,9 +65,8 @@ export default function CredentialsProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [providers, setProviders] = useState<CredentialsProvidersContextType>(
-    {}, // Allow this not to be set and still be able to save the graph
-  );
+  const [providers, setProviders] =
+    useState<CredentialsProvidersContextType | null>(null);
   const [providerNames, setProviderNames] = useState<string[]>([]);
   const { isLoggedIn } = useSupabase();
   const api = useBackendAPI();
