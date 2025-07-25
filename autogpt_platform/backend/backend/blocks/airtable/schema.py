@@ -39,7 +39,7 @@ class AirtableListSchemaBlock(Block):
         super().__init__(
             id="64291d3c-99b5-47b7-a976-6d94293cdb2d",
             description="Get the complete schema of an Airtable base",
-            categories={BlockCategory.SEARCH},
+            categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
         )

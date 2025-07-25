@@ -6,7 +6,6 @@ import hashlib
 import hmac
 import logging
 from enum import Enum
-from typing import Tuple
 
 from backend.sdk import (
     BaseWebhooksManager,
@@ -41,7 +40,7 @@ class AirtableWebhookManager(BaseWebhooksManager):
     @classmethod
     async def validate_payload(
         cls, webhook: Webhook, request, credentials: Credentials | None
-    ) -> Tuple[dict, str]:
+    ) -> tuple[dict, str]:
         """Validate incoming webhook payload and signature."""
 
         if not credentials:
@@ -99,7 +98,7 @@ class AirtableWebhookManager(BaseWebhooksManager):
         events: list[str],
         ingress_url: str,
         secret: str,
-    ) -> Tuple[str, dict]:
+    ) -> tuple[str, dict]:
         """Register webhook with Airtable API."""
 
         # Parse resource to get base_id and table_id/name

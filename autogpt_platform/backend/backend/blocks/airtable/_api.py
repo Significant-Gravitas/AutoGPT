@@ -2,7 +2,7 @@ import base64
 from enum import Enum
 from logging import getLogger
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from backend.sdk import BaseModel, Credentials, Requests
 
@@ -10,7 +10,7 @@ logger = getLogger(__name__)
 
 
 class WebhookFilters(BaseModel):
-    dataTypes: list[str] = []
+    dataTypes: list[str]
     changeTypes: list[str] | None = None
     fromSources: list[str] | None = None
     sourceOptions: dict | None = None
@@ -803,7 +803,8 @@ async def delete_multiple_records(
     table_id_or_name: str,
     records: list[str],
 ) -> dict[str, dict[str, dict[str, str]]]:
-    query_string = "&".join([f"records[]={record}" for record in records])
+
+    query_string = "&".join([f"records[]={quote(record)}" for record in records])
     response = await Requests().delete(
         f"https://api.airtable.com/v0/{base_id}/{table_id_or_name}?{query_string}",
         headers={"Authorization": credentials.auth_header()},

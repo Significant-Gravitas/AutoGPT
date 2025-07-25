@@ -65,7 +65,7 @@ class AirtableListRecordsBlock(Block):
         super().__init__(
             id="588a9fde-5733-4da7-b03c-35f5671e960f",
             description="List records from an Airtable table",
-            categories={BlockCategory.SEARCH},
+            categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
         )
@@ -114,7 +114,7 @@ class AirtableGetRecordBlock(Block):
         super().__init__(
             id="c29c5cbf-0aff-40f9-bbb5-f26061792d2b",
             description="Get a single record from Airtable",
-            categories={BlockCategory.SEARCH},
+            categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
         )

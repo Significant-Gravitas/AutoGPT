@@ -74,7 +74,7 @@ class AirtableWebhookTriggerBlock(Block):
             disabled=False,
             id="d0180ce6-ccb9-48c7-8256-b39e93e62801",
             description="Starts a flow whenever Airtable emits a webhook event",
-            categories={BlockCategory.INPUT},
+            categories={BlockCategory.INPUT, BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
             block_type=BlockType.WEBHOOK,

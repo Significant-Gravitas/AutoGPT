@@ -159,7 +159,6 @@ class AirtableOAuthHandler(BaseOAuthHandler):
             logger.info("Successfully refreshed tokens")
 
             new_credentials = OAuth2Credentials(
-                title="Airtable OAuth2 Credentials",
                 access_token=SecretStr(response.access_token),
                 refresh_token=SecretStr(response.refresh_token),
                 access_token_expires_at=int(time.time()) + response.expires_in,
