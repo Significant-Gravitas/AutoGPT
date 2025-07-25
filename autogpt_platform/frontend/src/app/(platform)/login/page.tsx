@@ -43,24 +43,8 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="mt-16 flex h-full min-h-[85vh] flex-col items-center justify-center md:mt-0">
+    <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
       <AuthCard title="Login to your account">
-        {isCloudEnv ? (
-          <>
-            <div className="mb-3 w-full">
-              <GoogleOAuthButton
-                onClick={() => handleProviderLogin("google")}
-                isLoading={isGoogleLoading}
-                disabled={isLoading}
-              />
-            </div>
-            <div className="mb-3 flex w-full items-center">
-              <div className="h-px flex-1 bg-gray-300"></div>
-              <span className="text-md mx-3 text-gray-500">or</span>
-              <div className="h-px flex-1 bg-gray-300"></div>
-            </div>
-          </>
-        ) : null}
         <Form {...form}>
           <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">
             <FormField
@@ -101,16 +85,18 @@ export default function LoginPage() {
             />
 
             {/* Turnstile CAPTCHA Component */}
-            <Turnstile
-              key={captchaKey}
-              siteKey={turnstile.siteKey}
-              onVerify={turnstile.handleVerify}
-              onExpire={turnstile.handleExpire}
-              onError={turnstile.handleError}
-              setWidgetId={turnstile.setWidgetId}
-              action="login"
-              shouldRender={turnstile.shouldRender}
-            />
+            {!turnstile.verified ? (
+              <Turnstile
+                key={captchaKey}
+                siteKey={turnstile.siteKey}
+                onVerify={turnstile.handleVerify}
+                onExpire={turnstile.handleExpire}
+                onError={turnstile.handleError}
+                setWidgetId={turnstile.setWidgetId}
+                action="login"
+                shouldRender={turnstile.shouldRender}
+              />
+            ) : null}
 
             <Button
               variant="primary"
@@ -121,6 +107,13 @@ export default function LoginPage() {
               {isLoading ? "Logging in..." : "Login"}
             </Button>
           </form>
+          {isCloudEnv ? (
+            <GoogleOAuthButton
+              onClick={() => handleProviderLogin("google")}
+              isLoading={isGoogleLoading}
+              disabled={isLoading}
+            />
+          ) : null}
           <AuthFeedback
             type="login"
             message={feedback}

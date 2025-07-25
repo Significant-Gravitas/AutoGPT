@@ -8,8 +8,11 @@ from redis.asyncio.client import PubSub as AsyncPubSub
 from redis.client import PubSub
 
 from backend.data import redis_client as redis
+from backend.util import json
+from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
+config = Settings().config
 
 
 M = TypeVar("M", bound=BaseModel)
@@ -28,7 +31,41 @@ class BaseRedisEventBus(Generic[M], ABC):
         return _EventPayloadWrapper[self.Model]
 
     def _serialize_message(self, item: M, channel_key: str) -> tuple[str, str]:
-        message = self.Message(payload=item).model_dump_json()
+        MAX_MESSAGE_SIZE = config.max_message_size_limit
+
+        try:
+            # Use backend.util.json.dumps which handles datetime and other complex types
+            message = json.dumps(
+                self.Message(payload=item), ensure_ascii=False, separators=(",", ":")
+            )
+        except UnicodeError:
+            # Fallback to ASCII encoding if Unicode causes issues
+            message = json.dumps(
+                self.Message(payload=item), ensure_ascii=True, separators=(",", ":")
+            )
+            logger.warning(
+                f"Unicode serialization failed, falling back to ASCII for channel {channel_key}"
+            )
+
+        # Check message size and truncate if necessary
+        message_size = len(message.encode("utf-8"))
+        if message_size > MAX_MESSAGE_SIZE:
+            logger.warning(
+                f"Message size {message_size} bytes exceeds limit {MAX_MESSAGE_SIZE} bytes for channel {channel_key}. "
+                "Truncating payload to prevent Redis connection issues."
+            )
+            error_payload = {
+                "payload": {
+                    "event_type": "error_comms_update",
+                    "error": "Payload too large for Redis transmission",
+                    "original_size_bytes": message_size,
+                    "max_size_bytes": MAX_MESSAGE_SIZE,
+                }
+            }
+            message = json.dumps(
+                error_payload, ensure_ascii=False, separators=(",", ":")
+            )
+
         channel_name = f"{self.event_bus_name}/{channel_key}"
         logger.debug(f"[{channel_name}] Publishing an event to Redis {message}")
         return message, channel_name

@@ -85,8 +85,10 @@ func_retry = retry(
 
 def continuous_retry(*, retry_delay: float = 1.0):
     def decorator(func):
+        is_coroutine = asyncio.iscoroutinefunction(func)
+
         @wraps(func)
-        def wrapper(*args, **kwargs):
+        def sync_wrapper(*args, **kwargs):
             while True:
                 try:
                     return func(*args, **kwargs)
@@ -99,6 +101,20 @@ def continuous_retry(*, retry_delay: float = 1.0):
                     )
                     time.sleep(retry_delay)
 
-        return wrapper
+        @wraps(func)
+        async def async_wrapper(*args, **kwargs):
+            while True:
+                try:
+                    return await func(*args, **kwargs)
+                except Exception as exc:
+                    logger.exception(
+                        "%s failed with %s — retrying in %.2f s",
+                        func.__name__,
+                        exc,
+                        retry_delay,
+                    )
+                    await asyncio.sleep(retry_delay)
+
+        return async_wrapper if is_coroutine else sync_wrapper
 
     return decorator

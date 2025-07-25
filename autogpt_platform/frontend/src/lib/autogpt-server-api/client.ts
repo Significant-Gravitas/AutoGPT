@@ -75,6 +75,7 @@ export default class BackendAPI {
   private wsOnConnectHandlers: Set<() => void> = new Set();
   private wsOnDisconnectHandlers: Set<() => void> = new Set();
   private wsMessageHandlers: Record<string, Set<(data: any) => void>> = {};
+  private isIntentionallyDisconnected: boolean = false;
 
   readonly HEARTBEAT_INTERVAL = 100_000; // 100 seconds
   readonly HEARTBEAT_TIMEOUT = 10_000; // 10 seconds
@@ -527,6 +528,34 @@ export default class BackendAPI {
     return this._uploadFile("/store/submissions/media", file);
   }
 
+  uploadFile(
+    file: File,
+    provider: string = "gcs",
+    expiration_hours: number = 24,
+    onProgress?: (progress: number) => void,
+  ): Promise<{
+    file_uri: string;
+    file_name: string;
+    size: number;
+    content_type: string;
+    expires_in_hours: number;
+  }> {
+    return this._uploadFileWithProgress(
+      "/files/upload",
+      file,
+      {
+        provider,
+        expiration_hours,
+      },
+      onProgress,
+    ).then((response) => {
+      if (typeof response === "string") {
+        return JSON.parse(response);
+      }
+      return response;
+    });
+  }
+
   updateStoreProfile(profile: ProfileDetails): Promise<ProfileDetails> {
     return this._request("POST", "/store/profile", profile);
   }
@@ -816,6 +845,27 @@ export default class BackendAPI {
     }
   }
 
+  private async _uploadFileWithProgress(
+    path: string,
+    file: File,
+    params?: Record<string, any>,
+    onProgress?: (progress: number) => void,
+  ): Promise<string> {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    if (isClient) {
+      return this._makeClientFileUploadWithProgress(
+        path,
+        formData,
+        params,
+        onProgress,
+      );
+    } else {
+      return this._makeServerFileUploadWithProgress(path, formData, params);
+    }
+  }
+
   private async _makeClientFileUpload(
     path: string,
     formData: FormData,
@@ -839,7 +889,7 @@ export default class BackendAPI {
       throw handleFetchError(response, errorData);
     }
 
-    return await response.text();
+    return await response.json();
   }
 
   private async _makeServerFileUpload(
@@ -850,6 +900,70 @@ export default class BackendAPI {
       "./helpers"
     );
     const url = buildServerUrl(path);
+    return await makeAuthenticatedFileUpload(url, formData);
+  }
+
+  private async _makeClientFileUploadWithProgress(
+    path: string,
+    formData: FormData,
+    params?: Record<string, any>,
+    onProgress?: (progress: number) => void,
+  ): Promise<any> {
+    const { buildClientUrl, buildUrlWithQuery } = await import("./helpers");
+
+    let url = buildClientUrl(path);
+    if (params) {
+      url = buildUrlWithQuery(url, params);
+    }
+
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+
+      if (onProgress) {
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable) {
+            const progress = (e.loaded / e.total) * 100;
+            onProgress(progress);
+          }
+        });
+      }
+
+      xhr.addEventListener("load", () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const response = JSON.parse(xhr.responseText);
+            resolve(response);
+          } catch (_error) {
+            reject(new Error("Invalid JSON response"));
+          }
+        } else {
+          reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
+        }
+      });
+
+      xhr.addEventListener("error", () => {
+        reject(new Error("Network error"));
+      });
+
+      xhr.open("POST", url);
+      xhr.withCredentials = true;
+      xhr.send(formData);
+    });
+  }
+
+  private async _makeServerFileUploadWithProgress(
+    path: string,
+    formData: FormData,
+    params?: Record<string, any>,
+  ): Promise<string> {
+    const { makeAuthenticatedFileUpload, buildServerUrl, buildUrlWithQuery } =
+      await import("./helpers");
+
+    let url = buildServerUrl(path);
+    if (params) {
+      url = buildUrlWithQuery(url, params);
+    }
+
     return await makeAuthenticatedFileUpload(url, formData);
   }
 
@@ -1003,6 +1117,7 @@ export default class BackendAPI {
   }
 
   async connectWebSocket(): Promise<void> {
+    this.isIntentionallyDisconnected = false;
     return (this.wsConnecting ??= new Promise(async (resolve, reject) => {
       try {
         let token = "";
@@ -1047,8 +1162,11 @@ export default class BackendAPI {
           this._stopWSHeartbeat(); // Stop heartbeat when connection closes
           this.wsConnecting = null;
           this.wsOnDisconnectHandlers.forEach((handler) => handler());
-          // Attempt to reconnect after a delay
-          setTimeout(() => this.connectWebSocket().then(resolve), 1000);
+
+          // Only attempt to reconnect if this wasn't an intentional disconnection
+          if (!this.isIntentionallyDisconnected) {
+            setTimeout(() => this.connectWebSocket().then(resolve), 1000);
+          }
         };
 
         this.webSocket.onerror = (error) => {
@@ -1066,6 +1184,7 @@ export default class BackendAPI {
   }
 
   disconnectWebSocket() {
+    this.isIntentionallyDisconnected = true;
     this._stopWSHeartbeat(); // Stop heartbeat when disconnecting
     if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
       this.webSocket.close();

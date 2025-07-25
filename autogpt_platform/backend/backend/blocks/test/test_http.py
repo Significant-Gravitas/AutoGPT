@@ -106,6 +106,7 @@ class TestHttpBlockWithHostScopedCredentials:
             input_data,
             credentials=exact_match_credentials,
             graph_exec_id="test-exec-id",
+            user_id="test-user-id",
         ):
             result.append((output_name, output_data))
 
@@ -161,6 +162,7 @@ class TestHttpBlockWithHostScopedCredentials:
             input_data,
             credentials=wildcard_credentials,
             graph_exec_id="test-exec-id",
+            user_id="test-user-id",
         ):
             result.append((output_name, output_data))
 
@@ -207,6 +209,7 @@ class TestHttpBlockWithHostScopedCredentials:
             input_data,
             credentials=non_matching_credentials,
             graph_exec_id="test-exec-id",
+            user_id="test-user-id",
         ):
             result.append((output_name, output_data))
 
@@ -256,6 +259,7 @@ class TestHttpBlockWithHostScopedCredentials:
             input_data,
             credentials=exact_match_credentials,
             graph_exec_id="test-exec-id",
+            user_id="test-user-id",
         ):
             result.append((output_name, output_data))
 
@@ -315,6 +319,7 @@ class TestHttpBlockWithHostScopedCredentials:
             input_data,
             credentials=auto_discovered_creds,  # Execution manager found these
             graph_exec_id="test-exec-id",
+            user_id="test-user-id",
         ):
             result.append((output_name, output_data))
 
@@ -378,6 +383,7 @@ class TestHttpBlockWithHostScopedCredentials:
             input_data,
             credentials=multi_header_creds,
             graph_exec_id="test-exec-id",
+            user_id="test-user-id",
         ):
             result.append((output_name, output_data))
 
@@ -466,6 +472,7 @@ class TestHttpBlockWithHostScopedCredentials:
                 input_data,
                 credentials=test_creds,
                 graph_exec_id="test-exec-id",
+                user_id="test-user-id",
             ):
                 result.append((output_name, output_data))
 

@@ -6,6 +6,7 @@ import { useLibraryAgentList } from "./useLibraryAgentList";
 export default function LibraryAgentList() {
   const {
     agentLoading,
+    agentCount,
     allAgents: agents,
     isFetchingNextPage,
     isSearching,
@@ -18,7 +19,7 @@ export default function LibraryAgentList() {
   return (
     <>
       {/* TODO: We need a new endpoint on backend that returns total number of agents */}
-      <LibraryActionSubHeader agentCount={agents.length} />
+      <LibraryActionSubHeader agentCount={agentCount} />
       <div className="px-2">
         {agentLoading ? (
           <div className="flex h-[200px] items-center justify-center">
