@@ -327,11 +327,19 @@ async def webhook_ingress_generic(
     webhook_manager = get_webhook_manager(provider)
     try:
         webhook = await get_webhook(webhook_id, include_relations=True)
+        user_id = webhook.user_id
+        credentials = (
+            await creds_manager.get(user_id, webhook.credentials_id)
+            if webhook.credentials_id
+            else None
+        )
     except NotFoundError as e:
         logger.warning(f"Webhook payload received for unknown webhook #{webhook_id}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     logger.debug(f"Webhook #{webhook_id}: {webhook}")
-    payload, event_type = await webhook_manager.validate_payload(webhook, request)
+    payload, event_type = await webhook_manager.validate_payload(
+        webhook, request, credentials
+    )
     logger.debug(
         f"Validated {provider.value} {webhook.webhook_type} {event_type} event "
         f"with payload {payload}"

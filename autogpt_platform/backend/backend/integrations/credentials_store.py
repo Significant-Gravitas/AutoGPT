@@ -393,7 +393,7 @@ class IntegrationCredentialsStore:
         Generate code challenge using SHA256 from the code verifier.
         Currently only SHA256 is supported.(In future if we want to support more methods we can add them here)
         """
-        code_verifier = secrets.token_urlsafe(128)
+        code_verifier = secrets.token_urlsafe(96)
         sha256_hash = hashlib.sha256(code_verifier.encode("utf-8")).digest()
         code_challenge = base64.urlsafe_b64encode(sha256_hash).decode("utf-8")
         return code_challenge.replace("=", ""), code_verifier
