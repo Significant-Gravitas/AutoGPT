@@ -3875,6 +3875,7 @@
           },
           "expires_at": {
             "type": "string",
+            "format": "date-time",
             "title": "Expires At",
             "description": "ISO timestamp when the URL expires"
           }
