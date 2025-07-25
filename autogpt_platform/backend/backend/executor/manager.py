@@ -184,7 +184,6 @@ async def execute_node(
         extra_exec_kwargs[field_name] = credentials
 
     if node_block.id in AYRSHARE_BLOCK_IDS:
-        logger.warning("Trying to Load Ayrshare Profile Key")
         profile_key = await creds_manager.store.get_ayrshare_profile_key(user_id)
         if not profile_key:
             logger.error(
@@ -482,7 +481,7 @@ class Executor:
         except Exception as e:
             # Avoid user error being marked as an actual error.
             if isinstance(e, ValueError):
-                log_metadata.warning(
+                log_metadata.info(
                     f"Failed node execution {node_exec.node_exec_id}: {e}"
                 )
             else:
@@ -594,8 +593,7 @@ class Executor:
         db_client = get_db_client()
         block = get_block(node_exec.block_id)
         if not block:
-            logger.warning("...")
-            logger.error(f"_charge_usage: Block {node_exec.block_id} not found.")
+            logger.error(f"Block {node_exec.block_id} not found.")
             return
 
         cost, matching_filter = block_usage_cost(
@@ -1137,7 +1135,6 @@ class ExecutionManager(AppProcess):
         properties: BasicProperties,
         body: bytes,
     ):
-        logger.warning("Trying to Handle Run Message")
         delivery_tag = method.delivery_tag
         try:
             graph_exec_entry = GraphExecutionEntry.model_validate_json(body)
