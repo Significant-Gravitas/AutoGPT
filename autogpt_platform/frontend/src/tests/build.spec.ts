@@ -257,16 +257,11 @@ test.describe("Build", () => { //(1)!
     // Ensure the run button is enabled
     await test.expect(buildPage.isRunButtonEnabled()).resolves.toBeTruthy();
 
-    // Run the agent
-    // await buildPage.runAgent();
-
-    // Wait for processing to complete by checking the completion badge
-    // await buildPage.waitForCompletionBadge();
-
-    // Get the first completion badge and verify it's visible
-    // await test
-    //   .expect(buildPage.isCompletionBadgeVisible())
-    //   .resolves.toBeTruthy();
+    await buildPage.runAgent();
+    await buildPage.waitForCompletionBadge();
+    await test
+      .expect(buildPage.isCompletionBadgeVisible())
+      .resolves.toBeTruthy();
   });
 
   test("user can build an agent with inputs and output blocks", async ({ page }, testInfo) => {
@@ -355,15 +350,14 @@ test.describe("Build", () => { //(1)!
     // Wait for save to complete
     await page.waitForTimeout(1000);
 
-    // TODO: investigate why running 
-    // await buildPage.runAgent();
-    // await buildPage.fillRunDialog({
-    //   Value: "10",
-    // });
-    // await buildPage.clickRunDialogRunButton();
-    // await buildPage.waitForCompletionBadge();
-    // await test
-    //   .expect(buildPage.isCompletionBadgeVisible())
-    //   .resolves.toBeTruthy();
+    await buildPage.runAgent();
+    await buildPage.fillRunDialog({
+      Value: "10",
+    });
+    await buildPage.clickRunDialogRunButton();
+    await buildPage.waitForCompletionBadge();
+    await test
+      .expect(buildPage.isCompletionBadgeVisible())
+      .resolves.toBeTruthy();
   });
 });

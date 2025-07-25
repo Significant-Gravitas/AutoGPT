@@ -13,8 +13,10 @@ import {
 } from "../actions";
 import {
   broadcastLogout,
+  clearWebSocketDisconnectIntent,
   getRedirectPath,
   isLogoutEvent,
+  setWebSocketDisconnectIntent,
   setupSessionEventListeners,
 } from "../helpers";
 
@@ -47,6 +49,7 @@ export function useSupabase() {
   }, []);
 
   async function logOut(options: ServerLogoutOptions = {}) {
+    setWebSocketDisconnectIntent();
     api.disconnectWebSocket();
     broadcastLogout();
 
@@ -93,6 +96,7 @@ export function useSupabase() {
           }
           return currentUser;
         });
+        clearWebSocketDisconnectIntent();
       }
 
       return true;
@@ -119,6 +123,7 @@ export function useSupabase() {
       }
 
       setUser(serverUser);
+      clearWebSocketDisconnectIntent();
       return serverUser;
     } catch (error) {
       console.error("Get user error:", error);
@@ -130,6 +135,7 @@ export function useSupabase() {
   function handleCrossTabLogout(e: StorageEvent) {
     if (!isLogoutEvent(e)) return;
 
+    setWebSocketDisconnectIntent();
     api.disconnectWebSocket();
 
     // Clear local state immediately
