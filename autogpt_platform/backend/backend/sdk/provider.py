@@ -23,8 +23,8 @@ class OAuthConfig(BaseModel):
 
     oauth_handler: Type[BaseOAuthHandler]
     scopes: Optional[List[str]] = None
-    client_id_env_var: Optional[str] = None
-    client_secret_env_var: Optional[str] = None
+    client_id_env_var: str
+    client_secret_env_var: str
 
 
 class Provider:

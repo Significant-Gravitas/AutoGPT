@@ -63,7 +63,11 @@ class TestAutoRegistry:
 
         provider = Provider(
             name="oauth_provider",
-            oauth_config=OAuthConfig(oauth_handler=TestOAuthHandler),
+            oauth_config=OAuthConfig(
+                oauth_handler=TestOAuthHandler,
+                client_id_env_var="TEST_CLIENT_ID",
+                client_secret_env_var="TEST_CLIENT_SECRET",
+            ),
             webhook_manager=None,
             default_credentials=[],
             base_costs=[],
@@ -172,7 +176,11 @@ class TestAutoRegistry:
 
         provider1 = Provider(
             name="provider1",
-            oauth_config=OAuthConfig(oauth_handler=TestOAuth1),
+            oauth_config=OAuthConfig(
+                oauth_handler=TestOAuth1,
+                client_id_env_var="TEST_CLIENT_ID",
+                client_secret_env_var="TEST_CLIENT_SECRET",
+            ),
             webhook_manager=None,
             default_credentials=[],
             base_costs=[],
@@ -181,7 +189,11 @@ class TestAutoRegistry:
 
         provider2 = Provider(
             name="provider2",
-            oauth_config=OAuthConfig(oauth_handler=TestOAuth2),
+            oauth_config=OAuthConfig(
+                oauth_handler=TestOAuth2,
+                client_id_env_var="TEST_CLIENT_ID",
+                client_secret_env_var="TEST_CLIENT_SECRET",
+            ),
             webhook_manager=None,
             default_credentials=[],
             base_costs=[],

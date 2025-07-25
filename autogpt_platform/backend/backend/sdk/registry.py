@@ -3,6 +3,7 @@ Auto-registration system for blocks, providers, and their configurations.
 """
 
 import logging
+import os
 import threading
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type
 
@@ -12,6 +13,7 @@ from backend.blocks.basic import Block
 from backend.data.model import APIKeyCredentials, Credentials
 from backend.integrations.oauth.base import BaseOAuthHandler
 from backend.integrations.webhooks._base import BaseWebhooksManager
+from backend.util.exceptions import MissingConfigError
 
 if TYPE_CHECKING:
     from backend.sdk.provider import Provider
@@ -78,6 +80,17 @@ class AutoRegistry:
                 cls._oauth_handlers[provider.name] = provider.oauth_config.oauth_handler
 
                 # Register OAuth credentials configuration
+
+                # Check that required OAuth env vars exist
+                if not os.getenv(provider.oauth_config.client_id_env_var):
+                    raise MissingConfigError(
+                        f"OAuth client ID environment variable '{provider.oauth_config.client_id_env_var}' not set for provider '{provider.name}'"
+                    )
+                if not os.getenv(provider.oauth_config.client_secret_env_var):
+                    raise MissingConfigError(
+                        f"OAuth client secret environment variable '{provider.oauth_config.client_secret_env_var}' not set for provider '{provider.name}'"
+                    )
+
                 oauth_creds = SDKOAuthCredentials(
                     use_secrets=False,  # SDK providers use custom env vars
                     client_id_env_var=provider.oauth_config.client_id_env_var,

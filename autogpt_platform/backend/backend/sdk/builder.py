@@ -41,6 +41,10 @@ class ProviderBuilder:
         client_secret_env_var: Optional[str] = None,
     ) -> "ProviderBuilder":
         """Add OAuth support."""
+        if not client_id_env_var or not client_secret_env_var:
+            client_id_env_var = f"{self.name}_client_id".upper()
+            client_secret_env_var = f"{self.name}_client_secret".upper()
+
         self._oauth_config = OAuthConfig(
             oauth_handler=handler_class,
             scopes=scopes,
