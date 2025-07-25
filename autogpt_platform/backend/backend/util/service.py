@@ -22,6 +22,7 @@ from typing import (
 
 import httpx
 import uvicorn
+from autogpt_libs.logging.utils import generate_uvicorn_config
 from fastapi import FastAPI, Request, responses
 from pydantic import BaseModel, TypeAdapter, create_model
 from tenacity import (
@@ -119,6 +120,12 @@ EXCEPTION_MAPPING = {
 
 class AppService(BaseAppService, ABC):
     fastapi_app: FastAPI
+    log_level: str = "info"
+
+    def set_log_level(self, log_level: str):
+        """Set the uvicorn log level. Returns self for chaining."""
+        self.log_level = log_level
+        return self
 
     @staticmethod
     def _handle_internal_http_error(status_code: int = 500, log_error: bool = True):
@@ -191,12 +198,14 @@ class AppService(BaseAppService, ABC):
         logger.info(
             f"[{self.service_name}] Starting RPC server at http://{api_host}:{self.get_port()}"
         )
+
         server = uvicorn.Server(
             uvicorn.Config(
                 self.fastapi_app,
                 host=api_host,
                 port=self.get_port(),
-                log_level="warning",
+                log_config=generate_uvicorn_config(),
+                log_level=self.log_level,
             )
         )
         self.shared_event_loop.run_until_complete(server.serve())
