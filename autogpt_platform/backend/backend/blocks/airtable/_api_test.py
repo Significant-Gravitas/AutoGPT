@@ -3,7 +3,9 @@ from uuid import uuid4
 
 import pytest
 
-from backend.blocks.airtable._api import (
+from backend.sdk import APIKeyCredentials, SecretStr
+
+from ._api import (
     TableFieldType,
     WebhookFilters,
     WebhookSpecification,
@@ -22,7 +24,6 @@ from backend.blocks.airtable._api import (
     update_record,
     update_table,
 )
-from backend.sdk import APIKeyCredentials, SecretStr
 
 
 @pytest.mark.asyncio
