@@ -132,7 +132,6 @@ class AyrshareClient:
             self._requests = Requests(
                 extra_headers=headers,
                 trusted_origins=["https://api.ayrshare.com"],
-                raise_for_status=False,
             )
 
     async def generate_jwt(
@@ -473,8 +472,11 @@ class AyrshareClient:
         response = await self._requests.post(
             self.POST_ENDPOINT, json=payload, headers=headers
         )
-
+        logger.warning(f"Ayrshare request: {payload} and headers: {headers}")
         if not response.ok:
+            logger.error(
+                f"Ayrshare API request failed ({response.status}): {response.text()}"
+            )
             try:
                 error_data = response.json()
                 error_message = error_data.get("message", "Unknown error")
@@ -488,6 +490,9 @@ class AyrshareClient:
 
         response_data = response.json()
         if response_data.get("status") != "success":
+            logger.error(
+                f"Ayrshare API returned error: {response_data.get('message', 'Unknown error')}"
+            )
             raise AyrshareAPIException(
                 f"Ayrshare API returned error: {response_data.get('message', 'Unknown error')}",
                 response.status,
@@ -501,9 +506,10 @@ class AyrshareClient:
         # the first post from the array
 
         if len(response_data["posts"]) == 0:
+            logger.error("Ayrshare API returned no posts")
             raise AyrshareAPIException(
                 "Ayrshare API returned no posts",
                 response.status,
             )
-
+        logger.warn(f"Ayrshare API returned posts: {response_data['posts']}")
         return PostResponse(**response_data["posts"][0])
