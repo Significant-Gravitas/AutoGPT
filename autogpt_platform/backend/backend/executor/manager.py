@@ -502,7 +502,9 @@ class Executor:
     @classmethod
     @error_logged(swallow=False)
     def on_graph_execution(
-        cls, graph_exec: GraphExecutionEntry, cancel: threading.Event
+        cls,
+        graph_exec: GraphExecutionEntry,
+        cancel: threading.Event,
     ):
         log_metadata = LogMetadata(
             logger=_logger,
@@ -1066,16 +1068,28 @@ class ExecutionManager(AppProcess):
 
     @continuous_retry()
     def _consume_execution_run(self):
+
+        # Long-running executions are handled by:
+        # 1. Connection-level heartbeats (30s interval) with quick detection (60s)
+        # 2. Disabled consumer timeout (x-consumer-timeout: 0) allows unlimited execution time
+        # 3. Enhanced connection settings (5 retries, 1s delay) for quick reconnection
+        # 4. Process monitoring ensures failed executors release messages back to queue
+
         run_client = SyncRabbitMQ(create_execution_queue_config())
         run_client.connect()
         run_channel = run_client.get_channel()
-        run_channel.basic_qos(prefetch_count=1)
+        run_channel.basic_qos(prefetch_count=self.pool_size)
+
+        # Configure consumer for long-running graph executions
+        # auto_ack=False: Don't acknowledge messages until execution completes (prevents data loss)
         run_channel.basic_consume(
             queue=GRAPH_EXECUTION_QUEUE_NAME,
             on_message_callback=self._handle_run_message,
             auto_ack=False,
             consumer_tag="graph_execution_consumer",
         )
+        run_channel.confirm_delivery()
+
         logger.info(f"[{self.service_name}] ⏳ Starting to consume run messages...")
         run_channel.start_consuming()
         raise RuntimeError(f"❌ run message consumer is stopped: {run_channel}")
@@ -1151,6 +1165,7 @@ class ExecutionManager(AppProcess):
             return
 
         cancel_event = multiprocessing.Manager().Event()
+
         future = self.executor.submit(
             Executor.on_graph_execution, graph_exec_entry, cancel_event
         )
@@ -1165,13 +1180,23 @@ class ExecutionManager(AppProcess):
                     logger.error(
                         f"[{self.service_name}] Execution for {graph_exec_id} failed: {exec_error}"
                     )
-                    channel.connection.add_callback_threadsafe(
-                        lambda: channel.basic_nack(delivery_tag, requeue=True)
-                    )
+                    try:
+                        channel.connection.add_callback_threadsafe(
+                            lambda: channel.basic_nack(delivery_tag, requeue=True)
+                        )
+                    except Exception as ack_error:
+                        logger.error(
+                            f"[{self.service_name}] Failed to NACK message for {graph_exec_id}: {ack_error}"
+                        )
                 else:
-                    channel.connection.add_callback_threadsafe(
-                        lambda: channel.basic_ack(delivery_tag)
-                    )
+                    try:
+                        channel.connection.add_callback_threadsafe(
+                            lambda: channel.basic_ack(delivery_tag)
+                        )
+                    except Exception as ack_error:
+                        logger.error(
+                            f"[{self.service_name}] Failed to ACK message for {graph_exec_id}: {ack_error}"
+                        )
             except BaseException as e:
                 logger.exception(
                     f"[{self.service_name}] Error in run completion callback: {e}"
