@@ -48,20 +48,39 @@ export function ActivityDropdown({
 
     return allExecutions
       .sort((a, b) => {
-        // Running/queued always at top
-        const aIsActive =
-          a.status === AgentExecutionStatus.RUNNING ||
-          a.status === AgentExecutionStatus.QUEUED;
-        const bIsActive =
-          b.status === AgentExecutionStatus.RUNNING ||
-          b.status === AgentExecutionStatus.QUEUED;
+        // Priority order: RUNNING > QUEUED > everything else
+        const aIsRunning = a.status === AgentExecutionStatus.RUNNING;
+        const bIsRunning = b.status === AgentExecutionStatus.RUNNING;
+        const aIsQueued = a.status === AgentExecutionStatus.QUEUED;
+        const bIsQueued = b.status === AgentExecutionStatus.QUEUED;
 
-        if (aIsActive && !bIsActive) return -1;
-        if (!aIsActive && bIsActive) return 1;
+        // RUNNING agents always at the very top
+        if (aIsRunning && !bIsRunning) return -1;
+        if (!aIsRunning && bIsRunning) return 1;
 
-        // Within same category, sort by most recent
-        const aTime = aIsActive ? a.started_at : a.ended_at;
-        const bTime = bIsActive ? b.started_at : b.ended_at;
+        // If both are running, sort by most recent start time
+        if (aIsRunning && bIsRunning) {
+          if (!a.started_at || !b.started_at) return 0;
+          return (
+            new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
+          );
+        }
+
+        // QUEUED agents come second
+        if (aIsQueued && !bIsQueued) return -1;
+        if (!aIsQueued && bIsQueued) return 1;
+
+        // If both are queued, sort by most recent start time
+        if (aIsQueued && bIsQueued) {
+          if (!a.started_at || !b.started_at) return 0;
+          return (
+            new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
+          );
+        }
+
+        // For everything else (completed, failed, etc.), sort by most recent end time
+        const aTime = a.ended_at;
+        const bTime = b.ended_at;
 
         if (!aTime || !bTime) return 0;
         return new Date(bTime).getTime() - new Date(aTime).getTime();
