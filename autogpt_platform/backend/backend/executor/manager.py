@@ -26,6 +26,7 @@ from backend.data.notifications import (
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.executor.utils import LogMetadata, create_execution_queue_config
 from backend.notifications.notifications import queue_notification
+from backend.server.v2.iffy.block_moderation import moderate_block_content
 from backend.util.exceptions import InsufficientBalanceError
 
 if TYPE_CHECKING:
