@@ -276,7 +276,7 @@ class CredentialsDeletionNeedsConfirmationResponse(BaseModel):
 
 class AyrshareSSOResponse(BaseModel):
     sso_url: str = Field(..., description="The SSO URL for Ayrshare integration")
-    expires_at: str = Field(..., description="ISO timestamp when the URL expires")
+    expires_at: datetime = Field(..., description="ISO timestamp when the URL expires")
 
 
 @router.delete("/{provider}/credentials/{cred_id}")
@@ -636,9 +636,7 @@ async def get_ayrshare_sso_url(
         )
 
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=max_expiry_minutes)
-    return AyrshareSSOResponse(
-        sso_url=jwt_response.url, expires_at=expires_at.isoformat()
-    )
+    return AyrshareSSOResponse(sso_url=jwt_response.url, expires_at=expires_at)
 
 
 # === PROVIDER DISCOVERY ENDPOINTS ===
