@@ -1,5 +1,6 @@
 import { type CookieOptions } from "@supabase/ssr";
 import { SupabaseClient } from "@supabase/supabase-js";
+import { Key, storage } from "@/services/storage/local-storage";
 
 export const PROTECTED_PAGES = [
   "/monitor",
@@ -11,11 +12,6 @@ export const PROTECTED_PAGES = [
 ] as const;
 
 export const ADMIN_PAGES = ["/admin"] as const;
-
-export const STORAGE_KEYS = {
-  LOGOUT: "supabase-logout",
-  WEBSOCKET_DISCONNECT_INTENT: "websocket-disconnect-intent",
-} as const;
 
 export function getCookieSettings(): Partial<CookieOptions> {
   return {
@@ -40,42 +36,24 @@ export function shouldRedirectOnLogout(pathname: string): boolean {
 
 // Cross-tab logout utilities
 export function broadcastLogout(): void {
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(STORAGE_KEYS.LOGOUT, Date.now().toString());
-  }
+  storage.set(Key.LOGOUT, Date.now().toString());
 }
 
 export function isLogoutEvent(event: StorageEvent): boolean {
-  return event.key === STORAGE_KEYS.LOGOUT;
+  return event.key === Key.LOGOUT;
 }
 
 // WebSocket disconnect intent utilities
 export function setWebSocketDisconnectIntent(): void {
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(
-      STORAGE_KEYS.WEBSOCKET_DISCONNECT_INTENT,
-      "true",
-    );
-  }
+  storage.set(Key.WEBSOCKET_DISCONNECT_INTENT, "true");
 }
 
 export function clearWebSocketDisconnectIntent(): void {
-  if (typeof window !== "undefined") {
-    window.localStorage.removeItem(STORAGE_KEYS.WEBSOCKET_DISCONNECT_INTENT);
-  }
+  storage.clean(Key.WEBSOCKET_DISCONNECT_INTENT);
 }
 
 export function hasWebSocketDisconnectIntent(): boolean {
-  if (typeof window === "undefined") return false;
-
-  try {
-    return (
-      window.localStorage.getItem(STORAGE_KEYS.WEBSOCKET_DISCONNECT_INTENT) ===
-      "true"
-    );
-  } catch {
-    return false;
-  }
+  return storage.get(Key.WEBSOCKET_DISCONNECT_INTENT) === "true";
 }
 
 // Redirect utilities
