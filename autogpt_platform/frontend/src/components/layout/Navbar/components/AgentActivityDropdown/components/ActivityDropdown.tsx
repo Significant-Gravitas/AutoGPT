@@ -18,12 +18,32 @@ export function ActivityDropdown({
   recentCompletions,
   recentFailures,
 }: Props) {
+  // Limit arrays for display purposes
+  const displayActiveExecutions = activeExecutions.slice(
+    0,
+    EXECUTION_DISPLAY_LIMIT,
+  );
+  const displayRecentCompletions = recentCompletions.slice(
+    0,
+    EXECUTION_DISPLAY_LIMIT,
+  );
+  const displayRecentFailures = recentFailures.slice(
+    0,
+    EXECUTION_DISPLAY_LIMIT,
+  );
+
   // Combine and sort all executions - running/queued at top, then by most recent
   function getSortedExecutions() {
     const allExecutions = [
-      ...activeExecutions.map((e) => ({ ...e, type: "running" as const })),
-      ...recentCompletions.map((e) => ({ ...e, type: "completed" as const })),
-      ...recentFailures.map((e) => ({ ...e, type: "failed" as const })),
+      ...displayActiveExecutions.map((e) => ({
+        ...e,
+        type: "running" as const,
+      })),
+      ...displayRecentCompletions.map((e) => ({
+        ...e,
+        type: "completed" as const,
+      })),
+      ...displayRecentFailures.map((e) => ({ ...e, type: "failed" as const })),
     ];
 
     return allExecutions

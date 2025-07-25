@@ -16,8 +16,10 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 export function AgentActivityDropdown() {
   const isAgentActivityEnabled = useGetFlag(Flag.AGENT_ACTIVITY);
   const [isOpen, setIsOpen] = useState(false);
-  const { activeExecutions, recentCompletions, recentFailures, activeCount } =
+  const { activeExecutions, recentCompletions, recentFailures } =
     useAgentActivityDropdown();
+
+  const activeCount = activeExecutions.length;
 
   if (!isAgentActivityEnabled) {
     return null;

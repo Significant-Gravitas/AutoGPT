@@ -79,9 +79,6 @@ export interface NotificationState {
   recentCompletions: AgentExecutionWithInfo[];
   recentFailures: AgentExecutionWithInfo[];
   totalCount: number;
-  activeCount: number;
-  recentCompletionsCount: number;
-  recentFailuresCount: number;
 }
 
 export function createAgentInfoMap(
@@ -202,38 +199,22 @@ export function categorizeExecutions(
     enrichExecutionWithAgentInfo(execution, agentInfoMap),
   );
 
-  const allActiveExecutions = enrichedExecutions.filter(isActiveExecution);
-  const allRecentCompletions = enrichedExecutions.filter((execution) =>
+  const activeExecutions = enrichedExecutions.filter(isActiveExecution);
+  const recentCompletions = enrichedExecutions.filter((execution) =>
     isRecentCompletion(execution, twentyFourHoursAgo),
   );
-  const allRecentFailures = enrichedExecutions.filter((execution) =>
+  const recentFailures = enrichedExecutions.filter((execution) =>
     isRecentFailure(execution, twentyFourHoursAgo),
   );
-
-  // Limited arrays for dropdown display
-  const activeExecutions = allActiveExecutions.slice(
-    0,
-    EXECUTION_DISPLAY_LIMIT,
-  );
-  const recentCompletions = allRecentCompletions.slice(
-    0,
-    EXECUTION_DISPLAY_LIMIT,
-  );
-  const recentFailures = allRecentFailures.slice(0, EXECUTION_DISPLAY_LIMIT);
-
-  // Counts for badge/hints
-  const activeCount = allActiveExecutions.length;
-  const recentCompletionsCount = allRecentCompletions.length;
-  const recentFailuresCount = allRecentFailures.length;
 
   return {
     activeExecutions,
     recentCompletions,
     recentFailures,
-    totalCount: activeCount + recentCompletionsCount + recentFailuresCount,
-    activeCount,
-    recentCompletionsCount,
-    recentFailuresCount,
+    totalCount:
+      activeExecutions.length +
+      recentCompletions.length +
+      recentFailures.length,
   };
 }
 
@@ -256,21 +237,6 @@ export function removeExecutionFromAllCategories(
     recentCompletions: filteredRecentCompletions,
     recentFailures: filteredRecentFailures,
     totalCount: state.totalCount, // Will be recalculated later
-    activeCount: Math.max(
-      0,
-      state.activeCount -
-        (state.activeExecutions.length - filteredActiveExecutions.length),
-    ),
-    recentCompletionsCount: Math.max(
-      0,
-      state.recentCompletionsCount -
-        (state.recentCompletions.length - filteredRecentCompletions.length),
-    ),
-    recentFailuresCount: Math.max(
-      0,
-      state.recentFailuresCount -
-        (state.recentFailures.length - filteredRecentFailures.length),
-    ),
   };
 }
 
@@ -282,23 +248,11 @@ export function addExecutionToCategory(
   const newState = { ...state };
 
   if (isActiveExecution(execution)) {
-    newState.activeExecutions = [execution, ...newState.activeExecutions].slice(
-      0,
-      EXECUTION_DISPLAY_LIMIT,
-    );
-    newState.activeCount = newState.activeCount + 1;
+    newState.activeExecutions = [execution, ...newState.activeExecutions];
   } else if (isRecentCompletion(execution, twentyFourHoursAgo)) {
-    newState.recentCompletions = [
-      execution,
-      ...newState.recentCompletions,
-    ].slice(0, EXECUTION_DISPLAY_LIMIT);
-    newState.recentCompletionsCount = newState.recentCompletionsCount + 1;
+    newState.recentCompletions = [execution, ...newState.recentCompletions];
   } else if (isRecentFailure(execution, twentyFourHoursAgo)) {
-    newState.recentFailures = [execution, ...newState.recentFailures].slice(
-      0,
-      EXECUTION_DISPLAY_LIMIT,
-    );
-    newState.recentFailuresCount = newState.recentFailuresCount + 1;
+    newState.recentFailures = [execution, ...newState.recentFailures];
   }
 
   return newState;
@@ -320,16 +274,6 @@ export function cleanupOldNotifications(
     ...state,
     recentCompletions: filteredRecentCompletions,
     recentFailures: filteredRecentFailures,
-    recentCompletionsCount: Math.max(
-      0,
-      state.recentCompletionsCount -
-        (state.recentCompletions.length - filteredRecentCompletions.length),
-    ),
-    recentFailuresCount: Math.max(
-      0,
-      state.recentFailuresCount -
-        (state.recentFailures.length - filteredRecentFailures.length),
-    ),
   };
 }
 
@@ -339,9 +283,9 @@ export function calculateTotalCount(
   return {
     ...state,
     totalCount:
-      state.activeCount +
-      state.recentCompletionsCount +
-      state.recentFailuresCount,
+      state.activeExecutions.length +
+      state.recentCompletions.length +
+      state.recentFailures.length,
   };
 }
 

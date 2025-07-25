@@ -24,9 +24,6 @@ export function useAgentActivityDropdown() {
     recentCompletions: [],
     recentFailures: [],
     totalCount: 0,
-    activeCount: 0,
-    recentCompletionsCount: 0,
-    recentFailuresCount: 0,
   });
   const [isConnected, setIsConnected] = useState(false);
   const [agentInfoMap, setAgentInfoMap] = useState<AgentInfoMap>(new Map());
