@@ -2,6 +2,7 @@ import { getWebSocketToken } from "@/lib/supabase/actions";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { Key, storage } from "@/services/storage/local-storage";
 import * as Sentry from "@sentry/nextjs";
 import type {
   AddUserCreditsResponse,
@@ -1198,7 +1199,7 @@ export default class BackendAPI {
     if (!isClient) return false;
 
     try {
-      return localStorage.getItem("websocket-disconnect-intent") === "true";
+      return storage.get(Key.WEBSOCKET_DISCONNECT_INTENT) === "true";
     } catch {
       return false;
     }
@@ -1208,7 +1209,7 @@ export default class BackendAPI {
     if (!isClient) return;
 
     try {
-      localStorage.removeItem("websocket-disconnect-intent");
+      storage.clean(Key.WEBSOCKET_DISCONNECT_INTENT);
     } catch {
       Sentry.captureException(
         new Error("Failed to clear WebSocket disconnect intent"),
