@@ -69,9 +69,16 @@ class PostResponse(BaseModel):
     refId: str
     profileTitle: str
     post: str
-    postIds: Optional[list[dict[str, Any]]] = None
+    postIds: Optional[list[PostIds]] = None
     scheduleDate: Optional[str] = None
     errors: Optional[list[str]] = None
+
+
+class PostIds(BaseModel):
+    status: str
+    id: str
+    postUrl: str
+    platform: str
 
 
 class AutoHashtag(BaseModel):
@@ -142,6 +149,8 @@ class AyrshareClient:
     ) -> JWTResponse:
         """
         Generate a JSON Web Token (JWT) for use with single sign on.
+
+        Docs: https://www.ayrshare.com/docs/apis/profiles/generate-jwt-overview
 
         Args:
             domain: Domain of app. Must match the domain given during onboarding.
@@ -224,6 +233,8 @@ class AyrshareClient:
         """
         Create a new User Profile under your Primary Profile.
 
+        Docs: https://www.ayrshare.com/docs/apis/profiles/create-profile
+
         Args:
             title: Title of the new profile. Must be unique.
             messaging_active: Set to true to activate messaging for this user profile.
@@ -293,6 +304,7 @@ class AyrshareClient:
         media_urls: Optional[list[str]] = None,
         is_video: Optional[bool] = None,
         schedule_date: Optional[str] = None,
+        validate_schedule: Optional[bool] = None,
         first_comment: Optional[FirstComment] = None,
         disable_comments: Optional[bool] = None,
         shorten_links: Optional[bool] = None,
@@ -323,37 +335,47 @@ class AyrshareClient:
         """
         Create a post across multiple social media platforms.
 
+        Docs: https://www.ayrshare.com/docs/apis/post/post
+
         Args:
-            post: The post text to be published
-            platforms: List of platforms to post to (e.g. [SocialPlatform.TWITTER, SocialPlatform.FACEBOOK])
-            media_urls: Optional list of media URLs to include
-            is_video: Whether the media is a video
-            schedule_date: UTC datetime for scheduling (YYYY-MM-DDThh:mm:ssZ)
-            first_comment: Configuration for first comment
-            disable_comments: Whether to disable comments
-            shorten_links: Whether to shorten links
-            auto_schedule: Configuration for automatic scheduling
-            auto_repost: Configuration for automatic reposting
-            auto_hashtag: Configuration for automatic hashtags
-            unsplash: Unsplash image configuration
-            bluesky_options: Bluesky-specific options
-            facebook_options: Facebook-specific options
-            gmb_options: Google Business Profile options
-            instagram_options: Instagram-specific options
-            linkedin_options: LinkedIn-specific options
-            pinterest_options: Pinterest-specific options
-            reddit_options: Reddit-specific options
-            snapchat_options: Snapchat-specific options
-            telegram_options: Telegram-specific options
-            threads_options: Threads-specific options
-            tiktok_options: TikTok-specific options
-            twitter_options: Twitter-specific options
-            youtube_options: YouTube-specific options
-            requires_approval: Whether to enable approval workflow
-            random_post: Whether to generate random post text
-            random_media_url: Whether to generate random media
-            idempotency_key: Unique ID for the post
-            notes: Additional notes for the post
+            post: The post text to be published - required
+            platforms: List of platforms to post to (e.g. [SocialPlatform.TWITTER, SocialPlatform.FACEBOOK]) - required
+            media_urls: Optional list of media URLs to include - required if is_video is true
+            is_video: Whether the media is a video - default is false (in api docs)
+            schedule_date: UTC datetime for scheduling (YYYY-MM-DDThh:mm:ssZ) - default is None (in api docs)
+            validate_schedule: Whether to validate the schedule date - default is false (in api docs)
+            first_comment: Configuration for first comment - default is None (in api docs)
+            disable_comments: Whether to disable comments - default is false (in api docs)
+            shorten_links: Whether to shorten links - default is false (in api docs)
+            auto_schedule: Configuration for automatic scheduling - default is None (in api docs https://www.ayrshare.com/docs/apis/auto-schedule/overview)
+            auto_repost: Configuration for automatic reposting - default is None (in api docs https://www.ayrshare.com/docs/apis/post/overview#auto-repost)
+            auto_hashtag: Configuration for automatic hashtags - default is None (in api docs https://www.ayrshare.com/docs/apis/post/overview#auto-hashtags)
+            unsplash: Unsplash image configuration - default is None (in api docs https://www.ayrshare.com/docs/apis/post/overview#unsplash)
+
+            ------------------------------------------------------------
+
+            bluesky_options: Bluesky-specific options - https://www.ayrshare.com/docs/apis/post/social-networks/bluesky
+            facebook_options: Facebook-specific options - https://www.ayrshare.com/docs/apis/post/social-networks/facebook
+            gmb_options: Google Business Profile options - https://www.ayrshare.com/docs/apis/post/social-networks/google
+            instagram_options: Instagram-specific options - https://www.ayrshare.com/docs/apis/post/social-networks/instagram
+            linkedin_options: LinkedIn-specific options - https://www.ayrshare.com/docs/apis/post/social-networks/linkedin
+            pinterest_options: Pinterest-specific options - https://www.ayrshare.com/docs/apis/post/social-networks/pinterest
+            reddit_options: Reddit-specific options - https://www.ayrshare.com/docs/apis/post/social-networks/reddit
+            snapchat_options: Snapchat-specific options - https://www.ayrshare.com/docs/apis/post/social-networks/snapchat
+            telegram_options: Telegram-specific options - https://www.ayrshare.com/docs/apis/post/social-networks/telegram
+            threads_options: Threads-specific options - https://www.ayrshare.com/docs/apis/post/social-networks/threads
+            tiktok_options: TikTok-specific options - https://www.ayrshare.com/docs/apis/post/social-networks/tiktok
+            twitter_options: Twitter-specific options - https://www.ayrshare.com/docs/apis/post/social-networks/twitter
+            youtube_options: YouTube-specific options - https://www.ayrshare.com/docs/apis/post/social-networks/youtube
+
+            ------------------------------------------------------------
+
+
+            requires_approval: Whether to enable approval workflow - default is false (in api docs)
+            random_post: Whether to generate random post text - default is false (in api docs)
+            random_media_url: Whether to generate random media - default is false (in api docs)
+            idempotency_key: Unique ID for the post - default is None (in api docs)
+            notes: Additional notes for the post - default is None (in api docs)
 
         Returns:
             PostResponse object containing the post details and status
@@ -374,6 +396,8 @@ class AyrshareClient:
             payload["isVideo"] = is_video
         if schedule_date:
             payload["scheduleDate"] = schedule_date
+        if validate_schedule is not None:
+            payload["validateSchedule"] = validate_schedule
         if first_comment:
             first_comment_dict = first_comment.model_dump(exclude_none=True)
             if first_comment.platforms:
@@ -469,6 +493,17 @@ class AyrshareClient:
                 response.status,
             )
 
-        # Return the first post from the response
-        # This is because Ayrshare returns an array of posts even for single posts
+        # Ayrshare returns an array of posts even for single posts
+        # It seems like there is only ever one post in the array, and within that
+        # there are multiple postIds
+
+        # There is a seperate endpoint for bulk posting, so feels safe to just take
+        # the first post from the array
+
+        if len(response_data["posts"]) == 0:
+            raise AyrshareAPIException(
+                "Ayrshare API returned no posts",
+                response.status,
+            )
+
         return PostResponse(**response_data["posts"][0])

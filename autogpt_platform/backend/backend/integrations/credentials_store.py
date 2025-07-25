@@ -183,7 +183,6 @@ zerobounce_credentials = APIKeyCredentials(
     expires_at=None,
 )
 
-
 llama_api_credentials = APIKeyCredentials(
     id="d44045af-1c33-4833-9e19-752313214de2",
     provider="llama_api",
@@ -365,10 +364,30 @@ class IntegrationCredentialsStore:
     # ============== SYSTEM-MANAGED CREDENTIALS ============== #
 
     async def get_ayrshare_profile_key(self, user_id: str) -> SecretStr | None:
+        """Get the Ayrshare profile key for a user.
+
+        The profile key is used to authenticate API requests to Ayrshare's social media posting service.
+        See https://www.ayrshare.com/docs/apis/profiles/overview for more details.
+
+        Args:
+            user_id: The ID of the user to get the profile key for
+
+        Returns:
+            The profile key as a SecretStr if set, None otherwise
+        """
         user_integrations = await self._get_user_integrations(user_id)
         return user_integrations.managed_credentials.ayrshare_profile_key
 
     async def set_ayrshare_profile_key(self, user_id: str, profile_key: str) -> None:
+        """Set the Ayrshare profile key for a user.
+
+        The profile key is used to authenticate API requests to Ayrshare's social media posting service.
+        See https://www.ayrshare.com/docs/apis/profiles/overview for more details.
+
+        Args:
+            user_id: The ID of the user to set the profile key for
+            profile_key: The profile key to set
+        """
         _profile_key = SecretStr(profile_key)
         async with self.edit_user_integrations(user_id) as user_integrations:
             user_integrations.managed_credentials.ayrshare_profile_key = _profile_key

@@ -566,7 +566,6 @@ async def get_ayrshare_sso_url(
     Returns:
         dict: Contains the SSO URL for Ayrshare integration
     """
-    # Generate JWT and get SSO URL
     try:
         client = AyrshareClient()
     except MissingConfigError:
@@ -575,11 +574,12 @@ async def get_ayrshare_sso_url(
             detail="Ayrshare integration is not configured",
         )
 
-    # Get or create profile key
+    # Ayrshare profile key is stored in the credentials store
+    # It is generated when creating a new profile, if there is no profile key,
+    # we create a new profile and store the profile key in the credentials store
     profile_key = await creds_manager.store.get_ayrshare_profile_key(user_id)
     if not profile_key:
         logger.debug(f"Creating new Ayrshare profile for user {user_id}")
-        # Create new profile if none exists
         try:
             profile = await client.create_profile(
                 title=f"User {user_id}", messaging_active=True
@@ -595,7 +595,6 @@ async def get_ayrshare_sso_url(
     else:
         logger.debug(f"Using existing Ayrshare profile for user {user_id}")
 
-    # Convert SecretStr to string if needed
     profile_key_str = (
         profile_key.get_secret_value()
         if isinstance(profile_key, SecretStr)
@@ -603,28 +602,31 @@ async def get_ayrshare_sso_url(
     )
 
     private_key = settings.secrets.ayrshare_jwt_key
-    expiry_minutes = 2880
+    # Ayrshare JWT expiry is 2880 minutes (48 hours)
+    max_expiry_minutes = 2880
     try:
         logger.debug(f"Generating Ayrshare JWT for user {user_id}")
         jwt_response = await client.generate_jwt(
             private_key=private_key,
             profile_key=profile_key_str,
             allowed_social=[
-                SocialPlatform.FACEBOOK,
+                # NOTE: We are enabling platforms one at a time
+                # to speed up the development process
+                # SocialPlatform.FACEBOOK,
                 SocialPlatform.TWITTER,
                 SocialPlatform.LINKEDIN,
-                SocialPlatform.INSTAGRAM,
-                SocialPlatform.YOUTUBE,
-                SocialPlatform.REDDIT,
-                SocialPlatform.TELEGRAM,
-                SocialPlatform.GOOGLE_MY_BUSINESS,
-                SocialPlatform.PINTEREST,
-                SocialPlatform.TIKTOK,
-                SocialPlatform.BLUESKY,
-                SocialPlatform.SNAPCHAT,
-                SocialPlatform.THREADS,
+                # SocialPlatform.INSTAGRAM,
+                # SocialPlatform.YOUTUBE,
+                # SocialPlatform.REDDIT,
+                # SocialPlatform.TELEGRAM,
+                # SocialPlatform.GOOGLE_MY_BUSINESS,
+                # SocialPlatform.PINTEREST,
+                # SocialPlatform.TIKTOK,
+                # SocialPlatform.BLUESKY,
+                # SocialPlatform.SNAPCHAT,
+                # SocialPlatform.THREADS,
             ],
-            expires_in=expiry_minutes,
+            expires_in=max_expiry_minutes,
             verify=True,
         )
     except Exception as e:
@@ -633,7 +635,7 @@ async def get_ayrshare_sso_url(
             status_code=HTTP_502_BAD_GATEWAY, detail="Failed to generate JWT"
         )
 
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=expiry_minutes)
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=max_expiry_minutes)
     return AyrshareSSOResponse(
         sso_url=jwt_response.url, expires_at=expires_at.isoformat()
     )
