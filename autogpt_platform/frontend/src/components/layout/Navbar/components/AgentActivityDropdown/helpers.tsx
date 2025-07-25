@@ -79,6 +79,9 @@ export interface NotificationState {
   recentCompletions: AgentExecutionWithInfo[];
   recentFailures: AgentExecutionWithInfo[];
   totalCount: number;
+  activeCount: number;
+  recentCompletionsCount: number;
+  recentFailuresCount: number;
 }
 
 export function createAgentInfoMap(
@@ -199,26 +202,38 @@ export function categorizeExecutions(
     enrichExecutionWithAgentInfo(execution, agentInfoMap),
   );
 
-  const activeExecutions = enrichedExecutions
-    .filter(isActiveExecution)
-    .slice(0, EXECUTION_DISPLAY_LIMIT);
+  const allActiveExecutions = enrichedExecutions.filter(isActiveExecution);
+  const allRecentCompletions = enrichedExecutions.filter((execution) =>
+    isRecentCompletion(execution, twentyFourHoursAgo),
+  );
+  const allRecentFailures = enrichedExecutions.filter((execution) =>
+    isRecentFailure(execution, twentyFourHoursAgo),
+  );
 
-  const recentCompletions = enrichedExecutions
-    .filter((execution) => isRecentCompletion(execution, twentyFourHoursAgo))
-    .slice(0, EXECUTION_DISPLAY_LIMIT);
+  // Limited arrays for dropdown display
+  const activeExecutions = allActiveExecutions.slice(
+    0,
+    EXECUTION_DISPLAY_LIMIT,
+  );
+  const recentCompletions = allRecentCompletions.slice(
+    0,
+    EXECUTION_DISPLAY_LIMIT,
+  );
+  const recentFailures = allRecentFailures.slice(0, EXECUTION_DISPLAY_LIMIT);
 
-  const recentFailures = enrichedExecutions
-    .filter((execution) => isRecentFailure(execution, twentyFourHoursAgo))
-    .slice(0, EXECUTION_DISPLAY_LIMIT);
+  // Counts for badge/hints
+  const activeCount = allActiveExecutions.length;
+  const recentCompletionsCount = allRecentCompletions.length;
+  const recentFailuresCount = allRecentFailures.length;
 
   return {
     activeExecutions,
     recentCompletions,
     recentFailures,
-    totalCount:
-      activeExecutions.length +
-      recentCompletions.length +
-      recentFailures.length,
+    totalCount: activeCount + recentCompletionsCount + recentFailuresCount,
+    activeCount,
+    recentCompletionsCount,
+    recentFailuresCount,
   };
 }
 
@@ -226,15 +241,36 @@ export function removeExecutionFromAllCategories(
   state: NotificationState,
   executionId: string,
 ): NotificationState {
+  const filteredActiveExecutions = state.activeExecutions.filter(
+    (e) => e.id !== executionId,
+  );
+  const filteredRecentCompletions = state.recentCompletions.filter(
+    (e) => e.id !== executionId,
+  );
+  const filteredRecentFailures = state.recentFailures.filter(
+    (e) => e.id !== executionId,
+  );
+
   return {
-    activeExecutions: state.activeExecutions.filter(
-      (e) => e.id !== executionId,
-    ),
-    recentCompletions: state.recentCompletions.filter(
-      (e) => e.id !== executionId,
-    ),
-    recentFailures: state.recentFailures.filter((e) => e.id !== executionId),
+    activeExecutions: filteredActiveExecutions,
+    recentCompletions: filteredRecentCompletions,
+    recentFailures: filteredRecentFailures,
     totalCount: state.totalCount, // Will be recalculated later
+    activeCount: Math.max(
+      0,
+      state.activeCount -
+        (state.activeExecutions.length - filteredActiveExecutions.length),
+    ),
+    recentCompletionsCount: Math.max(
+      0,
+      state.recentCompletionsCount -
+        (state.recentCompletions.length - filteredRecentCompletions.length),
+    ),
+    recentFailuresCount: Math.max(
+      0,
+      state.recentFailuresCount -
+        (state.recentFailures.length - filteredRecentFailures.length),
+    ),
   };
 }
 
@@ -250,16 +286,19 @@ export function addExecutionToCategory(
       0,
       EXECUTION_DISPLAY_LIMIT,
     );
+    newState.activeCount = newState.activeCount + 1;
   } else if (isRecentCompletion(execution, twentyFourHoursAgo)) {
     newState.recentCompletions = [
       execution,
       ...newState.recentCompletions,
     ].slice(0, EXECUTION_DISPLAY_LIMIT);
+    newState.recentCompletionsCount = newState.recentCompletionsCount + 1;
   } else if (isRecentFailure(execution, twentyFourHoursAgo)) {
     newState.recentFailures = [execution, ...newState.recentFailures].slice(
       0,
       EXECUTION_DISPLAY_LIMIT,
     );
+    newState.recentFailuresCount = newState.recentFailuresCount + 1;
   }
 
   return newState;
@@ -270,13 +309,26 @@ export function cleanupOldNotifications(
 ): NotificationState {
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
+  const filteredRecentCompletions = state.recentCompletions.filter((e) =>
+    isRecentNotification(e, twentyFourHoursAgo),
+  );
+  const filteredRecentFailures = state.recentFailures.filter((e) =>
+    isRecentNotification(e, twentyFourHoursAgo),
+  );
+
   return {
     ...state,
-    recentCompletions: state.recentCompletions.filter((e) =>
-      isRecentNotification(e, twentyFourHoursAgo),
+    recentCompletions: filteredRecentCompletions,
+    recentFailures: filteredRecentFailures,
+    recentCompletionsCount: Math.max(
+      0,
+      state.recentCompletionsCount -
+        (state.recentCompletions.length - filteredRecentCompletions.length),
     ),
-    recentFailures: state.recentFailures.filter((e) =>
-      isRecentNotification(e, twentyFourHoursAgo),
+    recentFailuresCount: Math.max(
+      0,
+      state.recentFailuresCount -
+        (state.recentFailures.length - filteredRecentFailures.length),
     ),
   };
 }
@@ -287,9 +339,9 @@ export function calculateTotalCount(
   return {
     ...state,
     totalCount:
-      state.activeExecutions.length +
-      state.recentCompletions.length +
-      state.recentFailures.length,
+      state.activeCount +
+      state.recentCompletionsCount +
+      state.recentFailuresCount,
   };
 }
 
