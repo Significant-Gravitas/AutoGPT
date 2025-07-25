@@ -26,7 +26,7 @@ from backend.data.block import (
     BlockType,
     BlockWebhookConfig,
 )
-from backend.data.integrations import Webhook
+from backend.data.integrations import Webhook, update_webhook
 from backend.data.model import APIKeyCredentials, Credentials, CredentialsField
 from backend.data.model import CredentialsMetaInput as _CredentialsMetaInput
 from backend.data.model import (
@@ -144,6 +144,7 @@ __all__ = [
     "BaseWebhooksManager",
     "ManualWebhookManagerBase",
     "Webhook",
+    "update_webhook",
     # Provider-Specific (when available)
     "BaseOAuthHandler",
     # Utilities

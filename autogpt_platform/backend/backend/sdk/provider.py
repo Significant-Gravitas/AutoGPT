@@ -2,12 +2,18 @@
 Provider configuration class that holds all provider-related settings.
 """
 
+import uuid
 from typing import Any, Callable, List, Optional, Set, Type
 
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretStr
 
 from backend.data.cost import BlockCost
-from backend.data.model import Credentials, CredentialsField, CredentialsMetaInput
+from backend.data.model import (
+    APIKeyCredentials,
+    Credentials,
+    CredentialsField,
+    CredentialsMetaInput,
+)
 from backend.integrations.oauth.base import BaseOAuthHandler
 from backend.integrations.webhooks._base import BaseWebhooksManager
 
@@ -59,6 +65,7 @@ class Provider:
 
         # Store any additional configuration
         self._extra_config = kwargs
+        self.test_credentials_uuid = uuid.uuid4()
 
     def credentials_field(self, **kwargs) -> CredentialsMetaInput:
         """Return a CredentialsField configured for this provider."""
@@ -95,6 +102,16 @@ class Provider:
             title=title,
             description=description,
             **kwargs,
+        )
+
+    def get_test_credentials(self) -> Credentials:
+        """Get test credentials for the provider."""
+        return APIKeyCredentials(
+            id=str(self.test_credentials_uuid),
+            provider=self.name,
+            api_key=SecretStr("mock-api-key"),
+            title=f"Mock {self.name.title()} API key",
+            expires_at=None,
         )
 
     def get_api(self, credentials: Credentials) -> Any:
