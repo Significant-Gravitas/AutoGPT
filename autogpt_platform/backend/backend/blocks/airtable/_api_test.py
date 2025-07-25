@@ -1,7 +1,7 @@
 from os import getenv
 from uuid import uuid4
 
-import pytest  # type: ignore
+import pytest
 
 from backend.blocks.airtable._api import (
     TableFieldType,
