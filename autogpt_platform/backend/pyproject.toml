@@ -52,7 +52,7 @@ pytest = "^8.4.1"
 pytest-asyncio = "^1.1.0"
 python-dotenv = "^1.1.1"
 python-multipart = "^0.0.20"
-redis = "^5.2.0"
+redis = "^6.2.0"
 replicate = "^1.0.6"
 sentry-sdk = {extras = ["anthropic", "fastapi", "launchdarkly", "openai", "sqlalchemy"], version = "^2.33.2"}
 sqlalchemy = "^2.0.40"
@@ -128,4 +128,3 @@ filterwarnings = [
 
 [tool.ruff]
 target-version = "py310"
-

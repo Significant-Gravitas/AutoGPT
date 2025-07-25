@@ -334,7 +334,7 @@ tests-mypy = ["mypy (>=1.11.1) ; platform_python_implementation == \"CPython\" a
 [[package]]
 name = "autogpt-libs"
 version = "0.2.0"
-description = "Shared libraries across NextGen AutoGPT"
+description = "Shared libraries across AutoGPT Platform"
 optional = false
 python-versions = ">=3.10,<4.0"
 groups = ["main"]
@@ -352,6 +352,7 @@ pydantic-settings = "^2.10.1"
 pyjwt = "^2.10.1"
 pytest-asyncio = "^1.1.0"
 pytest-mock = "^3.14.1"
+redis = "^6.2.0"
 supabase = "^2.16.0"
 uvicorn = "^0.35.0"
 
@@ -4854,22 +4855,23 @@ websockets = ">=11,<16"
 
 [[package]]
 name = "redis"
-version = "5.2.1"
+version = "6.2.0"
 description = "Python client for Redis database and key-value store"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "redis-5.2.1-py3-none-any.whl", hash = "sha256:ee7e1056b9aea0f04c6c2ed59452947f34c4940ee025f5dd83e6a6418b6989e4"},
-    {file = "redis-5.2.1.tar.gz", hash = "sha256:16f2e22dff21d5125e8481515e386711a34cbec50f0e44413dd7d9c060a54e0f"},
+    {file = "redis-6.2.0-py3-none-any.whl", hash = "sha256:c8ddf316ee0aab65f04a11229e94a64b2618451dab7a67cb2f77eb799d872d5e"},
+    {file = "redis-6.2.0.tar.gz", hash = "sha256:e821f129b75dde6cb99dd35e5c76e8c49512a5a0d8dfdc560b2fbd44b85ca977"},
 ]
 
 [package.dependencies]
 async-timeout = {version = ">=4.0.3", markers = "python_full_version < \"3.11.3\""}
 
 [package.extras]
-hiredis = ["hiredis (>=3.0.0)"]
-ocsp = ["cryptography (>=36.0.1)", "pyopenssl (==23.2.1)", "requests (>=2.31.0)"]
+hiredis = ["hiredis (>=3.2.0)"]
+jwt = ["pyjwt (>=2.9.0)"]
+ocsp = ["cryptography (>=36.0.1)", "pyopenssl (>=20.0.1)", "requests (>=2.31.0)"]
 
 [[package]]
 name = "referencing"
@@ -6684,4 +6686,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.13"
-content-hash = "241307ce9f9cb45dc5429891c3b167de5a409afb0dc26d51db1b89f847ffbb50"
+content-hash = "e79fd4e1968b496b1012c4866130f5680fc6558d041ddddd53f466e8ec58869c"
