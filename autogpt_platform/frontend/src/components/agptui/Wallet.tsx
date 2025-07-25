@@ -20,12 +20,15 @@ export default function Wallet() {
   const { credits, formatCredits, fetchCredits } = useCredits({
     fetchInitialCredits: true,
   });
+
   const { state, updateState } = useOnboarding();
   const [prevCredits, setPrevCredits] = useState<number | null>(credits);
   const [flash, setFlash] = useState(false);
+
   const [stepsLength, setStepsLength] = useState<number | null>(
     state?.completedSteps?.length || null,
   );
+
   const walletRef = useRef<HTMLButtonElement | null>(null);
 
   const onWalletOpen = useCallback(async () => {
