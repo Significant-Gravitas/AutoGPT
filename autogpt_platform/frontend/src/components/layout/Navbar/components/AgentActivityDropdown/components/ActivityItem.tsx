@@ -83,7 +83,7 @@ export function ActivityItem({ execution }: Props) {
 
   return (
     <Link
-      className="cursor-pointer border-b border-slate-50 px-2 py-3 transition-colors last:border-b-0 hover:bg-lightGrey"
+      className="block cursor-pointer border-b border-slate-50 px-2 py-3 transition-colors last:border-b-0 hover:bg-lightGrey"
       href={`/library/agents/${agentId}?executionId=${execution.id}`}
       role="button"
     >
