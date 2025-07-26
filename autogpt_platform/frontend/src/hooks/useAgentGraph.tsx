@@ -423,14 +423,13 @@ export default function useAgentGraph(
   // Load graph
   useEffect(() => {
     if (!flowID || availableBlocks.length == 0) return;
-    if (
-      savedAgent?.id === flowID &&
-      (!flowVersion || savedAgent.version === flowVersion)
-    )
-      return;
+    if (savedAgent?.id === flowID && savedAgent.version === flowVersion) return;
 
     api.getGraph(flowID, flowVersion).then((graph) => {
-      console.debug("Loading graph", flowID, "version", flowVersion);
+      console.debug("Fetching graph", flowID, "version", flowVersion);
+      if (graph.version === savedAgent?.version) return; // in case flowVersion is not set
+
+      console.debug("Loading graph", graph.id, "version", graph.version);
       _loadGraph(graph);
     });
   }, [flowID, flowVersion, availableBlocks, api]);
