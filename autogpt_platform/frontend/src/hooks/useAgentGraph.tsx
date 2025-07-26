@@ -86,17 +86,6 @@ export default function useAgentGraph(
       .catch();
   }, [api]);
 
-  // Manage WebSocket connection
-  useEffect(() => {
-    api.connectWebSocket().catch((error) => {
-      console.error("Failed to connect WebSocket:", error);
-    });
-
-    return () => {
-      api.disconnectWebSocket();
-    };
-  }, [api]);
-
   // Subscribe to execution events
   useEffect(() => {
     const deregisterMessageHandler = api.onWebSocketMessage(
