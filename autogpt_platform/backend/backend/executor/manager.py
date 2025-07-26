@@ -193,8 +193,7 @@ async def execute_node(
             yield output_name, output_data
 
     except Exception as e:
-        error_msg = str(e)
-        yield "error", error_msg
+        yield "error", str(e) or type(e).__name__
         raise e
 
     finally:
