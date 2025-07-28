@@ -1,9 +1,13 @@
 import functools
 import importlib
+import logging
 import os
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar
+
+logger = logging.getLogger(__name__)
+
 
 if TYPE_CHECKING:
     from backend.data.block import Block
@@ -99,7 +103,22 @@ def load_all_blocks() -> dict[str, type["Block"]]:
 
         available_blocks[block.id] = block_cls
 
-    return available_blocks
+    # Filter out blocks with OAuth-only providers when OAuth is not configured
+    from backend.data.block import is_block_provider_configured
+
+    filtered_blocks = {}
+    for block_id, block_cls in available_blocks.items():
+        if not is_block_provider_configured(block_cls):
+            # Skip this block as it requires OAuth which is not configured
+            logger.error(
+                f"Skipping block {block_cls.__name__} as it as not valid provider configured"
+                " - for example its OAuth without client id and secret"
+            )
+            continue
+        else:
+            filtered_blocks[block_id] = block_cls
+
+    return filtered_blocks
 
 
 __all__ = ["load_all_blocks"]

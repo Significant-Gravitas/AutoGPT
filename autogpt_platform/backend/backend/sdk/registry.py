@@ -13,7 +13,6 @@ from backend.blocks.basic import Block
 from backend.data.model import APIKeyCredentials, Credentials
 from backend.integrations.oauth.base import BaseOAuthHandler
 from backend.integrations.webhooks._base import BaseWebhooksManager
-from backend.util.exceptions import MissingConfigError
 
 if TYPE_CHECKING:
     from backend.sdk.provider import Provider
@@ -65,38 +64,37 @@ class AutoRegistry:
 
             # Register OAuth handler if provided
             if provider.oauth_config:
-                # Dynamically set PROVIDER_NAME if not already set
-                if (
-                    not hasattr(provider.oauth_config.oauth_handler, "PROVIDER_NAME")
-                    or provider.oauth_config.oauth_handler.PROVIDER_NAME is None
-                ):
-                    # Import ProviderName to create dynamic enum value
-                    from backend.integrations.providers import ProviderName
+                oauth_env_vars_set = os.getenv(
+                    provider.oauth_config.client_id_env_var
+                ) and os.getenv(provider.oauth_config.client_secret_env_var)
 
-                    # This works because ProviderName has _missing_ method
-                    provider.oauth_config.oauth_handler.PROVIDER_NAME = ProviderName(
-                        provider.name
-                    )
-                cls._oauth_handlers[provider.name] = provider.oauth_config.oauth_handler
+                if oauth_env_vars_set:
+                    # Dynamically set PROVIDER_NAME if not already set
+                    if (
+                        not hasattr(
+                            provider.oauth_config.oauth_handler, "PROVIDER_NAME"
+                        )
+                        or provider.oauth_config.oauth_handler.PROVIDER_NAME is None
+                    ):
+                        # Import ProviderName to create dynamic enum value
+                        from backend.integrations.providers import ProviderName
 
-                # Register OAuth credentials configuration
-
-                # Check that required OAuth env vars exist
-                if not os.getenv(provider.oauth_config.client_id_env_var):
-                    raise MissingConfigError(
-                        f"OAuth client ID environment variable '{provider.oauth_config.client_id_env_var}' not set for provider '{provider.name}'"
-                    )
-                if not os.getenv(provider.oauth_config.client_secret_env_var):
-                    raise MissingConfigError(
-                        f"OAuth client secret environment variable '{provider.oauth_config.client_secret_env_var}' not set for provider '{provider.name}'"
+                        # This works because ProviderName has _missing_ method
+                        provider.oauth_config.oauth_handler.PROVIDER_NAME = (
+                            ProviderName(provider.name)
+                        )
+                    cls._oauth_handlers[provider.name] = (
+                        provider.oauth_config.oauth_handler
                     )
 
-                oauth_creds = SDKOAuthCredentials(
-                    use_secrets=False,  # SDK providers use custom env vars
-                    client_id_env_var=provider.oauth_config.client_id_env_var,
-                    client_secret_env_var=provider.oauth_config.client_secret_env_var,
-                )
-                cls._oauth_credentials[provider.name] = oauth_creds
+                    # Register OAuth credentials configuration
+
+                    oauth_creds = SDKOAuthCredentials(
+                        use_secrets=False,  # SDK providers use custom env vars
+                        client_id_env_var=provider.oauth_config.client_id_env_var,
+                        client_secret_env_var=provider.oauth_config.client_secret_env_var,
+                    )
+                    cls._oauth_credentials[provider.name] = oauth_creds
 
             # Register webhook manager if provided
             if provider.webhook_manager:

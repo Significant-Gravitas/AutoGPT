@@ -83,7 +83,7 @@ class Provider:
             "credentials_types": (
                 list(self.supported_auth_types)
                 if self.supported_auth_types
-                else ["api_key"]
+                else ["not_configured"]
             ),
         }
 
