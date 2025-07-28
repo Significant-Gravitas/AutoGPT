@@ -1,20 +1,19 @@
-import { PublishAgentPopout } from "@/components/agptui/composite/PublishAgentPopout";
-import { Button } from "@/components/ui/button";
 import { useMainDashboardPage } from "./useMainDashboardPage";
 import { Separator } from "@/components/ui/separator";
 import { AgentTable } from "../AgentTable/AgentTable";
 import { StatusType } from "@/components/agptui/Status";
+import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
+import { Button } from "@/components/atoms/Button/Button";
 
 export const MainDashboardPage = () => {
   const {
-    onOpenPopout,
     onDeleteSubmission,
     onEditSubmission,
+    onOpenSubmitModal,
+    onPublishStateChange,
     submissions,
     isLoading,
-    openPopout,
-    submissionData,
-    popoutStep,
+    publishState,
   } = useMainDashboardPage();
 
   if (isLoading) {
@@ -39,18 +38,14 @@ export const MainDashboardPage = () => {
             </p>
           </div>
         </div>
-        <PublishAgentPopout
+        <PublishAgentModal
+          targetState={publishState}
+          onStateChange={onPublishStateChange}
           trigger={
-            <Button
-              onClick={onOpenPopout}
-              className="h-9 rounded-full bg-black px-4 text-sm font-medium text-white hover:bg-neutral-700 dark:hover:bg-neutral-600"
-            >
+            <Button size="small" onClick={onOpenSubmitModal}>
               Submit agent
             </Button>
           }
-          openPopout={openPopout}
-          inputStep={popoutStep}
-          submissionData={submissionData}
         />
       </div>
 

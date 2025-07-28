@@ -1,9 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { IconCross } from "../ui/icons";
+
 import Image from "next/image";
-import { Button } from "../agptui/Button";
+import { Button } from "../../../agptui/Button";
 
 interface PublishAgentAwaitingReviewProps {
   agentName: string;
@@ -22,17 +22,12 @@ export const PublishAgentAwaitingReview: React.FC<
   subheader,
   description,
   thumbnailSrc,
-  onClose,
   onDone,
   onViewProgress,
 }) => {
   return (
-    <div
-      className="inline-flex min-h-screen w-full flex-col items-center justify-center rounded-none bg-white dark:bg-neutral-900 sm:h-auto sm:min-h-[824px] sm:rounded-3xl"
-      role="dialog"
-      aria-labelledby="modal-title"
-    >
-      <div className="relative h-[180px] w-full rounded-none bg-white dark:bg-neutral-800 sm:h-[140px] sm:rounded-t-3xl">
+    <div aria-labelledby="modal-title">
+      <div className="relative h-[180px] w-full rounded-none sm:h-[140px] sm:rounded-t-3xl">
         <div className="absolute left-0 top-[40px] flex w-full flex-col items-center justify-start px-6 sm:top-[40px]">
           <div
             id="modal-title"
@@ -45,16 +40,6 @@ export const PublishAgentAwaitingReview: React.FC<
             Dashboard page
           </div>
         </div>
-        <button
-          onClick={onClose}
-          className="absolute right-4 top-4 flex h-[38px] w-[38px] items-center justify-center rounded-full bg-gray-100 transition-colors hover:bg-gray-200 dark:bg-neutral-700 dark:hover:bg-neutral-600"
-          aria-label="Close dialog"
-        >
-          <IconCross
-            size="default"
-            className="text-neutral-600 dark:text-neutral-300"
-          />
-        </button>
       </div>
 
       <div className="flex flex-1 flex-col items-center gap-8 px-6 py-6 sm:gap-6">

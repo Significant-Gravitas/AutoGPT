@@ -134,9 +134,7 @@ export const AgentTableRow = ({
         <div className="flex justify-end">
           <DropdownMenu.Root>
             <DropdownMenu.Trigger>
-              <button className="rounded-full p-1 hover:bg-neutral-100 dark:hover:bg-neutral-700">
-                <IconMore className="h-5 w-5 text-neutral-800 dark:text-neutral-200" />
-              </button>
+              <IconMore className="h-5 w-5 text-neutral-800 dark:text-neutral-200" />
             </DropdownMenu.Trigger>
             <DropdownMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md dark:bg-gray-800">
               <DropdownMenu.Item

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { PublishAgentPopout } from "./composite/PublishAgentPopout";
+import { PublishAgentModal } from "../contextual/PublishAgentModal/PublishAgentModal";
 interface BecomeACreatorProps {
   title?: string;
   description?: string;
@@ -41,7 +41,7 @@ export const BecomeACreator: React.FC<BecomeACreatorProps> = ({
           {description}
         </p>
 
-        <PublishAgentPopout
+        <PublishAgentModal
           trigger={
             <button
               onClick={handleButtonClick}

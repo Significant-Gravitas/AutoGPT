@@ -6,9 +6,9 @@ import {
 } from "@/components/ui/popover";
 import Link from "next/link";
 import * as React from "react";
-import { PublishAgentPopout } from "../../../../agptui/composite/PublishAgentPopout";
 import { getAccountMenuOptionIcon, MenuItemGroup } from "../../helpers";
 import { AccountLogoutOption } from "./components/AccountLogoutOption";
+import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
 
 interface Props {
   userName?: string;
@@ -99,7 +99,7 @@ export function AccountMenu({
                   return <AccountLogoutOption key={itemIndex} />;
                 } else if (item.text === "Publish an agent") {
                   return (
-                    <PublishAgentPopout
+                    <PublishAgentModal
                       key={itemIndex}
                       trigger={
                         <div className="inline-flex w-full items-center justify-start gap-2.5">
