@@ -33,11 +33,15 @@ export function useAgentActivityDropdown() {
     data: myAgentsResponse,
     isLoading: isAgentsLoading,
     error: agentsError,
-  } = useGetV2GetMyAgents({
-    query: {
-      enabled: true,
+  } = useGetV2GetMyAgents(
+    {},
+    {
+      // Enable query by default
+      query: {
+        enabled: true,
+      },
     },
-  });
+  );
 
   // Get library agents data to map graph_id to library_agent_id
   const {
@@ -67,6 +71,8 @@ export function useAgentActivityDropdown() {
   // Update agent info map when both agent data sources change
   useEffect(() => {
     if (
+      myAgentsResponse?.data &&
+      "agents" in myAgentsResponse.data &&
       myAgentsResponse?.data?.agents &&
       libraryAgentsResponse?.data &&
       "agents" in libraryAgentsResponse.data
@@ -122,7 +128,7 @@ export function useAgentActivityDropdown() {
       setIsConnected(true);
 
       // Subscribe to graph executions for all user agents
-      if (myAgentsResponse?.data?.agents) {
+      if (myAgentsResponse?.data && "agents" in myAgentsResponse.data) {
         myAgentsResponse.data.agents.forEach((agent) => {
           api
             .subscribeToGraphExecutions(agent.agent_id as any)
