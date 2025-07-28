@@ -139,34 +139,9 @@ export function enrichExecutionWithAgentInfo(
 ): AgentExecutionWithInfo {
   const agentInfo = agentInfoMap.get(execution.graph_id);
 
-  // Mock agent names for testing search functionality
-  const mockAgentNames = [
-    "Data Analyst Bot",
-    "Content Writer Assistant",
-    "Email Automation Agent",
-    "Social Media Manager",
-    "Research Assistant Pro",
-    "Customer Support Bot",
-    "SEO Optimizer Agent",
-    "Code Review Helper",
-    "Translation Service",
-    "Report Generator",
-    "Task Scheduler Bot",
-    "Inventory Manager",
-  ];
-
-  // Use execution ID to consistently assign the same mock name to the same execution
-  const mockNameIndex = execution.id
-    ? Math.abs(
-        execution.id.split("").reduce((a, b) => a + b.charCodeAt(0), 0),
-      ) % mockAgentNames.length
-    : 0;
-
-  const mockAgentName = mockAgentNames[mockNameIndex];
-
   return {
     ...execution,
-    agent_name: mockAgentName,
+    agent_name: agentInfo?.name ?? "Unknown Agent",
     agent_description: agentInfo?.description ?? "",
     library_agent_id: agentInfo?.library_agent_id,
   };
