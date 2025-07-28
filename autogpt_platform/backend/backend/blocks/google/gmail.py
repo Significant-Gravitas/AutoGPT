@@ -49,6 +49,16 @@ class Thread(BaseModel):
     historyId: str
 
 
+class GmailSendResult(BaseModel):
+    id: str
+    status: str
+
+
+class GmailLabelResult(BaseModel):
+    id: str
+    status: str
+
+
 class GmailReadBlock(Block):
     class Input(BlockSchema):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
@@ -347,7 +357,7 @@ class GmailSendBlock(Block):
         )
 
     class Output(BlockSchema):
-        result: dict = SchemaField(
+        result: GmailSendResult = SchemaField(
             description="Send confirmation",
         )
         error: str = SchemaField(
@@ -478,7 +488,7 @@ class GmailAddLabelBlock(Block):
         )
 
     class Output(BlockSchema):
-        result: dict = SchemaField(
+        result: GmailLabelResult = SchemaField(
             description="Label addition result",
         )
         error: str = SchemaField(
@@ -563,7 +573,7 @@ class GmailRemoveLabelBlock(Block):
         )
 
     class Output(BlockSchema):
-        result: dict = SchemaField(
+        result: GmailLabelResult = SchemaField(
             description="Label removal result",
         )
         error: str = SchemaField(
