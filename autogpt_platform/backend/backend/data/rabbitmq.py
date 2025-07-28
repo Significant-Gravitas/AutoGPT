@@ -22,6 +22,48 @@ from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 
+# RabbitMQ Connection Constants
+# These constants solve specific connection stability issues observed in production
+
+# HEARTBEAT_INTERVAL_SYNC (30s = 30 seconds)
+# Problem: Need to prove we're alive frequently, but also survive long network hiccups
+# Solution: Frequent heartbeats (30s) with long detection window (60s = 1min detection)
+# Use case: Long-running consumers need to stay connected but handle reconnection gracefully
+# Trade-off: More network chatter, but proves liveness while allowing reconnection time
+HEARTBEAT_INTERVAL_SYNC = 30
+
+# HEARTBEAT_INTERVAL_ASYNC (60s = 1 minute)
+# Problem: Same need for frequent proof-of-life with reasonable detection
+# Solution: Frequent enough to prove activity, not too aggressive on detection
+# Use case: Async RabbitMQ operations with good responsiveness
+# Trade-off: Regular heartbeats with 2-minute detection window
+HEARTBEAT_INTERVAL_ASYNC = 60
+
+
+# BLOCKED_CONNECTION_TIMEOUT (300s = 5 minutes)
+# Problem: Connection can hang indefinitely if RabbitMQ server is overloaded
+# Solution: Timeout and reconnect if connection is blocked for too long
+# Use case: Network issues or server resource constraints
+BLOCKED_CONNECTION_TIMEOUT = 300
+
+# SOCKET_TIMEOUT (30s)
+# Problem: Network operations can hang indefinitely on poor connections
+# Solution: Fail fast on socket operations to enable quick reconnection
+# Use case: Network latency, packet loss, or connectivity issues
+SOCKET_TIMEOUT = 30
+
+# CONNECTION_ATTEMPTS (5 attempts)
+# Problem: Temporary network issues cause permanent connection failures
+# Solution: More retry attempts for better resilience during long executions
+# Use case: Transient network issues during service startup or long-running operations
+CONNECTION_ATTEMPTS = 5
+
+# RETRY_DELAY (1 second)
+# Problem: Immediate reconnection attempts can overwhelm the server
+# Solution: Quick retry for faster recovery while still being respectful
+# Use case: Faster reconnection for long-running executions that need to resume quickly
+RETRY_DELAY = 1
+
 
 class ExchangeType(str, Enum):
     DIRECT = "direct"
@@ -117,8 +159,11 @@ class SyncRabbitMQ(RabbitMQBase):
             port=self.port,
             virtual_host=self.config.vhost,
             credentials=credentials,
-            heartbeat=600,
-            blocked_connection_timeout=300,
+            heartbeat=HEARTBEAT_INTERVAL_SYNC,
+            blocked_connection_timeout=BLOCKED_CONNECTION_TIMEOUT,
+            socket_timeout=SOCKET_TIMEOUT,
+            connection_attempts=CONNECTION_ATTEMPTS,
+            retry_delay=RETRY_DELAY,
         )
 
         self._connection = pika.BlockingConnection(parameters)
@@ -227,6 +272,8 @@ class AsyncRabbitMQ(RabbitMQBase):
             login=self.username,
             password=self.password,
             virtualhost=self.config.vhost.lstrip("/"),
+            heartbeat=HEARTBEAT_INTERVAL_ASYNC,
+            blocked_connection_timeout=BLOCKED_CONNECTION_TIMEOUT,
         )
         self._channel = await self._connection.channel()
         await self._channel.set_qos(prefetch_count=1)
