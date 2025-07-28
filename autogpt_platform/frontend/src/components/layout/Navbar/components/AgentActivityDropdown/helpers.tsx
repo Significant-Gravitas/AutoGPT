@@ -8,9 +8,11 @@ const MILLISECONDS_PER_SECOND = 1000;
 const SECONDS_PER_MINUTE = 60;
 const MINUTES_PER_HOUR = 60;
 const HOURS_PER_DAY = 24;
+const DAYS_PER_WEEK = 7;
 const MILLISECONDS_PER_MINUTE = SECONDS_PER_MINUTE * MILLISECONDS_PER_SECOND;
 const MILLISECONDS_PER_HOUR = MINUTES_PER_HOUR * MILLISECONDS_PER_MINUTE;
 const MILLISECONDS_PER_DAY = HOURS_PER_DAY * MILLISECONDS_PER_HOUR;
+const MILLISECONDS_PER_WEEK = DAYS_PER_WEEK * MILLISECONDS_PER_DAY;
 
 // Display constants
 const SHORT_DURATION_THRESHOLD_SECONDS = 5;
@@ -159,36 +161,34 @@ export function isActiveExecution(
 
 export function isRecentCompletion(
   execution: GeneratedGraphExecutionMeta,
-  thirtyMinutesAgo: Date,
+  oneWeekAgo: Date,
 ): boolean {
   const status = execution.status;
   return (
     status === AgentExecutionStatus.COMPLETED &&
     !!execution.ended_at &&
-    new Date(execution.ended_at) > thirtyMinutesAgo
+    new Date(execution.ended_at) > oneWeekAgo
   );
 }
 
 export function isRecentFailure(
   execution: GeneratedGraphExecutionMeta,
-  thirtyMinutesAgo: Date,
+  oneWeekAgo: Date,
 ): boolean {
   const status = execution.status;
   return (
     (status === AgentExecutionStatus.FAILED ||
       status === AgentExecutionStatus.TERMINATED) &&
     !!execution.ended_at &&
-    new Date(execution.ended_at) > thirtyMinutesAgo
+    new Date(execution.ended_at) > oneWeekAgo
   );
 }
 
 export function isRecentNotification(
   execution: AgentExecutionWithInfo,
-  thirtyMinutesAgo: Date,
+  oneWeekAgo: Date,
 ): boolean {
-  return execution.ended_at
-    ? new Date(execution.ended_at) > thirtyMinutesAgo
-    : false;
+  return execution.ended_at ? new Date(execution.ended_at) > oneWeekAgo : false;
 }
 
 export function categorizeExecutions(
@@ -198,7 +198,7 @@ export function categorizeExecutions(
     { name: string; description: string; library_agent_id?: string }
   >,
 ): NotificationState {
-  const twentyFourHoursAgo = new Date(Date.now() - MILLISECONDS_PER_DAY);
+  const oneWeekAgo = new Date(Date.now() - MILLISECONDS_PER_WEEK);
 
   const enrichedExecutions = executions.map((execution) =>
     enrichExecutionWithAgentInfo(execution, agentInfoMap),
@@ -210,11 +210,11 @@ export function categorizeExecutions(
     .slice(0, MAX_ACTIVE_EXECUTIONS_IN_STATE);
 
   const recentCompletions = enrichedExecutions
-    .filter((execution) => isRecentCompletion(execution, twentyFourHoursAgo))
+    .filter((execution) => isRecentCompletion(execution, oneWeekAgo))
     .slice(0, MAX_RECENT_COMPLETIONS_IN_STATE);
 
   const recentFailures = enrichedExecutions
-    .filter((execution) => isRecentFailure(execution, twentyFourHoursAgo))
+    .filter((execution) => isRecentFailure(execution, oneWeekAgo))
     .slice(0, MAX_RECENT_FAILURES_IN_STATE);
 
   return {
@@ -254,7 +254,7 @@ export function addExecutionToCategory(
   state: NotificationState,
   execution: AgentExecutionWithInfo,
 ): NotificationState {
-  const twentyFourHoursAgo = new Date(Date.now() - MILLISECONDS_PER_DAY);
+  const oneWeekAgo = new Date(Date.now() - MILLISECONDS_PER_WEEK);
   const newState = { ...state };
 
   if (isActiveExecution(execution)) {
@@ -262,12 +262,12 @@ export function addExecutionToCategory(
       0,
       MAX_ACTIVE_EXECUTIONS_IN_STATE,
     );
-  } else if (isRecentCompletion(execution, twentyFourHoursAgo)) {
+  } else if (isRecentCompletion(execution, oneWeekAgo)) {
     newState.recentCompletions = [
       execution,
       ...newState.recentCompletions,
     ].slice(0, MAX_RECENT_COMPLETIONS_IN_STATE);
-  } else if (isRecentFailure(execution, twentyFourHoursAgo)) {
+  } else if (isRecentFailure(execution, oneWeekAgo)) {
     newState.recentFailures = [execution, ...newState.recentFailures].slice(
       0,
       MAX_RECENT_FAILURES_IN_STATE,
@@ -280,13 +280,13 @@ export function addExecutionToCategory(
 export function cleanupOldNotifications(
   state: NotificationState,
 ): NotificationState {
-  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const oneWeekAgo = new Date(Date.now() - MILLISECONDS_PER_WEEK);
 
   const filteredRecentCompletions = state.recentCompletions.filter((e) =>
-    isRecentNotification(e, twentyFourHoursAgo),
+    isRecentNotification(e, oneWeekAgo),
   );
   const filteredRecentFailures = state.recentFailures.filter((e) =>
-    isRecentNotification(e, twentyFourHoursAgo),
+    isRecentNotification(e, oneWeekAgo),
   );
 
   return {

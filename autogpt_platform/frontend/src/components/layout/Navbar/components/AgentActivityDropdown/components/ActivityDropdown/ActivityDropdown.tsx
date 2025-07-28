@@ -6,7 +6,10 @@ import { Bell, MagnifyingGlass, X } from "@phosphor-icons/react";
 import { FixedSizeList as List } from "react-window";
 import { AgentExecutionWithInfo } from "../../helpers";
 import { ActivityItem } from "../ActivityItem";
-import { useActivityDropdown } from "./useActivityDropdown";
+import {
+  EXECUTION_DISPLAY_WITH_SEARCH,
+  useActivityDropdown,
+} from "./useActivityDropdown";
 import styles from "./styles.module.css";
 import { Button } from "@/components/atoms/Button/Button";
 
@@ -41,6 +44,7 @@ export function ActivityDropdown({
     searchQuery,
     filteredExecutions,
     toggleSearch,
+    totalExecutions,
     handleSearchChange,
     handleClearSearch,
   } = useActivityDropdown({
@@ -49,19 +53,23 @@ export function ActivityDropdown({
     recentFailures,
   });
 
+  // Static height for the virtualised list (react-window)
   const itemHeight = 72; // Height of each ActivityItem in pixels
   const maxHeight = 400; // Maximum height of the dropdown
+
   const listHeight = Math.min(
     maxHeight,
     filteredExecutions.length * itemHeight,
   );
+
+  const withSearch = totalExecutions > EXECUTION_DISPLAY_WITH_SEARCH;
 
   return (
     <div className="overflow-hidden">
       {/* Header */}
       <div className="sticky top-0 z-10 px-4 pb-1 pt-0">
         <div className="flex h-[60px] items-center justify-between">
-          {isSearchVisible ? (
+          {isSearchVisible && withSearch ? (
             <div
               className={`${styles.searchContainer} ${
                 isSearchVisible ? styles.searchEnter : styles.searchExit
@@ -71,7 +79,7 @@ export function ActivityDropdown({
                 <Input
                   id="agent-search"
                   label="Search agents"
-                  placeholder="Search agents..."
+                  placeholder="Search runs by agent name..."
                   hideLabel
                   size="small"
                   value={searchQuery}
@@ -83,7 +91,7 @@ export function ActivityDropdown({
                 />
                 <button
                   onClick={handleClearSearch}
-                  className="absolute right-3 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center"
+                  className="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center"
                   aria-label="Clear search"
                 >
                   <X size={16} className="text-gray-500" />
@@ -95,14 +103,20 @@ export function ActivityDropdown({
               <Text variant="large-semibold" className="!text-black">
                 Agent Activity
               </Text>
-              <Button
-                variant="ghost"
-                size="small"
-                onClick={toggleSearch}
-                aria-label="Search agents"
-              >
-                <MagnifyingGlass size={16} className="h-4 w-4 text-gray-600" />
-              </Button>
+              {withSearch ? (
+                <Button
+                  variant="ghost"
+                  size="small"
+                  onClick={toggleSearch}
+                  aria-label="Search agents"
+                  className="relative left-3 hover:border-transparent hover:bg-transparent"
+                >
+                  <MagnifyingGlass
+                    size={16}
+                    className="h-4 w-4 text-gray-600"
+                  />
+                </Button>
+              ) : null}
             </div>
           )}
         </div>
