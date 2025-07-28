@@ -87,7 +87,7 @@ async def test_add_agent_to_library(mocker):
     await connect()
 
     # Mock the transaction context
-    mock_transaction = mocker.patch("backend.server.v2.library.db.locked_transaction")
+    mock_transaction = mocker.patch("backend.server.v2.library.db.transaction")
     mock_transaction.return_value.__aenter__ = mocker.AsyncMock(return_value=None)
     mock_transaction.return_value.__aexit__ = mocker.AsyncMock(return_value=None)
     # Mock data
