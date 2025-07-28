@@ -1,4 +1,4 @@
-import { NavbarView } from "./components/NavbarMainPage";
+import { NavbarView } from "./components/NavbarView";
 import { getNavbarAccountData } from "./data";
 
 export async function Navbar() {

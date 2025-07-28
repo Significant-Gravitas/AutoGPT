@@ -58,6 +58,12 @@ services:
       file: ./docker-compose.platform.yml
       service: websocket_server
 
+  database_manager:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: database_manager
+
   scheduler_server:
     <<: *agpt-services
     extends:

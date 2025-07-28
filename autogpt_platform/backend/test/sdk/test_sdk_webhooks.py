@@ -19,6 +19,7 @@ from backend.sdk import (
     BlockOutput,
     BlockSchema,
     BlockWebhookConfig,
+    Credentials,
     CredentialsField,
     CredentialsMetaInput,
     Field,
@@ -45,7 +46,9 @@ class TestWebhooksManager(BaseWebhooksManager):
         TEST = "test"
 
     @classmethod
-    async def validate_payload(cls, webhook, request):
+    async def validate_payload(
+        cls, webhook, request, credentials: Credentials | None = None
+    ):
         """Validate incoming webhook payload."""
         # Mock implementation
         payload = {"test": "data"}

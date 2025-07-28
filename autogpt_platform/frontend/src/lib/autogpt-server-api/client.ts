@@ -2,6 +2,8 @@ import { getWebSocketToken } from "@/lib/supabase/actions";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { Key, storage } from "@/services/storage/local-storage";
+import * as Sentry from "@sentry/nextjs";
 import type {
   AddUserCreditsResponse,
   AnalyticsDetails,
@@ -75,6 +77,7 @@ export default class BackendAPI {
   private wsOnConnectHandlers: Set<() => void> = new Set();
   private wsOnDisconnectHandlers: Set<() => void> = new Set();
   private wsMessageHandlers: Record<string, Set<(data: any) => void>> = {};
+  private isIntentionallyDisconnected: boolean = false;
 
   readonly HEARTBEAT_INTERVAL = 100_000; // 100 seconds
   readonly HEARTBEAT_TIMEOUT = 10_000; // 10 seconds
@@ -527,6 +530,34 @@ export default class BackendAPI {
     return this._uploadFile("/store/submissions/media", file);
   }
 
+  uploadFile(
+    file: File,
+    provider: string = "gcs",
+    expiration_hours: number = 24,
+    onProgress?: (progress: number) => void,
+  ): Promise<{
+    file_uri: string;
+    file_name: string;
+    size: number;
+    content_type: string;
+    expires_in_hours: number;
+  }> {
+    return this._uploadFileWithProgress(
+      "/files/upload",
+      file,
+      {
+        provider,
+        expiration_hours,
+      },
+      onProgress,
+    ).then((response) => {
+      if (typeof response === "string") {
+        return JSON.parse(response);
+      }
+      return response;
+    });
+  }
+
   updateStoreProfile(profile: ProfileDetails): Promise<ProfileDetails> {
     return this._request("POST", "/store/profile", profile);
   }
@@ -816,6 +847,27 @@ export default class BackendAPI {
     }
   }
 
+  private async _uploadFileWithProgress(
+    path: string,
+    file: File,
+    params?: Record<string, any>,
+    onProgress?: (progress: number) => void,
+  ): Promise<string> {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    if (isClient) {
+      return this._makeClientFileUploadWithProgress(
+        path,
+        formData,
+        params,
+        onProgress,
+      );
+    } else {
+      return this._makeServerFileUploadWithProgress(path, formData, params);
+    }
+  }
+
   private async _makeClientFileUpload(
     path: string,
     formData: FormData,
@@ -850,6 +902,70 @@ export default class BackendAPI {
       "./helpers"
     );
     const url = buildServerUrl(path);
+    return await makeAuthenticatedFileUpload(url, formData);
+  }
+
+  private async _makeClientFileUploadWithProgress(
+    path: string,
+    formData: FormData,
+    params?: Record<string, any>,
+    onProgress?: (progress: number) => void,
+  ): Promise<any> {
+    const { buildClientUrl, buildUrlWithQuery } = await import("./helpers");
+
+    let url = buildClientUrl(path);
+    if (params) {
+      url = buildUrlWithQuery(url, params);
+    }
+
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+
+      if (onProgress) {
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable) {
+            const progress = (e.loaded / e.total) * 100;
+            onProgress(progress);
+          }
+        });
+      }
+
+      xhr.addEventListener("load", () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const response = JSON.parse(xhr.responseText);
+            resolve(response);
+          } catch (_error) {
+            reject(new Error("Invalid JSON response"));
+          }
+        } else {
+          reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
+        }
+      });
+
+      xhr.addEventListener("error", () => {
+        reject(new Error("Network error"));
+      });
+
+      xhr.open("POST", url);
+      xhr.withCredentials = true;
+      xhr.send(formData);
+    });
+  }
+
+  private async _makeServerFileUploadWithProgress(
+    path: string,
+    formData: FormData,
+    params?: Record<string, any>,
+  ): Promise<string> {
+    const { makeAuthenticatedFileUpload, buildServerUrl, buildUrlWithQuery } =
+      await import("./helpers");
+
+    let url = buildServerUrl(path);
+    if (params) {
+      url = buildUrlWithQuery(url, params);
+    }
+
     return await makeAuthenticatedFileUpload(url, formData);
   }
 
@@ -1003,6 +1119,7 @@ export default class BackendAPI {
   }
 
   async connectWebSocket(): Promise<void> {
+    this.isIntentionallyDisconnected = false;
     return (this.wsConnecting ??= new Promise(async (resolve, reject) => {
       try {
         let token = "";
@@ -1026,6 +1143,7 @@ export default class BackendAPI {
           this.webSocket!.state = "connected";
           console.info("[BackendAPI] WebSocket connected to", this.wsUrl);
           this._startWSHeartbeat(); // Start heartbeat when connection opens
+          this._clearDisconnectIntent(); // Clear disconnect intent when connected
           this.wsOnConnectHandlers.forEach((handler) => handler());
           resolve();
         };
@@ -1046,9 +1164,14 @@ export default class BackendAPI {
 
           this._stopWSHeartbeat(); // Stop heartbeat when connection closes
           this.wsConnecting = null;
-          this.wsOnDisconnectHandlers.forEach((handler) => handler());
-          // Attempt to reconnect after a delay
-          setTimeout(() => this.connectWebSocket().then(resolve), 1000);
+
+          const wasIntentional =
+            this.isIntentionallyDisconnected || this._hasDisconnectIntent();
+
+          if (!wasIntentional) {
+            this.wsOnDisconnectHandlers.forEach((handler) => handler());
+            setTimeout(() => this.connectWebSocket().then(resolve), 1000);
+          }
         };
 
         this.webSocket.onerror = (error) => {
@@ -1056,7 +1179,6 @@ export default class BackendAPI {
             console.error("[BackendAPI] WebSocket error:", error);
           }
         };
-
         this.webSocket.onmessage = (event) => this._handleWSMessage(event);
       } catch (error) {
         console.error("[BackendAPI] Error connecting to WebSocket:", error);
@@ -1066,9 +1188,32 @@ export default class BackendAPI {
   }
 
   disconnectWebSocket() {
+    this.isIntentionallyDisconnected = true;
     this._stopWSHeartbeat(); // Stop heartbeat when disconnecting
     if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
       this.webSocket.close();
+    }
+  }
+
+  private _hasDisconnectIntent(): boolean {
+    if (!isClient) return false;
+
+    try {
+      return storage.get(Key.WEBSOCKET_DISCONNECT_INTENT) === "true";
+    } catch {
+      return false;
+    }
+  }
+
+  private _clearDisconnectIntent(): void {
+    if (!isClient) return;
+
+    try {
+      storage.clean(Key.WEBSOCKET_DISCONNECT_INTENT);
+    } catch {
+      Sentry.captureException(
+        new Error("Failed to clear WebSocket disconnect intent"),
+      );
     }
   }
 

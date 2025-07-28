@@ -230,7 +230,7 @@ export default function CredentialsProvider({
 
   useEffect(() => {
     if (!isLoggedIn || providerNames.length === 0) {
-      if (isLoggedIn == false) setProviders(null);
+      if (isLoggedIn == false) setProviders({});
       return;
     }
 

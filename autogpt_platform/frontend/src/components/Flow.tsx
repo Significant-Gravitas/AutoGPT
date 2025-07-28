@@ -36,6 +36,7 @@ import {
   LibraryAgent,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { Key, storage } from "@/services/storage/local-storage";
 import { getTypeColor, findNewlyAddedBlockCoordinates } from "@/lib/utils";
 import { history } from "./history";
 import { CustomEdge } from "./CustomEdge";
@@ -157,8 +158,6 @@ const FlowEditor: React.FC<{
 
   const { toast } = useToast();
 
-  const TUTORIAL_STORAGE_KEY = "shepherd-tour";
-
   // It stores the dimension of all nodes with position as well
   const [nodeDimensions, setNodeDimensions] = useState<NodeDimension>({});
 
@@ -181,13 +180,13 @@ const FlowEditor: React.FC<{
 
   useEffect(() => {
     if (params.get("resetTutorial") === "true") {
-      localStorage.removeItem(TUTORIAL_STORAGE_KEY);
+      storage.clean(Key.SHEPHERD_TOUR);
       router.push(pathname);
-    } else if (!localStorage.getItem(TUTORIAL_STORAGE_KEY)) {
+    } else if (!storage.get(Key.SHEPHERD_TOUR)) {
       const emptyNodes = (forceRemove: boolean = false) =>
         forceRemove ? (setNodes([]), setEdges([]), true) : nodes.length === 0;
       startTutorial(emptyNodes, setPinBlocksPopover, setPinSavePopover);
-      localStorage.setItem(TUTORIAL_STORAGE_KEY, "yes");
+      storage.set(Key.SHEPHERD_TOUR, "yes");
     }
   }, [router, pathname, params, setEdges, setNodes, nodes.length]);
 
