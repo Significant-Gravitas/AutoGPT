@@ -443,6 +443,24 @@
         }
       }
     },
+    "/api/integrations/ayrshare/sso_url": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "Get Ayrshare Sso Url",
+        "description": "Generate an SSO URL for Ayrshare social media integration.\n\nReturns:\n    dict: Contains the SSO URL for Ayrshare integration",
+        "operationId": "getV1GetAyrshareSsoUrl",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AyrshareSSOResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/integrations/providers": {
       "get": {
         "tags": ["v1", "integrations"],
@@ -809,6 +827,64 @@
                   "additionalProperties": { "type": "array", "items": {} },
                   "title": "Response Postv1Execute Graph Block"
                 }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/files/upload": {
+      "post": {
+        "tags": ["v1", "files"],
+        "summary": "Upload file to cloud storage",
+        "description": "Upload a file to cloud storage and return a storage key that can be used\nwith FileStoreBlock and AgentFileInputBlock.\n\nArgs:\n    file: The file to upload\n    user_id: The user ID\n    provider: Cloud storage provider (\"gcs\", \"s3\", \"azure\")\n    expiration_hours: Hours until file expires (1-48)\n\nReturns:\n    Dict containing the cloud storage path and signed URL",
+        "operationId": "postV1Upload file to cloud storage",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "gcs",
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "expiration_hours",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 24,
+              "title": "Expiration Hours"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postV1Upload_file_to_cloud_storage"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UploadFileResponse" }
               }
             }
           },
@@ -3790,6 +3866,24 @@
         "required": ["amount", "threshold"],
         "title": "AutoTopUpConfig"
       },
+      "AyrshareSSOResponse": {
+        "properties": {
+          "sso_url": {
+            "type": "string",
+            "title": "Sso Url",
+            "description": "The SSO URL for Ayrshare integration"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At",
+            "description": "ISO timestamp when the URL expires"
+          }
+        },
+        "type": "object",
+        "required": ["sso_url", "expires_at"],
+        "title": "AyrshareSSOResponse"
+      },
       "BaseGraph-Input": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -3933,6 +4027,14 @@
         "type": "object",
         "required": ["type", "data", "data_index"],
         "title": "Body_postV1LogRawAnalytics"
+      },
+      "Body_postV1Upload_file_to_cloud_storage": {
+        "properties": {
+          "file": { "type": "string", "format": "binary", "title": "File" }
+        },
+        "type": "object",
+        "required": ["file"],
+        "title": "Body_postV1Upload file to cloud storage"
       },
       "Body_postV2Add_credits_to_user": {
         "properties": {
@@ -6347,6 +6449,24 @@
         "type": "object",
         "required": ["permissions"],
         "title": "UpdatePermissionsRequest"
+      },
+      "UploadFileResponse": {
+        "properties": {
+          "file_uri": { "type": "string", "title": "File Uri" },
+          "file_name": { "type": "string", "title": "File Name" },
+          "size": { "type": "integer", "title": "Size" },
+          "content_type": { "type": "string", "title": "Content Type" },
+          "expires_in_hours": { "type": "integer", "title": "Expires In Hours" }
+        },
+        "type": "object",
+        "required": [
+          "file_uri",
+          "file_name",
+          "size",
+          "content_type",
+          "expires_in_hours"
+        ],
+        "title": "UploadFileResponse"
       },
       "UserHistoryResponse": {
         "properties": {

@@ -124,8 +124,10 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      database_manager:
+        condition: service_started
     environment:
-      - DATABASEMANAGER_HOST=rest_server
+      - DATABASEMANAGER_HOST=database_manager
       - SUPABASE_URL=http://kong:8000
       - SUPABASE_JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters-long
       - SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJzZXJ2aWNlX3JvbGUiLAogICAgImlzcyI6ICJzdXBhYmFzZS1kZW1vIiwKICAgICJpYXQiOiAxNjQxNzY5MjAwLAogICAgImV4cCI6IDE3OTk1MzU2MDAKfQ.DaYlNEoUrrEn2Ig7tqibS-PHK5vgusbcbo7X36XVt4Q
@@ -169,8 +171,10 @@ services:
       #   condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      database_manager:
+        condition: service_started
     environment:
-      - DATABASEMANAGER_HOST=rest_server
+      - DATABASEMANAGER_HOST=database_manager
       - SUPABASE_JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters-long
       - DATABASE_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
       - DIRECT_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
@@ -187,6 +191,32 @@ services:
 
     ports:
       - "8001:8001"
+    networks:
+      - app-network
+
+  database_manager:
+    build:
+      context: ../
+      dockerfile: autogpt_platform/backend/Dockerfile
+      target: server
+    command: ["python", "-m", "backend.db"]
+    develop:
+      watch:
+        - path: ./
+          target: autogpt_platform/backend/
+          action: rebuild
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      - DATABASE_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+      - DIRECT_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+      - PYRO_HOST=0.0.0.0
+      - ENCRYPTION_KEY=dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw= # DO NOT USE IN PRODUCTION!!
+    ports:
+      - "8005:8005"
     networks:
       - app-network
 
@@ -210,6 +240,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      database_manager:
+        condition: service_started
     # healthcheck:
     #   test:
     #     [
@@ -224,7 +256,7 @@ services:
     #   timeout: 10s
     #   retries: 5
     environment:
-      - DATABASEMANAGER_HOST=rest_server
+      - DATABASEMANAGER_HOST=database_manager
       - NOTIFICATIONMANAGER_HOST=rest_server
       - SUPABASE_JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters-long
       - DATABASE_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform

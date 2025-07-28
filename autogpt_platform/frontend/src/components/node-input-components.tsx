@@ -1144,6 +1144,13 @@ export const NodeTextBoxInput: FC<{
   displayName,
 }) => {
   value ||= schema.default || "";
+
+  const [localValue, setLocalValue] = useState(value || schema.default || "");
+
+  useEffect(() => {
+    setLocalValue(value || schema.default || "");
+  }, [value, schema.default]);
+
   return (
     <div className={className}>
       <div
@@ -1152,12 +1159,13 @@ export const NodeTextBoxInput: FC<{
       >
         <textarea
           id={selfKey}
-          value={schema.secret && value ? "********" : value}
+          value={schema.secret && localValue ? "********" : localValue}
+          onChange={(e) => setLocalValue(e.target.value)}
+          onBlur={() => handleInputChange(selfKey, localValue)}
           readOnly={schema.secret}
           placeholder={
             schema?.placeholder || `Enter ${beautifyString(displayName)}`
           }
-          onChange={(e) => handleInputChange(selfKey, e.target.value)}
           className="h-full w-full resize-none overflow-hidden border-none bg-transparent text-lg text-black outline-none dark:text-white"
           style={{
             fontSize: "min(1em, 16px)",

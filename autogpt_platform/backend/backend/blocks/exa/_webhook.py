@@ -51,7 +51,9 @@ class ExaWebhookManager(BaseWebhooksManager):
         WEBSET = "webset"
 
     @classmethod
-    async def validate_payload(cls, webhook: Webhook, request) -> tuple[dict, str]:
+    async def validate_payload(
+        cls, webhook: Webhook, request, credentials: Credentials | None
+    ) -> tuple[dict, str]:
         """Validate incoming webhook payload and signature."""
         payload = await request.json()
 

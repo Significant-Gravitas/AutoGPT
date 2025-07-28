@@ -2,7 +2,7 @@ import { CustomEdge } from "@/components/CustomEdge";
 import { CustomNode } from "@/components/CustomNode";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import BackendAPI, {
+import {
   Block,
   BlockIOSubSchema,
   BlockUIType,
@@ -18,6 +18,7 @@ import BackendAPI, {
   NodeExecutionResult,
   SpecialBlockID,
 } from "@/lib/autogpt-server-api";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   deepEquals,
   getTypeColor,
@@ -43,12 +44,13 @@ export default function useAgentGraph(
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const api = useBackendAPI();
 
   const [isScheduling, setIsScheduling] = useState(false);
   const [savedAgent, setSavedAgent] = useState<Graph | null>(null);
   const [agentDescription, setAgentDescription] = useState<string>("");
   const [agentName, setAgentName] = useState<string>("");
-  const [availableBlocks, setAvailableBlocks] = useState<Block[]>([]);
+  const [allBlocks, setAllBlocks] = useState<Block[]>([]);
   const [availableFlows, setAvailableFlows] = useState<GraphMeta[]>([]);
   const [updateQueue, setUpdateQueue] = useState<NodeExecutionResult[]>([]);
   const processedUpdates = useRef<NodeExecutionResult[]>([]);
@@ -62,22 +64,19 @@ export default function useAgentGraph(
   const { state, completeStep, incrementRuns } = useOnboarding();
   const betaBlocks = useGetFlag(Flag.BETA_BLOCKS);
 
-  const api = useMemo(
-    () => new BackendAPI(process.env.NEXT_PUBLIC_AGPT_SERVER_URL!),
-    [],
-  );
+  // Filter blocks based on beta flags
+  const availableBlocks = useMemo(() => {
+    return allBlocks.filter(
+      (block) => !betaBlocks || !betaBlocks.includes(block.id),
+    );
+  }, [allBlocks, betaBlocks]);
 
-  // Load available blocks & flows
+  // Load available blocks & flows (stable - only loads once)
   useEffect(() => {
     api
       .getBlocks()
       .then((blocks) => {
-        const filteredBlocks = blocks.filter((block) => {
-          if (!betaBlocks) return true;
-          if (betaBlocks.includes(block.id)) return false;
-          return true;
-        });
-        setAvailableBlocks(filteredBlocks);
+        setAllBlocks(blocks);
       })
       .catch();
 
@@ -85,15 +84,7 @@ export default function useAgentGraph(
       .listGraphs()
       .then((flows) => setAvailableFlows(flows))
       .catch();
-
-    api.connectWebSocket().catch((error) => {
-      console.error("Failed to connect WebSocket:", error);
-    });
-
-    return () => {
-      api.disconnectWebSocket();
-    };
-  }, [api, betaBlocks]);
+  }, [api]);
 
   // Subscribe to execution events
   useEffect(() => {
@@ -159,96 +150,93 @@ export default function useAgentGraph(
   );
 
   // Load existing graph
-  const loadGraph = useCallback(
-    (graph: Graph) => {
-      setSavedAgent(graph);
-      setAgentName(graph.name);
-      setAgentDescription(graph.description);
+  function _loadGraph(graph: Graph) {
+    setSavedAgent(graph);
+    setAgentName(graph.name);
+    setAgentDescription(graph.description);
 
-      setXYNodes((prevNodes) => {
-        const _newNodes = graph.nodes.map((node) => {
-          const block = availableBlocks.find(
-            (block) => block.id === node.block_id,
-          )!;
-          if (!block) return null;
-          const prevNode = prevNodes.find((n) => n.id === node.id);
-          const flow =
-            block.uiType == BlockUIType.AGENT
-              ? availableFlows.find(
-                  (flow) => flow.id === node.input_default.graph_id,
-                )
-              : null;
-          const newNode: CustomNode = {
-            id: node.id,
-            type: "custom",
-            position: {
-              x: node?.metadata?.position?.x || 0,
-              y: node?.metadata?.position?.y || 0,
-            },
-            data: {
-              isOutputOpen: false,
-              ...prevNode?.data,
-              block_id: block.id,
-              blockType: flow?.name || block.name,
-              blockCosts: block.costs,
-              categories: block.categories,
-              description: block.description,
-              title: `${block.name} ${node.id}`,
-              inputSchema: block.inputSchema,
-              outputSchema: block.outputSchema,
-              hardcodedValues: node.input_default,
-              webhook: node.webhook,
-              uiType: block.uiType,
-              connections: graph.links
-                .filter((l) => [l.source_id, l.sink_id].includes(node.id))
-                .map((link) => ({
-                  edge_id: formatEdgeID(link),
-                  source: link.source_id,
-                  sourceHandle: link.source_name,
-                  target: link.sink_id,
-                  targetHandle: link.sink_name,
-                })),
-              backend_id: node.id,
-            },
-          };
-          return newNode;
-        });
-        const newNodes = _newNodes.filter((n) => n !== null);
-        setXYEdges(() =>
-          graph.links.map((link) => {
-            const adjustedSourceName = cleanupSourceName(link.source_name);
-            return {
-              id: formatEdgeID(link),
-              type: "custom",
-              data: {
-                edgeColor: getTypeColor(
-                  getOutputType(newNodes, link.source_id, adjustedSourceName!),
-                ),
-                sourcePos: newNodes.find((node) => node.id === link.source_id)
-                  ?.position,
-                isStatic: link.is_static,
-                beadUp: 0,
-                beadDown: 0,
-              },
-              markerEnd: {
-                type: MarkerType.ArrowClosed,
-                strokeWidth: 2,
-                color: getTypeColor(
-                  getOutputType(newNodes, link.source_id, adjustedSourceName!),
-                ),
-              },
-              source: link.source_id,
-              target: link.sink_id,
-              sourceHandle: adjustedSourceName || undefined,
-              targetHandle: link.sink_name || undefined,
-            };
-          }),
-        );
-        return newNodes;
+    setXYNodes((prevNodes) => {
+      const _newNodes = graph.nodes.map((node) => {
+        const block = availableBlocks.find(
+          (block) => block.id === node.block_id,
+        )!;
+        if (!block) return null;
+        const prevNode = prevNodes.find((n) => n.id === node.id);
+        const flow =
+          block.uiType == BlockUIType.AGENT
+            ? availableFlows.find(
+                (flow) => flow.id === node.input_default.graph_id,
+              )
+            : null;
+        const newNode: CustomNode = {
+          id: node.id,
+          type: "custom",
+          position: {
+            x: node?.metadata?.position?.x || 0,
+            y: node?.metadata?.position?.y || 0,
+          },
+          data: {
+            isOutputOpen: false,
+            ...prevNode?.data,
+            block_id: block.id,
+            blockType: flow?.name || block.name,
+            blockCosts: block.costs,
+            categories: block.categories,
+            description: block.description,
+            title: `${block.name} ${node.id}`,
+            inputSchema: block.inputSchema,
+            outputSchema: block.outputSchema,
+            hardcodedValues: node.input_default,
+            webhook: node.webhook,
+            uiType: block.uiType,
+            connections: graph.links
+              .filter((l) => [l.source_id, l.sink_id].includes(node.id))
+              .map((link) => ({
+                edge_id: formatEdgeID(link),
+                source: link.source_id,
+                sourceHandle: link.source_name,
+                target: link.sink_id,
+                targetHandle: link.sink_name,
+              })),
+            backend_id: node.id,
+          },
+        };
+        return newNode;
       });
-    },
-    [availableBlocks, availableFlows, getOutputType],
-  );
+      const newNodes = _newNodes.filter((n) => n !== null);
+      setXYEdges(() =>
+        graph.links.map((link) => {
+          const adjustedSourceName = cleanupSourceName(link.source_name);
+          return {
+            id: formatEdgeID(link),
+            type: "custom",
+            data: {
+              edgeColor: getTypeColor(
+                getOutputType(newNodes, link.source_id, adjustedSourceName!),
+              ),
+              sourcePos: newNodes.find((node) => node.id === link.source_id)
+                ?.position,
+              isStatic: link.is_static,
+              beadUp: 0,
+              beadDown: 0,
+            },
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              strokeWidth: 2,
+              color: getTypeColor(
+                getOutputType(newNodes, link.source_id, adjustedSourceName!),
+              ),
+            },
+            source: link.source_id,
+            target: link.sink_id,
+            sourceHandle: adjustedSourceName || undefined,
+            targetHandle: link.sink_name || undefined,
+          };
+        }),
+      );
+      return newNodes;
+    });
+  }
 
   const getFrontendId = useCallback(
     (backendId: string, nodes: CustomNode[]) => {
@@ -427,10 +415,13 @@ export default function useAgentGraph(
     if (savedAgent?.id === flowID && savedAgent.version === flowVersion) return;
 
     api.getGraph(flowID, flowVersion).then((graph) => {
-      console.debug("Loading graph");
-      loadGraph(graph);
+      console.debug("Fetching graph", flowID, "version", flowVersion);
+      if (graph.version === savedAgent?.version) return; // in case flowVersion is not set
+
+      console.debug("Loading graph", graph.id, "version", graph.version);
+      _loadGraph(graph);
     });
-  }, [flowID, flowVersion, availableBlocks, api, loadGraph]);
+  }, [flowID, flowVersion, availableBlocks, api]);
 
   // Check if local graph state is in sync with backend
   const nodesSyncedWithSavedAgent = useMemo(() => {

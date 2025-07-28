@@ -11,7 +11,7 @@ packages = [{ include = "backend", format = "sdist" }]
 python = ">=3.10,<3.13"
 aio-pika = "^9.5.5"
 aiodns = "^3.5.0"
-anthropic = "^0.57.1"
+anthropic = "^0.59.0"
 apscheduler = "^3.11.0"
 autogpt-libs = { path = "../autogpt_libs", develop = true }
 bleach = { extras = ["css"], version = "^6.2.0" }
@@ -22,7 +22,7 @@ e2b-code-interpreter = "^1.5.2"
 fastapi = "^0.116.1"
 feedparser = "^6.0.11"
 flake8 = "^7.3.0"
-google-api-python-client = "^2.176.0"
+google-api-python-client = "^2.177.0"
 google-auth-oauthlib = "^1.2.2"
 google-cloud-storage = "^3.2.0"
 googlemaps = "^4.10.0"
@@ -31,12 +31,12 @@ groq = "^0.30.0"
 html2text = "^2024.2.26"
 jinja2 = "^3.1.6"
 jsonref = "^1.1.0"
-jsonschema = "^4.22.0"
+jsonschema = "^4.25.0"
 launchdarkly-server-sdk = "^9.12.0"
-mem0ai = "^0.1.114"
+mem0ai = "^0.1.115"
 moviepy = "^2.1.2"
 ollama = "^0.5.1"
-openai = "^1.97.0"
+openai = "^1.97.1"
 pika = "^1.3.2"
 pinecone = "^7.3.0"
 poetry = "2.1.1" # CHECK DEPENDABOT SUPPORT BEFORE UPGRADING
@@ -52,19 +52,19 @@ pytest = "^8.4.1"
 pytest-asyncio = "^1.1.0"
 python-dotenv = "^1.1.1"
 python-multipart = "^0.0.20"
-redis = "^5.2.0"
+redis = "^6.2.0"
 replicate = "^1.0.6"
-sentry-sdk = {extras = ["anthropic", "fastapi", "launchdarkly", "openai", "sqlalchemy"], version = "^2.33.0"}
+sentry-sdk = {extras = ["anthropic", "fastapi", "launchdarkly", "openai", "sqlalchemy"], version = "^2.33.2"}
 sqlalchemy = "^2.0.40"
 strenum = "^0.4.9"
 stripe = "^11.5.0"
-supabase = "2.16.0"
+supabase = "2.17.0"
 tenacity = "^9.1.2"
 todoist-api-python = "^2.1.7"
 tweepy = "^4.16.0"
 uvicorn = { extras = ["standard"], version = "^0.35.0" }
 websockets = "^15.0"
-youtube-transcript-api = "^1.1.1"
+youtube-transcript-api = "^1.2.1"
 zerobouncesdk = "^1.1.2"
 # NOTE: please insert new dependencies in their alphabetical location
 pytest-snapshot = "^0.9.0"
@@ -128,4 +128,3 @@ filterwarnings = [
 
 [tool.ruff]
 target-version = "py310"
-

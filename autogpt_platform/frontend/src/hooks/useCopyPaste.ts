@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { Node, Edge, useReactFlow } from "@xyflow/react";
+import { Key, storage } from "@/services/storage/local-storage";
 
 interface CopyableData {
   nodes: Node[];
@@ -37,10 +38,10 @@ export function useCopyPaste(getNextNodeId: () => string) {
             edges: selectedEdges,
           };
 
-          localStorage.setItem("copiedFlowData", JSON.stringify(copiedData));
+          storage.set(Key.COPIED_FLOW_DATA, JSON.stringify(copiedData));
         }
         if (event.key === "v" || event.key === "V") {
-          const copiedDataString = localStorage.getItem("copiedFlowData");
+          const copiedDataString = storage.get(Key.COPIED_FLOW_DATA);
           if (copiedDataString) {
             const copiedData = JSON.parse(copiedDataString) as CopyableData;
             const oldToNewIdMap: Record<string, string> = {};
