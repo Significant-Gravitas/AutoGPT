@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
-import { AgentExecutionWithInfo } from "../helpers";
+import { AgentExecutionWithInfo } from "../../helpers";
 
 interface UseActivityDropdownProps {
   activeExecutions: AgentExecutionWithInfo[];
@@ -13,8 +13,8 @@ export function useActivityDropdown({
   recentCompletions,
   recentFailures,
 }: UseActivityDropdownProps) {
-  const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
 
   // Combine and sort all executions
   const sortedExecutions = useMemo(() => {
@@ -93,6 +93,15 @@ export function useActivityDropdown({
     setSearchQuery(value);
   }
 
+  function handleClearSearch() {
+    handleSearchChange("");
+    toggleSearch();
+  }
+
+  function handleShowSearch() {
+    setIsSearchVisible(true);
+  }
+
   return {
     isSearchVisible,
     searchQuery,
@@ -100,5 +109,7 @@ export function useActivityDropdown({
     totalExecutions: sortedExecutions.length,
     toggleSearch,
     handleSearchChange,
+    handleClearSearch,
+    handleShowSearch,
   };
 }

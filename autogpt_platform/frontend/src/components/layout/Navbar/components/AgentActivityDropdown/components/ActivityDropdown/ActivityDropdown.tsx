@@ -4,9 +4,8 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Input } from "@/components/atoms/Input/Input";
 import { Bell, MagnifyingGlass, X } from "@phosphor-icons/react";
 import { FixedSizeList as List } from "react-window";
-import { useState, useEffect } from "react";
-import { AgentExecutionWithInfo } from "../helpers";
-import { ActivityItem } from "./ActivityItem";
+import { AgentExecutionWithInfo } from "../../helpers";
+import { ActivityItem } from "../ActivityItem";
 import { useActivityDropdown } from "./useActivityDropdown";
 import styles from "./styles.module.css";
 import { Button } from "@/components/atoms/Button/Button";
@@ -43,26 +42,12 @@ export function ActivityDropdown({
     filteredExecutions,
     toggleSearch,
     handleSearchChange,
+    handleClearSearch,
   } = useActivityDropdown({
     activeExecutions,
     recentCompletions,
     recentFailures,
   });
-
-  const [showSearch, setShowSearch] = useState(false);
-  const [showHeader, setShowHeader] = useState(true);
-
-  useEffect(() => {
-    if (isSearchVisible) {
-      setShowHeader(false);
-      setShowSearch(true);
-    } else {
-      setShowSearch(false);
-      // Delay showing header to allow exit animation to complete
-      const timer = setTimeout(() => setShowHeader(true), 200);
-      return () => clearTimeout(timer);
-    }
-  }, [isSearchVisible]);
 
   const itemHeight = 72; // Height of each ActivityItem in pixels
   const maxHeight = 400; // Maximum height of the dropdown
@@ -71,17 +56,12 @@ export function ActivityDropdown({
     filteredExecutions.length * itemHeight,
   );
 
-  function handleClearSearch() {
-    handleSearchChange("");
-    toggleSearch();
-  }
-
   return (
     <div className="overflow-hidden">
       {/* Header */}
       <div className="sticky top-0 z-10 px-4 pb-1 pt-0">
         <div className="flex h-[60px] items-center justify-between">
-          {showSearch && (
+          {isSearchVisible ? (
             <div
               className={`${styles.searchContainer} ${
                 isSearchVisible ? styles.searchEnter : styles.searchExit
@@ -110,9 +90,7 @@ export function ActivityDropdown({
                 </button>
               </div>
             </div>
-          )}
-
-          {showHeader && (
+          ) : (
             <div className={styles.headerContainer}>
               <Text variant="large-semibold" className="!text-black">
                 Agent Activity
