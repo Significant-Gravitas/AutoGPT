@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/popover";
 import { Bell } from "@phosphor-icons/react";
 import { useState } from "react";
-import { ActivityDropdown } from "./components/ActivityDropdown";
+import { ActivityDropdown } from "./components/ActivityDropdown/ActivityDropdown";
 import { formatNotificationCount } from "./helpers";
 import { useAgentActivityDropdown } from "./useAgentActivityDropdown";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
