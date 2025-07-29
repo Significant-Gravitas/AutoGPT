@@ -553,7 +553,8 @@ def is_block_auth_configured(
 
         # If a field has multiple possible providers, each one needs to be usable to
         # prevent breaking the UX
-        for provider_name in provider_names:
+        for _provider_name in provider_names:
+            provider_name = _provider_name.value
             if provider_name in ProviderName.__members__.values():
                 logger.debug(
                     f"Block {block_cls.__name__} credential input '{field_name}' "
@@ -582,7 +583,7 @@ def is_block_auth_configured(
                 # No auth methods are been configured for this provider
                 logger.warning(
                     f"Block {block_cls.__name__} credential input '{field_name}' "
-                    f"provider '{provider_name.value}' "
+                    f"provider '{provider_name}' "
                     "has no authentication methods configured - Disabling"
                 )
                 return False
@@ -590,19 +591,21 @@ def is_block_auth_configured(
             # Check if provider supports OAuth
             if "oauth2" in supported_auth_types:
                 # Check if OAuth environment variables are set
-                if provider.oauth_config:
-                    oauth_configured = bool(
-                        os.getenv(provider.oauth_config.client_id_env_var)
-                        and os.getenv(provider.oauth_config.client_secret_env_var)
+                if (oauth_config := provider.oauth_config) and bool(
+                    os.getenv(oauth_config.client_id_env_var)
+                    and os.getenv(oauth_config.client_secret_env_var)
+                ):
+                    logger.debug(
+                        f"Block {block_cls.__name__} credential input '{field_name}' "
+                        f"provider '{provider_name}' is configured for OAuth"
                     )
-                    if not oauth_configured:
-                        logger.warning(
-                            f"Block {block_cls.__name__} "
-                            f"credential input '{field_name}' "
-                            f"provider '{provider_name}' "
-                            "is missing OAuth client ID or secret - Disabling"
-                        )
-                        return False
+                else:
+                    logger.error(
+                        f"Block {block_cls.__name__} credential input '{field_name}' "
+                        f"provider '{provider_name}' "
+                        "is missing OAuth client ID or secret - Disabling"
+                    )
+                    return False
 
         logger.debug(
             f"Block {block_cls.__name__} credential input '{field_name}' is valid; "

@@ -67,7 +67,7 @@ class ProviderBuilder:
         else:
             logger.warning(
                 f"Provider {self.name.upper()} implements OAuth but the required env "
-                f"vars {client_id_env_var} and/or {client_secret_env_var} are not set"
+                f"vars {client_id_env_var} and {client_secret_env_var} are not both set"
             )
         return self
 
