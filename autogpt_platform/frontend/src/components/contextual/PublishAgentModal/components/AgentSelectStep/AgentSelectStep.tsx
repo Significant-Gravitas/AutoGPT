@@ -2,50 +2,88 @@
 
 import * as React from "react";
 import Image from "next/image";
-import { Text } from "../../../atoms/Text/Text";
-import { Button } from "../../../atoms/Button/Button";
-import { StepHeader } from "./StepHeader";
-
-export interface Agent {
-  name: string;
-  id: string;
-  version: number;
-  lastEdited: string;
-  imageSrc: string;
-}
+import { Text } from "../../../../atoms/Text/Text";
+import { Button } from "../../../../atoms/Button/Button";
+import { StepHeader } from "../StepHeader";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useAgentSelectStep } from "./useAgentSelectStep";
 
 interface Props {
-  agents: Agent[];
   onSelect: (agentId: string, agentVersion: number) => void;
   onCancel: () => void;
-  onNext: (agentId: string, agentVersion: number) => void;
+  onNext: (
+    agentId: string,
+    agentVersion: number,
+    agentData: { name: string; description: string; imageSrc: string },
+  ) => void;
   onOpenBuilder: () => void;
 }
 
-export function PublishAgentSelect({
-  agents,
+export function AgentSelectStep({
   onSelect,
   onCancel,
   onNext,
   onOpenBuilder,
 }: Props) {
-  const [selectedAgentId, setSelectedAgentId] = React.useState<string | null>(
-    null,
-  );
+  const {
+    // Data
+    agents,
+    isLoading,
+    error,
+    // State
+    selectedAgentId,
+    // Handlers
+    handleAgentClick,
+    handleNext,
+    // Computed
+    isNextDisabled,
+  } = useAgentSelectStep({ onSelect, onNext });
 
-  const [selectedAgentVersion, setSelectedAgentVersion] = React.useState<
-    number | null
-  >(null);
+  if (isLoading) {
+    return (
+      <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl">
+        <StepHeader
+          title="Publish Agent"
+          description="Select your project that you'd like to publish"
+        />
+        <div className="flex-grow p-4 sm:p-6">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div
+                key={i}
+                className="overflow-hidden rounded-2xl border border-neutral-200"
+              >
+                <Skeleton className="h-32 w-full sm:h-40" />
+                <div className="flex flex-col gap-2 p-3">
+                  <Skeleton className="h-5 w-3/4" />
+                  <Skeleton className="h-4 w-1/2" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-  const handleAgentClick = (
-    _: string,
-    agentId: string,
-    agentVersion: number,
-  ) => {
-    setSelectedAgentId(agentId);
-    setSelectedAgentVersion(agentVersion);
-    onSelect(agentId, agentVersion);
-  };
+  if (error) {
+    return (
+      <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl">
+        <StepHeader
+          title="Publish Agent"
+          description="Select your project that you'd like to publish"
+        />
+        <div className="inline-flex h-[370px] flex-col items-center justify-center gap-[29px] px-4 py-5 sm:px-6">
+          <Text variant="lead" className="text-center text-red-600">
+            Failed to load agents. Please try again.
+          </Text>
+          <Button onClick={() => window.location.reload()} variant="secondary">
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl">
@@ -134,12 +172,8 @@ export function PublishAgentSelect({
               Back
             </Button>
             <Button
-              onClick={() => {
-                if (selectedAgentId && selectedAgentVersion) {
-                  onNext(selectedAgentId, selectedAgentVersion);
-                }
-              }}
-              disabled={!selectedAgentId || !selectedAgentVersion}
+              onClick={handleNext}
+              disabled={isNextDisabled}
               className="w-full bg-neutral-800 text-white hover:bg-neutral-900 sm:flex-1"
             >
               Next

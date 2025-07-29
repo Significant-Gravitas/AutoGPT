@@ -1,9 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { PublishAgentSelect } from "./components/PublishAgentSelect";
-import { PublishAgentInfo } from "./components/PublishAgentInfo/PublishAgentInfo";
-import { PublishAgentAwaitingReview } from "./components/PublishAgentAwaitingReview";
+import { AgentSelectStep } from "./components/AgentSelectStep/AgentSelectStep";
+import { AgentInfoStep } from "./components/AgentInfoStep/AgentInfoStep";
+import { AgentReviewStep } from "./components/AgentReviewStep";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/atoms/Button/Button";
@@ -15,10 +15,11 @@ export function PublishAgentModal({
   onStateChange,
 }: Props) {
   const {
+    // State
     currentState,
     updateState,
     initialData,
-    myAgents,
+    // Handlers
     handleClose,
     handleAgentSelect,
     handleNextFromSelect,
@@ -32,23 +33,7 @@ export function PublishAgentModal({
     switch (currentState.step) {
       case "select":
         return (
-          <PublishAgentSelect
-            agents={
-              myAgents?.agents
-                .map((agent) => ({
-                  name: agent.agent_name,
-                  id: agent.agent_id,
-                  version: agent.agent_version,
-                  lastEdited: agent.last_edited,
-                  imageSrc:
-                    agent.agent_image || "https://picsum.photos/300/200",
-                }))
-                .sort(
-                  (a, b) =>
-                    new Date(b.lastEdited).getTime() -
-                    new Date(a.lastEdited).getTime(),
-                ) || []
-            }
+          <AgentSelectStep
             onSelect={handleAgentSelect}
             onCancel={handleClose}
             onNext={handleNextFromSelect}
@@ -57,7 +42,7 @@ export function PublishAgentModal({
         );
       case "info":
         return (
-          <PublishAgentInfo
+          <AgentInfoStep
             onBack={handleBack}
             onSubmit={handleNextFromInfo}
             initialData={initialData}
@@ -66,7 +51,7 @@ export function PublishAgentModal({
       case "review":
         return currentState.submissionData &&
           currentState.submissionData.name ? (
-          <PublishAgentAwaitingReview
+          <AgentReviewStep
             agentName={currentState.submissionData.name}
             subheader={currentState.submissionData.sub_heading}
             description={currentState.submissionData.description || ""}

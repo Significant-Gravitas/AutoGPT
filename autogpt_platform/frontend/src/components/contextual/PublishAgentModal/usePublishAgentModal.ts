@@ -1,8 +1,7 @@
 import { getGetV2ListMySubmissionsQueryKey } from "@/app/api/__generated__/endpoints/store/store";
 import { StoreSubmissionRequest } from "@/app/api/__generated__/models/storeSubmissionRequest";
-import { MyAgentsResponse } from "@/lib/autogpt-server-api";
 import { useCallback, useEffect, useState } from "react";
-import { PublishAgentInfoInitialData } from "./components/PublishAgentInfo/helpers";
+import { PublishAgentInfoInitialData } from "./components/AgentInfoStep/helpers";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
@@ -52,8 +51,6 @@ export function usePublishAgentModal({ targetState, onStateChange }: Props) {
     description: "",
   });
 
-  const [myAgents, setMyAgents] = useState<MyAgentsResponse | null>(null);
-
   const [_, setSelectedAgent] = useState<string | null>(null);
 
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
@@ -65,7 +62,6 @@ export function usePublishAgentModal({ targetState, onStateChange }: Props) {
   const queryClient = useQueryClient();
   const router = useRouter();
   const api = useBackendAPI();
-
   const { toast } = useToast();
 
   // Sync currentState with targetState when it changes from outside
@@ -94,21 +90,6 @@ export function usePublishAgentModal({ targetState, onStateChange }: Props) {
       });
     }
   }, [targetState]);
-
-  useEffect(() => {
-    if (currentState.isOpen) {
-      const loadMyAgents = async () => {
-        try {
-          const response = await api.getMyAgents();
-          setMyAgents(response);
-        } catch (error) {
-          console.error("Failed to load my agents:", error);
-        }
-      };
-
-      loadMyAgents();
-    }
-  }, [currentState, api]);
 
   function handleClose() {
     // Reset all internal state
@@ -139,23 +120,20 @@ export function usePublishAgentModal({ targetState, onStateChange }: Props) {
     setSelectedAgent(agentName);
   }
 
-  function handleNextFromSelect(agentId: string, agentVersion: number) {
-    const selectedAgentData = myAgents?.agents.find(
-      (agent) => agent.agent_id === agentId,
-    );
-
-    const name = selectedAgentData?.agent_name || "";
-    const description = selectedAgentData?.description || "";
-
+  function handleNextFromSelect(
+    agentId: string,
+    agentVersion: number,
+    agentData: { name: string; description: string; imageSrc: string },
+  ) {
     setInitialData({
       agent_id: agentId,
-      title: name,
+      title: agentData.name,
       subheader: "",
-      description: description,
-      thumbnailSrc: selectedAgentData?.agent_image || "",
+      description: agentData.description,
+      thumbnailSrc: agentData.imageSrc,
       youtubeLink: "",
       category: "",
-      slug: name.replace(/ /g, "-"),
+      slug: agentData.name.replace(/ /g, "-"),
       additionalImages: [],
     });
 
@@ -274,6 +252,5 @@ export function usePublishAgentModal({ targetState, onStateChange }: Props) {
     currentState,
     updateState,
     initialData,
-    myAgents,
   };
 }

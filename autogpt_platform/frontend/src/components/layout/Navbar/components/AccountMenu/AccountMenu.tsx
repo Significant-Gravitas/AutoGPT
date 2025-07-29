@@ -106,7 +106,7 @@ export function AccountMenu({
                           <div className="relative h-6 w-6">
                             {getAccountMenuOptionIcon(item.icon)}
                           </div>
-                          <div className="font-sans text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
+                          <div className="font-sans text-base font-medium leading-normal text-neutral-800">
                             {item.text}
                           </div>
                         </div>

@@ -21,7 +21,7 @@ export interface Props {
   initialData?: PublishAgentInfoInitialData;
 }
 
-export function usePublishAgentInfo({
+export function useAgentInfoStep({
   onBack: _onBack,
   onSubmit,
   initialData,

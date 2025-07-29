@@ -6,10 +6,10 @@ import { StepHeader } from "../StepHeader";
 import { Input } from "@/components/atoms/Input/Input";
 import { Select } from "@/components/atoms/Select/Select";
 import { Form, FormField } from "@/components/ui/form";
-import { Props, usePublishAgentInfo } from "./usePublishAgentInfo";
+import { Props, useAgentInfoStep } from "./useAgentInfoStep";
 import { ThumbnailImages } from "./components/ThumbnailImages";
 
-export function PublishAgentInfo({ onBack, onSubmit, initialData }: Props) {
+export function AgentInfoStep({ onBack, onSubmit, initialData }: Props) {
   const {
     form,
     agentId,
@@ -17,7 +17,7 @@ export function PublishAgentInfo({ onBack, onSubmit, initialData }: Props) {
     initialSelectedImage,
     handleImagesChange,
     handleSubmit,
-  } = usePublishAgentInfo({ onBack, onSubmit, initialData });
+  } = useAgentInfoStep({ onBack, onSubmit, initialData });
 
   const categoryOptions = [
     { value: "productivity", label: "Productivity" },

@@ -4,6 +4,9 @@ import { AgentTable } from "../AgentTable/AgentTable";
 import { StatusType } from "@/components/agptui/Status";
 import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
 import { Button } from "@/components/atoms/Button/Button";
+import { EmptySubmissions } from "./components/EmptySubmissions";
+import { SubmissionLoadError } from "./components/SumbmissionLoadError";
+import { SubmissionsLoading } from "./components/SubmissionsLoading";
 
 export const MainDashboardPage = () => {
   const {
@@ -11,14 +14,12 @@ export const MainDashboardPage = () => {
     onEditSubmission,
     onOpenSubmitModal,
     onPublishStateChange,
+    publishState,
+    // API data
     submissions,
     isLoading,
-    publishState,
+    error,
   } = useMainDashboardPage();
-
-  if (isLoading) {
-    return "Loading....";
-  }
 
   return (
     <main className="flex-1 py-8">
@@ -56,29 +57,34 @@ export const MainDashboardPage = () => {
         <h2 className="mb-4 text-xl font-bold text-neutral-900 dark:text-neutral-100">
           Your uploaded agents
         </h2>
-        {submissions && (
+
+        {error ? (
+          <SubmissionLoadError />
+        ) : isLoading ? (
+          <SubmissionsLoading />
+        ) : submissions && submissions.submissions.length > 0 ? (
           <AgentTable
-            agents={
-              submissions?.submissions.map((submission, index) => ({
-                id: index,
-                agent_id: submission.agent_id,
-                agent_version: submission.agent_version,
-                sub_heading: submission.sub_heading,
-                date_submitted: submission.date_submitted,
-                agentName: submission.name,
-                description: submission.description,
-                imageSrc: submission.image_urls || [""],
-                dateSubmitted: new Date(
-                  submission.date_submitted,
-                ).toLocaleDateString(),
-                status: submission.status.toLowerCase() as StatusType,
-                runs: submission.runs,
-                rating: submission.rating,
-              })) || []
-            }
+            agents={submissions.submissions.map((submission, index) => ({
+              id: index,
+              agent_id: submission.agent_id,
+              agent_version: submission.agent_version,
+              sub_heading: submission.sub_heading,
+              date_submitted: submission.date_submitted,
+              agentName: submission.name,
+              description: submission.description,
+              imageSrc: submission.image_urls || [""],
+              dateSubmitted: new Date(
+                submission.date_submitted,
+              ).toLocaleDateString(),
+              status: submission.status.toLowerCase() as StatusType,
+              runs: submission.runs,
+              rating: submission.rating,
+            }))}
             onEditSubmission={onEditSubmission}
             onDeleteSubmission={onDeleteSubmission}
           />
+        ) : (
+          <EmptySubmissions />
         )}
       </div>
     </main>

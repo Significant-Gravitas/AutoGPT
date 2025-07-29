@@ -38,17 +38,18 @@ export const useMainDashboardPage = () => {
     },
   });
 
-  const { data: submissions, isLoading } = useGetV2ListMySubmissions(
-    undefined,
-    {
-      query: {
-        select: (x) => {
-          return x.data as StoreSubmissionsResponse;
-        },
-        enabled: !!user,
+  const {
+    data: submissions,
+    isSuccess,
+    error,
+  } = useGetV2ListMySubmissions(undefined, {
+    query: {
+      select: (x) => {
+        return x.data as StoreSubmissionsResponse;
       },
+      enabled: !!user,
     },
-  );
+  });
 
   const onEditSubmission = (submission: StoreSubmissionRequest) => {
     setPublishState({
@@ -82,8 +83,10 @@ export const useMainDashboardPage = () => {
     onPublishStateChange,
     onDeleteSubmission,
     onEditSubmission,
-    submissions,
-    isLoading,
     publishState,
+    // API data
+    submissions,
+    isLoading: !isSuccess,
+    error,
   };
 };

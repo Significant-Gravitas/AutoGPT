@@ -17,7 +17,7 @@ interface Props {
   onViewProgress: () => void;
 }
 
-export function PublishAgentAwaitingReview({
+export function AgentReviewStep({
   agentName,
   subheader,
   description,
