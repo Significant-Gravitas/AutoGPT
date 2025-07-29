@@ -55,9 +55,22 @@ class GmailSendResult(BaseModel):
     status: str
 
 
+class GmailDraftResult(BaseModel):
+    id: str
+    message_id: str
+    status: str
+
+
 class GmailLabelResult(BaseModel):
     label_id: str
     status: str
+
+
+class Profile(BaseModel):
+    emailAddress: str
+    messagesTotal: int
+    threadsTotal: int
+    historyId: str
 
 
 class GmailReadBlock(Block):
@@ -360,6 +373,11 @@ class GmailSendBlock(Block):
         body: str = SchemaField(
             description="Email body",
         )
+        cc: list[str] = SchemaField(description="CC recipients", default_factory=list)
+        bcc: list[str] = SchemaField(description="BCC recipients", default_factory=list)
+        attachments: list[MediaFileType] = SchemaField(
+            description="Files to attach", default_factory=list, advanced=True
+        )
 
     class Output(BlockSchema):
         result: GmailSendResult = SchemaField(
@@ -393,35 +411,225 @@ class GmailSendBlock(Block):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: GoogleCredentials,
+        graph_exec_id: str,
+        user_id: str,
+        **kwargs,
     ) -> BlockOutput:
         service = GmailReadBlock._build_service(credentials, **kwargs)
         result = await asyncio.to_thread(
             self._send_email,
             service,
-            input_data.to,
-            input_data.subject,
-            input_data.body,
+            input_data,
+            graph_exec_id,
+            user_id,
         )
         yield "result", result
 
-    def _send_email(self, service, to: str, subject: str, body: str) -> dict:
-        if not to or not subject or not body:
+    def _send_email(
+        self, service, input_data: Input, graph_exec_id: str, user_id: str
+    ) -> dict:
+        if not input_data.to or not input_data.subject or not input_data.body:
             raise ValueError("To, subject, and body are required for sending an email")
-        message = self._create_message(to, subject, body)
+        message = self._create_message(input_data, graph_exec_id, user_id)
         sent_message = (
             service.users().messages().send(userId="me", body=message).execute()
         )
         return {"id": sent_message["id"], "status": "sent"}
 
-    def _create_message(self, to: str, subject: str, body: str) -> dict:
+    def _create_message(
+        self, input_data: Input, graph_exec_id: str, user_id: str
+    ) -> dict:
+        from email import encoders
+        from email.mime.base import MIMEBase
+        from email.mime.multipart import MIMEMultipart
         from email.mime.text import MIMEText
 
-        message = MIMEText(body)
-        message["to"] = to
-        message["subject"] = subject
+        message = MIMEMultipart()
+        message["to"] = input_data.to
+        message["subject"] = input_data.subject
+
+        if input_data.cc:
+            message["cc"] = ", ".join(input_data.cc)
+        if input_data.bcc:
+            message["bcc"] = ", ".join(input_data.bcc)
+
+        message.attach(MIMEText(input_data.body))
+
+        # Handle attachments if any
+        if input_data.attachments:
+            import asyncio
+
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                for attach in input_data.attachments:
+                    local_path = loop.run_until_complete(
+                        store_media_file(
+                            user_id=user_id,
+                            graph_exec_id=graph_exec_id,
+                            file=attach,
+                            return_content=False,
+                        )
+                    )
+                    abs_path = get_exec_file_path(graph_exec_id, local_path)
+                    part = MIMEBase("application", "octet-stream")
+                    with open(abs_path, "rb") as f:
+                        part.set_payload(f.read())
+                    encoders.encode_base64(part)
+                    part.add_header(
+                        "Content-Disposition",
+                        f"attachment; filename={Path(abs_path).name}",
+                    )
+                    message.attach(part)
+            finally:
+                loop.close()
+
         raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
         return {"raw": raw_message}
+
+
+class GmailCreateDraftBlock(Block):
+    class Input(BlockSchema):
+        credentials: GoogleCredentialsInput = GoogleCredentialsField(
+            ["https://www.googleapis.com/auth/gmail.modify"]
+        )
+        to: str = SchemaField(
+            description="Recipient email address",
+        )
+        subject: str = SchemaField(
+            description="Email subject",
+        )
+        body: str = SchemaField(
+            description="Email body",
+        )
+        cc: list[str] = SchemaField(description="CC recipients", default_factory=list)
+        bcc: list[str] = SchemaField(description="BCC recipients", default_factory=list)
+        attachments: list[MediaFileType] = SchemaField(
+            description="Files to attach", default_factory=list, advanced=True
+        )
+
+    class Output(BlockSchema):
+        result: GmailDraftResult = SchemaField(
+            description="Draft creation result",
+        )
+        error: str = SchemaField(
+            description="Error message if any",
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="e1eeead4-46cb-491e-8281-17b6b9c44a55",
+            description="This block creates a draft email in Gmail.",
+            categories={BlockCategory.COMMUNICATION},
+            input_schema=GmailCreateDraftBlock.Input,
+            output_schema=GmailCreateDraftBlock.Output,
+            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
+            test_input={
+                "to": "recipient@example.com",
+                "subject": "Draft Test Email",
+                "body": "This is a test draft email.",
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                (
+                    "result",
+                    {"id": "draft1", "message_id": "msg1", "status": "draft_created"},
+                ),
+            ],
+            test_mock={
+                "_create_draft": lambda *args, **kwargs: {
+                    "id": "draft1",
+                    "message": {"id": "msg1"},
+                },
+            },
+        )
+
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GoogleCredentials,
+        graph_exec_id: str,
+        user_id: str,
+        **kwargs,
+    ) -> BlockOutput:
+        service = GmailReadBlock._build_service(credentials, **kwargs)
+        result = await asyncio.to_thread(
+            self._create_draft,
+            service,
+            input_data,
+            graph_exec_id,
+            user_id,
+        )
+        yield "result", GmailDraftResult(
+            id=result["id"], message_id=result["message"]["id"], status="draft_created"
+        )
+
+    def _create_draft(
+        self, service, input_data: Input, graph_exec_id: str, user_id: str
+    ) -> dict:
+        if not input_data.to or not input_data.subject:
+            raise ValueError("To and subject are required for creating a draft")
+
+        from email import encoders
+        from email.mime.base import MIMEBase
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+
+        message = MIMEMultipart()
+        message["to"] = input_data.to
+        message["subject"] = input_data.subject
+
+        if input_data.cc:
+            message["cc"] = ", ".join(input_data.cc)
+        if input_data.bcc:
+            message["bcc"] = ", ".join(input_data.bcc)
+
+        message.attach(MIMEText(input_data.body))
+
+        # Handle attachments if any
+        if input_data.attachments:
+            import asyncio
+
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                for attach in input_data.attachments:
+                    local_path = loop.run_until_complete(
+                        store_media_file(
+                            user_id=user_id,
+                            graph_exec_id=graph_exec_id,
+                            file=attach,
+                            return_content=False,
+                        )
+                    )
+                    abs_path = get_exec_file_path(graph_exec_id, local_path)
+                    part = MIMEBase("application", "octet-stream")
+                    with open(abs_path, "rb") as f:
+                        part.set_payload(f.read())
+                    encoders.encode_base64(part)
+                    part.add_header(
+                        "Content-Disposition",
+                        f"attachment; filename={Path(abs_path).name}",
+                    )
+                    message.attach(part)
+            finally:
+                loop.close()
+
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
+        draft = (
+            service.users()
+            .drafts()
+            .create(userId="me", body={"message": {"raw": raw_message}})
+            .execute()
+        )
+
+        return draft
 
 
 class GmailListLabelsBlock(Block):
@@ -831,6 +1039,9 @@ class GmailReplyBlock(Block):
         messageId: str = SchemaField(description="Sent message ID")
         threadId: str = SchemaField(description="Thread ID")
         message: dict = SchemaField(description="Raw Gmail message object")
+        email: Email = SchemaField(
+            description="Parsed email object with decoded body and attachments"
+        )
         error: str = SchemaField(description="Error message if any")
 
     def __init__(self):
@@ -881,6 +1092,20 @@ class GmailReplyBlock(Block):
         yield "messageId", message["id"]
         yield "threadId", message.get("threadId", input_data.threadId)
         yield "message", message
+        email = Email(
+            threadId=message.get("threadId", input_data.threadId),
+            labelIds=message.get("labelIds", []),
+            id=message["id"],
+            subject=input_data.subject or "",
+            snippet=message.get("snippet", ""),
+            from_="",  # From address would need to be retrieved from the message headers
+            to=", ".join(input_data.to) if input_data.to else "",
+            date="",  # Date would need to be retrieved from the message headers
+            body=input_data.body,
+            sizeEstimate=message.get("sizeEstimate", 0),
+            attachments=[],  # Attachments info not available from send response
+        )
+        yield "email", email
 
     async def _reply(
         self, service, input_data: Input, graph_exec_id: str, user_id: str
@@ -974,4 +1199,64 @@ class GmailReplyBlock(Block):
             .messages()
             .send(userId="me", body={"threadId": input_data.threadId, "raw": raw})
             .execute()
+        )
+
+
+class GmailGetProfileBlock(Block):
+    class Input(BlockSchema):
+        credentials: GoogleCredentialsInput = GoogleCredentialsField(
+            ["https://www.googleapis.com/auth/gmail.readonly"]
+        )
+
+    class Output(BlockSchema):
+        profile: Profile = SchemaField(description="Gmail user profile information")
+        error: str = SchemaField(description="Error message if any")
+
+    def __init__(self):
+        super().__init__(
+            id="04b0d996-0908-4a4b-89dd-b9697ff253d3",
+            description="Get the authenticated user's Gmail profile details including email address and message statistics.",
+            categories={BlockCategory.COMMUNICATION},
+            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
+            input_schema=GmailGetProfileBlock.Input,
+            output_schema=GmailGetProfileBlock.Output,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                (
+                    "profile",
+                    {
+                        "emailAddress": "test@example.com",
+                        "messagesTotal": 1000,
+                        "threadsTotal": 500,
+                        "historyId": "12345",
+                    },
+                ),
+            ],
+            test_mock={
+                "_get_profile": lambda *args, **kwargs: {
+                    "emailAddress": "test@example.com",
+                    "messagesTotal": 1000,
+                    "threadsTotal": 500,
+                    "historyId": "12345",
+                },
+            },
+        )
+
+    async def run(
+        self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
+    ) -> BlockOutput:
+        service = GmailReadBlock._build_service(credentials, **kwargs)
+        profile = await asyncio.to_thread(self._get_profile, service)
+        yield "profile", profile
+
+    def _get_profile(self, service) -> Profile:
+        result = service.users().getProfile(userId="me").execute()
+        return Profile(
+            emailAddress=result.get("emailAddress", ""),
+            messagesTotal=result.get("messagesTotal", 0),
+            threadsTotal=result.get("threadsTotal", 0),
+            historyId=result.get("historyId", ""),
         )
