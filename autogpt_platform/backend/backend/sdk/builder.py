@@ -2,6 +2,7 @@
 Builder class for creating provider configurations with a fluent API.
 """
 
+import logging
 import os
 from typing import Callable, List, Optional, Type
 
@@ -14,6 +15,8 @@ from backend.integrations.webhooks._base import BaseWebhooksManager
 from backend.sdk.provider import OAuthConfig, Provider
 from backend.sdk.registry import AutoRegistry
 from backend.util.settings import Settings
+
+logger = logging.getLogger(__name__)
 
 
 class ProviderBuilder:
@@ -45,13 +48,21 @@ class ProviderBuilder:
             client_id_env_var = f"{self.name}_client_id".upper()
             client_secret_env_var = f"{self.name}_client_secret".upper()
 
-        self._oauth_config = OAuthConfig(
-            oauth_handler=handler_class,
-            scopes=scopes,
-            client_id_env_var=client_id_env_var,
-            client_secret_env_var=client_secret_env_var,
-        )
-        self._supported_auth_types.add("oauth2")
+        if os.getenv(client_id_env_var) and os.getenv(client_secret_env_var):
+            self._client_id_env_var = client_id_env_var
+            self._client_secret_env_var = client_secret_env_var
+
+            self._oauth_config = OAuthConfig(
+                oauth_handler=handler_class,
+                scopes=scopes,
+                client_id_env_var=client_id_env_var,
+                client_secret_env_var=client_secret_env_var,
+            )
+            self._supported_auth_types.add("oauth2")
+        else:
+            logger.warn(
+                f"{self.name.upper()} provider has with_oauth set but the env vars {client_id_env_var} or {client_secret_env_var} are not set"
+            )
         return self
 
     def with_api_key(self, env_var_name: str, title: str) -> "ProviderBuilder":

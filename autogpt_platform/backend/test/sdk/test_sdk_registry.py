@@ -339,15 +339,22 @@ class TestProviderBuilder:
         class TestOAuth(BaseOAuthHandler):
             PROVIDER_NAME = ProviderName.GITHUB
 
-        provider = (
-            ProviderBuilder("oauth_test")
-            .with_oauth(TestOAuth, scopes=["read", "write"])
-            .build()
-        )
+        with patch.dict(
+            os.environ,
+            {
+                "OAUTH_TEST_CLIENT_ID": "test_id",
+                "OAUTH_TEST_CLIENT_SECRET": "test_secret",
+            },
+        ):
+            provider = (
+                ProviderBuilder("oauth_test")
+                .with_oauth(TestOAuth, scopes=["read", "write"])
+                .build()
+            )
 
-        assert provider.oauth_config is not None
-        assert provider.oauth_config.oauth_handler == TestOAuth
-        assert "oauth2" in provider.supported_auth_types
+            assert provider.oauth_config is not None
+            assert provider.oauth_config.oauth_handler == TestOAuth
+            assert "oauth2" in provider.supported_auth_types
 
     def test_provider_builder_with_webhook(self):
         """Test building a provider with webhook manager."""
