@@ -47,7 +47,7 @@ export function ThumbnailImages({
         </label>
         {errorMessage && <p className="text-sm text-red-500">{errorMessage}</p>}
       </div>
-      <div className="flex h-[250px] items-center justify-center overflow-hidden rounded-[20px] border border-neutral-300 p-2.5 dark:border-neutral-600">
+      <div className="flex h-[300px] items-center justify-center overflow-hidden rounded-md border border-neutral-300 p-2.5 dark:border-neutral-600">
         {selectedImage !== null && selectedImage !== undefined ? (
           <Image
             src={selectedImage}
@@ -55,7 +55,7 @@ export function ThumbnailImages({
             width={500}
             height={350}
             style={{ objectFit: "cover" }}
-            className="rounded-md"
+            className="h-auto w-full rounded-md object-cover"
           />
         ) : (
           <p className="font-sans text-sm font-normal text-neutral-600 dark:text-neutral-400">
@@ -101,7 +101,19 @@ export function ThumbnailImages({
         ) : (
           <>
             {images.map((src, index) => (
-              <div key={index} className="relative flex-shrink-0">
+              <div
+                key={index}
+                className="relative flex-shrink-0 overflow-visible"
+              >
+                <Button
+                  type="button"
+                  size="small"
+                  onClick={() => handleRemoveImage(index)}
+                  className="absolute right-0 top-0 z-50 h-6 w-6 p-0"
+                  aria-label="Remove image"
+                >
+                  <IconCross className="h-2 w-2 text-white" />
+                </Button>
                 <Image
                   src={src}
                   alt={`Thumbnail ${index + 1}`}
@@ -111,15 +123,6 @@ export function ThumbnailImages({
                   className="cursor-pointer rounded-md"
                   onClick={() => handleImageSelect(src)}
                 />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => handleRemoveImage(index)}
-                  className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center"
-                  aria-label="Remove image"
-                >
-                  <IconCross className="h-4 w-4" />
-                </Button>
               </div>
             ))}
             {images.length < 5 ? (
@@ -128,6 +131,7 @@ export function ThumbnailImages({
                 onClick={handleAddImage}
                 variant="outline"
                 size="small"
+                className="!ml-4"
               >
                 <IconPlus className="h-4 w-4" />
                 <span>Add image</span>
