@@ -546,8 +546,8 @@ def is_block_provider_configured(block_cls: type["Block"]) -> bool:
     required_credentials = [f for f in credentials_fields if f in required_fields]
 
     if len(required_credentials) == 0:
-        logger.warn(
-            f"Block {block_cls.__name__} has no required credentials fields - therefore will worth without credentials configured"
+        logger.debug(
+            f"Block {block_cls.__name__} has no required credentials fields - therefore will work without credentials configured"
         )
         return False
     if len(required_credentials) > 1:
