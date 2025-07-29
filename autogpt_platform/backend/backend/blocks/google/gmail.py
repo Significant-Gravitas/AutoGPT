@@ -679,6 +679,7 @@ class GmailGetThreadBlock(Block):
                                 "snippet": "have a funny looking car -- Bently, Community Administrator For AutoGPT",
                                 "subject": "car",
                                 "threadId": "188199feff9dc907",
+                                "labelIds": ["INBOX"],
                                 "attachments": [
                                     {
                                         "size": 5694,
@@ -707,6 +708,7 @@ class GmailGetThreadBlock(Block):
                             "snippet": "have a funny looking car -- Bently, Community Administrator For AutoGPT",
                             "subject": "car",
                             "threadId": "188199feff9dc907",
+                            "labelIds": ["INBOX"],
                             "attachments": [
                                 {
                                     "size": 5694,
