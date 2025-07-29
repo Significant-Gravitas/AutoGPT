@@ -1081,10 +1081,9 @@ class ExecutionManager(AppProcess):
     def _consume_execution_run(self):
 
         # Long-running executions are handled by:
-        # 1. Connection-level heartbeats (30s interval) with quick detection (60s)
-        # 2. Disabled consumer timeout (x-consumer-timeout: 0) allows unlimited execution time
-        # 3. Enhanced connection settings (5 retries, 1s delay) for quick reconnection
-        # 4. Process monitoring ensures failed executors release messages back to queue
+        # 1. Disabled consumer timeout (x-consumer-timeout: 0) allows unlimited execution time
+        # 2. Enhanced connection settings (5 retries, 1s delay) for quick reconnection
+        # 3. Process monitoring ensures failed executors release messages back to queue
 
         run_client = SyncRabbitMQ(create_execution_queue_config())
         run_client.connect()
