@@ -1,9 +1,13 @@
 import functools
 import importlib
+import logging
 import os
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar
+
+logger = logging.getLogger(__name__)
+
 
 if TYPE_CHECKING:
     from backend.data.block import Block
@@ -99,7 +103,15 @@ def load_all_blocks() -> dict[str, type["Block"]]:
 
         available_blocks[block.id] = block_cls
 
-    return available_blocks
+    # Filter out blocks with incomplete auth configs, e.g. missing OAuth server secrets
+    from backend.data.block import is_block_auth_configured
+
+    filtered_blocks = {}
+    for block_id, block_cls in available_blocks.items():
+        if is_block_auth_configured(block_cls):
+            filtered_blocks[block_id] = block_cls
+
+    return filtered_blocks
 
 
 __all__ = ["load_all_blocks"]

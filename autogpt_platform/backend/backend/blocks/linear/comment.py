@@ -11,7 +11,6 @@ from backend.sdk import (
 
 from ._api import LinearAPIException, LinearClient
 from ._config import (
-    LINEAR_OAUTH_IS_CONFIGURED,
     TEST_CREDENTIALS_INPUT_OAUTH,
     TEST_CREDENTIALS_OAUTH,
     LinearScope,
@@ -50,7 +49,6 @@ class LinearCreateCommentBlock(Block):
                 "comment": "Test comment",
                 "credentials": TEST_CREDENTIALS_INPUT_OAUTH,
             },
-            disabled=not LINEAR_OAUTH_IS_CONFIGURED,
             test_credentials=TEST_CREDENTIALS_OAUTH,
             test_output=[("comment_id", "abc123"), ("comment_body", "Test comment")],
             test_mock={
