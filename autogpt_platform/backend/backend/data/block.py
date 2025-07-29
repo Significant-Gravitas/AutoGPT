@@ -540,9 +540,7 @@ def is_block_provider_configured(block_cls: type["Block"]) -> bool:
         return True
 
     # Check required credentials fields
-    required_fields: dict[str, CredentialsMetaInput] = (
-        block.input_schema.get_required_fields()
-    )
+    required_fields: set[str] = block.input_schema.get_required_fields()
     required_credentials = [f for f in credentials_fields if f in required_fields]
 
     if len(required_credentials) == 0:
