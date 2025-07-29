@@ -16,6 +16,7 @@ interface BaseFieldProps {
   disabled?: boolean;
   value?: string;
   onChange?: React.ChangeEventHandler<HTMLInputElement>;
+  autoComplete?: string;
 }
 
 export interface TextFieldProps extends BaseFieldProps {
@@ -47,6 +48,7 @@ export function Input({
   disabled,
   value,
   onChange,
+  autoComplete,
   ...rest
 }: TextFieldProps) {
   const { handleInputChange, handleTextareaChange } = useInput({
@@ -119,6 +121,7 @@ export function Input({
         disabled={disabled}
         value={value}
         type={inputType}
+        autoComplete={autoComplete}
         {...rest}
       />
     );

@@ -124,6 +124,7 @@ export function AgentSelectStep({
                   {agents.map((agent) => (
                     <div
                       key={agent.id}
+                      data-testid="agent-card"
                       className={`cursor-pointer select-none overflow-hidden rounded-2xl border border-neutral-200 shadow-sm transition-all ${
                         selectedAgentId === agent.id
                           ? "border-transparent shadow-none ring-4 ring-violet-600"

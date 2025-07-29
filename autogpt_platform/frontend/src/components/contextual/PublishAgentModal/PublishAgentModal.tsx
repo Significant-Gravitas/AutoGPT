@@ -94,7 +94,9 @@ export function PublishAgentModal({
         <Dialog.Trigger>
           {trigger || <Button size="small">Publish Agent</Button>}
         </Dialog.Trigger>
-        <Dialog.Content>{renderContent()}</Dialog.Content>
+        <Dialog.Content>
+          <div data-testid="publish-agent-modal">{renderContent()}</div>
+        </Dialog.Content>
       </Dialog>
     </>
   );

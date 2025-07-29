@@ -90,7 +90,10 @@ export const AgentTableRow = ({
             />
           </div>
           <div className="flex flex-col">
-            <h3 className="text-[15px] font-medium text-neutral-800 dark:text-neutral-200">
+            <h3
+              className="text-[15px] font-medium text-neutral-800 dark:text-neutral-200"
+              data-testid="agent-name"
+            >
               {agentName}
             </h3>
             <p className="line-clamp-2 text-sm text-neutral-600 dark:text-neutral-400">
@@ -105,7 +108,7 @@ export const AgentTableRow = ({
         </div>
 
         {/* Status column */}
-        <div>
+        <div data-testid="agent-status">
           <Status status={status} />
         </div>
 

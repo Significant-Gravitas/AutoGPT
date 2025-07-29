@@ -73,7 +73,11 @@ export function AgentReviewStep({
         <Button variant="secondary" onClick={onDone} className="w-full">
           Done
         </Button>
-        <Button onClick={onViewProgress} className="w-full">
+        <Button
+          onClick={onViewProgress}
+          className="w-full"
+          data-testid="view-progress-button"
+        >
           View progress
         </Button>
       </div>
