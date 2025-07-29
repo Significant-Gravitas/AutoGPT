@@ -510,7 +510,7 @@ def get_blocks() -> dict[str, Type[Block]]:
     return load_all_blocks()
 
 
-def is_block_provider_configured(
+def is_block_auth_configured(
     block_cls: type["Block[BlockSchema, BlockSchema]"],
 ) -> bool:
     """
