@@ -5,13 +5,15 @@ import { ReactNode, useState } from "react";
 import { Text } from "../Text/Text";
 import { useInput } from "./useInput";
 
-export interface TextFieldProps extends InputProps {
+export interface TextFieldProps extends Omit<InputProps, "size"> {
   label: string;
   id: string;
   hideLabel?: boolean;
   decimalCount?: number; // Only used for type="amount"
   error?: string;
   hint?: ReactNode;
+  size?: "small" | "medium";
+  wrapperClassName?: string;
 }
 
 export function Input({
@@ -22,6 +24,8 @@ export function Input({
   decimalCount,
   hint,
   error,
+  size = "medium",
+  wrapperClassName,
   ...props
 }: TextFieldProps) {
   const { handleInputChange } = useInput({ ...props, decimalCount });
@@ -43,11 +47,11 @@ export function Input({
   }
 
   const input = (
-    <div className="relative">
+    <div className={cn("relative", wrapperClassName)}>
       <BaseInput
         className={cn(
-          // Override the default input styles with Figma design
-          "h-[2.875rem] rounded-3xl border border-zinc-200 bg-white px-4 py-2.5 shadow-none",
+          // Base styles
+          "rounded-3xl border border-zinc-200 bg-white px-4 shadow-none",
           "font-normal text-black",
           "placeholder:font-normal placeholder:text-zinc-400",
           // Focus and hover states
@@ -57,6 +61,17 @@ export function Input({
             "border-1.5 border-red-500 focus:border-red-500 focus:ring-red-500",
           // Add padding for password toggle button
           isPasswordType && "pr-12",
+          // Size variants
+          size === "small" && [
+            "h-[2.25rem]", // 36px
+            "py-2",
+            "text-sm leading-[22px]", // 14px font, 22px line height
+            "placeholder:text-sm placeholder:leading-[22px]",
+          ],
+          size === "medium" && [
+            "h-[2.875rem]", // 46px (current default)
+            "py-2.5",
+          ],
           className,
         )}
         placeholder={placeholder || label}
@@ -81,7 +96,7 @@ export function Input({
   );
 
   const inputWithError = (
-    <div className="relative mb-6">
+    <div className={cn("relative mb-6", wrapperClassName)}>
       {input}
       <Text
         variant="small-medium"
