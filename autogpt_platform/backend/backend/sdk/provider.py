@@ -13,6 +13,7 @@ from backend.data.model import (
     Credentials,
     CredentialsField,
     CredentialsMetaInput,
+    CredentialsType,
 )
 from backend.integrations.oauth.base import BaseOAuthHandler
 from backend.integrations.webhooks._base import BaseWebhooksManager
@@ -49,7 +50,7 @@ class Provider:
         webhook_manager: Optional[Type[BaseWebhooksManager]] = None,
         default_credentials: Optional[List[Credentials]] = None,
         base_costs: Optional[List[BlockCost]] = None,
-        supported_auth_types: Optional[Set[str]] = None,
+        supported_auth_types: Optional[Set[CredentialsType]] = None,
         api_client_factory: Optional[Callable] = None,
         error_handler: Optional[Callable[[Exception], str]] = None,
         **kwargs,

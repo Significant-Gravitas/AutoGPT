@@ -9,7 +9,12 @@ from typing import Callable, List, Optional, Type
 from pydantic import SecretStr
 
 from backend.data.cost import BlockCost, BlockCostType
-from backend.data.model import APIKeyCredentials, Credentials, UserPasswordCredentials
+from backend.data.model import (
+    APIKeyCredentials,
+    Credentials,
+    CredentialsType,
+    UserPasswordCredentials,
+)
 from backend.integrations.oauth.base import BaseOAuthHandler
 from backend.integrations.webhooks._base import BaseWebhooksManager
 from backend.sdk.provider import OAuthConfig, Provider
@@ -28,7 +33,7 @@ class ProviderBuilder:
         self._webhook_manager: Optional[Type[BaseWebhooksManager]] = None
         self._default_credentials: List[Credentials] = []
         self._base_costs: List[BlockCost] = []
-        self._supported_auth_types: set = set()
+        self._supported_auth_types: set[CredentialsType] = set()
         self._api_client_factory: Optional[Callable] = None
         self._error_handler: Optional[Callable[[Exception], str]] = None
         self._default_scopes: Optional[List[str]] = None
@@ -60,8 +65,9 @@ class ProviderBuilder:
             )
             self._supported_auth_types.add("oauth2")
         else:
-            logger.warn(
-                f"{self.name.upper()} provider has with_oauth set but the env vars {client_id_env_var} or {client_secret_env_var} are not set"
+            logger.warning(
+                f"Provider {self.name.upper()} implements OAuth but the required env "
+                f"vars {client_id_env_var} and/or {client_secret_env_var} are not set"
             )
         return self
 
