@@ -22,7 +22,18 @@ export const publishAgentSchema = z.object({
     .optional()
     .refine((val) => {
       if (!val) return true;
-      return val.includes("youtube.com") || val.includes("youtu.be");
+      try {
+        const url = new URL(val);
+        const allowedHosts = [
+          "youtube.com",
+          "www.youtube.com",
+          "youtu.be",
+          "www.youtu.be"
+        ];
+        return allowedHosts.includes(url.hostname);
+      } catch {
+        return false;
+      }
     }, "Please enter a valid YouTube URL"),
   category: z.string().min(1, "Category is required"),
   description: z
