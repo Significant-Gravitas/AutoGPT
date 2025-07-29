@@ -550,16 +550,20 @@ def is_block_provider_configured(block_cls: type["Block"]) -> bool:
             f"Block {block_cls.__name__} has no required credentials fields - therefore will worth without credentials configured"
         )
         return False
+    if len(required_credentials) > 1:
+        logger.warn(
+            f"Block {block_cls.__name__} has multiple required credentials fields"
+        )
 
     # Check if theres is any correctly configured credential provider for this block
-    configured_providers = []
+    configured_providers = {field_name: [] for field_name in required_credentials}
 
     for field_name in required_credentials:
         provider_names = block.input_schema.get_provider_from_credentials_field(
             field_name
         )
         if not provider_names:
-            configured_providers.append(True)
+            configured_providers[field_name].append(True)
             continue
 
         for provider_name in provider_names:
@@ -567,7 +571,8 @@ def is_block_provider_configured(block_cls: type["Block"]) -> bool:
                 logger.debug(
                     f"Block {block_cls.__name__} is part of the legacy provider system - Treating as valid"
                 )
-                return True
+                configured_providers[field_name] = [True]
+                break
 
             provider = AutoRegistry.get_provider(provider_name)
             if not provider:
@@ -582,7 +587,7 @@ def is_block_provider_configured(block_cls: type["Block"]) -> bool:
             # If provider has no supported auth types, it means no auth method is configured
             if not supported_types:
                 # This provider has no authentication methods configured at all
-                configured_providers.append(False)
+                configured_providers[field_name].append(False)
                 logger.debug(
                     f"Block {block_cls.__name__} has a required credentials field {field_name} but no authentication methods are configured"
                 )
@@ -600,12 +605,12 @@ def is_block_provider_configured(block_cls: type["Block"]) -> bool:
                         logger.debug(
                             f"Block {block_cls.__name__} has a required credentials field {field_name} with missing OAuth credentials (client ID or client secret) - Treating as valid"
                         )
-                        configured_providers.append(False)
+                        configured_providers[field_name].append(False)
                     else:
                         logger.debug(
                             f"Block {block_cls.__name__} has a required credentials field {field_name} that has a provider - Treating as valid"
                         )
-                        configured_providers.append(True)
+                        configured_providers[field_name].append(True)
 
             # If provider supports API key or other auth methods that are configured,
             # and this is a required field, then the block can work
@@ -613,21 +618,25 @@ def is_block_provider_configured(block_cls: type["Block"]) -> bool:
                 logger.debug(
                     f"Block {block_cls.__name__} has a required credentials field {field_name} that has a provider - Treating as valid"
                 )
-                configured_providers.append(True)
+                configured_providers[field_name].append(True)
 
             if "user_password" in supported_types:
                 logger.debug(
                     f"Block {block_cls.__name__} has a required credentials field {field_name} that has a provider - Treating as valid"
                 )
-                configured_providers.append(True)
+                configured_providers[field_name].append(True)
 
             if "host_scoped" in supported_types:
                 logger.debug(
                     f"Block {block_cls.__name__} has a required credentials field {field_name} that has a provider - Treating as valid"
                 )
-                configured_providers.append(True)
+                configured_providers[field_name].append(True)
 
-    return any(configured_providers)
+    is_provider_configured = {
+        field_name: any(configured_providers[field_name])
+        for field_name in required_credentials
+    }
+    return all(is_provider_configured.values())
 
 
 async def initialize_blocks() -> None:
