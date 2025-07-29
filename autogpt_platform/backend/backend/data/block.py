@@ -524,7 +524,7 @@ def is_block_provider_configured(
 
     # Create an instance to access input_schema
     try:
-        block = block_cls.create()
+        block = block_cls()
     except Exception as e:
         # If we can't create a block instance, assume it's not OAuth-only
         logger.error(f"Error creating block instance for {block_cls.__name__}: {e}")
