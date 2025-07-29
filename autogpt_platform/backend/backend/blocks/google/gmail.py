@@ -32,6 +32,7 @@ class Attachment(BaseModel):
 
 class Email(BaseModel):
     threadId: str
+    labelIds: list[str]
     id: str
     subject: str
     snippet: str
@@ -55,7 +56,7 @@ class GmailSendResult(BaseModel):
 
 
 class GmailLabelResult(BaseModel):
-    id: str
+    label_id: str
     status: str
 
 
@@ -103,6 +104,7 @@ class GmailReadBlock(Block):
                     "email",
                     {
                         "threadId": "t1",
+                        "labelIds": ["INBOX"],
                         "id": "1",
                         "subject": "Test Email",
                         "snippet": "This is a test email",
@@ -119,6 +121,7 @@ class GmailReadBlock(Block):
                     [
                         {
                             "threadId": "t1",
+                            "labelIds": ["INBOX"],
                             "id": "1",
                             "subject": "Test Email",
                             "snippet": "This is a test email",
@@ -136,6 +139,7 @@ class GmailReadBlock(Block):
                 "_read_emails": lambda *args, **kwargs: [
                     {
                         "threadId": "t1",
+                        "labelIds": ["INBOX"],
                         "id": "1",
                         "subject": "Test Email",
                         "snippet": "This is a test email",
@@ -224,6 +228,7 @@ class GmailReadBlock(Block):
 
             email = Email(
                 threadId=msg["threadId"],
+                labelIds=msg.get("labelIds", []),
                 id=msg["id"],
                 subject=headers.get("subject", "No Subject"),
                 snippet=msg["snippet"],
@@ -749,6 +754,7 @@ class GmailGetThreadBlock(Block):
             attachments = self._get_attachments(service, msg)
             email = Email(
                 threadId=msg.get("threadId", thread_id),
+                labelIds=msg.get("labelIds", []),
                 id=msg["id"],
                 subject=headers.get("subject", "No Subject"),
                 snippet=msg.get("snippet", ""),
