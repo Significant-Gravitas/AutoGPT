@@ -108,15 +108,13 @@ def load_all_blocks() -> dict[str, type["Block"]]:
 
     filtered_blocks = {}
     for block_id, block_cls in available_blocks.items():
-        if not is_block_provider_configured(block_cls):
-            # Skip this block as it requires OAuth which is not configured
+        if is_block_provider_configured(block_cls):
+            filtered_blocks[block_id] = block_cls
+        else:
             logger.error(
-                f"Skipping block {block_cls.__name__} as it as not valid provider configured"
+                f"Skipping block {block_cls.__name__} as it has no valid provider configured"
                 " - for example its OAuth without client id and secret"
             )
-            continue
-        else:
-            filtered_blocks[block_id] = block_cls
 
     return filtered_blocks
 

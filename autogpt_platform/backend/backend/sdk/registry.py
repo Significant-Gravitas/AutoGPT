@@ -87,8 +87,6 @@ class AutoRegistry:
                         provider.oauth_config.oauth_handler
                     )
 
-                    # Register OAuth credentials configuration
-
                     oauth_creds = SDKOAuthCredentials(
                         use_secrets=False,  # SDK providers use custom env vars
                         client_id_env_var=provider.oauth_config.client_id_env_var,

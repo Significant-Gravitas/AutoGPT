@@ -565,7 +565,7 @@ def is_block_provider_configured(block_cls: type["Block"]) -> bool:
         provider = AutoRegistry.get_provider(provider_name)
         if not provider:
             logger.debug(
-                f"Block {block_cls.__name__} has a required credentials field {field_name} that has no provider_ - Treating as valid"
+                f"Block {block_cls.__name__} has a required credentials field {field_name} that has no provider - Treating as valid"
             )
             continue
 
@@ -577,7 +577,7 @@ def is_block_provider_configured(block_cls: type["Block"]) -> bool:
             # This provider has no authentication methods configured at all
             configured_providers.append(False)
             logger.debug(
-                f"Block {block_cls.__name__} has a required credentials field {field_name} that has no provider - Treating as valid"
+                f"Block {block_cls.__name__} has a required credentials field {field_name} but no authentication methods are configured - Treating as valid"
             )
             continue
 
@@ -585,7 +585,7 @@ def is_block_provider_configured(block_cls: type["Block"]) -> bool:
         if supported_types == {"not_configured"}:
             configured_providers.append(False)
             logger.debug(
-                f"Block {block_cls.__name__} has a required credentials field {field_name} that has no provider - Treating as valid"
+                f"Block {block_cls.__name__} has a required credentials field {field_name} with a provider explicitly marked as 'not configured' - Treating as valid"
             )
             continue
 
@@ -599,7 +599,7 @@ def is_block_provider_configured(block_cls: type["Block"]) -> bool:
                 )
                 if not oauth_configured:
                     logger.debug(
-                        f"Block {block_cls.__name__} has a required credentials field {field_name} that has no provider - Treating as valid"
+                        f"Block {block_cls.__name__} has a required credentials field {field_name} with missing OAuth credentials (client ID or client secret) - Treating as valid"
                     )
                     configured_providers.append(False)
                 else:
