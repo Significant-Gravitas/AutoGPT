@@ -28,7 +28,7 @@ export const publishAgentSchema = z.object({
           "youtube.com",
           "www.youtube.com",
           "youtu.be",
-          "www.youtu.be"
+          "www.youtu.be",
         ];
         return allowedHosts.includes(url.hostname);
       } catch {
