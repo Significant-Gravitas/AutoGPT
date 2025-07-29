@@ -3,7 +3,6 @@ Auto-registration system for blocks, providers, and their configurations.
 """
 
 import logging
-import os
 import threading
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type
 
@@ -64,11 +63,7 @@ class AutoRegistry:
             cls._providers[provider.name] = provider
 
             # Register OAuth handler if provided
-            if (
-                provider.oauth_config
-                and os.getenv(provider.oauth_config.client_id_env_var)
-                and os.getenv(provider.oauth_config.client_secret_env_var)
-            ):
+            if provider.oauth_config:
                 # Dynamically set PROVIDER_NAME if not already set
                 if (
                     not hasattr(provider.oauth_config.oauth_handler, "PROVIDER_NAME")
