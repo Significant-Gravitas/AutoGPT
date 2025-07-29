@@ -1,10 +1,8 @@
 import { getGetV2ListMySubmissionsQueryKey } from "@/app/api/__generated__/endpoints/store/store";
-import {
-  MyAgentsResponse,
-  StoreSubmissionRequest,
-} from "@/lib/autogpt-server-api";
+import { StoreSubmissionRequest } from "@/app/api/__generated__/models/storeSubmissionRequest";
+import { MyAgentsResponse } from "@/lib/autogpt-server-api";
 import { useCallback, useEffect, useState } from "react";
-import { PublishAgentInfoInitialData } from "./components/PublishAgentSelectInfo";
+import { PublishAgentInfoInitialData } from "./components/PublishAgentInfo/helpers";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
@@ -69,6 +67,13 @@ export function usePublishAgentModal({ targetState, onStateChange }: Props) {
   const api = useBackendAPI();
 
   const { toast } = useToast();
+
+  // Sync currentState with targetState when it changes from outside
+  useEffect(() => {
+    if (targetState) {
+      setCurrentState(targetState);
+    }
+  }, [targetState]);
 
   // Reset internal state when modal opens
   useEffect(() => {

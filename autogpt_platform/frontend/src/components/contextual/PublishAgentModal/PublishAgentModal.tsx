@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { PublishAgentSelect } from "./components/PublishAgentSelect";
-import { PublishAgentInfo } from "./components/PublishAgentSelectInfo";
+import { PublishAgentInfo } from "./components/PublishAgentInfo/PublishAgentInfo";
 import { PublishAgentAwaitingReview } from "./components/PublishAgentAwaitingReview";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Skeleton } from "@/components/ui/skeleton";

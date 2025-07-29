@@ -5,7 +5,7 @@ import * as React from "react";
 import Image from "next/image";
 import { Button } from "../../../agptui/Button";
 
-interface PublishAgentAwaitingReviewProps {
+interface Props {
   agentName: string;
   subheader: string;
   description: string;
@@ -15,16 +15,14 @@ interface PublishAgentAwaitingReviewProps {
   onViewProgress: () => void;
 }
 
-export const PublishAgentAwaitingReview: React.FC<
-  PublishAgentAwaitingReviewProps
-> = ({
+export function PublishAgentAwaitingReview({
   agentName,
   subheader,
   description,
   thumbnailSrc,
   onDone,
   onViewProgress,
-}) => {
+}: Props) {
   return (
     <div aria-labelledby="modal-title">
       <div className="relative h-[180px] w-full rounded-none sm:h-[140px] sm:rounded-t-3xl">
@@ -98,4 +96,4 @@ export const PublishAgentAwaitingReview: React.FC<
       </div>
     </div>
   );
-};
+}

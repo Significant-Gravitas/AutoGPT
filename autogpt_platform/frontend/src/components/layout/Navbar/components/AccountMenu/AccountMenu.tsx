@@ -102,7 +102,7 @@ export function AccountMenu({
                     <PublishAgentModal
                       key={itemIndex}
                       trigger={
-                        <div className="inline-flex w-full items-center justify-start gap-2.5">
+                        <div className="inline-flex w-full flex-row flex-nowrap items-center justify-start gap-2.5">
                           <div className="relative h-6 w-6">
                             {getAccountMenuOptionIcon(item.icon)}
                           </div>
