@@ -24,6 +24,9 @@ from backend.data.notifications import (
     NotificationType,
 )
 from backend.data.rabbitmq import SyncRabbitMQ
+from backend.executor.activity_status_generator import (
+    generate_activity_status_for_execution,
+)
 from backend.executor.utils import LogMetadata, create_execution_queue_config
 from backend.notifications.notifications import queue_notification
 from backend.util.exceptions import InsufficientBalanceError
@@ -573,6 +576,28 @@ class Executor:
         }:
             raise RuntimeError(
                 f"Graph Execution #{graph_exec.graph_exec_id} ended with unexpected status {status}"
+            )
+
+        # Generate AI activity status before updating stats
+        try:
+            activity_status = asyncio.run_coroutine_threadsafe(
+                generate_activity_status_for_execution(
+                    graph_exec_id=graph_exec.graph_exec_id,
+                    graph_id=graph_exec.graph_id,
+                    graph_version=graph_exec.graph_version,
+                    execution_stats=exec_stats,
+                    db_client=get_db_async_client(),
+                    node_execution_loop=cls.node_execution_loop,
+                ),
+                cls.node_execution_loop,
+            ).result(timeout=60.0)
+            exec_stats.activity_status = activity_status
+            log_metadata.info(f"Generated activity status: {activity_status}")
+
+        except Exception as e:
+            log_metadata.error(f"Failed to generate activity status: {str(e)}")
+            exec_stats.activity_status = (
+                f"Failed to generate activity summary: {str(e)}"
             )
 
         if graph_exec_result := db_client.update_graph_execution_stats(
