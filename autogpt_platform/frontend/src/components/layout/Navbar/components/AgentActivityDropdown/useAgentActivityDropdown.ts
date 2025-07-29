@@ -2,8 +2,11 @@ import { useGetV1GetAllExecutions } from "@/app/api/__generated__/endpoints/grap
 import { useGetV2GetMyAgents } from "@/app/api/__generated__/endpoints/store/store";
 import { useGetV2ListLibraryAgents } from "@/app/api/__generated__/endpoints/library/library";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgentResponse";
+import { MyAgentsResponse } from "@/app/api/__generated__/models/myAgentsResponse";
+import { MyAgent } from "@/app/api/__generated__/models/myAgent";
 import BackendAPI from "@/lib/autogpt-server-api/client";
-import type { GraphExecution } from "@/lib/autogpt-server-api/types";
+import type { GraphExecution, GraphID } from "@/lib/autogpt-server-api/types";
 import { useCallback, useEffect, useState } from "react";
 import {
   NotificationState,
@@ -70,29 +73,30 @@ export function useAgentActivityDropdown() {
 
   // Update agent info map when both agent data sources change
   useEffect(() => {
-    if (
-      myAgentsResponse?.data &&
-      "agents" in myAgentsResponse.data &&
-      myAgentsResponse?.data?.agents &&
-      libraryAgentsResponse?.data &&
-      "agents" in libraryAgentsResponse.data
-    ) {
-      const agentMap = createAgentInfoMap(myAgentsResponse.data.agents);
+    if (myAgentsResponse?.data && libraryAgentsResponse?.data) {
+      // Type guard to ensure we have the correct response structure
+      const myAgentsData = myAgentsResponse.data as MyAgentsResponse;
+      const libraryAgentsData =
+        libraryAgentsResponse.data as LibraryAgentResponse;
 
-      // Add library agent ID mapping
-      libraryAgentsResponse.data.agents.forEach(
-        (libraryAgent: LibraryAgent) => {
-          const existingInfo = agentMap.get(libraryAgent.graph_id);
-          if (existingInfo) {
-            agentMap.set(libraryAgent.graph_id, {
-              ...existingInfo,
-              library_agent_id: libraryAgent.id,
-            });
+      if (myAgentsData?.agents && libraryAgentsData?.agents) {
+        const agentMap = createAgentInfoMap(myAgentsData.agents);
+
+        // Add library agent ID mapping
+        libraryAgentsData.agents.forEach((libraryAgent: LibraryAgent) => {
+          if (libraryAgent.graph_id && libraryAgent.id) {
+            const existingInfo = agentMap.get(libraryAgent.graph_id);
+            if (existingInfo) {
+              agentMap.set(libraryAgent.graph_id, {
+                ...existingInfo,
+                library_agent_id: libraryAgent.id,
+              });
+            }
           }
-        },
-      );
+        });
 
-      setAgentInfoMap(agentMap);
+        setAgentInfoMap(agentMap);
+      }
     }
   }, [myAgentsResponse, libraryAgentsResponse]);
 
@@ -128,17 +132,20 @@ export function useAgentActivityDropdown() {
       setIsConnected(true);
 
       // Subscribe to graph executions for all user agents
-      if (myAgentsResponse?.data && "agents" in myAgentsResponse.data) {
-        myAgentsResponse.data.agents.forEach((agent) => {
-          api
-            .subscribeToGraphExecutions(agent.agent_id as any)
-            .catch((error) => {
-              console.error(
-                `[AgentNotifications] Failed to subscribe to graph ${agent.agent_id}:`,
-                error,
-              );
-            });
-        });
+      if (myAgentsResponse?.data) {
+        const myAgentsData = myAgentsResponse.data as MyAgentsResponse;
+        if (myAgentsData?.agents) {
+          myAgentsData.agents.forEach((agent: MyAgent) => {
+            api
+              .subscribeToGraphExecutions(agent.agent_id as GraphID)
+              .catch((error) => {
+                console.error(
+                  `[AgentNotifications] Failed to subscribe to graph ${agent.agent_id}:`,
+                  error,
+                );
+              });
+          });
+        }
       }
     });
 
