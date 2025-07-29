@@ -79,14 +79,11 @@ export function ActivityItem({ execution }: Props) {
     return "Unknown";
   }
 
-  // Use library_agent_id if available, otherwise fall back to graph_id
   const agentId = execution.library_agent_id || execution.graph_id;
+  const linkUrl = `/library/agents/${agentId}?executionId=${execution.id}`;
+  const withLibraryId = !!execution.library_agent_id;
 
-  // Only link to library agents if we have a library_agent_id
-  const shouldLinkToLibrary = !!execution.library_agent_id;
-  const linkUrl = shouldLinkToLibrary
-    ? `/library/agents/${agentId}?executionId=${execution.id}`
-    : `/agents?id=${execution.graph_id}&executionId=${execution.id}`;
+  if (!withLibraryId) return null;
 
   return (
     <Link

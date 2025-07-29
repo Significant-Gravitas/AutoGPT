@@ -74,16 +74,13 @@ export function useAgentActivityDropdown() {
   // Update agent info map when both agent data sources change
   useEffect(() => {
     if (myAgentsResponse?.data && libraryAgentsResponse?.data) {
-      // Type guard to ensure we have the correct response structure
-      const myAgentsData = myAgentsResponse.data as MyAgentsResponse;
-      const libraryAgentsData =
-        libraryAgentsResponse.data as LibraryAgentResponse;
+      const myAgents = myAgentsResponse.data as MyAgentsResponse;
+      const libraryAgents = libraryAgentsResponse.data as LibraryAgentResponse;
 
-      if (myAgentsData?.agents && libraryAgentsData?.agents) {
-        const agentMap = createAgentInfoMap(myAgentsData.agents);
+      if (myAgents?.agents && libraryAgents?.agents) {
+        const agentMap = createAgentInfoMap(myAgents.agents);
 
-        // Add library agent ID mapping
-        libraryAgentsData.agents.forEach((libraryAgent: LibraryAgent) => {
+        libraryAgents.agents.forEach((libraryAgent: LibraryAgent) => {
           if (libraryAgent.graph_id && libraryAgent.id) {
             const existingInfo = agentMap.get(libraryAgent.graph_id);
             if (existingInfo) {
@@ -131,11 +128,11 @@ export function useAgentActivityDropdown() {
     const connectHandler = api.onWebSocketConnect(() => {
       setIsConnected(true);
 
-      // Subscribe to graph executions for all user agents
       if (myAgentsResponse?.data) {
-        const myAgentsData = myAgentsResponse.data as MyAgentsResponse;
-        if (myAgentsData?.agents) {
-          myAgentsData.agents.forEach((agent: MyAgent) => {
+        const myAgents = myAgentsResponse.data as MyAgentsResponse;
+
+        if (myAgents?.agents) {
+          myAgents.agents.forEach((agent: MyAgent) => {
             api
               .subscribeToGraphExecutions(agent.agent_id as GraphID)
               .catch((error) => {
