@@ -510,7 +510,9 @@ def get_blocks() -> dict[str, Type[Block]]:
     return load_all_blocks()
 
 
-def is_block_provider_configured(block_cls: type["Block"]) -> bool:
+def is_block_provider_configured(
+    block_cls: type["Block[BlockSchema, BlockSchema]"]
+) -> bool:
     """
     Check if a block has a valid authentication method configured at runtime.
 
