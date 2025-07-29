@@ -11,6 +11,7 @@ import {
   createAgentInfoMap,
   handleExecutionUpdate,
 } from "./helpers";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 type AgentInfoMap = Map<
   string,
@@ -18,6 +19,9 @@ type AgentInfoMap = Map<
 >;
 
 export function useAgentActivityDropdown() {
+  const isAgentActivityEnabled = useGetFlag(Flag.AGENT_ACTIVITY);
+  const [isOpen, setIsOpen] = useState(false);
+
   const [api] = useState(() => new BackendAPI());
   const [notifications, setNotifications] = useState<NotificationState>({
     activeExecutions: [],
@@ -33,15 +37,11 @@ export function useAgentActivityDropdown() {
     data: myAgentsResponse,
     isLoading: isAgentsLoading,
     error: agentsError,
-  } = useGetV2GetMyAgents(
-    {},
-    {
-      // Enable query by default
-      query: {
-        enabled: true,
-      },
+  } = useGetV2GetMyAgents({
+    query: {
+      enabled: isAgentActivityEnabled ?? false,
     },
-  );
+  });
 
   // Get library agents data to map graph_id to library_agent_id
   const {
@@ -166,5 +166,8 @@ export function useAgentActivityDropdown() {
     isConnected,
     isLoading: isAgentsLoading || isExecutionsLoading || isLibraryAgentsLoading,
     error: agentsError || executionsError || libraryAgentsError,
+    isOpen,
+    setIsOpen,
+    isAgentActivityEnabled,
   };
 }
