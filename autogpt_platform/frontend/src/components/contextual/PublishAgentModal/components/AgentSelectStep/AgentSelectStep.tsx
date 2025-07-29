@@ -94,11 +94,10 @@ export function AgentSelectStep({
 
       {agents.length === 0 ? (
         <div className="inline-flex h-[370px] flex-col items-center justify-center gap-[29px] px-4 py-5 sm:px-6">
-          <Text variant="lead">
+          <Text variant="lead" className="text-center">
             Uh-oh.. It seems like you don&apos;t have any agents in your
-            library.
-            <br />
-            We&apos;d suggest you to create an agent in our builder first
+            library. We&apos;d suggest you to create an agent in our builder
+            first
           </Text>
           <Button
             onClick={onOpenBuilder}
