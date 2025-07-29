@@ -1,17 +1,36 @@
-import { Input as BaseInput, type InputProps } from "@/components/ui/input";
+import { Input as BaseInput } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { Eye, EyeSlash } from "@phosphor-icons/react";
 import { ReactNode, useState } from "react";
 import { Text } from "../Text/Text";
 import { useInput } from "./useInput";
 
-export interface TextFieldProps extends InputProps {
+interface BaseFieldProps {
   label: string;
   id: string;
   hideLabel?: boolean;
-  decimalCount?: number; // Only used for type="amount"
   error?: string;
   hint?: ReactNode;
+  placeholder?: string;
+  className?: string;
+  disabled?: boolean;
+  value?: string;
+  onChange?: React.ChangeEventHandler<HTMLInputElement>;
+}
+
+export interface TextFieldProps extends BaseFieldProps {
+  decimalCount?: number; // Only used for type="amount"
+  type?:
+    | "text"
+    | "email"
+    | "password"
+    | "number"
+    | "amount"
+    | "tel"
+    | "url"
+    | "textarea";
+  // Textarea-specific props
+  rows?: number;
 }
 
 export function Input({
@@ -22,13 +41,23 @@ export function Input({
   decimalCount,
   hint,
   error,
-  ...props
+  type = "text",
+  rows = 3,
+  id,
+  disabled,
+  value,
+  onChange,
+  ...rest
 }: TextFieldProps) {
-  const { handleInputChange } = useInput({ ...props, decimalCount });
+  const { handleInputChange, handleTextareaChange } = useInput({
+    type,
+    decimalCount,
+    onChange,
+  });
   const [showPassword, setShowPassword] = useState(false);
 
-  const isPasswordType = props.type === "password";
-  const inputType = showPassword ? "text" : props.type;
+  const isPasswordType = type === "password";
+  const inputType = showPassword ? "text" : type;
 
   function handleMouseDown() {
     setShowPassword(true);
@@ -42,29 +71,57 @@ export function Input({
     setShowPassword(false);
   }
 
-  const input = (
-    <div className="relative">
+  const baseStyles = cn(
+    // Override the default input styles with Figma design
+    "h-[2.875rem] rounded-3xl border border-zinc-200 bg-white px-4 py-2.5 shadow-none",
+    "font-normal text-black text-sm",
+    "placeholder:font-normal placeholder:text-zinc-400",
+    // Focus and hover states
+    "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
+    // Error state
+    error &&
+      "border-1.5 border-red-500 focus:border-red-500 focus:ring-red-500",
+    className,
+  );
+
+  const renderInput = () => {
+    if (type === "textarea") {
+      return (
+        <textarea
+          className={cn(baseStyles, "h-auto min-h-[2.875rem] w-full py-2.5")}
+          placeholder={placeholder || label}
+          onChange={handleTextareaChange}
+          rows={rows}
+          {...(hideLabel ? { "aria-label": label } : {})}
+          id={id}
+          disabled={disabled}
+          value={value}
+        />
+      );
+    }
+
+    return (
       <BaseInput
         className={cn(
-          // Override the default input styles with Figma design
-          "h-[2.875rem] rounded-3xl border border-zinc-200 bg-white px-4 py-2.5 shadow-none",
-          "font-normal text-black",
-          "placeholder:font-normal placeholder:text-zinc-400",
-          // Focus and hover states
-          "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
-          // Error state
-          error &&
-            "border-1.5 border-red-500 focus:border-red-500 focus:ring-red-500",
+          baseStyles,
           // Add padding for password toggle button
           isPasswordType && "pr-12",
-          className,
         )}
         placeholder={placeholder || label}
         onChange={handleInputChange}
         {...(hideLabel ? { "aria-label": label } : {})}
-        {...props}
+        id={id}
+        disabled={disabled}
+        value={value}
         type={inputType}
+        {...rest}
       />
+    );
+  };
+
+  const input = (
+    <div className="relative">
+      {renderInput()}
       {isPasswordType && (
         <button
           type="button"
@@ -100,7 +157,7 @@ export function Input({
   return hideLabel ? (
     inputWithError
   ) : (
-    <label htmlFor={props.id} className="flex flex-col gap-2">
+    <label htmlFor={id} className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <Text variant="body-medium" as="span" className="text-black">
           {label}

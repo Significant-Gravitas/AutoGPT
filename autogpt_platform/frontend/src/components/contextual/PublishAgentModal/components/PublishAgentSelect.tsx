@@ -2,8 +2,9 @@
 
 import * as React from "react";
 import Image from "next/image";
-import { Button } from "../agptui/Button";
-import { IconCross } from "../ui/icons";
+import { Text } from "../../../atoms/Text/Text";
+import { Button } from "../../../atoms/Button/Button";
+import { StepHeader } from "./StepHeader";
 
 export interface Agent {
   name: string;
@@ -13,32 +14,31 @@ export interface Agent {
   imageSrc: string;
 }
 
-interface PublishAgentSelectProps {
+interface Props {
   agents: Agent[];
   onSelect: (agentId: string, agentVersion: number) => void;
   onCancel: () => void;
   onNext: (agentId: string, agentVersion: number) => void;
-  onClose: () => void;
   onOpenBuilder: () => void;
 }
 
-export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
+export function PublishAgentSelect({
   agents,
   onSelect,
   onCancel,
   onNext,
-  onClose,
   onOpenBuilder,
-}) => {
+}: Props) {
   const [selectedAgentId, setSelectedAgentId] = React.useState<string | null>(
     null,
   );
+
   const [selectedAgentVersion, setSelectedAgentVersion] = React.useState<
     number | null
   >(null);
 
   const handleAgentClick = (
-    agentName: string,
+    _: string,
     agentId: string,
     agentVersion: number,
   ) => {
@@ -48,41 +48,22 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl bg-white shadow-lg dark:bg-gray-800">
-      <div className="relative border-b border-slate-200 p-4 dark:border-slate-700 sm:p-6">
-        <div className="absolute right-4 top-4">
-          <button
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600"
-            aria-label="Close"
-          >
-            <IconCross
-              size="default"
-              className="text-neutral-600 dark:text-neutral-400"
-            />
-          </button>
-        </div>
-        <div className="text-center">
-          <h3 className="font-poppins text-2xl font-semibold text-neutral-900 dark:text-neutral-100">
-            Publish Agent
-          </h3>
-          <p className="text-sm font-normal text-neutral-600 dark:text-neutral-400">
-            Select your project that you&apos;d like to publish
-          </p>
-        </div>
-      </div>
+    <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl">
+      <StepHeader
+        title="Publish Agent"
+        description="Select your project that you'd like to publish"
+      />
 
       {agents.length === 0 ? (
         <div className="inline-flex h-[370px] flex-col items-center justify-center gap-[29px] px-4 py-5 sm:px-6">
-          <div className="w-full text-center font-sans text-lg font-normal leading-7 text-neutral-600 dark:text-neutral-400 sm:w-[573px] sm:text-xl">
+          <Text variant="lead">
             Uh-oh.. It seems like you don&apos;t have any agents in your
             library.
             <br />
             We&apos;d suggest you to create an agent in our builder first
-          </div>
+          </Text>
           <Button
             onClick={onOpenBuilder}
-            size="lg"
             className="bg-neutral-800 text-white hover:bg-neutral-900"
           >
             Open builder
@@ -105,9 +86,9 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
                   {agents.map((agent) => (
                     <div
                       key={agent.id}
-                      className={`cursor-pointer overflow-hidden rounded-2xl transition-all ${
+                      className={`cursor-pointer select-none overflow-hidden rounded-2xl border border-neutral-200 shadow-sm transition-all ${
                         selectedAgentId === agent.id
-                          ? "shadow-lg ring-4 ring-violet-600"
+                          ? "border-transparent shadow-none ring-4 ring-violet-600"
                           : "hover:shadow-md"
                       }`}
                       onClick={() =>
@@ -123,7 +104,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
                       role="button"
                       aria-pressed={selectedAgentId === agent.id}
                     >
-                      <div className="relative h-32 bg-gray-100 dark:bg-gray-700 sm:h-40">
+                      <div className="relative h-32 bg-gray-100 sm:h-40">
                         <Image
                           src={agent.imageSrc}
                           alt={agent.name}
@@ -132,10 +113,10 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
                         />
                       </div>
                       <div className="p-3">
-                        <p className="font-poppins text-base font-medium leading-normal text-neutral-800 dark:text-neutral-100 sm:text-base">
+                        <p className="font-poppins text-base font-medium leading-normal text-neutral-800 sm:text-base">
                           {agent.name}
                         </p>
-                        <small className="text-xs font-normal leading-[14px] text-neutral-500 dark:text-neutral-400 sm:text-sm">
+                        <small className="text-xs font-normal leading-[14px] text-neutral-500 sm:text-sm">
                           Edited {agent.lastEdited}
                         </small>
                       </div>
@@ -146,8 +127,12 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
             </div>
           </div>
 
-          <div className="flex justify-between gap-4 border-t border-slate-200 p-4 dark:border-slate-700 sm:p-6">
-            <Button onClick={onCancel} size="lg" className="w-full sm:flex-1">
+          <div className="flex justify-between gap-4 p-4 sm:p-6">
+            <Button
+              variant="secondary"
+              onClick={onCancel}
+              className="w-full sm:flex-1"
+            >
               Back
             </Button>
             <Button
@@ -157,7 +142,6 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
                 }
               }}
               disabled={!selectedAgentId || !selectedAgentVersion}
-              size="lg"
               className="w-full bg-neutral-800 text-white hover:bg-neutral-900 sm:flex-1"
             >
               Next
@@ -167,4 +151,4 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
       )}
     </div>
   );
-};
+}

@@ -111,9 +111,11 @@ export function AccountMenu({
                           </div>
                         </div>
                       }
-                      inputStep="select"
-                      submissionData={undefined}
-                      openPopout={false}
+                      targetState={{
+                        isOpen: true,
+                        step: "select",
+                        submissionData: null,
+                      }}
                     />
                   );
                 } else {
