@@ -41,10 +41,12 @@ export function ThumbnailImages({
 
   return (
     <div className="space-y-2.5">
-      <label className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300">
-        Thumbnail images
-      </label>
-      {errorMessage && <p className="text-sm text-red-500">{errorMessage}</p>}
+      <div className="flex items-center justify-start gap-2">
+        <label className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300">
+          Thumbnail images
+        </label>
+        {errorMessage && <p className="text-sm text-red-500">{errorMessage}</p>}
+      </div>
       <div className="flex h-[250px] items-center justify-center overflow-hidden rounded-[20px] border border-neutral-300 p-2.5 dark:border-neutral-600">
         {selectedImage !== null && selectedImage !== undefined ? (
           <Image

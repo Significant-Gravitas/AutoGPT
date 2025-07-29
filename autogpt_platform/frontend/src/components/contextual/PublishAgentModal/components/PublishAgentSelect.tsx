@@ -112,13 +112,11 @@ export function PublishAgentSelect({
                           style={{ objectFit: "cover" }}
                         />
                       </div>
-                      <div className="p-3">
-                        <p className="font-poppins text-base font-medium leading-normal text-neutral-800 sm:text-base">
-                          {agent.name}
-                        </p>
-                        <small className="text-xs font-normal leading-[14px] text-neutral-500 sm:text-sm">
+                      <div className="flex flex-col gap-2 p-3">
+                        <Text variant="large-medium">{agent.name}</Text>
+                        <Text variant="small" className="!text-neutral-500">
                           Edited {agent.lastEdited}
-                        </small>
+                        </Text>
                       </div>
                     </div>
                   ))}

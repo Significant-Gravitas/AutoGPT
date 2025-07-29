@@ -48,12 +48,14 @@ export function Select({
     // Override the default select styles with Figma design matching Input
     "h-[2.875rem] rounded-3xl border border-zinc-200 bg-white px-4 py-2.5 shadow-none",
     "font-normal text-black text-sm w-full",
-    "placeholder:font-normal placeholder:text-zinc-400",
+    "placeholder:font-normal !placeholder:text-zinc-400",
     // Focus and hover states
     "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
     // Error state
     error &&
       "border-1.5 border-red-500 focus:border-red-500 focus:ring-red-500",
+    // Placeholder styling for SelectValue when data-placeholder is present
+    "[&[data-placeholder]>span]:text-zinc-400 [&[data-placeholder]>span]:font-normal",
     className,
   );
 

@@ -78,17 +78,21 @@ export function Input({
     "placeholder:font-normal placeholder:text-zinc-400",
     // Focus and hover states
     "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
-    // Error state
-    error &&
-      "border-1.5 border-red-500 focus:border-red-500 focus:ring-red-500",
     className,
   );
+
+  const errorStyles =
+    error && "!border !border-red-500 focus:border-red-500 focus:ring-red-500";
 
   const renderInput = () => {
     if (type === "textarea") {
       return (
         <textarea
-          className={cn(baseStyles, "h-auto min-h-[2.875rem] w-full py-2.5")}
+          className={cn(
+            baseStyles,
+            "h-auto min-h-[2.875rem] w-full py-2.5",
+            errorStyles,
+          )}
           placeholder={placeholder || label}
           onChange={handleTextareaChange}
           rows={rows}
@@ -104,6 +108,7 @@ export function Input({
       <BaseInput
         className={cn(
           baseStyles,
+          errorStyles,
           // Add padding for password toggle button
           isPasswordType && "pr-12",
         )}

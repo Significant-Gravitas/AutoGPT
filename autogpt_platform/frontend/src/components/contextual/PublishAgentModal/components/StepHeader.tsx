@@ -7,10 +7,14 @@ type Props = {
 
 export function StepHeader({ title, description }: Props) {
   return (
-    <div className="relative border-b border-neutral-200 px-4 pb-4 sm:px-6 sm:pb-6">
+    <div className="relative border-b border-neutral-100 px-4 pb-4 sm:px-6 sm:pb-6">
       <div className="text-center">
-        <Text variant="h3">{title}</Text>
-        <Text variant="large">{description}</Text>
+        <Text variant="h3" className="text-xl">
+          {title}
+        </Text>
+        <Text variant="body-medium" className="!text-neutral-400">
+          {description}
+        </Text>
       </div>
     </div>
   );
