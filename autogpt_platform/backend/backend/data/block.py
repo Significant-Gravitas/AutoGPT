@@ -171,20 +171,6 @@ class BlockSchema(BaseModel):
         }
 
     @classmethod
-    def get_provider_from_credentials_field(cls, field_name: str) -> list[str]:
-        """Extract provider name from a credentials field's schema."""
-        field_info = cls.model_fields.get(field_name)
-        if not field_info:
-            return []
-
-        json_schema_extra = field_info.json_schema_extra
-        if isinstance(json_schema_extra, dict):
-            providers = json_schema_extra.get("credentials_provider", [])
-            if providers and isinstance(providers, list):
-                return [str(p) for p in providers]
-        return []
-
-    @classmethod
     def __pydantic_init_subclass__(cls, **kwargs):
         """Validates the schema definition. Rules:
         - Fields with annotation `CredentialsMetaInput` MUST be
@@ -533,69 +519,76 @@ def is_block_auth_configured(
         f"Checking if block {block_cls.__name__} has a valid provider configured"
     )
 
-    # Get all credentials fields from input schema
-    credentials_fields = block.input_schema.get_credentials_fields()
-    if not credentials_fields:
+    # Get all credential inputs from input schema
+    credential_inputs = block.input_schema.get_credentials_fields_info()
+    required_inputs = block.input_schema.get_required_fields()
+    if not credential_inputs:
         logger.debug(
-            f"Block {block_cls.__name__} has no credentials fields - Treating as valid"
+            f"Block {block_cls.__name__} has no credential inputs - Treating as valid"
         )
         return True
 
-    # Check required credentials fields
-    required_fields: set[str] = block.input_schema.get_required_fields()
-    required_credentials = [f for f in credentials_fields if f in required_fields]
-
-    if len(required_credentials) == 0:
+    # Check credential inputs
+    if len(required_inputs.intersection(credential_inputs.keys())) == 0:
         logger.debug(
-            f"Block {block_cls.__name__} has no required credentials fields - therefore will work without credentials configured"
+            f"Block {block_cls.__name__} has only optional credential inputs"
+            " - will work without credentials configured"
         )
-        return True
-
-    if len(required_credentials) > 1:
-        logger.warn(
-            f"Block {block_cls.__name__} has multiple required credentials fields"
+    if len(credential_inputs) > 1:
+        logger.warning(
+            f"Block {block_cls.__name__} has multiple credential inputs: "
+            f"{', '.join(credential_inputs.keys())}"
         )
 
-    # Check if theres is any correctly configured credential provider for this block
-    configured_providers = {field_name: [] for field_name in required_credentials}
-
-    for field_name in required_credentials:
-        provider_names = block.input_schema.get_provider_from_credentials_field(
-            field_name
-        )
+    # Check if the credential inputs for this block are correctly configured
+    for field_name, field_info in credential_inputs.items():
+        provider_names = field_info.provider
         if not provider_names:
-            configured_providers[field_name].append(True)
-            continue
+            logger.warning(
+                f"Block {block_cls.__name__} "
+                f"has credential input '{field_name}' with no provider options"
+                " - Disabling"
+            )
+            return False
 
+        # If a field has multiple possible providers, each one needs to be usable to
+        # prevent breaking the UX
         for provider_name in provider_names:
-            if not provider_name or provider_name in ProviderName.__members__.values():
+            if provider_name in ProviderName.__members__.values():
                 logger.debug(
-                    f"Block {block_cls.__name__} is part of the legacy provider system - Treating as valid"
+                    f"Block {block_cls.__name__} credential input '{field_name}' "
+                    f"provider '{provider_name}' is part of the legacy provider system"
+                    " - Treating as valid"
                 )
-                configured_providers[field_name] = [True]
                 break
 
             provider = AutoRegistry.get_provider(provider_name)
             if not provider:
-                logger.debug(
-                    f"Block {block_cls.__name__} has a required credentials field {field_name} that has no provider - Treating as valid"
+                logger.warning(
+                    f"Block {block_cls.__name__} credential input '{field_name}' "
+                    f"refers to unknown provider '{provider_name}' - Disabling"
                 )
-                continue
+                return False
 
             # Check the provider's supported auth types
-            supported_types = provider.supported_auth_types
-
-            # If provider has no supported auth types, it means no auth method is configured
-            if not supported_types:
-                # This provider has no authentication methods configured at all
-                configured_providers[field_name].append(False)
-                logger.debug(
-                    f"Block {block_cls.__name__} has a required credentials field {field_name} but no authentication methods are configured"
+            if field_info.supported_types != provider.supported_auth_types:
+                logger.warning(
+                    f"Block {block_cls.__name__} credential input '{field_name}' "
+                    f"has mismatched supported auth types (field <> Provider): "
+                    f"{field_info.supported_types} != {provider.supported_auth_types}"
                 )
-                continue
 
-            # Check if provider only supports OAuth
-            if supported_types == {"oauth2"}:
+            if not (supported_auth_types := provider.supported_auth_types):
+                # No auth methods are been configured for this provider
+                logger.warning(
+                    f"Block {block_cls.__name__} credential input '{field_name}' "
+                    f"provider '{provider_name.value}' "
+                    "has no authentication methods configured - Disabling"
+                )
+                return False
+
+            # Check if provider supports OAuth
+            if "oauth2" in supported_auth_types:
                 # Check if OAuth environment variables are set
                 if provider.oauth_config:
                     oauth_configured = bool(
@@ -603,41 +596,20 @@ def is_block_auth_configured(
                         and os.getenv(provider.oauth_config.client_secret_env_var)
                     )
                     if not oauth_configured:
-                        logger.debug(
-                            f"Block {block_cls.__name__} has a required credentials field {field_name} with missing OAuth credentials (client ID or client secret) - Treating as valid"
+                        logger.warning(
+                            f"Block {block_cls.__name__} "
+                            f"credential input '{field_name}' "
+                            f"provider '{provider_name}' "
+                            "is missing OAuth client ID or secret - Disabling"
                         )
-                        configured_providers[field_name].append(False)
-                    else:
-                        logger.debug(
-                            f"Block {block_cls.__name__} has a required credentials field {field_name} that has a provider - Treating as valid"
-                        )
-                        configured_providers[field_name].append(True)
+                        return False
 
-            # If provider supports API key or other auth methods that are configured,
-            # and this is a required field, then the block can work
-            if "api_key" in supported_types:
-                logger.debug(
-                    f"Block {block_cls.__name__} has a required credentials field {field_name} that has a provider - Treating as valid"
-                )
-                configured_providers[field_name].append(True)
+        logger.debug(
+            f"Block {block_cls.__name__} credential input '{field_name}' is valid; "
+            f"supported credential types: {', '.join(field_info.supported_types)}"
+        )
 
-            if "user_password" in supported_types:
-                logger.debug(
-                    f"Block {block_cls.__name__} has a required credentials field {field_name} that has a provider - Treating as valid"
-                )
-                configured_providers[field_name].append(True)
-
-            if "host_scoped" in supported_types:
-                logger.debug(
-                    f"Block {block_cls.__name__} has a required credentials field {field_name} that has a provider - Treating as valid"
-                )
-                configured_providers[field_name].append(True)
-
-    is_provider_configured = {
-        field_name: any(configured_providers[field_name])
-        for field_name in required_credentials
-    }
-    return all(is_provider_configured.values())
+    return True
 
 
 async def initialize_blocks() -> None:
