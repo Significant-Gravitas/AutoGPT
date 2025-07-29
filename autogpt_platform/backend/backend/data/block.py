@@ -549,7 +549,8 @@ def is_block_provider_configured(
         logger.debug(
             f"Block {block_cls.__name__} has no required credentials fields - therefore will work without credentials configured"
         )
-        return False
+        return True
+
     if len(required_credentials) > 1:
         logger.warn(
             f"Block {block_cls.__name__} has multiple required credentials fields"
