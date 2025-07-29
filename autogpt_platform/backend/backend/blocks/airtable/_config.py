@@ -13,8 +13,7 @@ from ._webhook import AirtableWebhookManager
 builder = (
     ProviderBuilder("airtable")
     .with_api_key("AIRTABLE_API_KEY", "Airtable Personal Access Token")
-    .with_webhook_manager(AirtableWebhookManager)
-    .with_base_cost(1, BlockCostType.RUN)
+    .with_webhook_manager(AirtableWebhookManager).with_base_cost(1, BlockCostType.RUN)
 )
 
 

@@ -81,9 +81,7 @@ class Provider:
         json_schema_extra = {
             "credentials_provider": [self.name],
             "credentials_types": (
-                list(self.supported_auth_types)
-                if self.supported_auth_types
-                else ["not_configured"]
+                list(self.supported_auth_types) if self.supported_auth_types else []
             ),
         }
 

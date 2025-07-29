@@ -302,9 +302,7 @@ Credentials = Annotated[
 ]
 
 
-CredentialsType = Literal[
-    "api_key", "oauth2", "user_password", "host_scoped", "not_configured"
-]
+CredentialsType = Literal["api_key", "oauth2", "user_password", "host_scoped"]
 
 
 class OAuthState(BaseModel):
