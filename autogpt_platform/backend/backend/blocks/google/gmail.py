@@ -32,6 +32,7 @@ class Attachment(BaseModel):
 
 class Email(BaseModel):
     threadId: str
+    labelIds: list[str]
     id: str
     subject: str
     snippet: str
@@ -47,6 +48,16 @@ class Thread(BaseModel):
     id: str
     messages: list[Email]
     historyId: str
+
+
+class GmailSendResult(BaseModel):
+    id: str
+    status: str
+
+
+class GmailLabelResult(BaseModel):
+    label_id: str
+    status: str
 
 
 class GmailReadBlock(Block):
@@ -93,6 +104,7 @@ class GmailReadBlock(Block):
                     "email",
                     {
                         "threadId": "t1",
+                        "labelIds": ["INBOX"],
                         "id": "1",
                         "subject": "Test Email",
                         "snippet": "This is a test email",
@@ -109,6 +121,7 @@ class GmailReadBlock(Block):
                     [
                         {
                             "threadId": "t1",
+                            "labelIds": ["INBOX"],
                             "id": "1",
                             "subject": "Test Email",
                             "snippet": "This is a test email",
@@ -126,6 +139,7 @@ class GmailReadBlock(Block):
                 "_read_emails": lambda *args, **kwargs: [
                     {
                         "threadId": "t1",
+                        "labelIds": ["INBOX"],
                         "id": "1",
                         "subject": "Test Email",
                         "snippet": "This is a test email",
@@ -214,6 +228,7 @@ class GmailReadBlock(Block):
 
             email = Email(
                 threadId=msg["threadId"],
+                labelIds=msg.get("labelIds", []),
                 id=msg["id"],
                 subject=headers.get("subject", "No Subject"),
                 snippet=msg["snippet"],
@@ -347,7 +362,7 @@ class GmailSendBlock(Block):
         )
 
     class Output(BlockSchema):
-        result: dict = SchemaField(
+        result: GmailSendResult = SchemaField(
             description="Send confirmation",
         )
         error: str = SchemaField(
@@ -478,7 +493,7 @@ class GmailAddLabelBlock(Block):
         )
 
     class Output(BlockSchema):
-        result: dict = SchemaField(
+        result: GmailLabelResult = SchemaField(
             description="Label addition result",
         )
         error: str = SchemaField(
@@ -563,7 +578,7 @@ class GmailRemoveLabelBlock(Block):
         )
 
     class Output(BlockSchema):
-        result: dict = SchemaField(
+        result: GmailLabelResult = SchemaField(
             description="Label removal result",
         )
         error: str = SchemaField(
@@ -664,6 +679,7 @@ class GmailGetThreadBlock(Block):
                                 "snippet": "have a funny looking car -- Bently, Community Administrator For AutoGPT",
                                 "subject": "car",
                                 "threadId": "188199feff9dc907",
+                                "labelIds": ["INBOX"],
                                 "attachments": [
                                     {
                                         "size": 5694,
@@ -692,6 +708,7 @@ class GmailGetThreadBlock(Block):
                             "snippet": "have a funny looking car -- Bently, Community Administrator For AutoGPT",
                             "subject": "car",
                             "threadId": "188199feff9dc907",
+                            "labelIds": ["INBOX"],
                             "attachments": [
                                 {
                                     "size": 5694,
@@ -739,6 +756,7 @@ class GmailGetThreadBlock(Block):
             attachments = self._get_attachments(service, msg)
             email = Email(
                 threadId=msg.get("threadId", thread_id),
+                labelIds=msg.get("labelIds", []),
                 id=msg["id"],
                 subject=headers.get("subject", "No Subject"),
                 snippet=msg.get("snippet", ""),
