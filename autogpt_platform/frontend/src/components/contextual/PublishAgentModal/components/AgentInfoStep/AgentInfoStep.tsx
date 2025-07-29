@@ -152,7 +152,7 @@ export function AgentInfoStep({ onBack, onSubmit, initialData }: Props) {
             <Button
               type="submit"
               className="w-full"
-              disabled={!form.formState.isValid}
+              disabled={Object.keys(form.formState.errors).length > 0}
             >
               Submit for review
             </Button>

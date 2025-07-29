@@ -409,9 +409,13 @@ async def get_my_agents(
     user_id: typing.Annotated[
         str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
     ],
+    page: typing.Annotated[int, fastapi.Query(ge=1)] = 1,
+    page_size: typing.Annotated[int, fastapi.Query(ge=1)] = 20,
 ):
     try:
-        agents = await backend.server.v2.store.db.get_my_agents(user_id)
+        agents = await backend.server.v2.store.db.get_my_agents(
+            user_id, page=page, page_size=page_size
+        )
         return agents
     except Exception:
         logger.exception("Exception occurred whilst getting my agents")

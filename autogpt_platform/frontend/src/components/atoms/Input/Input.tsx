@@ -1,26 +1,19 @@
-import { Input as BaseInput } from "@/components/ui/input";
+import { Input as BaseInput, type InputProps } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { Eye, EyeSlash } from "@phosphor-icons/react";
 import { ReactNode, useState } from "react";
 import { Text } from "../Text/Text";
 import { useInput } from "./useInput";
 
-interface BaseFieldProps {
+export interface TextFieldProps extends Omit<InputProps, "size"> {
   label: string;
   id: string;
   hideLabel?: boolean;
+  decimalCount?: number; // Only used for type="amount"
   error?: string;
   hint?: ReactNode;
-  placeholder?: string;
-  className?: string;
-  disabled?: boolean;
-  value?: string;
-  onChange?: React.ChangeEventHandler<HTMLInputElement>;
-  autoComplete?: string;
-}
-
-export interface TextFieldProps extends BaseFieldProps {
-  decimalCount?: number; // Only used for type="amount"
+  size?: "small" | "medium";
+  wrapperClassName?: string;
   type?:
     | "text"
     | "email"
@@ -42,24 +35,19 @@ export function Input({
   decimalCount,
   hint,
   error,
-  type = "text",
-  rows = 3,
-  id,
-  disabled,
-  value,
-  onChange,
-  autoComplete,
-  ...rest
+  size = "medium",
+  wrapperClassName,
+  ...props
 }: TextFieldProps) {
   const { handleInputChange, handleTextareaChange } = useInput({
-    type,
+    type: props.type,
+    onChange: props.onChange,
     decimalCount,
-    onChange,
   });
   const [showPassword, setShowPassword] = useState(false);
 
-  const isPasswordType = type === "password";
-  const inputType = showPassword ? "text" : type;
+  const isPasswordType = props.type === "password";
+  const inputType = showPassword ? "text" : props.type;
 
   function handleMouseDown() {
     setShowPassword(true);
@@ -74,9 +62,9 @@ export function Input({
   }
 
   const baseStyles = cn(
-    // Override the default input styles with Figma design
-    "h-[2.875rem] rounded-3xl border border-zinc-200 bg-white px-4 py-2.5 shadow-none",
-    "font-normal text-black text-sm",
+    // Base styles
+    "rounded-3xl border border-zinc-200 bg-white px-4 shadow-none",
+    "font-normal text-black",
     "placeholder:font-normal placeholder:text-zinc-400",
     // Focus and hover states
     "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
@@ -87,21 +75,32 @@ export function Input({
     error && "!border !border-red-500 focus:border-red-500 focus:ring-red-500";
 
   const renderInput = () => {
-    if (type === "textarea") {
+    if (props.type === "textarea") {
       return (
         <textarea
           className={cn(
             baseStyles,
-            "h-auto min-h-[2.875rem] w-full py-2.5",
             errorStyles,
+            "-mb-1 h-auto min-h-[2.875rem] w-full",
+            // Size variants for textarea
+            size === "small" && [
+              "min-h-[2.25rem]", // 36px minimum
+              "py-2",
+              "text-sm leading-[22px]",
+              "placeholder:text-sm placeholder:leading-[22px]",
+            ],
+            size === "medium" && [
+              "min-h-[2.875rem]", // 46px minimum (current default)
+              "py-2.5",
+            ],
           )}
           placeholder={placeholder || label}
           onChange={handleTextareaChange}
-          rows={rows}
+          rows={props.rows || 3}
           {...(hideLabel ? { "aria-label": label } : {})}
-          id={id}
-          disabled={disabled}
-          value={value}
+          id={props.id}
+          disabled={props.disabled}
+          value={props.value}
         />
       );
     }
@@ -113,22 +112,29 @@ export function Input({
           errorStyles,
           // Add padding for password toggle button
           isPasswordType && "pr-12",
+          // Size variants
+          size === "small" && [
+            "h-[2.25rem]", // 36px
+            "py-2",
+            "text-sm leading-[22px]", // 14px font, 22px line height
+            "placeholder:text-sm placeholder:leading-[22px]",
+          ],
+          size === "medium" && [
+            "h-[2.875rem]", // 46px (current default)
+            "py-2.5",
+          ],
         )}
         placeholder={placeholder || label}
         onChange={handleInputChange}
         {...(hideLabel ? { "aria-label": label } : {})}
-        id={id}
-        disabled={disabled}
-        value={value}
+        {...props}
         type={inputType}
-        autoComplete={autoComplete}
-        {...rest}
       />
     );
   };
 
   const input = (
-    <div className="relative">
+    <div className={cn("relative", wrapperClassName)}>
       {renderInput()}
       {isPasswordType && (
         <button
@@ -146,7 +152,7 @@ export function Input({
   );
 
   const inputWithError = (
-    <div className="relative mb-6">
+    <div className={cn("relative mb-6", wrapperClassName)}>
       {input}
       <Text
         variant="small-medium"
@@ -165,7 +171,7 @@ export function Input({
   return hideLabel ? (
     inputWithError
   ) : (
-    <label htmlFor={id} className="flex flex-col gap-2">
+    <label htmlFor={props.id} className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <Text variant="body-medium" as="span" className="text-black">
           {label}

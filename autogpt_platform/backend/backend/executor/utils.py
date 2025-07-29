@@ -668,6 +668,15 @@ def create_execution_queue_config() -> RabbitMQConfig:
         routing_key=GRAPH_EXECUTION_ROUTING_KEY,
         durable=True,
         auto_delete=False,
+        arguments={
+            # x-consumer-timeout (0 = disabled)
+            # Problem: Default 30-minute consumer timeout kills long-running graph executions
+            # Original error: "Consumer acknowledgement timed out after 1800000 ms (30 minutes)"
+            # Solution: Disable consumer timeout entirely - let graphs run indefinitely
+            # Safety: Heartbeat mechanism now handles dead consumer detection instead
+            # Use case: Graph executions that take hours to complete (AI model training, etc.)
+            "x-consumer-timeout": 0,
+        },
     )
     cancel_queue = Queue(
         name=GRAPH_EXECUTION_CANCEL_QUEUE_NAME,

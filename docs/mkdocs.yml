@@ -57,7 +57,7 @@ nav:
 
   - Contribute: 
         - Introduction: contribute/index.md
-        - Testing: autogpt_platform/backend/TESTING.md
+        - Testing: ../../autogpt_platform/backend/TESTING.md
     
   # - Challenges:
   #     - Introduction: challenges/introduction.md
