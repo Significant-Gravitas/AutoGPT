@@ -11,6 +11,7 @@ from pydantic import BaseModel, SecretStr
 from backend.blocks.basic import Block
 from backend.data.model import APIKeyCredentials, Credentials
 from backend.integrations.oauth.base import BaseOAuthHandler
+from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks._base import BaseWebhooksManager
 
 if TYPE_CHECKING:
@@ -68,16 +69,12 @@ class AutoRegistry:
                     not hasattr(provider.oauth_config.oauth_handler, "PROVIDER_NAME")
                     or provider.oauth_config.oauth_handler.PROVIDER_NAME is None
                 ):
-                    # Import ProviderName to create dynamic enum value
-                    from backend.integrations.providers import ProviderName
-
                     # This works because ProviderName has _missing_ method
                     provider.oauth_config.oauth_handler.PROVIDER_NAME = ProviderName(
                         provider.name
                     )
                 cls._oauth_handlers[provider.name] = provider.oauth_config.oauth_handler
 
-                # Register OAuth credentials configuration
                 oauth_creds = SDKOAuthCredentials(
                     use_secrets=False,  # SDK providers use custom env vars
                     client_id_env_var=provider.oauth_config.client_id_env_var,
@@ -92,8 +89,6 @@ class AutoRegistry:
                     not hasattr(provider.webhook_manager, "PROVIDER_NAME")
                     or provider.webhook_manager.PROVIDER_NAME is None
                 ):
-                    # Import ProviderName to create dynamic enum value
-                    from backend.integrations.providers import ProviderName
 
                     # This works because ProviderName has _missing_ method
                     provider.webhook_manager.PROVIDER_NAME = ProviderName(provider.name)
@@ -206,9 +201,6 @@ class AutoRegistry:
                     # Add SDK-registered managers
                     sdk_managers = cls.get_webhook_managers()
                     if isinstance(sdk_managers, dict):
-                        # Import ProviderName for conversion
-                        from backend.integrations.providers import ProviderName
-
                         # Convert string keys to ProviderName for consistency
                         for provider_str, manager in sdk_managers.items():
                             provider_name = ProviderName(provider_str)

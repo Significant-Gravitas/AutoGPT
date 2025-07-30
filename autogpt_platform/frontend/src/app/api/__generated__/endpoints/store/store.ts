@@ -27,6 +27,8 @@ import type { CreatorDetails } from "../../models/creatorDetails";
 
 import type { CreatorsResponse } from "../../models/creatorsResponse";
 
+import type { GetV2GetMyAgentsParams } from "../../models/getV2GetMyAgentsParams";
+
 import type { GetV2ListMySubmissionsParams } from "../../models/getV2ListMySubmissionsParams";
 
 import type { GetV2ListStoreAgentsParams } from "../../models/getV2ListStoreAgentsParams";
@@ -1950,45 +1952,78 @@ export type getV2GetMyAgentsResponse200 = {
   status: 200;
 };
 
-export type getV2GetMyAgentsResponseComposite = getV2GetMyAgentsResponse200;
+export type getV2GetMyAgentsResponse422 = {
+  data: HTTPValidationError;
+  status: 422;
+};
+
+export type getV2GetMyAgentsResponseComposite =
+  | getV2GetMyAgentsResponse200
+  | getV2GetMyAgentsResponse422;
 
 export type getV2GetMyAgentsResponse = getV2GetMyAgentsResponseComposite & {
   headers: Headers;
 };
 
-export const getGetV2GetMyAgentsUrl = () => {
-  return `/api/store/myagents`;
+export const getGetV2GetMyAgentsUrl = (params?: GetV2GetMyAgentsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/store/myagents?${stringifiedParams}`
+    : `/api/store/myagents`;
 };
 
 export const getV2GetMyAgents = async (
+  params?: GetV2GetMyAgentsParams,
   options?: RequestInit,
 ): Promise<getV2GetMyAgentsResponse> => {
-  return customMutator<getV2GetMyAgentsResponse>(getGetV2GetMyAgentsUrl(), {
-    ...options,
-    method: "GET",
-  });
+  return customMutator<getV2GetMyAgentsResponse>(
+    getGetV2GetMyAgentsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
 };
 
-export const getGetV2GetMyAgentsQueryKey = () => {
-  return [`/api/store/myagents`] as const;
+export const getGetV2GetMyAgentsQueryKey = (
+  params?: GetV2GetMyAgentsParams,
+) => {
+  return [`/api/store/myagents`, ...(params ? [params] : [])] as const;
 };
 
 export const getGetV2GetMyAgentsQueryOptions = <
   TData = Awaited<ReturnType<typeof getV2GetMyAgents>>,
-  TError = unknown,
->(options?: {
-  query?: Partial<
-    UseQueryOptions<Awaited<ReturnType<typeof getV2GetMyAgents>>, TError, TData>
-  >;
-  request?: SecondParameter<typeof customMutator>;
-}) => {
+  TError = HTTPValidationError,
+>(
+  params?: GetV2GetMyAgentsParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2GetMyAgents>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getGetV2GetMyAgentsQueryKey();
+  const queryKey =
+    queryOptions?.queryKey ?? getGetV2GetMyAgentsQueryKey(params);
 
   const queryFn: QueryFunction<
     Awaited<ReturnType<typeof getV2GetMyAgents>>
-  > = ({ signal }) => getV2GetMyAgents({ signal, ...requestOptions });
+  > = ({ signal }) => getV2GetMyAgents(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getV2GetMyAgents>>,
@@ -2000,12 +2035,13 @@ export const getGetV2GetMyAgentsQueryOptions = <
 export type GetV2GetMyAgentsQueryResult = NonNullable<
   Awaited<ReturnType<typeof getV2GetMyAgents>>
 >;
-export type GetV2GetMyAgentsQueryError = unknown;
+export type GetV2GetMyAgentsQueryError = HTTPValidationError;
 
 export function useGetV2GetMyAgents<
   TData = Awaited<ReturnType<typeof getV2GetMyAgents>>,
-  TError = unknown,
+  TError = HTTPValidationError,
 >(
+  params: undefined | GetV2GetMyAgentsParams,
   options: {
     query: Partial<
       UseQueryOptions<
@@ -2030,8 +2066,9 @@ export function useGetV2GetMyAgents<
 };
 export function useGetV2GetMyAgents<
   TData = Awaited<ReturnType<typeof getV2GetMyAgents>>,
-  TError = unknown,
+  TError = HTTPValidationError,
 >(
+  params?: GetV2GetMyAgentsParams,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -2056,8 +2093,9 @@ export function useGetV2GetMyAgents<
 };
 export function useGetV2GetMyAgents<
   TData = Awaited<ReturnType<typeof getV2GetMyAgents>>,
-  TError = unknown,
+  TError = HTTPValidationError,
 >(
+  params?: GetV2GetMyAgentsParams,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -2078,8 +2116,9 @@ export function useGetV2GetMyAgents<
 
 export function useGetV2GetMyAgents<
   TData = Awaited<ReturnType<typeof getV2GetMyAgents>>,
-  TError = unknown,
+  TError = HTTPValidationError,
 >(
+  params?: GetV2GetMyAgentsParams,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -2094,7 +2133,7 @@ export function useGetV2GetMyAgents<
 ): UseQueryResult<TData, TError> & {
   queryKey: DataTag<QueryKey, TData, TError>;
 } {
-  const queryOptions = getGetV2GetMyAgentsQueryOptions(options);
+  const queryOptions = getGetV2GetMyAgentsQueryOptions(params, options);
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<
     TData,
@@ -2111,9 +2150,10 @@ export function useGetV2GetMyAgents<
  */
 export const prefetchGetV2GetMyAgentsQuery = async <
   TData = Awaited<ReturnType<typeof getV2GetMyAgents>>,
-  TError = unknown,
+  TError = HTTPValidationError,
 >(
   queryClient: QueryClient,
+  params?: GetV2GetMyAgentsParams,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -2125,7 +2165,7 @@ export const prefetchGetV2GetMyAgentsQuery = async <
     request?: SecondParameter<typeof customMutator>;
   },
 ): Promise<QueryClient> => {
-  const queryOptions = getGetV2GetMyAgentsQueryOptions(options);
+  const queryOptions = getGetV2GetMyAgentsQueryOptions(params, options);
 
   await queryClient.prefetchQuery(queryOptions);
 

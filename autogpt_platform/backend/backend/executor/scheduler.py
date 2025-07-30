@@ -88,7 +88,6 @@ async def _execute_graph(**kwargs):
             graph_version=args.graph_version,
             inputs=args.input_data,
             graph_credentials_inputs=args.input_credentials,
-            use_db_query=False,
         )
         logger.info(
             f"Graph execution started with ID {graph_exec.id} for graph {args.graph_id}"

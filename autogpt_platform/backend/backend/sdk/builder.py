@@ -2,18 +2,26 @@
 Builder class for creating provider configurations with a fluent API.
 """
 
+import logging
 import os
 from typing import Callable, List, Optional, Type
 
 from pydantic import SecretStr
 
 from backend.data.cost import BlockCost, BlockCostType
-from backend.data.model import APIKeyCredentials, Credentials, UserPasswordCredentials
+from backend.data.model import (
+    APIKeyCredentials,
+    Credentials,
+    CredentialsType,
+    UserPasswordCredentials,
+)
 from backend.integrations.oauth.base import BaseOAuthHandler
 from backend.integrations.webhooks._base import BaseWebhooksManager
 from backend.sdk.provider import OAuthConfig, Provider
 from backend.sdk.registry import AutoRegistry
 from backend.util.settings import Settings
+
+logger = logging.getLogger(__name__)
 
 
 class ProviderBuilder:
@@ -25,7 +33,7 @@ class ProviderBuilder:
         self._webhook_manager: Optional[Type[BaseWebhooksManager]] = None
         self._default_credentials: List[Credentials] = []
         self._base_costs: List[BlockCost] = []
-        self._supported_auth_types: set = set()
+        self._supported_auth_types: set[CredentialsType] = set()
         self._api_client_factory: Optional[Callable] = None
         self._error_handler: Optional[Callable[[Exception], str]] = None
         self._default_scopes: Optional[List[str]] = None
@@ -41,13 +49,26 @@ class ProviderBuilder:
         client_secret_env_var: Optional[str] = None,
     ) -> "ProviderBuilder":
         """Add OAuth support."""
-        self._oauth_config = OAuthConfig(
-            oauth_handler=handler_class,
-            scopes=scopes,
-            client_id_env_var=client_id_env_var,
-            client_secret_env_var=client_secret_env_var,
-        )
-        self._supported_auth_types.add("oauth2")
+        if not client_id_env_var or not client_secret_env_var:
+            client_id_env_var = f"{self.name}_client_id".upper()
+            client_secret_env_var = f"{self.name}_client_secret".upper()
+
+        if os.getenv(client_id_env_var) and os.getenv(client_secret_env_var):
+            self._client_id_env_var = client_id_env_var
+            self._client_secret_env_var = client_secret_env_var
+
+            self._oauth_config = OAuthConfig(
+                oauth_handler=handler_class,
+                scopes=scopes,
+                client_id_env_var=client_id_env_var,
+                client_secret_env_var=client_secret_env_var,
+            )
+            self._supported_auth_types.add("oauth2")
+        else:
+            logger.warning(
+                f"Provider {self.name.upper()} implements OAuth but the required env "
+                f"vars {client_id_env_var} and {client_secret_env_var} are not both set"
+            )
         return self
 
     def with_api_key(self, env_var_name: str, title: str) -> "ProviderBuilder":

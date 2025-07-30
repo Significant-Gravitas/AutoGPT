@@ -1,4 +1,5 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Callable, Coroutine
@@ -9,7 +10,7 @@ from redis.asyncio.lock import Lock as AsyncRedisLock
 from backend.data.model import Credentials, OAuth2Credentials
 from backend.data.redis_client import get_redis_async
 from backend.integrations.credentials_store import IntegrationCredentialsStore
-from backend.integrations.oauth import HANDLERS_BY_NAME
+from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import MissingConfigError
 from backend.util.settings import Settings
@@ -196,8 +197,25 @@ async def _get_provider_oauth_handler(provider_name_str: str) -> "BaseOAuthHandl
     if provider_name not in HANDLERS_BY_NAME:
         raise KeyError(f"Unknown provider '{provider_name}'")
 
-    client_id = getattr(settings.secrets, f"{provider_name.value}_client_id")
-    client_secret = getattr(settings.secrets, f"{provider_name.value}_client_secret")
+    provider_creds = CREDENTIALS_BY_PROVIDER[provider_name]
+    if not provider_creds.use_secrets:
+        # This is safe to do as we check that the env vars exist in the registry
+        client_id = (
+            os.getenv(provider_creds.client_id_env_var)
+            if provider_creds.client_id_env_var
+            else None
+        )
+        client_secret = (
+            os.getenv(provider_creds.client_secret_env_var)
+            if provider_creds.client_secret_env_var
+            else None
+        )
+    else:
+        client_id = getattr(settings.secrets, f"{provider_name.value}_client_id")
+        client_secret = getattr(
+            settings.secrets, f"{provider_name.value}_client_secret"
+        )
+
     if not (client_id and client_secret):
         raise MissingConfigError(
             f"Integration with provider '{provider_name}' is not configured",

@@ -58,7 +58,10 @@ class Slant3DWebhooksManager(BaseWebhooksManager):
 
     @classmethod
     async def validate_payload(
-        cls, webhook: integrations.Webhook, request: Request
+        cls,
+        webhook: integrations.Webhook,
+        request: Request,
+        credentials: Credentials | None,
     ) -> tuple[dict, str]:
         """Validate incoming webhook payload from Slant3D"""
 

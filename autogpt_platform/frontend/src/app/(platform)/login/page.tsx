@@ -85,16 +85,18 @@ export default function LoginPage() {
             />
 
             {/* Turnstile CAPTCHA Component */}
-            <Turnstile
-              key={captchaKey}
-              siteKey={turnstile.siteKey}
-              onVerify={turnstile.handleVerify}
-              onExpire={turnstile.handleExpire}
-              onError={turnstile.handleError}
-              setWidgetId={turnstile.setWidgetId}
-              action="login"
-              shouldRender={turnstile.shouldRender}
-            />
+            {!turnstile.verified ? (
+              <Turnstile
+                key={captchaKey}
+                siteKey={turnstile.siteKey}
+                onVerify={turnstile.handleVerify}
+                onExpire={turnstile.handleExpire}
+                onError={turnstile.handleError}
+                setWidgetId={turnstile.setWidgetId}
+                action="login"
+                shouldRender={turnstile.shouldRender}
+              />
+            ) : null}
 
             <Button
               variant="primary"

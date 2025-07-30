@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future
@@ -20,6 +21,7 @@ from backend.data.block import (
 )
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.cost import BlockCostType
+from backend.data.db import prisma
 from backend.data.execution import (
     AsyncRedisExecutionEventBus,
     ExecutionStatus,
@@ -666,6 +668,15 @@ def create_execution_queue_config() -> RabbitMQConfig:
         routing_key=GRAPH_EXECUTION_ROUTING_KEY,
         durable=True,
         auto_delete=False,
+        arguments={
+            # x-consumer-timeout (0 = disabled)
+            # Problem: Default 30-minute consumer timeout kills long-running graph executions
+            # Original error: "Consumer acknowledgement timed out after 1800000 ms (30 minutes)"
+            # Solution: Disable consumer timeout entirely - let graphs run indefinitely
+            # Safety: Heartbeat mechanism now handles dead consumer detection instead
+            # Use case: Graph executions that take hours to complete (AI model training, etc.)
+            "x-consumer-timeout": 0,
+        },
     )
     cancel_queue = Queue(
         name=GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
@@ -684,7 +695,6 @@ def create_execution_queue_config() -> RabbitMQConfig:
 async def stop_graph_execution(
     user_id: str,
     graph_exec_id: str,
-    use_db_query: bool = True,
     wait_timeout: float = 15.0,
 ):
     """
@@ -695,7 +705,7 @@ async def stop_graph_execution(
     3. Update execution statuses in DB and set `error` outputs to `"TERMINATED"`.
     """
     queue_client = await get_async_execution_queue()
-    db = execution_db if use_db_query else get_db_async_client()
+    db = execution_db if prisma.is_connected() else get_db_async_client()
     await queue_client.publish_message(
         routing_key="",
         message=CancelExecutionEvent(graph_exec_id=graph_exec_id).model_dump_json(),
@@ -782,7 +792,6 @@ async def add_graph_execution(
     graph_version: Optional[int] = None,
     graph_credentials_inputs: Optional[dict[str, CredentialsMetaInput]] = None,
     nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
-    use_db_query: bool = True,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
@@ -801,8 +810,12 @@ async def add_graph_execution(
     Raises:
         ValueError: If the graph is not found or if there are validation errors.
     """
-    gdb = graph_db if use_db_query else get_db_async_client()
-    edb = execution_db if use_db_query else get_db_async_client()
+    if prisma.is_connected():
+        gdb = graph_db
+        edb = execution_db
+    else:
+        gdb = get_db_async_client()
+        edb = get_db_async_client()
 
     graph: GraphModel | None = await gdb.get_graph(
         graph_id=graph_id,
@@ -882,12 +895,14 @@ class NodeExecutionProgress:
         self.output: dict[str, list[ExecutionOutputEntry]] = defaultdict(list)
         self.tasks: dict[str, Future] = {}
         self.on_done_task = on_done_task
+        self._lock = threading.Lock()
 
     def add_task(self, node_exec_id: str, task: Future):
         self.tasks[node_exec_id] = task
 
     def add_output(self, output: ExecutionOutputEntry):
-        self.output[output.node_exec_id].append(output)
+        with self._lock:
+            self.output[output.node_exec_id].append(output)
 
     def pop_output(self) -> ExecutionOutputEntry | None:
         exec_id = self._next_exec()
@@ -897,8 +912,9 @@ class NodeExecutionProgress:
         if self._pop_done_task(exec_id):
             return self.pop_output()
 
-        if next_output := self.output[exec_id]:
-            return next_output.pop(0)
+        with self._lock:
+            if next_output := self.output[exec_id]:
+                return next_output.pop(0)
 
         return None
 
@@ -963,8 +979,9 @@ class NodeExecutionProgress:
         if not task.done():
             return False
 
-        if self.output[exec_id]:
-            return False
+        with self._lock:
+            if self.output[exec_id]:
+                return False
 
         if task := self.tasks.pop(exec_id):
             try:
