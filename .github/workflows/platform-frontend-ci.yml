@@ -185,7 +185,7 @@ jobs:
             echo "1. Run 'pnpm generate:api-all' locally"
             echo "2. Run 'pnpm type-check' locally"
             echo "2. Fix any TypeScript errors that may have been introduced"
-            echo "3. Commit and push your changes
+            echo "3. Commit and push your changes"
             echo ""
             exit 1
           else
