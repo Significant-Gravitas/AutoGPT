@@ -134,6 +134,10 @@ class GraphExecutionMeta(BaseDbModel):
             default=None,
             description="Error message if any",
         )
+        activity_status: str | None = Field(
+            default=None,
+            description="AI-generated summary of what the agent did",
+        )
 
         def to_db(self) -> GraphExecutionStats:
             return GraphExecutionStats(
@@ -145,6 +149,7 @@ class GraphExecutionMeta(BaseDbModel):
                 node_count=self.node_exec_count,
                 node_error_count=self.node_error_count,
                 error=self.error,
+                activity_status=self.activity_status,
             )
 
     stats: Stats | None
@@ -189,6 +194,7 @@ class GraphExecutionMeta(BaseDbModel):
                         if isinstance(stats.error, Exception)
                         else stats.error
                     ),
+                    activity_status=stats.activity_status,
                 )
                 if stats
                 else None

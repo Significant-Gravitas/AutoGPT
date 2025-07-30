@@ -2,23 +2,72 @@
 Module for generating AI-based activity status for graph executions.
 """
 
-import asyncio
 import json
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
 from pydantic import SecretStr
 
 from backend.blocks.llm import LlmModel, llm_call
 from backend.data.block import get_block
-from backend.data.execution import NodeExecutionResult
+from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.data.model import APIKeyCredentials, GraphExecutionStats
 from backend.util.settings import Settings
+from backend.util.truncate import truncate
 
 if TYPE_CHECKING:
     from backend.executor import DatabaseManagerAsyncClient
 
 logger = logging.getLogger(__name__)
+
+
+class ErrorInfo(TypedDict):
+    """Type definition for error information."""
+
+    error: str
+    execution_id: str
+    timestamp: str
+
+
+class InputOutputInfo(TypedDict):
+    """Type definition for input/output information."""
+
+    execution_id: str
+    output_data: dict[str, Any]  # Used for both input and output data
+    timestamp: str
+
+
+class NodeInfo(TypedDict):
+    """Type definition for node information."""
+
+    node_id: str
+    block_id: str
+    block_name: str
+    block_description: str
+    execution_count: int
+    error_count: int
+    recent_errors: list[ErrorInfo]
+    recent_outputs: list[InputOutputInfo]
+    recent_inputs: list[InputOutputInfo]
+
+
+class NodeRelation(TypedDict):
+    """Type definition for node relation information."""
+
+    source_node_id: str
+    sink_node_id: str
+    source_name: str
+    sink_name: str
+    is_static: bool
+    source_block_name: NotRequired[str]  # Optional, only set if block exists
+    sink_block_name: NotRequired[str]  # Optional, only set if block exists
+
+
+def _truncate_uuid(uuid_str: str) -> str:
+    """Truncate UUID to first segment to reduce payload size."""
+    if not uuid_str:
+        return uuid_str
+    return uuid_str.split("-")[0] if "-" in uuid_str else uuid_str[:8]
 
 
 async def generate_activity_status_for_execution(
@@ -27,7 +76,6 @@ async def generate_activity_status_for_execution(
     graph_version: int,
     execution_stats: GraphExecutionStats,
     db_client: "DatabaseManagerAsyncClient",
-    node_execution_loop: Optional[asyncio.AbstractEventLoop] = None,
 ) -> str:
     """
     Generate an AI-based activity status summary for a graph execution.
@@ -41,13 +89,17 @@ async def generate_activity_status_for_execution(
         graph_version: The graph version
         execution_stats: Execution statistics
         db_client: Database client for fetching data
-        node_execution_loop: Event loop for async operations
 
     Returns:
         AI-generated activity status string
     """
     try:
         settings = Settings()
+
+        # Check if AI activity status generation is enabled
+        if not settings.config.execution_enable_ai_activity_status:
+            logger.debug("AI activity status generation is disabled in settings")
+            return "AI activity status generation disabled"
 
         # Check if we have OpenAI API key
         if not settings.secrets.openai_api_key:
@@ -79,33 +131,37 @@ async def generate_activity_status_for_execution(
             {
                 "role": "system",
                 "content": (
-                    "You are an AI assistant that analyzes agent execution data and provides clear, "
-                    "concise summaries of what the agent did during its execution. "
-                    "Focus on the main actions performed, the outcome, and any errors encountered. "
-                    "Keep the summary to 1-2 sentences maximum. Be specific about what was accomplished.\n\n"
-                    "IMPORTANT: Understand that errors in agent execution have different levels of impact:\n"
-                    "- Some errors are EXPECTED or MINOR (e.g., validation failures, optional operations, "
-                    "retryable network issues) and don't prevent the agent from continuing or completing its task\n"
-                    "- Some errors are CRITICAL (e.g., authentication failures, missing required data, "
-                    "system crashes) and cause the agent execution to stop or fail completely\n"
-                    "When summarizing, distinguish between these types of errors and focus more on critical "
-                    "errors that actually impacted the agent's ability to complete its intended task."
+                    "You are an AI assistant summarizing what you just did for a user in simple, friendly language. "
+                    "Write from the user's perspective about what they accomplished, NOT about technical execution details. "
+                    "Focus on the ACTUAL TASK the user wanted done, not the internal workflow steps. "
+                    "Avoid technical terms like 'workflow', 'execution', 'components', 'nodes', 'processing', etc. "
+                    "Keep it to 3 sentences maximum. Be conversational and human-friendly.\n\n"
+                    "IMPORTANT: Translate technical execution into user benefits:\n"
+                    "- Instead of 'processed data' → what was the user trying to achieve?\n"
+                    "- Instead of 'workflow completed' → what specific task was finished?\n"
+                    "- Instead of 'components functioned' → what result did the user get?\n"
+                    "Focus ONLY on critical failures that prevented the user from getting what they wanted."
                 ),
             },
             {
                 "role": "user",
                 "content": (
-                    f"Analyze this agent execution data for '{graph_name}' and provide a brief summary "
-                    f"of what the agent did and how it ended:\n\n"
+                    f"A user ran '{graph_name}' to accomplish something. Based on this execution data, "
+                    f"write what they achieved in simple, user-friendly terms:\n\n"
                     f"{json.dumps(execution_data, indent=2)}\n\n"
-                    "Provide a concise 1-2 sentence summary focusing on:\n"
-                    "1. What the agent attempted to do\n"
-                    "2. Whether it succeeded or failed overall\n"
-                    "3. Key errors that actually impacted the execution (distinguish between minor/expected "
-                    "errors vs critical errors that stopped or significantly affected the agent's performance)"
+                    "Write 1-3 sentences about what the user accomplished, such as:\n"
+                    "- 'I analyzed your resume and provided detailed feedback for the IT industry.'\n"
+                    "- 'I extracted key information from your documents and organized it into a summary.'\n"
+                    "- 'I couldn't complete the analysis due to missing API access.'\n\n"
+                    "Focus on the USER'S GOAL, not technical execution details."
                 ),
             },
         ]
+
+        # Log the prompt for debugging purposes
+        logger.debug(
+            f"Sending prompt to LLM for graph execution {graph_exec_id}: {json.dumps(prompt, indent=2)}"
+        )
 
         # Create credentials for LLM call
         credentials = APIKeyCredentials(
@@ -115,15 +171,12 @@ async def generate_activity_status_for_execution(
             title="System OpenAI",
         )
 
-        # Make LLM call - use the event loop if provided
-        if node_execution_loop:
-            activity_status = await _call_llm_async(
-                credentials, prompt, node_execution_loop
-            )
-        else:
-            activity_status = await _call_llm_direct(credentials, prompt)
+        # Make LLM call using current event loop
+        activity_status = await _call_llm_direct(credentials, prompt)
 
-        logger.info(f"Generated activity status for {graph_exec_id}: {activity_status}")
+        logger.debug(
+            f"Generated activity status for {graph_exec_id}: {activity_status}"
+        )
         return activity_status
 
     except Exception as e:
@@ -134,20 +187,26 @@ async def generate_activity_status_for_execution(
 
 
 def _build_execution_summary(
-    node_executions: List[NodeExecutionResult],
+    node_executions: list[NodeExecutionResult],
     execution_stats: GraphExecutionStats,
     graph_name: str,
     graph_description: str,
-    graph_links: List[Any],
-) -> Dict[str, Any]:
+    graph_links: list[Any],
+) -> dict[str, Any]:
     """Build a structured summary of execution data for AI analysis."""
 
-    nodes = []
-    node_execution_counts = {}  # Track execution count per node
-    node_error_counts = {}  # Track error count per node
-    input_output_data = {}
-    errors = []
-    node_map = {}  # Map node_id to node data for easy lookup
+    nodes: list[NodeInfo] = []
+    node_execution_counts: dict[str, int] = {}  # Track execution count per node
+    node_error_counts: dict[str, int] = {}  # Track error count per node
+    node_errors: dict[str, list[ErrorInfo]] = {}  # Group errors by node_id
+    node_outputs: dict[str, list[InputOutputInfo]] = (
+        {}
+    )  # Group outputs by node_id for sampling
+    node_inputs: dict[str, list[InputOutputInfo]] = (
+        {}
+    )  # Group inputs by node_id for sampling
+    input_output_data: dict[str, Any] = {}
+    node_map: dict[str, NodeInfo] = {}  # Map node_id to node data for easy lookup
 
     # Process node executions
     for node_exec in node_executions:
@@ -163,12 +222,8 @@ def _build_execution_summary(
             node_execution_counts[node_exec.node_id] = 0
         node_execution_counts[node_exec.node_id] += 1
 
-        # Track errors per node
-        if (
-            node_exec.status.value == "FAILED"
-            if hasattr(node_exec.status, "value")
-            else str(node_exec.status) == "FAILED"
-        ):
+        # Track errors per node and group them
+        if node_exec.status == ExecutionStatus.FAILED:
             if node_exec.node_id not in node_error_counts:
                 node_error_counts[node_exec.node_id] = 0
             node_error_counts[node_exec.node_id] += 1
@@ -184,22 +239,62 @@ def _build_execution_summary(
                     else:
                         error_message = str(error_output)
 
-            errors.append(
+            # Group errors by node_id
+            if node_exec.node_id not in node_errors:
+                node_errors[node_exec.node_id] = []
+
+            node_errors[node_exec.node_id].append(
                 {
-                    "node_id": node_exec.node_id,
-                    "block_name": block.name,
                     "error": error_message,
-                    "execution_id": node_exec.node_exec_id,  # Include exec ID for debugging
+                    "execution_id": _truncate_uuid(node_exec.node_exec_id),
+                    "timestamp": node_exec.add_time.isoformat(),
+                }
+            )
+
+        # Collect output samples for each node (latest executions)
+        if node_exec.output_data:
+            if node_exec.node_id not in node_outputs:
+                node_outputs[node_exec.node_id] = []
+
+            # Truncate output data to 100 chars to save space
+            truncated_output = truncate(node_exec.output_data, 100)
+
+            node_outputs[node_exec.node_id].append(
+                {
+                    "execution_id": _truncate_uuid(node_exec.node_exec_id),
+                    "output_data": truncated_output,
+                    "timestamp": node_exec.add_time.isoformat(),
+                }
+            )
+
+        # Collect input samples for each node (latest executions)
+        if node_exec.input_data:
+            if node_exec.node_id not in node_inputs:
+                node_inputs[node_exec.node_id] = []
+
+            # Truncate input data to 100 chars to save space
+            truncated_input = truncate(node_exec.input_data, 100)
+
+            node_inputs[node_exec.node_id].append(
+                {
+                    "execution_id": _truncate_uuid(node_exec.node_exec_id),
+                    "output_data": truncated_input,  # Reuse field name for consistency
+                    "timestamp": node_exec.add_time.isoformat(),
                 }
             )
 
         # Build node data (only add unique nodes)
         if node_exec.node_id not in node_map:
-            node_data = {
-                "node_id": node_exec.node_id,
-                "block_id": node_exec.block_id,
+            node_data: NodeInfo = {
+                "node_id": _truncate_uuid(node_exec.node_id),
+                "block_id": _truncate_uuid(node_exec.block_id),
                 "block_name": block.name,
                 "block_description": block.description or "",
+                "execution_count": 0,  # Will be set later
+                "error_count": 0,  # Will be set later
+                "recent_errors": [],  # Will be set later
+                "recent_outputs": [],  # Will be set later
+                "recent_inputs": [],  # Will be set later
             }
             nodes.append(node_data)
             node_map[node_exec.node_id] = node_data
@@ -215,19 +310,55 @@ def _build_execution_summary(
                     node_exec.output_data
                 )
 
-    # Add execution and error counts to node data
+    # Add execution and error counts to node data, plus limited errors and output samples
     for node in nodes:
-        node_id = node["node_id"]
-        node["execution_count"] = node_execution_counts.get(node_id, 0)
-        node["error_count"] = node_error_counts.get(node_id, 0)
+        # Use original node_id for lookups (before truncation)
+        original_node_id = None
+        for orig_id, node_data in node_map.items():
+            if node_data == node:
+                original_node_id = orig_id
+                break
+
+        if original_node_id:
+            node["execution_count"] = node_execution_counts.get(original_node_id, 0)
+            node["error_count"] = node_error_counts.get(original_node_id, 0)
+
+            # Add limited errors for this node (latest 10 or first 5 + last 5)
+            if original_node_id in node_errors:
+                node_error_list = node_errors[original_node_id]
+                if len(node_error_list) <= 10:
+                    node["recent_errors"] = node_error_list
+                else:
+                    # First 5 + last 5 if more than 10 errors
+                    node["recent_errors"] = node_error_list[:5] + node_error_list[-5:]
+
+            # Add latest output samples (latest 3)
+            if original_node_id in node_outputs:
+                node_output_list = node_outputs[original_node_id]
+                # Sort by timestamp if available, otherwise take last 3
+                if node_output_list and node_output_list[0].get("timestamp"):
+                    node_output_list.sort(
+                        key=lambda x: x.get("timestamp", ""), reverse=True
+                    )
+                node["recent_outputs"] = node_output_list[:3]
+
+            # Add latest input samples (latest 3)
+            if original_node_id in node_inputs:
+                node_input_list = node_inputs[original_node_id]
+                # Sort by timestamp if available, otherwise take last 3
+                if node_input_list and node_input_list[0].get("timestamp"):
+                    node_input_list.sort(
+                        key=lambda x: x.get("timestamp", ""), reverse=True
+                    )
+                node["recent_inputs"] = node_input_list[:3]
 
     # Build node relations from graph links
-    node_relations = []
+    node_relations: list[NodeRelation] = []
     for link in graph_links:
-        # Include link details with source and sink information
-        relation = {
-            "source_node_id": link.source_id,
-            "sink_node_id": link.sink_id,
+        # Include link details with source and sink information (truncated UUIDs)
+        relation: NodeRelation = {
+            "source_node_id": _truncate_uuid(link.source_id),
+            "sink_node_id": _truncate_uuid(link.sink_id),
             "source_name": link.source_name,
             "sink_name": link.sink_name,
             "is_static": link.is_static if hasattr(link, "is_static") else False,
@@ -247,7 +378,6 @@ def _build_execution_summary(
         "nodes": nodes,
         "node_relations": node_relations,
         "input_output_data": input_output_data,
-        "errors": errors,
         "overall_status": {
             "total_nodes_in_graph": len(nodes),
             "total_executions": execution_stats.node_count,
@@ -260,21 +390,8 @@ def _build_execution_summary(
     }
 
 
-async def _call_llm_async(
-    credentials: APIKeyCredentials,
-    prompt: List[Dict[str, str]],
-    event_loop: asyncio.AbstractEventLoop,
-) -> str:
-    """Call LLM using the provided event loop."""
-
-    future = asyncio.run_coroutine_threadsafe(
-        _call_llm_direct(credentials, prompt), event_loop
-    )
-    return future.result(timeout=10.0)
-
-
 async def _call_llm_direct(
-    credentials: APIKeyCredentials, prompt: List[Dict[str, str]]
+    credentials: APIKeyCredentials, prompt: list[dict[str, str]]
 ) -> str:
     """Make direct LLM call."""
 

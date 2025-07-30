@@ -26,9 +26,9 @@ def mock_node_executions():
             graph_id="test_graph",
             graph_version=1,
             graph_exec_id="test_exec",
-            node_exec_id="node_1",
-            node_id="input_node",
-            block_id="input_block_id",
+            node_exec_id="123e4567-e89b-12d3-a456-426614174001",
+            node_id="456e7890-e89b-12d3-a456-426614174002",
+            block_id="789e1234-e89b-12d3-a456-426614174003",
             status=ExecutionStatus.COMPLETED,
             input_data={"user_input": "Hello, world!"},
             output_data={"processed_input": ["Hello, world!"]},
@@ -42,9 +42,9 @@ def mock_node_executions():
             graph_id="test_graph",
             graph_version=1,
             graph_exec_id="test_exec",
-            node_exec_id="node_2",
-            node_id="process_node",
-            block_id="process_block_id",
+            node_exec_id="234e5678-e89b-12d3-a456-426614174004",
+            node_id="567e8901-e89b-12d3-a456-426614174005",
+            block_id="890e2345-e89b-12d3-a456-426614174006",
             status=ExecutionStatus.COMPLETED,
             input_data={"data": "Hello, world!"},
             output_data={"result": ["Processed data"]},
@@ -58,9 +58,9 @@ def mock_node_executions():
             graph_id="test_graph",
             graph_version=1,
             graph_exec_id="test_exec",
-            node_exec_id="node_3",
-            node_id="output_node",
-            block_id="output_block_id",
+            node_exec_id="345e6789-e89b-12d3-a456-426614174007",
+            node_id="678e9012-e89b-12d3-a456-426614174008",
+            block_id="901e3456-e89b-12d3-a456-426614174009",
             status=ExecutionStatus.FAILED,
             input_data={"final_data": "Processed data"},
             output_data={
@@ -105,9 +105,10 @@ def mock_blocks():
     output_block.description = "Provides output to user"
 
     return {
-        "input_block_id": input_block,
-        "process_block_id": process_block,
-        "output_block_id": output_block,
+        "789e1234-e89b-12d3-a456-426614174003": input_block,
+        "890e2345-e89b-12d3-a456-426614174006": process_block,
+        "901e3456-e89b-12d3-a456-426614174009": output_block,
+        "process_block_id": process_block,  # Keep old key for different error format test
     }
 
 
@@ -118,11 +119,11 @@ class TestBuildExecutionSummary:
         self, mock_node_executions, mock_execution_stats, mock_blocks
     ):
         """Test building summary for successful execution."""
-        # Create mock links
+        # Create mock links with realistic UUIDs
         mock_links = [
             MagicMock(
-                source_id="input_node",
-                sink_id="process_node",
+                source_id="456e7890-e89b-12d3-a456-426614174002",
+                sink_id="567e8901-e89b-12d3-a456-426614174005",
                 source_name="output",
                 sink_name="input",
                 is_static=False,
@@ -155,10 +156,14 @@ class TestBuildExecutionSummary:
             assert summary["nodes"][1]["execution_count"] == 1
             assert summary["nodes"][1]["error_count"] == 0
 
-            # Check node relations
+            # Check node relations (UUIDs are truncated to first segment)
             assert len(summary["node_relations"]) == 1
-            assert summary["node_relations"][0]["source_node_id"] == "input_node"
-            assert summary["node_relations"][0]["sink_node_id"] == "process_node"
+            assert (
+                summary["node_relations"][0]["source_node_id"] == "456e7890"
+            )  # Truncated
+            assert (
+                summary["node_relations"][0]["sink_node_id"] == "567e8901"
+            )  # Truncated
             assert (
                 summary["node_relations"][0]["source_block_name"] == "AgentInputBlock"
             )
@@ -170,9 +175,15 @@ class TestBuildExecutionSummary:
             assert summary["overall_status"]["total_errors"] == 1
             assert summary["overall_status"]["execution_time_seconds"] == 2.5
 
-            # Check input/output data
-            assert "input_node_inputs" in summary["input_output_data"]
-            assert "input_node_outputs" in summary["input_output_data"]
+            # Check input/output data (using actual node UUIDs)
+            assert (
+                "456e7890-e89b-12d3-a456-426614174002_inputs"
+                in summary["input_output_data"]
+            )
+            assert (
+                "456e7890-e89b-12d3-a456-426614174002_outputs"
+                in summary["input_output_data"]
+            )
 
     def test_build_summary_with_failed_execution(
         self, mock_node_executions, mock_execution_stats, mock_blocks
@@ -193,22 +204,24 @@ class TestBuildExecutionSummary:
                 mock_links,
             )
 
-            # Check errors
-            assert len(summary["errors"]) == 1
-            assert summary["errors"][0]["node_id"] == "output_node"
-            assert summary["errors"][0]["block_name"] == "AgentOutputBlock"
-            assert (
-                summary["errors"][0]["error"]
-                == "Connection timeout: Unable to reach external service"
-            )
-            assert "execution_id" in summary["errors"][0]  # Should include execution ID
-
-            # Check per-node error count
+            # Check that errors are now in node's recent_errors field
+            # Find the output node (with truncated UUID)
             output_node = next(
-                n for n in summary["nodes"] if n["node_id"] == "output_node"
+                n for n in summary["nodes"] if n["node_id"] == "678e9012"  # Truncated
             )
             assert output_node["error_count"] == 1
             assert output_node["execution_count"] == 1
+
+            # Check recent_errors field
+            assert "recent_errors" in output_node
+            assert len(output_node["recent_errors"]) == 1
+            assert (
+                output_node["recent_errors"][0]["error"]
+                == "Connection timeout: Unable to reach external service"
+            )
+            assert (
+                "execution_id" in output_node["recent_errors"][0]
+            )  # Should include execution ID
 
     def test_build_summary_with_missing_blocks(
         self, mock_node_executions, mock_execution_stats
@@ -229,22 +242,22 @@ class TestBuildExecutionSummary:
 
             # Should handle missing blocks gracefully
             assert len(summary["nodes"]) == 0
-            assert len(summary["errors"]) == 0
+            # No top-level errors field anymore, errors are in nodes' recent_errors
             assert summary["graph_info"]["name"] == "Missing Blocks Graph"
 
     def test_build_summary_with_different_error_formats(
         self, mock_execution_stats, mock_blocks
     ):
         """Test building summary with different error formats."""
-        # Create node executions with different error formats
+        # Create node executions with different error formats and realistic UUIDs
         mock_executions = [
             NodeExecutionResult(
                 user_id="test_user",
                 graph_id="test_graph",
                 graph_version=1,
                 graph_exec_id="test_exec",
-                node_exec_id="node_1",
-                node_id="node_string_error",
+                node_exec_id="111e2222-e89b-12d3-a456-426614174010",
+                node_id="333e4444-e89b-12d3-a456-426614174011",
                 block_id="process_block_id",
                 status=ExecutionStatus.FAILED,
                 input_data={},
@@ -259,8 +272,8 @@ class TestBuildExecutionSummary:
                 graph_id="test_graph",
                 graph_version=1,
                 graph_exec_id="test_exec",
-                node_exec_id="node_2",
-                node_id="node_no_error_output",
+                node_exec_id="555e6666-e89b-12d3-a456-426614174012",
+                node_id="777e8888-e89b-12d3-a456-426614174013",
                 block_id="process_block_id",
                 status=ExecutionStatus.FAILED,
                 input_data={},
@@ -285,20 +298,26 @@ class TestBuildExecutionSummary:
                 [],
             )
 
-            # Check different error formats
-            assert len(summary["errors"]) == 2
+            # Check different error formats - errors are now in nodes' recent_errors
+            error_nodes = [n for n in summary["nodes"] if n.get("recent_errors")]
+            assert len(error_nodes) == 2
 
-            # String error format
-            string_error = next(
-                e for e in summary["errors"] if e["node_id"] == "node_string_error"
+            # String error format - find node with truncated ID
+            string_error_node = next(
+                n for n in summary["nodes"] if n["node_id"] == "333e4444"  # Truncated
             )
-            assert string_error["error"] == "Simple string error message"
+            assert len(string_error_node["recent_errors"]) == 1
+            assert (
+                string_error_node["recent_errors"][0]["error"]
+                == "Simple string error message"
+            )
 
-            # No error output format
-            no_error_output = next(
-                e for e in summary["errors"] if e["node_id"] == "node_no_error_output"
+            # No error output format - find node with truncated ID
+            no_error_node = next(
+                n for n in summary["nodes"] if n["node_id"] == "777e8888"  # Truncated
             )
-            assert no_error_output["error"] == "Unknown error"
+            assert len(no_error_node["recent_errors"]) == 1
+            assert no_error_node["recent_errors"][0]["error"] == "Unknown error"
 
 
 class TestLLMCall:
@@ -397,8 +416,11 @@ class TestGenerateActivityStatusForExecution:
         ) as mock_llm:
 
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
+            mock_settings.return_value.config.execution_enable_ai_activity_status = True
             mock_settings.return_value.secrets.openai_api_key = "test_key"
-            mock_llm.return_value = "Agent processed input and encountered an error during output generation."
+            mock_llm.return_value = (
+                "I analyzed your data and provided the requested insights."
+            )
 
             result = await generate_activity_status_for_execution(
                 graph_exec_id="test_exec",
@@ -408,14 +430,34 @@ class TestGenerateActivityStatusForExecution:
                 db_client=mock_db_client,
             )
 
-            assert (
-                result
-                == "Agent processed input and encountered an error during output generation."
-            )
+            assert result == "I analyzed your data and provided the requested insights."
             mock_db_client.get_node_executions.assert_called_once()
             mock_db_client.get_graph_metadata.assert_called_once()
             mock_db_client.get_graph.assert_called_once()
             mock_llm.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_generate_status_feature_disabled(self, mock_execution_stats):
+        """Test activity status generation when feature is disabled."""
+        mock_db_client = AsyncMock()
+
+        with patch(
+            "backend.executor.activity_status_generator.Settings"
+        ) as mock_settings:
+            mock_settings.return_value.config.execution_enable_ai_activity_status = (
+                False
+            )
+
+            result = await generate_activity_status_for_execution(
+                graph_exec_id="test_exec",
+                graph_id="test_graph",
+                graph_version=1,
+                execution_stats=mock_execution_stats,
+                db_client=mock_db_client,
+            )
+
+            assert result == "AI activity status generation disabled"
+            mock_db_client.get_node_executions.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_generate_status_no_api_key(self, mock_execution_stats):
@@ -447,6 +489,7 @@ class TestGenerateActivityStatusForExecution:
         with patch(
             "backend.executor.activity_status_generator.Settings"
         ) as mock_settings:
+            mock_settings.return_value.config.execution_enable_ai_activity_status = True
             mock_settings.return_value.secrets.openai_api_key = "test_key"
 
             result = await generate_activity_status_for_execution(
@@ -479,6 +522,7 @@ class TestGenerateActivityStatusForExecution:
         ) as mock_llm:
 
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
+            mock_settings.return_value.config.execution_enable_ai_activity_status = True
             mock_settings.return_value.secrets.openai_api_key = "test_key"
             mock_llm.return_value = "Agent completed execution."
 
@@ -516,7 +560,7 @@ class TestIntegration:
         mock_graph.links = []
         mock_db_client.get_graph.return_value = mock_graph
 
-        expected_activity = "Agent processed user input but failed during final output generation due to system error."
+        expected_activity = "I processed user input but failed during final output generation due to system error."
 
         with patch(
             "backend.executor.activity_status_generator.get_block"
@@ -527,6 +571,7 @@ class TestIntegration:
         ) as mock_llm_call:
 
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
+            mock_settings.return_value.config.execution_enable_ai_activity_status = True
             mock_settings.return_value.secrets.openai_api_key = "test_key"
 
             mock_response = LLMResponse(
@@ -555,12 +600,12 @@ class TestIntegration:
 
             # Check system prompt
             assert prompt[0]["role"] == "system"
-            assert "analyzes agent execution data" in prompt[0]["content"]
+            assert "user's perspective" in prompt[0]["content"]
 
             # Check user prompt contains expected data
             user_content = prompt[1]["content"]
             assert "Test Integration Agent" in user_content
-            assert "analyze this agent execution data" in user_content.lower()
+            assert "user-friendly terms" in user_content.lower()
 
             # Verify that execution data is present in the prompt
             assert "{" in user_content  # Should contain JSON data

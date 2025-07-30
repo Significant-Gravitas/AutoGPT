@@ -15,9 +15,19 @@ import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import ActionButtonGroup from "@/components/agptui/action-button-group";
 import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { IconRefresh, IconSquare } from "@/components/ui/icons";
+import {
+  IconRefresh,
+  IconSquare,
+  IconCircleAlert,
+} from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import LoadingBox from "@/components/ui/loading";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
 
 import {
@@ -209,47 +219,100 @@ export default function AgentRunDetailsView({
   );
 
   return (
-    <div className="agpt-div flex gap-6">
-      <div className="flex flex-1 flex-col gap-4">
-        <Card className="agpt-box">
-          <CardHeader>
-            <CardTitle className="font-poppins text-lg">Info</CardTitle>
-          </CardHeader>
-
-          <CardContent>
-            <div className="flex justify-stretch gap-4">
-              {infoStats.map(({ label, value }) => (
-                <div key={label} className="flex-1">
-                  <p className="text-sm font-medium text-black">{label}</p>
-                  <p className="text-sm text-neutral-600">{value}</p>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {agentRunOutputs !== null && (
+    <TooltipProvider>
+      <div className="agpt-div flex gap-6">
+        <div className="flex flex-1 flex-col gap-4">
           <Card className="agpt-box">
             <CardHeader>
-              <CardTitle className="font-poppins text-lg">Output</CardTitle>
+              <CardTitle className="font-poppins text-lg">Info</CardTitle>
+            </CardHeader>
+
+            <CardContent>
+              <div className="flex justify-stretch gap-4">
+                {infoStats.map(({ label, value }) => (
+                  <div key={label} className="flex-1">
+                    <p className="text-sm font-medium text-black">{label}</p>
+                    <p className="text-sm text-neutral-600">{value}</p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Smart Agent Execution Summary */}
+          {run.stats?.activity_status && (
+            <Card className="agpt-box">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 font-poppins text-lg">
+                  Smart Agent Execution Summary
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <IconCircleAlert className="size-4 cursor-help text-neutral-500 hover:text-neutral-700" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs">
+                        This is an AI-generated summary and may not be
+                        completely accurate. It provides a conversational
+                        overview of what the agent accomplished during
+                        execution.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm leading-relaxed text-neutral-700">
+                  {run.stats.activity_status}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {agentRunOutputs !== null && (
+            <Card className="agpt-box">
+              <CardHeader>
+                <CardTitle className="font-poppins text-lg">Output</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                {agentRunOutputs !== undefined ? (
+                  Object.entries(agentRunOutputs).map(
+                    ([key, { title, values }]) => (
+                      <div key={key} className="flex flex-col gap-1.5">
+                        <label className="text-sm font-medium">
+                          {title || key}
+                        </label>
+                        {values.map((value, i) => (
+                          <p
+                            className="resize-none overflow-x-auto whitespace-pre-wrap break-words border-none text-sm text-neutral-700 disabled:cursor-not-allowed"
+                            key={i}
+                          >
+                            {value}
+                          </p>
+                        ))}
+                        {/* TODO: pretty type-dependent rendering */}
+                      </div>
+                    ),
+                  )
+                ) : (
+                  <LoadingBox spinnerSize={12} className="h-24" />
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          <Card className="agpt-box">
+            <CardHeader>
+              <CardTitle className="font-poppins text-lg">Input</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
-              {agentRunOutputs !== undefined ? (
-                Object.entries(agentRunOutputs).map(
-                  ([key, { title, values }]) => (
+              {agentRunInputs !== undefined ? (
+                Object.entries(agentRunInputs).map(
+                  ([key, { title, value }]) => (
                     <div key={key} className="flex flex-col gap-1.5">
                       <label className="text-sm font-medium">
                         {title || key}
                       </label>
-                      {values.map((value, i) => (
-                        <p
-                          className="resize-none overflow-x-auto whitespace-pre-wrap break-words border-none text-sm text-neutral-700 disabled:cursor-not-allowed"
-                          key={i}
-                        >
-                          {value}
-                        </p>
-                      ))}
-                      {/* TODO: pretty type-dependent rendering */}
+                      <Input value={value} className="rounded-full" disabled />
                     </div>
                   ),
                 )
@@ -258,35 +321,17 @@ export default function AgentRunDetailsView({
               )}
             </CardContent>
           </Card>
-        )}
-
-        <Card className="agpt-box">
-          <CardHeader>
-            <CardTitle className="font-poppins text-lg">Input</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            {agentRunInputs !== undefined ? (
-              Object.entries(agentRunInputs).map(([key, { title, value }]) => (
-                <div key={key} className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium">{title || key}</label>
-                  <Input value={value} className="rounded-full" disabled />
-                </div>
-              ))
-            ) : (
-              <LoadingBox spinnerSize={12} className="h-24" />
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Run / Agent Actions */}
-      <aside className="w-48 xl:w-56">
-        <div className="flex flex-col gap-8">
-          <ActionButtonGroup title="Run actions" actions={runActions} />
-
-          <ActionButtonGroup title="Agent actions" actions={agentActions} />
         </div>
-      </aside>
-    </div>
+
+        {/* Run / Agent Actions */}
+        <aside className="w-48 xl:w-56">
+          <div className="flex flex-col gap-8">
+            <ActionButtonGroup title="Run actions" actions={runActions} />
+
+            <ActionButtonGroup title="Agent actions" actions={agentActions} />
+          </div>
+        </aside>
+      </div>
+    </TooltipProvider>
   );
 }
