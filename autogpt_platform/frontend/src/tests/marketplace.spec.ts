@@ -8,10 +8,10 @@ test.describe("Marketplace – Basic Functionality", () => {
   test("User can access marketplace page when logged out", async ({ page }) => {
     const marketplacePage = new MarketplacePage(page);
 
-    await marketplacePage.goto();
+    await marketplacePage.goto(page);
     await hasUrl(page, "/marketplace");
 
-    const marketplaceTitle = await marketplacePage.getMarketplaceTitle();
+    const marketplaceTitle = await marketplacePage.getMarketplaceTitle(page);
     await isVisible(marketplaceTitle);
   });
 
@@ -23,10 +23,10 @@ test.describe("Marketplace – Basic Functionality", () => {
     await loginPage.login(TEST_CREDENTIALS.email, TEST_CREDENTIALS.password);
     await hasUrl(page, "/marketplace");
 
-    await marketplacePage.goto();
+    await marketplacePage.goto(page);
     await hasUrl(page, "/marketplace");
 
-    const marketplaceTitle = await marketplacePage.getMarketplaceTitle();
+    const marketplaceTitle = await marketplacePage.getMarketplaceTitle(page);
     await isVisible(marketplaceTitle);
   });
 
@@ -34,23 +34,23 @@ test.describe("Marketplace – Basic Functionality", () => {
     page,
   }) => {
     const marketplacePage = new MarketplacePage(page);
-    await marketplacePage.goto();
+    await marketplacePage.goto(page);
 
     const featuredAgentsSection =
-      await marketplacePage.getFeaturedAgentsSection();
+      await marketplacePage.getFeaturedAgentsSection(page);
     await isVisible(featuredAgentsSection);
-    const featuredAgentCards = await marketplacePage.getFeaturedAgentCards();
+    const featuredAgentCards = await marketplacePage.getFeaturedAgentCards(page);
     await hasMinCount(featuredAgentCards, 1);
 
-    const topAgentsSection = await marketplacePage.getTopAgentsSection();
+    const topAgentsSection = await marketplacePage.getTopAgentsSection(page);
     await isVisible(topAgentsSection);
-    const topAgentCards = await marketplacePage.getTopAgentCards();
+    const topAgentCards = await marketplacePage.getTopAgentCards(page);
     await hasMinCount(topAgentCards, 1);
 
     const featuredCreatorsSection =
-      await marketplacePage.getFeaturedCreatorsSection();
+      await marketplacePage.getFeaturedCreatorsSection(page);
     await isVisible(featuredCreatorsSection);
-    const creatorProfiles = await marketplacePage.getCreatorProfiles();
+    const creatorProfiles = await marketplacePage.getCreatorProfiles(page);
     await hasMinCount(creatorProfiles, 1);
   });
 
@@ -58,22 +58,22 @@ test.describe("Marketplace – Basic Functionality", () => {
     page,
   }) => {
     const marketplacePage = new MarketplacePage(page);
-    await marketplacePage.goto();
+    await marketplacePage.goto(page);
 
-    const firstFeaturedAgent = await marketplacePage.getFirstFeaturedAgent();
+    const firstFeaturedAgent = await marketplacePage.getFirstFeaturedAgent(page);
     await firstFeaturedAgent.waitFor({ state: "visible" });
     await firstFeaturedAgent.click();
     await page.waitForURL("**/marketplace/agent/**");
     await matchesUrl(page, /\/marketplace\/agent\/.+/);
-    await marketplacePage.goto();
+    await marketplacePage.goto(page);
 
-    const firstTopAgent = await marketplacePage.getFirstTopAgent();
+    const firstTopAgent = await marketplacePage.getFirstTopAgent(page);
     await firstTopAgent.click();
     await page.waitForURL("**/marketplace/agent/**");
     await matchesUrl(page, /\/marketplace\/agent\/.+/);
-    await marketplacePage.goto();
+    await marketplacePage.goto(page);
 
-    const firstCreatorProfile = await marketplacePage.getFirstCreatorProfile();
+    const firstCreatorProfile = await marketplacePage.getFirstCreatorProfile(page);
     await firstCreatorProfile.click();
     await page.waitForURL("**/marketplace/creator/**");
     await matchesUrl(page, /\/marketplace\/creator\/.+/);
@@ -81,9 +81,9 @@ test.describe("Marketplace – Basic Functionality", () => {
 
   test("Complete search flow works correctly", async ({ page }) => {
     const marketplacePage = new MarketplacePage(page);
-    await marketplacePage.goto();
+    await marketplacePage.goto(page);
 
-    await marketplacePage.searchAndNavigate("Agents");
+    await marketplacePage.searchAndNavigate("Agents", page);
 
     await marketplacePage.waitForSearchResults();
 
@@ -95,7 +95,7 @@ test.describe("Marketplace – Basic Functionality", () => {
     const searchTerm = page.getByText("Agents").first();
     await isVisible(searchTerm);
 
-    const results = await marketplacePage.getSearchResultsCount();
+    const results = await marketplacePage.getSearchResultsCount(page);
     expect(results).toBeGreaterThan(0);
   });
 
@@ -105,9 +105,9 @@ test.describe("Marketplace – Basic Functionality", () => {
 test.describe("Marketplace – Edge Cases", () => {
   test("Search for non-existent item shows no results", async ({ page }) => {
     const marketplacePage = new MarketplacePage(page);
-    await marketplacePage.goto();
+    await marketplacePage.goto(page);
 
-    await marketplacePage.searchAndNavigate("xyznonexistentitemxyz123");
+    await marketplacePage.searchAndNavigate("xyznonexistentitemxyz123", page);
 
     await marketplacePage.waitForSearchResults();
 
@@ -119,7 +119,7 @@ test.describe("Marketplace – Edge Cases", () => {
     const searchTerm = page.getByText("xyznonexistentitemxyz123");
     await isVisible(searchTerm);
 
-    const results = await marketplacePage.getSearchResultsCount();
+    const results = await marketplacePage.getSearchResultsCount(page);
     expect(results).toBe(0);
   });
 });

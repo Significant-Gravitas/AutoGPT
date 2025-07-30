@@ -7,98 +7,98 @@ export class MarketplacePage extends BasePage {
     super(page);
   }
 
-  async goto() {
-    await this.page.goto("/marketplace");
+  async goto(page: Page) {
+    await page.goto("/marketplace");
   }
 
-  async getMarketplaceTitle() {
-    const { getText } = getSelectors(this.page);
+  async getMarketplaceTitle(page: Page) {
+    const { getText } = getSelectors(page);
     return getText("Explore AI agents", { exact: false });
   }
 
-  async getCreatorsSection() {
-    const { getId, getText } = getSelectors(this.page);
+  async getCreatorsSection(page: Page) {
+    const { getId, getText } = getSelectors(page);
     return getId("creators-section") || getText("Creators", { exact: false });
   }
 
-  async getAgentsSection() {
-    const { getId, getText } = getSelectors(this.page);
+  async getAgentsSection(page: Page) {
+    const { getId, getText } = getSelectors(page);
     return getId("agents-section") || getText("Agents", { exact: false });
   }
 
-  async getCreatorsLink() {
-    const { getLink } = getSelectors(this.page);
+  async getCreatorsLink(page: Page) {
+    const { getLink } = getSelectors(page);
     return getLink(/creators/i);
   }
 
-  async getAgentsLink() {
-    const { getLink } = getSelectors(this.page);
+  async getAgentsLink(page: Page) {
+    const { getLink } = getSelectors(page);
     return getLink(/agents/i);
   }
 
-  async getSearchInput() {
-    const { getField, getId } = getSelectors(this.page);
+  async getSearchInput(page: Page) {
+    const { getField, getId } = getSelectors(page);
     return getId("store-search-input") || getField(/search/i);
   }
 
-  async getFilterDropdown() {
-    const { getId, getButton } = getSelectors(this.page);
+  async getFilterDropdown(page: Page) {
+    const { getId, getButton } = getSelectors(page);
     return getId("filter-dropdown") || getButton(/filter/i);
   }
 
-  async searchFor(query: string) {
-    const searchInput = await this.getSearchInput();
+  async searchFor(query: string, page: Page) {
+    const searchInput = await this.getSearchInput(page);
     await searchInput.fill(query);
     await searchInput.press("Enter");
   }
 
-  async clickCreators() {
-    const creatorsLink = await this.getCreatorsLink();
+  async clickCreators(page: Page) {
+    const creatorsLink = await this.getCreatorsLink(page);
     await creatorsLink.click();
   }
 
-  async clickAgents() {
-    const agentsLink = await this.getAgentsLink();
+  async clickAgents(page: Page) {
+    const agentsLink = await this.getAgentsLink(page);
     await agentsLink.click();
   }
 
-  async openFilter() {
-    const filterDropdown = await this.getFilterDropdown();
+  async openFilter(page: Page) {
+    const filterDropdown = await this.getFilterDropdown(page);
     await filterDropdown.click();
   }
 
-  async getFeaturedAgentsSection() {
-    const { getText } = getSelectors(this.page);
+  async getFeaturedAgentsSection(page: Page) {
+    const { getText } = getSelectors(page);
     return getText("Featured agents");
   }
 
-  async getTopAgentsSection() {
-    const { getText } = getSelectors(this.page);
+  async getTopAgentsSection(page: Page) {
+    const { getText } = getSelectors(page);
     return getText("Top Agents");
   }
 
-  async getFeaturedCreatorsSection() {
-    const { getText } = getSelectors(this.page);
+  async getFeaturedCreatorsSection(page: Page) {
+    const { getText } = getSelectors(page);
     return getText("Featured Creators");
   }
 
-  async getFeaturedAgentCards() {
-    const { getId } = getSelectors(this.page);
+  async getFeaturedAgentCards(page: Page) {
+    const { getId } = getSelectors(page);
     return getId("featured-store-card");
   }
 
-  async getTopAgentCards() {
-    const { getId } = getSelectors(this.page);
+  async getTopAgentCards(page: Page) {
+    const { getId } = getSelectors(page);
     return getId("store-card");
   }
 
-  async getCreatorProfiles() {
-    const { getId } = getSelectors(this.page);
+  async getCreatorProfiles(page: Page) {
+    const { getId } = getSelectors(page);
     return getId("creator-card");
   }
 
-  async searchAndNavigate(query: string) {
-    const searchInput = await this.getSearchInput();
+  async searchAndNavigate(query: string, page: Page) {
+    const searchInput = await this.getSearchInput(page);
     await searchInput.fill(query);
     await searchInput.press("Enter");
   }
@@ -107,8 +107,8 @@ export class MarketplacePage extends BasePage {
     await this.page.waitForURL("**/marketplace/search**");
   }
 
-  async getFirstFeaturedAgent() {
-    const { getId } = getSelectors(this.page);
+  async getFirstFeaturedAgent(page: Page) {
+    const { getId } = getSelectors(page);
     return getId("featured-store-card").first();
   }
 
@@ -116,13 +116,13 @@ export class MarketplacePage extends BasePage {
     return this.page.locator('[data-testid="store-card"]:visible').first();
   }
 
-  async getFirstCreatorProfile() {
-    const { getId } = getSelectors(this.page);
+  async getFirstCreatorProfile(page: Page) {
+    const { getId } = getSelectors(page);
     return getId("creator-card").first();
   }
 
-  async getSearchResultsCount() {
-    const { getId } = getSelectors(this.page);
+  async getSearchResultsCount(page: Page) {
+    const { getId } = getSelectors(page);
     const allFilterCount = getId("search-filter-chip-all-count");
     return Number(await allFilterCount.textContent());
   }
