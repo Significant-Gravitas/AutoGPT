@@ -23,6 +23,11 @@ from ._auth import (
 )
 
 
+def parse_email_recipients(recipients: list[str]) -> str:
+    """Convert recipients list to comma-separated string."""
+    return ", ".join(recipients)
+
+
 class Attachment(BaseModel):
     filename: str
     content_type: str
@@ -37,7 +42,9 @@ class Email(BaseModel):
     subject: str
     snippet: str
     from_: str
-    to: str
+    to: list[str]  # List of recipient email addresses
+    cc: list[str] = []  # CC recipients
+    bcc: list[str] = []  # BCC recipients (rarely available in received emails)
     date: str
     body: str = ""  # Default to an empty string
     sizeEstimate: int
@@ -122,7 +129,9 @@ class GmailReadBlock(Block):
                         "subject": "Test Email",
                         "snippet": "This is a test email",
                         "from_": "test@example.com",
-                        "to": "recipient@example.com",
+                        "to": ["recipient@example.com"],
+                        "cc": [],
+                        "bcc": [],
                         "date": "2024-01-01",
                         "body": "This is a test email",
                         "sizeEstimate": 100,
@@ -139,7 +148,9 @@ class GmailReadBlock(Block):
                             "subject": "Test Email",
                             "snippet": "This is a test email",
                             "from_": "test@example.com",
-                            "to": "recipient@example.com",
+                            "to": ["recipient@example.com"],
+                            "cc": [],
+                            "bcc": [],
                             "date": "2024-01-01",
                             "body": "This is a test email",
                             "sizeEstimate": 100,
@@ -157,7 +168,9 @@ class GmailReadBlock(Block):
                         "subject": "Test Email",
                         "snippet": "This is a test email",
                         "from_": "test@example.com",
-                        "to": "recipient@example.com",
+                        "to": ["recipient@example.com"],
+                        "cc": [],
+                        "bcc": [],
                         "date": "2024-01-01",
                         "body": "This is a test email",
                         "sizeEstimate": 100,
@@ -239,6 +252,17 @@ class GmailReadBlock(Block):
 
             attachments = self._get_attachments(service, msg)
 
+            # Parse all recipients
+            to_recipients = [
+                addr.strip() for _, addr in getaddresses([headers.get("to", "")])
+            ]
+            cc_recipients = [
+                addr.strip() for _, addr in getaddresses([headers.get("cc", "")])
+            ]
+            bcc_recipients = [
+                addr.strip() for _, addr in getaddresses([headers.get("bcc", "")])
+            ]
+
             email = Email(
                 threadId=msg["threadId"],
                 labelIds=msg.get("labelIds", []),
@@ -246,7 +270,9 @@ class GmailReadBlock(Block):
                 subject=headers.get("subject", "No Subject"),
                 snippet=msg["snippet"],
                 from_=parseaddr(headers.get("from", ""))[1],
-                to=parseaddr(headers.get("to", ""))[1],
+                to=to_recipients if to_recipients else [],
+                cc=cc_recipients,
+                bcc=bcc_recipients,
                 date=headers.get("date", ""),
                 body=self._get_email_body(msg, service),
                 sizeEstimate=msg["sizeEstimate"],
@@ -364,8 +390,8 @@ class GmailSendBlock(Block):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/gmail.send"]
         )
-        to: str = SchemaField(
-            description="Recipient email address",
+        to: list[str] = SchemaField(
+            description="Recipient email addresses",
         )
         subject: str = SchemaField(
             description="Email subject",
@@ -396,7 +422,7 @@ class GmailSendBlock(Block):
             output_schema=GmailSendBlock.Output,
             disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
             test_input={
-                "to": "recipient@example.com",
+                "to": ["recipient@example.com"],
                 "subject": "Test Email",
                 "body": "This is a test email sent from GmailSendBlock.",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -432,8 +458,15 @@ class GmailSendBlock(Block):
     def _send_email(
         self, service, input_data: Input, graph_exec_id: str, user_id: str
     ) -> dict:
-        if not input_data.to or not input_data.subject or not input_data.body:
-            raise ValueError("To, subject, and body are required for sending an email")
+        if (
+            not input_data.to
+            or len(input_data.to) == 0
+            or not input_data.subject
+            or not input_data.body
+        ):
+            raise ValueError(
+                "At least one recipient, subject, and body are required for sending an email"
+            )
         message = self._create_message(input_data, graph_exec_id, user_id)
         sent_message = (
             service.users().messages().send(userId="me", body=message).execute()
@@ -449,7 +482,8 @@ class GmailSendBlock(Block):
         from email.mime.text import MIMEText
 
         message = MIMEMultipart()
-        message["to"] = input_data.to
+        # Handle both string and list for 'to' field, including JSON strings
+        message["to"] = parse_email_recipients(input_data.to)
         message["subject"] = input_data.subject
 
         if input_data.cc:
@@ -497,8 +531,8 @@ class GmailCreateDraftBlock(Block):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/gmail.modify"]
         )
-        to: str = SchemaField(
-            description="Recipient email address",
+        to: list[str] = SchemaField(
+            description="Recipient email addresses",
         )
         subject: str = SchemaField(
             description="Email subject",
@@ -529,7 +563,7 @@ class GmailCreateDraftBlock(Block):
             output_schema=GmailCreateDraftBlock.Output,
             disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
             test_input={
-                "to": "recipient@example.com",
+                "to": ["recipient@example.com"],
                 "subject": "Draft Test Email",
                 "body": "This is a test draft email.",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -573,8 +607,10 @@ class GmailCreateDraftBlock(Block):
     def _create_draft(
         self, service, input_data: Input, graph_exec_id: str, user_id: str
     ) -> dict:
-        if not input_data.to or not input_data.subject:
-            raise ValueError("To and subject are required for creating a draft")
+        if not input_data.to or len(input_data.to) == 0 or not input_data.subject:
+            raise ValueError(
+                "At least one recipient and subject are required for creating a draft"
+            )
 
         from email import encoders
         from email.mime.base import MIMEBase
@@ -582,7 +618,8 @@ class GmailCreateDraftBlock(Block):
         from email.mime.text import MIMEText
 
         message = MIMEMultipart()
-        message["to"] = input_data.to
+        # Handle both string and list for 'to' field, including JSON strings
+        message["to"] = parse_email_recipients(input_data.to)
         message["subject"] = input_data.subject
 
         if input_data.cc:
@@ -880,7 +917,9 @@ class GmailGetThreadBlock(Block):
                         "messages": [
                             {
                                 "id": "188199feff9dc907",
-                                "to": "nick@example.co",
+                                "to": ["nick@example.co"],
+                                "cc": [],
+                                "bcc": [],
                                 "body": "This email does not contain a text body.",
                                 "date": "Thu, 17 Jul 2025 19:22:36 +0100",
                                 "from_": "bent@example.co",
@@ -909,7 +948,9 @@ class GmailGetThreadBlock(Block):
                     "messages": [
                         {
                             "id": "188199feff9dc907",
-                            "to": "nick@example.co",
+                            "to": ["nick@example.co"],
+                            "cc": [],
+                            "bcc": [],
                             "body": "This email does not contain a text body.",
                             "date": "Thu, 17 Jul 2025 19:22:36 +0100",
                             "from_": "bent@example.co",
@@ -960,8 +1001,20 @@ class GmailGetThreadBlock(Block):
                 h["name"].lower(): h["value"]
                 for h in msg.get("payload", {}).get("headers", [])
             }
-            body = self._get_email_body(msg)
+            body = self._get_email_body(msg, service)
             attachments = self._get_attachments(service, msg)
+
+            # Parse all recipients
+            to_recipients = [
+                addr.strip() for _, addr in getaddresses([headers.get("to", "")])
+            ]
+            cc_recipients = [
+                addr.strip() for _, addr in getaddresses([headers.get("cc", "")])
+            ]
+            bcc_recipients = [
+                addr.strip() for _, addr in getaddresses([headers.get("bcc", "")])
+            ]
+
             email = Email(
                 threadId=msg.get("threadId", thread_id),
                 labelIds=msg.get("labelIds", []),
@@ -969,7 +1022,9 @@ class GmailGetThreadBlock(Block):
                 subject=headers.get("subject", "No Subject"),
                 snippet=msg.get("snippet", ""),
                 from_=parseaddr(headers.get("from", ""))[1],
-                to=parseaddr(headers.get("to", ""))[1],
+                to=to_recipients if to_recipients else [],
+                cc=cc_recipients,
+                bcc=bcc_recipients,
                 date=headers.get("date", ""),
                 body=body,
                 sizeEstimate=msg.get("sizeEstimate", 0),
@@ -980,24 +1035,81 @@ class GmailGetThreadBlock(Block):
         thread["messages"] = parsed_messages
         return thread
 
-    def _get_email_body(self, msg):
-        payload = msg.get("payload")
-        if not payload:
-            return "This email does not contain a text body."
+    def _get_email_body(self, msg, service):
+        """Extract email body content with support for multipart messages and HTML conversion."""
+        text = self._walk_for_body(msg["payload"], msg["id"], service)
+        return text or "This email does not contain a readable body."
 
-        if "parts" in payload:
-            for part in payload["parts"]:
-                if part.get("mimeType") == "text/plain" and "data" in part.get(
-                    "body", {}
-                ):
-                    return base64.urlsafe_b64decode(part["body"]["data"]).decode(
-                        "utf-8"
-                    )
-        elif payload.get("mimeType") == "text/plain" and "data" in payload.get(
-            "body", {}
-        ):
-            return base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8")
-        return "This email does not contain a text body."
+    def _walk_for_body(self, part, msg_id, service, depth=0):
+        """Recursively walk through email parts to find readable body content."""
+        # Prevent infinite recursion by limiting depth
+        if depth > 10:
+            return None
+
+        mime_type = part.get("mimeType", "")
+        body = part.get("body", {})
+
+        # Handle text/plain content
+        if mime_type == "text/plain" and body.get("data"):
+            return self._decode_base64(body["data"])
+
+        # Handle text/html content (convert to plain text)
+        if mime_type == "text/html" and body.get("data"):
+            html_content = self._decode_base64(body["data"])
+            if html_content:
+                try:
+                    import html2text
+
+                    h = html2text.HTML2Text()
+                    h.ignore_links = False
+                    h.ignore_images = True
+                    return h.handle(html_content)
+                except ImportError:
+                    # Fallback: return raw HTML if html2text is not available
+                    return html_content
+
+        # Handle content stored as attachment
+        if body.get("attachmentId"):
+            attachment_data = self._download_attachment_body(
+                body["attachmentId"], msg_id, service
+            )
+            if attachment_data:
+                return self._decode_base64(attachment_data)
+
+        # Recursively search in parts
+        for sub_part in part.get("parts", []):
+            text = self._walk_for_body(sub_part, msg_id, service, depth + 1)
+            if text:
+                return text
+
+        return None
+
+    def _decode_base64(self, data):
+        """Safely decode base64 URL-safe data with proper padding."""
+        if not data:
+            return None
+        try:
+            # Add padding if necessary
+            missing_padding = len(data) % 4
+            if missing_padding:
+                data += "=" * (4 - missing_padding)
+            return base64.urlsafe_b64decode(data).decode("utf-8")
+        except Exception:
+            return None
+
+    def _download_attachment_body(self, attachment_id, msg_id, service):
+        """Download attachment content when email body is stored as attachment."""
+        try:
+            attachment = (
+                service.users()
+                .messages()
+                .attachments()
+                .get(userId="me", messageId=msg_id, id=attachment_id)
+                .execute()
+            )
+            return attachment.get("data")
+        except Exception:
+            return None
 
     def _get_attachments(self, service, message):
         attachments = []
@@ -1099,7 +1211,9 @@ class GmailReplyBlock(Block):
             subject=input_data.subject or "",
             snippet=message.get("snippet", ""),
             from_="",  # From address would need to be retrieved from the message headers
-            to=", ".join(input_data.to) if input_data.to else "",
+            to=input_data.to if input_data.to else [],
+            cc=input_data.cc if input_data.cc else [],
+            bcc=input_data.bcc if input_data.bcc else [],
             date="",  # Date would need to be retrieved from the message headers
             body=input_data.body,
             sizeEstimate=message.get("sizeEstimate", 0),
