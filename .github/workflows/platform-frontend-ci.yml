@@ -169,6 +169,13 @@ jobs:
       - name: Setup .env
         run: cp .env.example .env
 
+      - name: Wait for services to be ready
+        run: |
+          echo "Waiting for rest_server to be ready..."
+          timeout 60 sh -c 'until curl -f http://localhost:8006/health 2>/dev/null; do sleep 2; done' || echo "Rest server health check timeout, continuing..."
+          echo "Waiting for database to be ready..."
+          timeout 60 sh -c 'until docker compose -f ../docker-compose.yml exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done' || echo "Database ready check timeout, continuing..."
+
       - name: Generate API queries
         run: pnpm generate:api-all
 
