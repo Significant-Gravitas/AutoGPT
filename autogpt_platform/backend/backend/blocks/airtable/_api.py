@@ -1141,3 +1141,88 @@ async def oauth_refresh_tokens(
     if response.ok:
         return OAuthTokenResponse.model_validate(response.json())
     raise ValueError(f"Failed to refresh tokens: {response.status} {response.text}")
+
+
+#################################################################
+# Base Management
+#################################################################
+
+
+async def create_base(
+    credentials: Credentials,
+    workspace_id: str,
+    name: str,
+    tables: list[dict] = [
+        {
+            "description": "Default table",
+            "name": "Default table",
+            "fields": [
+                {
+                    "name": "ID",
+                    "type": "number",
+                    "description": "Auto-incrementing ID field",
+                    "options": {"precision": 0},
+                }
+            ],
+        }
+    ],
+) -> dict:
+    """
+    Create a new base in Airtable.
+
+    Args:
+        credentials: Airtable API credentials
+        workspace_id: The workspace ID where the base will be created
+        name: The name of the new base
+        tables: Optional list of table objects to create in the base
+
+    Returns:
+        dict: Response containing the created base information
+    """
+    params: dict[str, Any] = {
+        "name": name,
+        "workspaceId": workspace_id,
+    }
+
+    if tables:
+        params["tables"] = tables
+
+    print(params)
+
+    response = await Requests().post(
+        "https://api.airtable.com/v0/meta/bases",
+        headers={
+            "Authorization": credentials.auth_header(),
+            "Content-Type": "application/json",
+        },
+        json=params,
+    )
+
+    return response.json()
+
+
+async def list_bases(
+    credentials: Credentials,
+    offset: str | None = None,
+) -> dict:
+    """
+    List all bases that the authenticated user has access to.
+
+    Args:
+        credentials: Airtable API credentials
+        offset: Optional pagination offset
+
+    Returns:
+        dict: Response containing the list of bases
+    """
+    params = {}
+    if offset:
+        params["offset"] = offset
+
+    response = await Requests().get(
+        "https://api.airtable.com/v0/meta/bases",
+        headers={"Authorization": credentials.auth_header()},
+        params=params,
+    )
+
+    return response.json()
