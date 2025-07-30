@@ -86,7 +86,7 @@ test.describe("Marketplace – Basic Functionality", () => {
     const marketplacePage = new MarketplacePage(page);
     await marketplacePage.goto(page);
 
-    await marketplacePage.searchAndNavigate("Agents", page);
+    await marketplacePage.searchAndNavigate("DummyInput", page);
 
     await marketplacePage.waitForSearchResults();
 
@@ -95,7 +95,7 @@ test.describe("Marketplace – Basic Functionality", () => {
     const resultsHeading = page.getByText("Results for:");
     await isVisible(resultsHeading);
 
-    const searchTerm = page.getByText("Agents").first();
+    const searchTerm = page.getByText("DummyInput").first();
     await isVisible(searchTerm);
 
     const results = await marketplacePage.getSearchResultsCount(page);
