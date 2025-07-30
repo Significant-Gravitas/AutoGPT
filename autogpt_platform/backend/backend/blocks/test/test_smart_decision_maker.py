@@ -3,11 +3,6 @@ import logging
 import pytest
 from prisma.models import User
 
-import backend.blocks.llm as llm
-from backend.blocks.agent import AgentExecutorBlock
-from backend.blocks.basic import StoreValueBlock
-from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
-from backend.data import graph
 from backend.data.model import ProviderName
 from backend.server.model import CreateGraph
 from backend.server.rest_api import AgentServer
@@ -17,12 +12,14 @@ from backend.util.test import SpinTestServer, wait_execution
 logger = logging.getLogger(__name__)
 
 
-async def create_graph(s: SpinTestServer, g: graph.Graph, u: User) -> graph.Graph:
+async def create_graph(s: SpinTestServer, g, u: User):
     logger.info("Creating graph for user %s", u.id)
     return await s.agent_server.test_create_graph(CreateGraph(graph=g), u.id)
 
 
 async def create_credentials(s: SpinTestServer, u: User):
+    import backend.blocks.llm as llm
+
     provider = ProviderName.OPENAI
     credentials = llm.TEST_CREDENTIALS
     return await s.agent_server.test_create_credentials(u.id, provider, credentials)
@@ -30,7 +27,7 @@ async def create_credentials(s: SpinTestServer, u: User):
 
 async def execute_graph(
     agent_server: AgentServer,
-    test_graph: graph.Graph,
+    test_graph,
     test_user: User,
     input_data: dict,
     num_execs: int = 4,
@@ -57,6 +54,10 @@ async def execute_graph(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_graph_validation_with_tool_nodes_correct(server: SpinTestServer):
+    from backend.blocks.agent import AgentExecutorBlock
+    from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
+    from backend.data import graph
+
     test_user = await create_test_user()
     test_tool_graph = await create_graph(server, create_test_graph(), test_user)
     creds = await create_credentials(server, test_user)
@@ -106,6 +107,11 @@ async def test_graph_validation_with_tool_nodes_correct(server: SpinTestServer):
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_smart_decision_maker_function_signature(server: SpinTestServer):
+    from backend.blocks.agent import AgentExecutorBlock
+    from backend.blocks.basic import StoreValueBlock
+    from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
+    from backend.data import graph
+
     test_user = await create_test_user()
     test_tool_graph = await create_graph(server, create_test_graph(), test_user)
     creds = await create_credentials(server, test_user)
@@ -187,3 +193,61 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
         ]
         == "Trigger the block to produce the output. The value is only used when `data` is None."
     )
+
+
+@pytest.mark.asyncio
+async def test_smart_decision_maker_tracks_llm_stats():
+    """Test that SmartDecisionMakerBlock correctly tracks LLM usage stats."""
+    from unittest.mock import MagicMock, patch
+
+    import backend.blocks.llm as llm_module
+    from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
+
+    block = SmartDecisionMakerBlock()
+
+    # Mock the llm.llm_call function to return controlled data
+    mock_response = MagicMock()
+    mock_response.response = "I need to think about this."
+    mock_response.tool_calls = None  # No tool calls for simplicity
+    mock_response.prompt_tokens = 50
+    mock_response.completion_tokens = 25
+    mock_response.reasoning = None
+    mock_response.raw_response = {
+        "role": "assistant",
+        "content": "I need to think about this.",
+    }
+
+    # Mock the _create_function_signature method to avoid database calls
+    with patch("backend.blocks.llm.llm_call", return_value=mock_response), patch.object(
+        SmartDecisionMakerBlock, "_create_function_signature", return_value=[]
+    ):
+
+        # Create test input
+        input_data = SmartDecisionMakerBlock.Input(
+            prompt="Should I continue with this task?",
+            model=llm_module.LlmModel.GPT4O,
+            credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
+        )
+
+        # Execute the block
+        outputs = {}
+        async for output_name, output_data in block.run(
+            input_data,
+            credentials=llm_module.TEST_CREDENTIALS,
+            graph_id="test-graph-id",
+            node_id="test-node-id",
+            graph_exec_id="test-exec-id",
+            node_exec_id="test-node-exec-id",
+            user_id="test-user-id",
+        ):
+            outputs[output_name] = output_data
+
+        # Verify stats tracking
+        assert block.execution_stats is not None
+        assert block.execution_stats.input_token_count == 50
+        assert block.execution_stats.output_token_count == 25
+        assert block.execution_stats.llm_call_count == 1
+
+        # Verify outputs
+        assert "finished" in outputs  # Should have finished since no tool calls
+        assert outputs["finished"] == "I need to think about this."
