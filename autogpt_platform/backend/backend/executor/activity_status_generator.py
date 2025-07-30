@@ -6,6 +6,7 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
+from autogpt_libs.feature_flag.client import is_feature_enabled
 from pydantic import SecretStr
 
 from backend.blocks.llm import LlmModel, llm_call
@@ -14,6 +15,9 @@ from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.data.model import APIKeyCredentials, GraphExecutionStats
 from backend.util.settings import Settings
 from backend.util.truncate import truncate
+
+# LaunchDarkly feature flag key for AI activity status generation
+AI_ACTIVITY_STATUS_FLAG_KEY = "ai-agent-execution-summary"
 
 if TYPE_CHECKING:
     from backend.executor import DatabaseManagerAsyncClient
@@ -76,7 +80,8 @@ async def generate_activity_status_for_execution(
     graph_version: int,
     execution_stats: GraphExecutionStats,
     db_client: "DatabaseManagerAsyncClient",
-) -> str:
+    user_id: str,
+) -> str | None:
     """
     Generate an AI-based activity status summary for a graph execution.
 
@@ -89,24 +94,24 @@ async def generate_activity_status_for_execution(
         graph_version: The graph version
         execution_stats: Execution statistics
         db_client: Database client for fetching data
+        user_id: User ID for LaunchDarkly feature flag evaluation
 
     Returns:
-        AI-generated activity status string
+        AI-generated activity status string, or None if feature is disabled
     """
+    # Check LaunchDarkly feature flag for AI activity status generation
+    if not is_feature_enabled(AI_ACTIVITY_STATUS_FLAG_KEY, user_id, default=False):
+        logger.debug("AI activity status generation is disabled via LaunchDarkly")
+        return None
+
+    # Check if we have OpenAI API key
     try:
         settings = Settings()
-
-        # Check if AI activity status generation is enabled
-        if not settings.config.execution_enable_ai_activity_status:
-            logger.debug("AI activity status generation is disabled in settings")
-            return "AI activity status generation disabled"
-
-        # Check if we have OpenAI API key
         if not settings.secrets.openai_api_key:
             logger.debug(
                 "OpenAI API key not configured, skipping activity status generation"
             )
-            return "Activity status generation disabled (no API key)"
+            return None
 
         # Get all node executions for this graph execution
         node_executions = await db_client.get_node_executions(
@@ -185,7 +190,7 @@ async def generate_activity_status_for_execution(
         logger.error(
             f"Failed to generate activity status for execution {graph_exec_id}: {str(e)}"
         )
-        return f"Failed to generate activity summary: {str(e)}"
+        return None
 
 
 def _build_execution_summary(
@@ -198,17 +203,13 @@ def _build_execution_summary(
     """Build a structured summary of execution data for AI analysis."""
 
     nodes: list[NodeInfo] = []
-    node_execution_counts: dict[str, int] = {}  # Track execution count per node
-    node_error_counts: dict[str, int] = {}  # Track error count per node
-    node_errors: dict[str, list[ErrorInfo]] = {}  # Group errors by node_id
-    node_outputs: dict[str, list[InputOutputInfo]] = (
-        {}
-    )  # Group outputs by node_id for sampling
-    node_inputs: dict[str, list[InputOutputInfo]] = (
-        {}
-    )  # Group inputs by node_id for sampling
+    node_execution_counts: dict[str, int] = {}
+    node_error_counts: dict[str, int] = {}
+    node_errors: dict[str, list[ErrorInfo]] = {}
+    node_outputs: dict[str, list[InputOutputInfo]] = {}
+    node_inputs: dict[str, list[InputOutputInfo]] = {}
     input_output_data: dict[str, Any] = {}
-    node_map: dict[str, NodeInfo] = {}  # Map node_id to node data for easy lookup
+    node_map: dict[str, NodeInfo] = {}
 
     # Process node executions
     for node_exec in node_executions:

@@ -413,10 +413,12 @@ class TestGenerateActivityStatusForExecution:
             "backend.executor.activity_status_generator.Settings"
         ) as mock_settings, patch(
             "backend.executor.activity_status_generator._call_llm_direct"
-        ) as mock_llm:
+        ) as mock_llm, patch(
+            "backend.executor.activity_status_generator.is_feature_enabled",
+            return_value=True,
+        ):
 
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
-            mock_settings.return_value.config.execution_enable_ai_activity_status = True
             mock_settings.return_value.secrets.openai_api_key = "test_key"
             mock_llm.return_value = (
                 "I analyzed your data and provided the requested insights."
@@ -428,6 +430,7 @@ class TestGenerateActivityStatusForExecution:
                 graph_version=1,
                 execution_stats=mock_execution_stats,
                 db_client=mock_db_client,
+                user_id="test_user",
             )
 
             assert result == "I analyzed your data and provided the requested insights."
@@ -442,21 +445,19 @@ class TestGenerateActivityStatusForExecution:
         mock_db_client = AsyncMock()
 
         with patch(
-            "backend.executor.activity_status_generator.Settings"
-        ) as mock_settings:
-            mock_settings.return_value.config.execution_enable_ai_activity_status = (
-                False
-            )
-
+            "backend.executor.activity_status_generator.is_feature_enabled",
+            return_value=False,
+        ):
             result = await generate_activity_status_for_execution(
                 graph_exec_id="test_exec",
                 graph_id="test_graph",
                 graph_version=1,
                 execution_stats=mock_execution_stats,
                 db_client=mock_db_client,
+                user_id="test_user",
             )
 
-            assert result == "AI activity status generation disabled"
+            assert result is None
             mock_db_client.get_node_executions.assert_not_called()
 
     @pytest.mark.asyncio
@@ -466,7 +467,10 @@ class TestGenerateActivityStatusForExecution:
 
         with patch(
             "backend.executor.activity_status_generator.Settings"
-        ) as mock_settings:
+        ) as mock_settings, patch(
+            "backend.executor.activity_status_generator.is_feature_enabled",
+            return_value=True,
+        ):
             mock_settings.return_value.secrets.openai_api_key = ""
 
             result = await generate_activity_status_for_execution(
@@ -475,9 +479,10 @@ class TestGenerateActivityStatusForExecution:
                 graph_version=1,
                 execution_stats=mock_execution_stats,
                 db_client=mock_db_client,
+                user_id="test_user",
             )
 
-            assert result == "Activity status generation disabled (no API key)"
+            assert result is None
             mock_db_client.get_node_executions.assert_not_called()
 
     @pytest.mark.asyncio
@@ -488,8 +493,10 @@ class TestGenerateActivityStatusForExecution:
 
         with patch(
             "backend.executor.activity_status_generator.Settings"
-        ) as mock_settings:
-            mock_settings.return_value.config.execution_enable_ai_activity_status = True
+        ) as mock_settings, patch(
+            "backend.executor.activity_status_generator.is_feature_enabled",
+            return_value=True,
+        ):
             mock_settings.return_value.secrets.openai_api_key = "test_key"
 
             result = await generate_activity_status_for_execution(
@@ -498,10 +505,10 @@ class TestGenerateActivityStatusForExecution:
                 graph_version=1,
                 execution_stats=mock_execution_stats,
                 db_client=mock_db_client,
+                user_id="test_user",
             )
 
-            assert result.startswith("Failed to generate activity summary:")
-            assert "Database error" in result
+            assert result is None
 
     @pytest.mark.asyncio
     async def test_generate_status_with_graph_name_fallback(
@@ -519,10 +526,12 @@ class TestGenerateActivityStatusForExecution:
             "backend.executor.activity_status_generator.Settings"
         ) as mock_settings, patch(
             "backend.executor.activity_status_generator._call_llm_direct"
-        ) as mock_llm:
+        ) as mock_llm, patch(
+            "backend.executor.activity_status_generator.is_feature_enabled",
+            return_value=True,
+        ):
 
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
-            mock_settings.return_value.config.execution_enable_ai_activity_status = True
             mock_settings.return_value.secrets.openai_api_key = "test_key"
             mock_llm.return_value = "Agent completed execution."
 
@@ -532,6 +541,7 @@ class TestGenerateActivityStatusForExecution:
                 graph_version=1,
                 execution_stats=mock_execution_stats,
                 db_client=mock_db_client,
+                user_id="test_user",
             )
 
             assert result == "Agent completed execution."
@@ -568,10 +578,12 @@ class TestIntegration:
             "backend.executor.activity_status_generator.Settings"
         ) as mock_settings, patch(
             "backend.executor.activity_status_generator.llm_call"
-        ) as mock_llm_call:
+        ) as mock_llm_call, patch(
+            "backend.executor.activity_status_generator.is_feature_enabled",
+            return_value=True,
+        ):
 
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
-            mock_settings.return_value.config.execution_enable_ai_activity_status = True
             mock_settings.return_value.secrets.openai_api_key = "test_key"
 
             mock_response = LLMResponse(
@@ -590,6 +602,7 @@ class TestIntegration:
                 graph_version=1,
                 execution_stats=mock_execution_stats,
                 db_client=mock_db_client,
+                user_id="test_user",
             )
 
             assert result == expected_activity
@@ -610,4 +623,31 @@ class TestIntegration:
             # Verify that execution data is present in the prompt
             assert "{" in user_content  # Should contain JSON data
             assert "overall_status" in user_content
-            assert "nodes" in user_content
+
+    @pytest.mark.asyncio
+    async def test_manager_integration_with_disabled_feature(
+        self, mock_execution_stats
+    ):
+        """Test that when feature returns None, manager doesn't set activity_status."""
+        mock_db_client = AsyncMock()
+
+        with patch(
+            "backend.executor.activity_status_generator.is_feature_enabled",
+            return_value=False,
+        ):
+            result = await generate_activity_status_for_execution(
+                graph_exec_id="test_exec",
+                graph_id="test_graph",
+                graph_version=1,
+                execution_stats=mock_execution_stats,
+                db_client=mock_db_client,
+                user_id="test_user",
+            )
+
+            # Should return None when disabled
+            assert result is None
+
+            # Verify no database calls were made
+            mock_db_client.get_node_executions.assert_not_called()
+            mock_db_client.get_graph_metadata.assert_not_called()
+            mock_db_client.get_graph.assert_not_called()

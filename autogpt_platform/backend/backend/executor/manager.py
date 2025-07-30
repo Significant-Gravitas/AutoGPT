@@ -587,17 +587,21 @@ class Executor:
                     graph_version=graph_exec.graph_version,
                     execution_stats=exec_stats,
                     db_client=get_db_async_client(),
+                    user_id=graph_exec.user_id,
                 ),
                 cls.node_execution_loop,
             ).result(timeout=60.0)
-            exec_stats.activity_status = activity_status
-            log_metadata.info(f"Generated activity status: {activity_status}")
+            if activity_status is not None:
+                exec_stats.activity_status = activity_status
+                log_metadata.info(f"Generated activity status: {activity_status}")
+            else:
+                log_metadata.debug(
+                    "Activity status generation disabled, not setting field"
+                )
 
         except Exception as e:
             log_metadata.error(f"Failed to generate activity status: {str(e)}")
-            exec_stats.activity_status = (
-                f"Failed to generate activity summary: {str(e)}"
-            )
+            # Don't set activity_status on exception - let it remain None/unset
 
         if graph_exec_result := db_client.update_graph_execution_stats(
             graph_exec_id=graph_exec.graph_exec_id,

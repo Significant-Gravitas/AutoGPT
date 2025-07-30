@@ -60,6 +60,36 @@ def create_context(
     return builder.build()
 
 
+def is_feature_enabled(flag_key: str, user_id: str, default: bool = False) -> bool:
+    """
+    Simple helper to check if a feature flag is enabled for a user.
+
+    Args:
+        flag_key: The LaunchDarkly feature flag key
+        user_id: The user ID to evaluate the flag for
+        default: Default value if LaunchDarkly is unavailable or flag evaluation fails
+
+    Returns:
+        True if feature is enabled, False otherwise
+    """
+    try:
+        client = get_client()
+        if not client.is_initialized():
+            logger.debug(
+                f"LaunchDarkly not initialized, using default={default} for flag {flag_key}"
+            )
+            return default
+
+        context = create_context(str(user_id))
+        return client.variation(flag_key, context, default)
+
+    except Exception as e:
+        logger.debug(
+            f"LaunchDarkly flag evaluation failed for {flag_key}: {e}, using default={default}"
+        )
+        return default
+
+
 def feature_flag(
     flag_key: str,
     default: bool = False,
