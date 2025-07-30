@@ -1213,6 +1213,26 @@ files = [
 packaging = ">=20"
 
 [[package]]
+name = "firecrawl-py"
+version = "2.16.3"
+description = "Python SDK for Firecrawl API"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "firecrawl_py-2.16.3-py3-none-any.whl", hash = "sha256:94bb46af5e0df6c8ec414ac999a5355c0f5a46f15fd1cf5a02a3b31062db0aa8"},
+    {file = "firecrawl_py-2.16.3.tar.gz", hash = "sha256:5fd063ef4acc4c4be62648f1e11467336bc127780b3afc28d39078a012e6a14c"},
+]
+
+[package.dependencies]
+aiohttp = "*"
+nest-asyncio = "*"
+pydantic = "*"
+python-dotenv = "*"
+requests = "*"
+websockets = "*"
+
+[[package]]
 name = "flake8"
 version = "7.3.0"
 description = "the modular source code checker: pep8 pyflakes and co"
@@ -2900,6 +2920,18 @@ groups = ["main", "dev"]
 files = [
     {file = "mypy_extensions-1.1.0-py3-none-any.whl", hash = "sha256:1be4cccdb0f2482337c4743e60421de3a356cd97508abadd57d47403e94f5505"},
     {file = "mypy_extensions-1.1.0.tar.gz", hash = "sha256:52e68efc3284861e772bbcd66823fde5ae21fd2fdb51c62a211403730b916558"},
+]
+
+[[package]]
+name = "nest-asyncio"
+version = "1.6.0"
+description = "Patch asyncio to allow nested event loops"
+optional = false
+python-versions = ">=3.5"
+groups = ["main"]
+files = [
+    {file = "nest_asyncio-1.6.0-py3-none-any.whl", hash = "sha256:87af6efd6b5e897c81050477ef65c62e2b2f35d51703cae01aff2905b1852e1c"},
+    {file = "nest_asyncio-1.6.0.tar.gz", hash = "sha256:6f172d5449aca15afd6c646851f4e31e02c598d553a667e38cafa997cfec55fe"},
 ]
 
 [[package]]
@@ -6686,4 +6718,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.13"
-content-hash = "e79fd4e1968b496b1012c4866130f5680fc6558d041ddddd53f466e8ec58869c"
+content-hash = "225ddae645d22cc57f46330e735c069fb52e708123aa642e74adbf077dda0796"
