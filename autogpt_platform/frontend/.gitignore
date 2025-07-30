@@ -56,4 +56,4 @@ storybook-static
 .cursorrules
 
 # Generated API files
-src/services/api/__generated__/
+src/app/api/__generated__/
