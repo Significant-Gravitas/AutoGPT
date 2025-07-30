@@ -563,7 +563,9 @@ class GmailCreateDraftBlock(Block):
             test_output=[
                 (
                     "result",
-                    {"id": "draft1", "message_id": "msg1", "status": "draft_created"},
+                    GmailDraftResult(
+                        id="draft1", message_id="msg1", status="draft_created"
+                    ),
                 ),
             ],
             test_mock={
@@ -1141,6 +1143,24 @@ class GmailReplyBlock(Block):
                 ("messageId", "m2"),
                 ("threadId", "t1"),
                 ("message", {"id": "m2", "threadId": "t1"}),
+                (
+                    "email",
+                    Email(
+                        threadId="t1",
+                        labelIds=[],
+                        id="m2",
+                        subject="",
+                        snippet="",
+                        from_="",
+                        to=[],
+                        cc=[],
+                        bcc=[],
+                        date="",
+                        body="Thanks",
+                        sizeEstimate=0,
+                        attachments=[],
+                    ),
+                ),
             ],
             test_mock={
                 "_reply": lambda *args, **kwargs: {
