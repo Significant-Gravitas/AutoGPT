@@ -17,9 +17,13 @@ logger = logging.getLogger(__name__)
 P = ParamSpec("P")
 T = TypeVar("T")
 
+_is_initialized = False
+
 
 def get_client() -> LDClient:
     """Get the LaunchDarkly client singleton."""
+    if not _is_initialized:
+        initialize_launchdarkly()
     return ldclient.get()
 
 
@@ -37,6 +41,8 @@ def initialize_launchdarkly() -> None:
     ldclient.set_config(config)
 
     if ldclient.get().is_initialized():
+        global _is_initialized
+        _is_initialized = True
         logger.info("LaunchDarkly client initialized successfully")
     else:
         logger.error("LaunchDarkly client failed to initialize")
@@ -74,12 +80,6 @@ def is_feature_enabled(flag_key: str, user_id: str, default: bool = False) -> bo
     """
     try:
         client = get_client()
-        if not client.is_initialized():
-            logger.debug(
-                f"LaunchDarkly not initialized, using default={default} for flag {flag_key}"
-            )
-            return default
-
         context = create_context(str(user_id))
         return client.variation(flag_key, context, default)
 
