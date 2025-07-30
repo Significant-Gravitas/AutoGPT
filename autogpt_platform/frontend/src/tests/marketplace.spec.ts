@@ -67,7 +67,7 @@ test.describe("Marketplace – Basic Functionality", () => {
     await matchesUrl(page, /\/marketplace\/agent\/.+/);
     await marketplacePage.goto(page);
 
-    const firstTopAgent = await marketplacePage.getFirstTopAgent(page);
+    const firstTopAgent = await marketplacePage.getFirstTopAgent();
     await firstTopAgent.click();
     await page.waitForURL("**/marketplace/agent/**");
     await matchesUrl(page, /\/marketplace\/agent\/.+/);

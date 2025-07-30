@@ -53,7 +53,6 @@ export const SearchFilterChips: React.FC<SearchFilterChipsProps> = ({
             {filter.label}
           </span>
           <span
-            data-testid={`search-filter-chip-${filter.value}-count`}
             className={`text-base ${selected === filter.value ? "font-medium" : ""}`}
           >
             {filter.count}

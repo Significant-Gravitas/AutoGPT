@@ -123,7 +123,7 @@ export class MarketplacePage extends BasePage {
 
   async getSearchResultsCount(page: Page) {
     const { getId } = getSelectors(page);
-    const allFilterCount = getId("search-filter-chip-all-count");
-    return Number(await allFilterCount.textContent());
+    const storeCards = getId("store-card");
+    return await storeCards.count();
   }
 }
