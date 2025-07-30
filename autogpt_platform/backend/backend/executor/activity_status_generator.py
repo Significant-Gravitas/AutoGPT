@@ -136,11 +136,12 @@ async def generate_activity_status_for_execution(
                     "Focus on the ACTUAL TASK the user wanted done, not the internal workflow steps. "
                     "Avoid technical terms like 'workflow', 'execution', 'components', 'nodes', 'processing', etc. "
                     "Keep it to 3 sentences maximum. Be conversational and human-friendly.\n\n"
-                    "IMPORTANT: Translate technical execution into user benefits:\n"
-                    "- Instead of 'processed data' → what was the user trying to achieve?\n"
-                    "- Instead of 'workflow completed' → what specific task was finished?\n"
-                    "- Instead of 'components functioned' → what result did the user get?\n"
-                    "Focus ONLY on critical failures that prevented the user from getting what they wanted."
+                    "IMPORTANT: Be HONEST about what actually happened:\n"
+                    "- If the input was invalid/nonsensical, say so directly\n"
+                    "- If the task failed, explain what went wrong in simple terms\n"
+                    "- If errors occurred, focus on what the user needs to know\n"
+                    "- Only claim success if the task was genuinely completed\n"
+                    "- Don't sugar-coat failures or present them as helpful feedback"
                 ),
             },
             {
@@ -151,9 +152,10 @@ async def generate_activity_status_for_execution(
                     f"{json.dumps(execution_data, indent=2)}\n\n"
                     "Write 1-3 sentences about what the user accomplished, such as:\n"
                     "- 'I analyzed your resume and provided detailed feedback for the IT industry.'\n"
-                    "- 'I extracted key information from your documents and organized it into a summary.'\n"
-                    "- 'I couldn't complete the analysis due to missing API access.'\n\n"
-                    "Focus on the USER'S GOAL, not technical execution details."
+                    "- 'I couldn't analyze your resume because the input was just nonsensical text.'\n"
+                    "- 'I failed to complete the task due to missing API access.'\n"
+                    "- 'I extracted key information from your documents and organized it into a summary.'\n\n"
+                    "Focus on what ACTUALLY happened, not what was attempted."
                 ),
             },
         ]
