@@ -9,7 +9,7 @@
    - Download to self-host (Free!)
    - [Join the Waitlist](https://bit.ly/3ZDijAI) for the cloud-hosted beta (Closed Beta - Public release Coming Soon!)
 
-## How to Setup for Self-Hosting
+## How to Self-Host the AutoGPT Platform
 > [!NOTE]
 > Setting up and hosting the AutoGPT Platform yourself is a technical process. 
 > If you'd rather something that just works, we recommend [joining the waitlist](https://bit.ly/3ZDijAI) for the cloud-hosted beta.
@@ -113,7 +113,17 @@ Here are two examples of what you can do with AutoGPT:
 These examples show just a glimpse of what you can achieve with AutoGPT! You can create customized workflows to build agents for any use case.
 
 ---
-### Mission and Licencing
+
+### **License Overview:**
+
+🛡️ **Polyform Shield License:**
+All code and content within the `autogpt_platform` folder is licensed under the Polyform Shield License. This new project is our in-developlemt platform for building, deploying and managing agents.</br>_[Read more about this effort](https://agpt.co/blog/introducing-the-autogpt-platform)_
+
+🦉 **MIT License:**
+All other portions of the AutoGPT repository (i.e., everything outside the `autogpt_platform` folder) are licensed under the MIT License. This includes the original stand-alone AutoGPT Agent, along with projects such as [Forge](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/forge), [agbenchmark](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/benchmark) and the [AutoGPT Classic GUI](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/frontend).</br>We also publish additional work under the MIT Licence in other repositories, such as [GravitasML](https://github.com/Significant-Gravitas/gravitasml) which is developed for and used in the AutoGPT Platform. See also our MIT Licenced [Code Ability](https://github.com/Significant-Gravitas/AutoGPT-Code-Ability) project.
+
+---
+### Mission
 Our mission is to provide the tools, so that you can focus on what matters:
 
 - 🏗️ **Building** - Lay the foundation for something amazing.
@@ -125,14 +135,6 @@ Be part of the revolution! **AutoGPT** is here to stay, at the forefront of AI i
 **📖 [Documentation](https://docs.agpt.co)**
 &ensp;|&ensp;
 **🚀 [Contributing](CONTRIBUTING.md)**
-
-**Licensing:**
-
-MIT License: The majority of the AutoGPT repository is under the MIT License.
-
-Polyform Shield License: This license applies to the autogpt_platform folder. 
-
-For more information, see https://agpt.co/blog/introducing-the-autogpt-platform
 
 ---
 ## 🤖 AutoGPT Classic
