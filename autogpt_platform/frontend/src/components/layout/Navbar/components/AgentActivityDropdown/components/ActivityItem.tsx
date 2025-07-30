@@ -82,8 +82,6 @@ export function ActivityItem({ execution }: Props) {
   const linkUrl = `/library/agents/${execution.library_agent_id}?executionId=${execution.id}`;
   const withExecutionLink = execution.library_agent_id && execution.id;
 
-  console.log(execution);
-
   const content = (
     <>
       {/* Icon + Agent Name */}
