@@ -313,7 +313,7 @@ class NodeExecutionResult(BaseModel):
     def from_db(_node_exec: AgentNodeExecution, user_id: Optional[str] = None):
         # Check if this execution was cleared due to moderation
         stats = type_utils.convert(_node_exec.stats, dict) if _node_exec.stats else {}
-        
+
         if _node_exec.executionData:
             # Execution that has been queued for execution will persist its data.
             input_data = type_utils.convert(_node_exec.executionData, dict[str, Any])
@@ -330,7 +330,7 @@ class NodeExecutionResult(BaseModel):
                 input_data[name] = message
 
         output_data: CompletedBlockOutput = defaultdict(list)
-        
+
         if stats.get("moderation_cleared") and stats.get("cleared_outputs"):
             # Use the cleared outputs instead of actual output data
             for name, message in stats["cleared_outputs"].items():

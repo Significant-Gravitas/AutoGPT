@@ -1,1 +1,1 @@
-# AutoMod integration for content moderation 
+# AutoMod integration for content moderation
