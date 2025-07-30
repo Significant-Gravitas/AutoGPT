@@ -80,11 +80,15 @@ export function ActivityItem({ execution }: Props) {
   }
 
   const agentId = execution.library_agent_id || execution.graph_id;
+  const linkUrl = `/library/agents/${agentId}?executionId=${execution.id}`;
+  const withLibraryId = !!execution.library_agent_id;
+
+  if (!withLibraryId) return null;
 
   return (
     <Link
       className="block cursor-pointer border-b border-slate-50 px-2 py-3 transition-colors last:border-b-0 hover:bg-lightGrey"
-      href={`/library/agents/${agentId}?executionId=${execution.id}`}
+      href={linkUrl}
       role="button"
     >
       {/* Icon + Agent Name */}
