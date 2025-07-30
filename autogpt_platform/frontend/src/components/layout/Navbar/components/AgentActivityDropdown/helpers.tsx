@@ -99,9 +99,14 @@ export function createAgentInfoMap(
   >();
 
   agents.forEach((agent) => {
+    // Ensure we have valid agent data
+    const agentName =
+      agent.agent_name || `Agent ${agent.agent_id?.slice(0, 8)}`;
+    const agentDescription = agent.description || "";
+
     agentMap.set(agent.agent_id, {
-      name: agent.agent_name,
-      description: agent.description,
+      name: agentName,
+      description: agentDescription,
       library_agent_id: undefined, // MyAgent doesn't have library_agent_id
     });
   });
