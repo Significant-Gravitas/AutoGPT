@@ -1,11 +1,12 @@
 import logging
+from datetime import datetime
 from typing import Optional
 
 from google.auth.external_account_authorized_user import (
-    Credentials as ExternalAccountCredentials,
+    Credentials as GoogleExternalAccountCredentials,
 )
 from google.auth.transport.requests import AuthorizedSession, Request
-from google.oauth2.credentials import Credentials
+from google.oauth2.credentials import Credentials as GoogleOAuth2Credentials
 from google_auth_oauthlib.flow import Flow
 from pydantic import SecretStr
 
@@ -94,9 +95,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
             username=username,
             access_token=SecretStr(google_creds.token),
             refresh_token=(SecretStr(google_creds.refresh_token)),
-            access_token_expires_at=(
-                int(google_creds.expiry.timestamp()) if google_creds.expiry else None
-            ),
+            access_token_expires_at=int(google_creds.expiry.timestamp()),
             refresh_token_expires_at=None,
             scopes=granted_scopes,
         )
@@ -107,7 +106,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         return credentials
 
     async def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
-        session = AuthorizedSession(credentials)
+        session = AuthorizedSession(self._to_google_credentials(credentials))
         session.post(
             self.revoke_uri,
             params={"token": credentials.access_token.get_secret_value()},
@@ -116,7 +115,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         return True
 
     def _request_email(
-        self, creds: Credentials | ExternalAccountCredentials
+        self, creds: GoogleOAuth2Credentials | GoogleExternalAccountCredentials
     ) -> str | None:
         session = AuthorizedSession(creds)
         response = session.get(self.EMAIL_ENDPOINT)
@@ -130,17 +129,8 @@ class GoogleOAuthHandler(BaseOAuthHandler):
     async def _refresh_tokens(
         self, credentials: OAuth2Credentials
     ) -> OAuth2Credentials:
-        # Google credentials should ALWAYS have a refresh token
-        assert credentials.refresh_token
+        google_creds = self._to_google_credentials(credentials)
 
-        google_creds = Credentials(
-            token=credentials.access_token.get_secret_value(),
-            refresh_token=credentials.refresh_token.get_secret_value(),
-            token_uri=self.token_uri,
-            client_id=self.client_id,
-            client_secret=self.client_secret,
-            scopes=credentials.scopes,
-        )
         # Google's OAuth library is poorly typed so we need some of these:
         assert google_creds.refresh_token
         assert google_creds.scopes
@@ -171,4 +161,25 @@ class GoogleOAuthHandler(BaseOAuthHandler):
                 }
             },
             scopes=scopes,
+        )
+
+    def _to_google_credentials(
+        self, credentials: OAuth2Credentials
+    ) -> GoogleOAuth2Credentials:
+        """
+        Converts our `OAuth2Credentials` to `google.oauth2.credentials.Credentials`
+        for use with Google APIs.
+        """
+        # Google credentials should ALWAYS have a refresh token and expiry timestamp
+        assert credentials.refresh_token
+        assert credentials.access_token_expires_at
+
+        return GoogleOAuth2Credentials(
+            token=credentials.access_token.get_secret_value(),
+            refresh_token=credentials.refresh_token.get_secret_value(),
+            token_uri=self.token_uri,
+            client_id=self.client_id,
+            client_secret=self.client_secret,
+            scopes=credentials.scopes,
+            expiry=datetime.fromtimestamp(credentials.access_token_expires_at),
         )
