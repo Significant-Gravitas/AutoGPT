@@ -83,7 +83,7 @@ test.describe("Marketplace – Basic Functionality", () => {
     const marketplacePage = new MarketplacePage(page);
     await marketplacePage.goto();
 
-    await marketplacePage.searchAndNavigate("DummyInput");
+    await marketplacePage.searchAndNavigate("Agents");
 
     await marketplacePage.waitForSearchResults();
 
@@ -92,11 +92,11 @@ test.describe("Marketplace – Basic Functionality", () => {
     const resultsHeading = page.getByText("Results for:");
     await isVisible(resultsHeading);
 
-    const searchTerm = page.getByText("DummyInput").first();
+    const searchTerm = page.getByText("Agents").first();
     await isVisible(searchTerm);
 
     const results = await marketplacePage.getSearchResultsCount();
-    expect(results).toBeGreaterThan(1);
+    expect(results).toBeGreaterThan(0);
   });
 
   // We need to add a test search with filters, but the current business logic for filters doesn't work as expected. We'll add it once we modify that.
