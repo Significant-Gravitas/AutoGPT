@@ -35,6 +35,7 @@ from autogpt_libs.utils.cache import thread_cached
 from prometheus_client import Gauge, start_http_server
 
 from backend.blocks.agent import AgentExecutorBlock
+from backend.blocks.ayrshare import AYRSHARE_BLOCK_IDS
 from backend.data import redis_client as redis
 from backend.data.block import (
     BlockData,
@@ -182,6 +183,17 @@ async def execute_node(
         )
         extra_exec_kwargs[field_name] = credentials
 
+    if node_block.id in AYRSHARE_BLOCK_IDS:
+        profile_key = await creds_manager.store.get_ayrshare_profile_key(user_id)
+        if not profile_key:
+            logger.error(
+                "Ayrshare profile not configured. Please link a social account via Ayrshare integration first."
+            )
+            raise ValueError(
+                "Ayrshare profile not configured. Please link a social account via Ayrshare integration first."
+            )
+        extra_exec_kwargs["profile_key"] = profile_key
+
     output_size = 0
     try:
         async for output_name, output_data in node_block.execute(
@@ -193,8 +205,7 @@ async def execute_node(
             yield output_name, output_data
 
     except Exception as e:
-        error_msg = str(e)
-        yield "error", error_msg
+        yield "error", str(e) or type(e).__name__
         raise e
 
     finally:
@@ -502,7 +513,9 @@ class Executor:
     @classmethod
     @error_logged(swallow=False)
     def on_graph_execution(
-        cls, graph_exec: GraphExecutionEntry, cancel: threading.Event
+        cls,
+        graph_exec: GraphExecutionEntry,
+        cancel: threading.Event,
     ):
         log_metadata = LogMetadata(
             logger=_logger,
@@ -1066,15 +1079,27 @@ class ExecutionManager(AppProcess):
 
     @continuous_retry()
     def _consume_execution_run(self):
+
+        # Long-running executions are handled by:
+        # 1. Disabled consumer timeout (x-consumer-timeout: 0) allows unlimited execution time
+        # 2. Enhanced connection settings (5 retries, 1s delay) for quick reconnection
+        # 3. Process monitoring ensures failed executors release messages back to queue
+
         run_client = SyncRabbitMQ(create_execution_queue_config())
         run_client.connect()
         run_channel = run_client.get_channel()
         run_channel.basic_qos(prefetch_count=self.pool_size)
+
+        # Configure consumer for long-running graph executions
+        # auto_ack=False: Don't acknowledge messages until execution completes (prevents data loss)
         run_channel.basic_consume(
             queue=GRAPH_EXECUTION_QUEUE_NAME,
             on_message_callback=self._handle_run_message,
             auto_ack=False,
+            consumer_tag="graph_execution_consumer",
         )
+        run_channel.confirm_delivery()
+
         logger.info(f"[{self.service_name}] ⏳ Starting to consume run messages...")
         run_channel.start_consuming()
         raise RuntimeError(f"❌ run message consumer is stopped: {run_channel}")
@@ -1124,6 +1149,13 @@ class ExecutionManager(AppProcess):
         body: bytes,
     ):
         delivery_tag = method.delivery_tag
+
+        # Check if we can accept more runs
+        self._cleanup_completed_runs()
+        if len(self.active_graph_runs) >= self.pool_size:
+            channel.basic_nack(delivery_tag, requeue=True)
+            return
+
         try:
             graph_exec_entry = GraphExecutionEntry.model_validate_json(body)
         except Exception as e:
@@ -1143,6 +1175,7 @@ class ExecutionManager(AppProcess):
             return
 
         cancel_event = multiprocessing.Manager().Event()
+
         future = self.executor.submit(
             Executor.on_graph_execution, graph_exec_entry, cancel_event
         )
@@ -1153,26 +1186,53 @@ class ExecutionManager(AppProcess):
         def _on_run_done(f: Future):
             logger.info(f"[{self.service_name}] Run completed for {graph_exec_id}")
             try:
-                self.active_graph_runs.pop(graph_exec_id, None)
-                active_runs_gauge.set(len(self.active_graph_runs))
-                utilization_gauge.set(len(self.active_graph_runs) / self.pool_size)
                 if exec_error := f.exception():
                     logger.error(
                         f"[{self.service_name}] Execution for {graph_exec_id} failed: {exec_error}"
                     )
-                    channel.connection.add_callback_threadsafe(
-                        lambda: channel.basic_nack(delivery_tag, requeue=True)
-                    )
+                    try:
+                        channel.connection.add_callback_threadsafe(
+                            lambda: channel.basic_nack(delivery_tag, requeue=True)
+                        )
+                    except Exception as ack_error:
+                        logger.error(
+                            f"[{self.service_name}] Failed to NACK message for {graph_exec_id}: {ack_error}"
+                        )
                 else:
-                    channel.connection.add_callback_threadsafe(
-                        lambda: channel.basic_ack(delivery_tag)
-                    )
+                    try:
+                        channel.connection.add_callback_threadsafe(
+                            lambda: channel.basic_ack(delivery_tag)
+                        )
+                    except Exception as ack_error:
+                        logger.error(
+                            f"[{self.service_name}] Failed to ACK message for {graph_exec_id}: {ack_error}"
+                        )
             except BaseException as e:
                 logger.exception(
-                    f"[{self.service_name}] Error acknowledging message: {e}"
+                    f"[{self.service_name}] Error in run completion callback: {e}"
                 )
+            finally:
+                self._cleanup_completed_runs()
 
         future.add_done_callback(_on_run_done)
+
+    def _cleanup_completed_runs(self, log=logger.info) -> list[str]:
+        """Remove completed futures from active_graph_runs and update metrics"""
+        completed_runs = []
+        for graph_exec_id, (future, _) in self.active_graph_runs.items():
+            if future.done():
+                completed_runs.append(graph_exec_id)
+
+        for geid in completed_runs:
+            log(f"[{self.service_name}] ✅ Cleaned up completed run {geid}")
+            self.active_graph_runs.pop(geid, None)
+
+        # Update metrics
+        active_count = len(self.active_graph_runs)
+        active_runs_gauge.set(active_count)
+        utilization_gauge.set(active_count / self.pool_size)
+
+        return completed_runs
 
     def cleanup(self):
         super().cleanup()
@@ -1189,6 +1249,9 @@ class ExecutionManager(AppProcess):
         if hasattr(self, "executor"):
             log(f"{prefix} ⏳ Shutting down GraphExec pool...")
             self.executor.shutdown(cancel_futures=True, wait=False)
+
+        log(f"{prefix} ⏳ Cleaning up active graph runs...")
+        self._cleanup_completed_runs(log=log)
 
         log(f"{prefix} ⏳ Disconnecting Redis...")
         redis.disconnect()

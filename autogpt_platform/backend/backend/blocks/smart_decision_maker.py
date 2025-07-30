@@ -15,7 +15,7 @@ from backend.data.block import (
     BlockSchema,
     BlockType,
 )
-from backend.data.model import SchemaField
+from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util import json
 
 if TYPE_CHECKING:
@@ -520,6 +520,24 @@ class SmartDecisionMakerBlock(Block):
             parallel_tool_calls=input_data.multiple_tool_calls,
         )
 
+        # Track LLM usage stats
+        self.merge_stats(
+            NodeExecutionStats(
+                input_token_count=response.prompt_tokens,
+                output_token_count=response.completion_tokens,
+                llm_call_count=1,
+            )
+        )
+
+        # Add reasoning to conversation history if available
+        if response.reasoning:
+            prompt.append(
+                {"role": "assistant", "content": f"[Reasoning]: {response.reasoning}"}
+            )
+
+        prompt.append(response.raw_response)
+        yield "conversations", prompt
+
         if not response.tool_calls:
             yield "finished", response.response
             return
@@ -553,12 +571,3 @@ class SmartDecisionMakerBlock(Block):
                     yield f"tools_^_{tool_name}_~_{arg_name}", tool_args[arg_name]
                 else:
                     yield f"tools_^_{tool_name}_~_{arg_name}", None
-
-        # Add reasoning to conversation history if available
-        if response.reasoning:
-            prompt.append(
-                {"role": "assistant", "content": f"[Reasoning]: {response.reasoning}"}
-            )
-
-        prompt.append(response.raw_response)
-        yield "conversations", prompt

@@ -920,10 +920,22 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     )
 
                     if not response_error:
+                        self.merge_stats(
+                            NodeExecutionStats(
+                                llm_call_count=retry_count + 1,
+                                llm_retry_count=retry_count,
+                            )
+                        )
                         yield "response", response_obj
                         yield "prompt", self.prompt
                         return
                 else:
+                    self.merge_stats(
+                        NodeExecutionStats(
+                            llm_call_count=retry_count + 1,
+                            llm_retry_count=retry_count,
+                        )
+                    )
                     yield "response", {"response": response_text}
                     yield "prompt", self.prompt
                     return
@@ -955,13 +967,6 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                         f"Reducing max_tokens to {input_data.max_tokens} for next attempt"
                     )
                 retry_prompt = f"Error calling LLM: {e}"
-            finally:
-                self.merge_stats(
-                    NodeExecutionStats(
-                        llm_call_count=retry_count + 1,
-                        llm_retry_count=retry_count,
-                    )
-                )
 
         raise RuntimeError(retry_prompt)
 

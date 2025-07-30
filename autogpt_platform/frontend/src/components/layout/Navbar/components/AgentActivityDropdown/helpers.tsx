@@ -8,13 +8,19 @@ const MILLISECONDS_PER_SECOND = 1000;
 const SECONDS_PER_MINUTE = 60;
 const MINUTES_PER_HOUR = 60;
 const HOURS_PER_DAY = 24;
+const DAYS_PER_WEEK = 7;
 const MILLISECONDS_PER_MINUTE = SECONDS_PER_MINUTE * MILLISECONDS_PER_SECOND;
 const MILLISECONDS_PER_HOUR = MINUTES_PER_HOUR * MILLISECONDS_PER_MINUTE;
 const MILLISECONDS_PER_DAY = HOURS_PER_DAY * MILLISECONDS_PER_HOUR;
+const MILLISECONDS_PER_WEEK = DAYS_PER_WEEK * MILLISECONDS_PER_DAY;
 
 // Display constants
-export const EXECUTION_DISPLAY_LIMIT = 6;
 const SHORT_DURATION_THRESHOLD_SECONDS = 5;
+
+// State sanity limits - keep only most recent executions to prevent unbounded growth
+const MAX_ACTIVE_EXECUTIONS_IN_STATE = 200; // Most important - these are running
+const MAX_RECENT_COMPLETIONS_IN_STATE = 100;
+const MAX_RECENT_FAILURES_IN_STATE = 100;
 
 export function formatTimeAgo(dateStr: string): string {
   const date = new Date(dateStr);
@@ -93,9 +99,14 @@ export function createAgentInfoMap(
   >();
 
   agents.forEach((agent) => {
+    // Ensure we have valid agent data
+    const agentName =
+      agent.agent_name || `Agent ${agent.agent_id?.slice(0, 8)}`;
+    const agentDescription = agent.description || "";
+
     agentMap.set(agent.agent_id, {
-      name: agent.agent_name,
-      description: agent.description,
+      name: agentName,
+      description: agentDescription,
       library_agent_id: undefined, // MyAgent doesn't have library_agent_id
     });
   });
@@ -134,9 +145,10 @@ export function enrichExecutionWithAgentInfo(
   >,
 ): AgentExecutionWithInfo {
   const agentInfo = agentInfoMap.get(execution.graph_id);
+
   return {
     ...execution,
-    agent_name: agentInfo?.name || `Graph ${execution.graph_id.slice(0, 8)}...`,
+    agent_name: agentInfo?.name ?? "Unknown Agent",
     agent_description: agentInfo?.description ?? "",
     library_agent_id: agentInfo?.library_agent_id,
   };
@@ -154,36 +166,34 @@ export function isActiveExecution(
 
 export function isRecentCompletion(
   execution: GeneratedGraphExecutionMeta,
-  thirtyMinutesAgo: Date,
+  oneWeekAgo: Date,
 ): boolean {
   const status = execution.status;
   return (
     status === AgentExecutionStatus.COMPLETED &&
     !!execution.ended_at &&
-    new Date(execution.ended_at) > thirtyMinutesAgo
+    new Date(execution.ended_at) > oneWeekAgo
   );
 }
 
 export function isRecentFailure(
   execution: GeneratedGraphExecutionMeta,
-  thirtyMinutesAgo: Date,
+  oneWeekAgo: Date,
 ): boolean {
   const status = execution.status;
   return (
     (status === AgentExecutionStatus.FAILED ||
       status === AgentExecutionStatus.TERMINATED) &&
     !!execution.ended_at &&
-    new Date(execution.ended_at) > thirtyMinutesAgo
+    new Date(execution.ended_at) > oneWeekAgo
   );
 }
 
 export function isRecentNotification(
   execution: AgentExecutionWithInfo,
-  thirtyMinutesAgo: Date,
+  oneWeekAgo: Date,
 ): boolean {
-  return execution.ended_at
-    ? new Date(execution.ended_at) > thirtyMinutesAgo
-    : false;
+  return execution.ended_at ? new Date(execution.ended_at) > oneWeekAgo : false;
 }
 
 export function categorizeExecutions(
@@ -193,23 +203,24 @@ export function categorizeExecutions(
     { name: string; description: string; library_agent_id?: string }
   >,
 ): NotificationState {
-  const twentyFourHoursAgo = new Date(Date.now() - MILLISECONDS_PER_DAY);
+  const oneWeekAgo = new Date(Date.now() - MILLISECONDS_PER_WEEK);
 
   const enrichedExecutions = executions.map((execution) =>
     enrichExecutionWithAgentInfo(execution, agentInfoMap),
   );
 
+  // Filter and limit each category to prevent unbounded state growth
   const activeExecutions = enrichedExecutions
     .filter(isActiveExecution)
-    .slice(0, EXECUTION_DISPLAY_LIMIT);
+    .slice(0, MAX_ACTIVE_EXECUTIONS_IN_STATE);
 
   const recentCompletions = enrichedExecutions
-    .filter((execution) => isRecentCompletion(execution, twentyFourHoursAgo))
-    .slice(0, EXECUTION_DISPLAY_LIMIT);
+    .filter((execution) => isRecentCompletion(execution, oneWeekAgo))
+    .slice(0, MAX_RECENT_COMPLETIONS_IN_STATE);
 
   const recentFailures = enrichedExecutions
-    .filter((execution) => isRecentFailure(execution, twentyFourHoursAgo))
-    .slice(0, EXECUTION_DISPLAY_LIMIT);
+    .filter((execution) => isRecentFailure(execution, oneWeekAgo))
+    .slice(0, MAX_RECENT_FAILURES_IN_STATE);
 
   return {
     activeExecutions,
@@ -226,14 +237,20 @@ export function removeExecutionFromAllCategories(
   state: NotificationState,
   executionId: string,
 ): NotificationState {
+  const filteredActiveExecutions = state.activeExecutions.filter(
+    (e) => e.id !== executionId,
+  );
+  const filteredRecentCompletions = state.recentCompletions.filter(
+    (e) => e.id !== executionId,
+  );
+  const filteredRecentFailures = state.recentFailures.filter(
+    (e) => e.id !== executionId,
+  );
+
   return {
-    activeExecutions: state.activeExecutions.filter(
-      (e) => e.id !== executionId,
-    ),
-    recentCompletions: state.recentCompletions.filter(
-      (e) => e.id !== executionId,
-    ),
-    recentFailures: state.recentFailures.filter((e) => e.id !== executionId),
+    activeExecutions: filteredActiveExecutions,
+    recentCompletions: filteredRecentCompletions,
+    recentFailures: filteredRecentFailures,
     totalCount: state.totalCount, // Will be recalculated later
   };
 }
@@ -242,23 +259,23 @@ export function addExecutionToCategory(
   state: NotificationState,
   execution: AgentExecutionWithInfo,
 ): NotificationState {
-  const twentyFourHoursAgo = new Date(Date.now() - MILLISECONDS_PER_DAY);
+  const oneWeekAgo = new Date(Date.now() - MILLISECONDS_PER_WEEK);
   const newState = { ...state };
 
   if (isActiveExecution(execution)) {
     newState.activeExecutions = [execution, ...newState.activeExecutions].slice(
       0,
-      EXECUTION_DISPLAY_LIMIT,
+      MAX_ACTIVE_EXECUTIONS_IN_STATE,
     );
-  } else if (isRecentCompletion(execution, twentyFourHoursAgo)) {
+  } else if (isRecentCompletion(execution, oneWeekAgo)) {
     newState.recentCompletions = [
       execution,
       ...newState.recentCompletions,
-    ].slice(0, EXECUTION_DISPLAY_LIMIT);
-  } else if (isRecentFailure(execution, twentyFourHoursAgo)) {
+    ].slice(0, MAX_RECENT_COMPLETIONS_IN_STATE);
+  } else if (isRecentFailure(execution, oneWeekAgo)) {
     newState.recentFailures = [execution, ...newState.recentFailures].slice(
       0,
-      EXECUTION_DISPLAY_LIMIT,
+      MAX_RECENT_FAILURES_IN_STATE,
     );
   }
 
@@ -268,16 +285,19 @@ export function addExecutionToCategory(
 export function cleanupOldNotifications(
   state: NotificationState,
 ): NotificationState {
-  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const oneWeekAgo = new Date(Date.now() - MILLISECONDS_PER_WEEK);
+
+  const filteredRecentCompletions = state.recentCompletions.filter((e) =>
+    isRecentNotification(e, oneWeekAgo),
+  );
+  const filteredRecentFailures = state.recentFailures.filter((e) =>
+    isRecentNotification(e, oneWeekAgo),
+  );
 
   return {
     ...state,
-    recentCompletions: state.recentCompletions.filter((e) =>
-      isRecentNotification(e, twentyFourHoursAgo),
-    ),
-    recentFailures: state.recentFailures.filter((e) =>
-      isRecentNotification(e, twentyFourHoursAgo),
-    ),
+    recentCompletions: filteredRecentCompletions,
+    recentFailures: filteredRecentFailures,
   };
 }
 

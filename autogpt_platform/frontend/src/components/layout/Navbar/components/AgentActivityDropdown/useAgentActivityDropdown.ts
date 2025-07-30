@@ -2,8 +2,11 @@ import { useGetV1GetAllExecutions } from "@/app/api/__generated__/endpoints/grap
 import { useGetV2GetMyAgents } from "@/app/api/__generated__/endpoints/store/store";
 import { useGetV2ListLibraryAgents } from "@/app/api/__generated__/endpoints/library/library";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgentResponse";
+import { MyAgentsResponse } from "@/app/api/__generated__/models/myAgentsResponse";
+import { MyAgent } from "@/app/api/__generated__/models/myAgent";
 import BackendAPI from "@/lib/autogpt-server-api/client";
-import type { GraphExecution } from "@/lib/autogpt-server-api/types";
+import type { GraphExecution, GraphID } from "@/lib/autogpt-server-api/types";
 import { useCallback, useEffect, useState } from "react";
 import {
   NotificationState,
@@ -33,11 +36,15 @@ export function useAgentActivityDropdown() {
     data: myAgentsResponse,
     isLoading: isAgentsLoading,
     error: agentsError,
-  } = useGetV2GetMyAgents({
-    query: {
-      enabled: true,
+  } = useGetV2GetMyAgents(
+    {},
+    {
+      // Enable query by default
+      query: {
+        enabled: true,
+      },
     },
-  });
+  );
 
   // Get library agents data to map graph_id to library_agent_id
   const {
@@ -66,27 +73,27 @@ export function useAgentActivityDropdown() {
 
   // Update agent info map when both agent data sources change
   useEffect(() => {
-    if (
-      myAgentsResponse?.data?.agents &&
-      libraryAgentsResponse?.data &&
-      "agents" in libraryAgentsResponse.data
-    ) {
-      const agentMap = createAgentInfoMap(myAgentsResponse.data.agents);
+    if (myAgentsResponse?.data && libraryAgentsResponse?.data) {
+      const myAgents = myAgentsResponse.data as MyAgentsResponse;
+      const libraryAgents = libraryAgentsResponse.data as LibraryAgentResponse;
 
-      // Add library agent ID mapping
-      libraryAgentsResponse.data.agents.forEach(
-        (libraryAgent: LibraryAgent) => {
-          const existingInfo = agentMap.get(libraryAgent.graph_id);
-          if (existingInfo) {
-            agentMap.set(libraryAgent.graph_id, {
-              ...existingInfo,
-              library_agent_id: libraryAgent.id,
-            });
+      if (myAgents?.agents && libraryAgents?.agents) {
+        const agentMap = createAgentInfoMap(myAgents.agents);
+
+        libraryAgents.agents.forEach((libraryAgent: LibraryAgent) => {
+          if (libraryAgent.graph_id && libraryAgent.id) {
+            const existingInfo = agentMap.get(libraryAgent.graph_id);
+            if (existingInfo) {
+              agentMap.set(libraryAgent.graph_id, {
+                ...existingInfo,
+                library_agent_id: libraryAgent.id,
+              });
+            }
           }
-        },
-      );
+        });
 
-      setAgentInfoMap(agentMap);
+        setAgentInfoMap(agentMap);
+      }
     }
   }, [myAgentsResponse, libraryAgentsResponse]);
 
@@ -121,18 +128,21 @@ export function useAgentActivityDropdown() {
     const connectHandler = api.onWebSocketConnect(() => {
       setIsConnected(true);
 
-      // Subscribe to graph executions for all user agents
-      if (myAgentsResponse?.data?.agents) {
-        myAgentsResponse.data.agents.forEach((agent) => {
-          api
-            .subscribeToGraphExecutions(agent.agent_id as any)
-            .catch((error) => {
-              console.error(
-                `[AgentNotifications] Failed to subscribe to graph ${agent.agent_id}:`,
-                error,
-              );
-            });
-        });
+      if (myAgentsResponse?.data) {
+        const myAgents = myAgentsResponse.data as MyAgentsResponse;
+
+        if (myAgents?.agents) {
+          myAgents.agents.forEach((agent: MyAgent) => {
+            api
+              .subscribeToGraphExecutions(agent.agent_id as GraphID)
+              .catch((error) => {
+                console.error(
+                  `[AgentNotifications] Failed to subscribe to graph ${agent.agent_id}:`,
+                  error,
+                );
+              });
+          });
+        }
       }
     });
 
