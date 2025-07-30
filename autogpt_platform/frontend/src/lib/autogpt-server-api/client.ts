@@ -2,6 +2,8 @@ import { getWebSocketToken } from "@/lib/supabase/actions";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { Key, storage } from "@/services/storage/local-storage";
+import * as Sentry from "@sentry/nextjs";
 import type {
   AddUserCreditsResponse,
   AnalyticsDetails,
@@ -75,6 +77,7 @@ export default class BackendAPI {
   private wsOnConnectHandlers: Set<() => void> = new Set();
   private wsOnDisconnectHandlers: Set<() => void> = new Set();
   private wsMessageHandlers: Record<string, Set<(data: any) => void>> = {};
+  private isIntentionallyDisconnected: boolean = false;
 
   readonly HEARTBEAT_INTERVAL = 100_000; // 100 seconds
   readonly HEARTBEAT_TIMEOUT = 10_000; // 10 seconds
@@ -1116,6 +1119,7 @@ export default class BackendAPI {
   }
 
   async connectWebSocket(): Promise<void> {
+    this.isIntentionallyDisconnected = false;
     return (this.wsConnecting ??= new Promise(async (resolve, reject) => {
       try {
         let token = "";
@@ -1139,6 +1143,7 @@ export default class BackendAPI {
           this.webSocket!.state = "connected";
           console.info("[BackendAPI] WebSocket connected to", this.wsUrl);
           this._startWSHeartbeat(); // Start heartbeat when connection opens
+          this._clearDisconnectIntent(); // Clear disconnect intent when connected
           this.wsOnConnectHandlers.forEach((handler) => handler());
           resolve();
         };
@@ -1159,9 +1164,14 @@ export default class BackendAPI {
 
           this._stopWSHeartbeat(); // Stop heartbeat when connection closes
           this.wsConnecting = null;
-          this.wsOnDisconnectHandlers.forEach((handler) => handler());
-          // Attempt to reconnect after a delay
-          setTimeout(() => this.connectWebSocket().then(resolve), 1000);
+
+          const wasIntentional =
+            this.isIntentionallyDisconnected || this._hasDisconnectIntent();
+
+          if (!wasIntentional) {
+            this.wsOnDisconnectHandlers.forEach((handler) => handler());
+            setTimeout(() => this.connectWebSocket().then(resolve), 1000);
+          }
         };
 
         this.webSocket.onerror = (error) => {
@@ -1169,7 +1179,6 @@ export default class BackendAPI {
             console.error("[BackendAPI] WebSocket error:", error);
           }
         };
-
         this.webSocket.onmessage = (event) => this._handleWSMessage(event);
       } catch (error) {
         console.error("[BackendAPI] Error connecting to WebSocket:", error);
@@ -1179,9 +1188,32 @@ export default class BackendAPI {
   }
 
   disconnectWebSocket() {
+    this.isIntentionallyDisconnected = true;
     this._stopWSHeartbeat(); // Stop heartbeat when disconnecting
     if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
       this.webSocket.close();
+    }
+  }
+
+  private _hasDisconnectIntent(): boolean {
+    if (!isClient) return false;
+
+    try {
+      return storage.get(Key.WEBSOCKET_DISCONNECT_INTENT) === "true";
+    } catch {
+      return false;
+    }
+  }
+
+  private _clearDisconnectIntent(): void {
+    if (!isClient) return;
+
+    try {
+      storage.clean(Key.WEBSOCKET_DISCONNECT_INTENT);
+    } catch {
+      Sentry.captureException(
+        new Error("Failed to clear WebSocket disconnect intent"),
+      );
     }
   }
 

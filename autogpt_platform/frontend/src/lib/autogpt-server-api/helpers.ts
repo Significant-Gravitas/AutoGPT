@@ -1,4 +1,5 @@
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { Key, storage } from "@/services/storage/local-storage";
 
 export class ApiError extends Error {
   public status: number;
@@ -182,7 +183,7 @@ function isLogoutInProgress(): boolean {
 
   try {
     // Check if logout was recently triggered
-    const logoutTimestamp = window.localStorage.getItem("supabase-logout");
+    const logoutTimestamp = storage.get(Key.LOGOUT);
     if (logoutTimestamp) {
       const timeDiff = Date.now() - parseInt(logoutTimestamp);
       // Consider logout in progress for 5 seconds after trigger

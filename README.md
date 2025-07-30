@@ -6,8 +6,8 @@
 **AutoGPT** is a powerful platform that allows you to create, deploy, and manage continuous AI agents that automate complex workflows. 
 
 ## Hosting Options 
-   - Download to self-host
-   - [Join the Waitlist](https://bit.ly/3ZDijAI) for the cloud-hosted beta  
+   - Download to self-host (Free!)
+   - [Join the Waitlist](https://bit.ly/3ZDijAI) for the cloud-hosted beta (Closed Beta - Public release Coming Soon!)
 
 ## How to Setup for Self-Hosting
 > [!NOTE]

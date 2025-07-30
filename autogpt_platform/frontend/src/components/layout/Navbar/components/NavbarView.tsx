@@ -1,12 +1,13 @@
 "use client";
 import { IconAutoGPTLogo, IconType } from "@/components/ui/icons";
 import Wallet from "../../../agptui/Wallet";
-import { AccountMenu } from "../components/AccountMenu/AccountMenu";
-import { LoginButton } from "../components/LoginButton";
-import { MobileNavBar } from "../components/MobileNavbar/MobileNavBar";
-import { NavbarLink } from "../components/NavbarLink";
+import { AccountMenu } from "./AccountMenu/AccountMenu";
+import { LoginButton } from "./LoginButton";
+import { MobileNavBar } from "./MobileNavbar/MobileNavBar";
+import { NavbarLink } from "./NavbarLink";
 import { accountMenuItems, loggedInLinks, loggedOutLinks } from "../helpers";
 import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
+import { AgentActivityDropdown } from "./AgentActivityDropdown/AgentActivityDropdown";
 
 interface NavbarViewProps {
   isLoggedIn: boolean;
@@ -45,6 +46,7 @@ export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
         <div className="flex flex-1 items-center justify-end gap-4">
           {isLoggedIn ? (
             <div className="flex items-center gap-4">
+              <AgentActivityDropdown />
               {profile && <Wallet />}
               <AccountMenu
                 userName={profile?.username}

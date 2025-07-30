@@ -38,9 +38,9 @@ export async function navigateToAgentByName(
 }
 
 export async function clickRunButton(page: Page): Promise<void> {
-  const { getId, getButton } = getSelectors(page);
+  const { getId } = getSelectors(page);
   const runButton = getId("agent-run-button");
-  const runAgainButton = getButton("Run again");
+  const runAgainButton = getId("run-again-button");
 
   if (await runButton.isVisible()) {
     await runButton.click();
@@ -61,7 +61,7 @@ export async function runAgent(page: Page): Promise<void> {
 
 export async function waitForAgentPageLoad(page: Page): Promise<void> {
   await page.waitForURL(/.*\/library\/agents\/[^/]+/);
-  await page.getByTestId("Run actions").isVisible();
+  await page.getByTestId("Run actions").isVisible({ timeout: 10000 });
 }
 
 export async function getAgentName(page: Page): Promise<string> {

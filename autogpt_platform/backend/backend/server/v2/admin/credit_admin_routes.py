@@ -4,11 +4,11 @@ import typing
 from autogpt_libs.auth import requires_admin_user
 from autogpt_libs.auth.depends import get_user_id
 from fastapi import APIRouter, Body, Depends
-from prisma import Json
 from prisma.enums import CreditTransactionType
 
 from backend.data.credit import admin_get_user_history, get_user_credit_model
 from backend.server.v2.admin.model import AddUserCreditsResponse, UserHistoryResponse
+from backend.util.json import SafeJson
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ async def add_user_credits(
         user_id,
         amount,
         transaction_type=CreditTransactionType.GRANT,
-        metadata=Json({"admin_id": admin_user, "reason": comments}),
+        metadata=SafeJson({"admin_id": admin_user, "reason": comments}),
     )
     return {
         "new_balance": new_balance,
