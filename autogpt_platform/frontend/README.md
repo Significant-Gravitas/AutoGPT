@@ -57,7 +57,7 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 For subsequent development sessions, you need to ensure the backend is running and then start the frontend:
 
 ```bash
-cd autogpt_platform && docker compose up -d
+cd autogpt_platform && docker compose up -d # Only if the Back-end is not running via Docker
 pnpm dev
 ```
 
@@ -95,17 +95,6 @@ This project uses an auto-generated API client powered by [**Orval**](https://or
 5. **Client Generation**: Auto-generated client includes TypeScript types, API endpoints, and Zod schemas, organized by tags
 
 ### API Client Commands
-
-```bash
-# Fetch OpenAPI spec from backend and generate client
-pnpm generate:api-all
-
-# Only fetch the OpenAPI spec
-pnpm fetch:openapi
-
-# Only generate the client (after spec is fetched)
-pnpm generate:api-client
-```
 
 ### Using the Generated Client
 
