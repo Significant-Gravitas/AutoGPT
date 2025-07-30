@@ -15,7 +15,7 @@ from backend.data.block import (
     BlockSchema,
     BlockType,
 )
-from backend.data.model import SchemaField
+from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util import json
 
 if TYPE_CHECKING:
@@ -518,6 +518,15 @@ class SmartDecisionMakerBlock(Block):
             tools=tool_functions,
             ollama_host=input_data.ollama_host,
             parallel_tool_calls=input_data.multiple_tool_calls,
+        )
+
+        # Track LLM usage stats
+        self.merge_stats(
+            NodeExecutionStats(
+                input_token_count=response.prompt_tokens,
+                output_token_count=response.completion_tokens,
+                llm_call_count=1,
+            )
         )
 
         # Add reasoning to conversation history if available
