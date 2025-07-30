@@ -39,7 +39,8 @@ test.describe("Marketplace – Basic Functionality", () => {
     const featuredAgentsSection =
       await marketplacePage.getFeaturedAgentsSection(page);
     await isVisible(featuredAgentsSection);
-    const featuredAgentCards = await marketplacePage.getFeaturedAgentCards(page);
+    const featuredAgentCards =
+      await marketplacePage.getFeaturedAgentCards(page);
     await hasMinCount(featuredAgentCards, 1);
 
     const topAgentsSection = await marketplacePage.getTopAgentsSection(page);
@@ -60,7 +61,8 @@ test.describe("Marketplace – Basic Functionality", () => {
     const marketplacePage = new MarketplacePage(page);
     await marketplacePage.goto(page);
 
-    const firstFeaturedAgent = await marketplacePage.getFirstFeaturedAgent(page);
+    const firstFeaturedAgent =
+      await marketplacePage.getFirstFeaturedAgent(page);
     await firstFeaturedAgent.waitFor({ state: "visible" });
     await firstFeaturedAgent.click();
     await page.waitForURL("**/marketplace/agent/**");
@@ -73,7 +75,8 @@ test.describe("Marketplace – Basic Functionality", () => {
     await matchesUrl(page, /\/marketplace\/agent\/.+/);
     await marketplacePage.goto(page);
 
-    const firstCreatorProfile = await marketplacePage.getFirstCreatorProfile(page);
+    const firstCreatorProfile =
+      await marketplacePage.getFirstCreatorProfile(page);
     await firstCreatorProfile.click();
     await page.waitForURL("**/marketplace/creator/**");
     await matchesUrl(page, /\/marketplace\/creator\/.+/);
