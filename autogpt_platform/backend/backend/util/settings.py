@@ -531,7 +531,7 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     zerobounce_api_key: str = Field(default="", description="ZeroBounce API Key")
 
     # AutoMod API credentials
-    automod_api_key: str = Field(default="am_wS1yQiQgrsXcI7Hqgb4yOPW1OrT6lVsp4RXEpIGZb4w", description="AutoMod API key")
+    automod_api_key: str = Field(default="", description="AutoMod API key")
 
     # Add more secret fields as needed
 
