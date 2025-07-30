@@ -79,6 +79,7 @@ from backend.util.file import clean_exec_files
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.process import AppProcess, set_service_name
 from backend.util.retry import continuous_retry, func_retry
+from backend.server.v2.AutoMod.manager import automod_manager
 from backend.util.service import get_service_client
 from backend.util.settings import Settings
 
@@ -693,6 +694,18 @@ class Executor:
                     amount=1,
                 )
 
+            # Input moderation
+            moderation_success, moderation_error = automod_manager.moderate_graph_execution_inputs(
+                db_client=db_client,
+                graph_exec=graph_exec,
+                event_loop=cls.node_evaluation_loop,
+                send_update_func=send_execution_update
+            )
+            if not moderation_success:
+                execution_status = ExecutionStatus.FAILED
+                error = moderation_error
+                return execution_stats, execution_status, error
+
             # ------------------------------------------------------------
             # Pre‑populate queue ---------------------------------------
             # ------------------------------------------------------------
@@ -818,6 +831,21 @@ class Executor:
                         time.sleep(0.1)
 
             # loop done --------------------------------------------------
+
+            # Output moderation
+            moderation_success, moderation_error = automod_manager.moderate_graph_execution_outputs(
+                db_client=db_client,
+                graph_exec_id=graph_exec.graph_exec_id,
+                user_id=graph_exec.user_id,
+                graph_id=graph_exec.graph_id,
+                event_loop=cls.node_evaluation_loop,
+                send_update_func=send_execution_update
+            )
+            if not moderation_success:
+                execution_status = ExecutionStatus.FAILED
+                error = moderation_error
+                return execution_stats, execution_status, error
+
             execution_status = ExecutionStatus.COMPLETED
             return execution_stats, execution_status, error
 

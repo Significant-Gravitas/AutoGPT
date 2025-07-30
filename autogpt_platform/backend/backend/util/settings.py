@@ -295,6 +295,40 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum file size in MB for file uploads (1-1024 MB)",
     )
 
+    # AutoMod configuration
+    automod_enabled: bool = Field(
+        default=False,
+        description="Whether AutoMod content moderation is enabled",
+    )
+    automod_api_url: str = Field(
+        default="",
+        description="AutoMod API base URL - Make sure it ends in /api",
+    )
+    automod_timeout: int = Field(
+        default=30,
+        description="Timeout in seconds for AutoMod API requests",
+    )
+    automod_retry_attempts: int = Field(
+        default=3,
+        description="Number of retry attempts for AutoMod API requests",
+    )
+    automod_retry_delay: float = Field(
+        default=1.0,
+        description="Delay between retries for AutoMod API requests in seconds",
+    )
+    automod_fail_open: bool = Field(
+        default=False,
+        description="If True, allow execution to continue if AutoMod fails",
+    )
+    automod_moderate_inputs: bool = Field(
+        default=True,
+        description="Whether to moderate block inputs",
+    )
+    automod_moderate_outputs: bool = Field(
+        default=True,
+        description="Whether to moderate block outputs",
+    )
+
     @field_validator("platform_base_url", "frontend_base_url")
     @classmethod
     def validate_platform_base_url(cls, v: str, info: ValidationInfo) -> str:
@@ -495,6 +529,9 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     apollo_api_key: str = Field(default="", description="Apollo API Key")
     smartlead_api_key: str = Field(default="", description="SmartLead API Key")
     zerobounce_api_key: str = Field(default="", description="ZeroBounce API Key")
+
+    # AutoMod API credentials
+    automod_api_key: str = Field(default="am_wS1yQiQgrsXcI7Hqgb4yOPW1OrT6lVsp4RXEpIGZb4w", description="AutoMod API key")
 
     # Add more secret fields as needed
 

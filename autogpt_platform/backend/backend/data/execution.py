@@ -311,6 +311,9 @@ class NodeExecutionResult(BaseModel):
 
     @staticmethod
     def from_db(_node_exec: AgentNodeExecution, user_id: Optional[str] = None):
+        # Check if this execution was cleared due to moderation
+        stats = type_utils.convert(_node_exec.stats, dict) if _node_exec.stats else {}
+        
         if _node_exec.executionData:
             # Execution that has been queued for execution will persist its data.
             input_data = type_utils.convert(_node_exec.executionData, dict[str, Any])
@@ -320,9 +323,22 @@ class NodeExecutionResult(BaseModel):
             for data in _node_exec.Input or []:
                 input_data[data.name] = type_utils.convert(data.data, type[Any])
 
+        # Check if inputs should be cleared due to moderation
+        if stats.get("moderation_cleared") and stats.get("cleared_inputs"):
+            # Replace input data with moderation messages
+            for name, message in stats["cleared_inputs"].items():
+                input_data[name] = message
+
         output_data: CompletedBlockOutput = defaultdict(list)
-        for data in _node_exec.Output or []:
-            output_data[data.name].append(type_utils.convert(data.data, type[Any]))
+        
+        if stats.get("moderation_cleared") and stats.get("cleared_outputs"):
+            # Use the cleared outputs instead of actual output data
+            for name, message in stats["cleared_outputs"].items():
+                output_data[name].append(message)
+        else:
+            # Normal case - use actual output data
+            for data in _node_exec.Output or []:
+                output_data[data.name].append(type_utils.convert(data.data, type[Any]))
 
         graph_execution: AgentGraphExecution | None = _node_exec.GraphExecution
         if graph_execution:
