@@ -88,6 +88,9 @@ class AirtableListBasesBlock(Block):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
+        trigger: str = SchemaField(
+            description="Trigger the block to run - value is ignored", default="manual"
+        )
         offset: str = SchemaField(
             description="Pagination offset from previous request", default=""
         )
