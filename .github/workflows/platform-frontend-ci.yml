@@ -189,10 +189,11 @@ jobs:
             echo "The API schema is now out of sync with the Front-end queries."
             echo ""
             echo "To fix this:"
-            echo "1. Run 'pnpm generate:api-all' locally"
-            echo "2. Run 'pnpm type-check' locally"
-            echo "2. Fix any TypeScript errors that may have been introduced"
-            echo "3. Commit and push your changes"
+            echo "1. Pull the backend 'docker compose pull && docker compose up -d --build --force-recreate'"
+            echo "2. Run 'pnpm generate:api-all' locally"
+            echo "3. Run 'pnpm type-check' locally"
+            echo "4. Fix any TypeScript errors that may have been introduced"
+            echo "5. Commit and push your changes"
             echo ""
             exit 1
           else
