@@ -67,9 +67,10 @@ class LateExecutionMonitor:
         num_running = len(running_late_executions)
         num_users = len(set([r.user_id for r in all_late_executions]))
 
-        # Truncate to max 100 entries
-        truncated_executions = all_late_executions[:100]
-        was_truncated = num_total_late > 100
+        # Truncate to max entries
+        tuncate_size = 5
+        truncated_executions = all_late_executions[:tuncate_size]
+        was_truncated = num_total_late > tuncate_size
 
         late_execution_details = [
             f"* `Execution ID: {exec.id}, Graph ID: {exec.graph_id}v{exec.graph_version}, User ID: {exec.user_id}, Status: {exec.status}, Created At: {exec.started_at.isoformat()}`"
@@ -85,7 +86,7 @@ class LateExecutionMonitor:
 
         if was_truncated:
             message_parts.append(
-                f"\nShowing first 100 of {num_total_late} late executions:"
+                f"\nShowing first {tuncate_size} of {num_total_late} late executions:"
             )
         else:
             message_parts.append("\nDetails:")
