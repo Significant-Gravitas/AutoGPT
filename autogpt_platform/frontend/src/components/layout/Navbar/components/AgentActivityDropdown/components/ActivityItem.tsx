@@ -79,18 +79,13 @@ export function ActivityItem({ execution }: Props) {
     return "Unknown";
   }
 
-  const agentId = execution.library_agent_id || execution.graph_id;
-  const linkUrl = `/library/agents/${agentId}?executionId=${execution.id}`;
-  const withLibraryId = !!execution.library_agent_id;
+  const linkUrl = `/library/agents/${execution.library_agent_id}?executionId=${execution.id}`;
+  const withExecutionLink = execution.library_agent_id && execution.id;
 
-  if (!withLibraryId) return null;
+  console.log(execution);
 
-  return (
-    <Link
-      className="block cursor-pointer border-b border-slate-50 px-2 py-3 transition-colors last:border-b-0 hover:bg-lightGrey"
-      href={linkUrl}
-      role="button"
-    >
+  const content = (
+    <>
       {/* Icon + Agent Name */}
       <div className="flex items-center space-x-2">
         {getStatusIcon()}
@@ -109,6 +104,20 @@ export function ActivityItem({ execution }: Props) {
           {getTimeDisplay()}
         </Text>
       </div>
+    </>
+  );
+
+  return withExecutionLink ? (
+    <Link
+      className="block cursor-pointer border-b border-slate-50 px-2 py-3 transition-colors last:border-b-0 hover:bg-lightGrey"
+      href={linkUrl}
+      role="button"
+    >
+      {content}
     </Link>
+  ) : (
+    <div className="block border-b border-slate-50 px-2 py-3 last:border-b-0">
+      {content}
+    </div>
   );
 }
