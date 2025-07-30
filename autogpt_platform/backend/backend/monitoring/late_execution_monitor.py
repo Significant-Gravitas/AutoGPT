@@ -68,7 +68,7 @@ class LateExecutionMonitor:
         num_users = len(set([r.user_id for r in all_late_executions]))
 
         # Truncate to max entries
-        tuncate_size = 20
+        tuncate_size = 5
         truncated_executions = all_late_executions[:tuncate_size]
         was_truncated = num_total_late > tuncate_size
 
