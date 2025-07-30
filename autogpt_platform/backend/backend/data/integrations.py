@@ -1,7 +1,6 @@
 import logging
 from typing import AsyncGenerator, Literal, Optional, overload
 
-from prisma import Json
 from prisma.models import IntegrationWebhook
 from prisma.types import (
     IntegrationWebhookCreateInput,
@@ -17,6 +16,7 @@ from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks.utils import webhook_ingress_url
 from backend.server.v2.library.model import LibraryAgentPreset
 from backend.util.exceptions import NotFoundError
+from backend.util.json import SafeJson
 
 from .db import BaseDbModel
 from .graph import NodeModel
@@ -90,7 +90,7 @@ async def create_webhook(webhook: Webhook) -> Webhook:
             webhookType=webhook.webhook_type,
             resource=webhook.resource,
             events=webhook.events,
-            config=Json(webhook.config),
+            config=SafeJson(webhook.config),
             secret=webhook.secret,
             providerWebhookId=webhook.provider_webhook_id,
         )
@@ -205,7 +205,7 @@ async def update_webhook(
     """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
     data: IntegrationWebhookUpdateInput = {}
     if config is not None:
-        data["config"] = Json(config)
+        data["config"] = SafeJson(config)
     if events is not None:
         data["events"] = events
     if not data:

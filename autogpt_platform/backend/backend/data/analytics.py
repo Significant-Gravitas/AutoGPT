@@ -2,6 +2,8 @@ import logging
 
 import prisma.types
 
+from backend.util.json import SafeJson
+
 logger = logging.getLogger(__name__)
 
 
@@ -15,7 +17,7 @@ async def log_raw_analytics(
         data=prisma.types.AnalyticsDetailsCreateInput(
             userId=user_id,
             type=type,
-            data=prisma.Json(data),
+            data=SafeJson(data),
             dataIndex=data_index,
         )
     )
