@@ -75,17 +75,17 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
   const api = useBackendAPI();
 
   // Use the auto-generated API hook
-  const { data, error, isLoading, refetch } = useGetV2GetMyAgents({
-    request: {
-      params: {
-        page: currentPage,
-        page_size: 20,
+  const { data, error, isLoading, refetch } = useGetV2GetMyAgents(
+    {
+      page: currentPage,
+      page_size: 20,
+    },
+    {
+      query: {
+        enabled: open, // Only fetch when the popout is open
       },
     },
-    query: {
-      enabled: open, // Only fetch when the popout is open
-    },
-  });
+  );
 
   // Update allAgents when new data arrives
   React.useEffect(() => {
