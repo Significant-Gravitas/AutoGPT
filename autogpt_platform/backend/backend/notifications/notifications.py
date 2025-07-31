@@ -633,14 +633,93 @@ class NotificationManager(AppService):
                 for db_event in batch.notifications
             ]
 
-            self.email_sender.send_templated(
-                notification=event.type,
-                user_email=recipient_email,
-                data=batch_messages,
-                user_unsub_link=unsub_link,
-            )
-            # only empty the batch if we sent the email successfully
-            get_db().empty_user_notification_batch(event.user_id, event.type)
+            # Split batch into chunks to avoid exceeding email size limits
+            # Start with a reasonable chunk size and adjust dynamically
+            MAX_EMAIL_SIZE = 4_500_000  # 4.5MB to leave buffer under 5MB limit
+            chunk_size = 100  # Initial chunk size
+            successfully_sent_count = 0
+            failed_indices = []
+
+            i = 0
+            while i < len(batch_messages):
+                # Try progressively smaller chunks if needed
+                chunk_sent = False
+                for attempt_size in [chunk_size, 50, 25, 10, 5, 1]:
+                    chunk = batch_messages[i : i + attempt_size]
+
+                    try:
+                        # Try to render the email to check its size
+                        template = self.email_sender._get_template(event.type)
+                        _, test_message = self.email_sender.formatter.format_email(
+                            base_template=template.base_template,
+                            subject_template=template.subject_template,
+                            content_template=template.body_template,
+                            data={"notifications": chunk},
+                            unsubscribe_link=f"{self.email_sender.formatter.env.globals.get('base_url', '')}/profile/settings",
+                        )
+
+                        if len(test_message) < MAX_EMAIL_SIZE:
+                            # Size is acceptable, send the email
+                            logger.info(
+                                f"Sending email with {len(chunk)} notifications "
+                                f"(size: {len(test_message):,} chars)"
+                            )
+
+                            self.email_sender.send_templated(
+                                notification=event.type,
+                                user_email=recipient_email,
+                                data=chunk,
+                                user_unsub_link=unsub_link,
+                            )
+
+                            # Track successful sends
+                            successfully_sent_count += len(chunk)
+
+                            # Update chunk_size for next iteration based on success
+                            if (
+                                attempt_size == chunk_size
+                                and len(test_message) < MAX_EMAIL_SIZE * 0.7
+                            ):
+                                # If we're well under limit, try larger chunks next time
+                                chunk_size = min(chunk_size + 10, 100)
+                            elif len(test_message) > MAX_EMAIL_SIZE * 0.9:
+                                # If we're close to limit, use smaller chunks
+                                chunk_size = max(attempt_size - 10, 1)
+
+                            i += len(chunk)
+                            chunk_sent = True
+                            break
+                    except Exception as e:
+                        if attempt_size == 1:
+                            # Even single notification is too large
+                            logger.error(
+                                f"Single notification too large to send: {e}. "
+                                f"Skipping notification at index {i}"
+                            )
+                            failed_indices.append(i)
+                            i += 1
+                            chunk_sent = True
+                            break
+                        # Try smaller chunk
+                        continue
+
+                if not chunk_sent:
+                    # Should not reach here due to single notification handling
+                    logger.error(f"Failed to send notifications starting at index {i}")
+                    failed_indices.append(i)
+                    i += 1
+
+            # Only empty the batch if ALL notifications were sent successfully
+            if successfully_sent_count == len(batch_messages):
+                logger.info(
+                    f"Successfully sent all {successfully_sent_count} notifications, clearing batch"
+                )
+                get_db().empty_user_notification_batch(event.user_id, event.type)
+            else:
+                logger.warning(
+                    f"Only sent {successfully_sent_count} of {len(batch_messages)} notifications. "
+                    f"Failed indices: {failed_indices}. Batch will be retained for retry."
+                )
             return True
         except Exception as e:
             logger.exception(f"Error processing notification for batch queue: {e}")
