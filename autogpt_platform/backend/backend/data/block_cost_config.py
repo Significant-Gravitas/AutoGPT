@@ -49,6 +49,7 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.O1: 16,  # $15 / $60
     LlmModel.O1_MINI: 4,
     LlmModel.GPT41: 2,
+    LlmModel.GPT41_MINI: 1,
     LlmModel.GPT4O_MINI: 1,
     LlmModel.GPT4O: 3,
     LlmModel.GPT4_TURBO: 10,
@@ -97,6 +98,15 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.LLAMA_API_LLAMA4_MAVERICK: 1,
     LlmModel.LLAMA_API_LLAMA3_3_8B: 1,
     LlmModel.LLAMA_API_LLAMA3_3_70B: 1,
+    LlmModel.GROK_4: 9,
+    LlmModel.KIMI_K2: 1,
+    LlmModel.QWEN3_235B_A22B_THINKING: 1,
+    LlmModel.QWEN3_CODER: 9,
+    LlmModel.GEMINI_2_5_FLASH: 1,
+    LlmModel.GEMINI_2_0_FLASH: 1,
+    LlmModel.GEMINI_2_5_FLASH_LITE_PREVIEW: 1,
+    LlmModel.GEMINI_2_0_FLASH_LITE: 1,
+    LlmModel.DEEPSEEK_R1_0528: 1,
 }
 
 for model in LlmModel:
