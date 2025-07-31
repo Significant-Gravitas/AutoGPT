@@ -82,6 +82,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     O1 = "o1"
     O1_MINI = "o1-mini"
     GPT41 = "gpt-4.1-2025-04-14"
+    GPT41_MINI = "gpt-4.1-mini-2025-04-14"
     GPT4O_MINI = "gpt-4o-mini"
     GPT4O = "gpt-4o"
     GPT4_TURBO = "gpt-4-turbo"
@@ -116,11 +117,16 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     # OpenRouter models
     GEMINI_FLASH_1_5 = "google/gemini-flash-1.5"
     GEMINI_2_5_PRO = "google/gemini-2.5-pro-preview-03-25"
+    GEMINI_2_5_FLASH = "google/gemini-2.5-flash"
+    GEMINI_2_0_FLASH = "google/gemini-2.0-flash-001"
+    GEMINI_2_5_FLASH_LITE_PREVIEW = "google/gemini-2.5-flash-lite-preview-06-17"
+    GEMINI_2_0_FLASH_LITE = "google/gemini-2.0-flash-lite-001"
     GROK_BETA = "x-ai/grok-beta"
     MISTRAL_NEMO = "mistralai/mistral-nemo"
     COHERE_COMMAND_R_08_2024 = "cohere/command-r-08-2024"
     COHERE_COMMAND_R_PLUS_08_2024 = "cohere/command-r-plus-08-2024"
     DEEPSEEK_CHAT = "deepseek/deepseek-chat"  # Actually: DeepSeek V3
+    DEEPSEEK_R1_0528 = "deepseek/deepseek-r1-0528"
     PERPLEXITY_SONAR = "perplexity/sonar"
     PERPLEXITY_SONAR_PRO = "perplexity/sonar-pro"
     PERPLEXITY_SONAR_DEEP_RESEARCH = "perplexity/sonar-deep-research"
@@ -167,6 +173,7 @@ MODEL_METADATA = {
     LlmModel.O1: ModelMetadata("openai", 200000, 100000),  # o1-2024-12-17
     LlmModel.O1_MINI: ModelMetadata("openai", 128000, 65536),  # o1-mini-2024-09-12
     LlmModel.GPT41: ModelMetadata("openai", 1047576, 32768),
+    LlmModel.GPT41_MINI: ModelMetadata("openai", 1047576, 32768),
     LlmModel.GPT4O_MINI: ModelMetadata(
         "openai", 128000, 16384
     ),  # gpt-4o-mini-2024-07-18
@@ -216,11 +223,16 @@ MODEL_METADATA = {
     # https://openrouter.ai/models
     LlmModel.GEMINI_FLASH_1_5: ModelMetadata("open_router", 1000000, 8192),
     LlmModel.GEMINI_2_5_PRO: ModelMetadata("open_router", 1050000, 8192),
+    LlmModel.GEMINI_2_5_FLASH: ModelMetadata("open_router", 1048576, 65535),
+    LlmModel.GEMINI_2_0_FLASH: ModelMetadata("open_router", 1048576, 8192),
+    LlmModel.GEMINI_2_5_FLASH_LITE_PREVIEW: ModelMetadata("open_router", 1048576, 65535),
+    LlmModel.GEMINI_2_0_FLASH_LITE: ModelMetadata("open_router", 1048576, 8192),
     LlmModel.GROK_BETA: ModelMetadata("open_router", 131072, 131072),
     LlmModel.MISTRAL_NEMO: ModelMetadata("open_router", 128000, 4096),
     LlmModel.COHERE_COMMAND_R_08_2024: ModelMetadata("open_router", 128000, 4096),
     LlmModel.COHERE_COMMAND_R_PLUS_08_2024: ModelMetadata("open_router", 128000, 4096),
     LlmModel.DEEPSEEK_CHAT: ModelMetadata("open_router", 64000, 2048),
+    LlmModel.DEEPSEEK_R1_0528: ModelMetadata("open_router", 163840, 163840),
     LlmModel.PERPLEXITY_SONAR: ModelMetadata("open_router", 127000, 127000),
     LlmModel.PERPLEXITY_SONAR_PRO: ModelMetadata("open_router", 200000, 8000),
     LlmModel.PERPLEXITY_SONAR_DEEP_RESEARCH: ModelMetadata(
