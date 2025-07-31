@@ -80,7 +80,6 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     O3_MINI = "o3-mini"
     O3 = "o3-2025-04-16"
     O1 = "o1"
-    O1_PREVIEW = "o1-preview"
     O1_MINI = "o1-mini"
     GPT41 = "gpt-4.1-2025-04-14"
     GPT4O_MINI = "gpt-4o-mini"
@@ -106,7 +105,6 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     LLAMA3_1_8B = "llama-3.1-8b-instant"
     LLAMA3_70B = "llama3-70b-8192"
     LLAMA3_8B = "llama3-8b-8192"
-    MIXTRAL_8X7B = "mixtral-8x7b-32768"
     # Groq preview models
     DEEPSEEK_LLAMA_70B = "deepseek-r1-distill-llama-70b"
     # Ollama models
@@ -122,15 +120,10 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     MISTRAL_NEMO = "mistralai/mistral-nemo"
     COHERE_COMMAND_R_08_2024 = "cohere/command-r-08-2024"
     COHERE_COMMAND_R_PLUS_08_2024 = "cohere/command-r-plus-08-2024"
-    EVA_QWEN_2_5_32B = "eva-unit-01/eva-qwen-2.5-32b"
     DEEPSEEK_CHAT = "deepseek/deepseek-chat"  # Actually: DeepSeek V3
-    PERPLEXITY_LLAMA_3_1_SONAR_LARGE_128K_ONLINE = (
-        "perplexity/llama-3.1-sonar-large-128k-online"
-    )
     PERPLEXITY_SONAR = "perplexity/sonar"
     PERPLEXITY_SONAR_PRO = "perplexity/sonar-pro"
     PERPLEXITY_SONAR_DEEP_RESEARCH = "perplexity/sonar-deep-research"
-    QWEN_QWQ_32B_PREVIEW = "qwen/qwq-32b-preview"
     NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B = "nousresearch/hermes-3-llama-3.1-405b"
     NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B = "nousresearch/hermes-3-llama-3.1-70b"
     AMAZON_NOVA_LITE_V1 = "amazon/nova-lite-v1"
@@ -168,9 +161,6 @@ MODEL_METADATA = {
     LlmModel.O3: ModelMetadata("openai", 200000, 100000),
     LlmModel.O3_MINI: ModelMetadata("openai", 200000, 100000),  # o3-mini-2025-01-31
     LlmModel.O1: ModelMetadata("openai", 200000, 100000),  # o1-2024-12-17
-    LlmModel.O1_PREVIEW: ModelMetadata(
-        "openai", 128000, 32768
-    ),  # o1-preview-2024-09-12
     LlmModel.O1_MINI: ModelMetadata("openai", 128000, 65536),  # o1-mini-2024-09-12
     LlmModel.GPT41: ModelMetadata("openai", 1047576, 32768),
     LlmModel.GPT4O_MINI: ModelMetadata(
@@ -212,7 +202,6 @@ MODEL_METADATA = {
     LlmModel.LLAMA3_1_8B: ModelMetadata("groq", 128000, 8192),
     LlmModel.LLAMA3_70B: ModelMetadata("groq", 8192, None),
     LlmModel.LLAMA3_8B: ModelMetadata("groq", 8192, None),
-    LlmModel.MIXTRAL_8X7B: ModelMetadata("groq", 32768, None),
     LlmModel.DEEPSEEK_LLAMA_70B: ModelMetadata("groq", 128000, None),
     # https://ollama.com/library
     LlmModel.OLLAMA_LLAMA3_3: ModelMetadata("ollama", 8192, None),
@@ -227,11 +216,7 @@ MODEL_METADATA = {
     LlmModel.MISTRAL_NEMO: ModelMetadata("open_router", 128000, 4096),
     LlmModel.COHERE_COMMAND_R_08_2024: ModelMetadata("open_router", 128000, 4096),
     LlmModel.COHERE_COMMAND_R_PLUS_08_2024: ModelMetadata("open_router", 128000, 4096),
-    LlmModel.EVA_QWEN_2_5_32B: ModelMetadata("open_router", 16384, 4096),
     LlmModel.DEEPSEEK_CHAT: ModelMetadata("open_router", 64000, 2048),
-    LlmModel.PERPLEXITY_LLAMA_3_1_SONAR_LARGE_128K_ONLINE: ModelMetadata(
-        "open_router", 127072, 127072
-    ),
     LlmModel.PERPLEXITY_SONAR: ModelMetadata("open_router", 127000, 127000),
     LlmModel.PERPLEXITY_SONAR_PRO: ModelMetadata("open_router", 200000, 8000),
     LlmModel.PERPLEXITY_SONAR_DEEP_RESEARCH: ModelMetadata(
@@ -239,7 +224,6 @@ MODEL_METADATA = {
         128000,
         128000,
     ),
-    LlmModel.QWEN_QWQ_32B_PREVIEW: ModelMetadata("open_router", 32768, 32768),
     LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B: ModelMetadata(
         "open_router", 131000, 4096
     ),
@@ -920,10 +904,22 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     )
 
                     if not response_error:
+                        self.merge_stats(
+                            NodeExecutionStats(
+                                llm_call_count=retry_count + 1,
+                                llm_retry_count=retry_count,
+                            )
+                        )
                         yield "response", response_obj
                         yield "prompt", self.prompt
                         return
                 else:
+                    self.merge_stats(
+                        NodeExecutionStats(
+                            llm_call_count=retry_count + 1,
+                            llm_retry_count=retry_count,
+                        )
+                    )
                     yield "response", {"response": response_text}
                     yield "prompt", self.prompt
                     return
@@ -955,13 +951,6 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                         f"Reducing max_tokens to {input_data.max_tokens} for next attempt"
                     )
                 retry_prompt = f"Error calling LLM: {e}"
-            finally:
-                self.merge_stats(
-                    NodeExecutionStats(
-                        llm_call_count=retry_count + 1,
-                        llm_retry_count=retry_count,
-                    )
-                )
 
         raise RuntimeError(retry_prompt)
 

@@ -1,6 +1,8 @@
 import base64
 from unittest.mock import Mock, patch
 
+import pytest
+
 from backend.blocks.google.gmail import GmailReadBlock
 
 
@@ -16,7 +18,8 @@ class TestGmailReadBlock:
         """Helper to encode text as base64 URL-safe."""
         return base64.urlsafe_b64encode(text.encode("utf-8")).decode("utf-8")
 
-    def test_single_part_text_plain(self):
+    @pytest.mark.asyncio
+    async def test_single_part_text_plain(self):
         """Test parsing single-part text/plain email."""
         body_text = "This is a plain text email body."
         msg = {
@@ -27,10 +30,11 @@ class TestGmailReadBlock:
             },
         }
 
-        result = self.gmail_block._get_email_body(msg, self.mock_service)
+        result = await self.gmail_block._get_email_body(msg, self.mock_service)
         assert result == body_text
 
-    def test_multipart_alternative_plain_and_html(self):
+    @pytest.mark.asyncio
+    async def test_multipart_alternative_plain_and_html(self):
         """Test parsing multipart/alternative with both plain and HTML parts."""
         plain_text = "This is the plain text version."
         html_text = "<html><body><p>This is the HTML version.</p></body></html>"
@@ -52,11 +56,12 @@ class TestGmailReadBlock:
             },
         }
 
-        result = self.gmail_block._get_email_body(msg, self.mock_service)
+        result = await self.gmail_block._get_email_body(msg, self.mock_service)
         # Should prefer plain text over HTML
         assert result == plain_text
 
-    def test_html_only_email(self):
+    @pytest.mark.asyncio
+    async def test_html_only_email(self):
         """Test parsing HTML-only email with conversion to plain text."""
         html_text = (
             "<html><body><h1>Hello World</h1><p>This is HTML content.</p></body></html>"
@@ -75,11 +80,12 @@ class TestGmailReadBlock:
             mock_converter.handle.return_value = "Hello World\n\nThis is HTML content."
             mock_html2text.return_value = mock_converter
 
-            result = self.gmail_block._get_email_body(msg, self.mock_service)
+            result = await self.gmail_block._get_email_body(msg, self.mock_service)
             assert "Hello World" in result
             assert "This is HTML content" in result
 
-    def test_html_fallback_when_html2text_unavailable(self):
+    @pytest.mark.asyncio
+    async def test_html_fallback_when_html2text_unavailable(self):
         """Test fallback to raw HTML when html2text is not available."""
         html_text = "<html><body><p>HTML content</p></body></html>"
 
@@ -92,10 +98,11 @@ class TestGmailReadBlock:
         }
 
         with patch("html2text.HTML2Text", side_effect=ImportError):
-            result = self.gmail_block._get_email_body(msg, self.mock_service)
+            result = await self.gmail_block._get_email_body(msg, self.mock_service)
             assert result == html_text
 
-    def test_nested_multipart_structure(self):
+    @pytest.mark.asyncio
+    async def test_nested_multipart_structure(self):
         """Test parsing deeply nested multipart structure."""
         plain_text = "Nested plain text content."
 
@@ -117,10 +124,11 @@ class TestGmailReadBlock:
             },
         }
 
-        result = self.gmail_block._get_email_body(msg, self.mock_service)
+        result = await self.gmail_block._get_email_body(msg, self.mock_service)
         assert result == plain_text
 
-    def test_attachment_body_content(self):
+    @pytest.mark.asyncio
+    async def test_attachment_body_content(self):
         """Test parsing email where body is stored as attachment."""
         attachment_data = self._encode_base64("Body content from attachment.")
 
@@ -137,10 +145,11 @@ class TestGmailReadBlock:
             "data": attachment_data
         }
 
-        result = self.gmail_block._get_email_body(msg, self.mock_service)
+        result = await self.gmail_block._get_email_body(msg, self.mock_service)
         assert result == "Body content from attachment."
 
-    def test_no_readable_body(self):
+    @pytest.mark.asyncio
+    async def test_no_readable_body(self):
         """Test email with no readable body content."""
         msg = {
             "id": "test_msg_7",
@@ -150,10 +159,11 @@ class TestGmailReadBlock:
             },
         }
 
-        result = self.gmail_block._get_email_body(msg, self.mock_service)
+        result = await self.gmail_block._get_email_body(msg, self.mock_service)
         assert result == "This email does not contain a readable body."
 
-    def test_base64_padding_handling(self):
+    @pytest.mark.asyncio
+    async def test_base64_padding_handling(self):
         """Test proper handling of base64 data with missing padding."""
         # Create base64 data with missing padding
         text = "Test content"
@@ -164,7 +174,8 @@ class TestGmailReadBlock:
         result = self.gmail_block._decode_base64(encoded_no_padding)
         assert result == text
 
-    def test_recursion_depth_limit(self):
+    @pytest.mark.asyncio
+    async def test_recursion_depth_limit(self):
         """Test that recursion depth is properly limited."""
 
         # Create a deeply nested structure that would exceed the limit
@@ -184,21 +195,24 @@ class TestGmailReadBlock:
             "payload": create_nested_part(0),
         }
 
-        result = self.gmail_block._get_email_body(msg, self.mock_service)
+        result = await self.gmail_block._get_email_body(msg, self.mock_service)
         # Should return fallback message due to depth limit
         assert result == "This email does not contain a readable body."
 
-    def test_malformed_base64_handling(self):
+    @pytest.mark.asyncio
+    async def test_malformed_base64_handling(self):
         """Test handling of malformed base64 data."""
         result = self.gmail_block._decode_base64("invalid_base64_data!!!")
         assert result is None
 
-    def test_empty_data_handling(self):
+    @pytest.mark.asyncio
+    async def test_empty_data_handling(self):
         """Test handling of empty or None data."""
         assert self.gmail_block._decode_base64("") is None
         assert self.gmail_block._decode_base64(None) is None
 
-    def test_attachment_download_failure(self):
+    @pytest.mark.asyncio
+    async def test_attachment_download_failure(self):
         """Test handling of attachment download failure."""
         msg = {
             "id": "test_msg_9",
@@ -213,5 +227,5 @@ class TestGmailReadBlock:
             Exception("Download failed")
         )
 
-        result = self.gmail_block._get_email_body(msg, self.mock_service)
+        result = await self.gmail_block._get_email_body(msg, self.mock_service)
         assert result == "This email does not contain a readable body."
