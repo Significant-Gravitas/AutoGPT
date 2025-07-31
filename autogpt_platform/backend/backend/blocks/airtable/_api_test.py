@@ -9,6 +9,7 @@ from ._api import (
     TableFieldType,
     WebhookFilters,
     WebhookSpecification,
+    create_base,
     create_field,
     create_record,
     create_table,
@@ -17,6 +18,7 @@ from ._api import (
     delete_record,
     delete_webhook,
     get_record,
+    list_bases,
     list_records,
     list_webhook_payloads,
     update_field,
@@ -38,7 +40,21 @@ async def test_create_update_table():
         api_key=SecretStr(key),
     )
     postfix = uuid4().hex[:4]
-    base_id = "appSbaQLkcYiIOqux"
+    workspace_id = "wsphuHmfllg7V3Brd"
+    response = await create_base(credentials, workspace_id, "API Testing Base")
+    assert response is not None, f"Checking create base response: {response}"
+    assert (
+        response.get("id") is not None
+    ), f"Checking create base response id: {response}"
+    base_id = response.get("id")
+    assert base_id is not None, f"Checking create base response id: {base_id}"
+
+    response = await list_bases(credentials)
+    assert response is not None, f"Checking list bases response: {response}"
+    assert "API Testing Base" in [
+        base.get("name") for base in response.get("bases", [])
+    ], f"Checking list bases response bases: {response}"
+
     table_name = f"test_table_{postfix}"
     table_fields = [{"name": "test_field", "type": "singleLineText"}]
     table = await create_table(credentials, base_id, table_name, table_fields)
@@ -73,7 +89,7 @@ async def test_invalid_field_type():
         api_key=SecretStr(key),
     )
     postfix = uuid4().hex[:4]
-    base_id = "appSbaQLkcYiIOqux"
+    base_id = "appZPxegHEU3kDc1S"
     table_name = f"test_table_{postfix}"
     table_fields = [{"name": "test_field", "type": "notValid"}]
     with pytest.raises(AssertionError):
@@ -91,7 +107,7 @@ async def test_create_and_update_field():
         api_key=SecretStr(key),
     )
     postfix = uuid4().hex[:4]
-    base_id = "appSbaQLkcYiIOqux"
+    base_id = "appZPxegHEU3kDc1S"
     table_name = f"test_table_{postfix}"
     table_fields = [{"name": "test_field", "type": "singleLineText"}]
     table = await create_table(credentials, base_id, table_name, table_fields)
@@ -133,7 +149,7 @@ async def test_record_management():
         api_key=SecretStr(key),
     )
     postfix = uuid4().hex[:4]
-    base_id = "appSbaQLkcYiIOqux"
+    base_id = "appZPxegHEU3kDc1S"
     table_name = f"test_table_{postfix}"
     table_fields = [{"name": "test_field", "type": "singleLineText"}]
     table = await create_table(credentials, base_id, table_name, table_fields)
@@ -261,7 +277,7 @@ async def test_webhook_management():
         api_key=SecretStr(key),
     )
     postfix = uuid4().hex[:4]
-    base_id = "appSbaQLkcYiIOqux"
+    base_id = "appZPxegHEU3kDc1S"
     table_name = f"test_table_{postfix}"
     table_fields = [{"name": "test_field", "type": "singleLineText"}]
     table = await create_table(credentials, base_id, table_name, table_fields)
