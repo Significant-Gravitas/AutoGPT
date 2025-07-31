@@ -9,6 +9,15 @@ import {
 
 interface ExtendedInputProps extends InputProps {
   decimalCount?: number;
+  type?:
+    | "text"
+    | "email"
+    | "password"
+    | "number"
+    | "amount"
+    | "tel"
+    | "url"
+    | "textarea";
 }
 
 export function useInput(args: ExtendedInputProps) {
@@ -54,5 +63,20 @@ export function useInput(args: ExtendedInputProps) {
     }
   }
 
-  return { handleInputChange };
+  function handleTextareaChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    if (args.onChange) {
+      // Create synthetic event with HTMLInputElement-like target for compatibility
+      const syntheticEvent = {
+        ...e,
+        target: {
+          ...e.target,
+          value: e.target.value,
+        },
+      } as unknown as React.ChangeEvent<HTMLInputElement>;
+
+      args.onChange(syntheticEvent);
+    }
+  }
+
+  return { handleInputChange, handleTextareaChange };
 }

@@ -7,17 +7,19 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Bell } from "@phosphor-icons/react";
-import { useState } from "react";
 import { ActivityDropdown } from "./components/ActivityDropdown/ActivityDropdown";
 import { formatNotificationCount } from "./helpers";
 import { useAgentActivityDropdown } from "./useAgentActivityDropdown";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 export function AgentActivityDropdown() {
-  const isAgentActivityEnabled = useGetFlag(Flag.AGENT_ACTIVITY);
-  const [isOpen, setIsOpen] = useState(false);
-  const { activeExecutions, recentCompletions, recentFailures } =
-    useAgentActivityDropdown();
+  const {
+    activeExecutions,
+    recentCompletions,
+    recentFailures,
+    isOpen,
+    setIsOpen,
+    isAgentActivityEnabled,
+  } = useAgentActivityDropdown();
 
   const activeCount = activeExecutions.length;
 

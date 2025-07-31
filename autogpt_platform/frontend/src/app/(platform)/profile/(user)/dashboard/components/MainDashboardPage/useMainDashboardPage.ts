@@ -9,16 +9,24 @@ import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useState } from "react";
 
+type PublishStep = "select" | "info" | "review";
+
+type PublishState = {
+  isOpen: boolean;
+  step: PublishStep;
+  submissionData: StoreSubmissionRequest | null;
+};
+
 export const useMainDashboardPage = () => {
   const queryClient = getQueryClient();
 
   const { user } = useSupabase();
-  const [openPopout, setOpenPopout] = useState<boolean>(false);
-  const [submissionData, setSubmissionData] =
-    useState<StoreSubmissionRequest>();
-  const [popoutStep, setPopoutStep] = useState<"select" | "info" | "review">(
-    "info",
-  );
+
+  const [publishState, setPublishState] = useState<PublishState>({
+    isOpen: false,
+    step: "select",
+    submissionData: null,
+  });
 
   const { mutateAsync: deleteSubmission } = useDeleteV2DeleteStoreSubmission({
     mutation: {
@@ -30,22 +38,25 @@ export const useMainDashboardPage = () => {
     },
   });
 
-  const { data: submissions, isLoading } = useGetV2ListMySubmissions(
-    undefined,
-    {
-      query: {
-        select: (x) => {
-          return x.data as StoreSubmissionsResponse;
-        },
-        enabled: !!user,
+  const {
+    data: submissions,
+    isSuccess,
+    error,
+  } = useGetV2ListMySubmissions(undefined, {
+    query: {
+      select: (x) => {
+        return x.data as StoreSubmissionsResponse;
       },
+      enabled: !!user,
     },
-  );
+  });
 
   const onEditSubmission = (submission: StoreSubmissionRequest) => {
-    setSubmissionData(submission);
-    setPopoutStep("review");
-    setOpenPopout(true);
+    setPublishState({
+      isOpen: true,
+      step: "review",
+      submissionData: submission,
+    });
   };
 
   const onDeleteSubmission = async (submission_id: string) => {
@@ -54,19 +65,28 @@ export const useMainDashboardPage = () => {
     });
   };
 
-  const onOpenPopout = () => {
-    setPopoutStep("select");
-    setOpenPopout(true);
+  const onOpenSubmitModal = () => {
+    // Always reset to clean state when opening for new submission
+    setPublishState({
+      isOpen: true,
+      step: "select",
+      submissionData: null,
+    });
+  };
+
+  const onPublishStateChange = (newState: PublishState) => {
+    setPublishState(newState);
   };
 
   return {
-    onOpenPopout,
+    onOpenSubmitModal,
+    onPublishStateChange,
     onDeleteSubmission,
     onEditSubmission,
+    publishState,
+    // API data
     submissions,
-    isLoading,
-    openPopout,
-    submissionData,
-    popoutStep,
+    isLoading: !isSuccess,
+    error,
   };
 };
