@@ -19,19 +19,17 @@ export function PublishAgentModal({
     currentState,
     updateState,
     initialData,
+    selectedAgentId,
+    selectedAgentVersion,
     // Handlers
     handleClose,
     handleAgentSelect,
     handleNextFromSelect,
     handleGoToDashboard,
     handleGoToBuilder,
-    handleNextFromInfo,
+    handleSuccessFromInfo,
     handleBack,
   } = usePublishAgentModal({ targetState, onStateChange });
-
-  console.log({
-    currentState,
-  });
 
   function renderContent() {
     switch (currentState.step) {
@@ -48,7 +46,9 @@ export function PublishAgentModal({
         return (
           <AgentInfoStep
             onBack={handleBack}
-            onSubmit={handleNextFromInfo}
+            onSuccess={handleSuccessFromInfo}
+            selectedAgentId={selectedAgentId}
+            selectedAgentVersion={selectedAgentVersion}
             initialData={initialData}
           />
         );
@@ -65,10 +65,13 @@ export function PublishAgentModal({
             onViewProgress={() => handleGoToDashboard()}
           />
         ) : (
-          <div className="space-y-2">
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-3/4" />
-            <Skeleton className="h-4 w-1/2" />
+          <div className="flex min-h-[60vh] flex-col items-center justify-center gap-8 space-y-2">
+            <Skeleton className="h-12 w-4/5" />
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
           </div>
         );
     }

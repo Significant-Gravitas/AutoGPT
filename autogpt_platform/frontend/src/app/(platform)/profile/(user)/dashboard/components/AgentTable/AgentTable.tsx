@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { AgentTableCard } from "../AgentTableCard/AgentTableCard";
-import { StoreSubmissionRequest } from "@/app/api/__generated__/models/storeSubmissionRequest";
+import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import {
   AgentTableRow,
   AgentTableRowProps,
@@ -13,16 +13,16 @@ export interface AgentTableProps {
     AgentTableRowProps,
     | "setSelectedAgents"
     | "selectedAgents"
-    | "onEditSubmission"
+    | "onViewSubmission"
     | "onDeleteSubmission"
   >[];
-  onEditSubmission: (submission: StoreSubmissionRequest) => void;
+  onViewSubmission: (submission: StoreSubmission) => void;
   onDeleteSubmission: (submission_id: string) => void;
 }
 
 export const AgentTable: React.FC<AgentTableProps> = ({
   agents,
-  onEditSubmission,
+  onViewSubmission,
   onDeleteSubmission,
 }) => {
   return (
@@ -60,13 +60,13 @@ export const AgentTable: React.FC<AgentTableProps> = ({
             <div key={agent.id} className="md:block">
               <AgentTableRow
                 {...agent}
-                onEditSubmission={onEditSubmission}
+                onViewSubmission={onViewSubmission}
                 onDeleteSubmission={onDeleteSubmission}
               />
               <div className="block md:hidden">
                 <AgentTableCard
                   {...agent}
-                  onEditSubmission={onEditSubmission}
+                  onViewSubmission={onViewSubmission}
                 />
               </div>
             </div>

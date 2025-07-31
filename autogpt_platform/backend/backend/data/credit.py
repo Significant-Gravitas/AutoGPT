@@ -357,15 +357,15 @@ class UserCreditBase(ABC):
                 amount = min(-user_balance, 0)
 
             # Create the transaction
-            transaction_data = CreditTransactionCreateInput(
-                userId=user_id,
-                amount=amount,
-                runningBalance=user_balance + amount,
-                type=transaction_type,
-                metadata=metadata,
-                isActive=is_active,
-                createdAt=self.time_now(),
-            )
+            transaction_data: CreditTransactionCreateInput = {
+                "userId": user_id,
+                "amount": amount,
+                "runningBalance": user_balance + amount,
+                "type": transaction_type,
+                "metadata": metadata,
+                "isActive": is_active,
+                "createdAt": self.time_now(),
+            }
             if transaction_key:
                 transaction_data["transactionKey"] = transaction_key
             tx = await CreditTransaction.prisma().create(data=transaction_data)

@@ -40,7 +40,7 @@ export function AgentSelectStep({
 
   if (isLoading) {
     return (
-      <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl">
+      <div className="mx-auto flex min-h-[70vh] w-full flex-col">
         <StepHeader
           title="Publish Agent"
           description="Select your project that you'd like to publish"
@@ -141,11 +141,12 @@ export function AgentSelectStep({
                       role="button"
                       aria-pressed={selectedAgentId === agent.id}
                     >
-                      <div className="relative h-32 bg-gray-700 sm:h-40">
+                      <div className="relative h-32 bg-zinc-400 sm:h-40">
                         <img
                           src={agent.imageSrc}
                           alt={agent.name}
                           className="h-full w-full object-cover"
+                          loading="lazy"
                         />
                       </div>
                       <div className="flex flex-col gap-2 p-3">

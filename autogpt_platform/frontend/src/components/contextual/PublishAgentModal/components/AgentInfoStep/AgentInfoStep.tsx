@@ -9,7 +9,13 @@ import { Form, FormField } from "@/components/ui/form";
 import { Props, useAgentInfoStep } from "./useAgentInfoStep";
 import { ThumbnailImages } from "./components/ThumbnailImages";
 
-export function AgentInfoStep({ onBack, onSubmit, initialData }: Props) {
+export function AgentInfoStep({
+  onBack,
+  onSuccess,
+  selectedAgentId,
+  selectedAgentVersion,
+  initialData,
+}: Props) {
   const {
     form,
     agentId,
@@ -17,7 +23,14 @@ export function AgentInfoStep({ onBack, onSubmit, initialData }: Props) {
     initialSelectedImage,
     handleImagesChange,
     handleSubmit,
-  } = useAgentInfoStep({ onBack, onSubmit, initialData });
+    isSubmitting,
+  } = useAgentInfoStep({
+    onBack,
+    onSuccess,
+    selectedAgentId,
+    selectedAgentVersion,
+    initialData,
+  });
 
   const categoryOptions = [
     { value: "productivity", label: "Productivity" },
@@ -152,7 +165,10 @@ export function AgentInfoStep({ onBack, onSubmit, initialData }: Props) {
             <Button
               type="submit"
               className="w-full"
-              disabled={Object.keys(form.formState.errors).length > 0}
+              disabled={
+                Object.keys(form.formState.errors).length > 0 || isSubmitting
+              }
+              loading={isSubmitting}
             >
               Submit for review
             </Button>
