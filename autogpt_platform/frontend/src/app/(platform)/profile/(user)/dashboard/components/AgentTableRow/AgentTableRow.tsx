@@ -7,7 +7,7 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { TrashIcon } from "@radix-ui/react-icons";
 import { Status, StatusType } from "@/components/agptui/Status";
 import { useAgentTableRow } from "./useAgentTableRow";
-import { StoreSubmissionRequest } from "@/app/api/__generated__/models/storeSubmissionRequest";
+import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { ImageBroken } from "@phosphor-icons/react/dist/ssr";
 
 export interface AgentTableRowProps {
@@ -23,7 +23,7 @@ export interface AgentTableRowProps {
   rating: number;
   dateSubmitted: string;
   id: number;
-  onEditSubmission: (submission: StoreSubmissionRequest) => void;
+  onViewSubmission: (submission: StoreSubmission) => void;
   onDeleteSubmission: (submission_id: string) => void;
 }
 
@@ -39,12 +39,12 @@ export const AgentTableRow = ({
   runs,
   rating,
   id,
-  onEditSubmission,
+  onViewSubmission,
   onDeleteSubmission,
 }: AgentTableRowProps) => {
-  const { handleEdit, handleDelete } = useAgentTableRow({
+  const { handleView, handleDelete } = useAgentTableRow({
     id,
-    onEditSubmission,
+    onViewSubmission,
     onDeleteSubmission,
     agent_id,
     agent_version,
@@ -52,6 +52,10 @@ export const AgentTableRow = ({
     sub_heading,
     description,
     imageSrc,
+    dateSubmitted,
+    status: status.toUpperCase(),
+    runs,
+    rating,
   });
 
   return (
@@ -129,7 +133,7 @@ export const AgentTableRow = ({
             </DropdownMenu.Trigger>
             <DropdownMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md dark:bg-gray-800">
               <DropdownMenu.Item
-                onSelect={handleEdit}
+                onSelect={handleView}
                 className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
               >
                 <IconEdit className="mr-2 h-5 w-5 dark:text-gray-100" />

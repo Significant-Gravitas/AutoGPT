@@ -31,10 +31,6 @@ export function PublishAgentModal({
     handleBack,
   } = usePublishAgentModal({ targetState, onStateChange });
 
-  console.log({
-    currentState,
-  });
-
   function renderContent() {
     switch (currentState.step) {
       case "select":

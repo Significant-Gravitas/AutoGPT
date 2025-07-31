@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { getGetV2ListMySubmissionsQueryKey } from "@/app/api/__generated__/endpoints/store/store";
+import * as Sentry from "@sentry/nextjs";
 import {
   PublishAgentFormData,
   PublishAgentInfoInitialData,
@@ -123,7 +124,7 @@ export function useAgentInfoStep({
         onSuccess(response);
       }
     } catch (error) {
-      console.error("Error creating store submission:", error);
+      Sentry.captureException(error);
       const isEditingExisting = isEditing && submissionStatus;
       toast({
         title: "Error",

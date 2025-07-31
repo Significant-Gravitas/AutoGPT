@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { IconStarFilled, IconMore } from "@/components/ui/icons";
-import { StoreSubmissionRequest } from "@/app/api/__generated__/models/storeSubmissionRequest";
+import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { Status, StatusType } from "@/components/agptui/Status";
 
 export interface AgentTableCardProps {
@@ -17,7 +17,7 @@ export interface AgentTableCardProps {
   runs: number;
   rating: number;
   id: number;
-  onEditSubmission: (submission: StoreSubmissionRequest) => void;
+  onViewSubmission: (submission: StoreSubmission) => void;
 }
 
 export const AgentTableCard = ({
@@ -31,10 +31,10 @@ export const AgentTableCard = ({
   status,
   runs,
   rating,
-  onEditSubmission,
+  onViewSubmission,
 }: AgentTableCardProps) => {
-  const onEdit = () => {
-    onEditSubmission({
+  const onView = () => {
+    onViewSubmission({
       agent_id,
       agent_version,
       slug: "",
@@ -42,7 +42,10 @@ export const AgentTableCard = ({
       sub_heading,
       description,
       image_urls: imageSrc,
-      categories: [],
+      date_submitted: dateSubmitted,
+      status: status.toUpperCase() as any,
+      runs,
+      rating,
     });
   };
 
@@ -66,7 +69,7 @@ export const AgentTableCard = ({
           </p>
         </div>
         <button
-          onClick={onEdit}
+          onClick={onView}
           className="h-fit rounded-full p-1 hover:bg-neutral-100 dark:hover:bg-neutral-700"
         >
           <IconMore className="h-5 w-5 text-neutral-800 dark:text-neutral-200" />
