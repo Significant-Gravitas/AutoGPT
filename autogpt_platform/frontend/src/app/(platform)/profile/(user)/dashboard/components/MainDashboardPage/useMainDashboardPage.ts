@@ -3,7 +3,7 @@ import {
   useDeleteV2DeleteStoreSubmission,
   useGetV2ListMySubmissions,
 } from "@/app/api/__generated__/endpoints/store/store";
-import { StoreSubmissionRequest } from "@/app/api/__generated__/models/storeSubmissionRequest";
+import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { StoreSubmissionsResponse } from "@/app/api/__generated__/models/storeSubmissionsResponse";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
@@ -14,7 +14,7 @@ type PublishStep = "select" | "info" | "review";
 type PublishState = {
   isOpen: boolean;
   step: PublishStep;
-  submissionData: StoreSubmissionRequest | null;
+  submissionData: StoreSubmission | null;
 };
 
 export const useMainDashboardPage = () => {
@@ -51,7 +51,7 @@ export const useMainDashboardPage = () => {
     },
   });
 
-  const onEditSubmission = (submission: StoreSubmissionRequest) => {
+  const onViewSubmission = (submission: StoreSubmission) => {
     setPublishState({
       isOpen: true,
       step: "review",
@@ -82,7 +82,7 @@ export const useMainDashboardPage = () => {
     onOpenSubmitModal,
     onPublishStateChange,
     onDeleteSubmission,
-    onEditSubmission,
+    onViewSubmission,
     publishState,
     // API data
     submissions,
