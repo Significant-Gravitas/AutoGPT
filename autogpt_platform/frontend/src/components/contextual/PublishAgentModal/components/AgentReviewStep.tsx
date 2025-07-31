@@ -42,15 +42,23 @@ export function AgentReviewStep({
 
       <div className="flex flex-1 flex-col items-center gap-8 px-6 pt-6 sm:gap-6">
         <div className="mt-4 flex w-full flex-col items-center gap-6 sm:mt-0 sm:gap-4">
-          <div className="flex flex-col items-center gap-3 sm:gap-2">
-            <Text variant="large-medium">{agentName}</Text>
-            <Text variant="body" className="!text-neutral-500">
+          <div className="gap- flex flex-col items-center">
+            <Text
+              variant="lead"
+              className="line-clamp-1 text-ellipsis text-center font-semibold"
+            >
+              {agentName}
+            </Text>
+            <Text
+              variant="large"
+              className="line-clamp-1 text-ellipsis text-center !text-neutral-500"
+            >
               {subheader}
             </Text>
           </div>
 
           <div
-            className="h-[280px] w-full rounded-xl bg-neutral-200 dark:bg-neutral-700"
+            className="aspect-video h-64 w-full rounded-xl bg-neutral-200"
             role="img"
             aria-label={
               thumbnailSrc ? "Agent thumbnail" : "Thumbnail placeholder"
@@ -63,25 +71,30 @@ export function AgentReviewStep({
                 width={400}
                 height={280}
                 className="h-full w-full rounded-xl object-cover"
+                loading="lazy"
               />
             )}
           </div>
 
           {description ? (
             <Text
-              variant="body-medium"
-              className="pb-16 pt-4 !text-neutral-500"
+              variant="large"
+              className="line-clamp-1 text-ellipsis pt-2 text-center !text-neutral-500"
             >
               {description}
             </Text>
           ) : null}
         </div>
       </div>
-      <div className="flex justify-between gap-4">
+      <div
+        className={`mt-10 flex ${
+          isDashboardPage ? "justify-center" : "justify-between"
+        } gap-4`}
+      >
         <Button
           variant={isDashboardPage ? "primary" : "secondary"}
           onClick={onDone}
-          className="w-full"
+          className={isDashboardPage ? "w-1/2" : "w-full"}
         >
           Done
         </Button>
