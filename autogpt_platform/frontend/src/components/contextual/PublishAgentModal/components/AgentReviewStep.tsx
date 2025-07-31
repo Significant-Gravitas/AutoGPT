@@ -6,15 +6,16 @@ import Image from "next/image";
 import { StepHeader } from "./StepHeader";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import { usePathname } from "next/navigation";
 
 interface Props {
   agentName: string;
   subheader: string;
   description: string;
-  thumbnailSrc?: string;
   onClose: () => void;
   onDone: () => void;
   onViewProgress: () => void;
+  thumbnailSrc?: string;
 }
 
 export function AgentReviewStep({
@@ -25,11 +26,18 @@ export function AgentReviewStep({
   onDone,
   onViewProgress,
 }: Props) {
+  const pathname = usePathname();
+  const isDashboardPage = pathname.includes("/profile/dashboard");
+
   return (
     <div aria-labelledby="modal-title">
       <StepHeader
         title="Agent is awaiting review"
-        description="In the meantime you can check your progress on your Creator Dashboard page"
+        description={
+          isDashboardPage
+            ? "Once the agent is approved, it will be available in the AutoGPT marketplace."
+            : "In the meantime you can check your progress on your Creator Dashboard page"
+        }
       />
 
       <div className="flex flex-1 flex-col items-center gap-8 px-6 pt-6 sm:gap-6">
@@ -70,16 +78,22 @@ export function AgentReviewStep({
         </div>
       </div>
       <div className="flex justify-between gap-4">
-        <Button variant="secondary" onClick={onDone} className="w-full">
+        <Button
+          variant={isDashboardPage ? "primary" : "secondary"}
+          onClick={onDone}
+          className="w-full"
+        >
           Done
         </Button>
-        <Button
-          onClick={onViewProgress}
-          className="w-full"
-          data-testid="view-progress-button"
-        >
-          View progress
-        </Button>
+        {!isDashboardPage ? (
+          <Button
+            onClick={onViewProgress}
+            className="w-full"
+            data-testid="view-progress-button"
+          >
+            View progress
+          </Button>
+        ) : null}
       </div>
     </div>
   );

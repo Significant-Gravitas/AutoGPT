@@ -16,9 +16,11 @@ export function useThumbnailImages({
   initialSelectedImage = null,
 }: UseThumbnailImagesProps) {
   const [images, setImages] = useState<string[]>(initialImages);
+
   const [selectedImage, setSelectedImage] = useState<string | null>(
     initialSelectedImage,
   );
+
   const [isGenerating, setIsGenerating] = useState(false);
   const thumbnailsContainerRef = useRef<HTMLDivElement | null>(null);
   const { toast } = useToast();

@@ -191,7 +191,7 @@ export function usePublishAgentModal({ targetState, onStateChange }: Props) {
 
     // Create store submission
     try {
-      await api.createStoreSubmission({
+      const response = await api.createStoreSubmission({
         name: name,
         sub_heading: subHeading,
         description: description,
@@ -202,17 +202,19 @@ export function usePublishAgentModal({ targetState, onStateChange }: Props) {
         slug: slug.replace(/\s+/g, "-"),
         categories: filteredCategories,
       });
+
+      updateState({
+        ...currentState,
+        submissionData: response,
+        step: "review",
+      });
+
       await queryClient.invalidateQueries({
         queryKey: getGetV2ListMySubmissionsQueryKey(),
       });
     } catch (error) {
       console.error("Error creating store submission:", error);
     }
-
-    updateState({
-      ...currentState,
-      step: "review",
-    });
   }
 
   function handleBack() {

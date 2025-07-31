@@ -7,6 +7,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { EmptySubmissions } from "./components/EmptySubmissions";
 import { SubmissionLoadError } from "./components/SumbmissionLoadError";
 import { SubmissionsLoading } from "./components/SubmissionsLoading";
+import { Text } from "@/components/atoms/Text/Text";
 
 export const MainDashboardPage = () => {
   const {
@@ -26,17 +27,21 @@ export const MainDashboardPage = () => {
       {/* Header Section */}
       <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="space-y-6">
-          <h1 className="text-4xl font-medium text-neutral-900 dark:text-neutral-100">
+          <Text variant="h1" size="h3">
             Agent dashboard
-          </h1>
+          </Text>
           <div className="space-y-2">
-            <h2 className="text-xl font-medium text-neutral-900 dark:text-neutral-100">
+            <Text
+              variant="h2"
+              size="large-medium"
+              className="text-neutral-900 dark:text-neutral-100"
+            >
               Submit a New Agent
-            </h2>
-            <p className="text-sm text-[#707070] dark:text-neutral-400">
+            </Text>
+            <Text variant="body" size="small">
               Select from the list of agents you currently have, or upload from
               your local machine.
-            </p>
+            </Text>
           </div>
         </div>
         <PublishAgentModal
@@ -54,9 +59,13 @@ export const MainDashboardPage = () => {
 
       {/* Agents Section */}
       <div>
-        <h2 className="mb-4 text-xl font-bold text-neutral-900 dark:text-neutral-100">
+        <Text
+          variant="h2"
+          size="large-medium"
+          className="mb-4 text-neutral-900 dark:text-neutral-100"
+        >
           Your uploaded agents
-        </h2>
+        </Text>
 
         {error ? (
           <SubmissionLoadError />

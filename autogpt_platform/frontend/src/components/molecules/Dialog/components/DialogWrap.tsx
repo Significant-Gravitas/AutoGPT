@@ -4,6 +4,7 @@ import * as RXDialog from "@radix-ui/react-dialog";
 import { CSSProperties, PropsWithChildren } from "react";
 import { DialogCtx } from "../useDialogCtx";
 import { modalStyles } from "./styles";
+import styles from "./styles.module.css";
 import { Button } from "@/components/atoms/Button/Button";
 
 type BaseProps = DialogCtx & PropsWithChildren;
@@ -60,7 +61,9 @@ export function DialogWrap({
             </Button>
           )}
         </div>
-        <div className="overflow-y-auto">{children}</div>
+        <div className={`overflow-y-auto ${styles.scrollableContent}`}>
+          {children}
+        </div>
       </RXDialog.Content>
     </RXDialog.Portal>
   );

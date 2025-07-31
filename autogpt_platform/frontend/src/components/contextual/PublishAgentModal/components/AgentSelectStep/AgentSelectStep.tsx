@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Image from "next/image";
 import { Text } from "../../../../atoms/Text/Text";
 import { Button } from "../../../../atoms/Button/Button";
 import { StepHeader } from "../StepHeader";
@@ -142,12 +141,11 @@ export function AgentSelectStep({
                       role="button"
                       aria-pressed={selectedAgentId === agent.id}
                     >
-                      <div className="relative h-32 bg-gray-100 sm:h-40">
-                        <Image
+                      <div className="relative h-32 bg-gray-700 sm:h-40">
+                        <img
                           src={agent.imageSrc}
                           alt={agent.name}
-                          fill
-                          style={{ objectFit: "cover" }}
+                          className="h-full w-full object-cover"
                         />
                       </div>
                       <div className="flex flex-col gap-2 p-3">
