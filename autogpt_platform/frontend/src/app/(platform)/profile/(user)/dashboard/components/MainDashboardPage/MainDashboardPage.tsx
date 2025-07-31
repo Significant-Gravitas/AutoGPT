@@ -12,7 +12,7 @@ import { Text } from "@/components/atoms/Text/Text";
 export const MainDashboardPage = () => {
   const {
     onDeleteSubmission,
-    onEditSubmission,
+    onViewSubmission,
     onOpenSubmitModal,
     onPublishStateChange,
     publishState,
@@ -89,7 +89,7 @@ export const MainDashboardPage = () => {
               runs: submission.runs,
               rating: submission.rating,
             }))}
-            onEditSubmission={onEditSubmission}
+            onViewSubmission={onViewSubmission}
             onDeleteSubmission={onDeleteSubmission}
           />
         ) : (

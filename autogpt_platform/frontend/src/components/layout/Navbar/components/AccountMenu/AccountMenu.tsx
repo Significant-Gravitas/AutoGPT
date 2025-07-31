@@ -111,11 +111,6 @@ export function AccountMenu({
                           </div>
                         </div>
                       }
-                      targetState={{
-                        isOpen: true,
-                        step: "select",
-                        submissionData: null,
-                      }}
                     />
                   );
                 } else {
