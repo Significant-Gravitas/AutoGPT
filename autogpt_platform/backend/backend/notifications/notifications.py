@@ -5,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Callable
 
 import aio_pika
-from aio_pika.exceptions import QueueEmpty
 from autogpt_libs.utils.cache import thread_cached
 from prisma.enums import NotificationType
 
@@ -694,36 +693,42 @@ class NotificationManager(AppService):
             logger.exception(f"Error processing notification for summary queue: {e}")
             return False
 
-    async def _run_queue(
+    async def _consume_queue(
         self,
         queue: aio_pika.abc.AbstractQueue,
         process_func: Callable[[str], bool],
-        error_queue_name: str,
+        queue_name: str,
     ):
-        message: aio_pika.abc.AbstractMessage | None = None
-        try:
-            # This parameter "no_ack" is named like shit, think of it as "auto_ack"
-            message = await queue.get(timeout=1.0, no_ack=False)
-            result = process_func(message.body.decode())
-            if result:
-                await message.ack()
-            else:
-                await message.reject(requeue=False)
+        """Continuously consume messages from a queue using async iteration"""
+        logger.info(f"Starting consumer for queue: {queue_name}")
 
-        except QueueEmpty:
-            logger.debug(f"Queue {error_queue_name} empty")
-        except TimeoutError:
-            logger.debug(f"Queue {error_queue_name} timed out")
+        try:
+            async with queue.iterator() as queue_iter:
+                async for message in queue_iter:
+                    if not self.running:
+                        break
+
+                    try:
+                        async with message.process():
+                            result = process_func(message.body.decode())
+                            if not result:
+                                # Message will be rejected when exiting context without exception
+                                raise aio_pika.exceptions.MessageProcessError(
+                                    "Processing failed"
+                                )
+                    except aio_pika.exceptions.MessageProcessError:
+                        # Let message.process() handle the rejection
+                        pass
+                    except Exception as e:
+                        logger.error(f"Error processing message in {queue_name}: {e}")
+                        # Let message.process() handle the rejection
+                        raise
+        except asyncio.CancelledError:
+            logger.info(f"Consumer for {queue_name} cancelled")
+            raise
         except Exception as e:
-            if message:
-                logger.error(
-                    f"Error in notification service loop, message rejected {e}"
-                )
-                await message.reject(requeue=False)
-            else:
-                logger.exception(
-                    f"Error in notification service loop, message unable to be rejected, and will have to be manually removed to free space in the queue: {e=}"
-                )
+            logger.exception(f"Fatal error in consumer for {queue_name}: {e}")
+            raise
 
     @continuous_retry()
     def run_service(self):
@@ -736,41 +741,60 @@ class NotificationManager(AppService):
 
         logger.info(f"[{self.service_name}] Started notification service")
 
-        # Set up queue consumers
+        # Set up queue consumers with QoS settings
         channel = await self.rabbit.get_channel()
+
+        # Set prefetch to prevent overwhelming the service
+        await channel.set_qos(prefetch_count=10)
 
         immediate_queue = await channel.get_queue("immediate_notifications")
         batch_queue = await channel.get_queue("batch_notifications")
-
         admin_queue = await channel.get_queue("admin_notifications")
-
         summary_queue = await channel.get_queue("summary_notifications")
 
-        while self.running:
-            try:
-                await self._run_queue(
+        # Create consumer tasks for each queue - running in parallel
+        consumer_tasks = [
+            asyncio.create_task(
+                self._consume_queue(
                     queue=immediate_queue,
                     process_func=self._process_immediate,
-                    error_queue_name="immediate_notifications",
+                    queue_name="immediate_notifications",
                 )
-                await self._run_queue(
+            ),
+            asyncio.create_task(
+                self._consume_queue(
                     queue=admin_queue,
                     process_func=self._process_admin_message,
-                    error_queue_name="admin_notifications",
+                    queue_name="admin_notifications",
                 )
-                await self._run_queue(
+            ),
+            asyncio.create_task(
+                self._consume_queue(
                     queue=batch_queue,
                     process_func=self._process_batch,
-                    error_queue_name="batch_notifications",
+                    queue_name="batch_notifications",
                 )
-                await self._run_queue(
+            ),
+            asyncio.create_task(
+                self._consume_queue(
                     queue=summary_queue,
                     process_func=self._process_summary,
-                    error_queue_name="summary_notifications",
+                    queue_name="summary_notifications",
                 )
-                await asyncio.sleep(0.1)
-            except QueueEmpty as e:
-                logger.debug(f"Queue empty: {e}")
+            ),
+        ]
+
+        try:
+            # Run all consumers concurrently
+            await asyncio.gather(*consumer_tasks)
+        except asyncio.CancelledError:
+            logger.info("Service shutdown requested")
+            # Cancel all consumer tasks
+            for task in consumer_tasks:
+                task.cancel()
+            # Wait for all tasks to complete cancellation
+            await asyncio.gather(*consumer_tasks, return_exceptions=True)
+            raise
 
     def cleanup(self):
         """Cleanup service resources"""
