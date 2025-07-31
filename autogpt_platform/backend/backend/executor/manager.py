@@ -737,7 +737,8 @@ class Executor:
                         execution_count=increment_execution_count(graph_exec.user_id),
                         execution_stats=execution_stats,
                     )
-                except InsufficientBalanceError as error:
+                except InsufficientBalanceError as balance_error:
+                    error = balance_error  # Set error to trigger FAILED status
                     node_exec_id = queued_node_exec.node_exec_id
                     db_client.upsert_execution_output(
                         node_exec_id=node_exec_id,
@@ -749,7 +750,6 @@ class Executor:
                         exec_id=node_exec_id,
                         status=ExecutionStatus.FAILED,
                     )
-                    execution_status = ExecutionStatus.FAILED
 
                     cls._handle_low_balance_notif(
                         db_client,
@@ -758,7 +758,8 @@ class Executor:
                         execution_stats,
                         error,
                     )
-                    raise
+                    # Gracefully stop the execution loop
+                    break
 
                 # Add input overrides -----------------------------
                 node_id = queued_node_exec.node_id
@@ -833,8 +834,10 @@ class Executor:
                         time.sleep(0.1)
 
             # loop done --------------------------------------------------
-            execution_status = ExecutionStatus.COMPLETED
-            return execution_stats, execution_status, error
+            # Determine final execution status based on whether there was an error
+            execution_status = (
+                ExecutionStatus.FAILED if error else ExecutionStatus.COMPLETED
+            )
 
         except CancelledError as exc:
             execution_status = ExecutionStatus.TERMINATED
@@ -849,61 +852,89 @@ class Executor:
                 f"Failed graph execution {graph_exec.graph_exec_id}: {error}"
             )
         finally:
-            # Cancel and wait for all node executions to complete
-            for node_id, inflight_exec in running_node_execution.items():
-                if inflight_exec.is_done():
-                    continue
-                log_metadata.info(f"Stopping node execution {node_id}")
-                inflight_exec.stop()
-
-            for node_id, inflight_eval in running_node_evaluation.items():
-                if inflight_eval.done():
-                    continue
-                log_metadata.info(f"Stopping node evaluation {node_id}")
-                inflight_eval.cancel()
-
-            for node_id, inflight_exec in running_node_execution.items():
-                if inflight_exec.is_done():
-                    continue
-                try:
-                    inflight_exec.wait_for_cancellation(timeout=60.0)
-                except TimeoutError:
-                    log_metadata.exception(
-                        f"Node execution #{node_id} did not stop in time, "
-                        "it may be stuck or taking too long."
-                    )
-
-            for node_id, inflight_eval in running_node_evaluation.items():
-                if inflight_eval.done():
-                    continue
-                try:
-                    inflight_eval.result(timeout=60.0)
-                except TimeoutError:
-                    log_metadata.exception(
-                        f"Node evaluation #{node_id} did not stop in time, "
-                        "it may be stuck or taking too long."
-                    )
-
-            if execution_status in [ExecutionStatus.TERMINATED, ExecutionStatus.FAILED]:
-                inflight_executions = db_client.get_node_executions(
-                    graph_exec.graph_exec_id,
-                    statuses=[
-                        ExecutionStatus.QUEUED,
-                        ExecutionStatus.RUNNING,
-                    ],
-                    include_exec_data=False,
-                )
-                db_client.update_node_execution_status_batch(
-                    [node_exec.node_exec_id for node_exec in inflight_executions],
-                    status=execution_status,
-                    stats={"error": str(error)} if error else None,
-                )
-                for node_exec in inflight_executions:
-                    node_exec.status = execution_status
-                    send_execution_update(node_exec)
-
-            clean_exec_files(graph_exec.graph_exec_id)
+            # Use helper method with error handling to ensure cleanup never fails
+            cls._cleanup_graph_execution(
+                running_node_execution=running_node_execution,
+                running_node_evaluation=running_node_evaluation,
+                execution_status=execution_status,
+                error=error,
+                graph_exec_id=graph_exec.graph_exec_id,
+                log_metadata=log_metadata,
+                db_client=db_client,
+            )
             return execution_stats, execution_status, error
+
+    @classmethod
+    @error_logged(swallow=True)
+    def _cleanup_graph_execution(
+        cls,
+        running_node_execution: dict[str, "NodeExecutionProgress"],
+        running_node_evaluation: dict[str, Future],
+        execution_status: ExecutionStatus,
+        error: Exception | None,
+        graph_exec_id: str,
+        log_metadata: LogMetadata,
+        db_client: "DatabaseManagerClient",
+    ) -> None:
+        """
+        Clean up running node executions and evaluations when graph execution ends.
+        This method is decorated with @error_logged(swallow=True) to ensure cleanup
+        never fails in the finally block.
+        """
+        # Cancel and wait for all node executions to complete
+        for node_id, inflight_exec in running_node_execution.items():
+            if inflight_exec.is_done():
+                continue
+            log_metadata.info(f"Stopping node execution {node_id}")
+            inflight_exec.stop()
+
+        for node_id, inflight_eval in running_node_evaluation.items():
+            if inflight_eval.done():
+                continue
+            log_metadata.info(f"Stopping node evaluation {node_id}")
+            inflight_eval.cancel()
+
+        for node_id, inflight_exec in running_node_execution.items():
+            if inflight_exec.is_done():
+                continue
+            try:
+                inflight_exec.wait_for_cancellation(timeout=60.0)
+            except TimeoutError:
+                log_metadata.exception(
+                    f"Node execution #{node_id} did not stop in time, "
+                    "it may be stuck or taking too long."
+                )
+
+        for node_id, inflight_eval in running_node_evaluation.items():
+            if inflight_eval.done():
+                continue
+            try:
+                inflight_eval.result(timeout=60.0)
+            except TimeoutError:
+                log_metadata.exception(
+                    f"Node evaluation #{node_id} did not stop in time, "
+                    "it may be stuck or taking too long."
+                )
+
+        if execution_status in [ExecutionStatus.TERMINATED, ExecutionStatus.FAILED]:
+            inflight_executions = db_client.get_node_executions(
+                graph_exec_id,
+                statuses=[
+                    ExecutionStatus.QUEUED,
+                    ExecutionStatus.RUNNING,
+                ],
+                include_exec_data=False,
+            )
+            db_client.update_node_execution_status_batch(
+                [node_exec.node_exec_id for node_exec in inflight_executions],
+                status=execution_status,
+                stats={"error": str(error)} if error else None,
+            )
+            for node_exec in inflight_executions:
+                node_exec.status = execution_status
+                send_execution_update(node_exec)
+
+        clean_exec_files(graph_exec_id)
 
     @classmethod
     async def _process_node_output(
