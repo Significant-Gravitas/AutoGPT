@@ -3,7 +3,6 @@
 import * as React from "react";
 import { AgentTableCard } from "../AgentTableCard/AgentTableCard";
 import { StoreSubmissionRequest } from "@/app/api/__generated__/models/storeSubmissionRequest";
-import { useAgentTable } from "./useAgentTable";
 import {
   AgentTableRow,
   AgentTableRowProps,
@@ -26,37 +25,13 @@ export const AgentTable: React.FC<AgentTableProps> = ({
   onEditSubmission,
   onDeleteSubmission,
 }) => {
-  const { selectedAgents, handleSelectAll, setSelectedAgents } = useAgentTable({
-    agents,
-  });
-
   return (
     <div className="w-full">
       {/* Table header - Hide on mobile */}
       <div className="hidden flex-col md:flex">
         <div className="border-t border-neutral-300 dark:border-neutral-700" />
         <div className="flex items-center px-4 py-2">
-          <div className="flex items-center">
-            <div className="flex min-w-[120px] items-center">
-              <input
-                type="checkbox"
-                id="selectAllAgents"
-                aria-label="Select all agents"
-                className="mr-4 h-5 w-5 rounded border-2 border-neutral-400 dark:border-neutral-600"
-                checked={
-                  selectedAgents.size === agents.length && agents.length > 0
-                }
-                onChange={handleSelectAll}
-              />
-              <label
-                htmlFor="selectAllAgents"
-                className="text-sm font-medium text-neutral-800 dark:text-neutral-200"
-              >
-                Select all
-              </label>
-            </div>
-          </div>
-          <div className="ml-2 grid w-full grid-cols-[400px,150px,150px,100px,100px,50px] items-center">
+          <div className="grid w-full grid-cols-[minmax(400px,1fr),180px,140px,100px,100px,40px] items-center gap-4">
             <div className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
               Agent info
             </div>
@@ -85,8 +60,6 @@ export const AgentTable: React.FC<AgentTableProps> = ({
             <div key={agent.id} className="md:block">
               <AgentTableRow
                 {...agent}
-                selectedAgents={selectedAgents}
-                setSelectedAgents={setSelectedAgents}
                 onEditSubmission={onEditSubmission}
                 onDeleteSubmission={onDeleteSubmission}
               />

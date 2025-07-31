@@ -1,24 +1,19 @@
 "use client";
 
 import * as React from "react";
-import { PublishAgentPopout } from "./composite/PublishAgentPopout";
+import { PublishAgentModal } from "../contextual/PublishAgentModal/PublishAgentModal";
+
 interface BecomeACreatorProps {
   title?: string;
   description?: string;
   buttonText?: string;
-  onButtonClick?: () => void;
 }
 
-export const BecomeACreator: React.FC<BecomeACreatorProps> = ({
+export function BecomeACreator({
   title = "Become a creator",
   description = "Join a community where your AI creations can inspire, engage, and be downloaded by users around the world.",
   buttonText = "Upload your agent",
-  onButtonClick,
-}) => {
-  const handleButtonClick = () => {
-    onButtonClick?.();
-  };
-
+}: BecomeACreatorProps) {
   return (
     <div className="relative mx-auto h-auto min-h-[300px] w-full max-w-[1360px] md:min-h-[400px] lg:h-[459px]">
       {/* Title */}
@@ -41,12 +36,9 @@ export const BecomeACreator: React.FC<BecomeACreatorProps> = ({
           {description}
         </p>
 
-        <PublishAgentPopout
+        <PublishAgentModal
           trigger={
-            <button
-              onClick={handleButtonClick}
-              className="inline-flex h-[48px] cursor-pointer items-center justify-center rounded-[38px] bg-neutral-800 px-8 py-3 transition-colors hover:bg-neutral-700 dark:bg-neutral-700 dark:hover:bg-neutral-600 md:h-[56px] md:px-10 md:py-4 lg:h-[68px] lg:px-12 lg:py-5"
-            >
+            <button className="inline-flex h-[48px] cursor-pointer items-center justify-center rounded-[38px] bg-neutral-800 px-8 py-3 transition-colors hover:bg-neutral-700 dark:bg-neutral-700 dark:hover:bg-neutral-600 md:h-[56px] md:px-10 md:py-4 lg:h-[68px] lg:px-12 lg:py-5">
               <span className="whitespace-nowrap font-poppins text-base font-medium leading-normal text-neutral-50 md:text-lg md:leading-relaxed lg:text-xl lg:leading-7">
                 {buttonText}
               </span>
@@ -56,4 +48,4 @@ export const BecomeACreator: React.FC<BecomeACreatorProps> = ({
       </div>
     </div>
   );
-};
+}
