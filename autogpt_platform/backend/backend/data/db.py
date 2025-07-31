@@ -80,17 +80,43 @@ async def disconnect():
 
 
 @asynccontextmanager
-async def transaction():
-    async with prisma.tx() as tx:
-        yield tx
+async def transaction(timeout: int | None = None):
+    """
+    Create a database transaction with optional timeout.
+
+    Args:
+        timeout: Transaction timeout in milliseconds. If None, uses Prisma's default (5000ms).
+    """
+    if timeout is not None:
+        async with prisma.tx(timeout=timeout) as tx:
+            yield tx
+    else:
+        # Uses Prisma default timeout of 5000ms when None
+        async with prisma.tx() as tx:
+            yield tx
 
 
 @asynccontextmanager
-async def locked_transaction(key: str):
+async def locked_transaction(key: str, timeout: int | None = None):
+    """
+    Create a database transaction with advisory lock.
+
+    Args:
+        key: Lock key for advisory lock
+        timeout: Transaction timeout in milliseconds. If None, uses LOCKED_TRANSACTION_TIMEOUT (15s).
+    """
+    if timeout is None:
+        timeout = LOCKED_TRANSACTION_TIMEOUT
+
     lock_key = zlib.crc32(key.encode("utf-8"))
-    async with transaction() as tx:
+    async with transaction(timeout=timeout) as tx:
         await tx.execute_raw("SELECT pg_advisory_xact_lock($1)", lock_key)
         yield tx
+
+
+# Transaction timeout constants (in milliseconds)
+DEFAULT_TRANSACTION_TIMEOUT = 5000  # 5 seconds - Prisma default
+LOCKED_TRANSACTION_TIMEOUT = 15000  # 15 seconds - For operations requiring locks
 
 
 def get_database_schema() -> str:
