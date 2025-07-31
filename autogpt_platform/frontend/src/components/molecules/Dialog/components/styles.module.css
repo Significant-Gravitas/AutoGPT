@@ -1,0 +1,43 @@
+/* Scrollable content area for dialogs */
+.scrollableContent {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(209, 213, 219) white;
+}
+
+/* Webkit scrollbar styles */
+.scrollableContent::-webkit-scrollbar {
+  width: 8px;
+}
+
+.scrollableContent::-webkit-scrollbar-track {
+  background: white;
+  border-radius: 4px;
+}
+
+.scrollableContent::-webkit-scrollbar-thumb {
+  background: rgb(209, 213, 219); /* gray-300 */
+  border-radius: 4px;
+}
+
+.scrollableContent::-webkit-scrollbar-thumb:hover {
+  background: rgb(156, 163, 175); /* gray-400 */
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .scrollableContent {
+    scrollbar-color: rgb(107, 114, 128) rgb(31, 41, 55);
+  }
+
+  .scrollableContent::-webkit-scrollbar-track {
+    background: rgb(31, 41, 55);
+  }
+
+  .scrollableContent::-webkit-scrollbar-thumb {
+    background: rgb(107, 114, 128); /* gray-500 */
+  }
+
+  .scrollableContent::-webkit-scrollbar-thumb:hover {
+    background: rgb(75, 85, 99); /* gray-600 */
+  }
+}
