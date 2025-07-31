@@ -1,6 +1,10 @@
 import { useEffect, useCallback, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/components/molecules/Toast/use-toast";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { getGetV2ListMySubmissionsQueryKey } from "@/app/api/__generated__/endpoints/store/store";
 import {
   PublishAgentFormData,
   PublishAgentInfoInitialData,
@@ -9,25 +13,32 @@ import {
 
 export interface Props {
   onBack: () => void;
-  onSubmit: (
-    name: string,
-    subHeading: string,
-    slug: string,
-    description: string,
-    imageUrls: string[],
-    videoUrl: string,
-    categories: string[],
-  ) => void;
+  onSuccess: (submissionData: any) => void;
+  onClose: () => void;
+  selectedAgentId: string | null;
+  selectedAgentVersion: number | null;
   initialData?: PublishAgentInfoInitialData;
+  isEditing?: boolean;
+  submissionStatus?: "DRAFT" | "PENDING" | "APPROVED" | "REJECTED";
 }
 
 export function useAgentInfoStep({
   onBack: _onBack,
-  onSubmit,
+  onSuccess,
+  onClose,
+  selectedAgentId,
+  selectedAgentVersion,
   initialData,
+  isEditing = false,
+  submissionStatus,
 }: Props) {
   const [agentId, setAgentId] = useState<string | null>(null);
   const [images, setImages] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const api = useBackendAPI();
 
   const form = useForm<PublishAgentFormData>({
     resolver: zodResolver(publishAgentSchema),
@@ -66,7 +77,7 @@ export function useAgentInfoStep({
     setImages(newImages);
   }, []);
 
-  function handleFormSubmit(data: PublishAgentFormData) {
+  async function handleFormSubmit(data: PublishAgentFormData) {
     // Validate that at least one image is present
     if (images.length === 0) {
       form.setError("root", {
@@ -77,21 +88,66 @@ export function useAgentInfoStep({
     }
 
     const categories = data.category ? [data.category] : [];
-    onSubmit(
-      data.title,
-      data.subheader,
-      data.slug,
-      data.description,
-      images,
-      data.youtubeLink || "",
-      categories,
-    );
+    const filteredCategories = categories.filter(Boolean);
+
+    setIsSubmitting(true);
+
+    try {
+      const response = await api.createStoreSubmission({
+        name: data.title,
+        sub_heading: data.subheader,
+        description: data.description,
+        image_urls: images,
+        video_url: data.youtubeLink || "",
+        agent_id: selectedAgentId || "",
+        agent_version: selectedAgentVersion || 0,
+        slug: data.slug.replace(/\s+/g, "-"),
+        categories: filteredCategories,
+      });
+
+      await queryClient.invalidateQueries({
+        queryKey: getGetV2ListMySubmissionsQueryKey(),
+      });
+
+      // Check if editing and determine next action
+      const isEditingExisting = isEditing && submissionStatus;
+
+      if (isEditingExisting) {
+        toast({
+          title: "Success",
+          description: "Agent updated successfully!",
+          duration: 3000,
+        });
+        onClose();
+      } else {
+        onSuccess(response);
+      }
+    } catch (error) {
+      console.error("Error creating store submission:", error);
+      const isEditingExisting = isEditing && submissionStatus;
+      toast({
+        title: "Error",
+        description: isEditingExisting
+          ? "Failed to update agent. Please try again."
+          : "Failed to create submission. Please try again.",
+        duration: 3000,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   }
+
+  const isFieldsLocked =
+    submissionStatus === "PENDING" || submissionStatus === "APPROVED";
+  const isEditingMode = isEditing && submissionStatus;
 
   return {
     form,
     agentId,
     images,
+    isSubmitting,
+    isFieldsLocked,
+    isEditingMode,
     initialImages: initialData
       ? [
           ...(initialData?.thumbnailSrc ? [initialData.thumbnailSrc] : []),

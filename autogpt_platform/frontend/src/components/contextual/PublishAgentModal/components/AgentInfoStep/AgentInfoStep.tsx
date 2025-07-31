@@ -9,7 +9,16 @@ import { Form, FormField } from "@/components/ui/form";
 import { Props, useAgentInfoStep } from "./useAgentInfoStep";
 import { ThumbnailImages } from "./components/ThumbnailImages";
 
-export function AgentInfoStep({ onBack, onSubmit, initialData }: Props) {
+export function AgentInfoStep({
+  onBack,
+  onSuccess,
+  onClose,
+  selectedAgentId,
+  selectedAgentVersion,
+  initialData,
+  isEditing,
+  submissionStatus,
+}: Props) {
   const {
     form,
     agentId,
@@ -17,7 +26,19 @@ export function AgentInfoStep({ onBack, onSubmit, initialData }: Props) {
     initialSelectedImage,
     handleImagesChange,
     handleSubmit,
-  } = useAgentInfoStep({ onBack, onSubmit, initialData });
+    isSubmitting,
+    isFieldsLocked,
+    isEditingMode,
+  } = useAgentInfoStep({
+    onBack,
+    onSuccess,
+    onClose,
+    selectedAgentId,
+    selectedAgentVersion,
+    initialData,
+    isEditing,
+    submissionStatus,
+  });
 
   const categoryOptions = [
     { value: "productivity", label: "Productivity" },
@@ -81,6 +102,7 @@ export function AgentInfoStep({ onBack, onSubmit, initialData }: Props) {
                 type="text"
                 placeholder="URL-friendly name for your agent"
                 error={form.formState.errors.slug?.message}
+                disabled={isFieldsLocked}
                 {...field}
               />
             )}
@@ -120,6 +142,7 @@ export function AgentInfoStep({ onBack, onSubmit, initialData }: Props) {
                 value={field.value}
                 onValueChange={field.onChange}
                 error={form.formState.errors.category?.message}
+                disabled={isFieldsLocked}
                 options={categoryOptions}
               />
             )}
@@ -152,9 +175,12 @@ export function AgentInfoStep({ onBack, onSubmit, initialData }: Props) {
             <Button
               type="submit"
               className="w-full"
-              disabled={Object.keys(form.formState.errors).length > 0}
+              disabled={
+                Object.keys(form.formState.errors).length > 0 || isSubmitting
+              }
+              loading={isSubmitting}
             >
-              Submit for review
+              {isEditingMode ? "Update" : "Submit for review"}
             </Button>
           </div>
         </form>

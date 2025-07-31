@@ -19,13 +19,15 @@ export function PublishAgentModal({
     currentState,
     updateState,
     initialData,
+    selectedAgentId,
+    selectedAgentVersion,
     // Handlers
     handleClose,
     handleAgentSelect,
     handleNextFromSelect,
     handleGoToDashboard,
     handleGoToBuilder,
-    handleNextFromInfo,
+    handleSuccessFromInfo,
     handleBack,
   } = usePublishAgentModal({ targetState, onStateChange });
 
@@ -48,8 +50,13 @@ export function PublishAgentModal({
         return (
           <AgentInfoStep
             onBack={handleBack}
-            onSubmit={handleNextFromInfo}
+            onSuccess={handleSuccessFromInfo}
+            onClose={handleClose}
+            selectedAgentId={selectedAgentId}
+            selectedAgentVersion={selectedAgentVersion}
             initialData={initialData}
+            isEditing={!!currentState.submissionData}
+            submissionStatus={currentState.submissionData?.status}
           />
         );
       case "review":
@@ -65,10 +72,13 @@ export function PublishAgentModal({
             onViewProgress={() => handleGoToDashboard()}
           />
         ) : (
-          <div className="space-y-2">
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-3/4" />
-            <Skeleton className="h-4 w-1/2" />
+          <div className="flex min-h-[60vh] flex-col items-center justify-center gap-8 space-y-2">
+            <Skeleton className="h-12 w-4/5" />
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
           </div>
         );
     }

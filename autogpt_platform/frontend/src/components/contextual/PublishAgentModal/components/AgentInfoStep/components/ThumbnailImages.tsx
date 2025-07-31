@@ -6,6 +6,7 @@ import { IconCross, IconPlus } from "../../../../../ui/icons";
 import { Button } from "@/components/atoms/Button/Button";
 import { MagicWand } from "@phosphor-icons/react";
 import { useThumbnailImages } from "./useThumbnailImages";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface ThumbnailImagesProps {
   agentId: string | null;
@@ -41,10 +42,13 @@ export function ThumbnailImages({
 
   return (
     <div className="space-y-2.5">
-      <div className="flex items-center justify-start gap-2">
+      <div className="flex flex-col items-start justify-start gap-1">
         <label className="text-sm font-medium leading-tight text-slate-950">
           Thumbnail images
         </label>
+        <Text variant="body" className="!text-zinc-500">
+          The first image will be used as the thumbnail for your agent.
+        </Text>
         {errorMessage && <p className="text-sm text-red-500">{errorMessage}</p>}
       </div>
       <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-md border border-neutral-300 p-2.5">
@@ -114,7 +118,7 @@ export function ThumbnailImages({
                   <IconCross className="h-2 w-2 text-white" />
                 </Button>
                 <div
-                  className={`relative aspect-video w-24 overflow-hidden rounded-md border-2 transition-colors ${
+                  className={`relative aspect-video h-16 w-24 overflow-hidden rounded-md border-2 transition-colors ${
                     selectedImage === src
                       ? "border-blue-500 shadow-md"
                       : "border-transparent hover:border-gray-300"

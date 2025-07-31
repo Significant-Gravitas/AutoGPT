@@ -86,11 +86,15 @@ export function AgentReviewStep({
           ) : null}
         </div>
       </div>
-      <div className="mt-10 flex justify-between gap-4">
+      <div
+        className={`mt-10 flex ${
+          isDashboardPage ? "justify-center" : "justify-between"
+        } gap-4`}
+      >
         <Button
           variant={isDashboardPage ? "primary" : "secondary"}
           onClick={onDone}
-          className="w-full"
+          className={isDashboardPage ? "w-1/2" : "w-full"}
         >
           Done
         </Button>
