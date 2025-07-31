@@ -125,13 +125,12 @@ export function useAgentInfoStep({
       }
     } catch (error) {
       Sentry.captureException(error);
-      const isEditingExisting = isEditing && submissionStatus;
       toast({
-        title: "Error",
-        description: isEditingExisting
-          ? "Failed to update agent. Please try again."
-          : "Failed to create submission. Please try again.",
+        title: "Submit Agent Error",
+        description:
+          "An error occurred while submitting the agent. Please try again.",
         duration: 3000,
+        variant: "destructive",
       });
     } finally {
       setIsSubmitting(false);
