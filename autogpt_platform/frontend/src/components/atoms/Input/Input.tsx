@@ -90,7 +90,7 @@ export function Input({
               "placeholder:text-sm placeholder:leading-[22px]",
             ],
             size === "medium" && [
-              "min-h-[2.875rem]", // 46px minimum (current default)
+              "min-h-[2.875rem] text-sm leading-[22px]", // 46px minimum (current default)
               "py-2.5",
             ],
           )}

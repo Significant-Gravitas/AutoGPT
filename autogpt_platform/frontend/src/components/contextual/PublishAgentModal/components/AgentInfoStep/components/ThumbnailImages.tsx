@@ -42,20 +42,19 @@ export function ThumbnailImages({
   return (
     <div className="space-y-2.5">
       <div className="flex items-center justify-start gap-2">
-        <label className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300">
+        <label className="text-sm font-medium leading-tight text-slate-950">
           Thumbnail images
         </label>
         {errorMessage && <p className="text-sm text-red-500">{errorMessage}</p>}
       </div>
-      <div className="flex h-[300px] items-center justify-center overflow-hidden rounded-md border border-neutral-300 p-2.5 dark:border-neutral-600">
+      <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-md border border-neutral-300 p-2.5">
         {selectedImage !== null && selectedImage !== undefined ? (
           <Image
             src={selectedImage}
             alt="Selected Thumbnail"
-            width={500}
-            height={350}
+            fill
             style={{ objectFit: "cover" }}
-            className="h-auto w-full rounded-md object-cover"
+            className="rounded-md object-cover"
           />
         ) : (
           <p className="font-sans text-sm font-normal text-neutral-600 dark:text-neutral-400">
@@ -71,7 +70,7 @@ export function ThumbnailImages({
           <div className="flex w-full items-center justify-start gap-2 pl-2">
             <label
               htmlFor="image-upload"
-              className="inline-flex h-[2.25rem] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-700 bg-transparent px-3 py-2 font-sans text-sm font-medium leading-snug text-black transition-colors hover:border-zinc-700 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-950 disabled:pointer-events-none disabled:opacity-50"
+              className="inline-flex h-[2.50rem] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-700 bg-transparent px-3 py-2 font-sans text-sm font-medium leading-snug text-black transition-colors hover:border-zinc-700 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-950 disabled:pointer-events-none disabled:opacity-50"
             >
               <input
                 id="image-upload"
@@ -114,15 +113,22 @@ export function ThumbnailImages({
                 >
                   <IconCross className="h-2 w-2 text-white" />
                 </Button>
-                <Image
-                  src={src}
-                  alt={`Thumbnail ${index + 1}`}
-                  width={100}
-                  height={70}
-                  style={{ objectFit: "cover" }}
-                  className="cursor-pointer rounded-md"
-                  onClick={() => handleImageSelect(src)}
-                />
+                <div
+                  className={`relative aspect-video w-24 overflow-hidden rounded-md border-2 transition-colors ${
+                    selectedImage === src
+                      ? "border-blue-500 shadow-md"
+                      : "border-transparent hover:border-gray-300"
+                  }`}
+                >
+                  <Image
+                    src={src}
+                    alt={`Thumbnail ${index + 1}`}
+                    fill
+                    style={{ objectFit: "cover" }}
+                    className="cursor-pointer"
+                    onClick={() => handleImageSelect(src)}
+                  />
+                </div>
               </div>
             ))}
             {images.length < 5 ? (

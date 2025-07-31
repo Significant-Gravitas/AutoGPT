@@ -54,7 +54,7 @@ export function useAgentInfoStep({
       form.reset({
         title: initialData.title,
         subheader: initialData.subheader,
-        slug: initialData.slug,
+        slug: initialData.slug.toLocaleLowerCase().trim(),
         youtubeLink: initialData.youtubeLink,
         category: initialData.category,
         description: initialData.description,

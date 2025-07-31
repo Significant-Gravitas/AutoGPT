@@ -141,11 +141,12 @@ export function AgentSelectStep({
                       role="button"
                       aria-pressed={selectedAgentId === agent.id}
                     >
-                      <div className="relative h-32 bg-gray-700 sm:h-40">
+                      <div className="relative h-32 bg-zinc-400 sm:h-40">
                         <img
                           src={agent.imageSrc}
                           alt={agent.name}
                           className="h-full w-full object-cover"
+                          loading="lazy"
                         />
                       </div>
                       <div className="flex flex-col gap-2 p-3">

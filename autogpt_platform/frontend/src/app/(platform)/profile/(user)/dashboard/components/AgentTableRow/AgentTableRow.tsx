@@ -8,6 +8,7 @@ import { TrashIcon } from "@radix-ui/react-icons";
 import { Status, StatusType } from "@/components/agptui/Status";
 import { useAgentTableRow } from "./useAgentTableRow";
 import { StoreSubmissionRequest } from "@/app/api/__generated__/models/storeSubmissionRequest";
+import { ImageBroken } from "@phosphor-icons/react/dist/ssr";
 
 export interface AgentTableRowProps {
   agent_id: string;
@@ -58,25 +59,31 @@ export const AgentTableRow = ({
       <div className="grid w-full grid-cols-[minmax(400px,1fr),180px,140px,100px,100px,40px] items-center gap-4">
         {/* Agent info column */}
         <div className="flex items-center gap-4">
-          <div className="relative h-[70px] w-[125px] overflow-hidden rounded-[10px] bg-[#d9d9d9] dark:bg-neutral-700">
-            <Image
-              src={imageSrc?.[0] ?? "/nada.png"}
-              alt={agentName}
-              fill
-              style={{ objectFit: "cover" }}
-            />
-          </div>
+          {imageSrc?.[0] ? (
+            <div className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-[10px] bg-zinc-100">
+              <Image
+                src={imageSrc?.[0] ?? "/nada.png"}
+                alt={agentName}
+                fill
+                style={{ objectFit: "cover" }}
+              />
+            </div>
+          ) : (
+            <div className="flex aspect-video w-32 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-zinc-100">
+              <ImageBroken className="h-8 w-8 text-zinc-800" />
+            </div>
+          )}
           <div className="flex flex-col">
             <Text
               variant="h3"
-              className="line-clamp-1 text-neutral-800 dark:text-neutral-200"
+              className="line-clamp-1 text-ellipsis text-neutral-800 dark:text-neutral-200"
               size="large-medium"
             >
               {agentName}
             </Text>
             <Text
               variant="body"
-              className="text-neutral-600 dark:text-neutral-400"
+              className="line-clamp-1 text-ellipsis text-neutral-600 dark:text-neutral-400"
             >
               {description}
             </Text>
@@ -84,7 +91,7 @@ export const AgentTableRow = ({
         </div>
 
         {/* Date column */}
-        <div className="pl-14 text-sm text-neutral-600 dark:text-neutral-400">
+        <div className="text-sm text-neutral-600 dark:text-neutral-400">
           {dateSubmitted}
         </div>
 
@@ -126,7 +133,7 @@ export const AgentTableRow = ({
                 className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
               >
                 <IconEdit className="mr-2 h-5 w-5 dark:text-gray-100" />
-                <span className="dark:text-gray-100">Edit</span>
+                <span className="dark:text-gray-100">View</span>
               </DropdownMenu.Item>
               <DropdownMenu.Separator className="my-1 h-px bg-gray-300 dark:bg-gray-600" />
               <DropdownMenu.Item
