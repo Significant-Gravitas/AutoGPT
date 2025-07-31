@@ -3,6 +3,21 @@
 - Everything inside the autogpt_platform folder is under the Polyform Shield License.
 - Everything outside the autogpt_platform folder is under the MIT License. 
 
+More info:
+
+**Polyform Shield License:**
+Code and content within the `autogpt_platform` folder is licensed under the Polyform Shield License. This new project is our in-developlemt platform for building, deploying and managing agents.
+Read more about this effort here: https://agpt.co/blog/introducing-the-autogpt-platform
+
+**MIT License:**
+All other portions of the AutoGPT repository (i.e., everything outside the `autogpt_platform` folder) are licensed under the MIT License. This includes:
+- The Original, stand-alone AutoGPT Agent
+- Forge: https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/forge
+- AG Benchmark: https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/benchmark
+- AutoGPT Classic GUI: https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/frontend.
+
+We also publish additional work under the MIT Licence in other repositories, such as GravitasML (https://github.com/Significant-Gravitas/gravitasml) which is developed for and used in the AutoGPT Platform, and our [Code Ability](https://github.com/Significant-Gravitas/AutoGPT-Code-Ability) project.
+
 Both licences are available to read below:
 
 =====================================================
