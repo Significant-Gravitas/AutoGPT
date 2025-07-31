@@ -121,7 +121,6 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GEMINI_2_0_FLASH = "google/gemini-2.0-flash-001"
     GEMINI_2_5_FLASH_LITE_PREVIEW = "google/gemini-2.5-flash-lite-preview-06-17"
     GEMINI_2_0_FLASH_LITE = "google/gemini-2.0-flash-lite-001"
-    GROK_BETA = "x-ai/grok-beta"
     MISTRAL_NEMO = "mistralai/mistral-nemo"
     COHERE_COMMAND_R_08_2024 = "cohere/command-r-08-2024"
     COHERE_COMMAND_R_PLUS_08_2024 = "cohere/command-r-plus-08-2024"
@@ -227,7 +226,6 @@ MODEL_METADATA = {
     LlmModel.GEMINI_2_0_FLASH: ModelMetadata("open_router", 1048576, 8192),
     LlmModel.GEMINI_2_5_FLASH_LITE_PREVIEW: ModelMetadata("open_router", 1048576, 65535),
     LlmModel.GEMINI_2_0_FLASH_LITE: ModelMetadata("open_router", 1048576, 8192),
-    LlmModel.GROK_BETA: ModelMetadata("open_router", 131072, 131072),
     LlmModel.MISTRAL_NEMO: ModelMetadata("open_router", 128000, 4096),
     LlmModel.COHERE_COMMAND_R_08_2024: ModelMetadata("open_router", 128000, 4096),
     LlmModel.COHERE_COMMAND_R_PLUS_08_2024: ModelMetadata("open_router", 128000, 4096),
