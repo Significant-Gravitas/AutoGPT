@@ -133,6 +133,10 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GRYPHE_MYTHOMAX_L2_13B = "gryphe/mythomax-l2-13b"
     META_LLAMA_4_SCOUT = "meta-llama/llama-4-scout"
     META_LLAMA_4_MAVERICK = "meta-llama/llama-4-maverick"
+    GROK_4 = "x-ai/grok-4"
+    KIMI_K2 = "moonshotai/kimi-k2"
+    QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
+    QWEN3_CODER = "qwen/qwen3-coder"
     # Llama API models
     LLAMA_API_LLAMA_4_SCOUT = "Llama-4-Scout-17B-16E-Instruct-FP8"
     LLAMA_API_LLAMA4_MAVERICK = "Llama-4-Maverick-17B-128E-Instruct-FP8"
@@ -237,6 +241,10 @@ MODEL_METADATA = {
     LlmModel.GRYPHE_MYTHOMAX_L2_13B: ModelMetadata("open_router", 4096, 4096),
     LlmModel.META_LLAMA_4_SCOUT: ModelMetadata("open_router", 131072, 131072),
     LlmModel.META_LLAMA_4_MAVERICK: ModelMetadata("open_router", 1048576, 1000000),
+    LlmModel.GROK_4: ModelMetadata("open_router", 256000, 256000),
+    LlmModel.KIMI_K2: ModelMetadata("open_router", 131000, 131000),
+    LlmModel.QWEN3_235B_A22B_THINKING: ModelMetadata("open_router", 262144, 262144),
+    LlmModel.QWEN3_CODER: ModelMetadata("open_router", 262144, 262144),
     # Llama API models
     LlmModel.LLAMA_API_LLAMA_4_SCOUT: ModelMetadata("llama_api", 128000, 4028),
     LlmModel.LLAMA_API_LLAMA4_MAVERICK: ModelMetadata("llama_api", 128000, 4028),

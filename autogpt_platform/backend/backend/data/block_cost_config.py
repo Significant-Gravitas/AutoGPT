@@ -98,6 +98,10 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.LLAMA_API_LLAMA4_MAVERICK: 1,
     LlmModel.LLAMA_API_LLAMA3_3_8B: 1,
     LlmModel.LLAMA_API_LLAMA3_3_70B: 1,
+    LlmModel.GROK_4: 9,
+    LlmModel.KIMI_K2: 1,
+    LlmModel.QWEN3_235B_A22B_THINKING: 1,
+    LlmModel.QWEN3_CODER: 9,
 }
 
 for model in LlmModel:
