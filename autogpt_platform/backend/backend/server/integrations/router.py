@@ -623,7 +623,7 @@ async def get_ayrshare_sso_url(
                 # SocialPlatform.FACEBOOK,
                 SocialPlatform.TWITTER,
                 SocialPlatform.LINKEDIN,
-                # SocialPlatform.INSTAGRAM,
+                SocialPlatform.INSTAGRAM,
                 # SocialPlatform.YOUTUBE,
                 # SocialPlatform.REDDIT,
                 # SocialPlatform.TELEGRAM,
