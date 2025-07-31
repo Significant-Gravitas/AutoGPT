@@ -1,4 +1,5 @@
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
+import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 
 interface useAgentTableRowProps {
   id: number;
@@ -40,7 +41,8 @@ export const useAgentTableRow = ({
       description,
       image_urls: imageSrc,
       date_submitted: dateSubmitted,
-      status: status.toUpperCase() as any,
+      // SafeCast: status is a string from the API...
+      status: status.toUpperCase() as SubmissionStatus,
       runs,
       rating,
     } satisfies StoreSubmission);

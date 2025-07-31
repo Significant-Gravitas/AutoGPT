@@ -4,6 +4,7 @@ import Image from "next/image";
 import { IconStarFilled, IconMore } from "@/components/ui/icons";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { Status, StatusType } from "@/components/agptui/Status";
+import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 
 export interface AgentTableCardProps {
   agent_id: string;
@@ -43,7 +44,8 @@ export const AgentTableCard = ({
       description,
       image_urls: imageSrc,
       date_submitted: dateSubmitted,
-      status: status.toUpperCase() as any,
+      // SafeCast: status is a string from the API...
+      status: status.toUpperCase() as SubmissionStatus,
       runs,
       rating,
     });
