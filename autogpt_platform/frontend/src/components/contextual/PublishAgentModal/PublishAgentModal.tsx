@@ -47,12 +47,9 @@ export function PublishAgentModal({
           <AgentInfoStep
             onBack={handleBack}
             onSuccess={handleSuccessFromInfo}
-            onClose={handleClose}
             selectedAgentId={selectedAgentId}
             selectedAgentVersion={selectedAgentVersion}
             initialData={initialData}
-            isEditing={!!currentState.submissionData}
-            submissionStatus={currentState.submissionData?.status}
           />
         );
       case "review":

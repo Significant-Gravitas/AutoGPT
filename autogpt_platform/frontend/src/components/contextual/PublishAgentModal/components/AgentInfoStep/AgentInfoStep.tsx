@@ -12,12 +12,9 @@ import { ThumbnailImages } from "./components/ThumbnailImages";
 export function AgentInfoStep({
   onBack,
   onSuccess,
-  onClose,
   selectedAgentId,
   selectedAgentVersion,
   initialData,
-  isEditing,
-  submissionStatus,
 }: Props) {
   const {
     form,
@@ -27,17 +24,12 @@ export function AgentInfoStep({
     handleImagesChange,
     handleSubmit,
     isSubmitting,
-    isFieldsLocked,
-    isEditingMode,
   } = useAgentInfoStep({
     onBack,
     onSuccess,
-    onClose,
     selectedAgentId,
     selectedAgentVersion,
     initialData,
-    isEditing,
-    submissionStatus,
   });
 
   const categoryOptions = [
@@ -102,7 +94,6 @@ export function AgentInfoStep({
                 type="text"
                 placeholder="URL-friendly name for your agent"
                 error={form.formState.errors.slug?.message}
-                disabled={isFieldsLocked}
                 {...field}
               />
             )}
@@ -142,7 +133,6 @@ export function AgentInfoStep({
                 value={field.value}
                 onValueChange={field.onChange}
                 error={form.formState.errors.category?.message}
-                disabled={isFieldsLocked}
                 options={categoryOptions}
               />
             )}
@@ -180,7 +170,7 @@ export function AgentInfoStep({
               }
               loading={isSubmitting}
             >
-              {isEditingMode ? "Update" : "Submit for review"}
+              Submit for review
             </Button>
           </div>
         </form>

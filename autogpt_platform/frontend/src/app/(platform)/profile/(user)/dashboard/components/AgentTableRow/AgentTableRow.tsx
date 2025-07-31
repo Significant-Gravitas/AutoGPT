@@ -2,13 +2,18 @@
 
 import Image from "next/image";
 import { Text } from "@/components/atoms/Text/Text";
-import { IconStarFilled, IconMore, IconEdit } from "@/components/ui/icons";
+
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { TrashIcon } from "@radix-ui/react-icons";
 import { Status, StatusType } from "@/components/agptui/Status";
 import { useAgentTableRow } from "./useAgentTableRow";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
-import { ImageBroken } from "@phosphor-icons/react/dist/ssr";
+import {
+  DotsThreeVerticalIcon,
+  Eye,
+  ImageBroken,
+  Star,
+  Trash,
+} from "@phosphor-icons/react/dist/ssr";
 
 export interface AgentTableRowProps {
   agent_id: string;
@@ -66,7 +71,7 @@ export const AgentTableRow = ({
           {imageSrc?.[0] ? (
             <div className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-[10px] bg-zinc-100">
               <Image
-                src={imageSrc?.[0] ?? "/nada.png"}
+                src={imageSrc?.[0] ?? ""}
                 alt={agentName}
                 fill
                 style={{ objectFit: "cover" }}
@@ -113,10 +118,8 @@ export const AgentTableRow = ({
         <div className="text-right">
           {rating ? (
             <div className="flex items-center justify-end gap-1">
-              <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
-                {rating.toFixed(1)}
-              </span>
-              <IconStarFilled className="h-4 w-4 text-neutral-800 dark:text-neutral-200" />
+              <span className="text-sm font-medium">{rating.toFixed(1)}</span>
+              <Star weight="fill" className="h-2 w-2" />
             </div>
           ) : (
             <span className="text-sm text-neutral-600 dark:text-neutral-400">
@@ -129,14 +132,14 @@ export const AgentTableRow = ({
         <div className="flex justify-end">
           <DropdownMenu.Root>
             <DropdownMenu.Trigger>
-              <IconMore className="h-5 w-5 text-neutral-800 dark:text-neutral-200" />
+              <DotsThreeVerticalIcon className="h-5 w-5 text-neutral-800" />
             </DropdownMenu.Trigger>
             <DropdownMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md dark:bg-gray-800">
               <DropdownMenu.Item
                 onSelect={handleView}
                 className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
               >
-                <IconEdit className="mr-2 h-5 w-5 dark:text-gray-100" />
+                <Eye className="mr-2 h-4 w-4 dark:text-gray-100" />
                 <span className="dark:text-gray-100">View</span>
               </DropdownMenu.Item>
               <DropdownMenu.Separator className="my-1 h-px bg-gray-300 dark:bg-gray-600" />
@@ -144,7 +147,7 @@ export const AgentTableRow = ({
                 onSelect={handleDelete}
                 className="flex cursor-pointer items-center rounded-md px-3 py-2 text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
               >
-                <TrashIcon className="mr-2 h-5 w-5 text-red-500 dark:text-red-400" />
+                <Trash className="mr-2 h-4 w-4 text-red-500 dark:text-red-400" />
                 <span className="dark:text-red-400">Delete</span>
               </DropdownMenu.Item>
             </DropdownMenu.Content>

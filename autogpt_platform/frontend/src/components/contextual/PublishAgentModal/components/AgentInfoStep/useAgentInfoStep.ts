@@ -15,23 +15,17 @@ import {
 export interface Props {
   onBack: () => void;
   onSuccess: (submissionData: any) => void;
-  onClose: () => void;
   selectedAgentId: string | null;
   selectedAgentVersion: number | null;
   initialData?: PublishAgentInfoInitialData;
-  isEditing?: boolean;
-  submissionStatus?: "DRAFT" | "PENDING" | "APPROVED" | "REJECTED";
 }
 
 export function useAgentInfoStep({
   onBack: _onBack,
   onSuccess,
-  onClose,
   selectedAgentId,
   selectedAgentVersion,
   initialData,
-  isEditing = false,
-  submissionStatus,
 }: Props) {
   const [agentId, setAgentId] = useState<string | null>(null);
   const [images, setImages] = useState<string[]>([]);
@@ -110,19 +104,7 @@ export function useAgentInfoStep({
         queryKey: getGetV2ListMySubmissionsQueryKey(),
       });
 
-      // Check if editing and determine next action
-      const isEditingExisting = isEditing && submissionStatus;
-
-      if (isEditingExisting) {
-        toast({
-          title: "Success",
-          description: "Agent updated successfully!",
-          duration: 3000,
-        });
-        onClose();
-      } else {
-        onSuccess(response);
-      }
+      onSuccess(response);
     } catch (error) {
       Sentry.captureException(error);
       toast({
@@ -137,17 +119,11 @@ export function useAgentInfoStep({
     }
   }
 
-  const isFieldsLocked =
-    submissionStatus === "PENDING" || submissionStatus === "APPROVED";
-  const isEditingMode = isEditing && submissionStatus;
-
   return {
     form,
     agentId,
     images,
     isSubmitting,
-    isFieldsLocked,
-    isEditingMode,
     initialImages: initialData
       ? [
           ...(initialData?.thumbnailSrc ? [initialData.thumbnailSrc] : []),
