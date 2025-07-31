@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { Text } from "@/components/atoms/Text/Text";
 import { IconStarFilled, IconMore, IconEdit } from "@/components/ui/icons";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { TrashIcon } from "@radix-ui/react-icons";
@@ -21,8 +22,6 @@ export interface AgentTableRowProps {
   rating: number;
   dateSubmitted: string;
   id: number;
-  selectedAgents: Set<string>;
-  setSelectedAgents: React.Dispatch<React.SetStateAction<Set<string>>>;
   onEditSubmission: (submission: StoreSubmissionRequest) => void;
   onDeleteSubmission: (submission_id: string) => void;
 }
@@ -39,45 +38,23 @@ export const AgentTableRow = ({
   runs,
   rating,
   id,
-  selectedAgents,
-  setSelectedAgents,
   onEditSubmission,
   onDeleteSubmission,
 }: AgentTableRowProps) => {
-  const { checkboxId, handleEdit, handleDelete, handleCheckboxChange } =
-    useAgentTableRow({
-      id,
-      onEditSubmission,
-      onDeleteSubmission,
-      agent_id,
-      agent_version,
-      agentName,
-      sub_heading,
-      description,
-      imageSrc,
-      selectedAgents,
-      setSelectedAgents,
-    });
+  const { handleEdit, handleDelete } = useAgentTableRow({
+    id,
+    onEditSubmission,
+    onDeleteSubmission,
+    agent_id,
+    agent_version,
+    agentName,
+    sub_heading,
+    description,
+    imageSrc,
+  });
 
   return (
     <div className="hidden items-center border-b border-neutral-300 px-4 py-4 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800 md:flex">
-      <div className="flex items-center">
-        <div className="flex items-center">
-          <input
-            type="checkbox"
-            id={checkboxId}
-            aria-label={`Select ${agentName}`}
-            className="mr-4 h-5 w-5 rounded border-2 border-neutral-400 dark:border-neutral-600"
-            checked={selectedAgents.has(agent_id)}
-            onChange={handleCheckboxChange}
-          />
-          {/* Single label instead of multiple */}
-          <label htmlFor={checkboxId} className="sr-only">
-            Select {agentName}
-          </label>
-        </div>
-      </div>
-
       <div className="grid w-full grid-cols-[minmax(400px,1fr),180px,140px,100px,100px,40px] items-center gap-4">
         {/* Agent info column */}
         <div className="flex items-center gap-4">
@@ -90,12 +67,19 @@ export const AgentTableRow = ({
             />
           </div>
           <div className="flex flex-col">
-            <h3 className="text-[15px] font-medium text-neutral-800 dark:text-neutral-200">
+            <Text
+              variant="h3"
+              className="line-clamp-1 text-neutral-800 dark:text-neutral-200"
+              size="large-medium"
+            >
               {agentName}
-            </h3>
-            <p className="line-clamp-2 text-sm text-neutral-600 dark:text-neutral-400">
+            </Text>
+            <Text
+              variant="body"
+              className="text-neutral-600 dark:text-neutral-400"
+            >
               {description}
-            </p>
+            </Text>
           </div>
         </div>
 
@@ -105,7 +89,7 @@ export const AgentTableRow = ({
         </div>
 
         {/* Status column */}
-        <div>
+        <div data-testid="agent-status">
           <Status status={status} />
         </div>
 
@@ -134,9 +118,7 @@ export const AgentTableRow = ({
         <div className="flex justify-end">
           <DropdownMenu.Root>
             <DropdownMenu.Trigger>
-              <button className="rounded-full p-1 hover:bg-neutral-100 dark:hover:bg-neutral-700">
-                <IconMore className="h-5 w-5 text-neutral-800 dark:text-neutral-200" />
-              </button>
+              <IconMore className="h-5 w-5 text-neutral-800 dark:text-neutral-200" />
             </DropdownMenu.Trigger>
             <DropdownMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md dark:bg-gray-800">
               <DropdownMenu.Item

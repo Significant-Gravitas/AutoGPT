@@ -47,7 +47,6 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.O3: 4,
     LlmModel.O3_MINI: 2,  # $1.10 / $4.40
     LlmModel.O1: 16,  # $15 / $60
-    LlmModel.O1_PREVIEW: 16,
     LlmModel.O1_MINI: 4,
     LlmModel.GPT41: 2,
     LlmModel.GPT4O_MINI: 1,
@@ -67,7 +66,6 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.AIML_API_LLAMA_3_2_3B: 1,
     LlmModel.LLAMA3_8B: 1,
     LlmModel.LLAMA3_70B: 1,
-    LlmModel.MIXTRAL_8X7B: 1,
     LlmModel.GEMMA2_9B: 1,
     LlmModel.LLAMA3_3_70B: 1,  # $0.59 / $0.79
     LlmModel.LLAMA3_1_8B: 1,
@@ -79,17 +77,13 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.OLLAMA_DOLPHIN: 1,
     LlmModel.GEMINI_FLASH_1_5: 1,
     LlmModel.GEMINI_2_5_PRO: 4,
-    LlmModel.GROK_BETA: 5,
     LlmModel.MISTRAL_NEMO: 1,
     LlmModel.COHERE_COMMAND_R_08_2024: 1,
     LlmModel.COHERE_COMMAND_R_PLUS_08_2024: 3,
-    LlmModel.EVA_QWEN_2_5_32B: 1,
     LlmModel.DEEPSEEK_CHAT: 2,
-    LlmModel.PERPLEXITY_LLAMA_3_1_SONAR_LARGE_128K_ONLINE: 1,
     LlmModel.PERPLEXITY_SONAR: 1,
     LlmModel.PERPLEXITY_SONAR_PRO: 5,
     LlmModel.PERPLEXITY_SONAR_DEEP_RESEARCH: 10,
-    LlmModel.QWEN_QWQ_32B_PREVIEW: 2,
     LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B: 1,
     LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B: 1,
     LlmModel.AMAZON_NOVA_LITE_V1: 1,

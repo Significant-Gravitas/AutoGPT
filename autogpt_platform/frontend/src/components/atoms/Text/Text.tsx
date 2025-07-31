@@ -4,6 +4,7 @@ import { As, Variant, variantElementMap, variants } from "./helpers";
 type CustomProps = {
   variant: Variant;
   as?: As;
+  size?: Variant;
   className?: string;
 };
 
@@ -15,10 +16,11 @@ export function Text({
   children,
   variant,
   as: outerAs,
+  size,
   className = "",
   ...rest
 }: TextProps) {
-  const variantClasses = variants[variant] || variants.body;
+  const variantClasses = variants[size || variant] || variants.body;
   const Element = outerAs || variantElementMap[variant];
   const combinedClassName = `${variantClasses} ${className}`.trim();
 
