@@ -224,7 +224,9 @@ MODEL_METADATA = {
     LlmModel.GEMINI_2_5_PRO: ModelMetadata("open_router", 1050000, 8192),
     LlmModel.GEMINI_2_5_FLASH: ModelMetadata("open_router", 1048576, 65535),
     LlmModel.GEMINI_2_0_FLASH: ModelMetadata("open_router", 1048576, 8192),
-    LlmModel.GEMINI_2_5_FLASH_LITE_PREVIEW: ModelMetadata("open_router", 1048576, 65535),
+    LlmModel.GEMINI_2_5_FLASH_LITE_PREVIEW: ModelMetadata(
+        "open_router", 1048576, 65535
+    ),
     LlmModel.GEMINI_2_0_FLASH_LITE: ModelMetadata("open_router", 1048576, 8192),
     LlmModel.MISTRAL_NEMO: ModelMetadata("open_router", 128000, 4096),
     LlmModel.COHERE_COMMAND_R_08_2024: ModelMetadata("open_router", 128000, 4096),
