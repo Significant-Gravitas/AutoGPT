@@ -97,7 +97,7 @@ class PostToInstagramBlock(Block):
     def __init__(self):
         super().__init__(
             id="89b02b96-a7cb-46f4-9900-c48b32fe1552",
-            description="Post to Instagram using Ayrshare",
+            description="Post to Instagram using Ayrshare. Requires a Business or Creator Instagram Account connected with a Facebook Page",
             categories={BlockCategory.SOCIAL},
             block_type=BlockType.AYRSHARE,
             input_schema=PostToInstagramBlock.Input,
