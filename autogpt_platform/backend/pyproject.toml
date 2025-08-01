@@ -74,6 +74,7 @@ aioclamd = "^1.0.0"
 setuptools = "^80.9.0"
 gcloud-aio-storage = "^9.5.0"
 pandas = "^2.3.1"
+firecrawl-py = "^2.16.3"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"

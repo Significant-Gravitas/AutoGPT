@@ -583,10 +583,10 @@ async def upsert_execution_output(
     """
     Insert AgentNodeExecutionInputOutput record for as one of AgentNodeExecution.Output.
     """
-    data = AgentNodeExecutionInputOutputCreateInput(
-        name=output_name,
-        referencedByOutputExecId=node_exec_id,
-    )
+    data: AgentNodeExecutionInputOutputCreateInput = {
+        "name": output_name,
+        "referencedByOutputExecId": node_exec_id,
+    }
     if output_data is not None:
         data["data"] = SafeJson(output_data)
     await AgentNodeExecutionInputOutput.prisma().create(data=data)
