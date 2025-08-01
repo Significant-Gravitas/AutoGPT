@@ -1,16 +1,16 @@
 use axum::{
+    body::Body,
+    http::{header, StatusCode},
+    response::Response,
     routing::get,
     Router,
-    response::Response,
-    http::{header, StatusCode},
-    body::Body,
 };
+use clap::Parser;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::{debug, error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use clap::Parser;
 
 use crate::config::Config;
 use crate::connection_manager::ConnectionManager;
@@ -28,12 +28,12 @@ async fn prometheus_handler(
 ) -> Result<Response, StatusCode> {
     let snapshot = state.stats.snapshot().await;
     let prometheus_text = state.stats.to_prometheus_format(&snapshot);
-    
-    Ok(Response::builder()
+
+    Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "text/plain; version=0.0.4")
         .body(Body::from(prometheus_text))
-        .unwrap())
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 mod config;
@@ -63,34 +63,44 @@ async fn main() {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "ws_api=info,tower_http=debug".into()),
+                .unwrap_or_else(|_| "websocket=info,tower_http=debug".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    info!("Starting WebSocket API server");
-    
+    info!("🚀 Starting WebSocket API server");
+
     let cli = Cli::parse();
     let config = Arc::new(Config::load(cli.config.as_deref()));
-    debug!("Configuration loaded - host: {}, port: {}, auth: {}", config.host, config.port, config.enable_auth);
-    
+    info!(
+        "⚙️  Configuration loaded - host: {}, port: {}, auth: {}",
+        config.host, config.port, config.enable_auth
+    );
+
     let redis_client = match redis::Client::open(config.redis_url.clone()) {
         Ok(client) => {
-            debug!("Redis client created successfully");
+            debug!("✅ Redis client created successfully");
             client
         }
         Err(e) => {
-            error!("Failed to create Redis client: {}. Please check REDIS_URL environment variable", e);
+            error!(
+                "❌ Failed to create Redis client: {}. Please check REDIS_URL environment variable",
+                e
+            );
             std::process::exit(1);
         }
     };
-    
+
     let stats = Arc::new(stats::Stats::default());
-    let mgr = Arc::new(ConnectionManager::new(redis_client, config.execution_event_bus_name.clone(), stats.clone()));
+    let mgr = Arc::new(ConnectionManager::new(
+        redis_client,
+        config.execution_event_bus_name.clone(),
+        stats.clone(),
+    ));
 
     let mgr_clone = mgr.clone();
     tokio::spawn(async move {
-        debug!("Starting event broadcaster task");
+        debug!("📡 Starting event broadcaster task");
         mgr_clone.run_broadcaster().await;
     });
 
@@ -141,19 +151,22 @@ async fn main() {
     let addr = format!("{}:{}", config.host, config.port);
     let listener = match TcpListener::bind(&addr).await {
         Ok(listener) => {
-            info!("WebSocket server listening on: {}", addr);
+            info!("🎧 WebSocket server listening on: {}", addr);
             listener
         }
         Err(e) => {
-            error!("Failed to bind to {}: {}. Please check if the port is already in use", addr, e);
+            error!(
+                "❌ Failed to bind to {}: {}. Please check if the port is already in use",
+                addr, e
+            );
             std::process::exit(1);
         }
     };
-    
-    info!("WebSocket API server ready to accept connections");
-    
+
+    info!("✨ WebSocket API server ready to accept connections");
+
     if let Err(e) = axum::serve(listener, app.into_make_service()).await {
-        error!("Server error: {}", e);
+        error!("💥 Server error: {}", e);
         std::process::exit(1);
     }
 }

@@ -5,6 +5,14 @@ description = "WebSocket server for AutoGPT Platform"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "websocket"
+path = "src/lib.rs"
+
+[[bin]]
+name = "websocket"
+path = "src/main.rs"
+
 [dependencies]
 axum = { version = "0.7.5", features = ["ws"] }
 jsonwebtoken = "9.3.0"
@@ -19,3 +27,34 @@ futures = "0.3"
 dotenvy = "0.15"
 clap = { version = "4.5.4", features = ["derive"] }
 toml = "0.8"
+
+[dev-dependencies]
+# Load testing and profiling
+tokio-console = "0.1"
+criterion = { version = "0.5", features = ["async_tokio"] }
+pprof = { version = "0.13", features = ["flamegraph", "criterion"] }
+# Dependencies for benchmarks
+tokio-tungstenite = "0.24"
+futures-util = "0.3"
+chrono = "0.4"
+
+[[bench]]
+name = "websocket_bench"
+harness = false
+
+[[example]]
+name = "ws_client_example"
+required-features = []
+
+[profile.release]
+opt-level = 3        # Maximum optimization
+lto = true          # Enable link-time optimization
+codegen-units = 1   # Reduce parallel code generation units to increase optimization
+panic = "abort"     # Remove panic unwinding to reduce binary size
+strip = true        # Strip symbols from binary
+
+[profile.bench]
+opt-level = 3        # Maximum optimization
+lto = true          # Enable link-time optimization
+codegen-units = 1   # Reduce parallel code generation units to increase optimization
+debug = true        # Keep debug symbols for profiling

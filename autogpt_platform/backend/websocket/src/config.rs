@@ -4,7 +4,6 @@ use std::env;
 use std::fs;
 use std::path::Path;
 use std::str::FromStr;
-use toml;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Config {

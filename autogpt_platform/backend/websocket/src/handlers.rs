@@ -1,19 +1,28 @@
+use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use axum::{
     extract::{Query, WebSocketUpgrade},
     http::HeaderMap,
     response::IntoResponse,
     Extension,
 };
-use axum::extract::ws::{CloseFrame, Message, WebSocket};
-use jsonwebtoken::{decode, Validation, DecodingKey};
+use jsonwebtoken::{decode, DecodingKey, Validation};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use tokio::sync::mpsc;
-use tracing::{error, info, warn, debug};
+use tracing::{debug, error, info, warn};
 
 use crate::connection_manager::ConnectionManager;
 use crate::models::{Claims, WSMessage};
 use crate::AppState;
+
+// Helper function to safely serialize messages
+fn serialize_message(msg: &WSMessage) -> String {
+    serde_json::to_string(msg).unwrap_or_else(|e| {
+        error!("❌ Failed to serialize WebSocket message: {}", e);
+        json!({"method": "error", "success": false, "error": "Internal serialization error"})
+            .to_string()
+    })
+}
 
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
@@ -28,36 +37,44 @@ pub async fn ws_handler(
     if state.config.enable_auth {
         match token {
             Some(token_str) => {
-                debug!("Authenticating WebSocket connection");
-            let mut validation = Validation::new(state.config.jwt_algorithm);
-            validation.set_audience(&["authenticated"]);
+                debug!("🔐 Authenticating WebSocket connection");
+                let mut validation = Validation::new(state.config.jwt_algorithm);
+                validation.set_audience(&["authenticated"]);
 
-            let key = DecodingKey::from_secret(state.config.jwt_secret.as_bytes());
+                let key = DecodingKey::from_secret(state.config.jwt_secret.as_bytes());
 
                 match decode::<Claims>(&token_str, &key, &validation) {
                     Ok(token_data) => {
                         user_id = token_data.claims.sub.clone();
-                        debug!("WebSocket authenticated for user: {}", user_id);
+                        debug!("✅ WebSocket authenticated for user: {}", user_id);
                     }
                     Err(e) => {
-                        warn!("JWT validation failed: {}", e);
+                        warn!("⚠️ JWT validation failed: {}", e);
                         auth_error_code = Some(4003);
                     }
                 }
             }
             None => {
-                warn!("Missing authentication token in WebSocket connection");
+                warn!("⚠️ Missing authentication token in WebSocket connection");
                 auth_error_code = Some(4001);
             }
         }
     } else {
-        debug!("WebSocket connection without auth (auth disabled)");
+        debug!("🔓 WebSocket connection without auth (auth disabled)");
     }
 
     if let Some(code) = auth_error_code {
-        error!("WebSocket authentication failed with code: {}", code);
-        state.mgr.stats.connections_failed_auth.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        state.mgr.stats.connections_total.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        error!("❌ WebSocket authentication failed with code: {}", code);
+        state
+            .mgr
+            .stats
+            .connections_failed_auth
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        state
+            .mgr
+            .stats
+            .connections_total
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         return ws
             .on_upgrade(move |mut socket: WebSocket| async move {
                 let close_frame = Some(CloseFrame {
@@ -70,24 +87,37 @@ pub async fn ws_handler(
             .into_response();
     }
 
-    debug!("WebSocket connection established for user: {}", user_id);
+    debug!("✅ WebSocket connection established for user: {}", user_id);
     ws.on_upgrade(move |socket| {
-        handle_socket(socket, user_id, state.mgr.clone(), state.config.max_message_size_limit)
+        handle_socket(
+            socket,
+            user_id,
+            state.mgr.clone(),
+            state.config.max_message_size_limit,
+        )
     })
 }
 
 async fn update_subscription_stats(mgr: &ConnectionManager, channel: &str, add: bool) {
     if add {
-        mgr.stats.subscriptions_total.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        mgr.stats.subscriptions_active.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        
+        mgr.stats
+            .subscriptions_total
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        mgr.stats
+            .subscriptions_active
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         let mut channel_stats = mgr.stats.channels_active.write().await;
         let count = channel_stats.entry(channel.to_string()).or_insert(0);
         *count += 1;
     } else {
-        mgr.stats.unsubscriptions_total.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        mgr.stats.subscriptions_active.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
-        
+        mgr.stats
+            .unsubscriptions_total
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        mgr.stats
+            .subscriptions_active
+            .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+
         let mut channel_stats = mgr.stats.channels_active.write().await;
         if let Some(count) = channel_stats.get_mut(channel) {
             *count = count.saturating_sub(1);
@@ -104,14 +134,20 @@ pub async fn handle_socket(
     mgr: std::sync::Arc<ConnectionManager>,
     max_size: usize,
 ) {
-    let client_id = mgr.next_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let client_id = mgr
+        .next_id
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let (tx, mut rx) = mpsc::channel::<String>(10);
-    info!("New WebSocket client {} for user: {}", client_id, user_id);
-    
+    info!("👋 New WebSocket client {} for user: {}", client_id, user_id);
+
     // Update connection stats
-    mgr.stats.connections_total.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    mgr.stats.connections_active.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    
+    mgr.stats
+        .connections_total
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    mgr.stats
+        .connections_active
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
     // Update active users
     {
         let mut active_users = mgr.stats.active_users.write().await;
@@ -148,13 +184,13 @@ pub async fn handle_socket(
                 match msg {
                     Message::Text(text) => {
                         if text.len() > max_size {
-                            warn!("Message from client {} exceeds size limit: {} > {}", client_id, text.len(), max_size);
-                            let err_resp = serde_json::to_string(&WSMessage {
+                            warn!("⚠️ Message from client {} exceeds size limit: {} > {}", client_id, text.len(), max_size);
+                            let err_resp = serialize_message(&WSMessage {
                                 method: "error".to_string(),
                                 success: Some(false),
                                 error: Some("Message exceeds size limit".to_string()),
                                 ..Default::default()
-                            }).unwrap();
+                            });
                             if socket.send(Message::Text(err_resp)).await.is_err() {
                                 break;
                             }
@@ -162,28 +198,28 @@ pub async fn handle_socket(
                         }
 
                         mgr.stats.messages_received_total.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                        
+
                         let ws_msg: WSMessage = match serde_json::from_str(&text) {
                             Ok(m) => m,
                             Err(e) => {
-                                warn!("Invalid message format from client {}: {}", client_id, e);
+                                warn!("⚠️ Invalid message format from client {}: {}", client_id, e);
                                 mgr.stats.errors_json_parse.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                                 mgr.stats.errors_total.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                                let err_resp = serde_json::to_string(&WSMessage {
+                                let err_resp = serialize_message(&WSMessage {
                                     method: "error".to_string(),
                                     success: Some(false),
                                     error: Some("Invalid message format. Review the schema and retry".to_string()),
                                     ..Default::default()
-                                }).unwrap();
+                                });
                                 if socket.send(Message::Text(err_resp)).await.is_err() {
                                     break;
                                 }
                                 continue;
                             }
                         };
-                        
-                        debug!("Received {} message from client {}", ws_msg.method, client_id);
-                        
+
+                        debug!("📥 Received {} message from client {}", ws_msg.method, client_id);
+
                         match ws_msg.method.as_str() {
                             "subscribe_graph_execution" => {
                                 let graph_exec_id = match &ws_msg.data {
@@ -191,15 +227,15 @@ pub async fn handle_socket(
                                     _ => None,
                                 };
                                 let Some(graph_exec_id) = graph_exec_id else {
-                                    warn!("Missing graph_exec_id in subscribe_graph_execution from client {}", client_id);
+                                    warn!("⚠️ Missing graph_exec_id in subscribe_graph_execution from client {}", client_id);
                                     let err_resp = json!({"method": "error", "success": false, "error": "Missing graph_exec_id"});
                                     if socket.send(Message::Text(err_resp.to_string())).await.is_err() {
                                         break;
                                     }
                                     continue;
                                 };
-                                let channel = format!("{}|graph_exec#{}", user_id, graph_exec_id);
-                                debug!("Client {} subscribing to channel: {}", client_id, channel);
+                                let channel = format!("{user_id}|graph_exec#{graph_exec_id}");
+                                debug!("📌 Client {} subscribing to channel: {}", client_id, channel);
 
                                 {
                                     let mut subs = mgr.subscribers.write().await;
@@ -211,7 +247,7 @@ pub async fn handle_socket(
                                         set.insert(channel.clone());
                                     }
                                 }
-                                
+
                                 // Update subscription stats
                                 update_subscription_stats(&mgr, &channel, true).await;
 
@@ -221,7 +257,7 @@ pub async fn handle_socket(
                                     channel: Some(channel),
                                     ..Default::default()
                                 };
-                                if socket.send(Message::Text(serde_json::to_string(&resp).unwrap())).await.is_err() {
+                                if socket.send(Message::Text(serialize_message(&resp))).await.is_err() {
                                     break;
                                 }
                             }
@@ -237,7 +273,7 @@ pub async fn handle_socket(
                                     }
                                     continue;
                                 };
-                                let channel = format!("{}|graph#{}|executions", user_id, graph_id);
+                                let channel = format!("{user_id}|graph#{graph_id}|executions");
 
                                 {
                                     let mut subs = mgr.subscribers.write().await;
@@ -249,7 +285,7 @@ pub async fn handle_socket(
                                         set.insert(channel.clone());
                                     }
                                 }
-                                
+                                debug!("📌 Client {} subscribing to channel: {}", client_id, channel);
                                 // Update subscription stats
                                 update_subscription_stats(&mgr, &channel, true).await;
 
@@ -259,7 +295,7 @@ pub async fn handle_socket(
                                     channel: Some(channel),
                                     ..Default::default()
                                 };
-                                if socket.send(Message::Text(serde_json::to_string(&resp).unwrap())).await.is_err() {
+                                if socket.send(Message::Text(serialize_message(&resp))).await.is_err() {
                                     break;
                                 }
                             }
@@ -278,7 +314,7 @@ pub async fn handle_socket(
                                 };
                                 let channel = channel.to_string();
 
-                                if !channel.starts_with(&format!("{}|", user_id)) {
+                                if !channel.starts_with(&format!("{user_id}|")) {
                                     let err_resp = json!({"method": "error", "success": false, "error": "Unauthorized channel"});
                                     if socket.send(Message::Text(err_resp.to_string())).await.is_err() {
                                         break;
@@ -301,7 +337,7 @@ pub async fn handle_socket(
                                         set.remove(&channel);
                                     }
                                 }
-                                
+
                                 // Update subscription stats
                                 update_subscription_stats(&mgr, &channel, false).await;
 
@@ -311,7 +347,7 @@ pub async fn handle_socket(
                                     channel: Some(channel),
                                     ..Default::default()
                                 };
-                                if socket.send(Message::Text(serde_json::to_string(&resp).unwrap())).await.is_err() {
+                                if socket.send(Message::Text(serialize_message(&resp))).await.is_err() {
                                     break;
                                 }
                             }
@@ -323,7 +359,7 @@ pub async fn handle_socket(
                                         success: Some(true),
                                         ..Default::default()
                                     };
-                                    if socket.send(Message::Text(serde_json::to_string(&resp).unwrap())).await.is_err() {
+                                    if socket.send(Message::Text(serialize_message(&resp))).await.is_err() {
                                         break;
                                     }
                                 } else {
@@ -334,7 +370,7 @@ pub async fn handle_socket(
                                 }
                             }
                             _ => {
-                                warn!("Unknown method '{}' from client {}", ws_msg.method, client_id);
+                                warn!("❓ Unknown method '{}' from client {}", ws_msg.method, client_id);
                                 let err_resp = json!({"method": "error", "success": false, "error": "Unknown method"});
                                 if socket.send(Message::Text(err_resp.to_string())).await.is_err() {
                                     break;
@@ -357,11 +393,13 @@ pub async fn handle_socket(
     }
 
     // Cleanup
-    debug!("WebSocket client {} disconnected, cleaning up", client_id);
-    
+    debug!("👋 WebSocket client {} disconnected, cleaning up", client_id);
+
     // Update connection stats
-    mgr.stats.connections_active.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
-    
+    mgr.stats
+        .connections_active
+        .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+
     // Update active users
     {
         let mut active_users = mgr.stats.active_users.write().await;
@@ -372,7 +410,7 @@ pub async fn handle_socket(
             }
         }
     }
-    
+
     let channels = {
         let mut client_channels = mgr.client_channels.write().await;
         client_channels.remove(&client_id).unwrap_or_default()
@@ -389,7 +427,7 @@ pub async fn handle_socket(
             }
         }
     }
-    
+
     // Update subscription stats for all channels the client was subscribed to
     for channel in &channels {
         update_subscription_stats(&mgr, channel, false).await;
@@ -399,6 +437,6 @@ pub async fn handle_socket(
         let mut clients = mgr.clients.write().await;
         clients.remove(&client_id);
     }
-    
-    debug!("Cleanup completed for client {}", client_id);
+
+    debug!("✨ Cleanup completed for client {}", client_id);
 }

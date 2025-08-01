@@ -41,7 +41,7 @@ pub struct GraphExecutionEvent {
     pub ended_at: Option<String>,
     pub preset_id: Option<String>,
     pub stats: Option<ExecutionStats>,
-    
+
     // Keep these as JSON since they vary by graph
     pub inputs: Value,
     pub outputs: Value,
@@ -61,7 +61,7 @@ pub struct NodeExecutionEvent {
     pub queue_time: Option<String>,
     pub start_time: Option<String>,
     pub end_time: Option<String>,
-    
+
     // Keep these as JSON since they vary by node type
     pub input_data: Value,
     pub output_data: Value,
@@ -87,6 +87,7 @@ pub enum ExecutionStatus {
     Completed,
     Failed,
     Incomplete,
+    Terminated,
 }
 
 // Wrapper for the Redis event that includes the payload

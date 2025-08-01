@@ -1,0 +1,10 @@
+# Clippy configuration for robust error handling
+
+# Set the maximum cognitive complexity allowed
+cognitive-complexity-threshold = 30
+
+# Warn on TODO/FIXME comments  
+allow-dbg-in-tests = false
+
+# Enforce documentation
+missing-docs-in-crate-items = true
