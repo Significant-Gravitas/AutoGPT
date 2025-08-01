@@ -7,7 +7,6 @@ import { TEST_CREDENTIALS } from "./credentials";
 test.describe("Marketplace – Basic Functionality", () => {
   test("User can access marketplace page when logged out", async ({ page }) => {
     const marketplacePage = new MarketplacePage(page);
-    
     await marketplacePage.goto(page);
     await hasUrl(page, "/marketplace");
 
@@ -71,22 +70,20 @@ test.describe("Marketplace – Basic Functionality", () => {
     page,
   }) => {
     const marketplacePage = new MarketplacePage(page);
-
     await marketplacePage.goto(page);
+
     const firstFeaturedAgent =
       await marketplacePage.getFirstFeaturedAgent(page);
     await firstFeaturedAgent.waitFor({ state: "visible" });
     await firstFeaturedAgent.click();
     await page.waitForURL("**/marketplace/agent/**");
     await matchesUrl(page, /\/marketplace\/agent\/.+/);
-
     await marketplacePage.goto(page);
 
     const firstTopAgent = await marketplacePage.getFirstTopAgent();
     await firstTopAgent.click();
     await page.waitForURL("**/marketplace/agent/**");
     await matchesUrl(page, /\/marketplace\/agent\/.+/);
-
     await marketplacePage.goto(page);
 
     const firstCreatorProfile =
@@ -102,7 +99,6 @@ test.describe("Marketplace – Basic Functionality", () => {
 
   test("Complete search flow works correctly", async ({ page }) => {
     const marketplacePage = new MarketplacePage(page);
-
     await marketplacePage.goto(page);
 
     await marketplacePage.searchAndNavigate("DummyInput", page);
@@ -131,7 +127,6 @@ test.describe("Marketplace – Basic Functionality", () => {
 test.describe("Marketplace – Edge Cases", () => {
   test("Search for non-existent item shows no results", async ({ page }) => {
     const marketplacePage = new MarketplacePage(page);
-
     await marketplacePage.goto(page);
 
     await marketplacePage.searchAndNavigate("xyznonexistentitemxyz123", page);
