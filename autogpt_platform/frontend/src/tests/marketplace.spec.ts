@@ -7,7 +7,7 @@ import { TEST_CREDENTIALS } from "./credentials";
 test.describe("Marketplace – Basic Functionality", () => {
   test("User can access marketplace page when logged out", async ({ page }) => {
     const marketplacePage = new MarketplacePage(page);
-    
+
     await marketplacePage.goto(page);
     await hasUrl(page, "/marketplace");
 
