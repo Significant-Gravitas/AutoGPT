@@ -1,6 +1,21 @@
+import { createRequestHeaders, getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
+
 const FRONTEND_BASE_URL =
   process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "http://localhost:3000";
 const API_PROXY_BASE_URL = `${FRONTEND_BASE_URL}/api/proxy`; // Sending request via nextjs Server
+
+const isServerSide = (): boolean => {
+  return typeof window === 'undefined';
+};
+
+const getBaseUrl = (): string => {
+  if (isServerSide()) {
+    const backendBaseUrl =  process.env.NEXT_PUBLIC_AGPT_SERVER_BASE_URL || "http://localhost:8006";
+    return backendBaseUrl;
+  } else {
+    return API_PROXY_BASE_URL;
+  }
+};
 
 const getBody = <T>(c: Response | Request): Promise<T> => {
   const contentType = c.headers.get("content-type");
@@ -30,11 +45,13 @@ export const customMutator = async <T = any>(
     | "DELETE"
     | "PATCH";
   const data = requestOptions.body;
-  const headers: Record<string, string> = {
+  let headers: Record<string, string> = {
     ...((requestOptions.headers as Record<string, string>) || {}),
   };
 
   const isFormData = data instanceof FormData;
+  const contentType = isFormData ? "multipart/form-data" : "application/json";
+
 
   // Currently, only two content types are handled here: application/json and multipart/form-data
   if (!isFormData && data && !headers["Content-Type"]) {
@@ -45,12 +62,31 @@ export const customMutator = async <T = any>(
     ? "?" + new URLSearchParams(params).toString()
     : "";
 
-  const response = await fetch(`${API_PROXY_BASE_URL}${url}${queryString}`, {
+  const baseUrl = getBaseUrl();
+  const fullUrl = `${baseUrl}${url}${queryString}`;
+
+  if (isServerSide()) {
+    try {
+      const token = await getServerAuthToken();
+      const authHeaders = createRequestHeaders(token, !!data, contentType);
+      headers = { ...headers, ...authHeaders };
+    } catch (error) {
+      console.warn("Failed to get server auth token:", error);
+    }
+  }
+
+  const response = await fetch(fullUrl, {
     ...requestOptions,
     method,
     headers,
     body: data,
   });
+
+  // Error handling for server side requests
+  if (!response.ok && isServerSide()) {
+    console.log("Request failed on server side", response);
+    throw new Error(`Request failed with status ${response.status}`);
+  }
 
   const response_data = await getBody<T>(response);
 
