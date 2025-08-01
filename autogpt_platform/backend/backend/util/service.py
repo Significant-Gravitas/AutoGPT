@@ -27,7 +27,7 @@ from fastapi import FastAPI, Request, responses
 from pydantic import BaseModel, TypeAdapter, create_model
 from tenacity import (
     retry,
-    retry_if_exception_type,
+    retry_if_not_exception_type,
     stop_after_attempt,
     wait_exponential_jitter,
 )
@@ -275,33 +275,25 @@ def get_service_client(
     service_client_type: Type[ASC],
     call_timeout: int | None = api_call_timeout,
     health_check: bool = True,
-    request_retry: bool | int = False,
+    request_retry: bool = False,
 ) -> ASC:
 
     def _maybe_retry(fn: Callable[..., R]) -> Callable[..., R]:
         """Decorate *fn* with tenacity retry when enabled."""
-        nonlocal request_retry
-
-        if isinstance(request_retry, int):
-            retry_attempts = request_retry
-            request_retry = True
-        else:
-            retry_attempts = api_comm_retry
-
         if not request_retry:
             return fn
 
         return retry(
             reraise=True,
-            stop=stop_after_attempt(retry_attempts),
+            stop=stop_after_attempt(api_comm_retry),
             wait=wait_exponential_jitter(max=4.0),
-            retry=retry_if_exception_type(
+            retry=retry_if_not_exception_type(
                 (
-                    httpx.ConnectError,
-                    httpx.ReadTimeout,
-                    httpx.WriteTimeout,
-                    httpx.ConnectTimeout,
-                    httpx.RemoteProtocolError,
+                    # Don't retry these specific exceptions that won't be fixed by retrying
+                    ValueError,  # Invalid input/parameters
+                    KeyError,  # Missing required data
+                    TypeError,  # Wrong data types
+                    AttributeError,  # Missing attributes
                 )
             ),
         )(fn)
