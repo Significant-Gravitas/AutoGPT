@@ -1,0 +1,23 @@
+# WebSocket API Configuration
+
+# Server settings
+host = "0.0.0.0"
+port = 8001
+
+# Authentication
+enable_auth = true
+jwt_secret = "your-super-secret-jwt-token-with-at-least-32-characters-long"
+jwt_algorithm = "HS256"
+default_user_id = "default"
+
+# Redis configuration
+redis_url = "redis://:password@localhost:6379/"
+
+# Event bus
+execution_event_bus_name = "execution_event"
+
+# Message size limit (in bytes)
+max_message_size_limit = 512000
+
+# CORS allowed origins
+backend_cors_allow_origins = ["http://localhost:3000", "https://559f69c159ef.ngrok.app"]

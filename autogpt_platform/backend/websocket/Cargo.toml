@@ -1,0 +1,21 @@
+[package]
+name = "websocket"
+authors = ["AutoGPT Team"]
+description = "WebSocket server for AutoGPT Platform"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = { version = "0.7.5", features = ["ws"] }
+jsonwebtoken = "9.3.0"
+redis = { version = "0.25.4", features = ["aio", "tokio-comp"] }
+serde = { version = "1.0.204", features = ["derive"] }
+serde_json = "1.0.120"
+tokio = { version = "1.38.1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "io-util"] }
+tower-http = { version = "0.5.2", features = ["cors"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+futures = "0.3"
+dotenvy = "0.15"
+clap = { version = "4.5.4", features = ["derive"] }
+toml = "0.8"
