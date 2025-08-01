@@ -72,6 +72,7 @@ from backend.executor.utils import (
     validate_exec,
 )
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.server.v2.AutoMod.manager import automod_manager
 from backend.util import json
 from backend.util.decorator import (
     async_error_logged,
@@ -736,6 +737,20 @@ class Executor:
                     amount=1,
                 )
 
+            # Input moderation
+            moderation_success, moderation_error = (
+                automod_manager.moderate_graph_execution_inputs(
+                    db_client=db_client,
+                    graph_exec=graph_exec,
+                    event_loop=cls.node_evaluation_loop,
+                    send_update_func=send_execution_update,
+                )
+            )
+            if not moderation_success:
+                execution_status = ExecutionStatus.FAILED
+                error = moderation_error
+                return execution_stats, execution_status, error
+
             # ------------------------------------------------------------
             # Pre‑populate queue ---------------------------------------
             # ------------------------------------------------------------
@@ -864,6 +879,23 @@ class Executor:
                         time.sleep(0.1)
 
             # loop done --------------------------------------------------
+
+            # Output moderation
+            moderation_success, moderation_error = (
+                automod_manager.moderate_graph_execution_outputs(
+                    db_client=db_client,
+                    graph_exec_id=graph_exec.graph_exec_id,
+                    user_id=graph_exec.user_id,
+                    graph_id=graph_exec.graph_id,
+                    event_loop=cls.node_evaluation_loop,
+                    send_update_func=send_execution_update,
+                )
+            )
+            if not moderation_success:
+                execution_status = ExecutionStatus.FAILED
+                error = moderation_error
+                return execution_stats, execution_status, error
+
             # Determine final execution status based on whether there was an error
             execution_status = (
                 ExecutionStatus.FAILED if error else ExecutionStatus.COMPLETED
