@@ -63,6 +63,8 @@ export const customMutator = async <T = any>(
     : "";
 
   const baseUrl = getBaseUrl();
+  
+  // The caching in React Query in our system depends on the url, so the base_url could be different for the server and client sides.
   const fullUrl = `${baseUrl}${url}${queryString}`;
 
   if (isServerSide()) {
@@ -82,7 +84,14 @@ export const customMutator = async <T = any>(
     body: data,
   });
 
-  // Error handling for server side requests
+  // Error handling for server-side requests
+  // We do not need robust error handling for server-side requests; we only need to log the error message and throw the error.
+  // What happens if the server-side request fails?
+  // 1. The error will be logged in the terminal, then.
+  // 2. The error will be thrown, so the cached data for this particular queryKey will be empty, then.
+  // 3. The client-side will send the request again via the proxy. If it fails again, the error will be handled on the client side.
+  // 4. If the request succeeds on the server side, the data will be cached, and the client will use it instead of sending a request to the proxy.
+
   if (!response.ok && isServerSide()) {
     console.log("Request failed on server side", response);
     throw new Error(`Request failed with status ${response.status}`);
