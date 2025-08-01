@@ -511,7 +511,6 @@ class Executor:
         logger.info(f"[GraphExecutor] {cls.pid} started")
 
     @classmethod
-    @func_retry
     @error_logged(swallow=False)
     def on_graph_execution(
         cls,
