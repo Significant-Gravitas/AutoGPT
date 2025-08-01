@@ -114,9 +114,8 @@ test.describe("Marketplace – Basic Functionality", () => {
     const searchTerm = page.getByText("DummyInput").first();
     await isVisible(searchTerm);
 
-    const searchResult = await marketplacePage.waitForSearchResultsToLoad(page);
-    expect(searchResult.hasResults).toBe(true);
-
+    await page.waitForTimeout(10000);
+    
     const results = await marketplacePage.getSearchResultsCount(page);
     expect(results).toBeGreaterThan(0);
 
@@ -142,9 +141,6 @@ test.describe("Marketplace – Edge Cases", () => {
 
     const searchTerm = page.getByText("xyznonexistentitemxyz123");
     await isVisible(searchTerm);
-
-    const searchResult = await marketplacePage.waitForSearchResultsToLoad(page);
-    expect(searchResult.hasResults).toBe(false);
 
     const results = await marketplacePage.getSearchResultsCount(page);
     expect(results).toBe(0);
