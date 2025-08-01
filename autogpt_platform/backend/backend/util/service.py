@@ -105,6 +105,7 @@ EXCEPTION_MAPPING = {
     e.__name__: e
     for e in [
         ValueError,
+        RuntimeError,
         TimeoutError,
         ConnectionError,
         *[
