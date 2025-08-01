@@ -12,7 +12,8 @@ test.describe("Marketplace Creator Page – Basic Functionality", () => {
     await marketplacePage.goto(page);
     await hasUrl(page, "/marketplace");
 
-    const firstCreatorProfile = await marketplacePage.getFirstCreatorProfile(page);
+    const firstCreatorProfile =
+      await marketplacePage.getFirstCreatorProfile(page);
     await firstCreatorProfile.click();
 
     await page.waitForURL("**/marketplace/creator/**");
@@ -30,7 +31,8 @@ test.describe("Marketplace Creator Page – Basic Functionality", () => {
     await marketplacePage.goto(page);
     await hasUrl(page, "/marketplace");
 
-    const firstCreatorProfile = await marketplacePage.getFirstCreatorProfile(page);
+    const firstCreatorProfile =
+      await marketplacePage.getFirstCreatorProfile(page);
     await firstCreatorProfile.click();
 
     await page.waitForURL("**/marketplace/creator/**");
@@ -44,7 +46,8 @@ test.describe("Marketplace Creator Page – Basic Functionality", () => {
     await marketplacePage.goto(page);
     await hasUrl(page, "/marketplace");
 
-    const firstCreatorProfile = await marketplacePage.getFirstCreatorProfile(page);
+    const firstCreatorProfile =
+      await marketplacePage.getFirstCreatorProfile(page);
     await firstCreatorProfile.click();
     await page.waitForURL("**/marketplace/creator/**");
 
@@ -61,7 +64,8 @@ test.describe("Marketplace Creator Page – Basic Functionality", () => {
     await marketplacePage.goto(page);
     await hasUrl(page, "/marketplace");
 
-    const firstCreatorProfile = await marketplacePage.getFirstCreatorProfile(page);
+    const firstCreatorProfile =
+      await marketplacePage.getFirstCreatorProfile(page);
     await firstCreatorProfile.click();
     await page.waitForURL("**/marketplace/creator/**");
     const firstAgent = page
