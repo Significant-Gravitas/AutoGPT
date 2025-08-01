@@ -191,7 +191,7 @@ clone_repository() {
 prompt_sentry_enablement() {
     print_color "YELLOW" "Would you like to enable debug information to be shared so we can fix your issues? [Y/n]"
     read -r sentry_answer
-    case "${sentry_answer,,}" in
+    case "$(echo "$sentry_answer" | tr '[:upper:]' '[:lower:]')" in
         ""|y|yes)
             SENTRY_ENABLED=1
             ;;
