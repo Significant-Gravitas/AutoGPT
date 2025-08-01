@@ -115,7 +115,7 @@ test.describe("Marketplace – Basic Functionality", () => {
     await isVisible(searchTerm);
 
     await page.waitForTimeout(10000);
-    
+
     const results = await marketplacePage.getSearchResultsCount(page);
     expect(results).toBeGreaterThan(0);
 

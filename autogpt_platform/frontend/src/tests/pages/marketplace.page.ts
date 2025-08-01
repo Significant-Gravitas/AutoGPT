@@ -126,5 +126,4 @@ export class MarketplacePage extends BasePage {
     const storeCards = getId("store-card");
     return await storeCards.count();
   }
-
 }
