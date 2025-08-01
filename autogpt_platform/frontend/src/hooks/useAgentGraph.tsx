@@ -59,6 +59,9 @@ export default function useAgentGraph(
   const [isStopping, setIsStopping] = useState(false);
   const [activeExecutionID, setActiveExecutionID] =
     useState<GraphExecutionID | null>(null);
+  const [graphExecutionError, setGraphExecutionError] = useState<string | null>(
+    null,
+  );
   const [xyNodes, setXYNodes] = useState<CustomNode[]>([]);
   const [xyEdges, setXYEdges] = useState<CustomEdge[]>([]);
   const { state, completeStep, incrementRuns } = useOnboarding();
@@ -461,6 +464,12 @@ export default function useAgentGraph(
         flowID,
         flowExecutionID,
       );
+
+      // Set graph execution error from the initial fetch
+      if (execution.status === "FAILED" && execution.stats?.error) {
+        setGraphExecutionError(execution.stats.error);
+      }
+
       if (
         (execution.status === "QUEUED" || execution.status === "RUNNING") &&
         !isRunning
@@ -479,32 +488,45 @@ export default function useAgentGraph(
           if (graphExec.id != flowExecutionID) {
             return;
           }
-          if (
-            graphExec.status === "FAILED" &&
-            graphExec?.stats?.error
-              ?.toLowerCase()
-              ?.includes("insufficient balance")
-          ) {
-            // Show no credits toast if user has low credits
-            toast({
-              variant: "destructive",
-              title: "Credits low",
-              description: (
-                <div>
-                  Agent execution failed due to insufficient credits.
-                  <br />
-                  Go to the{" "}
-                  <NextLink
-                    className="text-purple-300"
-                    href="/marketplace/credits"
-                  >
-                    Credits
-                  </NextLink>{" "}
-                  page to top up.
-                </div>
-              ),
-              duration: 5000,
-            });
+
+          // Update graph execution error state and show toast
+          if (graphExec.status === "FAILED" && graphExec?.stats?.error) {
+            setGraphExecutionError(graphExec.stats.error);
+
+            if (
+              graphExec.stats.error
+                .toLowerCase()
+                .includes("insufficient balance")
+            ) {
+              // Show no credits toast if user has low credits
+              toast({
+                variant: "destructive",
+                title: "Credits low",
+                description: (
+                  <div>
+                    Agent execution failed due to insufficient credits.
+                    <br />
+                    Go to the{" "}
+                    <NextLink
+                      className="text-purple-300"
+                      href="/profile/credits"
+                    >
+                      Credits
+                    </NextLink>{" "}
+                    page to top up.
+                  </div>
+                ),
+                duration: 5000,
+              });
+            } else {
+              // Show general graph execution error
+              toast({
+                variant: "destructive",
+                title: "Agent execution failed",
+                description: graphExec.stats.error,
+                duration: 8000,
+              });
+            }
           }
           if (
             graphExec.status === "COMPLETED" ||
@@ -999,6 +1021,7 @@ export default function useAgentGraph(
     isRunning,
     isStopping,
     isScheduling,
+    graphExecutionError,
     nodes: xyNodes,
     setNodes: setXYNodes,
     edges: xyEdges,

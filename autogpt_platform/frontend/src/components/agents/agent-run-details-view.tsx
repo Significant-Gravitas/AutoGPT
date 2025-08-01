@@ -225,6 +225,13 @@ export default function AgentRunDetailsView({
                 </div>
               ))}
             </div>
+            {run.stats?.error && (
+              <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
+                <p className="text-sm text-red-800 dark:text-red-200">
+                  <strong>Error:</strong> {run.stats.error}
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
