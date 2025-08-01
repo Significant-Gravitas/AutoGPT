@@ -706,3 +706,6 @@ class GraphExecutionStats(BaseModel):
         default=0, description="Total number of errors generated"
     )
     cost: int = Field(default=0, description="Total execution cost (cents)")
+    activity_status: Optional[str] = Field(
+        default=None, description="AI-generated summary of what the agent did"
+    )
