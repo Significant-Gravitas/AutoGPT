@@ -50,6 +50,10 @@ prisma = Prisma(
 logger = logging.getLogger(__name__)
 
 
+def is_connected():
+    return prisma.is_connected()
+
+
 @conn_retry("Prisma", "Acquiring connection")
 async def connect():
     if prisma.is_connected():
