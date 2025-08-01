@@ -466,8 +466,11 @@ export default function useAgentGraph(
       );
 
       // Set graph execution error from the initial fetch
-      if (execution.status === "FAILED" && execution.stats?.error) {
-        setGraphExecutionError(execution.stats.error);
+      if (execution.status === "FAILED") {
+        setGraphExecutionError(
+          execution.stats?.error ||
+            "The execution failed due to an internal error. You can re-run the agent to retry.",
+        );
       }
 
       if (
@@ -490,12 +493,15 @@ export default function useAgentGraph(
           }
 
           // Update graph execution error state and show toast
-          if (graphExec.status === "FAILED" && graphExec?.stats?.error) {
-            setGraphExecutionError(graphExec.stats.error);
+          if (graphExec.status === "FAILED") {
+            const errorMessage =
+              graphExec.stats?.error ||
+              "The execution failed due to an internal error. You can re-run the agent to retry.";
+            setGraphExecutionError(errorMessage);
 
             if (
-              graphExec.stats.error
-                .toLowerCase()
+              graphExec.stats?.error
+                ?.toLowerCase()
                 .includes("insufficient balance")
             ) {
               // Show no credits toast if user has low credits
@@ -523,7 +529,7 @@ export default function useAgentGraph(
               toast({
                 variant: "destructive",
                 title: "Agent execution failed",
-                description: graphExec.stats.error,
+                description: errorMessage,
                 duration: 8000,
               });
             }
