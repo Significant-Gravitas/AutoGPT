@@ -123,7 +123,6 @@ class AppProcess(ABC):
             **proc_args,
         )
         self.process.start()
-        self.health_check()
         logger.info(f"[{self.service_name}] started with PID {self.process.pid}")
 
         return self.process.pid or 0
