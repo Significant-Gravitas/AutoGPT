@@ -87,6 +87,7 @@ class TestDataCreator:
         self.store_submissions: List[Dict[str, Any]] = []
         self.api_keys: List[Dict[str, Any]] = []
         self.presets: List[Dict[str, Any]] = []
+        self.profiles: List[Dict[str, Any]] = []
 
     async def create_test_users(self) -> List[Dict[str, Any]]:
         """Create test users using Supabase client."""
@@ -463,6 +464,56 @@ class TestDataCreator:
         self.api_keys = api_keys
         return api_keys
 
+    async def update_test_profiles(self) -> List[Dict[str, Any]]:
+        """Update existing user profiles to make some into featured creators."""
+        print("Updating user profiles to create featured creators...")
+
+        # Get all existing profiles (auto-created when users were created)
+        existing_profiles = await prisma.profile.find_many(
+            where={"userId": {"in": [user["id"] for user in self.users]}}
+        )
+        
+        if not existing_profiles:
+            print("No existing profiles found. Profiles may not be auto-created.")
+            return []
+
+        profiles = []
+        # Select about 70% of users to become creators (update their profiles) 
+        num_creators = max(1, int(len(existing_profiles) * 0.7))
+        selected_profiles = random.sample(existing_profiles, min(num_creators, len(existing_profiles)))
+        
+        # Mark about 50% of creators as featured (more for testing)
+        num_featured = max(2, int(num_creators * 0.5))
+        num_featured = min(num_featured, len(selected_profiles))  # Don't exceed available profiles
+        featured_profile_ids = set(random.sample([p.id for p in selected_profiles], num_featured))
+
+        for profile in selected_profiles:
+            try:
+                is_featured = profile.id in featured_profile_ids
+                
+                # Update the profile with creator data
+                updated_profile = await prisma.profile.update(
+                    where={"id": profile.id},
+                    data={
+                        "name": faker.name(),
+                        "username": faker.user_name() + str(random.randint(100, 999)),  # Ensure uniqueness
+                        "description": faker.text(max_nb_chars=200),
+                        "links": [faker.url() for _ in range(random.randint(1, 3))],
+                        "avatarUrl": get_image(),
+                        "isFeatured": is_featured,
+                    }
+                )
+                profiles.append(updated_profile.model_dump())
+                
+                print(f"✅ Updated {'featured ' if is_featured else ''}creator profile: {updated_profile.name} (@{updated_profile.username})")
+                
+            except Exception as e:
+                print(f"Error updating profile {profile.id}: {e}")
+                continue
+
+        self.profiles = profiles
+        return profiles
+
     async def create_test_store_submissions(self) -> List[Dict[str, Any]]:
         """Create test store submissions using the API function."""
         print("Creating test store submissions...")
@@ -483,7 +534,7 @@ class TestDataCreator:
                 continue
 
             # Create exactly 4 store submissions per user
-            for _ in range(4):
+            for submission_index in range(4):
                 graph = random.choice(user_graphs)
 
                 try:
@@ -525,6 +576,22 @@ class TestDataCreator:
                                 approved_submission.model_dump()
                             )
                             print(f"✅ Approved store submission: {submission.name}")
+                            
+                            # Mark some agents as featured during creation (30% chance)
+                            # More likely for creators and first submissions
+                            is_creator = user["id"] in [p.get("userId") for p in self.profiles]
+                            feature_chance = 0.5 if is_creator else 0.2  # 50% for creators, 20% for others
+                            
+                            if random.random() < feature_chance:
+                                try:
+                                    await prisma.storelistingversion.update(
+                                        where={"id": submission.store_listing_version_id},
+                                        data={"isFeatured": True}
+                                    )
+                                    print(f"🌟 Marked agent as FEATURED: {submission.name}")
+                                except Exception as e:
+                                    print(f"Warning: Could not mark submission as featured: {e}")
+                                    
                         except Exception as e:
                             print(
                                 f"Warning: Could not approve submission {submission.name}: {e}"
@@ -538,6 +605,8 @@ class TestDataCreator:
 
                     traceback.print_exc()
                     continue
+
+
 
         print(
             f"Created {len(submissions)} store submissions, approved {len(approved_submissions)}"
@@ -596,6 +665,9 @@ class TestDataCreator:
         # Create API keys
         await self.create_test_api_keys()
 
+        # Update user profiles to create featured creators
+        await self.update_test_profiles()
+
         # Create store submissions
         await self.create_test_store_submissions()
 
@@ -617,7 +689,8 @@ class TestDataCreator:
         print(f"✅ Agent blocks available: {len(self.agent_blocks)}")
         print(f"✅ Agent graphs created: {len(self.agent_graphs)}")
         print(f"✅ Library agents created: {len(self.library_agents)}")
-        print(f"✅ Store submissions created: {len(self.store_submissions)}")
+        print(f"✅ Creator profiles updated: {len(self.profiles)} (some featured)")
+        print(f"✅ Store submissions created: {len(self.store_submissions)} (some marked as featured during creation)")
         print(f"✅ API keys created: {len(self.api_keys)}")
         print(f"✅ Presets created: {len(self.presets)}")
         print("\n🚀 Your E2E test database is ready to use!")
