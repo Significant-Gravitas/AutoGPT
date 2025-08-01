@@ -61,12 +61,6 @@ class AppProcess(ABC):
         """
         pass
 
-    def health_check(self) -> str:
-        """
-        A method to check the health of the process.
-        """
-        return "OK"
-
     def execute_run_command(self, silent):
         signal.signal(signal.SIGTERM, self._self_terminate)
         signal.signal(signal.SIGINT, self._self_terminate)
