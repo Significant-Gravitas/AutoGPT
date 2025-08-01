@@ -90,6 +90,21 @@ def mock_execution_stats():
 
 
 @pytest.fixture
+def mock_execution_stats_with_graph_error():
+    """Create mock execution stats with graph-level error."""
+    return GraphExecutionStats(
+        walltime=2.5,
+        cputime=1.8,
+        nodes_walltime=2.0,
+        nodes_cputime=1.5,
+        node_count=3,
+        node_error_count=1,
+        cost=10,
+        error="Graph execution failed: Invalid API credentials",
+    )
+
+
+@pytest.fixture
 def mock_blocks():
     """Create mock blocks for testing."""
     input_block = MagicMock()
@@ -141,6 +156,7 @@ class TestBuildExecutionSummary:
                 "Test Graph",
                 "A test graph for processing",
                 mock_links,
+                ExecutionStatus.COMPLETED,
             )
 
             # Check graph info
@@ -174,6 +190,7 @@ class TestBuildExecutionSummary:
             assert summary["overall_status"]["total_executions"] == 3
             assert summary["overall_status"]["total_errors"] == 1
             assert summary["overall_status"]["execution_time_seconds"] == 2.5
+            assert summary["overall_status"]["graph_execution_status"] == "COMPLETED"
 
             # Check input/output data (using actual node UUIDs)
             assert (
@@ -202,6 +219,7 @@ class TestBuildExecutionSummary:
                 "Failed Graph",
                 "Test with failures",
                 mock_links,
+                ExecutionStatus.FAILED,
             )
 
             # Check that errors are now in node's recent_errors field
@@ -238,12 +256,42 @@ class TestBuildExecutionSummary:
                 "Missing Blocks Graph",
                 "Test with missing blocks",
                 [],
+                ExecutionStatus.COMPLETED,
             )
 
             # Should handle missing blocks gracefully
             assert len(summary["nodes"]) == 0
             # No top-level errors field anymore, errors are in nodes' recent_errors
             assert summary["graph_info"]["name"] == "Missing Blocks Graph"
+
+    def test_build_summary_with_graph_error(
+        self, mock_node_executions, mock_execution_stats_with_graph_error, mock_blocks
+    ):
+        """Test building summary with graph-level error."""
+        mock_links = []
+
+        with patch(
+            "backend.executor.activity_status_generator.get_block"
+        ) as mock_get_block:
+            mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
+
+            summary = _build_execution_summary(
+                mock_node_executions,
+                mock_execution_stats_with_graph_error,
+                "Graph with Error",
+                "Test with graph error",
+                mock_links,
+                ExecutionStatus.FAILED,
+            )
+
+            # Check that graph error is included in overall status
+            assert summary["overall_status"]["has_errors"] is True
+            assert (
+                summary["overall_status"]["graph_error"]
+                == "Graph execution failed: Invalid API credentials"
+            )
+            assert summary["overall_status"]["total_errors"] == 1
+            assert summary["overall_status"]["graph_execution_status"] == "FAILED"
 
     def test_build_summary_with_different_error_formats(
         self, mock_execution_stats, mock_blocks
@@ -296,6 +344,7 @@ class TestBuildExecutionSummary:
                 "Error Test Graph",
                 "Testing error formats",
                 [],
+                ExecutionStatus.FAILED,
             )
 
             # Check different error formats - errors are now in nodes' recent_errors

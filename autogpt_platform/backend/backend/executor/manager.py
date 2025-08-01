@@ -588,6 +588,7 @@ class Executor:
                     execution_stats=exec_stats,
                     db_client=get_db_async_client(),
                     user_id=graph_exec.user_id,
+                    execution_status=status,
                 ),
                 cls.node_execution_loop,
             ).result(timeout=60.0)

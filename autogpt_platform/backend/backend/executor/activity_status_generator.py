@@ -81,6 +81,7 @@ async def generate_activity_status_for_execution(
     execution_stats: GraphExecutionStats,
     db_client: "DatabaseManagerAsyncClient",
     user_id: str,
+    execution_status: ExecutionStatus | None = None,
 ) -> str | None:
     """
     Generate an AI-based activity status summary for a graph execution.
@@ -95,6 +96,7 @@ async def generate_activity_status_for_execution(
         execution_stats: Execution statistics
         db_client: Database client for fetching data
         user_id: User ID for LaunchDarkly feature flag evaluation
+        execution_status: The overall execution status (COMPLETED, FAILED, TERMINATED)
 
     Returns:
         AI-generated activity status string, or None if feature is disabled
@@ -128,7 +130,12 @@ async def generate_activity_status_for_execution(
 
         # Build execution data summary
         execution_data = _build_execution_summary(
-            node_executions, execution_stats, graph_name, graph_description, graph_links
+            node_executions,
+            execution_stats,
+            graph_name,
+            graph_description,
+            graph_links,
+            execution_status,
         )
 
         # Prepare prompt for AI
@@ -146,7 +153,12 @@ async def generate_activity_status_for_execution(
                     "- If the task failed, explain what went wrong in simple terms\n"
                     "- If errors occurred, focus on what the user needs to know\n"
                     "- Only claim success if the task was genuinely completed\n"
-                    "- Don't sugar-coat failures or present them as helpful feedback"
+                    "- Don't sugar-coat failures or present them as helpful feedback\n\n"
+                    "Understanding Errors:\n"
+                    "- Node errors: Individual steps may fail but the overall task might still complete (e.g., one data source fails but others work)\n"
+                    "- Graph error (in overall_status.graph_error): This means the entire execution failed and nothing was accomplished\n"
+                    "- Even if execution shows 'completed', check if critical nodes failed that would prevent the desired outcome\n"
+                    "- Focus on the end result the user wanted, not whether technical steps completed"
                 ),
             },
             {
@@ -155,11 +167,14 @@ async def generate_activity_status_for_execution(
                     f"A user ran '{graph_name}' to accomplish something. Based on this execution data, "
                     f"write what they achieved in simple, user-friendly terms:\n\n"
                     f"{json.dumps(execution_data, indent=2)}\n\n"
+                    "CRITICAL: Check overall_status.graph_error FIRST - if present, the entire execution failed.\n"
+                    "Then check individual node errors to understand partial failures.\n\n"
                     "Write 1-3 sentences about what the user accomplished, such as:\n"
                     "- 'I analyzed your resume and provided detailed feedback for the IT industry.'\n"
                     "- 'I couldn't analyze your resume because the input was just nonsensical text.'\n"
                     "- 'I failed to complete the task due to missing API access.'\n"
-                    "- 'I extracted key information from your documents and organized it into a summary.'\n\n"
+                    "- 'I extracted key information from your documents and organized it into a summary.'\n"
+                    "- 'The task failed to run due to system configuration issues.'\n\n"
                     "Focus on what ACTUALLY happened, not what was attempted."
                 ),
             },
@@ -199,6 +214,7 @@ def _build_execution_summary(
     graph_name: str,
     graph_description: str,
     graph_links: list[Any],
+    execution_status: ExecutionStatus | None = None,
 ) -> dict[str, Any]:
     """Build a structured summary of execution data for AI analysis."""
 
@@ -388,6 +404,12 @@ def _build_execution_summary(
             "execution_time_seconds": execution_stats.walltime,
             "has_errors": bool(
                 execution_stats.error or execution_stats.node_error_count > 0
+            ),
+            "graph_error": (
+                str(execution_stats.error) if execution_stats.error else None
+            ),
+            "graph_execution_status": (
+                execution_status.value if execution_status else None
             ),
         },
     }
