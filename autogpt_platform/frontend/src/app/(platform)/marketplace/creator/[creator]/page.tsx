@@ -72,6 +72,7 @@ export default async function Page({
                 About
               </p>
               <div
+                data-testid="creator-description"
                 className="text-[48px] font-normal leading-[59px] text-neutral-900 dark:text-zinc-50"
                 style={{ whiteSpace: "pre-line" }}
               >
