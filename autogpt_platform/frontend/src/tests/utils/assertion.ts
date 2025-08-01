@@ -12,7 +12,7 @@ export async function hasAttribute(
   await expect(el).toHaveAttribute(label, val);
 }
 
-export async function hasTextContent(el: Locator, text: string) {
+export async function hasTextContent(el: Locator, text: string | RegExp) {
   await expect(el).toContainText(text);
 }
 
@@ -42,4 +42,13 @@ export async function isDisabled(el: Locator) {
 
 export async function isEnabled(el: Locator) {
   await expect(el).toBeEnabled();
+}
+
+export async function hasMinCount(el: Locator, minCount: number) {
+  const count = await el.count();
+  expect(count).toBeGreaterThanOrEqual(minCount);
+}
+
+export async function matchesUrl(page: Page, pattern: RegExp) {
+  expect(page.url()).toMatch(pattern);
 }

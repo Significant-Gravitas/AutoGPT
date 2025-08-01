@@ -16,6 +16,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
+import { getGetV2ListMySubmissionsQueryKey } from "@/app/api/__generated__/endpoints/store/store";
 
 interface SaveControlProps {
   agentMeta: GraphMeta | null;
@@ -57,12 +59,16 @@ export const SaveControl = ({
    */
 
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     const handleKeyDown = async (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key === "s") {
         event.preventDefault(); // Stop the browser default action
         await onSave(); // Call your save function
+        queryClient.invalidateQueries({
+          queryKey: getGetV2ListMySubmissionsQueryKey(),
+        });
         toast({
           duration: 2000,
           title: "All changes saved successfully!",
