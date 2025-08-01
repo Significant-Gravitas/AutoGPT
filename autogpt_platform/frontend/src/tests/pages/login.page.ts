@@ -3,6 +3,10 @@ import { Page } from "@playwright/test";
 export class LoginPage {
   constructor(private page: Page) {}
 
+  async goto() {
+    await this.page.goto("/login");
+  }
+
   async login(email: string, password: string) {
     console.log(`ℹ️ Attempting login on ${this.page.url()} with`, {
       email,
