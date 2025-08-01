@@ -235,6 +235,15 @@ export default function AgentRunDetailsView({
                 </div>
               ))}
             </div>
+            {run.status === "FAILED" && (
+              <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
+                <p className="text-sm text-red-800 dark:text-red-200">
+                  <strong>Error:</strong>{" "}
+                  {run.stats?.error ||
+                    "The execution failed due to an internal error. You can re-run the agent to retry."}
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
 

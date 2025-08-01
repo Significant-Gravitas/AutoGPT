@@ -664,6 +664,7 @@ class Executor:
             execution_stats.cost += cost
 
     @classmethod
+    @func_retry
     @time_measured
     def _on_graph_execution(
         cls,
