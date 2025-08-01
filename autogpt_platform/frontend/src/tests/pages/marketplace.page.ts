@@ -126,4 +126,21 @@ export class MarketplacePage extends BasePage {
     const storeCards = getId("store-card");
     return await storeCards.count();
   }
+
+  async waitForSearchResultsToLoad(page: Page) {
+    const { getId, getText } = getSelectors(page);
+    
+    try {
+      await getId("store-card").first().waitFor({ state: "visible", timeout: 60000 });
+      return { hasResults: true };
+    } catch {
+      try {
+        await getText("No results found", { exact: false }).waitFor({ state: "visible", timeout: 1000 });
+        return { hasResults: false };
+      } catch {
+        throw new Error("Search results did not load within 60 seconds. Neither store cards nor 'No results found' text appeared.");
+      }
+    }
+  }
+
 }
