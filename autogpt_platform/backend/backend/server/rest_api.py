@@ -14,7 +14,6 @@ from autogpt_libs.feature_flag.client import (
     shutdown_launchdarkly,
 )
 from autogpt_libs.logging.utils import generate_uvicorn_config
-from autogpt_libs.utils.cache import thread_cached
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 
@@ -63,10 +62,13 @@ def launch_darkly_context():
 @contextlib.asynccontextmanager
 async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.db.connect()
-    await backend.data.block.initialize_blocks()
 
-    # SDK auto-registration is now handled by AutoRegistry.patch_integrations()
-    # which is called when the SDK module is imported
+    # Ensure SDK auto-registration is patched before initializing blocks
+    from backend.sdk.registry import AutoRegistry
+
+    AutoRegistry.patch_integrations()
+
+    await backend.data.block.initialize_blocks()
 
     await backend.data.user.migrate_and_encrypt_user_integrations()
     await backend.data.graph.fix_llm_provider_credentials()
@@ -220,19 +222,8 @@ app.include_router(
 app.mount("/external-api", external_app)
 
 
-@thread_cached
-def get_db_async_client():
-    from backend.executor import DatabaseManagerAsyncClient
-
-    return backend.util.service.get_service_client(
-        DatabaseManagerAsyncClient,
-        health_check=False,
-    )
-
-
 @app.get(path="/health", tags=["health"], dependencies=[])
 async def health():
-    await get_db_async_client().health_check_async()
     return {"status": "healthy"}
 
 

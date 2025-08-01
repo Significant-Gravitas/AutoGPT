@@ -1,56 +1,57 @@
-import { PublishAgentPopout } from "@/components/agptui/composite/PublishAgentPopout";
-import { Button } from "@/components/ui/button";
 import { useMainDashboardPage } from "./useMainDashboardPage";
 import { Separator } from "@/components/ui/separator";
 import { AgentTable } from "../AgentTable/AgentTable";
 import { StatusType } from "@/components/agptui/Status";
+import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
+import { Button } from "@/components/atoms/Button/Button";
+import { EmptySubmissions } from "./components/EmptySubmissions";
+import { SubmissionLoadError } from "./components/SumbmissionLoadError";
+import { SubmissionsLoading } from "./components/SubmissionsLoading";
+import { Text } from "@/components/atoms/Text/Text";
 
 export const MainDashboardPage = () => {
   const {
-    onOpenPopout,
     onDeleteSubmission,
-    onEditSubmission,
+    onViewSubmission,
+    onOpenSubmitModal,
+    onPublishStateChange,
+    publishState,
+    // API data
     submissions,
     isLoading,
-    openPopout,
-    submissionData,
-    popoutStep,
+    error,
   } = useMainDashboardPage();
-
-  if (isLoading) {
-    return "Loading....";
-  }
 
   return (
     <main className="flex-1 py-8">
       {/* Header Section */}
       <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="space-y-6">
-          <h1 className="text-4xl font-medium text-neutral-900 dark:text-neutral-100">
+          <Text variant="h1" size="h3">
             Agent dashboard
-          </h1>
+          </Text>
           <div className="space-y-2">
-            <h2 className="text-xl font-medium text-neutral-900 dark:text-neutral-100">
+            <Text
+              variant="h2"
+              size="large-medium"
+              className="text-neutral-900 dark:text-neutral-100"
+            >
               Submit a New Agent
-            </h2>
-            <p className="text-sm text-[#707070] dark:text-neutral-400">
+            </Text>
+            <Text variant="body" size="small">
               Select from the list of agents you currently have, or upload from
               your local machine.
-            </p>
+            </Text>
           </div>
         </div>
-        <PublishAgentPopout
+        <PublishAgentModal
+          targetState={publishState}
+          onStateChange={onPublishStateChange}
           trigger={
-            <Button
-              onClick={onOpenPopout}
-              className="h-9 rounded-full bg-black px-4 text-sm font-medium text-white hover:bg-neutral-700 dark:hover:bg-neutral-600"
-            >
+            <Button size="small" onClick={onOpenSubmitModal}>
               Submit agent
             </Button>
           }
-          openPopout={openPopout}
-          inputStep={popoutStep}
-          submissionData={submissionData}
         />
       </div>
 
@@ -58,32 +59,41 @@ export const MainDashboardPage = () => {
 
       {/* Agents Section */}
       <div>
-        <h2 className="mb-4 text-xl font-bold text-neutral-900 dark:text-neutral-100">
+        <Text
+          variant="h2"
+          size="large-medium"
+          className="mb-4 text-neutral-900 dark:text-neutral-100"
+        >
           Your uploaded agents
-        </h2>
-        {submissions && (
+        </Text>
+
+        {error ? (
+          <SubmissionLoadError />
+        ) : isLoading ? (
+          <SubmissionsLoading />
+        ) : submissions && submissions.submissions.length > 0 ? (
           <AgentTable
-            agents={
-              submissions?.submissions.map((submission, index) => ({
-                id: index,
-                agent_id: submission.agent_id,
-                agent_version: submission.agent_version,
-                sub_heading: submission.sub_heading,
-                date_submitted: submission.date_submitted,
-                agentName: submission.name,
-                description: submission.description,
-                imageSrc: submission.image_urls || [""],
-                dateSubmitted: new Date(
-                  submission.date_submitted,
-                ).toLocaleDateString(),
-                status: submission.status.toLowerCase() as StatusType,
-                runs: submission.runs,
-                rating: submission.rating,
-              })) || []
-            }
-            onEditSubmission={onEditSubmission}
+            agents={submissions.submissions.map((submission, index) => ({
+              id: index,
+              agent_id: submission.agent_id,
+              agent_version: submission.agent_version,
+              sub_heading: submission.sub_heading,
+              date_submitted: submission.date_submitted,
+              agentName: submission.name,
+              description: submission.description,
+              imageSrc: submission.image_urls || [""],
+              dateSubmitted: new Date(
+                submission.date_submitted,
+              ).toLocaleDateString(),
+              status: submission.status.toLowerCase() as StatusType,
+              runs: submission.runs,
+              rating: submission.rating,
+            }))}
+            onViewSubmission={onViewSubmission}
             onDeleteSubmission={onDeleteSubmission}
           />
+        ) : (
+          <EmptySubmissions />
         )}
       </div>
     </main>

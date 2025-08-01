@@ -21,6 +21,8 @@ import type {
   UseQueryResult,
 } from "@tanstack/react-query";
 
+import type { AyrshareSSOResponse } from "../../models/ayrshareSSOResponse";
+
 import type { BodyPostV1Callback } from "../../models/bodyPostV1Callback";
 
 import type { CredentialsMetaResponse } from "../../models/credentialsMetaResponse";
@@ -1530,6 +1532,210 @@ export const usePostV1WebhookPing = <
 
   return useMutation(mutationOptions, queryClient);
 };
+/**
+ * Generate an SSO URL for Ayrshare social media integration.
+
+Returns:
+    dict: Contains the SSO URL for Ayrshare integration
+ * @summary Get Ayrshare Sso Url
+ */
+export type getV1GetAyrshareSsoUrlResponse200 = {
+  data: AyrshareSSOResponse;
+  status: 200;
+};
+
+export type getV1GetAyrshareSsoUrlResponseComposite =
+  getV1GetAyrshareSsoUrlResponse200;
+
+export type getV1GetAyrshareSsoUrlResponse =
+  getV1GetAyrshareSsoUrlResponseComposite & {
+    headers: Headers;
+  };
+
+export const getGetV1GetAyrshareSsoUrlUrl = () => {
+  return `/api/integrations/ayrshare/sso_url`;
+};
+
+export const getV1GetAyrshareSsoUrl = async (
+  options?: RequestInit,
+): Promise<getV1GetAyrshareSsoUrlResponse> => {
+  return customMutator<getV1GetAyrshareSsoUrlResponse>(
+    getGetV1GetAyrshareSsoUrlUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetV1GetAyrshareSsoUrlQueryKey = () => {
+  return [`/api/integrations/ayrshare/sso_url`] as const;
+};
+
+export const getGetV1GetAyrshareSsoUrlQueryOptions = <
+  TData = Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+  TError = unknown,
+>(options?: {
+  query?: Partial<
+    UseQueryOptions<
+      Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+      TError,
+      TData
+    >
+  >;
+  request?: SecondParameter<typeof customMutator>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetV1GetAyrshareSsoUrlQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>
+  > = ({ signal }) => getV1GetAyrshareSsoUrl({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetV1GetAyrshareSsoUrlQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>
+>;
+export type GetV1GetAyrshareSsoUrlQueryError = unknown;
+
+export function useGetV1GetAyrshareSsoUrl<
+  TData = Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+  TError = unknown,
+>(
+  options: {
+    query: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+          TError,
+          Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetV1GetAyrshareSsoUrl<
+  TData = Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+          TError,
+          Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetV1GetAyrshareSsoUrl<
+  TData = Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+/**
+ * @summary Get Ayrshare Sso Url
+ */
+
+export function useGetV1GetAyrshareSsoUrl<
+  TData = Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+} {
+  const queryOptions = getGetV1GetAyrshareSsoUrlQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Get Ayrshare Sso Url
+ */
+export const prefetchGetV1GetAyrshareSsoUrlQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetAyrshareSsoUrlQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
 /**
  * Get a list of all available provider names.
 

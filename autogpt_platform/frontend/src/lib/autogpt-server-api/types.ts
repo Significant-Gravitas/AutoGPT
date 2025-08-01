@@ -268,6 +268,7 @@ export type GraphExecutionMeta = {
     node_exec_time: number;
     node_exec_time_cpu_only: number;
     node_exec_count: number;
+    activity_status?: string;
   };
 };
 
@@ -604,6 +605,7 @@ export enum BlockUIType {
   WEBHOOK_MANUAL = "Webhook (manual)",
   AGENT = "Agent",
   AI = "AI",
+  AYRSHARE = "Ayrshare",
 }
 
 export enum SpecialBlockID {

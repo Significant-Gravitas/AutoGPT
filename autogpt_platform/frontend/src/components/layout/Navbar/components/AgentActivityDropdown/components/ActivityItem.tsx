@@ -10,17 +10,15 @@ import {
   StopCircle,
   CircleDashed,
 } from "@phosphor-icons/react";
-import { useRouter } from "next/navigation";
 import type { AgentExecutionWithInfo } from "../helpers";
 import { formatTimeAgo, getExecutionDuration } from "../helpers";
+import Link from "next/link";
 
 interface Props {
   execution: AgentExecutionWithInfo;
 }
 
 export function ActivityItem({ execution }: Props) {
-  const router = useRouter();
-
   function getStatusIcon() {
     switch (execution.status) {
       case AgentExecutionStatus.QUEUED:
@@ -81,15 +79,11 @@ export function ActivityItem({ execution }: Props) {
     return "Unknown";
   }
 
-  return (
-    <div
-      className="cursor-pointer border-b border-slate-50 px-2 py-3 transition-colors last:border-b-0 hover:bg-lightGrey"
-      onClick={() => {
-        const agentId = execution.library_agent_id || execution.graph_id;
-        router.push(`/library/agents/${agentId}?executionId=${execution.id}`);
-      }}
-      role="button"
-    >
+  const linkUrl = `/library/agents/${execution.library_agent_id}?executionId=${execution.id}`;
+  const withExecutionLink = execution.library_agent_id && execution.id;
+
+  const content = (
+    <>
       {/* Icon + Agent Name */}
       <div className="flex items-center space-x-2">
         {getStatusIcon()}
@@ -108,6 +102,20 @@ export function ActivityItem({ execution }: Props) {
           {getTimeDisplay()}
         </Text>
       </div>
+    </>
+  );
+
+  return withExecutionLink ? (
+    <Link
+      className="block cursor-pointer border-b border-slate-50 px-2 py-3 transition-colors last:border-b-0 hover:bg-lightGrey"
+      href={linkUrl}
+      role="button"
+    >
+      {content}
+    </Link>
+  ) : (
+    <div className="block border-b border-slate-50 px-2 py-3 last:border-b-0">
+      {content}
     </div>
   );
 }

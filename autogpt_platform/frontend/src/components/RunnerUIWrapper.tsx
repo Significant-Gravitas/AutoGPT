@@ -19,6 +19,7 @@ import RunnerOutputUI, {
 interface RunnerUIWrapperProps {
   graph: GraphMeta;
   nodes: Node<CustomNodeData>[];
+  graphExecutionError?: string | null;
   saveAndRun: (
     inputs: Record<string, any>,
     credentialsInputs: Record<string, CredentialsMetaInput>,
@@ -38,7 +39,10 @@ export interface RunnerUIWrapperRef {
 }
 
 const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
-  ({ graph, nodes, saveAndRun, createRunSchedule }, ref) => {
+  (
+    { graph, nodes, graphExecutionError, saveAndRun, createRunSchedule },
+    ref,
+  ) => {
     const [isRunInputDialogOpen, setIsRunInputDialogOpen] = useState(false);
     const [isRunnerOutputOpen, setIsRunnerOutputOpen] = useState(false);
 
@@ -103,6 +107,7 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
           isOpen={isRunnerOutputOpen}
           doClose={() => setIsRunnerOutputOpen(false)}
           outputs={graphOutputs}
+          graphExecutionError={graphExecutionError}
         />
       </>
     );

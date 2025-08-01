@@ -82,6 +82,19 @@ class EmailSender:
             logger.error(f"Error formatting full message: {e}")
             raise e
 
+        # Check email size (Postmark limit is 5MB = 5,242,880 characters)
+        email_size = len(full_message)
+        if email_size > 5_000_000:  # Leave some buffer
+            logger.warning(
+                f"Email size ({email_size} chars) exceeds safe limit. "
+                f"This should have been chunked before calling send_templated."
+            )
+            raise ValueError(
+                f"Email body too large: {email_size} characters (limit: 5,242,880)"
+            )
+
+        logger.debug(f"Sending email with size: {email_size} characters")
+
         self._send_email(
             user_email=user_email,
             user_unsubscribe_link=user_unsub_link,
