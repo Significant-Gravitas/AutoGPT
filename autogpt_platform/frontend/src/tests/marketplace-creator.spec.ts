@@ -9,10 +9,10 @@ test.describe("Marketplace Creator Page – Basic Functionality", () => {
   test("User can access creator's page when logged out", async ({ page }) => {
     const marketplacePage = new MarketplacePage(page);
 
-    await marketplacePage.goto();
+    await marketplacePage.goto(page);
     await hasUrl(page, "/marketplace");
 
-    const firstCreatorProfile = await marketplacePage.getFirstCreatorProfile();
+    const firstCreatorProfile = await marketplacePage.getFirstCreatorProfile(page);
     await firstCreatorProfile.click();
 
     await page.waitForURL("**/marketplace/creator/**");
@@ -27,10 +27,10 @@ test.describe("Marketplace Creator Page – Basic Functionality", () => {
     await loginPage.login(TEST_CREDENTIALS.email, TEST_CREDENTIALS.password);
     await hasUrl(page, "/marketplace");
 
-    await marketplacePage.goto();
+    await marketplacePage.goto(page);
     await hasUrl(page, "/marketplace");
 
-    const firstCreatorProfile = await marketplacePage.getFirstCreatorProfile();
+    const firstCreatorProfile = await marketplacePage.getFirstCreatorProfile(page);
     await firstCreatorProfile.click();
 
     await page.waitForURL("**/marketplace/creator/**");
@@ -41,10 +41,10 @@ test.describe("Marketplace Creator Page – Basic Functionality", () => {
     const { getId } = getSelectors(page);
     const marketplacePage = new MarketplacePage(page);
 
-    await marketplacePage.goto();
+    await marketplacePage.goto(page);
     await hasUrl(page, "/marketplace");
 
-    const firstCreatorProfile = await marketplacePage.getFirstCreatorProfile();
+    const firstCreatorProfile = await marketplacePage.getFirstCreatorProfile(page);
     await firstCreatorProfile.click();
     await page.waitForURL("**/marketplace/creator/**");
 
@@ -58,10 +58,10 @@ test.describe("Marketplace Creator Page – Basic Functionality", () => {
   test("Agents in agent by sections navigation works", async ({ page }) => {
     const marketplacePage = new MarketplacePage(page);
 
-    await marketplacePage.goto();
+    await marketplacePage.goto(page);
     await hasUrl(page, "/marketplace");
 
-    const firstCreatorProfile = await marketplacePage.getFirstCreatorProfile();
+    const firstCreatorProfile = await marketplacePage.getFirstCreatorProfile(page);
     await firstCreatorProfile.click();
     await page.waitForURL("**/marketplace/creator/**");
     const firstAgent = page
