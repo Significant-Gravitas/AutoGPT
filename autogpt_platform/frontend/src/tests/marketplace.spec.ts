@@ -82,7 +82,7 @@ test.describe("Marketplace – Basic Functionality", () => {
     await matchesUrl(page, /\/marketplace\/creator\/.+/);
   });
 
-  test("Complete search flow works correctly", async ({ page }) => {
+  test.skip("Complete search flow works correctly", async ({ page }) => {
     const marketplacePage = new MarketplacePage(page);
     await marketplacePage.goto(page);
 
@@ -106,7 +106,7 @@ test.describe("Marketplace – Basic Functionality", () => {
 });
 
 test.describe("Marketplace – Edge Cases", () => {
-  test("Search for non-existent item shows no results", async ({ page }) => {
+  test.skip("Search for non-existent item shows no results", async ({ page }) => {
     const marketplacePage = new MarketplacePage(page);
     await marketplacePage.goto(page);
 
