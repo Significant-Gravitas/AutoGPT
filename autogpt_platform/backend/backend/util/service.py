@@ -286,7 +286,7 @@ def get_service_client(
         return retry(
             reraise=True,
             stop=stop_after_attempt(api_comm_retry),
-            wait=wait_exponential_jitter(max=4.0),
+            wait=wait_exponential_jitter(max=5.0),
             retry=retry_if_not_exception_type(
                 (
                     # Don't retry these specific exceptions that won't be fixed by retrying

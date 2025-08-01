@@ -511,6 +511,7 @@ class Executor:
         logger.info(f"[GraphExecutor] {cls.pid} started")
 
     @classmethod
+    @func_retry
     @error_logged(swallow=False)
     def on_graph_execution(
         cls,
@@ -635,6 +636,7 @@ class Executor:
             execution_stats.cost += cost
 
     @classmethod
+    @func_retry
     @time_measured
     def _on_graph_execution(
         cls,
