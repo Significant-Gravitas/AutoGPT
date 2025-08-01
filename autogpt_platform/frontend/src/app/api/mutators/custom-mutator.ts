@@ -1,16 +1,20 @@
-import { createRequestHeaders, getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
+import {
+  createRequestHeaders,
+  getServerAuthToken,
+} from "@/lib/autogpt-server-api/helpers";
 
 const FRONTEND_BASE_URL =
   process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "http://localhost:3000";
 const API_PROXY_BASE_URL = `${FRONTEND_BASE_URL}/api/proxy`; // Sending request via nextjs Server
 
 const isServerSide = (): boolean => {
-  return typeof window === 'undefined';
+  return typeof window === "undefined";
 };
 
 const getBaseUrl = (): string => {
   if (isServerSide()) {
-    const backendBaseUrl =  process.env.NEXT_PUBLIC_AGPT_SERVER_BASE_URL || "http://localhost:8006";
+    const backendBaseUrl =
+      process.env.NEXT_PUBLIC_AGPT_SERVER_BASE_URL || "http://localhost:8006";
     return backendBaseUrl;
   } else {
     return API_PROXY_BASE_URL;
@@ -52,7 +56,6 @@ export const customMutator = async <T = any>(
   const isFormData = data instanceof FormData;
   const contentType = isFormData ? "multipart/form-data" : "application/json";
 
-
   // Currently, only two content types are handled here: application/json and multipart/form-data
   if (!isFormData && data && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
@@ -63,7 +66,7 @@ export const customMutator = async <T = any>(
     : "";
 
   const baseUrl = getBaseUrl();
-  
+
   // The caching in React Query in our system depends on the url, so the base_url could be different for the server and client sides.
   const fullUrl = `${baseUrl}${url}${queryString}`;
 
