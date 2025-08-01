@@ -14,7 +14,9 @@ test.describe("Marketplace – Basic Functionality", () => {
     const marketplaceTitle = await marketplacePage.getMarketplaceTitle(page);
     await isVisible(marketplaceTitle);
 
-    console.log("User can access marketplace page when logged out test passed ✅");
+    console.log(
+      "User can access marketplace page when logged out test passed ✅",
+    );
   });
 
   test("User can access marketplace page when logged in", async ({ page }) => {
@@ -31,7 +33,9 @@ test.describe("Marketplace – Basic Functionality", () => {
     const marketplaceTitle = await marketplacePage.getMarketplaceTitle(page);
     await isVisible(marketplaceTitle);
 
-    console.log("User can access marketplace page when logged in test passed ✅");
+    console.log(
+      "User can access marketplace page when logged in test passed ✅",
+    );
   });
 
   test("Featured agents, top agents, and featured creators are visible", async ({
@@ -58,7 +62,9 @@ test.describe("Marketplace – Basic Functionality", () => {
     const creatorProfiles = await marketplacePage.getCreatorProfiles(page);
     await hasMinCount(creatorProfiles, 1);
 
-    console.log("Featured agents, top agents, and featured creators are visible test passed ✅");
+    console.log(
+      "Featured agents, top agents, and featured creators are visible test passed ✅",
+    );
   });
 
   test("Can navigate and interact with marketplace elements", async ({
@@ -87,7 +93,9 @@ test.describe("Marketplace – Basic Functionality", () => {
     await page.waitForURL("**/marketplace/creator/**");
     await matchesUrl(page, /\/marketplace\/creator\/.+/);
 
-    console.log("Can navigate and interact with marketplace elements test passed ✅");
+    console.log(
+      "Can navigate and interact with marketplace elements test passed ✅",
+    );
   });
 
   test("Complete search flow works correctly", async ({ page }) => {
