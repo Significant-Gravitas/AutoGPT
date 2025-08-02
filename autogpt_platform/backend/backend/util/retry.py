@@ -152,7 +152,7 @@ def conn_retry(
 
 
 # Preconfigured retry decorator for general functions
-func_retry = create_retry_decorator(max_attempts=5, reraise=False)
+func_retry = create_retry_decorator(max_attempts=5)
 
 
 def continuous_retry(*, retry_delay: float = 1.0):
