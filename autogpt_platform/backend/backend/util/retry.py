@@ -76,10 +76,30 @@ def conn_retry(
     return decorator
 
 
+def _on_func_retry_callback(retry_state):
+    """Log warning on retry or error when giving up."""
+    attempt_number = retry_state.attempt_number
+    exception = retry_state.outcome.exception()
+    func_name = getattr(retry_state.fn, "__name__", "unknown")
+
+    if retry_state.outcome.failed and retry_state.next_action is None:
+        # This is the final failure - log error
+        logger.error(
+            f"Giving up after {attempt_number} attempts for function '{func_name}': {exception}"
+        )
+    else:
+        # This is a retry - log warning
+        logger.warning(
+            f"Retry attempt {attempt_number}/5 for function '{func_name}': {exception}"
+        )
+
+
 func_retry = retry(
     reraise=False,
     stop=stop_after_attempt(5),
     wait=wait_exponential(multiplier=1, min=1, max=30),
+    before_sleep=_on_func_retry_callback,
+    retry_error_callback=_on_func_retry_callback,
 )
 
 

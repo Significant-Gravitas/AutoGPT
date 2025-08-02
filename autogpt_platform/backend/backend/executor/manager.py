@@ -6,7 +6,7 @@ import sys
 import threading
 import time
 from collections import defaultdict
-from concurrent.futures import CancelledError, Future, ProcessPoolExecutor
+from concurrent.futures import Future, ProcessPoolExecutor
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
 
@@ -410,7 +410,8 @@ class Executor:
         cls,
         node_exec: NodeExecutionEntry,
         node_exec_progress: NodeExecutionProgress,
-        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]],
+        graph_stats_pair: tuple[GraphExecutionStats, threading.Lock],
     ) -> NodeExecutionStats:
         log_metadata = LogMetadata(
             logger=_logger,
@@ -424,25 +425,52 @@ class Executor:
         db_client = get_db_async_client()
         node = await db_client.get_node(node_exec.node_id)
 
-        execution_stats = NodeExecutionStats()
-        timing_info, _ = await cls._on_node_execution(
+        timing_info, execution_stats = await cls._on_node_execution(
             node=node,
             node_exec=node_exec,
             node_exec_progress=node_exec_progress,
             db_client=db_client,
             log_metadata=log_metadata,
-            stats=execution_stats,
             nodes_input_masks=nodes_input_masks,
         )
         execution_stats.walltime = timing_info.wall_time
         execution_stats.cputime = timing_info.cpu_time
 
-        if isinstance(execution_stats.error, Exception):
-            execution_stats.error = str(execution_stats.error)
-        exec_update = await db_client.update_node_execution_stats(
-            node_exec.node_exec_id, execution_stats
+        graph_stats, graph_stats_lock = graph_stats_pair
+
+        with graph_stats_lock:
+            graph_stats.node_count += 1 + execution_stats.extra_steps
+            graph_stats.nodes_cputime += execution_stats.cputime
+            graph_stats.nodes_walltime += execution_stats.walltime
+            graph_stats.cost += execution_stats.extra_cost
+            if isinstance(execution_stats.error, Exception):
+                graph_stats.node_error_count += 1
+
+        node_error = execution_stats.error
+        node_stats = execution_stats.model_dump()
+        if node_error and not isinstance(node_error, str):
+            node_stats["error"] = str(node_error) or node_stats.__class__.__name__
+
+        if isinstance(node_error, Exception):
+            status = ExecutionStatus.FAILED
+        elif isinstance(node_error, BaseException):
+            status = ExecutionStatus.TERMINATED
+        else:
+            status = ExecutionStatus.COMPLETED
+
+        await async_update_node_execution_status(
+            db_client=db_client,
+            exec_id=node_exec.node_exec_id,
+            status=status,
+            stats=node_stats,
         )
-        await send_async_execution_update(exec_update)
+
+        await async_update_graph_execution_state(
+            db_client=db_client,
+            graph_exec_id=node_exec.graph_exec_id,
+            stats=graph_stats,
+        )
+
         return execution_stats
 
     @classmethod
@@ -454,9 +482,10 @@ class Executor:
         node_exec_progress: NodeExecutionProgress,
         db_client: "DatabaseManagerAsyncClient",
         log_metadata: LogMetadata,
-        stats: NodeExecutionStats | None = None,
         nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
-    ):
+    ) -> NodeExecutionStats:
+        stats = NodeExecutionStats()
+
         try:
             log_metadata.info(f"Start node execution {node_exec.node_exec_id}")
             await async_update_node_execution_status(
@@ -480,19 +509,26 @@ class Executor:
                     )
                 )
             log_metadata.info(f"Finished node execution {node_exec.node_exec_id}")
-        except Exception as e:
-            # Avoid user error being marked as an actual error.
+        except BaseException as e:
+            stats.error = e
+
             if isinstance(e, ValueError):
+                # Avoid user error being marked as an actual error.
                 log_metadata.info(
-                    f"Failed node execution {node_exec.node_exec_id}: {e}"
+                    f"Expected failure on node execution {node_exec.node_exec_id}: {e}"
+                )
+            elif isinstance(e, Exception):
+                # If the exception is not a ValueError, it is unexpected.
+                log_metadata.exception(
+                    f"Unexpected failure on node execution {node_exec.node_exec_id}: {type(e).__name__} - {e}"
                 )
             else:
-                log_metadata.exception(
-                    f"Failed node execution {node_exec.node_exec_id}: {e}"
+                # CancelledError or SystemExit
+                log_metadata.warning(
+                    f"Interuption error on node execution {node_exec.node_exec_id}: {type(e).__name__}"
                 )
 
-            if stats is not None:
-                stats.error = e
+        return stats
 
     @classmethod
     @func_retry
@@ -551,6 +587,16 @@ class Executor:
             log_metadata.info(
                 f"⚙️ Graph execution #{graph_exec.graph_exec_id} is already running, continuing where it left off."
             )
+        elif exec_meta.status == ExecutionStatus.FAILED:
+            exec_meta.status = ExecutionStatus.RUNNING
+            log_metadata.info(
+                f"⚙️ Graph execution #{graph_exec.graph_exec_id} was disturbed, continuing where it left off."
+            )
+            update_graph_execution_state(
+                db_client=db_client,
+                graph_exec_id=graph_exec.graph_exec_id,
+                status=ExecutionStatus.RUNNING,
+            )
         else:
             log_metadata.warning(
                 f"Skipped graph execution {graph_exec.graph_exec_id}, the graph execution status is `{exec_meta.status}`."
@@ -602,14 +648,13 @@ class Executor:
 
         except Exception as e:
             log_metadata.error(f"Failed to generate activity status: {str(e)}")
-            # Don't set activity_status on exception - let it remain None/unset
 
-        if graph_exec_result := db_client.update_graph_execution_stats(
+        update_graph_execution_state(
+            db_client=db_client,
             graph_exec_id=graph_exec.graph_exec_id,
             status=status,
             stats=exec_stats,
-        ):
-            send_execution_update(graph_exec_result)
+        )
 
         cls._handle_agent_run_notif(db_client, graph_exec, exec_stats)
 
@@ -664,7 +709,6 @@ class Executor:
             execution_stats.cost += cost
 
     @classmethod
-    @func_retry
     @time_measured
     def _on_graph_execution(
         cls,
@@ -682,47 +726,11 @@ class Executor:
         execution_status: ExecutionStatus = ExecutionStatus.RUNNING
         error: Exception | None = None
         db_client = get_db_client()
-
-        def on_done_task(node_exec_id: str, result: object):
-            if not isinstance(result, NodeExecutionStats):
-                log_metadata.error(f"Unexpected result #{node_exec_id}: {type(result)}")
-                return
-
-            nonlocal execution_stats
-            execution_stats.node_count += 1 + result.extra_steps
-            execution_stats.nodes_cputime += result.cputime
-            execution_stats.nodes_walltime += result.walltime
-            execution_stats.cost += result.extra_cost
-            if (err := result.error) and isinstance(err, Exception):
-                execution_stats.node_error_count += 1
-                update_node_execution_status(
-                    db_client=db_client,
-                    exec_id=node_exec_id,
-                    status=ExecutionStatus.FAILED,
-                )
-            else:
-                update_node_execution_status(
-                    db_client=db_client,
-                    exec_id=node_exec_id,
-                    status=ExecutionStatus.COMPLETED,
-                )
-
-            if _graph_exec := db_client.update_graph_execution_stats(
-                graph_exec_id=graph_exec.graph_exec_id,
-                stats=execution_stats,
-            ):
-                send_execution_update(_graph_exec)
-            else:
-                log_metadata.error(
-                    "Callback for finished node execution "
-                    f"#{node_exec_id} could not update execution stats "
-                    f"for graph execution #{graph_exec.graph_exec_id}; "
-                    f"triggered while graph exec status = {execution_status}"
-                )
+        execution_stats_lock = threading.Lock()
 
         # State holders ----------------------------------------------------
         running_node_execution: dict[str, NodeExecutionProgress] = defaultdict(
-            lambda: NodeExecutionProgress(on_done_task=on_done_task)
+            NodeExecutionProgress
         )
         running_node_evaluation: dict[str, Future] = {}
         execution_queue = ExecutionQueue[NodeExecutionEntry]()
@@ -741,7 +749,11 @@ class Executor:
             # ------------------------------------------------------------
             for node_exec in db_client.get_node_executions(
                 graph_exec.graph_exec_id,
-                statuses=[ExecutionStatus.RUNNING, ExecutionStatus.QUEUED],
+                statuses=[
+                    ExecutionStatus.RUNNING,
+                    ExecutionStatus.QUEUED,
+                    ExecutionStatus.TERMINATED,
+                ],
             ):
                 execution_queue.add(node_exec.to_node_execution_entry())
 
@@ -750,8 +762,7 @@ class Executor:
             # ------------------------------------------------------------
             while not execution_queue.empty():
                 if cancel.is_set():
-                    execution_status = ExecutionStatus.TERMINATED
-                    return execution_stats, execution_status, error
+                    break
 
                 queued_node_exec = execution_queue.get()
 
@@ -804,6 +815,10 @@ class Executor:
                         node_exec=queued_node_exec,
                         node_exec_progress=running_node_execution[node_id],
                         nodes_input_masks=nodes_input_masks,
+                        graph_stats_pair=(
+                            execution_stats,
+                            execution_stats_lock,
+                        ),
                     ),
                     cls.node_execution_loop,
                 )
@@ -816,14 +831,16 @@ class Executor:
                 while execution_queue.empty() and (
                     running_node_execution or running_node_evaluation
                 ):
+                    if cancel.is_set():
+                        break
+
                     # --------------------------------------------------
                     # Handle inflight evaluations ---------------------
                     # --------------------------------------------------
                     node_output_found = False
                     for node_id, inflight_exec in list(running_node_execution.items()):
                         if cancel.is_set():
-                            execution_status = ExecutionStatus.TERMINATED
-                            return execution_stats, execution_status, error
+                            break
 
                         # node evaluation future -----------------
                         if inflight_eval := running_node_evaluation.get(node_id):
@@ -864,26 +881,36 @@ class Executor:
                         time.sleep(0.1)
 
             # loop done --------------------------------------------------
-            # Determine final execution status based on whether there was an error
-            execution_status = (
-                ExecutionStatus.FAILED if error else ExecutionStatus.COMPLETED
+            # Determine final execution status based on whether there was an error or termination
+            if cancel.is_set():
+                execution_status = ExecutionStatus.TERMINATED
+            elif error is not None:
+                execution_status = ExecutionStatus.FAILED
+            else:
+                execution_status = ExecutionStatus.COMPLETED
+
+            return execution_stats, execution_status, error
+
+        except BaseException as exc:
+            execution_status = ExecutionStatus.FAILED
+            error = (
+                exc
+                if isinstance(exc, Exception)
+                else Exception(f"{exc.__class__.__name__}: {exc}")
             )
 
-        except CancelledError as exc:
-            execution_status = ExecutionStatus.TERMINATED
-            error = exc
-            log_metadata.exception(
-                f"Cancelled graph execution {graph_exec.graph_exec_id}: {error}"
-            )
-        except Exception as exc:
-            execution_status = ExecutionStatus.FAILED
-            error = exc
+            known_errors = (InsufficientBalanceError,)
+            if isinstance(error, known_errors):
+                return execution_stats, execution_status, error
+
             log_metadata.exception(
                 f"Failed graph execution {graph_exec.graph_exec_id}: {error}"
             )
+            raise
+
         finally:
-            # Use helper method with error handling to ensure cleanup never fails
             cls._cleanup_graph_execution(
+                execution_queue=execution_queue,
                 running_node_execution=running_node_execution,
                 running_node_evaluation=running_node_evaluation,
                 execution_status=execution_status,
@@ -892,12 +919,12 @@ class Executor:
                 log_metadata=log_metadata,
                 db_client=db_client,
             )
-            return execution_stats, execution_status, error
 
     @classmethod
     @error_logged(swallow=True)
     def _cleanup_graph_execution(
         cls,
+        execution_queue: ExecutionQueue[NodeExecutionEntry],
         running_node_execution: dict[str, "NodeExecutionProgress"],
         running_node_evaluation: dict[str, Future],
         execution_status: ExecutionStatus,
@@ -911,6 +938,22 @@ class Executor:
         This method is decorated with @error_logged(swallow=True) to ensure cleanup
         never fails in the finally block.
         """
+        # Cancel and wait for all node evaluations to complete
+        for node_id, inflight_eval in running_node_evaluation.items():
+            if inflight_eval.done():
+                continue
+            log_metadata.info(f"Stopping node evaluation {node_id}")
+            inflight_eval.cancel()
+
+        for node_id, inflight_eval in running_node_evaluation.items():
+            try:
+                inflight_eval.result(timeout=3600.0)
+            except TimeoutError:
+                log_metadata.exception(
+                    f"Node evaluation #{node_id} did not stop in time, "
+                    "it may be stuck or taking too long."
+                )
+
         # Cancel and wait for all node executions to complete
         for node_id, inflight_exec in running_node_execution.items():
             if inflight_exec.is_done():
@@ -918,51 +961,22 @@ class Executor:
             log_metadata.info(f"Stopping node execution {node_id}")
             inflight_exec.stop()
 
-        for node_id, inflight_eval in running_node_evaluation.items():
-            if inflight_eval.done():
-                continue
-            log_metadata.info(f"Stopping node evaluation {node_id}")
-            inflight_eval.cancel()
-
         for node_id, inflight_exec in running_node_execution.items():
-            if inflight_exec.is_done():
-                continue
             try:
-                inflight_exec.wait_for_cancellation(timeout=60.0)
+                inflight_exec.wait_for_done(timeout=3600.0)
             except TimeoutError:
                 log_metadata.exception(
                     f"Node execution #{node_id} did not stop in time, "
                     "it may be stuck or taking too long."
                 )
 
-        for node_id, inflight_eval in running_node_evaluation.items():
-            if inflight_eval.done():
-                continue
-            try:
-                inflight_eval.result(timeout=60.0)
-            except TimeoutError:
-                log_metadata.exception(
-                    f"Node evaluation #{node_id} did not stop in time, "
-                    "it may be stuck or taking too long."
-                )
-
-        if execution_status in [ExecutionStatus.TERMINATED, ExecutionStatus.FAILED]:
-            inflight_executions = db_client.get_node_executions(
-                graph_exec_id,
-                statuses=[
-                    ExecutionStatus.QUEUED,
-                    ExecutionStatus.RUNNING,
-                ],
-                include_exec_data=False,
-            )
-            db_client.update_node_execution_status_batch(
-                [node_exec.node_exec_id for node_exec in inflight_executions],
+        while queued_execution := execution_queue.get_or_none():
+            update_node_execution_status(
+                db_client=db_client,
+                exec_id=queued_execution.node_exec_id,
                 status=execution_status,
                 stats={"error": str(error)} if error else None,
             )
-            for node_exec in inflight_executions:
-                node_exec.status = execution_status
-                send_execution_update(node_exec)
 
         clean_exec_files(graph_exec_id)
 
@@ -1010,6 +1024,15 @@ class Executor:
                 nodes_input_masks=nodes_input_masks,
             ):
                 execution_queue.add(next_execution)
+        except asyncio.CancelledError as e:
+            log_metadata.warning(
+                f"Node execution {output.node_exec_id} was cancelled: {e}"
+            )
+            await async_update_node_execution_status(
+                db_client=db_client,
+                exec_id=output.node_exec_id,
+                status=ExecutionStatus.TERMINATED,
+            )
         except Exception as e:
             log_metadata.exception(f"Failed to process node output: {e}")
             await db_client.upsert_execution_output(
@@ -1165,6 +1188,7 @@ class ExecutionManager(AppProcess):
         run_channel.start_consuming()
         raise RuntimeError(f"❌ run message consumer is stopped: {run_channel}")
 
+    @error_logged(swallow=True)
     def _handle_cancel_message(
         self,
         channel: BlockingChannel,
@@ -1176,31 +1200,27 @@ class ExecutionManager(AppProcess):
         Called whenever we receive a CANCEL message from the queue.
         (With auto_ack=True, message is considered 'acked' automatically.)
         """
-        try:
-            request = CancelExecutionEvent.model_validate_json(body)
-            graph_exec_id = request.graph_exec_id
-            if not graph_exec_id:
-                logger.warning(
-                    f"[{self.service_name}] Cancel message missing 'graph_exec_id'"
-                )
-                return
-            if graph_exec_id not in self.active_graph_runs:
-                logger.debug(
-                    f"[{self.service_name}] Cancel received for {graph_exec_id} but not active."
-                )
-                return
+        request = CancelExecutionEvent.model_validate_json(body)
+        graph_exec_id = request.graph_exec_id
+        if not graph_exec_id:
+            logger.warning(
+                f"[{self.service_name}] Cancel message missing 'graph_exec_id'"
+            )
+            return
+        if graph_exec_id not in self.active_graph_runs:
+            logger.debug(
+                f"[{self.service_name}] Cancel received for {graph_exec_id} but not active."
+            )
+            return
 
-            _, cancel_event = self.active_graph_runs[graph_exec_id]
-            logger.info(f"[{self.service_name}] Received cancel for {graph_exec_id}")
-            if not cancel_event.is_set():
-                cancel_event.set()
-            else:
-                logger.debug(
-                    f"[{self.service_name}] Cancel already set for {graph_exec_id}"
-                )
-
-        except Exception as e:
-            logger.exception(f"Error handling cancel message: {e}")
+        _, cancel_event = self.active_graph_runs[graph_exec_id]
+        logger.info(f"[{self.service_name}] Received cancel for {graph_exec_id}")
+        if not cancel_event.is_set():
+            cancel_event.set()
+        else:
+            logger.debug(
+                f"[{self.service_name}] Cancel already set for {graph_exec_id}"
+            )
 
     def _handle_run_message(
         self,
@@ -1249,7 +1269,7 @@ class ExecutionManager(AppProcess):
             try:
                 if exec_error := f.exception():
                     logger.error(
-                        f"[{self.service_name}] Execution for {graph_exec_id} failed: {exec_error}"
+                        f"[{self.service_name}] Execution for {graph_exec_id} failed: {type(exec_error)} {exec_error}"
                     )
                     try:
                         channel.connection.add_callback_threadsafe(
@@ -1386,6 +1406,38 @@ def update_node_execution_status(
     )
     send_execution_update(exec_update)
     return exec_update
+
+
+async def async_update_graph_execution_state(
+    db_client: "DatabaseManagerAsyncClient",
+    graph_exec_id: str,
+    status: ExecutionStatus | None = None,
+    stats: GraphExecutionStats | None = None,
+) -> GraphExecution | None:
+    """Sets status and fetches+broadcasts the latest state of the graph execution"""
+    graph_update = await db_client.update_graph_execution_stats(
+        graph_exec_id, status, stats
+    )
+    if graph_update:
+        await send_async_execution_update(graph_update)
+    else:
+        logger.error(f"Failed to update graph execution stats for {graph_exec_id}")
+    return graph_update
+
+
+def update_graph_execution_state(
+    db_client: "DatabaseManagerClient",
+    graph_exec_id: str,
+    status: ExecutionStatus | None = None,
+    stats: GraphExecutionStats | None = None,
+) -> GraphExecution | None:
+    """Sets status and fetches+broadcasts the latest state of the graph execution"""
+    graph_update = db_client.update_graph_execution_stats(graph_exec_id, status, stats)
+    if graph_update:
+        send_execution_update(graph_update)
+    else:
+        logger.error(f"Failed to update graph execution stats for {graph_exec_id}")
+    return graph_update
 
 
 @asynccontextmanager

@@ -1,4 +1,6 @@
 import asyncio
+import concurrent
+import concurrent.futures
 import inspect
 import logging
 import os
@@ -301,6 +303,8 @@ def get_service_client(
                     KeyError,  # Missing required data
                     TypeError,  # Wrong data types
                     AttributeError,  # Missing attributes
+                    asyncio.CancelledError,  # Task was cancelled
+                    concurrent.futures.CancelledError,  # Future was cancelled
                 )
             ),
         )(fn)
