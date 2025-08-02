@@ -332,6 +332,8 @@ class TestDataCreator:
                 if is_dummy_input:
                     graph_name = f"DummyInput {graph_name}"
 
+                graph_name = f"{graph_name} Agents"
+
                 graph = Graph(
                     id=graph_id,
                     name=graph_name,

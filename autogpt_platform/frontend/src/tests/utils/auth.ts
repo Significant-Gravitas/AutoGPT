@@ -1,8 +1,8 @@
 import { faker } from "@faker-js/faker";
-import { chromium, webkit } from "@playwright/test";
 import fs from "fs";
 import path from "path";
 import { signupTestUser } from "./signup";
+import { getBrowser } from "./get-browser";
 
 export interface TestUser {
   email: string;
@@ -26,13 +26,7 @@ export async function createTestUser(
   const userPassword = password || faker.internet.password({ length: 12 });
 
   try {
-    const browserType = process.env.BROWSER_TYPE || "chromium";
-
-    const browser =
-      browserType === "webkit"
-        ? await webkit.launch({ headless: true })
-        : await chromium.launch({ headless: true });
-
+    const browser = await getBrowser();
     const context = await browser.newContext();
     const page = await context.newPage();
 

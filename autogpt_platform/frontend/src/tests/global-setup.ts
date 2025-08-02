@@ -1,10 +1,6 @@
 import { FullConfig } from "@playwright/test";
 import { createTestUsers, saveUserPool, loadUserPool } from "./utils/auth";
 
-/**
- * Global setup function that runs before all tests
- * Creates test users and saves them to file system
- */
 async function globalSetup(config: FullConfig) {
   console.log("🚀 Starting global test setup...");
 
