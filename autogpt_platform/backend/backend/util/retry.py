@@ -10,7 +10,6 @@ from tenacity import (
     retry,
     retry_if_not_exception_type,
     stop_after_attempt,
-    wait_exponential,
     wait_exponential_jitter,
 )
 
@@ -19,57 +18,69 @@ from backend.util.process import get_service_name
 logger = logging.getLogger(__name__)
 
 
-def create_retry_config(
+def _create_retry_callback(context: str = ""):
+    """Create a retry callback with optional context."""
+
+    def callback(retry_state):
+        attempt_number = retry_state.attempt_number
+        exception = retry_state.outcome.exception()
+        func_name = getattr(retry_state.fn, "__name__", "unknown")
+
+        prefix = f"{context}: " if context else ""
+
+        if retry_state.outcome.failed and retry_state.next_action is None:
+            # Final failure
+            logger.error(
+                f"{prefix}Giving up after {attempt_number} attempts for '{func_name}': "
+                f"{type(exception).__name__}: {exception}"
+            )
+        else:
+            # Retry attempt
+            logger.warning(
+                f"{prefix}Retry attempt {attempt_number} for '{func_name}': "
+                f"{type(exception).__name__}: {exception}"
+            )
+
+    return callback
+
+
+def create_retry_decorator(
     max_attempts: int = 5,
-    use_jitter: bool = False,
-    multiplier: int = 1,
-    min_wait: float = 1,
-    max_wait: float = 30,
     exclude_exceptions: tuple[type[BaseException], ...] = (),
-    before_sleep_callback=None,
-    retry_error_callback=None,
+    max_wait: float = 30.0,
+    context: str = "",
+    reraise: bool = True,
 ):
     """
-    Create a shared retry configuration.
+    Create a preconfigured retry decorator with sensible defaults.
+
+    Uses exponential backoff with jitter by default.
 
     Args:
         max_attempts: Maximum number of attempts (default: 5)
-        use_jitter: Whether to use exponential jitter (default: False)
-        multiplier: Multiplier for exponential backoff (default: 1)
-        min_wait: Minimum wait time in seconds (default: 1)
-        max_wait: Maximum wait time in seconds (default: 30)
         exclude_exceptions: Tuple of exception types to not retry on
-        before_sleep_callback: Callback function called before retry sleep (also called on final failure)
-        retry_error_callback: Optional callback for final retry error (rarely needed if before_sleep handles it)
+        max_wait: Maximum wait time in seconds (default: 30)
+        context: Optional context string for log messages
+        reraise: Whether to reraise the final exception (default: True)
 
     Returns:
-        Dictionary of retry configuration parameters for tenacity
+        Configured retry decorator
     """
-    config = {
-        "stop": stop_after_attempt(max_attempts),
-        "reraise": True,
-    }
-
-    # Configure wait strategy
-    if use_jitter:
-        config["wait"] = wait_exponential_jitter(max=max_wait)
-    else:
-        config["wait"] = wait_exponential(
-            multiplier=multiplier, min=min_wait, max=max_wait
-        )
-
-    # Configure retry conditions
     if exclude_exceptions:
-        config["retry"] = retry_if_not_exception_type(exclude_exceptions)
-
-    # Configure callbacks
-    if before_sleep_callback:
-        config["before_sleep"] = before_sleep_callback
-
-    if retry_error_callback:
-        config["retry_error_callback"] = retry_error_callback
-
-    return config
+        return retry(
+            stop=stop_after_attempt(max_attempts),
+            wait=wait_exponential_jitter(max=max_wait),
+            before_sleep=_create_retry_callback(context),
+            reraise=reraise,
+            retry=retry_if_not_exception_type(exclude_exceptions),
+        )
+    else:
+        return retry(
+            stop=stop_after_attempt(max_attempts),
+            wait=wait_exponential_jitter(max=max_wait),
+            before_sleep=_create_retry_callback(context),
+            reraise=reraise,
+        )
 
 
 def _log_prefix(resource_name: str, conn_id: str):
@@ -85,8 +96,6 @@ def conn_retry(
     resource_name: str,
     action_name: str,
     max_retry: int = 5,
-    multiplier: int = 1,
-    min_wait: float = 1,
     max_wait: float = 30,
 ):
     conn_id = str(uuid4())
@@ -94,20 +103,23 @@ def conn_retry(
     def on_retry(retry_state):
         prefix = _log_prefix(resource_name, conn_id)
         exception = retry_state.outcome.exception()
-        logger.warning(f"{prefix} {action_name} failed: {exception}. Retrying now...")
+
+        if retry_state.outcome.failed and retry_state.next_action is None:
+            logger.error(f"{prefix} {action_name} failed after retries: {exception}")
+        else:
+            logger.warning(
+                f"{prefix} {action_name} failed: {exception}. Retrying now..."
+            )
 
     def decorator(func):
         is_coroutine = asyncio.iscoroutinefunction(func)
-        # Use shared configuration
-        retry_config = create_retry_config(
-            max_attempts=max_retry + 1,  # +1 for the initial attempt
-            use_jitter=False,
-            multiplier=multiplier,
-            min_wait=min_wait,
-            max_wait=max_wait,
-            before_sleep_callback=on_retry,
+        # Use static retry configuration
+        retry_decorator = retry(
+            stop=stop_after_attempt(max_retry + 1),  # +1 for the initial attempt
+            wait=wait_exponential_jitter(max=max_wait),
+            before_sleep=on_retry,
+            reraise=True,
         )
-        retry_decorator = retry(**retry_config)
         wrapped_func = retry_decorator(func)
 
         @wraps(func)
@@ -139,35 +151,8 @@ def conn_retry(
     return decorator
 
 
-def _on_func_retry_callback(retry_state):
-    """Log warning on retry or error when giving up."""
-    attempt_number = retry_state.attempt_number
-    exception = retry_state.outcome.exception()
-    func_name = getattr(retry_state.fn, "__name__", "unknown")
-
-    if retry_state.outcome.failed and retry_state.next_action is None:
-        # This is the final failure - log error
-        logger.error(
-            f"Giving up after {attempt_number} attempts for function '{func_name}': {exception}"
-        )
-    else:
-        # This is a retry - log warning
-        logger.warning(
-            f"Retry attempt {attempt_number}/5 for function '{func_name}': {exception}"
-        )
-
-
-# Use shared configuration for func_retry
-func_retry_config = create_retry_config(
-    max_attempts=5,
-    use_jitter=False,
-    multiplier=1,
-    min_wait=1,
-    max_wait=30,
-    before_sleep_callback=_on_func_retry_callback,
-)
-func_retry_config["reraise"] = False  # Override reraise for func_retry
-func_retry = retry(**func_retry_config)
+# Preconfigured retry decorator for general functions
+func_retry = create_retry_decorator(max_attempts=5, reraise=False)
 
 
 def continuous_retry(*, retry_delay: float = 1.0):

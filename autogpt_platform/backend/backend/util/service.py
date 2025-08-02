@@ -27,13 +27,12 @@ import uvicorn
 from autogpt_libs.logging.utils import generate_uvicorn_config
 from fastapi import FastAPI, Request, responses
 from pydantic import BaseModel, TypeAdapter, create_model
-from tenacity import retry
 
 import backend.util.exceptions as exceptions
 from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
 from backend.util.process import AppProcess, get_service_name
-from backend.util.retry import conn_retry, create_retry_config
+from backend.util.retry import conn_retry, create_retry_decorator
 from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
@@ -282,27 +281,16 @@ def get_service_client(
     request_retry: bool = False,
 ) -> ASC:
 
-    def _on_service_retry_callback(retry_state):
-        """Log warning on retry for service communication."""
-        attempt_number = retry_state.attempt_number
-        exception = retry_state.outcome.exception()
-        func_name = getattr(retry_state.fn, "__name__", "unknown")
-
-        logger.warning(
-            f"Service communication retry attempt {attempt_number}/{api_comm_retry} "
-            f"for method '{func_name}': {type(exception).__name__}: {exception}"
-        )
-
     def _maybe_retry(fn: Callable[..., R]) -> Callable[..., R]:
         """Decorate *fn* with tenacity retry when enabled."""
         if not request_retry:
             return fn
 
-        # Use shared retry configuration
-        retry_config = create_retry_config(
+        # Use preconfigured retry decorator for service communication
+        return create_retry_decorator(
             max_attempts=api_comm_retry,
-            use_jitter=True,
             max_wait=5.0,
+            context="Service communication",
             exclude_exceptions=(
                 # Don't retry these specific exceptions that won't be fixed by retrying
                 ValueError,  # Invalid input/parameters
@@ -312,9 +300,7 @@ def get_service_client(
                 asyncio.CancelledError,  # Task was cancelled
                 concurrent.futures.CancelledError,  # Future was cancelled
             ),
-            before_sleep_callback=_on_service_retry_callback,
-        )
-        return retry(**retry_config)(fn)
+        )(fn)
 
     class DynamicClient:
         def __init__(self) -> None:
