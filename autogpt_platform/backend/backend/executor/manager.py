@@ -662,13 +662,13 @@ class Executor:
         cls,
         node_exec: NodeExecutionEntry,
         execution_count: int,
-        execution_stats: GraphExecutionStats,
-    ):
+    ) -> int:
+        total_cost = 0
         db_client = get_db_client()
         block = get_block(node_exec.block_id)
         if not block:
             logger.error(f"Block {node_exec.block_id} not found.")
-            return
+            return total_cost
 
         cost, matching_filter = block_usage_cost(
             block=block, input_data=node_exec.inputs
@@ -688,7 +688,7 @@ class Executor:
                     reason=f"Ran block {node_exec.block_id} {block.name}",
                 ),
             )
-            execution_stats.cost += cost
+            total_cost += cost
 
         cost, usage_count = execution_usage_cost(execution_count)
         if cost > 0:
@@ -705,7 +705,9 @@ class Executor:
                     reason=f"Execution Cost for {usage_count} blocks of ex_id:{node_exec.graph_exec_id} g_id:{node_exec.graph_id}",
                 ),
             )
-            execution_stats.cost += cost
+            total_cost += cost
+
+        return total_cost
 
     @classmethod
     @time_measured
@@ -772,11 +774,12 @@ class Executor:
 
                 # Charge usage (may raise) ------------------------------
                 try:
-                    cls._charge_usage(
+                    cost = cls._charge_usage(
                         node_exec=queued_node_exec,
                         execution_count=increment_execution_count(graph_exec.user_id),
-                        execution_stats=execution_stats,
                     )
+                    with execution_stats_lock:
+                        execution_stats.cost += cost
                 except InsufficientBalanceError as balance_error:
                     error = balance_error  # Set error to trigger FAILED status
                     node_exec_id = queued_node_exec.node_exec_id
