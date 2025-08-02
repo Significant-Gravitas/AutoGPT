@@ -82,7 +82,6 @@ test.describe("Marketplace – Basic Functionality", () => {
     await matchesUrl(page, /\/marketplace\/agent\/.+/);
     await marketplacePage.goto(page);
 
-
     const firstTopAgent = await marketplacePage.getFirstTopAgent();
     await firstTopAgent.click();
     await page.waitForURL("**/marketplace/agent/**");
@@ -98,7 +97,6 @@ test.describe("Marketplace – Basic Functionality", () => {
     console.log(
       "Can navigate and interact with marketplace elements test passed ✅",
     );
-
   });
 
   test("Complete search flow works correctly", async ({ page }) => {

@@ -9,7 +9,7 @@ test.describe("Marketplace Agent Page - Basic Functionality", () => {
   test("User can access agent page when logged out", async ({ page }) => {
     const marketplacePage = new MarketplacePage(page);
 
-    await marketplacePage.goto();
+    await marketplacePage.goto(page);
     await hasUrl(page, "/marketplace");
 
     const firstStoreCard = await marketplacePage.getFirstTopAgent();
@@ -26,7 +26,7 @@ test.describe("Marketplace Agent Page - Basic Functionality", () => {
     await loginPage.goto();
     await loginPage.login(TEST_CREDENTIALS.email, TEST_CREDENTIALS.password);
     await hasUrl(page, "/marketplace");
-    await marketplacePage.goto();
+    await marketplacePage.goto(page);
     await hasUrl(page, "/marketplace");
 
     const firstStoreCard = await marketplacePage.getFirstTopAgent();
@@ -40,7 +40,7 @@ test.describe("Marketplace Agent Page - Basic Functionality", () => {
     const { getId } = getSelectors(page);
 
     const marketplacePage = new MarketplacePage(page);
-    await marketplacePage.goto();
+    await marketplacePage.goto(page);
 
     const firstStoreCard = await marketplacePage.getFirstTopAgent();
     await firstStoreCard.click();
@@ -60,7 +60,7 @@ test.describe("Marketplace Agent Page - Basic Functionality", () => {
     const { getId, getText } = getSelectors(page);
 
     const marketplacePage = new MarketplacePage(page);
-    await marketplacePage.goto();
+    await marketplacePage.goto(page);
 
     const firstStoreCard = await marketplacePage.getFirstTopAgent();
     await firstStoreCard.click();
@@ -87,7 +87,7 @@ test.describe("Marketplace Agent Page - Basic Functionality", () => {
     await loginPage.goto();
     await loginPage.login(TEST_CREDENTIALS.email, TEST_CREDENTIALS.password);
     await hasUrl(page, "/marketplace");
-    await marketplacePage.goto();
+    await marketplacePage.goto(page);
 
     const firstStoreCard = await marketplacePage.getFirstTopAgent();
     await firstStoreCard.click();
