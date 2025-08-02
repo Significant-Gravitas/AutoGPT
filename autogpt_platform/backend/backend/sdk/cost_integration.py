@@ -71,7 +71,7 @@ def register_provider_costs_for_block(block_class: Type[Block]) -> None:
 
             # Add provider's base costs to the block
             if provider.base_costs:
-                logger.info(
+                logger.debug(
                     f"Registering {len(provider.base_costs)} base costs from provider {provider_name} for block {block_class.__name__}"
                 )
                 block_costs.extend(provider.base_costs)
@@ -79,7 +79,7 @@ def register_provider_costs_for_block(block_class: Type[Block]) -> None:
         # Register costs if any were found
         if block_costs:
             BLOCK_COSTS[block_class] = block_costs
-            logger.info(
+            logger.debug(
                 f"Registered {len(block_costs)} total costs for block {block_class.__name__}"
             )
 

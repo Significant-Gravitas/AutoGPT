@@ -116,7 +116,10 @@ class BaseWebhooksManager(ABC, Generic[WT]):
     @classmethod
     @abstractmethod
     async def validate_payload(
-        cls, webhook: integrations.Webhook, request: Request
+        cls,
+        webhook: integrations.Webhook,
+        request: Request,
+        credentials: Credentials | None,
     ) -> tuple[dict, str]:
         """
         Validates an incoming webhook request and returns its payload and type.

@@ -257,13 +257,8 @@ test.describe("Build", () => { //(1)!
     // Ensure the run button is enabled
     await test.expect(buildPage.isRunButtonEnabled()).resolves.toBeTruthy();
 
-    // Run the agent
     await buildPage.runAgent();
-
-    // Wait for processing to complete by checking the completion badge
     await buildPage.waitForCompletionBadge();
-
-    // Get the first completion badge and verify it's visible
     await test
       .expect(buildPage.isCompletionBadgeVisible())
       .resolves.toBeTruthy();

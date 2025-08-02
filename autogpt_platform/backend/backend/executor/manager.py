@@ -24,6 +24,9 @@ from backend.data.notifications import (
     NotificationType,
 )
 from backend.data.rabbitmq import SyncRabbitMQ
+from backend.executor.activity_status_generator import (
+    generate_activity_status_for_execution,
+)
 from backend.executor.utils import LogMetadata, create_execution_queue_config
 from backend.notifications.notifications import queue_notification
 from backend.util.exceptions import InsufficientBalanceError
@@ -35,6 +38,7 @@ from autogpt_libs.utils.cache import thread_cached
 from prometheus_client import Gauge, start_http_server
 
 from backend.blocks.agent import AgentExecutorBlock
+from backend.blocks.ayrshare import AYRSHARE_BLOCK_IDS
 from backend.data import redis_client as redis
 from backend.data.block import (
     BlockData,
@@ -182,6 +186,17 @@ async def execute_node(
         )
         extra_exec_kwargs[field_name] = credentials
 
+    if node_block.id in AYRSHARE_BLOCK_IDS:
+        profile_key = await creds_manager.store.get_ayrshare_profile_key(user_id)
+        if not profile_key:
+            logger.error(
+                "Ayrshare profile not configured. Please link a social account via Ayrshare integration first."
+            )
+            raise ValueError(
+                "Ayrshare profile not configured. Please link a social account via Ayrshare integration first."
+            )
+        extra_exec_kwargs["profile_key"] = profile_key
+
     output_size = 0
     try:
         async for output_name, output_data in node_block.execute(
@@ -193,8 +208,7 @@ async def execute_node(
             yield output_name, output_data
 
     except Exception as e:
-        error_msg = str(e)
-        yield "error", error_msg
+        yield "error", str(e) or type(e).__name__
         raise e
 
     finally:
@@ -502,7 +516,9 @@ class Executor:
     @classmethod
     @error_logged(swallow=False)
     def on_graph_execution(
-        cls, graph_exec: GraphExecutionEntry, cancel: threading.Event
+        cls,
+        graph_exec: GraphExecutionEntry,
+        cancel: threading.Event,
     ):
         log_metadata = LogMetadata(
             logger=_logger,
@@ -561,6 +577,32 @@ class Executor:
             raise RuntimeError(
                 f"Graph Execution #{graph_exec.graph_exec_id} ended with unexpected status {status}"
             )
+
+        # Generate AI activity status before updating stats
+        try:
+            activity_status = asyncio.run_coroutine_threadsafe(
+                generate_activity_status_for_execution(
+                    graph_exec_id=graph_exec.graph_exec_id,
+                    graph_id=graph_exec.graph_id,
+                    graph_version=graph_exec.graph_version,
+                    execution_stats=exec_stats,
+                    db_client=get_db_async_client(),
+                    user_id=graph_exec.user_id,
+                    execution_status=status,
+                ),
+                cls.node_execution_loop,
+            ).result(timeout=60.0)
+            if activity_status is not None:
+                exec_stats.activity_status = activity_status
+                log_metadata.info(f"Generated activity status: {activity_status}")
+            else:
+                log_metadata.debug(
+                    "Activity status generation disabled, not setting field"
+                )
+
+        except Exception as e:
+            log_metadata.error(f"Failed to generate activity status: {str(e)}")
+            # Don't set activity_status on exception - let it remain None/unset
 
         if graph_exec_result := db_client.update_graph_execution_stats(
             graph_exec_id=graph_exec.graph_exec_id,
@@ -622,6 +664,7 @@ class Executor:
             execution_stats.cost += cost
 
     @classmethod
+    @func_retry
     @time_measured
     def _on_graph_execution(
         cls,
@@ -724,7 +767,8 @@ class Executor:
                         execution_count=increment_execution_count(graph_exec.user_id),
                         execution_stats=execution_stats,
                     )
-                except InsufficientBalanceError as error:
+                except InsufficientBalanceError as balance_error:
+                    error = balance_error  # Set error to trigger FAILED status
                     node_exec_id = queued_node_exec.node_exec_id
                     db_client.upsert_execution_output(
                         node_exec_id=node_exec_id,
@@ -736,7 +780,6 @@ class Executor:
                         exec_id=node_exec_id,
                         status=ExecutionStatus.FAILED,
                     )
-                    execution_status = ExecutionStatus.FAILED
 
                     cls._handle_low_balance_notif(
                         db_client,
@@ -745,7 +788,8 @@ class Executor:
                         execution_stats,
                         error,
                     )
-                    raise
+                    # Gracefully stop the execution loop
+                    break
 
                 # Add input overrides -----------------------------
                 node_id = queued_node_exec.node_id
@@ -820,8 +864,10 @@ class Executor:
                         time.sleep(0.1)
 
             # loop done --------------------------------------------------
-            execution_status = ExecutionStatus.COMPLETED
-            return execution_stats, execution_status, error
+            # Determine final execution status based on whether there was an error
+            execution_status = (
+                ExecutionStatus.FAILED if error else ExecutionStatus.COMPLETED
+            )
 
         except CancelledError as exc:
             execution_status = ExecutionStatus.TERMINATED
@@ -836,61 +882,89 @@ class Executor:
                 f"Failed graph execution {graph_exec.graph_exec_id}: {error}"
             )
         finally:
-            # Cancel and wait for all node executions to complete
-            for node_id, inflight_exec in running_node_execution.items():
-                if inflight_exec.is_done():
-                    continue
-                log_metadata.info(f"Stopping node execution {node_id}")
-                inflight_exec.stop()
-
-            for node_id, inflight_eval in running_node_evaluation.items():
-                if inflight_eval.done():
-                    continue
-                log_metadata.info(f"Stopping node evaluation {node_id}")
-                inflight_eval.cancel()
-
-            for node_id, inflight_exec in running_node_execution.items():
-                if inflight_exec.is_done():
-                    continue
-                try:
-                    inflight_exec.wait_for_cancellation(timeout=60.0)
-                except TimeoutError:
-                    log_metadata.exception(
-                        f"Node execution #{node_id} did not stop in time, "
-                        "it may be stuck or taking too long."
-                    )
-
-            for node_id, inflight_eval in running_node_evaluation.items():
-                if inflight_eval.done():
-                    continue
-                try:
-                    inflight_eval.result(timeout=60.0)
-                except TimeoutError:
-                    log_metadata.exception(
-                        f"Node evaluation #{node_id} did not stop in time, "
-                        "it may be stuck or taking too long."
-                    )
-
-            if execution_status in [ExecutionStatus.TERMINATED, ExecutionStatus.FAILED]:
-                inflight_executions = db_client.get_node_executions(
-                    graph_exec.graph_exec_id,
-                    statuses=[
-                        ExecutionStatus.QUEUED,
-                        ExecutionStatus.RUNNING,
-                    ],
-                    include_exec_data=False,
-                )
-                db_client.update_node_execution_status_batch(
-                    [node_exec.node_exec_id for node_exec in inflight_executions],
-                    status=execution_status,
-                    stats={"error": str(error)} if error else None,
-                )
-                for node_exec in inflight_executions:
-                    node_exec.status = execution_status
-                    send_execution_update(node_exec)
-
-            clean_exec_files(graph_exec.graph_exec_id)
+            # Use helper method with error handling to ensure cleanup never fails
+            cls._cleanup_graph_execution(
+                running_node_execution=running_node_execution,
+                running_node_evaluation=running_node_evaluation,
+                execution_status=execution_status,
+                error=error,
+                graph_exec_id=graph_exec.graph_exec_id,
+                log_metadata=log_metadata,
+                db_client=db_client,
+            )
             return execution_stats, execution_status, error
+
+    @classmethod
+    @error_logged(swallow=True)
+    def _cleanup_graph_execution(
+        cls,
+        running_node_execution: dict[str, "NodeExecutionProgress"],
+        running_node_evaluation: dict[str, Future],
+        execution_status: ExecutionStatus,
+        error: Exception | None,
+        graph_exec_id: str,
+        log_metadata: LogMetadata,
+        db_client: "DatabaseManagerClient",
+    ) -> None:
+        """
+        Clean up running node executions and evaluations when graph execution ends.
+        This method is decorated with @error_logged(swallow=True) to ensure cleanup
+        never fails in the finally block.
+        """
+        # Cancel and wait for all node executions to complete
+        for node_id, inflight_exec in running_node_execution.items():
+            if inflight_exec.is_done():
+                continue
+            log_metadata.info(f"Stopping node execution {node_id}")
+            inflight_exec.stop()
+
+        for node_id, inflight_eval in running_node_evaluation.items():
+            if inflight_eval.done():
+                continue
+            log_metadata.info(f"Stopping node evaluation {node_id}")
+            inflight_eval.cancel()
+
+        for node_id, inflight_exec in running_node_execution.items():
+            if inflight_exec.is_done():
+                continue
+            try:
+                inflight_exec.wait_for_cancellation(timeout=60.0)
+            except TimeoutError:
+                log_metadata.exception(
+                    f"Node execution #{node_id} did not stop in time, "
+                    "it may be stuck or taking too long."
+                )
+
+        for node_id, inflight_eval in running_node_evaluation.items():
+            if inflight_eval.done():
+                continue
+            try:
+                inflight_eval.result(timeout=60.0)
+            except TimeoutError:
+                log_metadata.exception(
+                    f"Node evaluation #{node_id} did not stop in time, "
+                    "it may be stuck or taking too long."
+                )
+
+        if execution_status in [ExecutionStatus.TERMINATED, ExecutionStatus.FAILED]:
+            inflight_executions = db_client.get_node_executions(
+                graph_exec_id,
+                statuses=[
+                    ExecutionStatus.QUEUED,
+                    ExecutionStatus.RUNNING,
+                ],
+                include_exec_data=False,
+            )
+            db_client.update_node_execution_status_batch(
+                [node_exec.node_exec_id for node_exec in inflight_executions],
+                status=execution_status,
+                stats={"error": str(error)} if error else None,
+            )
+            for node_exec in inflight_executions:
+                node_exec.status = execution_status
+                send_execution_update(node_exec)
+
+        clean_exec_files(graph_exec_id)
 
     @classmethod
     async def _process_node_output(
@@ -1066,15 +1140,27 @@ class ExecutionManager(AppProcess):
 
     @continuous_retry()
     def _consume_execution_run(self):
+
+        # Long-running executions are handled by:
+        # 1. Disabled consumer timeout (x-consumer-timeout: 0) allows unlimited execution time
+        # 2. Enhanced connection settings (5 retries, 1s delay) for quick reconnection
+        # 3. Process monitoring ensures failed executors release messages back to queue
+
         run_client = SyncRabbitMQ(create_execution_queue_config())
         run_client.connect()
         run_channel = run_client.get_channel()
         run_channel.basic_qos(prefetch_count=self.pool_size)
+
+        # Configure consumer for long-running graph executions
+        # auto_ack=False: Don't acknowledge messages until execution completes (prevents data loss)
         run_channel.basic_consume(
             queue=GRAPH_EXECUTION_QUEUE_NAME,
             on_message_callback=self._handle_run_message,
             auto_ack=False,
+            consumer_tag="graph_execution_consumer",
         )
+        run_channel.confirm_delivery()
+
         logger.info(f"[{self.service_name}] ⏳ Starting to consume run messages...")
         run_channel.start_consuming()
         raise RuntimeError(f"❌ run message consumer is stopped: {run_channel}")
@@ -1124,6 +1210,13 @@ class ExecutionManager(AppProcess):
         body: bytes,
     ):
         delivery_tag = method.delivery_tag
+
+        # Check if we can accept more runs
+        self._cleanup_completed_runs()
+        if len(self.active_graph_runs) >= self.pool_size:
+            channel.basic_nack(delivery_tag, requeue=True)
+            return
+
         try:
             graph_exec_entry = GraphExecutionEntry.model_validate_json(body)
         except Exception as e:
@@ -1143,6 +1236,7 @@ class ExecutionManager(AppProcess):
             return
 
         cancel_event = multiprocessing.Manager().Event()
+
         future = self.executor.submit(
             Executor.on_graph_execution, graph_exec_entry, cancel_event
         )
@@ -1153,26 +1247,53 @@ class ExecutionManager(AppProcess):
         def _on_run_done(f: Future):
             logger.info(f"[{self.service_name}] Run completed for {graph_exec_id}")
             try:
-                self.active_graph_runs.pop(graph_exec_id, None)
-                active_runs_gauge.set(len(self.active_graph_runs))
-                utilization_gauge.set(len(self.active_graph_runs) / self.pool_size)
                 if exec_error := f.exception():
                     logger.error(
                         f"[{self.service_name}] Execution for {graph_exec_id} failed: {exec_error}"
                     )
-                    channel.connection.add_callback_threadsafe(
-                        lambda: channel.basic_nack(delivery_tag, requeue=True)
-                    )
+                    try:
+                        channel.connection.add_callback_threadsafe(
+                            lambda: channel.basic_nack(delivery_tag, requeue=True)
+                        )
+                    except Exception as ack_error:
+                        logger.error(
+                            f"[{self.service_name}] Failed to NACK message for {graph_exec_id}: {ack_error}"
+                        )
                 else:
-                    channel.connection.add_callback_threadsafe(
-                        lambda: channel.basic_ack(delivery_tag)
-                    )
+                    try:
+                        channel.connection.add_callback_threadsafe(
+                            lambda: channel.basic_ack(delivery_tag)
+                        )
+                    except Exception as ack_error:
+                        logger.error(
+                            f"[{self.service_name}] Failed to ACK message for {graph_exec_id}: {ack_error}"
+                        )
             except BaseException as e:
                 logger.exception(
-                    f"[{self.service_name}] Error acknowledging message: {e}"
+                    f"[{self.service_name}] Error in run completion callback: {e}"
                 )
+            finally:
+                self._cleanup_completed_runs()
 
         future.add_done_callback(_on_run_done)
+
+    def _cleanup_completed_runs(self, log=logger.info) -> list[str]:
+        """Remove completed futures from active_graph_runs and update metrics"""
+        completed_runs = []
+        for graph_exec_id, (future, _) in self.active_graph_runs.items():
+            if future.done():
+                completed_runs.append(graph_exec_id)
+
+        for geid in completed_runs:
+            log(f"[{self.service_name}] ✅ Cleaned up completed run {geid}")
+            self.active_graph_runs.pop(geid, None)
+
+        # Update metrics
+        active_count = len(self.active_graph_runs)
+        active_runs_gauge.set(active_count)
+        utilization_gauge.set(active_count / self.pool_size)
+
+        return completed_runs
 
     def cleanup(self):
         super().cleanup()
@@ -1189,6 +1310,9 @@ class ExecutionManager(AppProcess):
         if hasattr(self, "executor"):
             log(f"{prefix} ⏳ Shutting down GraphExec pool...")
             self.executor.shutdown(cancel_futures=True, wait=False)
+
+        log(f"{prefix} ⏳ Cleaning up active graph runs...")
+        self._cleanup_completed_runs(log=log)
 
         log(f"{prefix} ⏳ Disconnecting Redis...")
         redis.disconnect()
