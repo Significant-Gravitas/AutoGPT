@@ -16,6 +16,8 @@ from typing import (
 
 from pydantic import BaseModel
 
+from backend.util.logging import TruncatedLogger
+
 
 class TimingInfo(BaseModel):
     cpu_time: float
@@ -37,7 +39,7 @@ def _end_measurement(
 P = ParamSpec("P")
 T = TypeVar("T")
 
-logger = logging.getLogger(__name__)
+logger = TruncatedLogger(logging.getLogger(__name__))
 
 
 def time_measured(func: Callable[P, T]) -> Callable[P, Tuple[TimingInfo, T]]:
@@ -120,7 +122,7 @@ def error_logged(
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> T | None:
             try:
                 return f(*args, **kwargs)
-            except Exception as e:
+            except BaseException as e:
                 logger.exception(
                     f"Error when calling function {f.__name__} with arguments {args} {kwargs}: {e}"
                 )
@@ -177,13 +179,13 @@ def async_error_logged(*, swallow: bool = True) -> (
     """
 
     def decorator(
-        f: Callable[P, Coroutine[Any, Any, T]]
+        f: Callable[P, Coroutine[Any, Any, T]],
     ) -> Callable[P, Coroutine[Any, Any, T | None]]:
         @functools.wraps(f)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T | None:
             try:
                 return await f(*args, **kwargs)
-            except Exception as e:
+            except BaseException as e:
                 logger.exception(
                     f"Error when calling async function {f.__name__} with arguments {args} {kwargs}: {e}"
                 )
