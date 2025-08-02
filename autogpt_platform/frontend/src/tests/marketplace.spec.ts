@@ -75,7 +75,6 @@ test.describe("Marketplace – Basic Functionality", () => {
 
     const firstFeaturedAgent =
       await marketplacePage.getFirstFeaturedAgent(page);
-
     await firstFeaturedAgent.waitFor({ state: "visible" });
     await firstFeaturedAgent.click();
     await page.waitForURL("**/marketplace/agent/**");
