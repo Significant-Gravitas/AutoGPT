@@ -171,8 +171,8 @@ importers:
         specifier: 18.3.1
         version: 18.3.1(react@18.3.1)
       react-drag-drop-files:
-        specifier: 2.4.0
-        version: 2.4.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        specifier: 3.1.0
+        version: 3.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react-hook-form:
         specifier: 7.61.1
         version: 7.61.1(react@18.3.1)
@@ -5984,11 +5984,11 @@ packages:
     peerDependencies:
       react: ^18.3.1
 
-  react-drag-drop-files@2.4.0:
-    resolution: {integrity: sha512-MGPV3HVVnwXEXq3gQfLtSU3jz5j5jrabvGedokpiSEMoONrDHgYl/NpIOlfsqGQ4zBv1bzzv7qbKURZNOX32PA==}
+  react-drag-drop-files@3.1.0:
+    resolution: {integrity: sha512-b2T4NyJP4MLHw/OYd7fuoMLz5NqO5BgqJRIx+rYGY/aihxTF6d4E/9uYezmYdd7KaC6KvnlA0UW2h+jlFQyeWA==}
     peerDependencies:
-      react: ^18.0.0
-      react-dom: ^18.0.0
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
 
   react-hook-form@7.61.1:
     resolution: {integrity: sha512-2vbXUFDYgqEgM2RcXcAT2PwDW/80QARi+PKmHy5q2KhuKvOlG8iIYgf7eIlIANR5trW9fJbP4r5aub3a4egsew==}
@@ -13656,7 +13656,7 @@ snapshots:
       react: 18.3.1
       scheduler: 0.23.2
 
-  react-drag-drop-files@2.4.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
+  react-drag-drop-files@3.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
     dependencies:
       prop-types: 15.8.1
       react: 18.3.1
