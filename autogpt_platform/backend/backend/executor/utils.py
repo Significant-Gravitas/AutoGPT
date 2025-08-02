@@ -4,7 +4,7 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future
-from typing import TYPE_CHECKING, Any, Callable, Optional, cast
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 from autogpt_libs.utils.cache import thread_cached
 from pydantic import BaseModel, JsonValue
@@ -669,13 +669,13 @@ def create_execution_queue_config() -> RabbitMQConfig:
         durable=True,
         auto_delete=False,
         arguments={
-            # x-consumer-timeout (0 = disabled)
+            # x-consumer-timeout (1 week)
             # Problem: Default 30-minute consumer timeout kills long-running graph executions
             # Original error: "Consumer acknowledgement timed out after 1800000 ms (30 minutes)"
             # Solution: Disable consumer timeout entirely - let graphs run indefinitely
             # Safety: Heartbeat mechanism now handles dead consumer detection instead
             # Use case: Graph executions that take hours to complete (AI model training, etc.)
-            "x-consumer-timeout": 0,
+            "x-consumer-timeout": (7 * 24 * 60 * 60 * 1000),  # 7 days in milliseconds
         },
     )
     cancel_queue = Queue(
@@ -737,51 +737,28 @@ async def stop_graph_execution(
             ExecutionStatus.QUEUED,
             ExecutionStatus.INCOMPLETE,
         ]:
-            break
+            # If the graph is still on the queue, we can prevent them from being executed
+            # by setting the status to TERMINATED.
+            graph_exec.status = ExecutionStatus.TERMINATED
+
+            await asyncio.gather(
+                # Update graph execution status
+                db.update_graph_execution_stats(
+                    graph_exec_id=graph_exec.id,
+                    status=ExecutionStatus.TERMINATED,
+                ),
+                # Publish graph execution event
+                get_async_execution_event_bus().publish(graph_exec),
+            )
+            return
 
         if graph_exec.status == ExecutionStatus.RUNNING:
             await asyncio.sleep(0.1)
 
-    # Set the termination status if the graph is not stopped after the timeout.
-    if graph_exec := await db.get_graph_execution_meta(
-        execution_id=graph_exec_id, user_id=user_id
-    ):
-        # If the graph is still on the queue, we can prevent them from being executed
-        # by setting the status to TERMINATED.
-        node_execs = await db.get_node_executions(
-            graph_exec_id=graph_exec_id,
-            statuses=[
-                ExecutionStatus.QUEUED,
-                ExecutionStatus.RUNNING,
-            ],
-            include_exec_data=False,
-        )
-
-        graph_exec.status = ExecutionStatus.TERMINATED
-        for node_exec in node_execs:
-            node_exec.status = ExecutionStatus.TERMINATED
-
-        await asyncio.gather(
-            # Update node execution statuses
-            db.update_node_execution_status_batch(
-                [node_exec.node_exec_id for node_exec in node_execs],
-                ExecutionStatus.TERMINATED,
-            ),
-            # Publish node execution events
-            *[
-                get_async_execution_event_bus().publish(node_exec)
-                for node_exec in node_execs
-            ],
-        )
-        await asyncio.gather(
-            # Update graph execution status
-            db.update_graph_execution_stats(
-                graph_exec_id=graph_exec_id,
-                status=ExecutionStatus.TERMINATED,
-            ),
-            # Publish graph execution event
-            get_async_execution_event_bus().publish(graph_exec),
-        )
+    raise TimeoutError(
+        f"Graph execution #{graph_exec_id} will need to take longer than {wait_timeout} seconds to stop. "
+        f"You can check the status of the execution in the UI or try again later."
+    )
 
 
 async def add_graph_execution(
@@ -888,13 +865,9 @@ class ExecutionOutputEntry(BaseModel):
 
 
 class NodeExecutionProgress:
-    def __init__(
-        self,
-        on_done_task: Callable[[str, object], None],
-    ):
+    def __init__(self):
         self.output: dict[str, list[ExecutionOutputEntry]] = defaultdict(list)
         self.tasks: dict[str, Future] = {}
-        self.on_done_task = on_done_task
         self._lock = threading.Lock()
 
     def add_task(self, node_exec_id: str, task: Future):
@@ -934,7 +907,9 @@ class NodeExecutionProgress:
         except TimeoutError:
             pass
         except Exception as e:
-            logger.error(f"Task for exec ID {exec_id} failed with error: {str(e)}")
+            logger.error(
+                f"Task for exec ID {exec_id} failed with error: {e.__class__.__name__} {str(e)}"
+            )
             pass
         return self.is_done(0)
 
@@ -952,7 +927,7 @@ class NodeExecutionProgress:
             cancelled_ids.append(task_id)
         return cancelled_ids
 
-    def wait_for_cancellation(self, timeout: float = 5.0):
+    def wait_for_done(self, timeout: float = 5.0):
         """
         Wait for all cancelled tasks to complete cancellation.
 
@@ -962,9 +937,12 @@ class NodeExecutionProgress:
         start_time = time.time()
 
         while time.time() - start_time < timeout:
-            # Check if all tasks are done (either completed or cancelled)
-            if all(task.done() for task in self.tasks.values()):
-                return True
+            while self.pop_output():
+                pass
+
+            if self.is_done():
+                return
+
             time.sleep(0.1)  # Small delay to avoid busy waiting
 
         raise TimeoutError(
@@ -983,11 +961,7 @@ class NodeExecutionProgress:
             if self.output[exec_id]:
                 return False
 
-        if task := self.tasks.pop(exec_id):
-            try:
-                self.on_done_task(exec_id, task.result())
-            except Exception as e:
-                logger.error(f"Task for exec ID {exec_id} failed with error: {str(e)}")
+        self.tasks.pop(exec_id)
         return True
 
     def _next_exec(self) -> str | None:
