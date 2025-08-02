@@ -1165,7 +1165,7 @@ class ExecutionManager(AppProcess):
     def _consume_execution_run(self):
 
         # Long-running executions are handled by:
-        # 1. Disabled consumer timeout (x-consumer-timeout: 0) allows unlimited execution time
+        # 1. Long consumer timeout (x-consumer-timeout) allows long running agent
         # 2. Enhanced connection settings (5 retries, 1s delay) for quick reconnection
         # 3. Process monitoring ensures failed executors release messages back to queue
 
@@ -1249,7 +1249,8 @@ class ExecutionManager(AppProcess):
             f"[{self.service_name}] Received RUN for graph_exec_id={graph_exec_id}"
         )
         if graph_exec_id in self.active_graph_runs:
-            logger.warning(
+            # TODO: Make this check cluster-wide, prevent duplicate runs across executor pods.
+            logger.error(
                 f"[{self.service_name}] Graph {graph_exec_id} already running; rejecting duplicate run."
             )
             channel.basic_nack(delivery_tag, requeue=False)

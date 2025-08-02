@@ -6,11 +6,70 @@ import time
 from functools import wraps
 from uuid import uuid4
 
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import (
+    retry,
+    retry_if_not_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+    wait_exponential_jitter,
+)
 
 from backend.util.process import get_service_name
 
 logger = logging.getLogger(__name__)
+
+
+def create_retry_config(
+    max_attempts: int = 5,
+    use_jitter: bool = False,
+    multiplier: int = 1,
+    min_wait: float = 1,
+    max_wait: float = 30,
+    exclude_exceptions: tuple[type[BaseException], ...] = (),
+    before_sleep_callback=None,
+    retry_error_callback=None,
+):
+    """
+    Create a shared retry configuration.
+
+    Args:
+        max_attempts: Maximum number of attempts (default: 5)
+        use_jitter: Whether to use exponential jitter (default: False)
+        multiplier: Multiplier for exponential backoff (default: 1)
+        min_wait: Minimum wait time in seconds (default: 1)
+        max_wait: Maximum wait time in seconds (default: 30)
+        exclude_exceptions: Tuple of exception types to not retry on
+        before_sleep_callback: Callback function called before retry sleep
+        retry_error_callback: Callback function called on final retry error
+
+    Returns:
+        Dictionary of retry configuration parameters for tenacity
+    """
+    config = {
+        "stop": stop_after_attempt(max_attempts),
+        "reraise": True,
+    }
+
+    # Configure wait strategy
+    if use_jitter:
+        config["wait"] = wait_exponential_jitter(max=max_wait)
+    else:
+        config["wait"] = wait_exponential(
+            multiplier=multiplier, min=min_wait, max=max_wait
+        )
+
+    # Configure retry conditions
+    if exclude_exceptions:
+        config["retry"] = retry_if_not_exception_type(exclude_exceptions)
+
+    # Configure callbacks
+    if before_sleep_callback:
+        config["before_sleep"] = before_sleep_callback
+
+    if retry_error_callback:
+        config["retry_error_callback"] = retry_error_callback
+
+    return config
 
 
 def _log_prefix(resource_name: str, conn_id: str):
@@ -39,12 +98,16 @@ def conn_retry(
 
     def decorator(func):
         is_coroutine = asyncio.iscoroutinefunction(func)
-        retry_decorator = retry(
-            stop=stop_after_attempt(max_retry + 1),
-            wait=wait_exponential(multiplier=multiplier, min=min_wait, max=max_wait),
-            before_sleep=on_retry,
-            reraise=True,
+        # Use shared configuration
+        retry_config = create_retry_config(
+            max_attempts=max_retry + 1,  # +1 for the initial attempt
+            use_jitter=False,
+            multiplier=multiplier,
+            min_wait=min_wait,
+            max_wait=max_wait,
+            before_sleep_callback=on_retry,
         )
+        retry_decorator = retry(**retry_config)
         wrapped_func = retry_decorator(func)
 
         @wraps(func)
@@ -94,13 +157,18 @@ def _on_func_retry_callback(retry_state):
         )
 
 
-func_retry = retry(
-    reraise=False,
-    stop=stop_after_attempt(5),
-    wait=wait_exponential(multiplier=1, min=1, max=30),
-    before_sleep=_on_func_retry_callback,
+# Use shared configuration for func_retry
+func_retry_config = create_retry_config(
+    max_attempts=5,
+    use_jitter=False,
+    multiplier=1,
+    min_wait=1,
+    max_wait=30,
+    before_sleep_callback=_on_func_retry_callback,
     retry_error_callback=_on_func_retry_callback,
 )
+func_retry_config["reraise"] = False  # Override reraise for func_retry
+func_retry = retry(**func_retry_config)
 
 
 def continuous_retry(*, retry_delay: float = 1.0):
