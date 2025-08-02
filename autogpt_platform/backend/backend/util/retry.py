@@ -39,8 +39,8 @@ def create_retry_config(
         min_wait: Minimum wait time in seconds (default: 1)
         max_wait: Maximum wait time in seconds (default: 30)
         exclude_exceptions: Tuple of exception types to not retry on
-        before_sleep_callback: Callback function called before retry sleep
-        retry_error_callback: Callback function called on final retry error
+        before_sleep_callback: Callback function called before retry sleep (also called on final failure)
+        retry_error_callback: Optional callback for final retry error (rarely needed if before_sleep handles it)
 
     Returns:
         Dictionary of retry configuration parameters for tenacity
@@ -165,7 +165,6 @@ func_retry_config = create_retry_config(
     min_wait=1,
     max_wait=30,
     before_sleep_callback=_on_func_retry_callback,
-    retry_error_callback=_on_func_retry_callback,
 )
 func_retry_config["reraise"] = False  # Override reraise for func_retry
 func_retry = retry(**func_retry_config)
