@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Literal
 
 from pydantic import SecretStr
-from replicate import Client as ReplicateClient
+from replicate.client import Client as ReplicateClient
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import (
