@@ -644,7 +644,7 @@ class NodeExecutionStats(BaseModel):
         arbitrary_types_allowed=True,
     )
 
-    error: Optional[Exception | str] = None
+    error: Optional[BaseException | str] = None
     walltime: float = 0
     cputime: float = 0
     input_size: int = 0
@@ -706,3 +706,6 @@ class GraphExecutionStats(BaseModel):
         default=0, description="Total number of errors generated"
     )
     cost: int = Field(default=0, description="Total execution cost (cents)")
+    activity_status: Optional[str] = Field(
+        default=None, description="AI-generated summary of what the agent did"
+    )

@@ -1,6 +1,5 @@
 import logging
 import os
-import zlib
 from contextlib import asynccontextmanager
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from uuid import uuid4
@@ -50,6 +49,10 @@ prisma = Prisma(
 logger = logging.getLogger(__name__)
 
 
+def is_connected():
+    return prisma.is_connected()
+
+
 @conn_retry("Prisma", "Acquiring connection")
 async def connect():
     if prisma.is_connected():
@@ -79,17 +82,55 @@ async def disconnect():
         raise ConnectionError("Failed to disconnect from Prisma.")
 
 
+# Transaction timeout constant (in milliseconds)
+TRANSACTION_TIMEOUT = 15000  # 15 seconds - Increased from 5s to prevent timeout errors
+
+
 @asynccontextmanager
-async def transaction():
-    async with prisma.tx() as tx:
+async def transaction(timeout: int = TRANSACTION_TIMEOUT):
+    """
+    Create a database transaction with optional timeout.
+
+    Args:
+        timeout: Transaction timeout in milliseconds. If None, uses TRANSACTION_TIMEOUT (15s).
+    """
+    async with prisma.tx(timeout=timeout) as tx:
         yield tx
 
 
 @asynccontextmanager
-async def locked_transaction(key: str):
-    lock_key = zlib.crc32(key.encode("utf-8"))
-    async with transaction() as tx:
-        await tx.execute_raw("SELECT pg_advisory_xact_lock($1)", lock_key)
+async def locked_transaction(key: str, timeout: int = TRANSACTION_TIMEOUT):
+    """
+    Create a transaction and take a per-key advisory *transaction* lock.
+
+    - Uses a 64-bit lock id via hashtextextended(key, 0) to avoid 32-bit collisions.
+    - Bound by lock_timeout and statement_timeout so it won't block indefinitely.
+    - Lock is held for the duration of the transaction and auto-released on commit/rollback.
+
+    Args:
+        key: String lock key (e.g., "usr_trx_<uuid>").
+        timeout: Transaction/lock/statement timeout in milliseconds.
+    """
+    async with transaction(timeout=timeout) as tx:
+        # Ensure we don't wait longer than desired
+        # Note: SET LOCAL doesn't support parameterized queries, must use string interpolation
+        await tx.execute_raw(f"SET LOCAL statement_timeout = '{int(timeout)}ms'")  # type: ignore[arg-type]
+        await tx.execute_raw(f"SET LOCAL lock_timeout = '{int(timeout)}ms'")  # type: ignore[arg-type]
+
+        # Block until acquired or lock_timeout hits
+        try:
+            await tx.execute_raw(
+                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+                key,
+            )
+        except Exception as e:
+            # Normalize PG's lock timeout error to TimeoutError for callers
+            if "lock timeout" in str(e).lower():
+                raise TimeoutError(
+                    f"Could not acquire lock for key={key!r} within {timeout}ms"
+                ) from e
+            raise
+
         yield tx
 
 

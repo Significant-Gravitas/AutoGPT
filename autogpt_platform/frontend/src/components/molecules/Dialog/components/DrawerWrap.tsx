@@ -4,6 +4,7 @@ import { PropsWithChildren } from "react";
 import { Drawer } from "vaul";
 import { DialogCtx } from "../useDialogCtx";
 import { drawerStyles, modalStyles } from "./styles";
+import styles from "./styles.module.css";
 
 type BaseProps = DialogCtx & PropsWithChildren;
 
@@ -21,7 +22,12 @@ export function DrawerWrap({
   isForceOpen,
 }: Props) {
   const closeBtn = (
-    <Button variant="link" aria-label="Close" onClick={handleClose}>
+    <Button
+      variant="link"
+      aria-label="Close"
+      onClick={handleClose}
+      className="!focus-visible:ring-0 p-0"
+    >
       <X width="1.5rem" />
     </Button>
   );
@@ -56,7 +62,9 @@ export function DrawerWrap({
             )
           ) : null}
         </div>
-        <div className="overflow-auto">{children}</div>
+        <div className={`overflow-auto ${styles.scrollableContent}`}>
+          {children}
+        </div>
       </Drawer.Content>
     </Drawer.Portal>
   );
