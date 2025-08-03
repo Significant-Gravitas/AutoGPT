@@ -11,6 +11,7 @@ import {
   categorizeExecutions,
   handleExecutionUpdate,
 } from "./helpers";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 type AgentInfoMap = Map<
   string,
@@ -18,6 +19,9 @@ type AgentInfoMap = Map<
 >;
 
 export function useAgentActivityDropdown() {
+  const isAgentActivityEnabled = useGetFlag(Flag.AGENT_ACTIVITY);
+  const [isOpen, setIsOpen] = useState(false);
+
   const [api] = useState(() => new BackendAPI());
 
   const [notifications, setNotifications] = useState<NotificationState>({
@@ -128,5 +132,8 @@ export function useAgentActivityDropdown() {
     isConnected,
     isReady: executionsSuccess && agentsSuccess,
     error: executionsError || agentsError,
+    isOpen,
+    setIsOpen,
+    isAgentActivityEnabled,
   };
 }

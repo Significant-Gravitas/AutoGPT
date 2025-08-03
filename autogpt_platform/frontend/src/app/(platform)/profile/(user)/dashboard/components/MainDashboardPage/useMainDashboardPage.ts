@@ -3,22 +3,30 @@ import {
   useDeleteV2DeleteStoreSubmission,
   useGetV2ListMySubmissions,
 } from "@/app/api/__generated__/endpoints/store/store";
-import { StoreSubmissionRequest } from "@/app/api/__generated__/models/storeSubmissionRequest";
+import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { StoreSubmissionsResponse } from "@/app/api/__generated__/models/storeSubmissionsResponse";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useState } from "react";
 
+type PublishStep = "select" | "info" | "review";
+
+type PublishState = {
+  isOpen: boolean;
+  step: PublishStep;
+  submissionData: StoreSubmission | null;
+};
+
 export const useMainDashboardPage = () => {
   const queryClient = getQueryClient();
 
   const { user } = useSupabase();
-  const [openPopout, setOpenPopout] = useState<boolean>(false);
-  const [submissionData, setSubmissionData] =
-    useState<StoreSubmissionRequest>();
-  const [popoutStep, setPopoutStep] = useState<"select" | "info" | "review">(
-    "info",
-  );
+
+  const [publishState, setPublishState] = useState<PublishState>({
+    isOpen: false,
+    step: "select",
+    submissionData: null,
+  });
 
   const { mutateAsync: deleteSubmission } = useDeleteV2DeleteStoreSubmission({
     mutation: {
@@ -30,22 +38,25 @@ export const useMainDashboardPage = () => {
     },
   });
 
-  const { data: submissions, isLoading } = useGetV2ListMySubmissions(
-    undefined,
-    {
-      query: {
-        select: (x) => {
-          return x.data as StoreSubmissionsResponse;
-        },
-        enabled: !!user,
+  const {
+    data: submissions,
+    isSuccess,
+    error,
+  } = useGetV2ListMySubmissions(undefined, {
+    query: {
+      select: (x) => {
+        return x.data as StoreSubmissionsResponse;
       },
+      enabled: !!user,
     },
-  );
+  });
 
-  const onEditSubmission = (submission: StoreSubmissionRequest) => {
-    setSubmissionData(submission);
-    setPopoutStep("review");
-    setOpenPopout(true);
+  const onViewSubmission = (submission: StoreSubmission) => {
+    setPublishState({
+      isOpen: true,
+      step: "review",
+      submissionData: submission,
+    });
   };
 
   const onDeleteSubmission = async (submission_id: string) => {
@@ -54,19 +65,28 @@ export const useMainDashboardPage = () => {
     });
   };
 
-  const onOpenPopout = () => {
-    setPopoutStep("select");
-    setOpenPopout(true);
+  const onOpenSubmitModal = () => {
+    // Always reset to clean state when opening for new submission
+    setPublishState({
+      isOpen: true,
+      step: "select",
+      submissionData: null,
+    });
+  };
+
+  const onPublishStateChange = (newState: PublishState) => {
+    setPublishState(newState);
   };
 
   return {
-    onOpenPopout,
+    onOpenSubmitModal,
+    onPublishStateChange,
     onDeleteSubmission,
-    onEditSubmission,
+    onViewSubmission,
+    publishState,
+    // API data
     submissions,
-    isLoading,
-    openPopout,
-    submissionData,
-    popoutStep,
+    isLoading: !isSuccess,
+    error,
   };
 };

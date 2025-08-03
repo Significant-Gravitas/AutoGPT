@@ -1,4 +1,6 @@
 import asyncio
+import concurrent
+import concurrent.futures
 import inspect
 import logging
 import os
@@ -25,18 +27,12 @@ import uvicorn
 from autogpt_libs.logging.utils import generate_uvicorn_config
 from fastapi import FastAPI, Request, responses
 from pydantic import BaseModel, TypeAdapter, create_model
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential_jitter,
-)
 
 import backend.util.exceptions as exceptions
 from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
 from backend.util.process import AppProcess, get_service_name
-from backend.util.retry import conn_retry
+from backend.util.retry import conn_retry, create_retry_decorator
 from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
@@ -105,6 +101,7 @@ EXCEPTION_MAPPING = {
     e.__name__: e
     for e in [
         ValueError,
+        RuntimeError,
         TimeoutError,
         ConnectionError,
         *[
@@ -210,6 +207,12 @@ class AppService(BaseAppService, ABC):
         )
         self.shared_event_loop.run_until_complete(server.serve())
 
+    def health_check(self) -> str:
+        """
+        A method to check the health of the process.
+        """
+        return "OK"
+
     def run(self):
         sentry_init()
         super().run()
@@ -275,34 +278,27 @@ def get_service_client(
     service_client_type: Type[ASC],
     call_timeout: int | None = api_call_timeout,
     health_check: bool = True,
-    request_retry: bool | int = False,
+    request_retry: bool = False,
 ) -> ASC:
 
     def _maybe_retry(fn: Callable[..., R]) -> Callable[..., R]:
         """Decorate *fn* with tenacity retry when enabled."""
-        nonlocal request_retry
-
-        if isinstance(request_retry, int):
-            retry_attempts = request_retry
-            request_retry = True
-        else:
-            retry_attempts = api_comm_retry
-
         if not request_retry:
             return fn
 
-        return retry(
-            reraise=True,
-            stop=stop_after_attempt(retry_attempts),
-            wait=wait_exponential_jitter(max=4.0),
-            retry=retry_if_exception_type(
-                (
-                    httpx.ConnectError,
-                    httpx.ReadTimeout,
-                    httpx.WriteTimeout,
-                    httpx.ConnectTimeout,
-                    httpx.RemoteProtocolError,
-                )
+        # Use preconfigured retry decorator for service communication
+        return create_retry_decorator(
+            max_attempts=api_comm_retry,
+            max_wait=5.0,
+            context="Service communication",
+            exclude_exceptions=(
+                # Don't retry these specific exceptions that won't be fixed by retrying
+                ValueError,  # Invalid input/parameters
+                KeyError,  # Missing required data
+                TypeError,  # Wrong data types
+                AttributeError,  # Missing attributes
+                asyncio.CancelledError,  # Task was cancelled
+                concurrent.futures.CancelledError,  # Future was cancelled
             ),
         )(fn)
 
@@ -380,7 +376,6 @@ def get_service_client(
                 self._connection_failure_count = 0
                 return response.json()
             except httpx.HTTPStatusError as e:
-                logger.error(f"HTTP error in {method_name}: {e.response.text}")
                 error = RemoteCallError.model_validate(e.response.json())
                 # DEBUG HELP: if you made a custom exception, make sure you override self.args to be how to make your exception
                 raise EXCEPTION_MAPPING.get(error.type, Exception)(
