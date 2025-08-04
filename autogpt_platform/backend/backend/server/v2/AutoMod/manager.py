@@ -2,9 +2,9 @@ import json
 import logging
 from typing import Any, Dict
 
+from autogpt_libs.feature_flag.client import is_feature_enabled
 from pydantic import ValidationError
 
-from autogpt_libs.feature_flag.client import is_feature_enabled
 from backend.data.execution import ExecutionStatus
 from backend.server.v2.AutoMod.models import (
     AutoModRequest,
