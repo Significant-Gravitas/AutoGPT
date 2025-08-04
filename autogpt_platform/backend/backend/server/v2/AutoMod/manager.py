@@ -55,7 +55,7 @@ class AutoModManager:
         )
 
         if not graph_model or not graph_model.nodes:
-            return True, None
+            return None
 
         all_inputs = []
         for node in graph_model.nodes:
