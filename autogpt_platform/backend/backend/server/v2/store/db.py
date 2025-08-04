@@ -684,117 +684,6 @@ async def create_store_submission(
             "Failed to create store submission"
         ) from e
 
-async def create_store_version(
-    user_id: str,
-    agent_id: str,
-    agent_version: int,
-    store_listing_id: str,
-    name: str,
-    video_url: str | None = None,
-    image_urls: list[str] = [],
-    description: str = "",
-    sub_heading: str = "",
-    categories: list[str] = [],
-    changes_summary: str = "Update Submission",
-) -> backend.server.v2.store.model.StoreSubmission:
-    """
-    Create a new version for an existing store listing
-
-    Args:
-        user_id: ID of the authenticated user submitting the version
-        agent_id: ID of the agent being submitted
-        agent_version: Version of the agent being submitted
-        store_listing_id: ID of the existing store listing
-        name: Name of the agent
-        video_url: Optional URL to video demo
-        image_urls: List of image URLs for the listing
-        description: Description of the agent
-        categories: List of categories for the agent
-        changes_summary: Summary of changes from the previous version
-
-    Returns:
-        StoreSubmission: The created store submission
-    """
-    logger.debug(
-        f"Creating new version for store listing {store_listing_id} for user {user_id}, agent {agent_id} v{agent_version}"
-    )
-
-    try:
-        # First verify the listing belongs to this user
-        listing = await prisma.models.StoreListing.prisma().find_first(
-            where=prisma.types.StoreListingWhereInput(
-                id=store_listing_id, owningUserId=user_id
-            ),
-            include={"Versions": {"order_by": {"version": "desc"}, "take": 1}},
-        )
-
-        if not listing:
-            raise backend.server.v2.store.exceptions.ListingNotFoundError(
-                f"Store listing not found. User ID: {user_id}, Listing ID: {store_listing_id}"
-            )
-
-        # Verify the agent belongs to this user
-        agent = await prisma.models.AgentGraph.prisma().find_first(
-            where=prisma.types.AgentGraphWhereInput(
-                id=agent_id, version=agent_version, userId=user_id
-            )
-        )
-
-        if not agent:
-            raise backend.server.v2.store.exceptions.AgentNotFoundError(
-                f"Agent not found for this user. User ID: {user_id}, Agent ID: {agent_id}, Version: {agent_version}"
-            )
-
-        # Get the latest version number
-        latest_version = listing.Versions[0] if listing.Versions else None
-
-        next_version = (latest_version.version + 1) if latest_version else 1
-
-        # Create a new version for the existing listing
-        new_version = await prisma.models.StoreListingVersion.prisma().create(
-            data=prisma.types.StoreListingVersionCreateInput(
-                version=next_version,
-                agentGraphId=agent_id,
-                agentGraphVersion=agent_version,
-                name=name,
-                videoUrl=video_url,
-                imageUrls=image_urls,
-                description=description,
-                categories=categories,
-                subHeading=sub_heading,
-                submissionStatus=prisma.enums.SubmissionStatus.PENDING,
-                submittedAt=datetime.now(),
-                changesSummary=changes_summary,
-                storeListingId=store_listing_id,
-            )
-        )
-
-        logger.debug(
-            f"Created new version for listing {store_listing_id} of agent {agent_id}"
-        )
-        # Return submission details
-        return backend.server.v2.store.model.StoreSubmission(
-            agent_id=agent_id,
-            agent_version=agent_version,
-            name=name,
-            slug=listing.slug,
-            sub_heading=sub_heading,
-            description=description,
-            image_urls=image_urls,
-            date_submitted=datetime.now(),
-            status=prisma.enums.SubmissionStatus.PENDING,
-            runs=0,
-            rating=0.0,
-            store_listing_version_id=new_version.id,
-            changes_summary=changes_summary,
-            version=next_version,
-        )
-
-    except prisma.errors.PrismaError as e:
-        raise backend.server.v2.store.exceptions.DatabaseError(
-            "Failed to create new store version"
-        ) from e
-
 
 async def edit_store_submission(
     user_id: str,
@@ -986,6 +875,7 @@ async def edit_store_submission(
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to edit store submission"
         ) from e
+
 
 async def create_store_version(
     user_id: str,
