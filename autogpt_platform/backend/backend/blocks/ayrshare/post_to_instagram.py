@@ -8,10 +8,14 @@ from backend.sdk import (
     BlockSchema,
     BlockType,
     SchemaField,
-    SecretStr,
 )
 
-from ._util import BaseAyrshareInput, InstagramUserTag, create_ayrshare_client
+from ._util import (
+    BaseAyrshareInput,
+    InstagramUserTag,
+    create_ayrshare_client,
+    get_profile_key,
+)
 
 
 class PostToInstagramBlock(Block):
@@ -108,10 +112,11 @@ class PostToInstagramBlock(Block):
         self,
         input_data: "PostToInstagramBlock.Input",
         *,
-        profile_key: SecretStr,
+        user_id: str,
         **kwargs,
     ) -> BlockOutput:
         """Post to Instagram with Instagram-specific options."""
+        profile_key = await get_profile_key(user_id)
         if not profile_key:
             yield "error", "Please link a social account via Ayrshare"
             return

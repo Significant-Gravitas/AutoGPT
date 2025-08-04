@@ -1,3 +1,4 @@
+import { isServerSide } from "@/lib/utils/is-server-side";
 import { debounce } from "lodash";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -24,7 +25,7 @@ export const useInfiniteScroll = ({
   const [isLoading, setIsLoading] = useState(false);
 
   const handleScroll = useCallback(() => {
-    if (containerRef.current && typeof window !== "undefined") {
+    if (containerRef.current && !isServerSide()) {
       const container = containerRef.current;
       const { bottom } = container.getBoundingClientRect();
       const { innerHeight } = window;
