@@ -6,10 +6,9 @@ from backend.sdk import (
     BlockSchema,
     BlockType,
     SchemaField,
-    SecretStr,
 )
 
-from ._util import BaseAyrshareInput, create_ayrshare_client
+from ._util import BaseAyrshareInput, create_ayrshare_client, get_profile_key
 
 
 class PostToRedditBlock(Block):
@@ -36,8 +35,9 @@ class PostToRedditBlock(Block):
         )
 
     async def run(
-        self, input_data: "PostToRedditBlock.Input", *, profile_key: SecretStr, **kwargs
+        self, input_data: "PostToRedditBlock.Input", *, user_id: str, **kwargs
     ) -> BlockOutput:
+        profile_key = await get_profile_key(user_id)
         if not profile_key:
             yield "error", "Please link a social account via Ayrshare"
             return

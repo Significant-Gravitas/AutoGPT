@@ -6,10 +6,9 @@ from backend.sdk import (
     BlockSchema,
     BlockType,
     SchemaField,
-    SecretStr,
 )
 
-from ._util import BaseAyrshareInput, create_ayrshare_client
+from ._util import BaseAyrshareInput, create_ayrshare_client, get_profile_key
 
 
 class PostToGMBBlock(Block):
@@ -111,9 +110,10 @@ class PostToGMBBlock(Block):
         )
 
     async def run(
-        self, input_data: "PostToGMBBlock.Input", *, profile_key: SecretStr, **kwargs
+        self, input_data: "PostToGMBBlock.Input", *, user_id: str, **kwargs
     ) -> BlockOutput:
         """Post to Google My Business with GMB-specific options."""
+        profile_key = await get_profile_key(user_id)
         if not profile_key:
             yield "error", "Please link a social account via Ayrshare"
             return
