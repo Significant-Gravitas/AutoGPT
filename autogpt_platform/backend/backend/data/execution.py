@@ -33,7 +33,7 @@ from prisma.types import (
     AgentNodeExecutionUpdateInput,
     AgentNodeExecutionWhereInput,
 )
-from pydantic import BaseModel, ConfigDict, JsonValue
+from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 from pydantic.fields import Field
 
 from backend.server.v2.store.exceptions import DatabaseError
@@ -58,7 +58,7 @@ from .includes import (
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     graph_execution_include,
 )
-from .model import GraphExecutionStats
+from .model import GraphExecutionStats, NodeExecutionStats
 
 T = TypeVar("T")
 
@@ -317,8 +317,12 @@ class NodeExecutionResult(BaseModel):
 
     @staticmethod
     def from_db(_node_exec: AgentNodeExecution, user_id: Optional[str] = None):
-        # Check if this execution was cleared due to moderation
-        stats = type_utils.convert(_node_exec.stats, dict) if _node_exec.stats else {}
+        # Parse execution stats using proper Pydantic model instead of dict access
+        try:
+            stats = NodeExecutionStats.model_validate(_node_exec.stats or {})
+        except (ValueError, ValidationError):
+            # Fallback to empty stats if parsing fails
+            stats = NodeExecutionStats()
 
         if _node_exec.executionData:
             # Execution that has been queued for execution will persist its data.
@@ -329,17 +333,18 @@ class NodeExecutionResult(BaseModel):
             for data in _node_exec.Input or []:
                 input_data[data.name] = type_utils.convert(data.data, type[Any])
 
-        # Check if inputs should be cleared due to moderation
-        if stats.get("moderation_cleared") and stats.get("cleared_inputs"):
+        # Apply moderation input clearing if present
+        if stats.cleared_inputs:
             # Replace input data with moderation messages
-            for name, message in stats["cleared_inputs"].items():
+            for name, message in stats.cleared_inputs.items():
                 input_data[name] = message
 
         output_data: CompletedBlockOutput = defaultdict(list)
 
-        if stats.get("moderation_cleared") and stats.get("cleared_outputs"):
+        # Apply moderation output clearing if present
+        if stats.cleared_outputs:
             # Use the cleared outputs instead of actual output data
-            for name, message in stats["cleared_outputs"].items():
+            for name, message in stats.cleared_outputs.items():
                 output_data[name].append(message)
         else:
             # Normal case - use actual output data
