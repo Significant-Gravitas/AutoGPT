@@ -125,7 +125,6 @@ class PostToFacebookBlock(Block):
     ) -> BlockOutput:
         """Post to Facebook with Facebook-specific options."""
         profile_key = await get_profile_key(user_id)
-        profile_key = await get_profile_key(user_id)
         if not profile_key:
             yield "error", "Please link a social account via Ayrshare"
             return
