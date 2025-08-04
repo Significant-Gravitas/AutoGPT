@@ -19,6 +19,7 @@ router = fastapi.APIRouter(prefix="/admin", tags=["store", "admin"])
 
 @router.get(
     "/listings",
+    summary="Get Admin Listings History",
     response_model=backend.server.v2.store.model.StoreListingsWithVersionsResponse,
     dependencies=[fastapi.Depends(autogpt_libs.auth.depends.requires_admin_user)],
 )
@@ -63,6 +64,7 @@ async def get_admin_listings_with_versions(
 
 @router.post(
     "/submissions/{store_listing_version_id}/review",
+    summary="Review Store Submission",
     response_model=backend.server.v2.store.model.StoreSubmission,
     dependencies=[fastapi.Depends(autogpt_libs.auth.depends.requires_admin_user)],
 )
@@ -104,6 +106,7 @@ async def review_submission(
 
 @router.get(
     "/submissions/download/{store_listing_version_id}",
+    summary="Admin Download Agent File",
     tags=["store", "admin"],
     dependencies=[fastapi.Depends(autogpt_libs.auth.depends.requires_admin_user)],
 )
@@ -128,7 +131,7 @@ async def admin_download_agent_file(
     Raises:
         HTTPException: If the agent is not found or an unexpected error occurs.
     """
-    graph_data = await backend.server.v2.store.db.get_agent(
+    graph_data = await backend.server.v2.store.db.get_agent_as_admin(
         user_id=user.user_id,
         store_listing_version_id=store_listing_version_id,
     )

@@ -5,7 +5,7 @@ from backend.blocks.hubspot._auth import (
 )
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from backend.util.request import requests
+from backend.util.request import Requests
 
 
 class HubSpotCompanyBlock(Block):
@@ -35,7 +35,7 @@ class HubSpotCompanyBlock(Block):
             output_schema=HubSpotCompanyBlock.Output,
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: HubSpotCredentials, **kwargs
     ) -> BlockOutput:
         base_url = "https://api.hubapi.com/crm/v3/objects/companies"
@@ -45,7 +45,7 @@ class HubSpotCompanyBlock(Block):
         }
 
         if input_data.operation == "create":
-            response = requests.post(
+            response = await Requests().post(
                 base_url, headers=headers, json={"properties": input_data.company_data}
             )
             result = response.json()
@@ -67,14 +67,16 @@ class HubSpotCompanyBlock(Block):
                     }
                 ]
             }
-            response = requests.post(search_url, headers=headers, json=search_data)
-            result = response.json()
-            yield "company", result.get("results", [{}])[0]
+            search_response = await Requests().post(
+                search_url, headers=headers, json=search_data
+            )
+            search_result = search_response.json()
+            yield "search_company", search_result.get("results", [{}])[0]
             yield "status", "retrieved"
 
         elif input_data.operation == "update":
             # First get company ID by domain
-            search_response = requests.post(
+            search_response = await Requests().post(
                 f"{base_url}/search",
                 headers=headers,
                 json={
@@ -91,10 +93,11 @@ class HubSpotCompanyBlock(Block):
                     ]
                 },
             )
-            company_id = search_response.json().get("results", [{}])[0].get("id")
+            search_result = search_response.json()
+            company_id = search_result.get("results", [{}])[0].get("id")
 
             if company_id:
-                response = requests.patch(
+                response = await Requests().patch(
                     f"{base_url}/{company_id}",
                     headers=headers,
                     json={"properties": input_data.company_data},

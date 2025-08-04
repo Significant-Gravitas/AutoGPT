@@ -105,9 +105,10 @@ class ScreenshotWebPageBlock(Block):
         )
 
     @staticmethod
-    def take_screenshot(
+    async def take_screenshot(
         credentials: APIKeyCredentials,
         graph_exec_id: str,
+        user_id: str,
         url: str,
         viewport_width: int,
         viewport_height: int,
@@ -121,11 +122,10 @@ class ScreenshotWebPageBlock(Block):
         """
         Takes a screenshot using the ScreenshotOne API
         """
-        api = Requests(trusted_origins=["https://api.screenshotone.com"])
+        api = Requests()
 
-        # Build API URL with parameters
+        # Build API parameters
         params = {
-            "access_key": credentials.api_key.get_secret_value(),
             "url": url,
             "viewport_width": viewport_width,
             "viewport_height": viewport_height,
@@ -137,30 +137,42 @@ class ScreenshotWebPageBlock(Block):
             "cache": str(cache).lower(),
         }
 
-        response = api.get("https://api.screenshotone.com/take", params=params)
+        # Make the API request
+        # Use header-based authentication instead of query parameter
+        headers = {
+            "X-Access-Key": credentials.api_key.get_secret_value(),
+        }
+
+        response = await api.get(
+            "https://api.screenshotone.com/take", params=params, headers=headers
+        )
+        content = response.content
 
         return {
-            "image": store_media_file(
+            "image": await store_media_file(
                 graph_exec_id=graph_exec_id,
                 file=MediaFileType(
-                    f"data:image/{format.value};base64,{b64encode(response.content).decode('utf-8')}"
+                    f"data:image/{format.value};base64,{b64encode(content).decode('utf-8')}"
                 ),
+                user_id=user_id,
                 return_content=True,
             )
         }
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
         credentials: APIKeyCredentials,
         graph_exec_id: str,
+        user_id: str,
         **kwargs,
     ) -> BlockOutput:
         try:
-            screenshot_data = self.take_screenshot(
+            screenshot_data = await self.take_screenshot(
                 credentials=credentials,
                 graph_exec_id=graph_exec_id,
+                user_id=user_id,
                 url=input_data.url,
                 viewport_width=input_data.viewport_width,
                 viewport_height=input_data.viewport_height,

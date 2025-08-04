@@ -1,17 +1,15 @@
 import base64
 import hashlib
 import secrets
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Optional
-
-from pydantic import SecretStr
-
-if TYPE_CHECKING:
-    from backend.executor.database import DatabaseManagerClient
+from typing import Optional
 
 from autogpt_libs.utils.cache import thread_cached
-from autogpt_libs.utils.synchronize import RedisKeyedMutex
+from autogpt_libs.utils.synchronize import AsyncRedisKeyedMutex
+from pydantic import SecretStr
 
+from backend.data.db import prisma
 from backend.data.model import (
     APIKeyCredentials,
     Credentials,
@@ -19,6 +17,7 @@ from backend.data.model import (
     OAuthState,
     UserIntegrations,
 )
+from backend.data.redis_client import get_redis_async
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -58,6 +57,13 @@ openai_credentials = APIKeyCredentials(
     provider="openai",
     api_key=SecretStr(settings.secrets.openai_api_key),
     title="Use Credits for OpenAI",
+    expires_at=None,
+)
+aiml_api_credentials = APIKeyCredentials(
+    id="aad82a89-9794-4ebb-977f-d736aa5260a3",
+    provider="aiml_api",
+    api_key=SecretStr(settings.secrets.aiml_api_key),
+    title="Use Credits for AI/ML API",
     expires_at=None,
 )
 anthropic_credentials = APIKeyCredentials(
@@ -200,6 +206,7 @@ DEFAULT_CREDENTIALS = [
     ideogram_credentials,
     replicate_credentials,
     openai_credentials,
+    aiml_api_credentials,
     anthropic_credentials,
     groq_credentials,
     did_credentials,
@@ -222,31 +229,42 @@ DEFAULT_CREDENTIALS = [
 
 class IntegrationCredentialsStore:
     def __init__(self):
-        from backend.data.redis import get_redis
+        self._locks = None
 
-        self.locks = RedisKeyedMutex(get_redis())
+    async def locks(self) -> AsyncRedisKeyedMutex:
+        if self._locks:
+            return self._locks
+
+        self._locks = AsyncRedisKeyedMutex(await get_redis_async())
+        return self._locks
 
     @property
     @thread_cached
-    def db_manager(self) -> "DatabaseManagerClient":
-        from backend.executor.database import DatabaseManagerClient
-        from backend.util.service import get_service_client
+    def db_manager(self):
+        if prisma.is_connected():
+            from backend.data import user
 
-        return get_service_client(DatabaseManagerClient)
+            return user
+        else:
+            from backend.executor.database import DatabaseManagerAsyncClient
+            from backend.util.service import get_service_client
 
-    def add_creds(self, user_id: str, credentials: Credentials) -> None:
-        with self.locked_user_integrations(user_id):
-            if self.get_creds_by_id(user_id, credentials.id):
+            return get_service_client(DatabaseManagerAsyncClient)
+
+    # =============== USER-MANAGED CREDENTIALS =============== #
+    async def add_creds(self, user_id: str, credentials: Credentials) -> None:
+        async with await self.locked_user_integrations(user_id):
+            if await self.get_creds_by_id(user_id, credentials.id):
                 raise ValueError(
                     f"Can not re-create existing credentials #{credentials.id} "
                     f"for user #{user_id}"
                 )
-            self._set_user_integration_creds(
-                user_id, [*self.get_all_creds(user_id), credentials]
+            await self._set_user_integration_creds(
+                user_id, [*(await self.get_all_creds(user_id)), credentials]
             )
 
-    def get_all_creds(self, user_id: str) -> list[Credentials]:
-        users_credentials = self._get_user_integrations(user_id).credentials
+    async def get_all_creds(self, user_id: str) -> list[Credentials]:
+        users_credentials = (await self._get_user_integrations(user_id)).credentials
         all_credentials = users_credentials
         # These will always be added
         all_credentials.append(ollama_credentials)
@@ -262,6 +280,8 @@ class IntegrationCredentialsStore:
             all_credentials.append(replicate_credentials)
         if settings.secrets.openai_api_key:
             all_credentials.append(openai_credentials)
+        if settings.secrets.aiml_api_key:
+            all_credentials.append(aiml_api_credentials)
         if settings.secrets.anthropic_api_key:
             all_credentials.append(anthropic_credentials)
         if settings.secrets.did_api_key:
@@ -296,21 +316,25 @@ class IntegrationCredentialsStore:
             all_credentials.append(google_maps_credentials)
         return all_credentials
 
-    def get_creds_by_id(self, user_id: str, credentials_id: str) -> Credentials | None:
-        all_credentials = self.get_all_creds(user_id)
+    async def get_creds_by_id(
+        self, user_id: str, credentials_id: str
+    ) -> Credentials | None:
+        all_credentials = await self.get_all_creds(user_id)
         return next((c for c in all_credentials if c.id == credentials_id), None)
 
-    def get_creds_by_provider(self, user_id: str, provider: str) -> list[Credentials]:
-        credentials = self.get_all_creds(user_id)
+    async def get_creds_by_provider(
+        self, user_id: str, provider: str
+    ) -> list[Credentials]:
+        credentials = await self.get_all_creds(user_id)
         return [c for c in credentials if c.provider == provider]
 
-    def get_authorized_providers(self, user_id: str) -> list[str]:
-        credentials = self.get_all_creds(user_id)
+    async def get_authorized_providers(self, user_id: str) -> list[str]:
+        credentials = await self.get_all_creds(user_id)
         return list(set(c.provider for c in credentials))
 
-    def update_creds(self, user_id: str, updated: Credentials) -> None:
-        with self.locked_user_integrations(user_id):
-            current = self.get_creds_by_id(user_id, updated.id)
+    async def update_creds(self, user_id: str, updated: Credentials) -> None:
+        async with await self.locked_user_integrations(user_id):
+            current = await self.get_creds_by_id(user_id, updated.id)
             if not current:
                 raise ValueError(
                     f"Credentials with ID {updated.id} "
@@ -338,18 +362,36 @@ class IntegrationCredentialsStore:
             # Update the credentials
             updated_credentials_list = [
                 updated if c.id == updated.id else c
-                for c in self.get_all_creds(user_id)
+                for c in await self.get_all_creds(user_id)
             ]
-            self._set_user_integration_creds(user_id, updated_credentials_list)
+            await self._set_user_integration_creds(user_id, updated_credentials_list)
 
-    def delete_creds_by_id(self, user_id: str, credentials_id: str) -> None:
-        with self.locked_user_integrations(user_id):
+    async def delete_creds_by_id(self, user_id: str, credentials_id: str) -> None:
+        async with await self.locked_user_integrations(user_id):
             filtered_credentials = [
-                c for c in self.get_all_creds(user_id) if c.id != credentials_id
+                c for c in await self.get_all_creds(user_id) if c.id != credentials_id
             ]
-            self._set_user_integration_creds(user_id, filtered_credentials)
+            await self._set_user_integration_creds(user_id, filtered_credentials)
 
-    def store_state_token(
+    # ============== SYSTEM-MANAGED CREDENTIALS ============== #
+
+    async def set_ayrshare_profile_key(self, user_id: str, profile_key: str) -> None:
+        """Set the Ayrshare profile key for a user.
+
+        The profile key is used to authenticate API requests to Ayrshare's social media posting service.
+        See https://www.ayrshare.com/docs/apis/profiles/overview for more details.
+
+        Args:
+            user_id: The ID of the user to set the profile key for
+            profile_key: The profile key to set
+        """
+        _profile_key = SecretStr(profile_key)
+        async with self.edit_user_integrations(user_id) as user_integrations:
+            user_integrations.managed_credentials.ayrshare_profile_key = _profile_key
+
+    # ===================== OAUTH STATES ===================== #
+
+    async def store_state_token(
         self, user_id: str, provider: str, scopes: list[str], use_pkce: bool = False
     ) -> tuple[str, str]:
         token = secrets.token_urlsafe(32)
@@ -365,14 +407,17 @@ class IntegrationCredentialsStore:
             scopes=scopes,
         )
 
-        with self.locked_user_integrations(user_id):
+        async with self.edit_user_integrations(user_id) as user_integrations:
+            user_integrations.oauth_states.append(state)
 
-            user_integrations = self._get_user_integrations(user_id)
+        async with await self.locked_user_integrations(user_id):
+
+            user_integrations = await self._get_user_integrations(user_id)
             oauth_states = user_integrations.oauth_states
             oauth_states.append(state)
             user_integrations.oauth_states = oauth_states
 
-            self.db_manager.update_user_integrations(
+            await self.db_manager.update_user_integrations(
                 user_id=user_id, data=user_integrations
             )
 
@@ -383,16 +428,16 @@ class IntegrationCredentialsStore:
         Generate code challenge using SHA256 from the code verifier.
         Currently only SHA256 is supported.(In future if we want to support more methods we can add them here)
         """
-        code_verifier = secrets.token_urlsafe(128)
+        code_verifier = secrets.token_urlsafe(96)
         sha256_hash = hashlib.sha256(code_verifier.encode("utf-8")).digest()
         code_challenge = base64.urlsafe_b64encode(sha256_hash).decode("utf-8")
         return code_challenge.replace("=", ""), code_verifier
 
-    def verify_state_token(
+    async def verify_state_token(
         self, user_id: str, token: str, provider: str
     ) -> Optional[OAuthState]:
-        with self.locked_user_integrations(user_id):
-            user_integrations = self._get_user_integrations(user_id)
+        async with await self.locked_user_integrations(user_id):
+            user_integrations = await self._get_user_integrations(user_id)
             oauth_states = user_integrations.oauth_states
 
             now = datetime.now(timezone.utc)
@@ -400,7 +445,7 @@ class IntegrationCredentialsStore:
                 (
                     state
                     for state in oauth_states
-                    if state.token == token
+                    if secrets.compare_digest(state.token, token)
                     and state.provider == provider
                     and state.expires_at > now.timestamp()
                 ),
@@ -411,26 +456,37 @@ class IntegrationCredentialsStore:
                 # Remove the used state
                 oauth_states.remove(valid_state)
                 user_integrations.oauth_states = oauth_states
-                self.db_manager.update_user_integrations(user_id, user_integrations)
+                await self.db_manager.update_user_integrations(
+                    user_id, user_integrations
+                )
                 return valid_state
 
         return None
 
-    def _set_user_integration_creds(
+    # =================== GET/SET HELPERS =================== #
+
+    @asynccontextmanager
+    async def edit_user_integrations(self, user_id: str):
+        async with await self.locked_user_integrations(user_id):
+            user_integrations = await self._get_user_integrations(user_id)
+            yield user_integrations  # yield to allow edits
+            await self.db_manager.update_user_integrations(
+                user_id=user_id, data=user_integrations
+            )
+
+    async def _set_user_integration_creds(
         self, user_id: str, credentials: list[Credentials]
     ) -> None:
-        integrations = self._get_user_integrations(user_id)
+        integrations = await self._get_user_integrations(user_id)
         # Remove default credentials from the list
         credentials = [c for c in credentials if c not in DEFAULT_CREDENTIALS]
         integrations.credentials = credentials
-        self.db_manager.update_user_integrations(user_id, integrations)
+        await self.db_manager.update_user_integrations(user_id, integrations)
 
-    def _get_user_integrations(self, user_id: str) -> UserIntegrations:
-        integrations: UserIntegrations = self.db_manager.get_user_integrations(
-            user_id=user_id
-        )
-        return integrations
+    async def _get_user_integrations(self, user_id: str) -> UserIntegrations:
+        return await self.db_manager.get_user_integrations(user_id=user_id)
 
-    def locked_user_integrations(self, user_id: str):
+    async def locked_user_integrations(self, user_id: str):
         key = (f"user:{user_id}", "integrations")
-        return self.locks.locked(key)
+        locks = await self.locks()
+        return locks.locked(key)

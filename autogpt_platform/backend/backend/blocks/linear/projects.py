@@ -1,24 +1,31 @@
-from backend.blocks.linear._api import LinearAPIException, LinearClient
-from backend.blocks.linear._auth import (
-    LINEAR_OAUTH_IS_CONFIGURED,
+from backend.sdk import (
+    APIKeyCredentials,
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    CredentialsMetaInput,
+    OAuth2Credentials,
+    SchemaField,
+)
+
+from ._api import LinearAPIException, LinearClient
+from ._config import (
     TEST_CREDENTIALS_INPUT_OAUTH,
     TEST_CREDENTIALS_OAUTH,
-    LinearCredentials,
-    LinearCredentialsField,
-    LinearCredentialsInput,
     LinearScope,
+    linear,
 )
-from backend.blocks.linear.models import Project
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
+from .models import Project
 
 
 class LinearSearchProjectsBlock(Block):
     """Block for searching projects on Linear"""
 
     class Input(BlockSchema):
-        credentials: LinearCredentialsInput = LinearCredentialsField(
-            scopes=[LinearScope.READ],
+        credentials: CredentialsMetaInput = linear.credentials_field(
+            description="Linear credentials with read permissions",
+            required_scopes={LinearScope.READ},
         )
         term: str = SchemaField(description="Term to search for projects")
 
@@ -37,7 +44,6 @@ class LinearSearchProjectsBlock(Block):
                 "term": "Test project",
                 "credentials": TEST_CREDENTIALS_INPUT_OAUTH,
             },
-            disabled=not LINEAR_OAUTH_IS_CONFIGURED,
             test_credentials=TEST_CREDENTIALS_OAUTH,
             test_output=[
                 (
@@ -69,20 +75,24 @@ class LinearSearchProjectsBlock(Block):
         )
 
     @staticmethod
-    def search_projects(
-        credentials: LinearCredentials,
+    async def search_projects(
+        credentials: OAuth2Credentials | APIKeyCredentials,
         term: str,
     ) -> list[Project]:
         client = LinearClient(credentials=credentials)
-        response: list[Project] = client.try_search_projects(term=term)
+        response: list[Project] = await client.try_search_projects(term=term)
         return response
 
-    def run(
-        self, input_data: Input, *, credentials: LinearCredentials, **kwargs
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: OAuth2Credentials | APIKeyCredentials,
+        **kwargs,
     ) -> BlockOutput:
         """Execute the project search"""
         try:
-            projects = self.search_projects(
+            projects = await self.search_projects(
                 credentials=credentials,
                 term=input_data.term,
             )

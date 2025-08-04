@@ -117,20 +117,21 @@ def test():
 
 @test.command()
 @click.argument("server_address")
-def reddit(server_address: str):
+async def reddit(server_address: str):
     """
     Create an event graph
     """
-    import requests
-
     from backend.usecases.reddit_marketing import create_test_graph
+    from backend.util.request import Requests
 
     test_graph = create_test_graph()
     url = f"{server_address}/graphs"
     headers = {"Content-Type": "application/json"}
     data = test_graph.model_dump_json()
 
-    response = requests.post(url, headers=headers, data=data)
+    response = await Requests(trusted_origins=[server_address]).post(
+        url, headers=headers, data=data
+    )
 
     graph_id = response.json()["id"]
     print(f"Graph created with ID: {graph_id}")
@@ -138,28 +139,32 @@ def reddit(server_address: str):
 
 @test.command()
 @click.argument("server_address")
-def populate_db(server_address: str):
+async def populate_db(server_address: str):
     """
     Create an event graph
     """
-    import requests
 
     from backend.usecases.sample import create_test_graph
+    from backend.util.request import Requests
 
     test_graph = create_test_graph()
     url = f"{server_address}/graphs"
     headers = {"Content-Type": "application/json"}
     data = test_graph.model_dump_json()
 
-    response = requests.post(url, headers=headers, data=data)
+    response = await Requests(trusted_origins=[server_address]).post(
+        url, headers=headers, data=data
+    )
 
     graph_id = response.json()["id"]
 
-    if response.status_code == 200:
+    if response.status == 200:
         execute_url = f"{server_address}/graphs/{response.json()['id']}/execute"
         text = "Hello, World!"
         input_data = {"input": text}
-        response = requests.post(execute_url, headers=headers, json=input_data)
+        response = Requests(trusted_origins=[server_address]).post(
+            execute_url, headers=headers, json=input_data
+        )
 
         schedule_url = f"{server_address}/graphs/{graph_id}/schedules"
         data = {
@@ -167,51 +172,60 @@ def populate_db(server_address: str):
             "cron": "*/5 * * * *",
             "input_data": {"input": "Hello, World!"},
         }
-        response = requests.post(schedule_url, headers=headers, json=data)
+        response = Requests(trusted_origins=[server_address]).post(
+            schedule_url, headers=headers, json=data
+        )
 
     print("Database populated with: \n- graph\n- execution\n- schedule")
 
 
 @test.command()
 @click.argument("server_address")
-def graph(server_address: str):
+async def graph(server_address: str):
     """
     Create an event graph
     """
-    import requests
 
     from backend.usecases.sample import create_test_graph
+    from backend.util.request import Requests
 
     url = f"{server_address}/graphs"
     headers = {"Content-Type": "application/json"}
     data = create_test_graph().model_dump_json()
-    response = requests.post(url, headers=headers, data=data)
+    response = await Requests(trusted_origins=[server_address]).post(
+        url, headers=headers, data=data
+    )
 
-    if response.status_code == 200:
+    if response.status == 200:
         print(response.json()["id"])
         execute_url = f"{server_address}/graphs/{response.json()['id']}/execute"
         text = "Hello, World!"
         input_data = {"input": text}
-        response = requests.post(execute_url, headers=headers, json=input_data)
+        response = await Requests(trusted_origins=[server_address]).post(
+            execute_url, headers=headers, json=input_data
+        )
 
     else:
         print("Failed to send graph")
-        print(f"Response: {response.text}")
+        print(f"Response: {response.text()}")
 
 
 @test.command()
 @click.argument("graph_id")
 @click.argument("content")
-def execute(graph_id: str, content: dict):
+async def execute(graph_id: str, content: dict):
     """
     Create an event graph
     """
-    import requests
+
+    from backend.util.request import Requests
 
     headers = {"Content-Type": "application/json"}
 
     execute_url = f"http://0.0.0.0:8000/graphs/{graph_id}/execute"
-    requests.post(execute_url, headers=headers, json=content)
+    await Requests(trusted_origins=["http://0.0.0.0:8000"]).post(
+        execute_url, headers=headers, json=content
+    )
 
 
 @test.command()

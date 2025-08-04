@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 class BaseOAuthHandler(ABC):
     # --8<-- [start:BaseOAuthHandler1]
-    PROVIDER_NAME: ClassVar[ProviderName]
+    PROVIDER_NAME: ClassVar[ProviderName | str]
     DEFAULT_SCOPES: ClassVar[list[str]] = []
     # --8<-- [end:BaseOAuthHandler1]
 
@@ -32,7 +32,7 @@ class BaseOAuthHandler(ABC):
 
     @abstractmethod
     # --8<-- [start:BaseOAuthHandler4]
-    def exchange_code_for_tokens(
+    async def exchange_code_for_tokens(
         self, code: str, scopes: list[str], code_verifier: Optional[str]
     ) -> OAuth2Credentials:
         # --8<-- [end:BaseOAuthHandler4]
@@ -41,31 +41,33 @@ class BaseOAuthHandler(ABC):
 
     @abstractmethod
     # --8<-- [start:BaseOAuthHandler5]
-    def _refresh_tokens(self, credentials: OAuth2Credentials) -> OAuth2Credentials:
+    async def _refresh_tokens(
+        self, credentials: OAuth2Credentials
+    ) -> OAuth2Credentials:
         # --8<-- [end:BaseOAuthHandler5]
         """Implements the token refresh mechanism"""
         ...
 
     @abstractmethod
     # --8<-- [start:BaseOAuthHandler6]
-    def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
+    async def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
         # --8<-- [end:BaseOAuthHandler6]
         """Revokes the given token at provider,
         returns False provider does not support it"""
         ...
 
-    def refresh_tokens(self, credentials: OAuth2Credentials) -> OAuth2Credentials:
+    async def refresh_tokens(self, credentials: OAuth2Credentials) -> OAuth2Credentials:
         if credentials.provider != self.PROVIDER_NAME:
             raise ValueError(
                 f"{self.__class__.__name__} can not refresh tokens "
                 f"for other provider '{credentials.provider}'"
             )
-        return self._refresh_tokens(credentials)
+        return await self._refresh_tokens(credentials)
 
-    def get_access_token(self, credentials: OAuth2Credentials) -> str:
+    async def get_access_token(self, credentials: OAuth2Credentials) -> str:
         """Returns a valid access token, refreshing it first if needed"""
         if self.needs_refresh(credentials):
-            credentials = self.refresh_tokens(credentials)
+            credentials = await self.refresh_tokens(credentials)
         return credentials.access_token.get_secret_value()
 
     def needs_refresh(self, credentials: OAuth2Credentials) -> bool:
@@ -79,8 +81,6 @@ class BaseOAuthHandler(ABC):
         """Handles the default scopes for the provider"""
         # If scopes are empty, use the default scopes for the provider
         if not scopes:
-            logger.debug(
-                f"Using default scopes for provider {self.PROVIDER_NAME.value}"
-            )
+            logger.debug(f"Using default scopes for provider {str(self.PROVIDER_NAME)}")
             scopes = self.DEFAULT_SCOPES
         return scopes

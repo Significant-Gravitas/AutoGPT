@@ -1,4 +1,6 @@
 import asyncio
+import concurrent
+import concurrent.futures
 import inspect
 import logging
 import os
@@ -22,14 +24,15 @@ from typing import (
 
 import httpx
 import uvicorn
+from autogpt_libs.logging.utils import generate_uvicorn_config
 from fastapi import FastAPI, Request, responses
 from pydantic import BaseModel, TypeAdapter, create_model
 
-from backend.util.exceptions import InsufficientBalanceError
+import backend.util.exceptions as exceptions
 from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
 from backend.util.process import AppProcess, get_service_name
-from backend.util.retry import conn_retry
+from backend.util.retry import conn_retry, create_retry_decorator
 from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
@@ -98,15 +101,28 @@ EXCEPTION_MAPPING = {
     e.__name__: e
     for e in [
         ValueError,
+        RuntimeError,
         TimeoutError,
         ConnectionError,
-        InsufficientBalanceError,
+        *[
+            ErrorType
+            for _, ErrorType in inspect.getmembers(exceptions)
+            if inspect.isclass(ErrorType)
+            and issubclass(ErrorType, Exception)
+            and ErrorType.__module__ == exceptions.__name__
+        ],
     ]
 }
 
 
 class AppService(BaseAppService, ABC):
     fastapi_app: FastAPI
+    log_level: str = "info"
+
+    def set_log_level(self, log_level: str):
+        """Set the uvicorn log level. Returns self for chaining."""
+        self.log_level = log_level
+        return self
 
     @staticmethod
     def _handle_internal_http_error(status_code: int = 500, log_error: bool = True):
@@ -179,15 +195,23 @@ class AppService(BaseAppService, ABC):
         logger.info(
             f"[{self.service_name}] Starting RPC server at http://{api_host}:{self.get_port()}"
         )
+
         server = uvicorn.Server(
             uvicorn.Config(
                 self.fastapi_app,
                 host=api_host,
                 port=self.get_port(),
-                log_level="warning",
+                log_config=generate_uvicorn_config(),
+                log_level=self.log_level,
             )
         )
         self.shared_event_loop.run_until_complete(server.serve())
+
+    def health_check(self) -> str:
+        """
+        A method to check the health of the process.
+        """
+        return "OK"
 
     def run(self):
         sentry_init()
@@ -204,7 +228,10 @@ class AppService(BaseAppService, ABC):
                     methods=["POST"],
                 )
         self.fastapi_app.add_api_route(
-            "/health_check", self.health_check, methods=["POST"]
+            "/health_check", self.health_check, methods=["POST", "GET"]
+        )
+        self.fastapi_app.add_api_route(
+            "/health_check_async", self.health_check, methods=["POST", "GET"]
         )
         self.fastapi_app.add_exception_handler(
             ValueError, self._handle_internal_http_error(400)
@@ -236,6 +263,9 @@ class AppServiceClient(ABC):
     def health_check(self):
         pass
 
+    async def health_check_async(self):
+        pass
+
     def close(self):
         pass
 
@@ -248,67 +278,147 @@ def get_service_client(
     service_client_type: Type[ASC],
     call_timeout: int | None = api_call_timeout,
     health_check: bool = True,
+    request_retry: bool = False,
 ) -> ASC:
+
+    def _maybe_retry(fn: Callable[..., R]) -> Callable[..., R]:
+        """Decorate *fn* with tenacity retry when enabled."""
+        if not request_retry:
+            return fn
+
+        # Use preconfigured retry decorator for service communication
+        return create_retry_decorator(
+            max_attempts=api_comm_retry,
+            max_wait=5.0,
+            context="Service communication",
+            exclude_exceptions=(
+                # Don't retry these specific exceptions that won't be fixed by retrying
+                ValueError,  # Invalid input/parameters
+                KeyError,  # Missing required data
+                TypeError,  # Wrong data types
+                AttributeError,  # Missing attributes
+                asyncio.CancelledError,  # Task was cancelled
+                concurrent.futures.CancelledError,  # Future was cancelled
+            ),
+        )(fn)
+
     class DynamicClient:
-        def __init__(self):
+        def __init__(self) -> None:
             service_type = service_client_type.get_service_type()
             host = service_type.get_host()
             port = service_type.get_port()
             self.base_url = f"http://{host}:{port}".rstrip("/")
+            self._connection_failure_count = 0
+            self._last_client_reset = 0
 
-        @cached_property
-        def sync_client(self) -> httpx.Client:
+        def _create_sync_client(self) -> httpx.Client:
             return httpx.Client(
                 base_url=self.base_url,
                 timeout=call_timeout,
+                limits=httpx.Limits(
+                    max_keepalive_connections=200,  # 10x default for async concurrent calls
+                    max_connections=500,  # High limit for burst handling
+                    keepalive_expiry=30.0,  # Keep connections alive longer
+                ),
             )
 
-        @cached_property
-        def async_client(self) -> httpx.AsyncClient:
+        def _create_async_client(self) -> httpx.AsyncClient:
             return httpx.AsyncClient(
                 base_url=self.base_url,
                 timeout=call_timeout,
+                limits=httpx.Limits(
+                    max_keepalive_connections=200,  # 10x default for async concurrent calls
+                    max_connections=500,  # High limit for burst handling
+                    keepalive_expiry=30.0,  # Keep connections alive longer
+                ),
             )
 
+        @cached_property
+        def sync_client(self) -> httpx.Client:
+            return self._create_sync_client()
+
+        @cached_property
+        def async_client(self) -> httpx.AsyncClient:
+            return self._create_async_client()
+
+        def _handle_connection_error(self, error: Exception) -> None:
+            """Handle connection errors and implement self-healing"""
+            self._connection_failure_count += 1
+            current_time = time.time()
+
+            # If we've had 3+ failures, and it's been more than 30 seconds since last reset
+            if (
+                self._connection_failure_count >= 3
+                and current_time - self._last_client_reset > 30
+            ):
+
+                logger.warning(
+                    f"Connection failures detected ({self._connection_failure_count}), recreating HTTP clients"
+                )
+
+                # Clear cached clients to force recreation on next access
+                # Only recreate when there's actually a problem
+                if hasattr(self, "sync_client"):
+                    delattr(self, "sync_client")
+                if hasattr(self, "async_client"):
+                    delattr(self, "async_client")
+
+                # Reset counters
+                self._connection_failure_count = 0
+                self._last_client_reset = current_time
+
         def _handle_call_method_response(
-            self, response: httpx.Response, method_name: str
+            self, *, response: httpx.Response, method_name: str
         ) -> Any:
             try:
                 response.raise_for_status()
+                # Reset failure count on successful response
+                self._connection_failure_count = 0
                 return response.json()
             except httpx.HTTPStatusError as e:
-                logger.error(f"HTTP error in {method_name}: {e.response.text}")
                 error = RemoteCallError.model_validate(e.response.json())
                 # DEBUG HELP: if you made a custom exception, make sure you override self.args to be how to make your exception
                 raise EXCEPTION_MAPPING.get(error.type, Exception)(
                     *(error.args or [str(e)])
                 )
 
-        def _call_method_sync(self, method_name: str, **kwargs) -> Any:
-            return self._handle_call_method_response(
-                method_name=method_name,
-                response=self.sync_client.post(method_name, json=to_dict(kwargs)),
-            )
+        @_maybe_retry
+        def _call_method_sync(self, method_name: str, **kwargs: Any) -> Any:
+            try:
+                return self._handle_call_method_response(
+                    method_name=method_name,
+                    response=self.sync_client.post(method_name, json=to_dict(kwargs)),
+                )
+            except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+                self._handle_connection_error(e)
+                raise
 
-        async def _call_method_async(self, method_name: str, **kwargs) -> Any:
-            return self._handle_call_method_response(
-                method_name=method_name,
-                response=await self.async_client.post(
-                    method_name, json=to_dict(kwargs)
-                ),
-            )
+        @_maybe_retry
+        async def _call_method_async(self, method_name: str, **kwargs: Any) -> Any:
+            try:
+                return self._handle_call_method_response(
+                    method_name=method_name,
+                    response=await self.async_client.post(
+                        method_name, json=to_dict(kwargs)
+                    ),
+                )
+            except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+                self._handle_connection_error(e)
+                raise
 
-        async def aclose(self):
+        async def aclose(self) -> None:
             self.sync_client.close()
             await self.async_client.aclose()
 
-        def close(self):
+        def close(self) -> None:
             self.sync_client.close()
 
-        def _get_params(self, signature: inspect.Signature, *args, **kwargs) -> dict:
+        def _get_params(
+            self, signature: inspect.Signature, *args: Any, **kwargs: Any
+        ) -> dict[str, Any]:
             if args:
                 arg_names = list(signature.parameters.keys())
-                if arg_names[0] in ("self", "cls"):
+                if arg_names and arg_names[0] in ("self", "cls"):
                     arg_names = arg_names[1:]
                 kwargs.update(dict(zip(arg_names, args)))
             return kwargs
@@ -324,35 +434,34 @@ def get_service_client(
                 raise AttributeError(
                     f"Method {name} not found in {service_client_type}"
                 )
-            else:
-                name = original_func.__name__
 
+            rpc_name = original_func.__name__
             sig = inspect.signature(original_func)
             ret_ann = sig.return_annotation
-            if ret_ann != inspect.Signature.empty:
-                expected_return = TypeAdapter(ret_ann)
-            else:
-                expected_return = None
+            expected_return = (
+                None if ret_ann is inspect.Signature.empty else TypeAdapter(ret_ann)
+            )
 
             if inspect.iscoroutinefunction(original_func):
 
-                async def async_method(*args, **kwargs) -> Any:
+                async def async_method(*args: P.args, **kwargs: P.kwargs):
                     params = self._get_params(sig, *args, **kwargs)
-                    result = await self._call_method_async(name, **params)
+                    result = await self._call_method_async(rpc_name, **params)
                     return self._get_return(expected_return, result)
 
                 return async_method
+
             else:
 
-                def sync_method(*args, **kwargs) -> Any:
+                def sync_method(*args: P.args, **kwargs: P.kwargs):
                     params = self._get_params(sig, *args, **kwargs)
-                    result = self._call_method_sync(name, **params)
+                    result = self._call_method_sync(rpc_name, **params)
                     return self._get_return(expected_return, result)
 
                 return sync_method
 
     client = cast(ASC, DynamicClient())
-    if health_check:
+    if health_check and hasattr(client, "health_check"):
         client.health_check()
 
     return client

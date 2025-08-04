@@ -59,12 +59,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=1000,
         description="Maximum number of workers to use for graph execution.",
     )
-    num_node_workers: int = Field(
-        default=5,
-        ge=1,
-        le=1000,
-        description="Maximum number of workers to use for node execution within a single graph.",
-    )
     pyro_host: str = Field(
         default="localhost",
         description="The default hostname of the Pyro server.",
@@ -74,7 +68,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The default timeout in seconds, for Pyro client connections.",
     )
     pyro_client_comm_retry: int = Field(
-        default=3,
+        default=5,
         description="The default number of retries for Pyro client connections.",
     )
     rpc_client_call_timeout: int = Field(
@@ -128,6 +122,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     execution_late_notification_checkrange_secs: int = Field(
         default=60 * 60,
         description="Time in seconds for how far back to check for the late executions.",
+    )
+
+    block_error_rate_threshold: float = Field(
+        default=0.5,
+        description="Error rate threshold (0.0-1.0) for triggering block error alerts.",
+    )
+    block_error_rate_check_interval_secs: int = Field(
+        default=24 * 60 * 60,  # 24 hours
+        description="Interval in seconds between block error rate checks.",
+    )
+    block_error_include_top_blocks: int = Field(
+        default=3,
+        description="Number of top blocks with most errors to show when no blocks exceed threshold (0 to disable).",
     )
 
     model_config = SettingsConfigDict(
@@ -244,6 +251,50 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The Discord channel for the platform",
     )
 
+    clamav_service_host: str = Field(
+        default="localhost",
+        description="The host for the ClamAV daemon",
+    )
+    clamav_service_port: int = Field(
+        default=3310,
+        description="The port for the ClamAV daemon",
+    )
+    clamav_service_timeout: int = Field(
+        default=60,
+        description="The timeout in seconds for the ClamAV daemon",
+    )
+    clamav_service_enabled: bool = Field(
+        default=True,
+        description="Whether virus scanning is enabled or not",
+    )
+    clamav_max_concurrency: int = Field(
+        default=10,
+        description="The maximum number of concurrent scans to perform",
+    )
+    clamav_mark_failed_scans_as_clean: bool = Field(
+        default=False,
+        description="Whether to mark failed scans as clean or not",
+    )
+
+    enable_example_blocks: bool = Field(
+        default=False,
+        description="Whether to enable example blocks in production",
+    )
+
+    cloud_storage_cleanup_interval_hours: int = Field(
+        default=6,
+        ge=1,
+        le=24,
+        description="Hours between cloud storage cleanup runs (1-24 hours)",
+    )
+
+    upload_file_size_limit_mb: int = Field(
+        default=256,
+        ge=1,
+        le=1024,
+        description="Maximum file size in MB for file uploads (1-1024 MB)",
+    )
+
     @field_validator("platform_base_url", "frontend_base_url")
     @classmethod
     def validate_platform_base_url(cls, v: str, info: ValidationInfo) -> str:
@@ -276,6 +327,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     trust_endpoints_for_requests: List[str] = Field(
         default_factory=list,
         description="A whitelist of trusted internal endpoints for the backend to make requests to.",
+    )
+
+    max_message_size_limit: int = Field(
+        default=16 * 1024 * 1024,  # 16 MB
+        description="Maximum message size limit for communication with the message bus",
     )
 
     backend_cors_allow_origins: List[str] = Field(default_factory=list)
@@ -385,6 +441,7 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     )
 
     openai_api_key: str = Field(default="", description="OpenAI API key")
+    aiml_api_key: str = Field(default="", description="'AI/ML API' key")
     anthropic_api_key: str = Field(default="", description="Anthropic API key")
     groq_api_key: str = Field(default="", description="Groq API key")
     open_router_api_key: str = Field(default="", description="Open Router API Key")
@@ -440,6 +497,8 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     zerobounce_api_key: str = Field(default="", description="ZeroBounce API Key")
     proxycurl_api_key: str = Field(default="", description="Proxycurl API Key")
 
+    ayrshare_api_key: str = Field(default="", description="Ayrshare API Key")
+    ayrshare_jwt_key: str = Field(default="", description="Ayrshare private Key")
     # Add more secret fields as needed
     model_config = SettingsConfigDict(
         env_file=".env",

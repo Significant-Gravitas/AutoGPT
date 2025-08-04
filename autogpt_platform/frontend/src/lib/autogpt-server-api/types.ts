@@ -24,7 +24,7 @@ export enum BlockCostType {
 export type BlockCost = {
   cost_amount: number;
   cost_type: BlockCostType;
-  cost_filter: { [key: string]: any };
+  cost_filter: Record<string, any>;
 };
 
 /* Mirror of backend/data/block.py:Block */
@@ -37,14 +37,12 @@ export type Block = {
   outputSchema: BlockIORootSchema;
   staticOutput: boolean;
   uiType: BlockUIType;
-  uiKey?: string;
   costs: BlockCost[];
-  hardcodedValues: { [key: string]: any } | null;
 };
 
 export type BlockIORootSchema = {
   type: "object";
-  properties: { [key: string]: BlockIOSubSchema };
+  properties: Record<string, BlockIOSubSchema>;
   required?: (keyof BlockIORootSchema["properties"])[];
   additionalProperties?: { type: string };
 };
@@ -93,9 +91,9 @@ export type BlockIOSubSchemaMeta = {
 
 export type BlockIOObjectSubSchema = BlockIOSubSchemaMeta & {
   type: "object";
-  properties: { [key: string]: BlockIOSubSchema };
-  const?: { [key: keyof BlockIOObjectSubSchema["properties"]]: any };
-  default?: { [key: keyof BlockIOObjectSubSchema["properties"]]: any };
+  properties: Record<string, BlockIOSubSchema>;
+  const?: Record<keyof BlockIOObjectSubSchema["properties"], any>;
+  default?: Record<keyof BlockIOObjectSubSchema["properties"], any>;
   required?: (keyof BlockIOObjectSubSchema["properties"])[];
   secret?: boolean;
 };
@@ -103,8 +101,8 @@ export type BlockIOObjectSubSchema = BlockIOSubSchemaMeta & {
 export type BlockIOKVSubSchema = BlockIOSubSchemaMeta & {
   type: "object";
   additionalProperties?: { type: "string" | "number" | "integer" };
-  const?: { [key: string]: string | number };
-  default?: { [key: string]: string | number };
+  const?: Record<string, string | number>;
+  default?: Record<string, string | number>;
   secret?: boolean;
 };
 
@@ -140,57 +138,28 @@ export type BlockIOBooleanSubSchema = BlockIOSubSchemaMeta & {
   secret?: boolean;
 };
 
-export type CredentialsType = "api_key" | "oauth2" | "user_password";
+export type CredentialsType =
+  | "api_key"
+  | "oauth2"
+  | "user_password"
+  | "host_scoped";
 
 export type Credentials =
   | APIKeyCredentials
   | OAuth2Credentials
-  | UserPasswordCredentials;
+  | UserPasswordCredentials
+  | HostScopedCredentials;
 
 // --8<-- [start:BlockIOCredentialsSubSchema]
-export const PROVIDER_NAMES = {
-  ANTHROPIC: "anthropic",
-  APOLLO: "apollo",
-  D_ID: "d_id",
-  DISCORD: "discord",
-  E2B: "e2b",
-  EXA: "exa",
-  FAL: "fal",
-  GITHUB: "github",
-  GOOGLE: "google",
-  GOOGLE_MAPS: "google_maps",
-  GROQ: "groq",
-  HUBSPOT: "hubspot",
-  IDEOGRAM: "ideogram",
-  JINA: "jina",
-  LINEAR: "linear",
-  MEDIUM: "medium",
-  MEM0: "mem0",
-  NOTION: "notion",
-  NVIDIA: "nvidia",
-  OLLAMA: "ollama",
-  OPENAI: "openai",
-  OPENWEATHERMAP: "openweathermap",
-  PROXYCURL: "proxycurl",
-  OPEN_ROUTER: "open_router",
-  LLAMA_API: "llama_api",
-  PINECONE: "pinecone",
-  SCREENSHOTONE: "screenshotone",
-  SLANT3D: "slant3d",
-  SMARTLEAD: "smartlead",
-  SMTP: "smtp",
-  TWITTER: "twitter",
-  REPLICATE: "replicate",
-  REDDIT: "reddit",
-  REVID: "revid",
-  UNREAL_SPEECH: "unreal_speech",
-  TODOIST: "todoist",
-  ZEROBOUNCE: "zerobounce",
-} as const;
-// --8<-- [end:BlockIOCredentialsSubSchema]
+// Provider names are now dynamic and fetched from the API
+// This allows for SDK-registered providers without hardcoding
+export type CredentialsProviderName = string;
 
-export type CredentialsProviderName =
-  (typeof PROVIDER_NAMES)[keyof typeof PROVIDER_NAMES];
+// For backward compatibility, we'll keep PROVIDER_NAMES but it should be
+// populated dynamically from the API. This is a placeholder that will be
+// replaced with actual values from the /api/integrations/providers endpoint
+export const PROVIDER_NAMES = {} as Record<string, string>;
+// --8<-- [end:BlockIOCredentialsSubSchema]
 
 export type BlockIOCredentialsSubSchema = BlockIOObjectSubSchema & {
   /* Mirror of backend/data/model.py:CredentialsFieldSchemaExtra */
@@ -198,7 +167,8 @@ export type BlockIOCredentialsSubSchema = BlockIOObjectSubSchema & {
   credentials_scopes?: string[];
   credentials_types: Array<CredentialsType>;
   discriminator?: string;
-  discriminator_mapping?: { [key: string]: CredentialsProviderName };
+  discriminator_mapping?: Record<string, CredentialsProviderName>;
+  discriminator_values?: any[];
   secret?: boolean;
 };
 
@@ -243,17 +213,20 @@ export type BlockIODiscriminatedOneOfSubSchema = {
   secret?: boolean;
 };
 
-/* Mirror of backend/data/graph.py:Node */
-export type Node = {
+export type NodeCreatable = {
   id: string;
   block_id: string;
-  input_default: { [key: string]: any };
-  input_nodes: Array<{ name: string; node_id: string }>;
-  output_nodes: Array<{ name: string; node_id: string }>;
+  input_default: Record<string, any>;
   metadata: {
     position: { x: number; y: number };
     [key: string]: any;
   };
+};
+
+/* Mirror of backend/data/graph.py:Node */
+export type Node = NodeCreatable & {
+  input_links: Link[];
+  output_links: Link[];
   webhook?: Webhook;
 };
 
@@ -278,7 +251,13 @@ export type GraphExecutionMeta = {
   graph_id: GraphID;
   graph_version: number;
   preset_id?: LibraryAgentPresetID;
-  status: "QUEUED" | "RUNNING" | "COMPLETED" | "TERMINATED" | "FAILED";
+  status:
+    | "QUEUED"
+    | "RUNNING"
+    | "COMPLETED"
+    | "TERMINATED"
+    | "FAILED"
+    | "INCOMPLETE";
   started_at: Date;
   ended_at: Date;
   stats?: {
@@ -289,6 +268,7 @@ export type GraphExecutionMeta = {
     node_exec_time: number;
     node_exec_time_cpu_only: number;
     node_exec_count: number;
+    activity_status?: string;
   };
 };
 
@@ -301,6 +281,7 @@ export type GraphExecution = GraphExecutionMeta & {
   node_executions?: NodeExecutionResult[];
 };
 
+/* Mirror of backend/data/graph.py:GraphMeta */
 export type GraphMeta = {
   id: GraphID;
   user_id: UserID;
@@ -312,11 +293,8 @@ export type GraphMeta = {
   forked_from_version?: number | null;
   input_schema: GraphIOSchema;
   output_schema: GraphIOSchema;
-  credentials_input_schema: {
-    type: "object";
-    properties: { [key: string]: BlockIOCredentialsSubSchema };
-    required: (keyof GraphMeta["credentials_input_schema"]["properties"])[];
-  };
+  has_external_trigger: boolean;
+  credentials_input_schema: CredentialsInputSchema;
 };
 
 export type GraphID = Brand<string, "GraphID">;
@@ -324,7 +302,7 @@ export type GraphID = Brand<string, "GraphID">;
 /* Derived from backend/data/graph.py:Graph._generate_schema() */
 export type GraphIOSchema = {
   type: "object";
-  properties: { [key: string]: GraphIOSubSchema };
+  properties: Record<string, GraphIOSubSchema>;
   required: (keyof BlockIORootSchema["properties"])[];
 };
 export type GraphIOSubSchema = Omit<
@@ -337,11 +315,16 @@ export type GraphIOSubSchema = Omit<
   metadata?: any;
 };
 
+export type CredentialsInputSchema = {
+  type: "object";
+  properties: Record<string, BlockIOCredentialsSubSchema>;
+  required: (keyof CredentialsInputSchema["properties"])[];
+};
+
 /* Mirror of backend/data/graph.py:Graph */
 export type Graph = GraphMeta & {
   nodes: Array<Node>;
   links: Array<Link>;
-  has_webhook_trigger: boolean;
 };
 
 export type GraphUpdateable = Omit<
@@ -349,14 +332,16 @@ export type GraphUpdateable = Omit<
   | "user_id"
   | "version"
   | "is_active"
+  | "nodes"
   | "links"
   | "input_schema"
   | "output_schema"
   | "credentials_input_schema"
-  | "has_webhook_trigger"
+  | "has_external_trigger"
 > & {
   version?: number;
   is_active?: boolean;
+  nodes: Array<NodeCreatable>;
   links: Array<LinkCreatable>;
   input_schema?: GraphIOSchema;
   output_schema?: GraphIOSchema;
@@ -379,8 +364,8 @@ export type NodeExecutionResult = {
     | "COMPLETED"
     | "TERMINATED"
     | "FAILED";
-  input_data: { [key: string]: any };
-  output_data: { [key: string]: Array<any> };
+  input_data: Record<string, any>;
+  output_data: Record<string, Array<any>>;
   add_time: Date;
   queue_time?: Date;
   start_time?: Date;
@@ -401,13 +386,29 @@ export type LibraryAgent = {
   updated_at: Date;
   name: string;
   description: string;
-  input_schema: BlockIOObjectSubSchema;
+  input_schema: GraphIOSchema;
+  credentials_input_schema: CredentialsInputSchema;
   new_output: boolean;
   can_access_graph: boolean;
   is_latest_version: boolean;
-};
+} & (
+  | {
+      has_external_trigger: true;
+      trigger_setup_info: LibraryAgentTriggerInfo;
+    }
+  | {
+      has_external_trigger: false;
+      trigger_setup_info?: undefined;
+    }
+);
 
 export type LibraryAgentID = Brand<string, "LibraryAgentID">;
+
+export type LibraryAgentTriggerInfo = {
+  provider: CredentialsProviderName;
+  config_schema: BlockIORootSchema;
+  credentials_input_name?: string;
+};
 
 export enum AgentStatus {
   COMPLETED = "COMPLETED",
@@ -431,10 +432,12 @@ export type LibraryAgentPreset = {
   updated_at: Date;
   graph_id: GraphID;
   graph_version: number;
-  inputs: { [key: string]: any };
+  inputs: Record<string, any>;
+  credentials: Record<string, CredentialsMetaInput>;
   name: string;
   description: string;
   is_active: boolean;
+  webhook_id?: string;
 };
 
 export type LibraryAgentPresetID = Brand<string, "LibraryAgentPresetID">;
@@ -481,6 +484,7 @@ export type CredentialsMetaResponse = {
   title?: string;
   scopes?: Array<string>;
   username?: string;
+  host?: string;
 };
 
 /* Mirror of backend/server/integrations/router.py:CredentialsDeletionResponse */
@@ -539,6 +543,14 @@ export type UserPasswordCredentials = BaseCredentials & {
   password: string;
 };
 
+/* Mirror of backend/backend/data/model.py:HostScopedCredentials */
+export type HostScopedCredentials = BaseCredentials & {
+  type: "host_scoped";
+  title: string;
+  host: string;
+  headers: Record<string, string>;
+};
+
 // Mirror of backend/backend/data/notifications.py:NotificationType
 export type NotificationType =
   | "AGENT_RUN"
@@ -593,6 +605,7 @@ export enum BlockUIType {
   WEBHOOK_MANUAL = "Webhook (manual)",
   AGENT = "Agent",
   AI = "AI",
+  AYRSHARE = "Ayrshare",
 }
 
 export enum SpecialBlockID {
@@ -609,7 +622,7 @@ export type AnalyticsMetrics = {
 
 export type AnalyticsDetails = {
   type: string;
-  data: { [key: string]: any };
+  data: Record<string, any>;
   index: string;
 };
 
@@ -630,6 +643,7 @@ export type StoreAgent = {
   description: string;
   runs: number;
   rating: number;
+  updated_at: string;
 };
 
 export type StoreAgentsResponse = {
@@ -734,6 +748,7 @@ export type ProfileDetails = {
   avatar_url: string;
 };
 
+/* Mirror of backend/executor/scheduler.py:GraphExecutionJobInfo */
 export type Schedule = {
   id: ScheduleID;
   name: string;
@@ -741,17 +756,21 @@ export type Schedule = {
   user_id: UserID;
   graph_id: GraphID;
   graph_version: number;
-  input_data: { [key: string]: any };
+  input_data: Record<string, any>;
+  input_credentials: Record<string, CredentialsMetaInput>;
   next_run_time: Date;
 };
 
 export type ScheduleID = Brand<string, "ScheduleID">;
 
+/* Mirror of backend/server/routers/v1.py:ScheduleCreationRequest */
 export type ScheduleCreatable = {
-  cron: string;
   graph_id: GraphID;
   graph_version: number;
-  input_data: { [key: string]: any };
+  name: string;
+  cron: string;
+  inputs: Record<string, any>;
+  credentials?: Record<string, CredentialsMetaInput>;
 };
 
 export type MyAgent = {
@@ -874,7 +893,7 @@ export interface UserOnboarding {
   integrations: string[];
   otherIntegrations: string | null;
   selectedStoreListingVersionId: string | null;
-  agentInput: { [key: string]: string | number } | null;
+  agentInput: Record<string, string | number> | null;
   onboardingAgentExecutionId: GraphExecutionID | null;
   agentRuns: number;
 }

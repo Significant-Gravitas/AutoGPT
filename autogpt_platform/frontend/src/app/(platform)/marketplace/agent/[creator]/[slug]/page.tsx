@@ -6,7 +6,7 @@ import { AgentsSection } from "@/components/agptui/composite/AgentsSection";
 import { BecomeACreator } from "@/components/agptui/BecomeACreator";
 import { Separator } from "@/components/ui/separator";
 import { Metadata } from "next";
-import getServerUser from "@/lib/supabase/getServerUser";
+import { getServerUser } from "@/lib/supabase/server/getServerUser";
 
 // Force dynamic rendering to avoid static generation issues with cookies
 export const dynamic = "force-dynamic";

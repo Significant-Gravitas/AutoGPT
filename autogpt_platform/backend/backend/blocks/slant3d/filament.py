@@ -72,11 +72,11 @@ class Slant3DFilamentBlock(Slant3DBlockBase):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            result = self._make_request(
+            result = await self._make_request(
                 "GET", "filament", credentials.api_key.get_secret_value()
             )
             yield "filaments", result["filaments"]

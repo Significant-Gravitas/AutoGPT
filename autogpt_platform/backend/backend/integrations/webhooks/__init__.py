@@ -1,34 +1,31 @@
+import functools
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..providers import ProviderName
     from ._base import BaseWebhooksManager
 
-_WEBHOOK_MANAGERS: dict["ProviderName", type["BaseWebhooksManager"]] = {}
-
 
 # --8<-- [start:load_webhook_managers]
+@functools.cache
 def load_webhook_managers() -> dict["ProviderName", type["BaseWebhooksManager"]]:
-    if _WEBHOOK_MANAGERS:
-        return _WEBHOOK_MANAGERS
+    webhook_managers = {}
 
     from .compass import CompassWebhookManager
-    from .generic import GenericWebhooksManager
     from .github import GithubWebhooksManager
     from .slant3d import Slant3DWebhooksManager
 
-    _WEBHOOK_MANAGERS.update(
+    webhook_managers.update(
         {
             handler.PROVIDER_NAME: handler
             for handler in [
                 CompassWebhookManager,
                 GithubWebhooksManager,
                 Slant3DWebhooksManager,
-                GenericWebhooksManager,
             ]
         }
     )
-    return _WEBHOOK_MANAGERS
+    return webhook_managers
 
 
 # --8<-- [end:load_webhook_managers]

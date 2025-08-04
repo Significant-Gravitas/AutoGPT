@@ -1,4 +1,3 @@
-import asyncio
 import logging
 
 import sentry_sdk
@@ -31,7 +30,7 @@ def sentry_capture_error(error: Exception):
     sentry_sdk.flush()
 
 
-def discord_send_alert(content: str):
+async def discord_send_alert(content: str):
     from backend.blocks.discord import SendDiscordMessageBlock
     from backend.data.model import APIKeyCredentials, CredentialsMetaInput, ProviderName
     from backend.util.settings import Settings
@@ -44,13 +43,7 @@ def discord_send_alert(content: str):
         expires_at=None,
     )
 
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-    return SendDiscordMessageBlock().run_once(
+    return await SendDiscordMessageBlock().run_once(
         SendDiscordMessageBlock.Input(
             credentials=CredentialsMetaInput(
                 id=creds.id,

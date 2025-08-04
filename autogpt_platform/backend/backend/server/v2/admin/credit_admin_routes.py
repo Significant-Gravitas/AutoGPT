@@ -4,11 +4,11 @@ import typing
 from autogpt_libs.auth import requires_admin_user
 from autogpt_libs.auth.depends import get_user_id
 from fastapi import APIRouter, Body, Depends
-from prisma import Json
 from prisma.enums import CreditTransactionType
 
 from backend.data.credit import admin_get_user_history, get_user_credit_model
 from backend.server.v2.admin.model import AddUserCreditsResponse, UserHistoryResponse
+from backend.util.json import SafeJson
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,9 @@ router = APIRouter(
 )
 
 
-@router.post("/add_credits", response_model=AddUserCreditsResponse)
+@router.post(
+    "/add_credits", response_model=AddUserCreditsResponse, summary="Add Credits to User"
+)
 async def add_user_credits(
     user_id: typing.Annotated[str, Body()],
     amount: typing.Annotated[int, Body()],
@@ -38,7 +40,7 @@ async def add_user_credits(
         user_id,
         amount,
         transaction_type=CreditTransactionType.GRANT,
-        metadata=Json({"admin_id": admin_user, "reason": comments}),
+        metadata=SafeJson({"admin_id": admin_user, "reason": comments}),
     )
     return {
         "new_balance": new_balance,
@@ -49,6 +51,7 @@ async def add_user_credits(
 @router.get(
     "/users_history",
     response_model=UserHistoryResponse,
+    summary="Get All Users History",
 )
 async def admin_get_all_user_history(
     admin_user: typing.Annotated[
