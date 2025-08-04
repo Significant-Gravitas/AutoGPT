@@ -499,7 +499,10 @@ export default function AgentRunsPage(): React.ReactElement {
       <div className="flex-1">
         {/* Header */}
         <div className="agpt-div w-full border-b">
-          <h1 className="font-poppins text-3xl font-medium">
+          <h1
+            data-testid="agent-title"
+            className="font-poppins text-3xl font-medium"
+          >
             {
               agent.name /* TODO: use dynamic/custom run title - https://github.com/Significant-Gravitas/AutoGPT/issues/9184 */
             }
