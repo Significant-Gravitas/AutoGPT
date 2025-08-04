@@ -655,6 +655,8 @@ class NodeExecutionStats(BaseModel):
     output_token_count: int = 0
     extra_cost: int = 0
     extra_steps: int = 0
+    cleared_inputs: Optional[dict[str, str]] = None
+    cleared_outputs: Optional[dict[str, str]] = None
 
     def __iadd__(self, other: "NodeExecutionStats") -> "NodeExecutionStats":
         """Mutate this instance by adding another NodeExecutionStats."""

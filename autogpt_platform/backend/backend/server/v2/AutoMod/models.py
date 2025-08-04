@@ -49,9 +49,3 @@ class ModerationConfig(BaseModel):
         default=False,
         description="If True, allow execution to continue if moderation fails",
     )
-    moderate_inputs: bool = Field(
-        default=True, description="Whether to moderate block inputs"
-    )
-    moderate_outputs: bool = Field(
-        default=True, description="Whether to moderate block outputs"
-    )

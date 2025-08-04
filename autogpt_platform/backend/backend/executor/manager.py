@@ -29,7 +29,7 @@ from backend.executor.activity_status_generator import (
 )
 from backend.executor.utils import LogMetadata, create_execution_queue_config
 from backend.notifications.notifications import queue_notification
-from backend.util.exceptions import InsufficientBalanceError
+from backend.util.exceptions import InsufficientBalanceError, ModerationError
 
 if TYPE_CHECKING:
     from backend.executor import DatabaseManagerClient, DatabaseManagerAsyncClient
@@ -746,15 +746,17 @@ class Executor:
                 )
 
             # Input moderation
-            moderation_success, moderation_error = (
+            db_async_client = get_db_async_client()
+            moderation_error = asyncio.run_coroutine_threadsafe(
                 automod_manager.moderate_graph_execution_inputs(
-                    db_client=db_client,
+                    db_client=db_async_client,
                     graph_exec=graph_exec,
-                    event_loop=cls.node_evaluation_loop,
-                    send_update_func=send_execution_update,
-                )
-            )
-            if not moderation_success:
+                    send_update_func=send_async_execution_update,
+                ),
+                cls.node_evaluation_loop,
+            ).result()
+            
+            if moderation_error:
                 execution_status = ExecutionStatus.FAILED
                 error = moderation_error
                 return execution_stats, execution_status, error
@@ -898,17 +900,18 @@ class Executor:
             # loop done --------------------------------------------------
 
             # Output moderation
-            moderation_success, moderation_error = (
+            moderation_error = asyncio.run_coroutine_threadsafe(
                 automod_manager.moderate_graph_execution_outputs(
-                    db_client=db_client,
+                    db_client=db_async_client,
                     graph_exec_id=graph_exec.graph_exec_id,
                     user_id=graph_exec.user_id,
                     graph_id=graph_exec.graph_id,
-                    event_loop=cls.node_evaluation_loop,
-                    send_update_func=send_execution_update,
-                )
-            )
-            if not moderation_success:
+                    send_update_func=send_async_execution_update,
+                ),
+                cls.node_evaluation_loop,
+            ).result()
+            
+            if moderation_error:
                 execution_status = ExecutionStatus.FAILED
                 error = moderation_error
                 return execution_stats, execution_status, error

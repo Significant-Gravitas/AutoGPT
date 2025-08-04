@@ -31,3 +31,20 @@ class InsufficientBalanceError(ValueError):
     def __str__(self):
         """Used to display the error message in the frontend, because we str() the error when sending the execution update"""
         return self.message
+
+
+class ModerationError(ValueError):
+    user_id: str
+    message: str
+    graph_exec_id: str
+
+    def __init__(self, message: str, user_id: str, graph_exec_id: str):
+        super().__init__(message)
+        self.args = (message, user_id, graph_exec_id)
+        self.message = message
+        self.user_id = user_id
+        self.graph_exec_id = graph_exec_id
+
+    def __str__(self):
+        """Used to display the error message in the frontend, because we str() the error when sending the execution update"""
+        return self.message

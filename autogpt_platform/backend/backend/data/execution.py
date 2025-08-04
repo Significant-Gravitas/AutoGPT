@@ -41,6 +41,7 @@ from backend.util import type as type_utils
 from backend.util.json import SafeJson
 from backend.util.settings import Config
 from backend.util.truncate import truncate
+from backend.data.model import NodeExecutionStats
 
 from .block import (
     BlockInput,
@@ -317,8 +318,8 @@ class NodeExecutionResult(BaseModel):
 
     @staticmethod
     def from_db(_node_exec: AgentNodeExecution, user_id: Optional[str] = None):
-        # Check if this execution was cleared due to moderation
-        stats = type_utils.convert(_node_exec.stats, dict) if _node_exec.stats else {}
+        # Extract execution stats using Pydantic validation
+        stats = NodeExecutionStats.model_validate(_node_exec.stats or {})
 
         if _node_exec.executionData:
             # Execution that has been queued for execution will persist its data.
@@ -330,16 +331,16 @@ class NodeExecutionResult(BaseModel):
                 input_data[data.name] = type_utils.convert(data.data, type[Any])
 
         # Check if inputs should be cleared due to moderation
-        if stats.get("moderation_cleared") and stats.get("cleared_inputs"):
+        if stats.cleared_inputs:
             # Replace input data with moderation messages
-            for name, message in stats["cleared_inputs"].items():
+            for name, message in stats.cleared_inputs.items():
                 input_data[name] = message
 
         output_data: CompletedBlockOutput = defaultdict(list)
 
-        if stats.get("moderation_cleared") and stats.get("cleared_outputs"):
+        if stats.cleared_outputs:
             # Use the cleared outputs instead of actual output data
-            for name, message in stats["cleared_outputs"].items():
+            for name, message in stats.cleared_outputs.items():
                 output_data[name].append(message)
         else:
             # Normal case - use actual output data

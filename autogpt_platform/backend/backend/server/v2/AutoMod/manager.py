@@ -1,10 +1,11 @@
 import asyncio
 import json
 import logging
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
-import aiohttp
 from pydantic import ValidationError
+
+from backend.util.request import Requests
 
 from backend.data.execution import ExecutionStatus
 from backend.server.v2.AutoMod.models import (
@@ -12,6 +13,7 @@ from backend.server.v2.AutoMod.models import (
     AutoModResponse,
     ModerationConfig,
 )
+from backend.util.exceptions import ModerationError
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -33,29 +35,27 @@ class AutoModManager:
             retry_attempts=settings.config.automod_retry_attempts,
             retry_delay=settings.config.automod_retry_delay,
             fail_open=settings.config.automod_fail_open,
-            moderate_inputs=settings.config.automod_moderate_inputs,
-            moderate_outputs=settings.config.automod_moderate_outputs,
         )
 
-    def moderate_graph_execution_inputs(
-        self, db_client, graph_exec, event_loop, send_update_func, timeout: int = 10
-    ) -> Tuple[bool, Exception | None]:
+    async def moderate_graph_execution_inputs(
+        self, db_client, graph_exec, send_update_func, timeout: int = 10
+    ) -> Exception | None:
         """
         Complete input moderation flow for graph execution
-        Returns: (success, error_if_failed)
+        Returns: Exception if moderation failed, None if passed
         """
-        if not self.config.moderate_inputs or not self.config.enabled:
-            return True, None
+        if not self.config.enabled:
+            return None
 
         # Get graph model and collect all inputs
-        graph_model = db_client.get_graph(
+        graph_model = await db_client.get_graph(
             graph_exec.graph_id,
             user_id=graph_exec.user_id,
             version=graph_exec.graph_version,
         )
 
         if not graph_model or not graph_model.nodes:
-            return True, None
+            return None
 
         all_inputs = []
         for node in graph_model.nodes:
@@ -65,29 +65,26 @@ class AutoModManager:
                 all_inputs.extend(str(v) for v in mask.values() if v)
 
         if not all_inputs:
-            return True, None
+            return None
 
         # Combine all content and moderate directly
         content = " ".join(all_inputs)
 
         # Run moderation
         try:
-            moderation_passed = asyncio.run_coroutine_threadsafe(
-                self._moderate_content(
-                    content,
-                    {
-                        "user_id": graph_exec.user_id,
-                        "graph_id": graph_exec.graph_id,
-                        "graph_exec_id": graph_exec.graph_exec_id,
-                        "moderation_type": "execution_input",
-                    },
-                ),
-                event_loop,
-            ).result(timeout=timeout)
+            moderation_passed = await self._moderate_content(
+                content,
+                {
+                    "user_id": graph_exec.user_id,
+                    "graph_id": graph_exec.graph_id,
+                    "graph_exec_id": graph_exec.graph_exec_id,
+                    "moderation_type": "execution_input",
+                },
+            )
 
             if not moderation_passed:
                 # Get existing executions to mark as failed
-                existing_executions = db_client.get_node_executions(
+                existing_executions = await db_client.get_node_executions(
                     graph_exec.graph_exec_id,
                     statuses=[
                         ExecutionStatus.QUEUED,
@@ -95,43 +92,76 @@ class AutoModManager:
                         ExecutionStatus.INCOMPLETE,
                     ],
                 )
-                self.handle_moderation_failure(
-                    db_client=db_client,
-                    executions=existing_executions,
-                    send_update_func=send_update_func,
-                )
-                return False, Exception("Execution failed due to content moderation")
+                
+                # Update execution stats before raising error
+                cleared_inputs = {}
+                cleared_outputs = {}
+                
+                for exec_entry in existing_executions:
+                    # Clear all inputs
+                    if exec_entry.input_data:
+                        for name in exec_entry.input_data.keys():
+                            cleared_inputs[name] = "Failed due to content moderation"
+                    # Clear all outputs
+                    if exec_entry.output_data:
+                        for name in exec_entry.output_data.keys():
+                            cleared_outputs[name] = "Failed due to content moderation"
 
-            return True, None
+                # Mark all as failed with clear moderation message and clear inputs and outputs
+                await db_client.update_node_execution_status_batch(
+                    [exec_entry.node_exec_id for exec_entry in existing_executions],
+                    status=ExecutionStatus.FAILED,
+                    stats={
+                        "error": "Failed due to content moderation",
+                        "cleared_outputs": cleared_outputs,
+                        "cleared_inputs": cleared_inputs,
+                    },
+                )
+
+                # Send websocket updates for each failed node to update the UI
+                for exec_entry in existing_executions:
+                    if updated_exec := await db_client.get_node_execution(exec_entry.node_exec_id):
+                        await send_update_func(updated_exec)
+                
+                return ModerationError(
+                    "Execution failed due to content moderation",
+                    graph_exec.user_id,
+                    graph_exec.graph_exec_id,
+                )
+
+            return None
 
         except Exception as e:
             logger.error(f"Input moderation execution failed: {e}")
-            return False, Exception("Execution failed due to content moderation")
+            return ModerationError(
+                "Execution failed due to content moderation",
+                graph_exec.user_id,
+                graph_exec.graph_exec_id,
+            )
 
-    def moderate_graph_execution_outputs(
+    async def moderate_graph_execution_outputs(
         self,
         db_client,
         graph_exec_id: str,
         user_id: str,
         graph_id: str,
-        event_loop,
         send_update_func,
         timeout: int = 10,
-    ) -> Tuple[bool, Exception | None]:
+    ) -> Exception | None:
         """
         Complete output moderation flow for graph execution
-        Returns: (success, error_if_failed)
+        Returns: Exception if moderation failed, None if passed
         """
-        if not self.config.moderate_outputs or not self.config.enabled:
-            return True, None
+        if not self.config.enabled:
+            return None
 
         # Get completed executions and collect outputs
-        completed_executions = db_client.get_node_executions(
+        completed_executions = await db_client.get_node_executions(
             graph_exec_id, statuses=[ExecutionStatus.COMPLETED], include_exec_data=True
         )
 
         if not completed_executions:
-            return True, None
+            return None
 
         all_outputs = []
         for exec_entry in completed_executions:
@@ -139,87 +169,70 @@ class AutoModManager:
                 all_outputs.extend(str(v) for v in exec_entry.output_data.values() if v)
 
         if not all_outputs:
-            return True, None
+            return None
 
         # Combine all content and moderate directly
         content = " ".join(all_outputs)
 
         # Run moderation
         try:
-            moderation_passed = asyncio.run_coroutine_threadsafe(
-                self._moderate_content(
-                    content,
-                    {
-                        "user_id": user_id,
-                        "graph_id": graph_id,
-                        "graph_exec_id": graph_exec_id,
-                        "moderation_type": "execution_output",
-                    },
-                ),
-                event_loop,
-            ).result(timeout=timeout)
+            moderation_passed = await self._moderate_content(
+                content,
+                {
+                    "user_id": user_id,
+                    "graph_id": graph_id,
+                    "graph_exec_id": graph_exec_id,
+                    "moderation_type": "execution_output",
+                },
+            )
 
             if not moderation_passed:
-                self.handle_moderation_failure(
-                    db_client=db_client,
-                    executions=completed_executions,
-                    send_update_func=send_update_func,
-                )
-                return False, Exception("Execution failed due to content moderation")
+                # Update execution stats before raising error
+                cleared_inputs = {}
+                cleared_outputs = {}
+                
+                for exec_entry in completed_executions:
+                    # Clear all inputs
+                    if exec_entry.input_data:
+                        for name in exec_entry.input_data.keys():
+                            cleared_inputs[name] = "Failed due to content moderation"
+                    # Clear all outputs
+                    if exec_entry.output_data:
+                        for name in exec_entry.output_data.keys():
+                            cleared_outputs[name] = "Failed due to content moderation"
 
-            return True, None
+                # Mark all as failed with clear moderation message and clear inputs and outputs
+                await db_client.update_node_execution_status_batch(
+                    [exec_entry.node_exec_id for exec_entry in completed_executions],
+                    status=ExecutionStatus.FAILED,
+                    stats={
+                        "error": "Failed due to content moderation",
+                        "cleared_outputs": cleared_outputs,
+                        "cleared_inputs": cleared_inputs,
+                    },
+                )
+
+                # Send websocket updates for each failed node to update the UI
+                for exec_entry in completed_executions:
+                    if updated_exec := await db_client.get_node_execution(exec_entry.node_exec_id):
+                        await send_update_func(updated_exec)
+                
+                return ModerationError(
+                    "Execution failed due to content moderation",
+                    user_id,
+                    graph_exec_id,
+                )
+
+            return None
 
         except Exception as e:
             logger.error(f"Output moderation execution failed: {e}")
-            return False, Exception("Execution failed due to content moderation")
+            return ModerationError(
+                "Execution failed due to content moderation",
+                user_id,
+                graph_exec_id,
+            )
 
-    def handle_moderation_failure(self, db_client, executions: List, send_update_func):
-        """Handle moderation failure by updating executions and sending websocket updates"""
-        if not executions:
-            return
-
-        # Collect all input and output names from the executions to clear
-        cleared_inputs = {}
-        cleared_outputs = {}
-
-        for exec_entry in executions:
-            # Clear all inputs
-            if exec_entry.input_data:
-                for name in exec_entry.input_data.keys():
-                    cleared_inputs[name] = "Failed due to content moderation"
-
-            # Clear all outputs
-            if exec_entry.output_data:
-                for name in exec_entry.output_data.keys():
-                    cleared_outputs[name] = "Failed due to content moderation"
-
-        # Mark all as failed with clear moderation message and clear inputs and outputs
-        db_client.update_node_execution_status_batch(
-            [exec_entry.node_exec_id for exec_entry in executions],
-            status=ExecutionStatus.FAILED,
-            stats={
-                "error": "Failed due to content moderation",
-                "moderation_cleared": True,
-                "cleared_outputs": cleared_outputs,
-                "cleared_inputs": cleared_inputs,
-            },
-        )
-
-        # Send websocket updates for each failed node to update the UI
-        for exec_entry in executions:
-            if updated_exec := db_client.get_node_execution(exec_entry.node_exec_id):
-                send_update_func(updated_exec)
-
-    def _extract_text_simple(self, data: Any) -> str:
-        """Extract text content simply - just convert to string"""
-        if isinstance(data, str):
-            return data
-        elif isinstance(data, dict):
-            return " ".join(str(v) for v in data.values() if v)
-        elif isinstance(data, list):
-            return " ".join(str(item) for item in data if item)
-        else:
-            return str(data) if data else ""
 
     async def _moderate_content(self, content: str, metadata: Dict[str, Any]) -> bool:
         """Moderate content using AutoMod API"""
@@ -273,23 +286,30 @@ class AutoModManager:
             "X-API-Key": self.config.api_key,
         }
 
-        timeout = aiohttp.ClientTimeout(total=self.config.timeout)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(
-                url, headers=headers, json=request_data.model_dump()
-            ) as response:
-                response_text = await response.text()
-
-                if response.status != 200:
-                    raise Exception(
-                        f"AutoMod API returned status {response.status}: {response_text}"
-                    )
-
-                try:
-                    response_data = json.loads(response_text)
-                    return AutoModResponse.model_validate(response_data)
-                except (json.JSONDecodeError, ValidationError) as e:
-                    raise Exception(f"Invalid response from AutoMod API: {e}")
+        # Use the centralized request utility with SSRF protection and retry logic
+        requests = Requests(
+            trusted_origins=[self.config.api_url],
+            raise_for_status=True,
+            retry_max_wait=self.config.timeout,
+        )
+        
+        try:
+            response = await requests.post(
+                url, 
+                headers=headers, 
+                json=request_data.model_dump(),
+                timeout=self.config.timeout
+            )
+            
+            try:
+                response_data = response.json()
+                return AutoModResponse.model_validate(response_data)
+            except (json.JSONDecodeError, ValidationError) as e:
+                raise Exception(f"Invalid response from AutoMod API: {e}")
+                
+        except Exception as e:
+            # The Requests class already handles status errors, so this catches all other issues
+            raise Exception(f"AutoMod API request failed: {e}")
 
 
 # Global instance
