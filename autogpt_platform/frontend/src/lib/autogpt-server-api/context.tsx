@@ -20,10 +20,7 @@ export function BackendAPIProvider({
 }): React.ReactNode {
   const api = useMemo(() => new BackendAPI(), []);
 
-  if (
-    process.env.NEXT_PUBLIC_BEHAVE_AS == "LOCAL" &&
-    !isServerSide()
-  ) {
+  if (process.env.NEXT_PUBLIC_BEHAVE_AS == "LOCAL" && !isServerSide()) {
     window.api = api; // Expose the API globally for debugging purposes
   }
 

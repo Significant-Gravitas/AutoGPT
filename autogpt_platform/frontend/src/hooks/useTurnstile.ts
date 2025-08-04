@@ -80,12 +80,7 @@ export function useTurnstile({
     setError(null);
 
     // Only reset the actual Turnstile widget if it exists and shouldRender is true
-    if (
-      shouldRender &&
-      !isServerSide() &&
-      window.turnstile &&
-      widgetId
-    ) {
+    if (shouldRender && !isServerSide() && window.turnstile && widgetId) {
       try {
         window.turnstile.reset(widgetId);
       } catch (err) {
