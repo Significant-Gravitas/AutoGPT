@@ -930,6 +930,10 @@ class Executor:
                 f"Cancelled graph execution {graph_exec.graph_exec_id}: {error}"
             )
         except Exception as exc:
+            known_errors = (InsufficientBalanceError,)
+            if isinstance(error, known_errors):
+                return execution_stats, execution_status, error
+            
             execution_status = ExecutionStatus.FAILED
             error = exc
             log_metadata.exception(
