@@ -90,11 +90,11 @@ services:
       timeout: 10s
       retries: 3
 
-  #  frontend:
-  #    <<: *agpt-services
-  #    extends:
-  #      file: ./docker-compose.platform.yml
-  #      service: frontend
+  frontend:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: frontend
 
   # Supabase services
   studio:
