@@ -294,6 +294,7 @@ services:
     NEXT_PUBLIC_TURNSTILE: disabled
     NEXT_PUBLIC_REACT_QUERY_DEVTOOL: true
     NEXT_PUBLIC_GA_MEASUREMENT_ID: G-FH2XK2W4GN
+    NEXT_PUBLIC_PW_TEST: true
 
   frontend:
     build:
