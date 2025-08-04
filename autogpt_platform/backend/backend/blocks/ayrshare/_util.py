@@ -1,12 +1,28 @@
 from datetime import datetime
 from typing import Optional
 
+from autogpt_libs.utils.cache import thread_cached
 from pydantic import BaseModel, Field
 
 from backend.data.block import BlockSchema
-from backend.data.model import SchemaField
+from backend.data.model import SchemaField, UserIntegrations
 from backend.integrations.ayrshare import AyrshareClient
 from backend.util.exceptions import MissingConfigError
+
+
+@thread_cached
+def get_database_manager_client():
+    from backend.executor import DatabaseManagerAsyncClient
+    from backend.util.service import get_service_client
+
+    return get_service_client(DatabaseManagerAsyncClient, health_check=False)
+
+
+async def get_profile_key(user_id: str):
+    user_integrations: UserIntegrations = (
+        await get_database_manager_client().get_user_integrations(user_id)
+    )
+    return user_integrations.managed_credentials.ayrshare_profile_key
 
 
 class BaseAyrshareInput(BlockSchema):
