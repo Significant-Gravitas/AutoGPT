@@ -19,7 +19,7 @@ pyjwt = "^2.10.1"
 pytest-asyncio = "^1.1.0"
 pytest-mock = "^3.14.1"
 redis = "^6.2.0"
-supabase = "^2.16.0"
+supabase = "^2.17.0"
 uvicorn = "^0.35.0"
 
 [tool.poetry.group.dev.dependencies]

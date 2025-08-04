@@ -1180,18 +1180,19 @@ cli = ["click (>=5.0)"]
 
 [[package]]
 name = "realtime"
-version = "2.5.3"
+version = "2.6.0"
 description = ""
 optional = false
-python-versions = "<4.0,>=3.9"
+python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "realtime-2.5.3-py3-none-any.whl", hash = "sha256:eb0994636946eff04c4c7f044f980c8c633c7eb632994f549f61053a474ac970"},
-    {file = "realtime-2.5.3.tar.gz", hash = "sha256:0587594f3bc1c84bf007ff625075b86db6528843e03250dc84f4f2808be3d99a"},
+    {file = "realtime-2.6.0-py3-none-any.whl", hash = "sha256:a0512d71044c2621455bc87d1c171739967edc161381994de54e0989ca6c348e"},
+    {file = "realtime-2.6.0.tar.gz", hash = "sha256:f68743cff85d3113659fa19835a868674e720465649bf833e1cd47d7da0f7bbd"},
 ]
 
 [package.dependencies]
-typing-extensions = ">=4.14.0,<5.0.0"
+pydantic = ">=2.11.7,<3.0.0"
+typing-extensions = ">=4.14.0"
 websockets = ">=11,<16"
 
 [[package]]
@@ -1370,23 +1371,23 @@ test = ["pylint", "pytest", "pytest-black", "pytest-cov", "pytest-pylint"]
 
 [[package]]
 name = "supabase"
-version = "2.16.0"
+version = "2.17.0"
 description = "Supabase client for Python."
 optional = false
 python-versions = "<4.0,>=3.9"
 groups = ["main"]
 files = [
-    {file = "supabase-2.16.0-py3-none-any.whl", hash = "sha256:99065caab3d90a56650bf39fbd0e49740995da3738ab28706c61bd7f2401db55"},
-    {file = "supabase-2.16.0.tar.gz", hash = "sha256:98f3810158012d4ec0e3083f2e5515f5e10b32bd71e7d458662140e963c1d164"},
+    {file = "supabase-2.17.0-py3-none-any.whl", hash = "sha256:2dd804fae8850cebccc9ab8711c2ee9e2f009e847f4c95c092a4423778e3c3f6"},
+    {file = "supabase-2.17.0.tar.gz", hash = "sha256:3207314b540db7e3339fa2500bd977541517afb4d20b7ff93a89b97a05f9df38"},
 ]
 
 [package.dependencies]
-gotrue = ">=2.11.0,<3.0.0"
+gotrue = "2.12.3"
 httpx = ">=0.26,<0.29"
-postgrest = ">0.19,<1.2"
-realtime = ">=2.4.0,<2.6.0"
-storage3 = ">=0.10,<0.13"
-supafunc = ">=0.9,<0.11"
+postgrest = "1.1.1"
+realtime = "2.6.0"
+storage3 = "0.12.0"
+supafunc = "0.10.1"
 
 [[package]]
 name = "supafunc"
@@ -1614,4 +1615,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<4.0"
-content-hash = "f67db13e6f68b1d67a55eee908c1c560bfa44da8509f98f842889a7570a9830f"
+content-hash = "3cf33e29ba23106642ec1b55511ed4802c65c603fce440d13dc7c73cc2687979"
