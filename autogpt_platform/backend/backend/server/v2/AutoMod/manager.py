@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from pydantic import ValidationError
 
@@ -87,12 +87,12 @@ class AutoModManager:
                 await self._update_failed_nodes_for_moderation(
                     db_client, graph_exec.graph_exec_id, "input"
                 )
-                
+
                 return ModerationError(
                     message="Execution failed due to input content moderation",
                     user_id=graph_exec.user_id,
                     graph_exec_id=graph_exec.graph_exec_id,
-                    moderation_type="input"
+                    moderation_type="input",
                 )
 
             return None
@@ -103,7 +103,7 @@ class AutoModManager:
                 message="Execution failed due to input content moderation error",
                 user_id=graph_exec.user_id,
                 graph_exec_id=graph_exec.graph_exec_id,
-                moderation_type="input"
+                moderation_type="input",
             )
 
     async def moderate_graph_execution_outputs(
@@ -157,12 +157,12 @@ class AutoModManager:
                 await self._update_failed_nodes_for_moderation(
                     db_client, graph_exec_id, "output"
                 )
-                
+
                 return ModerationError(
                     message="Execution failed due to output content moderation",
                     user_id=user_id,
                     graph_exec_id=graph_exec_id,
-                    moderation_type="output"
+                    moderation_type="output",
                 )
 
             return None
@@ -173,7 +173,7 @@ class AutoModManager:
                 message="Execution failed due to output content moderation error",
                 user_id=user_id,
                 graph_exec_id=graph_exec_id,
-                moderation_type="output"
+                moderation_type="output",
             )
 
     async def _update_failed_nodes_for_moderation(
@@ -182,7 +182,7 @@ class AutoModManager:
         """Update node execution statuses for frontend display when moderation fails"""
         # Import here to avoid circular imports
         from backend.executor.manager import send_async_execution_update
-        
+
         if moderation_type == "input":
             # For input moderation, mark queued/running/incomplete nodes as failed
             target_statuses = [
@@ -216,7 +216,7 @@ class AutoModManager:
                 for name in exec_entry.output_data.keys():
                     cleared_outputs[name] = "Failed due to content moderation"
 
-            # Update the node execution status  
+            # Update the node execution status
             updated_exec = await db_client.update_node_execution_status(
                 exec_entry.node_exec_id,
                 status=ExecutionStatus.FAILED,
@@ -226,7 +226,7 @@ class AutoModManager:
                     "cleared_outputs": cleared_outputs,
                 },
             )
-            
+
             # Send websocket update to notify frontend
             await send_async_execution_update(updated_exec)
 
@@ -247,9 +247,7 @@ class AutoModManager:
                 )
                 return True
             else:
-                reasons = [
-                    r.reason for r in response.moderation_results if r.reason
-                ]
+                reasons = [r.reason for r in response.moderation_results if r.reason]
                 error_msg = f"Content rejected by AutoMod: {'; '.join(reasons)}"
                 logger.warning(f"Content rejected: {error_msg}")
                 return False
@@ -274,14 +272,12 @@ class AutoModManager:
 
         try:
             response = await requests.post(
-                url, 
-                json=request_data.model_dump(),
-                timeout=self.config.timeout
+                url, json=request_data.model_dump(), timeout=self.config.timeout
             )
-            
+
             response_data = response.json()
             return AutoModResponse.model_validate(response_data)
-            
+
         except (json.JSONDecodeError, ValidationError) as e:
             raise Exception(f"Invalid response from AutoMod API: {e}")
         except Exception as e:

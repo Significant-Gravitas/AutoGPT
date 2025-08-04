@@ -35,13 +35,19 @@ class InsufficientBalanceError(ValueError):
 
 class ModerationError(ValueError):
     """Content moderation failure during execution"""
-    
+
     user_id: str
     message: str
     graph_exec_id: str
     moderation_type: str
 
-    def __init__(self, message: str, user_id: str, graph_exec_id: str, moderation_type: str = "content"):
+    def __init__(
+        self,
+        message: str,
+        user_id: str,
+        graph_exec_id: str,
+        moderation_type: str = "content",
+    ):
         super().__init__(message)
         self.args = (message, user_id, graph_exec_id, moderation_type)
         self.message = message

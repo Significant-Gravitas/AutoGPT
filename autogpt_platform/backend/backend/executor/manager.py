@@ -928,7 +928,7 @@ class Executor:
                 execution_status = ExecutionStatus.FAILED
                 error = exc
                 return execution_stats, execution_status, error
-            
+
             execution_status = ExecutionStatus.FAILED
             error = exc
             log_metadata.exception(
