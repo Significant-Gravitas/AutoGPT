@@ -121,6 +121,7 @@ class AgentExecutorBlock(Block):
 
         log_id = f"Graph #{graph_id}-V{graph_version}, exec-id: {graph_exec_id}"
         logger.info(f"Starting execution of {log_id}")
+        yielded_node_exec_ids = set()
 
         async for event in event_bus.listen(
             user_id=user_id,
@@ -151,6 +152,14 @@ class AgentExecutorBlock(Block):
             logger.debug(
                 f"Execution {log_id} produced input {event.input_data} output {event.output_data}"
             )
+
+            if event.node_exec_id in yielded_node_exec_ids:
+                logger.warning(
+                    f"{log_id} received duplicate event for node execution {event.node_exec_id}"
+                )
+                continue
+            else:
+                yielded_node_exec_ids.add(event.node_exec_id)
 
             if not event.block_id:
                 logger.warning(f"{log_id} received event without block_id {event}")
