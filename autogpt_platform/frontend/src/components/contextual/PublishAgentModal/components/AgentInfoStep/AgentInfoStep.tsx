@@ -88,7 +88,7 @@ export function AgentInfoStep({
             )}
           />
 
-          <FormField
+          {!isEditing && <FormField
             control={form.control}
             name="slug"
             render={({ field }) => (
@@ -102,7 +102,7 @@ export function AgentInfoStep({
                 {...field}
               />
             )}
-          />
+          />}
 
           <ThumbnailImages
             agentId={agentId}
