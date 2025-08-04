@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from backend.util.settings import AppEnvironment, Settings
+from backend.util.settings import Settings
 
 from ._auth import (
     GOOGLE_OAUTH_IS_CONFIGURED,
@@ -88,8 +88,6 @@ class GoogleCalendarReadEventsBlock(Block):
         )
 
     def __init__(self):
-        settings = Settings()
-
         # Create realistic test data for events
         test_now = datetime.now(tz=timezone.utc)
         test_tomorrow = test_now + timedelta(days=1)
@@ -116,8 +114,7 @@ class GoogleCalendarReadEventsBlock(Block):
             categories={BlockCategory.PRODUCTIVITY, BlockCategory.DATA},
             input_schema=GoogleCalendarReadEventsBlock.Input,
             output_schema=GoogleCalendarReadEventsBlock.Output,
-            disabled=not GOOGLE_OAUTH_IS_CONFIGURED
-            or settings.config.app_env == AppEnvironment.PRODUCTION,
+            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "calendar_id": "primary",
@@ -442,16 +439,13 @@ class GoogleCalendarCreateEventBlock(Block):
         error: str = SchemaField(description="Error message if event creation failed")
 
     def __init__(self):
-        settings = Settings()
-
         super().__init__(
             id="ed2ec950-fbff-4204-94c0-023fb1d625e0",
             description="This block creates a new event in Google Calendar with customizable parameters.",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=GoogleCalendarCreateEventBlock.Input,
             output_schema=GoogleCalendarCreateEventBlock.Output,
-            disabled=not GOOGLE_OAUTH_IS_CONFIGURED
-            or settings.config.app_env == AppEnvironment.PRODUCTION,
+            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "event_title": "Team Meeting",

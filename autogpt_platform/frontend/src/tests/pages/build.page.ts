@@ -1,6 +1,8 @@
 import { expect, Locator, Page } from "@playwright/test";
 import { BasePage } from "./base.page";
 import { Block as APIBlock } from "../../lib/autogpt-server-api/types";
+import { beautifyString } from "../../lib/utils";
+import { isVisible } from "../utils/assertion";
 
 export interface Block {
   id: string;
@@ -10,8 +12,14 @@ export interface Block {
 }
 
 export class BuildPage extends BasePage {
+  private cachedBlocks: Record<string, Block> = {};
+
   constructor(page: Page) {
     super(page);
+  }
+
+  private getDisplayName(blockName: string): string {
+    return beautifyString(blockName).replace(/ Block$/, "");
   }
 
   async closeTutorial(): Promise<void> {
@@ -26,20 +34,17 @@ export class BuildPage extends BasePage {
   }
 
   async openBlocksPanel(): Promise<void> {
-    if (
-      !(await this.page.getByTestId("blocks-control-blocks-label").isVisible())
-    ) {
+    const isPanelOpen = await this.page
+      .getByTestId("blocks-control-blocks-label")
+      .isVisible();
+
+    if (!isPanelOpen) {
       await this.page.getByTestId("blocks-control-blocks-button").click();
     }
   }
 
   async closeBlocksPanel(): Promise<void> {
-    console.log(`closing blocks panel`);
-    if (
-      await this.page.getByTestId("blocks-control-blocks-label").isVisible()
-    ) {
-      await this.page.getByTestId("blocks-control-blocks-button").click();
-    }
+    await this.page.getByTestId("profile-popout-menu-trigger").click();
   }
 
   async saveAgent(
@@ -55,51 +60,11 @@ export class BuildPage extends BasePage {
     await this.page.getByTestId("save-control-save-agent-button").click();
   }
 
-  async getBlocks(): Promise<Block[]> {
-    console.log(`Getting available blocks from sidebar panel`);
-    try {
-      const blockFinder = this.page.locator('[data-id^="block-card-"]');
-      await blockFinder.first().waitFor();
-      const blocks = await blockFinder.all();
-
-      console.log(`found ${blocks.length} blocks`);
-
-      const results = await Promise.all(
-        blocks.map(async (block) => {
-          try {
-            const fullId = (await block.getAttribute("data-id")) || "";
-            const id = fullId.replace("block-card-", "");
-            const nameElement = block.locator('[data-testid^="block-name-"]');
-            const descriptionElement = block.locator(
-              '[data-testid^="block-description-"]',
-            );
-
-            const name = (await nameElement.textContent()) || "";
-            const description = (await descriptionElement.textContent()) || "";
-            const type = (await nameElement.getAttribute("data-type")) || "";
-
-            return {
-              id,
-              name: name.trim(),
-              type: type.trim(),
-              description: description.trim(),
-            };
-          } catch (elementError) {
-            console.error("Error processing block:", elementError);
-            return null;
-          }
-        }),
-      );
-
-      // Filter out any null results from errors
-      return results.filter((block): block is Block => block !== null);
-    } catch (error) {
-      console.error("Error getting blocks:", error);
-      return [];
-    }
-  }
-
   async getBlocksFromAPI(): Promise<Block[]> {
+    if (Object.keys(this.cachedBlocks).length > 0) {
+      return Object.values(this.cachedBlocks);
+    }
+
     console.log(`Getting blocks from API request`);
 
     // Make direct API request using the page's request context
@@ -111,12 +76,21 @@ export class BuildPage extends BasePage {
     console.log(`Found ${apiBlocks.length} blocks from API`);
 
     // Convert API blocks to test Block format
-    return apiBlocks.map((block) => ({
+    const blocks = apiBlocks.map((block) => ({
       id: block.id,
       name: block.name,
       description: block.description,
       type: block.uiType,
     }));
+
+    this.cachedBlocks = blocks.reduce(
+      (acc, block) => {
+        acc[block.id] = block;
+        return acc;
+      },
+      {} as Record<string, Block>,
+    );
+    return blocks;
   }
 
   async getFilteredBlocksFromAPI(
@@ -129,22 +103,33 @@ export class BuildPage extends BasePage {
 
   async addBlock(block: Block): Promise<void> {
     console.log(`Adding block ${block.name} (${block.id}) to agent`);
-    await this.page.getByTestId(`block-name-${block.id}`).click();
-  }
 
-  async isRFNodeVisible(nodeId: string): Promise<boolean> {
-    console.log(`checking if RF node ${nodeId} is visible on page`);
-    return await this.page.getByTestId(`rf__node-${nodeId}`).isVisible();
-  }
+    await this.openBlocksPanel();
 
-  async hasBlock(block: Block): Promise<boolean> {
-    try {
-      const node = this.page.getByTestId(block.id).first();
-      return await node.isVisible();
-    } catch (error) {
-      console.error("Error checking for block:", error);
-      return false;
+    const searchInput = this.page.locator(
+      '[data-id="blocks-control-search-input"]',
+    );
+
+    const displayName = this.getDisplayName(block.name);
+    await searchInput.clear();
+    await searchInput.fill(displayName);
+    await this.page.waitForTimeout(500);
+
+    const blockCard = this.page.getByTestId(`block-name-${block.id}`);
+    if (await blockCard.isVisible()) {
+      await blockCard.click();
+      const blockInEditor = this.page.getByTestId(block.id).first();
+      expect(blockInEditor).toBeAttached();
+    } else {
+      console.log(
+        `❌ ❌  Block ${block.name} (display: ${displayName}) returned from the API but not found in block list`,
+      );
     }
+  }
+
+  async hasBlock(block: Block) {
+    const blockInEditor = this.page.getByTestId(block.id).first();
+    await blockInEditor.isVisible();
   }
 
   async getBlockInputs(blockId: string): Promise<string[]> {
@@ -159,51 +144,24 @@ export class BuildPage extends BasePage {
     }
   }
 
-  async getBlockOutputs(): Promise<string[]> {
-    throw new Error("Not implemented");
-    // try {
-    //   const node = await this.page
-    //     .locator(`[data-blockid="${blockId}"]`)
-    //     .first();
-    //   const outputsData = await node.getAttribute("data-outputs");
-    //   return outputsData ? JSON.parse(outputsData) : [];
-    // } catch (error) {
-    //   console.error("Error getting block outputs:", error);
-    //   return [];
-    // }
-  }
-
   async selectBlockCategory(category: string): Promise<void> {
     console.log(`Selecting block category: ${category}`);
     await this.page.getByText(category, { exact: true }).click();
     // Wait for the blocks to load after category selection
-    await this.page.waitForTimeout(500);
-  }
-
-  async discoverCategories(): Promise<string[]> {
-    console.log("Discovering available block categories");
-
-    this.page.waitForTimeout(2000);
-
-    // Get all category buttons
-    const categoryButtons = await this.page
-      .getByTestId("blocks-category")
-      .all();
-
-    const categories: string[] = [];
-    for (const button of categoryButtons) {
-      const categoryName = await button.textContent();
-      if (categoryName && categoryName.trim() !== "All") {
-        categories.push(categoryName.trim());
-      }
-    }
-
-    console.log(`Found ${categories.length} categories:`, categories);
-    return categories;
+    await this.page.waitForTimeout(3000);
   }
 
   async getBlocksForCategory(category: string): Promise<Block[]> {
     console.log(`Getting blocks for category: ${category}`);
+
+    // Clear any existing search to ensure we see all blocks in the category
+    const searchInput = this.page.locator(
+      '[data-id="blocks-control-search-input"]',
+    );
+    await searchInput.clear();
+
+    // Wait for search to clear
+    await this.page.waitForTimeout(300);
 
     // Select the category first
     await this.selectBlockCategory(category);
@@ -384,13 +342,13 @@ export class BuildPage extends BasePage {
 
   async isRunButtonEnabled(): Promise<boolean> {
     console.log(`checking if run button is enabled`);
-    const runButton = this.page.locator('[data-id="primary-action-run-agent"]');
+    const runButton = this.page.getByTestId("primary-action-run-agent");
     return await runButton.isEnabled();
   }
 
   async runAgent(): Promise<void> {
     console.log(`clicking run button`);
-    const runButton = this.page.locator('[data-id="primary-action-run-agent"]');
+    const runButton = this.page.getByTestId("primary-action-run-agent");
     await runButton.click();
   }
 
@@ -436,23 +394,9 @@ export class BuildPage extends BasePage {
     );
   }
 
-  async createSingleBlockAgent(
-    name: string,
-    description: string,
-    block: Block,
-  ): Promise<void> {
-    console.log(`creating single block agent ${name}`);
-    await this.navbar.clickBuildLink();
-    await this.closeTutorial();
-    await this.openBlocksPanel();
-    await this.addBlock(block);
-    await this.saveAgent(name, description);
-    await this.waitForVersionField();
-  }
-
   async getDictionaryBlockDetails(): Promise<Block> {
     return {
-      id: "31d1064e-7446-4693-a7d4-65e5ca1180d1",
+      id: "dummy-id-1",
       name: "Add to Dictionary",
       description: "Add to Dictionary",
       type: "Standard",
@@ -466,15 +410,6 @@ export class BuildPage extends BasePage {
       '[data-id="save-control-popover-content"]',
       { state: "hidden" },
     );
-  }
-
-  async getCalculatorBlockDetails(): Promise<Block> {
-    return {
-      id: "b1ab9b19-67a6-406d-abf5-2dba76d00c79",
-      name: "Calculator",
-      description: "Calculator",
-      type: "Standard",
-    };
   }
 
   async getGithubTriggerBlockDetails(): Promise<Block> {
@@ -492,88 +427,32 @@ export class BuildPage extends BasePage {
     await this.page.getByRole("button", { name: "Next" }).click();
   }
 
-  async zoomOut(): Promise<void> {
-    console.log(`zooming out`);
-    await this.page.getByLabel("zoom out").click();
-  }
-
-  async zoomIn(): Promise<void> {
-    console.log(`zooming in`);
-    await this.page.getByLabel("zoom in").click();
-  }
-
-  async zoomToFit(): Promise<void> {
-    console.log(`zooming to fit`);
-    await this.page.getByLabel("fit view").click();
-  }
-
-  async moveBlockToSide(
-    dataId: string,
-    direction: "up" | "down" | "left" | "right",
-    distance: number = 100,
-  ): Promise<void> {
-    console.log(`moving block ${dataId} to the side`);
-
-    const block = this.page.locator(`[data-id="${dataId}"]`);
-
-    // Get current transform
-    const transform = await block.evaluate((el) => el.style.transform);
-
-    // Parse current coordinates from transform
-    const matches = transform.match(/translate\(([^,]+),\s*([^)]+)\)/);
-    if (!matches) {
-      throw new Error(`Could not parse current transform: ${transform}`);
-    }
-
-    // Parse current coordinates
-    const currentX = parseFloat(matches[1]);
-    const currentY = parseFloat(matches[2]);
-
-    // Calculate new position
-    let newX = currentX;
-    let newY = currentY;
-
-    switch (direction) {
-      case "up":
-        newY -= distance;
-        break;
-      case "down":
-        newY += distance;
-        break;
-      case "left":
-        newX -= distance;
-        break;
-      case "right":
-        newX += distance;
-        break;
-    }
-
-    // Apply new transform using Playwright's evaluate
-    await block.evaluate(
-      (el, { newX, newY }) => {
-        el.style.transform = `translate(${newX}px, ${newY}px)`;
-      },
-      { newX, newY },
-    );
-  }
-
   async getBlocksToSkip(): Promise<string[]> {
     return [(await this.getGithubTriggerBlockDetails()).id];
-  }
-
-  async waitForRunTutorialButton(): Promise<void> {
-    console.log(`waiting for run tutorial button`);
-    await this.page.waitForSelector('[id="press-run-label"]');
   }
 
   async createDummyAgent() {
     await this.closeTutorial();
     await this.openBlocksPanel();
-    const block = await this.getDictionaryBlockDetails();
+    const dictionaryBlock = await this.getDictionaryBlockDetails();
 
-    await this.addBlock(block);
-    await this.closeBlocksPanel();
-    await expect(this.hasBlock(block)).resolves.toBeTruthy();
+    const searchInput = this.page.locator(
+      '[data-id="blocks-control-search-input"]',
+    );
+
+    const displayName = this.getDisplayName(dictionaryBlock.name);
+    await searchInput.clear();
+
+    await isVisible(this.page.getByText("Output"));
+
+    await searchInput.fill(displayName);
+
+    const blockCard = this.page.getByTestId(`block-name-${dictionaryBlock.id}`);
+    if (await blockCard.isVisible()) {
+      await blockCard.click();
+      const blockInEditor = this.page.getByTestId(dictionaryBlock.id).first();
+      expect(blockInEditor).toBeAttached();
+    }
 
     await this.saveAgent("Test Agent", "Test Description");
     await expect(this.isRunButtonEnabled()).resolves.toBeTruthy();

@@ -27,6 +27,7 @@ from backend.monitoring import (
     report_block_error_rates,
     report_late_executions,
 )
+from backend.util.cloud_storage import cleanup_expired_files_async
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.logging import PrefixFilter
 from backend.util.service import AppService, AppServiceClient, endpoint_to_async, expose
@@ -87,13 +88,17 @@ async def _execute_graph(**kwargs):
             graph_version=args.graph_version,
             inputs=args.input_data,
             graph_credentials_inputs=args.input_credentials,
-            use_db_query=False,
         )
         logger.info(
             f"Graph execution started with ID {graph_exec.id} for graph {args.graph_id}"
         )
     except Exception as e:
         logger.error(f"Error executing graph {args.graph_id}: {e}")
+
+
+def cleanup_expired_files():
+    """Clean up expired files from cloud storage."""
+    get_event_loop().run_until_complete(cleanup_expired_files_async())
 
 
 # Monitoring functions are now imported from monitoring module
@@ -161,6 +166,11 @@ class Scheduler(AppService):
     @classmethod
     def db_pool_size(cls) -> int:
         return config.scheduler_db_pool_size
+
+    def health_check(self) -> str:
+        if not self.scheduler.running:
+            raise RuntimeError("Scheduler is not running")
+        return super().health_check()
 
     def run_service(self):
         load_dotenv()
@@ -230,6 +240,17 @@ class Scheduler(AppService):
                 trigger="interval",
                 replace_existing=True,
                 seconds=config.block_error_rate_check_interval_secs,
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
+            # Cloud Storage Cleanup - configurable interval
+            self.scheduler.add_job(
+                cleanup_expired_files,
+                id="cleanup_expired_files",
+                trigger="interval",
+                replace_existing=True,
+                seconds=config.cloud_storage_cleanup_interval_hours
+                * 3600,  # Convert hours to seconds
                 jobstore=Jobstores.EXECUTION.value,
             )
 
@@ -328,6 +349,11 @@ class Scheduler(AppService):
     @expose
     def execute_report_block_error_rates(self):
         return report_block_error_rates()
+
+    @expose
+    def execute_cleanup_expired_files(self):
+        """Manually trigger cleanup of expired cloud storage files."""
+        return cleanup_expired_files()
 
 
 class SchedulerClient(AppServiceClient):

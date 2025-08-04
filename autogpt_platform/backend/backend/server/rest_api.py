@@ -62,10 +62,13 @@ def launch_darkly_context():
 @contextlib.asynccontextmanager
 async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.db.connect()
-    await backend.data.block.initialize_blocks()
 
-    # SDK auto-registration is now handled by AutoRegistry.patch_integrations()
-    # which is called when the SDK module is imported
+    # Ensure SDK auto-registration is patched before initializing blocks
+    from backend.sdk.registry import AutoRegistry
+
+    AutoRegistry.patch_integrations()
+
+    await backend.data.block.initialize_blocks()
 
     await backend.data.user.migrate_and_encrypt_user_integrations()
     await backend.data.graph.fix_llm_provider_credentials()
@@ -221,6 +224,8 @@ app.mount("/external-api", external_app)
 
 @app.get(path="/health", tags=["health"], dependencies=[])
 async def health():
+    if not backend.data.db.is_connected():
+        raise RuntimeError("Database is not connected")
     return {"status": "healthy"}
 
 

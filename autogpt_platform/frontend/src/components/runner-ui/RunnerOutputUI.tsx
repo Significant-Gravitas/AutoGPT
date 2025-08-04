@@ -25,6 +25,7 @@ interface OutputModalProps {
   isOpen: boolean;
   doClose: () => void;
   outputs: OutputNodeInfo[];
+  graphExecutionError?: string | null;
 }
 
 const formatOutput = (output: any): string => {
@@ -47,7 +48,12 @@ const formatOutput = (output: any): string => {
   return String(output);
 };
 
-export function RunnerOutputUI({ isOpen, doClose, outputs }: OutputModalProps) {
+export function RunnerOutputUI({
+  isOpen,
+  doClose,
+  outputs,
+  graphExecutionError,
+}: OutputModalProps) {
   const { toast } = useToast();
 
   const copyOutput = (name: string, output: any) => {
@@ -80,6 +86,13 @@ export function RunnerOutputUI({ isOpen, doClose, outputs }: OutputModalProps) {
         <div className="flex-grow overflow-y-auto px-2 py-2">
           <ScrollArea className="h-full overflow-auto pr-4">
             <div className="space-y-4">
+              {graphExecutionError && (
+                <div className="rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
+                  <p className="text-sm text-red-800 dark:text-red-200">
+                    <strong>Error:</strong> {graphExecutionError}
+                  </p>
+                </div>
+              )}
               {outputs && outputs.length > 0 ? (
                 outputs.map((output, i) => (
                   <div key={i} className="space-y-1">

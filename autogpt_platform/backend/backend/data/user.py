@@ -8,16 +8,16 @@ from urllib.parse import quote_plus
 
 from autogpt_libs.auth.models import DEFAULT_USER_ID
 from fastapi import HTTPException
-from prisma import Json
 from prisma.enums import NotificationType
 from prisma.models import User
 from prisma.types import JsonFilter, UserCreateInput, UserUpdateInput
 
 from backend.data.db import prisma
-from backend.data.model import UserIntegrations, UserMetadata, UserMetadataRaw
+from backend.data.model import UserIntegrations, UserMetadata
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.server.v2.store.exceptions import DatabaseError
 from backend.util.encryption import JSONCryptor
+from backend.util.json import SafeJson
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -93,22 +93,6 @@ async def create_default_user() -> Optional[User]:
     return User.model_validate(user)
 
 
-async def get_user_metadata(user_id: str) -> UserMetadata:
-    user = await User.prisma().find_unique_or_raise(
-        where={"id": user_id},
-    )
-
-    metadata = cast(UserMetadataRaw, user.metadata)
-    return UserMetadata.model_validate(metadata)
-
-
-async def update_user_metadata(user_id: str, metadata: UserMetadata):
-    await User.prisma().update(
-        where={"id": user_id},
-        data={"metadata": Json(metadata.model_dump())},
-    )
-
-
 async def get_user_integrations(user_id: str) -> UserIntegrations:
     user = await User.prisma().find_unique_or_raise(
         where={"id": user_id},
@@ -139,7 +123,7 @@ async def migrate_and_encrypt_user_integrations():
                 JsonFilter,
                 {
                     "path": ["integration_credentials"],
-                    "not": Json(
+                    "not": SafeJson(
                         {"a": "yolo"}
                     ),  # bogus value works to check if key exists
                 },
@@ -171,7 +155,7 @@ async def migrate_and_encrypt_user_integrations():
         # Update metadata without integration data
         await User.prisma().update(
             where={"id": user.id},
-            data={"metadata": Json(raw_metadata)},
+            data={"metadata": SafeJson(raw_metadata)},
         )
 
 

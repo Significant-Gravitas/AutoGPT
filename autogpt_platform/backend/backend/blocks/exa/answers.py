@@ -119,6 +119,3 @@ class ExaAnswerBlock(Block):
 
         except Exception as e:
             yield "error", str(e)
-            yield "answer", ""
-            yield "citations", []
-            yield "cost_dollars", {}

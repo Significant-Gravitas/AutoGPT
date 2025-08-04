@@ -16,7 +16,6 @@ from typing import (
     overload,
 )
 
-from prisma import Json
 from prisma.enums import AgentExecutionStatus
 from prisma.models import (
     AgentGraphExecution,
@@ -39,6 +38,7 @@ from pydantic.fields import Field
 
 from backend.server.v2.store.exceptions import DatabaseError
 from backend.util import type as type_utils
+from backend.util.json import SafeJson
 from backend.util.settings import Config
 from backend.util.truncate import truncate
 
@@ -58,7 +58,7 @@ from .includes import (
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     graph_execution_include,
 )
-from .model import GraphExecutionStats, NodeExecutionStats
+from .model import GraphExecutionStats
 
 T = TypeVar("T")
 
@@ -134,6 +134,10 @@ class GraphExecutionMeta(BaseDbModel):
             default=None,
             description="Error message if any",
         )
+        activity_status: str | None = Field(
+            default=None,
+            description="AI-generated summary of what the agent did",
+        )
 
         def to_db(self) -> GraphExecutionStats:
             return GraphExecutionStats(
@@ -145,6 +149,7 @@ class GraphExecutionMeta(BaseDbModel):
                 node_count=self.node_exec_count,
                 node_error_count=self.node_error_count,
                 error=self.error,
+                activity_status=self.activity_status,
             )
 
     stats: Stats | None
@@ -189,6 +194,7 @@ class GraphExecutionMeta(BaseDbModel):
                         if isinstance(stats.error, Exception)
                         else stats.error
                     ),
+                    activity_status=stats.activity_status,
                 )
                 if stats
                 else None
@@ -482,7 +488,7 @@ async def create_graph_execution(
                         queuedTime=datetime.now(tz=timezone.utc),
                         Input={
                             "create": [
-                                {"name": name, "data": Json(data)}
+                                {"name": name, "data": SafeJson(data)}
                                 for name, data in node_input.items()
                             ]
                         },
@@ -540,7 +546,7 @@ async def upsert_execution_input(
         order={"addedTime": "asc"},
         include={"Input": True},
     )
-    json_input_data = Json(input_data)
+    json_input_data = SafeJson(input_data)
 
     if existing_execution:
         await AgentNodeExecutionInputOutput.prisma().create(
@@ -583,12 +589,12 @@ async def upsert_execution_output(
     """
     Insert AgentNodeExecutionInputOutput record for as one of AgentNodeExecution.Output.
     """
-    data = AgentNodeExecutionInputOutputCreateInput(
-        name=output_name,
-        referencedByOutputExecId=node_exec_id,
-    )
+    data: AgentNodeExecutionInputOutputCreateInput = {
+        "name": output_name,
+        "referencedByOutputExecId": node_exec_id,
+    }
     if output_data is not None:
-        data["data"] = Json(output_data)
+        data["data"] = SafeJson(output_data)
     await AgentNodeExecutionInputOutput.prisma().create(data=data)
 
 
@@ -619,7 +625,7 @@ async def update_graph_execution_stats(
         stats_dict = stats.model_dump()
         if isinstance(stats_dict.get("error"), Exception):
             stats_dict["error"] = str(stats_dict["error"])
-        update_data["stats"] = Json(stats_dict)
+        update_data["stats"] = SafeJson(stats_dict)
 
     if status:
         update_data["executionStatus"] = status
@@ -630,6 +636,8 @@ async def update_graph_execution_stats(
             "OR": [
                 {"executionStatus": ExecutionStatus.RUNNING},
                 {"executionStatus": ExecutionStatus.QUEUED},
+                # Terminated graph can be resumed.
+                {"executionStatus": ExecutionStatus.TERMINATED},
             ],
         },
         data=update_data,
@@ -644,27 +652,6 @@ async def update_graph_execution_stats(
         ),
     )
     return GraphExecution.from_db(graph_exec)
-
-
-async def update_node_execution_stats(
-    node_exec_id: str, stats: NodeExecutionStats
-) -> NodeExecutionResult:
-    data = stats.model_dump()
-    if isinstance(data["error"], Exception):
-        data["error"] = str(data["error"])
-
-    res = await AgentNodeExecution.prisma().update(
-        where={"id": node_exec_id},
-        data={
-            "stats": Json(data),
-            "endedTime": datetime.now(tz=timezone.utc),
-        },
-        include=EXECUTION_RESULT_INCLUDE,
-    )
-    if not res:
-        raise ValueError(f"Node execution {node_exec_id} not found.")
-
-    return NodeExecutionResult.from_db(res)
 
 
 async def update_node_execution_status_batch(
@@ -714,9 +701,9 @@ def _get_update_status_data(
         update_data["endedTime"] = now
 
     if execution_data:
-        update_data["executionData"] = Json(execution_data)
+        update_data["executionData"] = SafeJson(execution_data)
     if stats:
-        update_data["stats"] = Json(stats)
+        update_data["stats"] = SafeJson(stats)
 
     return update_data
 
@@ -1019,11 +1006,11 @@ async def set_execution_kv_data(
                 userId=user_id,
                 agentNodeExecutionId=node_exec_id,
                 key=key,
-                data=Json(data) if data is not None else None,
+                data=SafeJson(data) if data is not None else None,
             ),
             "update": {
                 "agentNodeExecutionId": node_exec_id,
-                "data": Json(data) if data is not None else None,
+                "data": SafeJson(data) if data is not None else None,
             },
         },
     )
