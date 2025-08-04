@@ -320,14 +320,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=False,
         description="If True, allow execution to continue if AutoMod fails",
     )
-    automod_moderate_inputs: bool = Field(
-        default=True,
-        description="Whether to moderate block inputs",
-    )
-    automod_moderate_outputs: bool = Field(
-        default=True,
-        description="Whether to moderate block outputs",
-    )
 
     @field_validator("platform_base_url", "frontend_base_url")
     @classmethod

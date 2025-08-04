@@ -34,8 +34,6 @@ class AutoModManager:
             retry_attempts=settings.config.automod_retry_attempts,
             retry_delay=settings.config.automod_retry_delay,
             fail_open=settings.config.automod_fail_open,
-            moderate_inputs=settings.config.automod_moderate_inputs,
-            moderate_outputs=settings.config.automod_moderate_outputs,
         )
 
     async def moderate_graph_execution_inputs(
