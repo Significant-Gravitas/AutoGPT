@@ -8,12 +8,13 @@ const FRONTEND_BASE_URL =
   process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "http://localhost:3000";
 const API_PROXY_BASE_URL = `${FRONTEND_BASE_URL}/api/proxy`; // Sending request via nextjs Server
 
-
 const getBaseUrl = (): string => {
   if (!isServerSide()) {
     return API_PROXY_BASE_URL;
   } else {
-    return process.env.NEXT_PUBLIC_AGPT_SERVER_BASE_URL || "http://localhost:8006";
+    return (
+      process.env.NEXT_PUBLIC_AGPT_SERVER_BASE_URL || "http://localhost:8006"
+    );
   }
 };
 
