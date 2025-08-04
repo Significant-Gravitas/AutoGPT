@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { BehaveAs, getBehaveAs } from "@/lib/utils";
+import { isServerSide } from "@/lib/utils/is-server-side";
 
 interface UseTurnstileOptions {
   action?: string;
@@ -81,7 +82,7 @@ export function useTurnstile({
     // Only reset the actual Turnstile widget if it exists and shouldRender is true
     if (
       shouldRender &&
-      typeof window !== "undefined" &&
+      !isServerSide() &&
       window.turnstile &&
       widgetId
     ) {
