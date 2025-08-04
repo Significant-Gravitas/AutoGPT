@@ -644,7 +644,7 @@ class NodeExecutionStats(BaseModel):
         arbitrary_types_allowed=True,
     )
 
-    error: Optional[Exception | str] = None
+    error: Optional[BaseException | str] = None
     walltime: float = 0
     cputime: float = 0
     input_size: int = 0
