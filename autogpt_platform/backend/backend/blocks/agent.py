@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from typing import Any, Optional
 
@@ -95,23 +94,14 @@ class AgentExecutorBlock(Block):
                 logger=logger,
             ):
                 yield name, data
-        except asyncio.CancelledError:
+        except BaseException as e:
             await self._stop(
                 graph_exec_id=graph_exec.id,
                 user_id=input_data.user_id,
                 logger=logger,
             )
             logger.warning(
-                f"Execution of graph {input_data.graph_id}v{input_data.graph_version} was cancelled."
-            )
-        except Exception as e:
-            await self._stop(
-                graph_exec_id=graph_exec.id,
-                user_id=input_data.user_id,
-                logger=logger,
-            )
-            logger.error(
-                f"Execution of graph {input_data.graph_id}v{input_data.graph_version} failed: {e}, execution is stopped."
+                f"Execution of graph {input_data.graph_id}v{input_data.graph_version} failed: {e.__class__.__name__} {str(e)}; execution is stopped."
             )
             raise
 
@@ -197,6 +187,7 @@ class AgentExecutorBlock(Block):
             await execution_utils.stop_graph_execution(
                 graph_exec_id=graph_exec_id,
                 user_id=user_id,
+                wait_timeout=3600,
             )
             logger.info(f"Execution {log_id} stopped successfully.")
         except Exception as e:

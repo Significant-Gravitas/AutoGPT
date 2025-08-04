@@ -58,7 +58,7 @@ from .includes import (
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     graph_execution_include,
 )
-from .model import GraphExecutionStats, NodeExecutionStats
+from .model import GraphExecutionStats
 
 T = TypeVar("T")
 
@@ -636,6 +636,8 @@ async def update_graph_execution_stats(
             "OR": [
                 {"executionStatus": ExecutionStatus.RUNNING},
                 {"executionStatus": ExecutionStatus.QUEUED},
+                # Terminated graph can be resumed.
+                {"executionStatus": ExecutionStatus.TERMINATED},
             ],
         },
         data=update_data,
@@ -650,27 +652,6 @@ async def update_graph_execution_stats(
         ),
     )
     return GraphExecution.from_db(graph_exec)
-
-
-async def update_node_execution_stats(
-    node_exec_id: str, stats: NodeExecutionStats
-) -> NodeExecutionResult:
-    data = stats.model_dump()
-    if isinstance(data["error"], Exception):
-        data["error"] = str(data["error"])
-
-    res = await AgentNodeExecution.prisma().update(
-        where={"id": node_exec_id},
-        data={
-            "stats": SafeJson(data),
-            "endedTime": datetime.now(tz=timezone.utc),
-        },
-        include=EXECUTION_RESULT_INCLUDE,
-    )
-    if not res:
-        raise ValueError(f"Node execution {node_exec_id} not found.")
-
-    return NodeExecutionResult.from_db(res)
 
 
 async def update_node_execution_status_batch(
