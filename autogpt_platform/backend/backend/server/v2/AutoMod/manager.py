@@ -75,6 +75,7 @@ class AutoModManager:
         content = " ".join(all_inputs)
 
         # Run moderation
+        logger.warning(f"Moderating inputs for graph execution {graph_exec.graph_exec_id}")
         try:
             moderation_passed = await self._moderate_content(
                 content,
@@ -87,6 +88,7 @@ class AutoModManager:
             )
 
             if not moderation_passed:
+                logger.warning(f"Moderation failed for graph execution {graph_exec.graph_exec_id}")
                 # Update node statuses for frontend display before raising error
                 await self._update_failed_nodes_for_moderation(
                     db_client, graph_exec.graph_exec_id, "input"
@@ -102,7 +104,7 @@ class AutoModManager:
             return None
 
         except Exception as e:
-            logger.error(f"Input moderation execution failed: {e}")
+            logger.warning(f"Input moderation execution failed: {e}")
             return ModerationError(
                 message="Execution failed due to input content moderation error",
                 user_id=graph_exec.user_id,
@@ -150,6 +152,7 @@ class AutoModManager:
         content = " ".join(all_outputs)
 
         # Run moderation
+        logger.warning(f"Moderating outputs for graph execution {graph_exec_id}")
         try:
             moderation_passed = await self._moderate_content(
                 content,
@@ -162,6 +165,7 @@ class AutoModManager:
             )
 
             if not moderation_passed:
+                logger.warning(f"Moderation failed for graph execution {graph_exec_id}")
                 # Update node statuses for frontend display before raising error
                 await self._update_failed_nodes_for_moderation(
                     db_client, graph_exec_id, "output"
@@ -177,7 +181,7 @@ class AutoModManager:
             return None
 
         except Exception as e:
-            logger.error(f"Output moderation execution failed: {e}")
+            logger.warning(f"Output moderation execution failed: {e}")
             return ModerationError(
                 message="Execution failed due to output content moderation error",
                 user_id=user_id,
