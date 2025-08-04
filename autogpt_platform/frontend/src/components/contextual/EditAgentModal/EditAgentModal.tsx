@@ -9,7 +9,7 @@ export interface EditAgentModalProps {
   isOpen: boolean;
   onClose: () => void;
   submission: StoreSubmission | null;
-  onSuccess: () => void;
+  onSuccess: (submission: StoreSubmission) => void;
 }
 
 export function EditAgentModal({
