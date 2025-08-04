@@ -690,7 +690,6 @@ async def edit_store_submission(
     store_listing_version_id: str,
     agent_id: str,
     agent_version: int,
-    slug: str,
     name: str,
     video_url: str | None = None,
     image_urls: list[str] = [],
@@ -777,10 +776,6 @@ async def edit_store_submission(
 
         # For APPROVED submissions, we need to create a new version
         if current_version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED:
-            if slug != current_version.StoreListing.slug:
-                raise backend.server.v2.store.exceptions.InvalidOperationError(
-                    "Cannot change slug for approved submissions"
-                )
             
             # Create a new version for the existing listing
             return await create_store_version(
@@ -799,21 +794,6 @@ async def edit_store_submission(
 
         # For PENDING submissions, we can update the existing version
         elif current_version.submissionStatus == prisma.enums.SubmissionStatus.PENDING:
-            # Check if the new slug is unique for this user
-            if slug != current_version.StoreListing.slug:
-                existing_listing = await prisma.models.StoreListing.prisma().find_first(
-                    where=prisma.types.StoreListingWhereInput(
-                        owningUserId=user_id,
-                        slug=slug,
-                        id={"not": current_version.storeListingId}
-                    )
-                )
-                
-                if existing_listing:
-                    raise backend.server.v2.store.exceptions.ListingExistsError(
-                        f"Slug '{slug}' is already in use by another listing"
-                    )
-
             # Update the existing version
             updated_version = await prisma.models.StoreListingVersion.prisma().update(
                 where={"id": store_listing_version_id},
@@ -830,12 +810,6 @@ async def edit_store_submission(
                 )
             )
 
-            if slug != current_version.StoreListing.slug:
-                await prisma.models.StoreListing.prisma().update(
-                    where={"id": current_version.storeListingId},
-                    data=prisma.types.StoreListingUpdateInput(slug=slug)
-                )
-
             logger.debug(
                 f"Updated existing version {store_listing_version_id} for agent {agent_id}"
             )
@@ -844,7 +818,6 @@ async def edit_store_submission(
                 agent_id=agent_id,
                 agent_version=agent_version,
                 name=name,
-                slug=slug,
                 sub_heading=sub_heading,
                 description=description,
                 image_urls=image_urls,
