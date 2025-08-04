@@ -294,6 +294,7 @@ services:
     NEXT_PUBLIC_TURNSTILE: disabled
     NEXT_PUBLIC_REACT_QUERY_DEVTOOL: true
     NEXT_PUBLIC_GA_MEASUREMENT_ID: G-FH2XK2W4GN
+    NEXT_PUBLIC_PW_TEST: "${NEXT_PUBLIC_PW_TEST:-}"
 
   frontend:
     build:
@@ -321,7 +322,6 @@ services:
       SUPABASE_URL: http://kong:8000
       AGPT_SERVER_URL: http://rest_server:8006/api
       AGPT_WS_SERVER_URL: ws://websocket_server:8001/ws
-      NEXT_PUBLIC_PW_TEST: ${NEXT_PUBLIC_PW_TEST:-false}
 networks:
   app-network:
     driver: bridge
