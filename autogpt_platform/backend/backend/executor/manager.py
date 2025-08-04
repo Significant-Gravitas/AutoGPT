@@ -443,18 +443,16 @@ class Executor:
         if node_error and not isinstance(node_error, str):
             node_stats["error"] = str(node_error) or node_stats.__class__.__name__
 
-        await asyncio.gather(
-            async_update_node_execution_status(
-                db_client=db_client,
-                exec_id=node_exec.node_exec_id,
-                status=status,
-                stats=node_stats,
-            ),
-            async_update_graph_execution_state(
-                db_client=db_client,
-                graph_exec_id=node_exec.graph_exec_id,
-                stats=graph_stats,
-            ),
+        await async_update_node_execution_status(
+            db_client=db_client,
+            exec_id=node_exec.node_exec_id,
+            status=status,
+            stats=node_stats,
+        )
+        await async_update_graph_execution_state(
+            db_client=db_client,
+            graph_exec_id=node_exec.graph_exec_id,
+            stats=graph_stats,
         )
 
         return execution_stats
@@ -941,22 +939,6 @@ class Executor:
         This method is decorated with @error_logged(swallow=True) to ensure cleanup
         never fails in the finally block.
         """
-        # Cancel and wait for all node evaluations to complete
-        for node_id, inflight_eval in running_node_evaluation.items():
-            if inflight_eval.done():
-                continue
-            log_metadata.info(f"Stopping node evaluation {node_id}")
-            inflight_eval.cancel()
-
-        for node_id, inflight_eval in running_node_evaluation.items():
-            try:
-                inflight_eval.result(timeout=3600.0)
-            except TimeoutError:
-                log_metadata.exception(
-                    f"Node evaluation #{node_id} did not stop in time, "
-                    "it may be stuck or taking too long."
-                )
-
         # Cancel and wait for all node executions to complete
         for node_id, inflight_exec in running_node_execution.items():
             if inflight_exec.is_done():
@@ -970,6 +952,16 @@ class Executor:
             except TimeoutError:
                 log_metadata.exception(
                     f"Node execution #{node_id} did not stop in time, "
+                    "it may be stuck or taking too long."
+                )
+
+        # Wait the remaining inflight evaluations to finish
+        for node_id, inflight_eval in running_node_evaluation.items():
+            try:
+                inflight_eval.result(timeout=3600.0)
+            except TimeoutError:
+                log_metadata.exception(
+                    f"Node evaluation #{node_id} did not stop in time, "
                     "it may be stuck or taking too long."
                 )
 
