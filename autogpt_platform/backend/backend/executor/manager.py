@@ -445,18 +445,16 @@ class Executor:
         if node_error and not isinstance(node_error, str):
             node_stats["error"] = str(node_error) or node_stats.__class__.__name__
 
-        await asyncio.gather(
-            async_update_node_execution_status(
-                db_client=db_client,
-                exec_id=node_exec.node_exec_id,
-                status=status,
-                stats=node_stats,
-            ),
-            async_update_graph_execution_state(
-                db_client=db_client,
-                graph_exec_id=node_exec.graph_exec_id,
-                stats=graph_stats,
-            ),
+        await async_update_node_execution_status(
+            db_client=db_client,
+            exec_id=node_exec.node_exec_id,
+            status=status,
+            stats=node_stats,
+        )
+        await async_update_graph_execution_state(
+            db_client=db_client,
+            graph_exec_id=node_exec.graph_exec_id,
+            stats=graph_stats,
         )
 
         return execution_stats
@@ -488,6 +486,16 @@ class Executor:
                 execution_stats=stats,
                 nodes_input_masks=nodes_input_masks,
             ):
+                await db_client.upsert_execution_output(
+                    node_exec_id=node_exec.node_exec_id,
+                    output_name=output_name,
+                    output_data=output_data,
+                )
+                if exec_update := await db_client.get_node_execution(
+                    node_exec.node_exec_id
+                ):
+                    await send_async_execution_update(exec_update)
+
                 node_exec_progress.add_output(
                     ExecutionOutputEntry(
                         node=node,
@@ -963,22 +971,6 @@ class Executor:
         This method is decorated with @error_logged(swallow=True) to ensure cleanup
         never fails in the finally block.
         """
-        # Cancel and wait for all node evaluations to complete
-        for node_id, inflight_eval in running_node_evaluation.items():
-            if inflight_eval.done():
-                continue
-            log_metadata.info(f"Stopping node evaluation {node_id}")
-            inflight_eval.cancel()
-
-        for node_id, inflight_eval in running_node_evaluation.items():
-            try:
-                inflight_eval.result(timeout=3600.0)
-            except TimeoutError:
-                log_metadata.exception(
-                    f"Node evaluation #{node_id} did not stop in time, "
-                    "it may be stuck or taking too long."
-                )
-
         # Cancel and wait for all node executions to complete
         for node_id, inflight_exec in running_node_execution.items():
             if inflight_exec.is_done():
@@ -995,6 +987,16 @@ class Executor:
                     "it may be stuck or taking too long."
                 )
 
+        # Wait the remaining inflight evaluations to finish
+        for node_id, inflight_eval in running_node_evaluation.items():
+            try:
+                inflight_eval.result(timeout=3600.0)
+            except TimeoutError:
+                log_metadata.exception(
+                    f"Node evaluation #{node_id} did not stop in time, "
+                    "it may be stuck or taking too long."
+                )
+
         while queued_execution := execution_queue.get_or_none():
             update_node_execution_status(
                 db_client=db_client,
@@ -1006,6 +1008,7 @@ class Executor:
         clean_exec_files(graph_exec_id)
 
     @classmethod
+    @async_error_logged(swallow=True)
     async def _process_node_output(
         cls,
         output: ExecutionOutputEntry,
@@ -1027,49 +1030,18 @@ class Executor:
         """
         db_client = get_db_async_client()
 
-        try:
-            name, data = output.data
-            await db_client.upsert_execution_output(
-                node_exec_id=output.node_exec_id,
-                output_name=name,
-                output_data=data,
-            )
-            if exec_update := await db_client.get_node_execution(output.node_exec_id):
-                await send_async_execution_update(exec_update)
-
-            log_metadata.debug(f"Enqueue nodes for {node_id}: {output}")
-            for next_execution in await _enqueue_next_nodes(
-                db_client=db_client,
-                node=output.node,
-                output=output.data,
-                user_id=graph_exec.user_id,
-                graph_exec_id=graph_exec.graph_exec_id,
-                graph_id=graph_exec.graph_id,
-                log_metadata=log_metadata,
-                nodes_input_masks=nodes_input_masks,
-            ):
-                execution_queue.add(next_execution)
-        except asyncio.CancelledError as e:
-            log_metadata.warning(
-                f"Node execution {output.node_exec_id} was cancelled: {e}"
-            )
-            await async_update_node_execution_status(
-                db_client=db_client,
-                exec_id=output.node_exec_id,
-                status=ExecutionStatus.TERMINATED,
-            )
-        except Exception as e:
-            log_metadata.exception(f"Failed to process node output: {e}")
-            await db_client.upsert_execution_output(
-                node_exec_id=output.node_exec_id,
-                output_name="error",
-                output_data=str(e),
-            )
-            await async_update_node_execution_status(
-                db_client=db_client,
-                exec_id=output.node_exec_id,
-                status=ExecutionStatus.FAILED,
-            )
+        log_metadata.debug(f"Enqueue nodes for {node_id}: {output}")
+        for next_execution in await _enqueue_next_nodes(
+            db_client=db_client,
+            node=output.node,
+            output=output.data,
+            user_id=graph_exec.user_id,
+            graph_exec_id=graph_exec.graph_exec_id,
+            graph_id=graph_exec.graph_id,
+            log_metadata=log_metadata,
+            nodes_input_masks=nodes_input_masks,
+        ):
+            execution_queue.add(next_execution)
 
     @classmethod
     def _handle_agent_run_notif(
