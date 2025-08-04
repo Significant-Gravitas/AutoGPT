@@ -17,7 +17,6 @@ class TikTokVisibility(str, Enum):
     PUBLIC = "public"
     PRIVATE = "private"
     FOLLOWERS = "followers"
-    FRIENDS = "friends"
 
 
 class PostToTikTokBlock(Block):
