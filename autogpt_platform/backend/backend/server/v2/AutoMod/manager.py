@@ -4,6 +4,7 @@ from typing import Any, Dict
 
 from pydantic import ValidationError
 
+from autogpt_libs.feature_flag.client import is_feature_enabled
 from backend.data.execution import ExecutionStatus
 from backend.server.v2.AutoMod.models import (
     AutoModRequest,
@@ -45,6 +46,11 @@ class AutoModManager:
         Returns: error_if_failed (None means success)
         """
         if not self.config.enabled:
+            return None
+
+        # Check if AutoMod feature is enabled for this user
+        if not is_feature_enabled("AutoMod", graph_exec.user_id, default=False):
+            logger.debug(f"AutoMod feature not enabled for user {graph_exec.user_id}")
             return None
 
         # Get graph model and collect all inputs
@@ -119,6 +125,11 @@ class AutoModManager:
         Returns: error_if_failed (None means success)
         """
         if not self.config.enabled:
+            return None
+
+        # Check if AutoMod feature is enabled for this user
+        if not is_feature_enabled("AutoMod", user_id, default=False):
+            logger.debug(f"AutoMod feature not enabled for user {user_id}")
             return None
 
         # Get completed executions and collect outputs
