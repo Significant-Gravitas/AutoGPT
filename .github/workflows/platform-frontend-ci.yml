@@ -200,6 +200,7 @@ jobs:
           DOCKER_BUILDKIT: 1
           BUILDX_CACHE_FROM: type=local,src=/tmp/.buildx-cache
           BUILDX_CACHE_TO: type=local,dest=/tmp/.buildx-cache-new,mode=max
+          NEXT_PUBLIC_PW_TEST: true
 
       - name: Move cache
         run: |
@@ -258,16 +259,12 @@ jobs:
       - name: Build frontend
         run: pnpm build --turbo
         # uses Turbopack, much faster and safe enough for a test pipeline
-        env:
-          NEXT_PUBLIC_PW_TEST: true
 
       - name: Install Browser 'chromium'
         run: pnpm playwright install --with-deps chromium
 
       - name: Run Playwright tests
         run: pnpm test:no-build
-        env:
-          NEXT_PUBLIC_PW_TEST: true
 
       - name: Upload Playwright artifacts
         if: failure()

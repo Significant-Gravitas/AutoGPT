@@ -321,6 +321,7 @@ services:
       SUPABASE_URL: http://kong:8000
       AGPT_SERVER_URL: http://rest_server:8006/api
       AGPT_WS_SERVER_URL: ws://websocket_server:8001/ws
+      NEXT_PUBLIC_PW_TEST: ${NEXT_PUBLIC_PW_TEST:-false}
 networks:
   app-network:
     driver: bridge
