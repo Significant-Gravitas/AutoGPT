@@ -1,3 +1,4 @@
+import { isServerSide } from "@/lib/utils/is-server-side";
 import * as Sentry from "@sentry/nextjs";
 
 export enum Key {
@@ -8,7 +9,7 @@ export enum Key {
 }
 
 function get(key: Key) {
-  if (typeof window === "undefined") {
+  if (isServerSide()) {
     Sentry.captureException(new Error("Local storage is not available"));
     return;
   }
@@ -21,7 +22,7 @@ function get(key: Key) {
 }
 
 function set(key: Key, value: string) {
-  if (typeof window === "undefined") {
+  if (isServerSide()) {
     Sentry.captureException(new Error("Local storage is not available"));
     return;
   }
@@ -29,7 +30,7 @@ function set(key: Key, value: string) {
 }
 
 function clean(key: Key) {
-  if (typeof window === "undefined") {
+  if (isServerSide()) {
     Sentry.captureException(new Error("Local storage is not available"));
     return;
   }

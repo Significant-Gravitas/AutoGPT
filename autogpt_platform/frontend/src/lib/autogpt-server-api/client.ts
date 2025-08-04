@@ -72,8 +72,9 @@ import type {
   UserPasswordCredentials,
   UsersBalanceHistoryResponse,
 } from "./types";
+import { isServerSide } from "../utils/is-server-side";
 
-const isClient = typeof window !== "undefined";
+const isClient = !isServerSide();
 
 export default class BackendAPI {
   private baseUrl: string;

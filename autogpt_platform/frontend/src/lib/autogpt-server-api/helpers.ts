@@ -1,6 +1,7 @@
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { Key, storage } from "@/services/storage/local-storage";
 import { getAgptServerUrl } from "@/lib/env-config";
+import { isServerSide } from "../utils/is-server-side";
 
 export class ApiError extends Error {
   public status: number;
@@ -178,7 +179,7 @@ function isAuthenticationError(
 }
 
 function isLogoutInProgress(): boolean {
-  if (typeof window === "undefined") return false;
+  if (isServerSide()) return false;
 
   try {
     // Check if logout was recently triggered
