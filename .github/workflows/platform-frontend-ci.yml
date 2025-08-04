@@ -266,6 +266,8 @@ jobs:
 
       - name: Run Playwright tests
         run: pnpm test:no-build
+        env:
+          NEXT_PUBLIC_PW_TEST: true
 
       - name: Upload Playwright artifacts
         if: failure()
