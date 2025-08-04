@@ -58,7 +58,7 @@ from .includes import (
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     graph_execution_include,
 )
-from .model import GraphExecutionStats, NodeExecutionStats
+from .model import GraphExecutionStats
 
 T = TypeVar("T")
 
@@ -317,8 +317,6 @@ class NodeExecutionResult(BaseModel):
 
     @staticmethod
     def from_db(_node_exec: AgentNodeExecution, user_id: Optional[str] = None):
-        NodeExecutionStats.model_validate(_node_exec.stats or {})
-
         if _node_exec.executionData:
             # Execution that has been queued for execution will persist its data.
             input_data = type_utils.convert(_node_exec.executionData, dict[str, Any])
