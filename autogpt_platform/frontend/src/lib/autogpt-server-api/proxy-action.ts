@@ -8,8 +8,6 @@ import {
 } from "./helpers";
 import { getAgptServerUrl } from "@/lib/env-config";
 
-const DEFAULT_BASE_URL = "http://localhost:8006/api";
-
 export interface ProxyRequestOptions {
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
