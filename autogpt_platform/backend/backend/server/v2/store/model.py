@@ -161,6 +161,17 @@ class StoreSubmissionRequest(pydantic.BaseModel):
     changes_summary: str | None = None
 
 
+class StoreSubmissionEditRequest(pydantic.BaseModel):
+    agent_id: str
+    agent_version: int
+    name: str
+    sub_heading: str
+    video_url: str | None = None
+    image_urls: list[str] = []
+    description: str = ""
+    categories: list[str] = []
+    changes_summary: str | None = None
+
 class ProfileDetails(pydantic.BaseModel):
     name: str
     username: str

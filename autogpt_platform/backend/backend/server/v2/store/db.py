@@ -684,6 +684,308 @@ async def create_store_submission(
             "Failed to create store submission"
         ) from e
 
+async def create_store_version(
+    user_id: str,
+    agent_id: str,
+    agent_version: int,
+    store_listing_id: str,
+    name: str,
+    video_url: str | None = None,
+    image_urls: list[str] = [],
+    description: str = "",
+    sub_heading: str = "",
+    categories: list[str] = [],
+    changes_summary: str = "Update Submission",
+) -> backend.server.v2.store.model.StoreSubmission:
+    """
+    Create a new version for an existing store listing
+
+    Args:
+        user_id: ID of the authenticated user submitting the version
+        agent_id: ID of the agent being submitted
+        agent_version: Version of the agent being submitted
+        store_listing_id: ID of the existing store listing
+        name: Name of the agent
+        video_url: Optional URL to video demo
+        image_urls: List of image URLs for the listing
+        description: Description of the agent
+        categories: List of categories for the agent
+        changes_summary: Summary of changes from the previous version
+
+    Returns:
+        StoreSubmission: The created store submission
+    """
+    logger.debug(
+        f"Creating new version for store listing {store_listing_id} for user {user_id}, agent {agent_id} v{agent_version}"
+    )
+
+    try:
+        # First verify the listing belongs to this user
+        listing = await prisma.models.StoreListing.prisma().find_first(
+            where=prisma.types.StoreListingWhereInput(
+                id=store_listing_id, owningUserId=user_id
+            ),
+            include={"Versions": {"order_by": {"version": "desc"}, "take": 1}},
+        )
+
+        if not listing:
+            raise backend.server.v2.store.exceptions.ListingNotFoundError(
+                f"Store listing not found. User ID: {user_id}, Listing ID: {store_listing_id}"
+            )
+
+        # Verify the agent belongs to this user
+        agent = await prisma.models.AgentGraph.prisma().find_first(
+            where=prisma.types.AgentGraphWhereInput(
+                id=agent_id, version=agent_version, userId=user_id
+            )
+        )
+
+        if not agent:
+            raise backend.server.v2.store.exceptions.AgentNotFoundError(
+                f"Agent not found for this user. User ID: {user_id}, Agent ID: {agent_id}, Version: {agent_version}"
+            )
+
+        # Get the latest version number
+        latest_version = listing.Versions[0] if listing.Versions else None
+
+        next_version = (latest_version.version + 1) if latest_version else 1
+
+        # Create a new version for the existing listing
+        new_version = await prisma.models.StoreListingVersion.prisma().create(
+            data=prisma.types.StoreListingVersionCreateInput(
+                version=next_version,
+                agentGraphId=agent_id,
+                agentGraphVersion=agent_version,
+                name=name,
+                videoUrl=video_url,
+                imageUrls=image_urls,
+                description=description,
+                categories=categories,
+                subHeading=sub_heading,
+                submissionStatus=prisma.enums.SubmissionStatus.PENDING,
+                submittedAt=datetime.now(),
+                changesSummary=changes_summary,
+                storeListingId=store_listing_id,
+            )
+        )
+
+        logger.debug(
+            f"Created new version for listing {store_listing_id} of agent {agent_id}"
+        )
+        # Return submission details
+        return backend.server.v2.store.model.StoreSubmission(
+            agent_id=agent_id,
+            agent_version=agent_version,
+            name=name,
+            slug=listing.slug,
+            sub_heading=sub_heading,
+            description=description,
+            image_urls=image_urls,
+            date_submitted=datetime.now(),
+            status=prisma.enums.SubmissionStatus.PENDING,
+            runs=0,
+            rating=0.0,
+            store_listing_version_id=new_version.id,
+            changes_summary=changes_summary,
+            version=next_version,
+        )
+
+    except prisma.errors.PrismaError as e:
+        raise backend.server.v2.store.exceptions.DatabaseError(
+            "Failed to create new store version"
+        ) from e
+
+
+async def edit_store_submission(
+    user_id: str,
+    store_listing_version_id: str,
+    agent_id: str,
+    agent_version: int,
+    slug: str,
+    name: str,
+    video_url: str | None = None,
+    image_urls: list[str] = [],
+    description: str = "",
+    sub_heading: str = "",
+    categories: list[str] = [],
+    changes_summary: str = "Update Submission",
+) -> backend.server.v2.store.model.StoreSubmission:
+    """
+    Edit an existing store listing submission.
+    
+    Args:
+        user_id: ID of the authenticated user editing the submission
+        store_listing_version_id: ID of the store listing version to edit
+        agent_id: ID of the agent being submitted
+        agent_version: Version of the agent being submitted
+        slug: URL slug for the listing (only changeable for PENDING submissions)
+        name: Name of the agent
+        video_url: Optional URL to video demo
+        image_urls: List of image URLs for the listing
+        description: Description of the agent
+        sub_heading: Optional sub-heading for the agent
+        categories: List of categories for the agent
+        changes_summary: Summary of changes made in this submission
+
+    Returns:
+        StoreSubmission: The updated store submission
+
+    Raises:
+        SubmissionNotFoundError: If the submission is not found
+        UnauthorizedError: If the user doesn't own the submission
+        InvalidOperationError: If trying to edit a submission that can't be edited
+    """
+    logger.debug(
+        f"Editing store submission {store_listing_version_id} for user {user_id}, agent {agent_id} v{agent_version}"
+    )
+
+    try:
+        # Get the current version and verify ownership
+        current_version = await prisma.models.StoreListingVersion.prisma().find_first(
+            where=prisma.types.StoreListingVersionWhereInput(
+                id=store_listing_version_id
+            ),
+            include={
+                "StoreListing": {
+                    "include": {
+                        "Versions": {
+                            "order_by": {"version": "desc"},
+                            "take": 1
+                        }
+                    }
+                }
+            }
+        )
+
+        if not current_version:
+            raise backend.server.v2.store.exceptions.SubmissionNotFoundError(
+                f"Store listing version not found: {store_listing_version_id}"
+            )
+
+        # Verify the user owns this submission
+        if current_version.StoreListing.owningUserId != user_id:
+            raise backend.server.v2.store.exceptions.UnauthorizedError(
+                f"User {user_id} does not own submission {store_listing_version_id}"
+            )
+
+        # Verify the agent belongs to this user
+        agent = await prisma.models.AgentGraph.prisma().find_first(
+            where=prisma.types.AgentGraphWhereInput(
+                id=agent_id, version=agent_version, userId=user_id
+            )
+        )
+
+        if not agent:
+            raise backend.server.v2.store.exceptions.AgentNotFoundError(
+                f"Agent not found for this user. User ID: {user_id}, Agent ID: {agent_id}, Version: {agent_version}"
+            )
+
+        # Check if we can edit this submission
+        if current_version.submissionStatus == prisma.enums.SubmissionStatus.REJECTED:
+            raise backend.server.v2.store.exceptions.InvalidOperationError(
+                "Cannot edit a rejected submission"
+            )
+
+        # For APPROVED submissions, we need to create a new version
+        if current_version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED:
+            if slug != current_version.StoreListing.slug:
+                raise backend.server.v2.store.exceptions.InvalidOperationError(
+                    "Cannot change slug for approved submissions"
+                )
+            
+            # Create a new version for the existing listing
+            return await create_store_version(
+                user_id=user_id,
+                agent_id=agent_id,
+                agent_version=agent_version,
+                store_listing_id=current_version.storeListingId,
+                name=name,
+                video_url=video_url,
+                image_urls=image_urls,
+                description=description,
+                sub_heading=sub_heading,
+                categories=categories,
+                changes_summary=changes_summary,
+            )
+
+        # For PENDING submissions, we can update the existing version
+        elif current_version.submissionStatus == prisma.enums.SubmissionStatus.PENDING:
+            # Check if the new slug is unique for this user
+            if slug != current_version.StoreListing.slug:
+                existing_listing = await prisma.models.StoreListing.prisma().find_first(
+                    where=prisma.types.StoreListingWhereInput(
+                        owningUserId=user_id,
+                        slug=slug,
+                        id={"not": current_version.storeListingId}
+                    )
+                )
+                
+                if existing_listing:
+                    raise backend.server.v2.store.exceptions.ListingExistsError(
+                        f"Slug '{slug}' is already in use by another listing"
+                    )
+
+            # Update the existing version
+            updated_version = await prisma.models.StoreListingVersion.prisma().update(
+                where={"id": store_listing_version_id},
+                data=prisma.types.StoreListingVersionUpdateInput(
+                    agentGraphId=agent_id,
+                    agentGraphVersion=agent_version,
+                    name=name,
+                    videoUrl=video_url,
+                    imageUrls=image_urls,
+                    description=description,
+                    categories=categories,
+                    subHeading=sub_heading,
+                    changesSummary=changes_summary,
+                )
+            )
+
+            if slug != current_version.StoreListing.slug:
+                await prisma.models.StoreListing.prisma().update(
+                    where={"id": current_version.storeListingId},
+                    data=prisma.types.StoreListingUpdateInput(slug=slug)
+                )
+
+            logger.debug(
+                f"Updated existing version {store_listing_version_id} for agent {agent_id}"
+            )
+
+            return backend.server.v2.store.model.StoreSubmission(
+                agent_id=agent_id,
+                agent_version=agent_version,
+                name=name,
+                slug=slug,
+                sub_heading=sub_heading,
+                description=description,
+                image_urls=image_urls,
+                date_submitted=updated_version.submittedAt or updated_version.createdAt,
+                status=updated_version.submissionStatus,
+                runs=0,
+                rating=0.0,
+                store_listing_version_id=updated_version.id,
+                changes_summary=changes_summary,
+                version=updated_version.version,
+            )
+
+        else:
+            raise backend.server.v2.store.exceptions.InvalidOperationError(
+                f"Cannot edit submission with status: {current_version.submissionStatus}"
+            )
+
+    except (
+        backend.server.v2.store.exceptions.SubmissionNotFoundError,
+        backend.server.v2.store.exceptions.UnauthorizedError,
+        backend.server.v2.store.exceptions.AgentNotFoundError,
+        backend.server.v2.store.exceptions.ListingExistsError,
+        backend.server.v2.store.exceptions.InvalidOperationError,
+    ):
+        raise
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error editing store submission: {e}")
+        raise backend.server.v2.store.exceptions.DatabaseError(
+            "Failed to edit store submission"
+        ) from e
 
 async def create_store_version(
     user_id: str,
