@@ -494,6 +494,67 @@ async def get_store_submissions(
         )
 
 
+async def get_store_submission_by_id(
+    user_id: str, store_listing_version_id: str
+) -> backend.server.v2.store.model.StoreSubmission:
+    """Get a single store submission by its store_listing_version_id"""
+    logger.debug(f"Getting store submission {store_listing_version_id} for user {user_id}")
+
+    try:
+        submission = await prisma.models.StoreSubmission.prisma().find_first(
+            where=prisma.types.StoreSubmissionWhereInput(
+                user_id=user_id,
+                store_listing_version_id=store_listing_version_id,
+            )
+        )
+
+        if not submission:
+            raise backend.server.v2.store.exceptions.SubmissionNotFoundError(
+                f"Submission {store_listing_version_id} not found for user {user_id}"
+            )
+
+        # Get additional fields from StoreListingVersion table
+        store_listing_version = await prisma.models.StoreListingVersion.prisma().find_unique(
+            where={"id": store_listing_version_id},
+            include={"StoreListing": True}
+        )
+
+        if not store_listing_version:
+            raise backend.server.v2.store.exceptions.SubmissionNotFoundError(
+                f"Store listing version {store_listing_version_id} not found"
+            )
+
+        # Convert to response model with additional fields
+        return backend.server.v2.store.model.StoreSubmission(
+            agent_id=submission.agent_id,
+            agent_version=submission.agent_version,
+            name=submission.name,
+            sub_heading=submission.sub_heading,
+            slug=submission.slug,
+            description=submission.description,
+            image_urls=submission.image_urls,
+            date_submitted=submission.date_submitted,
+            status=submission.status,
+            runs=submission.runs,
+            rating=submission.rating,
+            store_listing_version_id=submission.store_listing_version_id,
+            version=submission.version,
+            reviewer_id=submission.reviewer_id,
+            review_comments=submission.review_comments,
+            internal_comments=submission.internal_comments,
+            reviewed_at=submission.reviewed_at,
+            changes_summary=submission.changes_summary,
+            video_url=store_listing_version.videoUrl,
+            categories=store_listing_version.categories or [],
+        )
+
+    except backend.server.v2.store.exceptions.SubmissionNotFoundError:
+        raise
+    except Exception as e:
+        logger.exception(f"Error getting store submission {store_listing_version_id} for user {user_id}")
+        raise e
+
+
 async def delete_store_submission(
     user_id: str,
     submission_id: str,

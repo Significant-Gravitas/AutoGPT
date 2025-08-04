@@ -15,15 +15,18 @@ export interface AgentTableProps {
     | "selectedAgents"
     | "onViewSubmission"
     | "onDeleteSubmission"
+    | "onEditSubmission"
   >[];
   onViewSubmission: (submission: StoreSubmission) => void;
   onDeleteSubmission: (submission_id: string) => void;
+  onEditSubmission: (submission: StoreSubmission) => void;
 }
 
 export const AgentTable: React.FC<AgentTableProps> = ({
   agents,
   onViewSubmission,
   onDeleteSubmission,
+  onEditSubmission,
 }) => {
   return (
     <div className="w-full">
@@ -62,6 +65,7 @@ export const AgentTable: React.FC<AgentTableProps> = ({
                 {...agent}
                 onViewSubmission={onViewSubmission}
                 onDeleteSubmission={onDeleteSubmission}
+                onEditSubmission={onEditSubmission}
               />
               <div className="block md:hidden">
                 <AgentTableCard

@@ -13,6 +13,7 @@ import type { StoreSubmissionReviewComments } from "./storeSubmissionReviewComme
 import type { StoreSubmissionInternalComments } from "./storeSubmissionInternalComments";
 import type { StoreSubmissionReviewedAt } from "./storeSubmissionReviewedAt";
 import type { StoreSubmissionChangesSummary } from "./storeSubmissionChangesSummary";
+import type { StoreSubmissionVideoUrl } from "./storeSubmissionVideoUrl";
 
 export interface StoreSubmission {
   agent_id: string;
@@ -33,4 +34,6 @@ export interface StoreSubmission {
   internal_comments?: StoreSubmissionInternalComments;
   reviewed_at?: StoreSubmissionReviewedAt;
   changes_summary?: StoreSubmissionChangesSummary;
+  video_url?: StoreSubmissionVideoUrl;
+  categories?: string[];
 }

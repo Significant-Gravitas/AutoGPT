@@ -115,11 +115,9 @@ class StoreSubmission(pydantic.BaseModel):
     reviewed_at: datetime.datetime | None = None
     changes_summary: str | None = None
 
-    reviewer_id: str | None = None
-    review_comments: str | None = None  # External comments visible to creator
-    internal_comments: str | None = None  # Private notes for admin use only
-    reviewed_at: datetime.datetime | None = None
-    changes_summary: str | None = None
+    # Additional fields for editing
+    video_url: str | None = None
+    categories: list[str] = []
 
 
 class StoreSubmissionsResponse(pydantic.BaseModel):

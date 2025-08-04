@@ -27,6 +27,8 @@ import type { CreatorDetails } from "../../models/creatorDetails";
 
 import type { CreatorsResponse } from "../../models/creatorsResponse";
 
+import type { GetV2GetMyAgentsParams } from "../../models/getV2GetMyAgentsParams";
+
 import type { GetV2ListMySubmissionsParams } from "../../models/getV2ListMySubmissionsParams";
 
 import type { GetV2ListStoreAgentsParams } from "../../models/getV2ListStoreAgentsParams";
@@ -52,6 +54,8 @@ import type { StoreReview } from "../../models/storeReview";
 import type { StoreReviewCreate } from "../../models/storeReviewCreate";
 
 import type { StoreSubmission } from "../../models/storeSubmission";
+
+import type { StoreSubmissionEditRequest } from "../../models/storeSubmissionEditRequest";
 
 import type { StoreSubmissionRequest } from "../../models/storeSubmissionRequest";
 
@@ -1950,45 +1954,78 @@ export type getV2GetMyAgentsResponse200 = {
   status: 200;
 };
 
-export type getV2GetMyAgentsResponseComposite = getV2GetMyAgentsResponse200;
+export type getV2GetMyAgentsResponse422 = {
+  data: HTTPValidationError;
+  status: 422;
+};
+
+export type getV2GetMyAgentsResponseComposite =
+  | getV2GetMyAgentsResponse200
+  | getV2GetMyAgentsResponse422;
 
 export type getV2GetMyAgentsResponse = getV2GetMyAgentsResponseComposite & {
   headers: Headers;
 };
 
-export const getGetV2GetMyAgentsUrl = () => {
-  return `/api/store/myagents`;
+export const getGetV2GetMyAgentsUrl = (params?: GetV2GetMyAgentsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/store/myagents?${stringifiedParams}`
+    : `/api/store/myagents`;
 };
 
 export const getV2GetMyAgents = async (
+  params?: GetV2GetMyAgentsParams,
   options?: RequestInit,
 ): Promise<getV2GetMyAgentsResponse> => {
-  return customMutator<getV2GetMyAgentsResponse>(getGetV2GetMyAgentsUrl(), {
-    ...options,
-    method: "GET",
-  });
+  return customMutator<getV2GetMyAgentsResponse>(
+    getGetV2GetMyAgentsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
 };
 
-export const getGetV2GetMyAgentsQueryKey = () => {
-  return [`/api/store/myagents`] as const;
+export const getGetV2GetMyAgentsQueryKey = (
+  params?: GetV2GetMyAgentsParams,
+) => {
+  return [`/api/store/myagents`, ...(params ? [params] : [])] as const;
 };
 
 export const getGetV2GetMyAgentsQueryOptions = <
   TData = Awaited<ReturnType<typeof getV2GetMyAgents>>,
-  TError = unknown,
->(options?: {
-  query?: Partial<
-    UseQueryOptions<Awaited<ReturnType<typeof getV2GetMyAgents>>, TError, TData>
-  >;
-  request?: SecondParameter<typeof customMutator>;
-}) => {
+  TError = HTTPValidationError,
+>(
+  params?: GetV2GetMyAgentsParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2GetMyAgents>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getGetV2GetMyAgentsQueryKey();
+  const queryKey =
+    queryOptions?.queryKey ?? getGetV2GetMyAgentsQueryKey(params);
 
   const queryFn: QueryFunction<
     Awaited<ReturnType<typeof getV2GetMyAgents>>
-  > = ({ signal }) => getV2GetMyAgents({ signal, ...requestOptions });
+  > = ({ signal }) => getV2GetMyAgents(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getV2GetMyAgents>>,
@@ -2000,12 +2037,13 @@ export const getGetV2GetMyAgentsQueryOptions = <
 export type GetV2GetMyAgentsQueryResult = NonNullable<
   Awaited<ReturnType<typeof getV2GetMyAgents>>
 >;
-export type GetV2GetMyAgentsQueryError = unknown;
+export type GetV2GetMyAgentsQueryError = HTTPValidationError;
 
 export function useGetV2GetMyAgents<
   TData = Awaited<ReturnType<typeof getV2GetMyAgents>>,
-  TError = unknown,
+  TError = HTTPValidationError,
 >(
+  params: undefined | GetV2GetMyAgentsParams,
   options: {
     query: Partial<
       UseQueryOptions<
@@ -2030,8 +2068,9 @@ export function useGetV2GetMyAgents<
 };
 export function useGetV2GetMyAgents<
   TData = Awaited<ReturnType<typeof getV2GetMyAgents>>,
-  TError = unknown,
+  TError = HTTPValidationError,
 >(
+  params?: GetV2GetMyAgentsParams,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -2056,8 +2095,9 @@ export function useGetV2GetMyAgents<
 };
 export function useGetV2GetMyAgents<
   TData = Awaited<ReturnType<typeof getV2GetMyAgents>>,
-  TError = unknown,
+  TError = HTTPValidationError,
 >(
+  params?: GetV2GetMyAgentsParams,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -2078,8 +2118,9 @@ export function useGetV2GetMyAgents<
 
 export function useGetV2GetMyAgents<
   TData = Awaited<ReturnType<typeof getV2GetMyAgents>>,
-  TError = unknown,
+  TError = HTTPValidationError,
 >(
+  params?: GetV2GetMyAgentsParams,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -2094,7 +2135,7 @@ export function useGetV2GetMyAgents<
 ): UseQueryResult<TData, TError> & {
   queryKey: DataTag<QueryKey, TData, TError>;
 } {
-  const queryOptions = getGetV2GetMyAgentsQueryOptions(options);
+  const queryOptions = getGetV2GetMyAgentsQueryOptions(params, options);
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<
     TData,
@@ -2111,9 +2152,10 @@ export function useGetV2GetMyAgents<
  */
 export const prefetchGetV2GetMyAgentsQuery = async <
   TData = Awaited<ReturnType<typeof getV2GetMyAgents>>,
-  TError = unknown,
+  TError = HTTPValidationError,
 >(
   queryClient: QueryClient,
+  params?: GetV2GetMyAgentsParams,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -2125,7 +2167,7 @@ export const prefetchGetV2GetMyAgentsQuery = async <
     request?: SecondParameter<typeof customMutator>;
   },
 ): Promise<QueryClient> => {
-  const queryOptions = getGetV2GetMyAgentsQueryOptions(options);
+  const queryOptions = getGetV2GetMyAgentsQueryOptions(params, options);
 
   await queryClient.prefetchQuery(queryOptions);
 
@@ -2616,6 +2658,383 @@ export const usePostV2CreateStoreSubmission = <
 > => {
   const mutationOptions =
     getPostV2CreateStoreSubmissionMutationOptions(options);
+
+  return useMutation(mutationOptions, queryClient);
+};
+/**
+ * Get a single store submission by its store_listing_version_id.
+
+Args:
+    store_listing_version_id (str): ID of the store listing version
+    user_id (str): ID of the authenticated user
+
+Returns:
+    StoreSubmission: The store submission details
+
+Raises:
+    HTTPException: If the submission is not found or there is an error
+ * @summary Get a single submission
+ */
+export type getV2GetASingleSubmissionResponse200 = {
+  data: StoreSubmission;
+  status: 200;
+};
+
+export type getV2GetASingleSubmissionResponse422 = {
+  data: HTTPValidationError;
+  status: 422;
+};
+
+export type getV2GetASingleSubmissionResponseComposite =
+  | getV2GetASingleSubmissionResponse200
+  | getV2GetASingleSubmissionResponse422;
+
+export type getV2GetASingleSubmissionResponse =
+  getV2GetASingleSubmissionResponseComposite & {
+    headers: Headers;
+  };
+
+export const getGetV2GetASingleSubmissionUrl = (
+  storeListingVersionId: string,
+) => {
+  return `/api/store/submissions/${storeListingVersionId}`;
+};
+
+export const getV2GetASingleSubmission = async (
+  storeListingVersionId: string,
+  options?: RequestInit,
+): Promise<getV2GetASingleSubmissionResponse> => {
+  return customMutator<getV2GetASingleSubmissionResponse>(
+    getGetV2GetASingleSubmissionUrl(storeListingVersionId),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetV2GetASingleSubmissionQueryKey = (
+  storeListingVersionId: string,
+) => {
+  return [`/api/store/submissions/${storeListingVersionId}`] as const;
+};
+
+export const getGetV2GetASingleSubmissionQueryOptions = <
+  TData = Awaited<ReturnType<typeof getV2GetASingleSubmission>>,
+  TError = HTTPValidationError,
+>(
+  storeListingVersionId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2GetASingleSubmission>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetV2GetASingleSubmissionQueryKey(storeListingVersionId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getV2GetASingleSubmission>>
+  > = ({ signal }) =>
+    getV2GetASingleSubmission(storeListingVersionId, {
+      signal,
+      ...requestOptions,
+    });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!storeListingVersionId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getV2GetASingleSubmission>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetV2GetASingleSubmissionQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getV2GetASingleSubmission>>
+>;
+export type GetV2GetASingleSubmissionQueryError = HTTPValidationError;
+
+export function useGetV2GetASingleSubmission<
+  TData = Awaited<ReturnType<typeof getV2GetASingleSubmission>>,
+  TError = HTTPValidationError,
+>(
+  storeListingVersionId: string,
+  options: {
+    query: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2GetASingleSubmission>>,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getV2GetASingleSubmission>>,
+          TError,
+          Awaited<ReturnType<typeof getV2GetASingleSubmission>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetV2GetASingleSubmission<
+  TData = Awaited<ReturnType<typeof getV2GetASingleSubmission>>,
+  TError = HTTPValidationError,
+>(
+  storeListingVersionId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2GetASingleSubmission>>,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getV2GetASingleSubmission>>,
+          TError,
+          Awaited<ReturnType<typeof getV2GetASingleSubmission>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetV2GetASingleSubmission<
+  TData = Awaited<ReturnType<typeof getV2GetASingleSubmission>>,
+  TError = HTTPValidationError,
+>(
+  storeListingVersionId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2GetASingleSubmission>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+/**
+ * @summary Get a single submission
+ */
+
+export function useGetV2GetASingleSubmission<
+  TData = Awaited<ReturnType<typeof getV2GetASingleSubmission>>,
+  TError = HTTPValidationError,
+>(
+  storeListingVersionId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2GetASingleSubmission>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+} {
+  const queryOptions = getGetV2GetASingleSubmissionQueryOptions(
+    storeListingVersionId,
+    options,
+  );
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Get a single submission
+ */
+export const prefetchGetV2GetASingleSubmissionQuery = async <
+  TData = Awaited<ReturnType<typeof getV2GetASingleSubmission>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  storeListingVersionId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2GetASingleSubmission>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2GetASingleSubmissionQueryOptions(
+    storeListingVersionId,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
+ * Edit an existing store listing submission.
+
+Args:
+    store_listing_version_id (str): ID of the store listing version to edit
+    submission_request (StoreSubmissionRequest): The updated submission details
+    user_id (str): ID of the authenticated user editing the listing
+
+Returns:
+    StoreSubmission: The updated store submission
+
+Raises:
+    HTTPException: If there is an error editing the submission
+ * @summary Edit store submission
+ */
+export type putV2EditStoreSubmissionResponse200 = {
+  data: StoreSubmission;
+  status: 200;
+};
+
+export type putV2EditStoreSubmissionResponse422 = {
+  data: HTTPValidationError;
+  status: 422;
+};
+
+export type putV2EditStoreSubmissionResponseComposite =
+  | putV2EditStoreSubmissionResponse200
+  | putV2EditStoreSubmissionResponse422;
+
+export type putV2EditStoreSubmissionResponse =
+  putV2EditStoreSubmissionResponseComposite & {
+    headers: Headers;
+  };
+
+export const getPutV2EditStoreSubmissionUrl = (
+  storeListingVersionId: string,
+) => {
+  return `/api/store/submissions/${storeListingVersionId}`;
+};
+
+export const putV2EditStoreSubmission = async (
+  storeListingVersionId: string,
+  storeSubmissionEditRequest: StoreSubmissionEditRequest,
+  options?: RequestInit,
+): Promise<putV2EditStoreSubmissionResponse> => {
+  return customMutator<putV2EditStoreSubmissionResponse>(
+    getPutV2EditStoreSubmissionUrl(storeListingVersionId),
+    {
+      ...options,
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(storeSubmissionEditRequest),
+    },
+  );
+};
+
+export const getPutV2EditStoreSubmissionMutationOptions = <
+  TError = HTTPValidationError,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof putV2EditStoreSubmission>>,
+    TError,
+    { storeListingVersionId: string; data: StoreSubmissionEditRequest },
+    TContext
+  >;
+  request?: SecondParameter<typeof customMutator>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof putV2EditStoreSubmission>>,
+  TError,
+  { storeListingVersionId: string; data: StoreSubmissionEditRequest },
+  TContext
+> => {
+  const mutationKey = ["putV2EditStoreSubmission"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof putV2EditStoreSubmission>>,
+    { storeListingVersionId: string; data: StoreSubmissionEditRequest }
+  > = (props) => {
+    const { storeListingVersionId, data } = props ?? {};
+
+    return putV2EditStoreSubmission(
+      storeListingVersionId,
+      data,
+      requestOptions,
+    );
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PutV2EditStoreSubmissionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof putV2EditStoreSubmission>>
+>;
+export type PutV2EditStoreSubmissionMutationBody = StoreSubmissionEditRequest;
+export type PutV2EditStoreSubmissionMutationError = HTTPValidationError;
+
+/**
+ * @summary Edit store submission
+ */
+export const usePutV2EditStoreSubmission = <
+  TError = HTTPValidationError,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof putV2EditStoreSubmission>>,
+      TError,
+      { storeListingVersionId: string; data: StoreSubmissionEditRequest },
+      TContext
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof putV2EditStoreSubmission>>,
+  TError,
+  { storeListingVersionId: string; data: StoreSubmissionEditRequest },
+  TContext
+> => {
+  const mutationOptions = getPutV2EditStoreSubmissionMutationOptions(options);
 
   return useMutation(mutationOptions, queryClient);
 };

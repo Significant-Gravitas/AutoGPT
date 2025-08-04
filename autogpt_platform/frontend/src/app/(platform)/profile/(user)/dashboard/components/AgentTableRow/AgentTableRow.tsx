@@ -7,12 +7,14 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Status, StatusType } from "@/components/agptui/Status";
 import { useAgentTableRow } from "./useAgentTableRow";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
+import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import {
   DotsThreeVerticalIcon,
   Eye,
   ImageBroken,
   Star,
   Trash,
+  PencilSimple,
 } from "@phosphor-icons/react/dist/ssr";
 
 export interface AgentTableRowProps {
@@ -30,6 +32,7 @@ export interface AgentTableRowProps {
   id: number;
   onViewSubmission: (submission: StoreSubmission) => void;
   onDeleteSubmission: (submission_id: string) => void;
+  onEditSubmission: (submission: StoreSubmission) => void;
 }
 
 export const AgentTableRow = ({
@@ -46,11 +49,13 @@ export const AgentTableRow = ({
   id,
   onViewSubmission,
   onDeleteSubmission,
+  onEditSubmission,
 }: AgentTableRowProps) => {
-  const { handleView, handleDelete } = useAgentTableRow({
+  const { handleView, handleDelete, handleEdit } = useAgentTableRow({
     id,
     onViewSubmission,
     onDeleteSubmission,
+    onEditSubmission,
     agent_id,
     agent_version,
     agentName,
@@ -62,6 +67,9 @@ export const AgentTableRow = ({
     runs,
     rating,
   });
+
+  // Determine if we should show Edit or View button
+  const canEdit = status === "approved" || status === "awaiting_review";
 
   return (
     <div className="hidden items-center border-b border-neutral-300 px-4 py-4 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800 md:flex">
@@ -135,13 +143,23 @@ export const AgentTableRow = ({
               <DotsThreeVerticalIcon className="h-5 w-5 text-neutral-800" />
             </DropdownMenu.Trigger>
             <DropdownMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md dark:bg-gray-800">
-              <DropdownMenu.Item
-                onSelect={handleView}
-                className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
-              >
-                <Eye className="mr-2 h-4 w-4 dark:text-gray-100" />
-                <span className="dark:text-gray-100">View</span>
-              </DropdownMenu.Item>
+              {canEdit ? (
+                <DropdownMenu.Item
+                  onSelect={handleEdit}
+                  className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <PencilSimple className="mr-2 h-4 w-4 dark:text-gray-100" />
+                  <span className="dark:text-gray-100">Edit</span>
+                </DropdownMenu.Item>
+              ) : (
+                <DropdownMenu.Item
+                  onSelect={handleView}
+                  className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <Eye className="mr-2 h-4 w-4 dark:text-gray-100" />
+                  <span className="dark:text-gray-100">View</span>
+                </DropdownMenu.Item>
+              )}
               <DropdownMenu.Separator className="my-1 h-px bg-gray-300 dark:bg-gray-600" />
               <DropdownMenu.Item
                 onSelect={handleDelete}

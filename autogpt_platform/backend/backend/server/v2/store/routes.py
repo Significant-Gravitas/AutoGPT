@@ -516,6 +516,49 @@ async def get_submissions(
         )
 
 
+@router.get(
+    "/submissions/{store_listing_version_id}",
+    summary="Get a single submission",
+    tags=["store", "private"],
+    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+    response_model=backend.server.v2.store.model.StoreSubmission,
+)
+async def get_submission(
+    store_listing_version_id: str,
+    user_id: typing.Annotated[
+        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
+    ],
+):
+    """
+    Get a single store submission by its store_listing_version_id.
+
+    Args:
+        store_listing_version_id (str): ID of the store listing version
+        user_id (str): ID of the authenticated user
+
+    Returns:
+        StoreSubmission: The store submission details
+
+    Raises:
+        HTTPException: If the submission is not found or there is an error
+    """
+    try:
+        return await backend.server.v2.store.db.get_store_submission_by_id(
+            user_id=user_id, store_listing_version_id=store_listing_version_id
+        )
+    except backend.server.v2.store.exceptions.SubmissionNotFoundError as e:
+        return fastapi.responses.JSONResponse(
+            status_code=404,
+            content={"detail": str(e)},
+        )
+    except Exception:
+        logger.exception("Exception occurred whilst getting store submission")
+        return fastapi.responses.JSONResponse(
+            status_code=500,
+            content={"detail": "An error occurred while fetching the submission"},
+        )
+
+
 @router.post(
     "/submissions",
     summary="Create store submission",
@@ -611,7 +654,6 @@ async def edit_submission(
             status_code=500,
             content={"detail": "An error occurred while editing the store submission"},
         )
-
 
 @router.post(
     "/submissions/media",
