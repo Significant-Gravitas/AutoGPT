@@ -425,10 +425,10 @@ class GraphModel(Graph):
         graph: BaseGraph,
         for_run: bool = False,
         nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
-    ):
+    ) -> None:
         """
-        Validate graph structure and raise ValueError on issues.
-        For structured error reporting, use _validate_graph_with_errors.
+        Validate graph structure and raise `ValueError` on issues.
+        For structured error reporting, use `_validate_graph_with_errors`.
         """
         errors = GraphModel._validate_graph_with_errors(
             graph, for_run, nodes_input_masks
@@ -447,6 +447,7 @@ class GraphModel(Graph):
     ) -> dict[str, dict[str, str]]:
         """
         Validate graph and return structured errors per node.
+
         Returns: dict[node_id, dict[field_name, error_message]]
         """
 
