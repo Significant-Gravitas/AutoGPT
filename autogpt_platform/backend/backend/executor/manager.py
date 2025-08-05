@@ -7,7 +7,7 @@ import time
 from collections import defaultdict
 from concurrent.futures import Future, ProcessPoolExecutor
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast, override
+from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
 
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
@@ -1325,7 +1325,6 @@ class ExecutionManager(AppProcess):
 
         return completed_runs
 
-    @override
     def cleanup(self):
         """Override cleanup to implement graceful shutdown with active execution waiting."""
         prefix = f"[{self.service_name}][on_graph_executor_stop {os.getpid()}]"
