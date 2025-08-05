@@ -24,16 +24,12 @@ import {
   deepEquals,
   getTypeColor,
   removeEmptyStringsAndNulls,
-  setNestedProperty,
 } from "@/lib/utils";
 import { MarkerType } from "@xyflow/react";
-import Ajv from "ajv";
 import { default as NextLink } from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-
-const ajv = new Ajv({ strict: false, allErrors: true });
 
 export default function useAgentGraph(
   flowID?: GraphID,
