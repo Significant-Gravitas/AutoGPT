@@ -48,7 +48,7 @@ export function useLoginPage() {
   async function handleProviderLogin(provider: LoginProvider) {
     setIsGoogleLoading(true);
 
-    if (!turnstile.verified && !isVercelPreview) {
+    if (isCloudEnv && !turnstile.verified && !isVercelPreview) {
       toast({
         title: "Please complete the CAPTCHA challenge.",
         variant: "info",
@@ -77,7 +77,7 @@ export function useLoginPage() {
 
   async function handleLogin(data: z.infer<typeof loginFormSchema>) {
     setIsLoading(true);
-    if (!turnstile.verified && !isVercelPreview) {
+    if (isCloudEnv && !turnstile.verified && !isVercelPreview) {
       toast({
         title: "Please complete the CAPTCHA challenge.",
         variant: "info",
