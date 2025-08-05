@@ -199,5 +199,5 @@ class AgentExecutorBlock(Block):
                 wait_timeout=3600,
             )
             logger.info(f"Execution {log_id} stopped successfully.")
-        except Exception as e:
-            logger.error(f"Failed to stop execution {log_id}: {e}")
+        except TimeoutError as e:
+            logger.error(f"Execution {log_id} stop timed out: {e}")

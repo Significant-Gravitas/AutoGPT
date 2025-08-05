@@ -2,7 +2,6 @@ import asyncio
 import logging
 import multiprocessing
 import os
-import sys
 import threading
 import time
 from collections import defaultdict
@@ -57,6 +56,7 @@ from backend.data.execution import (
 )
 from backend.data.graph import Link, Node
 from backend.executor.utils import (
+    GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
     GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
     GRAPH_EXECUTION_QUEUE_NAME,
     CancelExecutionEvent,
@@ -66,7 +66,6 @@ from backend.executor.utils import (
     execution_usage_cost,
     get_async_execution_event_bus,
     get_execution_event_bus,
-    get_execution_queue,
     parse_execution_output,
     validate_exec,
 )
@@ -522,7 +521,7 @@ class Executor:
             else:
                 # CancelledError or SystemExit
                 log_metadata.warning(
-                    f"Interuption error on node execution {node_exec.node_exec_id}: {type(e).__name__}"
+                    f"Interruption error on node execution {node_exec.node_exec_id}: {type(e).__name__}"
                 )
                 status = ExecutionStatus.TERMINATED
 
@@ -714,6 +713,13 @@ class Executor:
         log_metadata: LogMetadata,
         execution_stats: GraphExecutionStats,
     ) -> ExecutionStatus:
+
+        # Agent execution is uninterrupted.
+        import signal
+
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+
         """
         Returns:
             dict: The execution statistics of the graph execution.
@@ -892,11 +898,11 @@ class Executor:
 
             return execution_status
 
-        except BaseException as exc:
+        except BaseException as e:
             error = (
-                exc
-                if isinstance(exc, Exception)
-                else Exception(f"{exc.__class__.__name__}: {exc}")
+                e
+                if isinstance(e, Exception)
+                else Exception(f"{e.__class__.__name__}: {e}")
             )
 
             known_errors = (InsufficientBalanceError,)
@@ -1081,42 +1087,57 @@ class ExecutionManager(AppProcess):
     def __init__(self):
         super().__init__()
         self.pool_size = settings.config.num_graph_workers
-        self.running = True
         self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
+        self._stop_consuming = None
+        self._executor = None
+        self._cancel_client = None
+        self._run_client = None
+
+    @property
+    def stop_consuming(self) -> threading.Event:
+        if self._stop_consuming is None:
+            self._stop_consuming = threading.Event()
+        return self._stop_consuming
+
+    @property
+    def executor(self) -> ProcessPoolExecutor:
+        if self._executor is None:
+            self._executor = ProcessPoolExecutor(
+                max_workers=self.pool_size,
+                initializer=Executor.on_graph_executor_start,
+            )
+        return self._executor
 
     def run(self):
-        pool_size_gauge.set(self.pool_size)
-        active_runs_gauge.set(0)
-        utilization_gauge.set(0)
-
-        self.metrics_server = threading.Thread(
-            target=start_http_server,
-            args=(settings.config.execution_manager_port,),
-            daemon=True,
-        )
-        self.metrics_server.start()
-        logger.info(f"[{self.service_name}] Starting execution manager...")
-        self._run()
-
-    def _run(self):
         logger.info(f"[{self.service_name}] ⏳ Spawn max-{self.pool_size} workers...")
-        self.executor = ProcessPoolExecutor(
-            max_workers=self.pool_size,
-            initializer=Executor.on_graph_executor_start,
-        )
+
+        pool_size_gauge.set(self.pool_size)
+        self._update_prompt_metrics()
 
         threading.Thread(
             target=lambda: self._consume_execution_cancel(),
             daemon=True,
         ).start()
 
-        self._consume_execution_run()
+        threading.Thread(
+            target=lambda: self._consume_execution_run(),
+            daemon=True,
+        ).start()
+
+        threading.Thread(
+            target=start_http_server,
+            args=(settings.config.execution_manager_port,),
+            daemon=True,
+        ).start()
+
+        while not self.stop_consuming.is_set():
+            time.sleep(1e5)
 
     @continuous_retry()
     def _consume_execution_cancel(self):
-        cancel_client = SyncRabbitMQ(create_execution_queue_config())
-        cancel_client.connect()
-        cancel_channel = cancel_client.get_channel()
+        self._cancel_client = SyncRabbitMQ(create_execution_queue_config())
+        self._cancel_client.connect()
+        cancel_channel = self._cancel_client.get_channel()
         logger.info(f"[{self.service_name}] ⏳ Starting cancel message consumer...")
         cancel_channel.basic_consume(
             queue=GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
@@ -1128,15 +1149,19 @@ class ExecutionManager(AppProcess):
 
     @continuous_retry()
     def _consume_execution_run(self):
-
         # Long-running executions are handled by:
         # 1. Long consumer timeout (x-consumer-timeout) allows long running agent
         # 2. Enhanced connection settings (5 retries, 1s delay) for quick reconnection
         # 3. Process monitoring ensures failed executors release messages back to queue
+        if self.stop_consuming.is_set():
+            logger.info(
+                f"[{self.service_name}] Stop reconnecting execution consumer since the service is cleaned up."
+            )
+            return
 
-        run_client = SyncRabbitMQ(create_execution_queue_config())
-        run_client.connect()
-        run_channel = run_client.get_channel()
+        self._run_client = SyncRabbitMQ(create_execution_queue_config())
+        self._run_client.connect()
+        run_channel = self._run_client.get_channel()
         run_channel.basic_qos(prefetch_count=self.pool_size)
 
         # Configure consumer for long-running graph executions
@@ -1150,15 +1175,27 @@ class ExecutionManager(AppProcess):
         run_channel.confirm_delivery()
 
         logger.info(f"[{self.service_name}] ⏳ Starting to consume run messages...")
-        run_channel.start_consuming()
-        raise RuntimeError(f"❌ run message consumer is stopped: {run_channel}")
+
+        # Continue consuming messages until stop flag is set
+        # This keeps the connection alive but rejects new messages in _handle_run_message
+        while not self.stop_consuming.is_set():
+            try:
+                run_channel.connection.process_data_events(time_limit=1)
+            except Exception as e:
+                if self.stop_consuming.is_set():
+                    # Expected during shutdown
+                    break
+                logger.error(f"[{self.service_name}] Error processing events: {e}")
+                raise
+
+        logger.info(f"[{self.service_name}] ✅ Run message consumer stopped gracefully")
 
     @error_logged(swallow=True)
     def _handle_cancel_message(
         self,
-        channel: BlockingChannel,
-        method: Basic.Deliver,
-        properties: BasicProperties,
+        _channel: BlockingChannel,
+        _method: Basic.Deliver,
+        _properties: BasicProperties,
         body: bytes,
     ):
         """
@@ -1191,10 +1228,18 @@ class ExecutionManager(AppProcess):
         self,
         channel: BlockingChannel,
         method: Basic.Deliver,
-        properties: BasicProperties,
+        _properties: BasicProperties,
         body: bytes,
     ):
         delivery_tag = method.delivery_tag
+
+        # Check if we're shutting down - reject new messages but keep connection alive
+        if self.stop_consuming.is_set():
+            logger.info(
+                f"[{self.service_name}] Rejecting new execution during shutdown"
+            )
+            channel.basic_nack(delivery_tag, requeue=True)
+            return
 
         # Check if we can accept more runs
         self._cleanup_completed_runs()
@@ -1205,7 +1250,9 @@ class ExecutionManager(AppProcess):
         try:
             graph_exec_entry = GraphExecutionEntry.model_validate_json(body)
         except Exception as e:
-            logger.error(f"[{self.service_name}] Could not parse run message: {e}")
+            logger.error(
+                f"[{self.service_name}] Could not parse run message: {e}, body={body}"
+            )
             channel.basic_nack(delivery_tag, requeue=False)
             return
 
@@ -1227,8 +1274,7 @@ class ExecutionManager(AppProcess):
             Executor.on_graph_execution, graph_exec_entry, cancel_event
         )
         self.active_graph_runs[graph_exec_id] = (future, cancel_event)
-        active_runs_gauge.set(len(self.active_graph_runs))
-        utilization_gauge.set(len(self.active_graph_runs) / self.pool_size)
+        self._update_prompt_metrics()
 
         def _on_run_done(f: Future):
             logger.info(f"[{self.service_name}] Run completed for {graph_exec_id}")
@@ -1263,7 +1309,7 @@ class ExecutionManager(AppProcess):
 
         future.add_done_callback(_on_run_done)
 
-    def _cleanup_completed_runs(self, log=logger.info) -> list[str]:
+    def _cleanup_completed_runs(self) -> list[str]:
         """Remove completed futures from active_graph_runs and update metrics"""
         completed_runs = []
         for graph_exec_id, (future, _) in self.active_graph_runs.items():
@@ -1271,40 +1317,90 @@ class ExecutionManager(AppProcess):
                 completed_runs.append(graph_exec_id)
 
         for geid in completed_runs:
-            log(f"[{self.service_name}] ✅ Cleaned up completed run {geid}")
+            logger.info(f"[{self.service_name}] ✅ Cleaned up completed run {geid}")
             self.active_graph_runs.pop(geid, None)
 
-        # Update metrics
-        active_count = len(self.active_graph_runs)
-        active_runs_gauge.set(active_count)
-        utilization_gauge.set(active_count / self.pool_size)
-
+        self._update_prompt_metrics()
         return completed_runs
 
+    def _update_prompt_metrics(self):
+        active_count = len(self.active_graph_runs)
+        active_runs_gauge.set(active_count)
+        if self._stop_consuming and self._stop_consuming.is_set():
+            utilization_gauge.set(1.0)
+        else:
+            utilization_gauge.set(active_count / self.pool_size)
+
     def cleanup(self):
-        super().cleanup()
-        self._on_cleanup()
-
-    def _on_cleanup(self, log=logger.info):
+        """Override cleanup to implement graceful shutdown with active execution waiting."""
         prefix = f"[{self.service_name}][on_graph_executor_stop {os.getpid()}]"
-        log(f"{prefix} ⏳ Shutting down service loop...")
-        self.running = False
+        logger.info(f"{prefix} 🧹 Starting graceful shutdown...")
 
-        log(f"{prefix} ⏳ Shutting down RabbitMQ channel...")
-        get_execution_queue().get_channel().stop_consuming()
+        # Signal the consumer thread to stop (thread-safe)
+        self.stop_consuming.set()
+        logger.info(f"{prefix} ✅ Signaled execution message consumer to stop")
 
-        if hasattr(self, "executor"):
-            log(f"{prefix} ⏳ Shutting down GraphExec pool...")
-            self.executor.shutdown(cancel_futures=True, wait=False)
+        # Wait for active executions to complete
+        if self.active_graph_runs:
+            logger.info(
+                f"{prefix} ⏳ Waiting for {len(self.active_graph_runs)} active executions to complete..."
+            )
 
-        log(f"{prefix} ⏳ Cleaning up active graph runs...")
-        self._cleanup_completed_runs(log=log)
+            max_wait = GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS
+            wait_interval = 5
+            waited = 0
 
-        log(f"{prefix} ⏳ Disconnecting Redis...")
-        redis.disconnect()
+            while waited < max_wait:
+                self._cleanup_completed_runs()
+                if not self.active_graph_runs:
+                    logger.info(f"{prefix} ✅ All active executions completed")
+                    break
+                else:
+                    ids = [k.split("-")[0] for k in self.active_graph_runs.keys()]
+                    logger.info(
+                        f"{prefix} ⏳ Still waiting for {len(self.active_graph_runs)} executions: {ids}"
+                    )
 
-        log(f"{prefix} ✅ Finished GraphExec cleanup")
-        sys.exit(0)
+                time.sleep(wait_interval)
+                waited += wait_interval
+
+            if self.active_graph_runs:
+                logger.error(
+                    f"{prefix} ⚠️ {len(self.active_graph_runs)} executions still running after {max_wait}s"
+                )
+            else:
+                logger.info(f"{prefix} ✅ All executions completed gracefully")
+
+        # NOW shutdown executor pool after all executions and cleanup are complete
+        if self._executor:
+            logger.info(f"{prefix} ⏳ Shutting down GraphExec pool...")
+            try:
+                # All active executions are done, safe to shutdown workers
+                self._executor.shutdown(cancel_futures=True, wait=False)
+                logger.info(f"{prefix} ✅ Executor shutdown completed")
+            except Exception as e:
+                logger.error(f"{prefix} ⚠️ Error during executor shutdown: {e}")
+
+        # Clean up RabbitMQ connections
+        if self._cancel_client:
+            logger.info(f"{prefix} ⏳ Disconnecting cancel RabbitMQ client...")
+            try:
+                self._cancel_client.disconnect()
+                logger.info(f"{prefix} ✅ Cancel RabbitMQ client disconnected")
+            except Exception as e:
+                logger.error(
+                    f"{prefix} ⚠️ Error disconnecting cancel RabbitMQ client: {e}"
+                )
+
+        if self._run_client:
+            logger.info(f"{prefix} ⏳ Disconnecting run RabbitMQ client...")
+            try:
+                self._run_client.disconnect()
+                logger.info(f"{prefix} ✅ Run RabbitMQ client disconnected")
+            except Exception as e:
+                logger.error(f"{prefix} ⚠️ Error disconnecting run RabbitMQ client: {e}")
+
+        logger.info(f"{prefix} ✅ Finished GraphExec cleanup")
 
 
 # ------- UTILITIES ------- #
@@ -1429,11 +1525,3 @@ def increment_execution_count(user_id: str) -> int:
     if counter == 1:
         r.expire(k, settings.config.execution_counter_expiration_time)
     return counter
-
-
-def llprint(message: str):
-    """
-    Low-level print/log helper function for use in signal handlers.
-    Regular log/print statements are not allowed in signal handlers.
-    """
-    os.write(sys.stdout.fileno(), (message + "\n").encode())

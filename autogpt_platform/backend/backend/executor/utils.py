@@ -655,6 +655,11 @@ GRAPH_EXECUTION_CANCEL_EXCHANGE = Exchange(
 )
 GRAPH_EXECUTION_CANCEL_QUEUE_NAME = "graph_execution_cancel_queue"
 
+# Graceful shutdown timeout constants
+# Agent executions can run for up to 1 day, so we need a graceful shutdown period
+# that allows long-running executions to complete naturally
+GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS = 24 * 60 * 60  # 1 day to complete active executions
+
 
 def create_execution_queue_config() -> RabbitMQConfig:
     """
@@ -675,7 +680,8 @@ def create_execution_queue_config() -> RabbitMQConfig:
             # Solution: Disable consumer timeout entirely - let graphs run indefinitely
             # Safety: Heartbeat mechanism now handles dead consumer detection instead
             # Use case: Graph executions that take hours to complete (AI model training, etc.)
-            "x-consumer-timeout": (7 * 24 * 60 * 60 * 1000),  # 7 days in milliseconds
+            "x-consumer-timeout": GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS
+            * 1000,
         },
     )
     cancel_queue = Queue(
@@ -817,16 +823,17 @@ async def add_graph_execution(
         graph_inputs=inputs or {},
         nodes_input_masks=nodes_input_masks,
     )
-
-    graph_exec = await edb.create_graph_execution(
-        user_id=user_id,
-        graph_id=graph_id,
-        graph_version=graph.version,
-        starting_nodes_input=starting_nodes_input,
-        preset_id=preset_id,
-    )
+    graph_exec = None
 
     try:
+        graph_exec = await edb.create_graph_execution(
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_version=graph.version,
+            starting_nodes_input=starting_nodes_input,
+            preset_id=preset_id,
+        )
+
         queue = await get_async_execution_queue()
         graph_exec_entry = graph_exec.to_graph_execution_entry()
         if nodes_input_masks:
@@ -842,7 +849,14 @@ async def add_graph_execution(
 
         return graph_exec
     except BaseException as e:
-        logger.error(f"Unable to publish graph #{graph_id} exec #{graph_exec.id}: {e}")
+        err = str(e) or type(e).__name__
+        if not graph_exec:
+            logger.error(f"Graph execution #{graph_id} failed: {err}")
+            raise
+
+        logger.error(
+            f"Unable to publish graph #{graph_id} exec #{graph_exec.id}: {err}"
+        )
         await edb.update_node_execution_status_batch(
             [node_exec.node_exec_id for node_exec in graph_exec.node_executions],
             ExecutionStatus.FAILED,
@@ -850,7 +864,7 @@ async def add_graph_execution(
         await edb.update_graph_execution_stats(
             graph_exec_id=graph_exec.id,
             status=ExecutionStatus.FAILED,
-            stats=GraphExecutionStats(error=str(e)),
+            stats=GraphExecutionStats(error=err),
         )
         raise
 
