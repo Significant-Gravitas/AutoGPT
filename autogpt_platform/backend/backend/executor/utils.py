@@ -4,21 +4,14 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future
-from typing import TYPE_CHECKING, Any, Optional, cast
+from typing import TYPE_CHECKING, Any, Optional
 
 from autogpt_libs.utils.cache import thread_cached
-from pydantic import BaseModel, JsonValue
+from pydantic import BaseModel, JsonValue, ValidationError
 
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
-from backend.data.block import (
-    Block,
-    BlockData,
-    BlockInput,
-    BlockSchema,
-    BlockType,
-    get_block,
-)
+from backend.data.block import Block, BlockData, BlockInput, BlockType, get_block
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.cost import BlockCostType
 from backend.data.db import prisma
@@ -467,47 +460,65 @@ async def _validate_node_input_credentials(
     graph: GraphModel,
     user_id: str,
     nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
-):
-    """Checks all credentials for all nodes of the graph"""
+) -> dict[str, dict[str, str]]:
+    """
+    Checks all credentials for all nodes of the graph and returns structured errors.
+
+    Returns:
+        dict[node_id, dict[field_name, error_message]]: Credential validation errors per node
+    """
+    credential_errors: dict[str, dict[str, str]] = defaultdict(dict)
 
     for node in graph.nodes:
         block = node.block
 
         # Find any fields of type CredentialsMetaInput
-        credentials_fields = cast(
-            type[BlockSchema], block.input_schema
-        ).get_credentials_fields()
+        credentials_fields = block.input_schema.get_credentials_fields()
         if not credentials_fields:
             continue
 
         for field_name, credentials_meta_type in credentials_fields.items():
-            if (
-                nodes_input_masks
-                and (node_input_mask := nodes_input_masks.get(node.id))
-                and field_name in node_input_mask
-            ):
-                credentials_meta = credentials_meta_type.model_validate(
-                    node_input_mask[field_name]
-                )
-            elif field_name in node.input_default:
-                credentials_meta = credentials_meta_type.model_validate(
-                    node.input_default[field_name]
-                )
-            else:
-                raise ValueError(
-                    f"Credentials absent for {block.name} node #{node.id} "
-                    f"input '{field_name}'"
-                )
+            try:
+                if (
+                    nodes_input_masks
+                    and (node_input_mask := nodes_input_masks.get(node.id))
+                    and field_name in node_input_mask
+                ):
+                    credentials_meta = credentials_meta_type.model_validate(
+                        node_input_mask[field_name]
+                    )
+                elif field_name in node.input_default:
+                    credentials_meta = credentials_meta_type.model_validate(
+                        node.input_default[field_name]
+                    )
+                else:
+                    # Missing credentials
+                    credential_errors[node.id][
+                        field_name
+                    ] = "These credentials are required"
+                    continue
+            except ValidationError as e:
+                credential_errors[node.id][field_name] = f"Invalid credentials: {e}"
+                continue
 
-            # Fetch the corresponding Credentials and perform sanity checks
-            credentials = await get_integration_credentials_store().get_creds_by_id(
-                user_id, credentials_meta.id
-            )
-            if not credentials:
-                raise ValueError(
-                    f"Unknown credentials #{credentials_meta.id} "
-                    f"for node #{node.id} input '{field_name}'"
+            try:
+                # Fetch the corresponding Credentials and perform sanity checks
+                credentials = await get_integration_credentials_store().get_creds_by_id(
+                    user_id, credentials_meta.id
                 )
+            except Exception as e:
+                # Handle any errors fetching credentials
+                credential_errors[node.id][
+                    field_name
+                ] = f"Credentials not available: {e}"
+                continue
+
+            if not credentials:
+                credential_errors[node.id][
+                    field_name
+                ] = f"Unknown credentials #{credentials_meta.id}"
+                continue
+
             if (
                 credentials.provider != credentials_meta.provider
                 or credentials.type != credentials_meta.type
@@ -518,10 +529,12 @@ async def _validate_node_input_credentials(
                     f"{credentials_meta.type}<>{credentials.type};"
                     f"{credentials_meta.provider}<>{credentials.provider}"
                 )
-                raise ValueError(
-                    f"Invalid credentials #{credentials.id} for node #{node.id}: "
-                    "type/provider mismatch"
-                )
+                credential_errors[node.id][
+                    field_name
+                ] = "Invalid credentials: type/provider mismatch"
+                continue
+
+    return credential_errors
 
 
 def make_node_credentials_input_map(
@@ -570,38 +583,21 @@ async def validate_graph_with_credentials(
     Returns:
         dict[node_id, dict[field_name, error_message]]: Validation errors per node
     """
-    node_errors = GraphModel._validate_graph_with_errors(
+    # Get structural validation errors
+    node_errors = GraphModel.validate_graph_with_errors(
         graph, for_run=True, nodes_input_masks=nodes_input_masks
     )
 
-    # Then check credentials validation
-    try:
-        await _validate_node_input_credentials(graph, user_id, nodes_input_masks)
-    except ValueError as e:
-        # Parse credential errors and add them to node_errors
-        error_message = str(e)
-        # Try to extract node ID from error message patterns
-        if "node #" in error_message:
-            import re
+    # Get credential validation errors
+    credential_errors = await _validate_node_input_credentials(
+        graph, user_id, nodes_input_masks
+    )
 
-            node_match = re.search(r"node #(\w+)", error_message)
-            if node_match:
-                node_id = node_match.group(1)
-                if node_id not in node_errors:
-                    node_errors[node_id] = {}
-
-                # Try to extract field name from error
-                if "input '" in error_message:
-                    field_match = re.search(r"input '(\w+)'", error_message)
-                    if field_match:
-                        field_name = field_match.group(1)
-                        node_errors[node_id][
-                            field_name
-                        ] = "Invalid or missing credentials"
-                    else:
-                        node_errors[node_id]["_general"] = error_message
-                else:
-                    node_errors[node_id]["_general"] = error_message
+    # Merge credential errors with structural errors
+    for node_id, field_errors in credential_errors.items():
+        if node_id not in node_errors:
+            node_errors[node_id] = {}
+        node_errors[node_id].update(field_errors)
 
     return node_errors
 
@@ -632,9 +628,12 @@ async def construct_node_execution_input(
     validation_errors = await validate_graph_with_credentials(
         graph, user_id, nodes_input_masks
     )
+    n_error_nodes = len(validation_errors)
+    n_errors = sum(len(errors) for errors in validation_errors.values())
     if validation_errors:
         raise GraphValidationError(
-            "Graph validation failed", node_errors=validation_errors
+            f"Graph validation failed: {n_errors} issues on {n_error_nodes} nodes",
+            node_errors=validation_errors,
         )
 
     nodes_input = []

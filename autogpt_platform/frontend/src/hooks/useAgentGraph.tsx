@@ -806,7 +806,7 @@ export default function useAgentGraph(
           // Show a general toast about validation errors
           toast({
             variant: "destructive",
-            title: "Graph validation failed",
+            title: errorData.message || "Graph validation failed",
             description:
               "Please fix the validation errors on the highlighted nodes and try again.",
           });

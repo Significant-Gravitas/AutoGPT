@@ -416,6 +416,10 @@ class GraphModel(Graph):
         for_run: bool = False,
         nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
     ):
+        """
+        Validate graph structure and raise `ValueError` on issues.
+        For structured error reporting, use `validate_graph_with_errors`.
+        """
         self._validate_graph(self, for_run, nodes_input_masks)
         for sub_graph in self.sub_graphs:
             self._validate_graph(sub_graph, for_run, nodes_input_masks)
@@ -426,10 +430,6 @@ class GraphModel(Graph):
         for_run: bool = False,
         nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
     ) -> None:
-        """
-        Validate graph structure and raise `ValueError` on issues.
-        For structured error reporting, use `_validate_graph_with_errors`.
-        """
         errors = GraphModel._validate_graph_with_errors(
             graph, for_run, nodes_input_masks
         )
@@ -438,6 +438,27 @@ class GraphModel(Graph):
             first_error = next(iter(errors.values()))
             first_field_error = next(iter(first_error.values()))
             raise ValueError(first_field_error)
+
+    def validate_graph_with_errors(
+        self,
+        for_run: bool = False,
+        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+    ) -> dict[str, dict[str, str]]:
+        """
+        Validate graph and return structured errors per node.
+
+        Returns: dict[node_id, dict[field_name, error_message]]
+        """
+        return {
+            **self._validate_graph_with_errors(self, for_run, nodes_input_masks),
+            **{
+                node_id: error
+                for sub_graph in self.sub_graphs
+                for node_id, error in self._validate_graph_with_errors(
+                    sub_graph, for_run, nodes_input_masks
+                ).items()
+            },
+        }
 
     @staticmethod
     def _validate_graph_with_errors(
@@ -450,9 +471,16 @@ class GraphModel(Graph):
 
         Returns: dict[node_id, dict[field_name, error_message]]
         """
+        # First, check for structural issues with the graph
+        try:
+            GraphModel._validate_graph_structure(graph)
+        except ValueError:
+            # If structural validation fails, we can't provide per-node errors
+            # so we re-raise as is
+            raise
 
         # Collect errors per node
-        node_errors: dict[str, dict[str, str]] = {}
+        node_errors: dict[str, dict[str, str]] = defaultdict(dict)
 
         # Validate smart decision maker nodes
         nodes_block = {
@@ -504,8 +532,6 @@ class GraphModel(Graph):
                         ]
                     )
                 ):
-                    if node_id not in node_errors:
-                        node_errors[node_id] = {}
                     node_errors[node_id][name] = "This field is required"
 
                 if (
@@ -513,11 +539,10 @@ class GraphModel(Graph):
                     and (input_key := node.input_default.get("name"))
                     and is_credentials_field_name(input_key)
                 ):
-                    if node_id not in node_errors:
-                        node_errors[node_id] = {}
-                    node_errors[node_id][
-                        "name"
-                    ] = f"'{input_key}' is a reserved input name"
+                    node_errors[node_id]["name"] = (
+                        f"'{input_key}' is a reserved input name: "
+                        "'credentials' and `*_credentials` are reserved"
+                    )
 
             # Get input schema properties and check dependencies
             input_fields = InputSchema.model_fields
@@ -566,18 +591,9 @@ class GraphModel(Graph):
                 # Check for missing dependencies when dependent field is present
                 missing_deps = [dep for dep in dependencies if not has_value(node, dep)]
                 if missing_deps and (field_has_value or field_is_required):
-                    if node_id not in node_errors:
-                        node_errors[node_id] = {}
                     node_errors[node_id][
                         field_name
                     ] = f"Requires {', '.join(missing_deps)} to be set"
-
-        try:
-            GraphModel._validate_graph_structure(graph)
-        except ValueError:
-            # If structural validation fails, we can't provide per-node errors
-            # so we re-raise as is
-            raise
 
         return node_errors
 
