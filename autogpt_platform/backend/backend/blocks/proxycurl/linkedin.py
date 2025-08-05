@@ -10,13 +10,13 @@ from typing import Optional
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import APIKeyCredentials, CredentialsField, SchemaField
+from backend.util.type import MediaFileType
 
 from ._api import (
     Experience,
     FallbackToCache,
     PersonLookupResponse,
     PersonProfileResponse,
-    ProfilePictureResponse,
     ProxycurlClient,
     RoleLookupResponse,
     UseCache,
@@ -463,7 +463,7 @@ class ProxycurlProfilePictureBlock(Block):
     class Output(BlockSchema):
         """Output schema for ProxycurlProfilePictureBlock."""
 
-        profile_picture: ProfilePictureResponse = SchemaField(
+        profile_picture_url: MediaFileType = SchemaField(
             description="LinkedIn profile picture URL"
         )
         error: str = SchemaField(description="Error message if the request failed")
@@ -482,27 +482,23 @@ class ProxycurlProfilePictureBlock(Block):
             },
             test_output=[
                 (
-                    "profile_picture",
-                    ProfilePictureResponse(
-                        profile_picture_url="https://media.licdn.com/dms/image/C4D03AQFj-xjuXrLFSQ/profile-displayphoto-shrink_800_800/0/1576881858598?e=1686787200&v=beta&t=zrQC76QwsfQQIWthfOnrKRBMZ5D-qIAvzLXLmWgYvTk"
-                    ),
+                    "profile_picture_url",
+                    "https://media.licdn.com/dms/image/C4D03AQFj-xjuXrLFSQ/profile-displayphoto-shrink_800_800/0/1576881858598?e=1686787200&v=beta&t=zrQC76QwsfQQIWthfOnrKRBMZ5D-qIAvzLXLmWgYvTk",
                 )
             ],
             test_credentials=TEST_CREDENTIALS,
             test_mock={
-                "_get_profile_picture": lambda *args, **kwargs: ProfilePictureResponse(
-                    profile_picture_url="https://media.licdn.com/dms/image/C4D03AQFj-xjuXrLFSQ/profile-displayphoto-shrink_800_800/0/1576881858598?e=1686787200&v=beta&t=zrQC76QwsfQQIWthfOnrKRBMZ5D-qIAvzLXLmWgYvTk"
-                ),
+                "_get_profile_picture": lambda *args, **kwargs: "https://media.licdn.com/dms/image/C4D03AQFj-xjuXrLFSQ/profile-displayphoto-shrink_800_800/0/1576881858598?e=1686787200&v=beta&t=zrQC76QwsfQQIWthfOnrKRBMZ5D-qIAvzLXLmWgYvTk",
             },
         )
 
     @staticmethod
     def _get_profile_picture(credentials: APIKeyCredentials, linkedin_profile_url: str):
         client = ProxycurlClient(credentials=credentials)
-        profile_picture = client.get_profile_picture(
+        profile_picture_response = client.get_profile_picture(
             linkedin_profile_url=linkedin_profile_url,
         )
-        return profile_picture
+        return profile_picture_response.profile_picture_url
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
@@ -523,7 +519,7 @@ class ProxycurlProfilePictureBlock(Block):
                 credentials=credentials,
                 linkedin_profile_url=input_data.linkedin_profile_url,
             )
-            yield "profile_picture", profile_picture
+            yield "profile_picture_url", profile_picture
         except Exception as e:
             logger.error(f"Error getting profile picture: {str(e)}")
             yield "error", str(e)

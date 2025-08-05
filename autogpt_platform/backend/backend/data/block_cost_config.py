@@ -18,7 +18,7 @@ from backend.blocks.llm import (
     AITextSummarizerBlock,
     LlmModel,
 )
-from backend.blocks.proxycurl.proxycurl import (
+from backend.blocks.proxycurl.linkedin import (
     ProxycurlPersonLookupBlock,
     ProxycurlProfileFetchBlock,
     ProxycurlProfilePictureBlock,
