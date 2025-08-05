@@ -655,6 +655,11 @@ GRAPH_EXECUTION_CANCEL_EXCHANGE = Exchange(
 )
 GRAPH_EXECUTION_CANCEL_QUEUE_NAME = "graph_execution_cancel_queue"
 
+# Graceful shutdown timeout constants
+# Agent executions can run for up to 1 day, so we need a graceful shutdown period
+# that allows long-running executions to complete naturally
+GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS = 24 * 60 * 60  # 1 day to complete active executions
+
 
 def create_execution_queue_config() -> RabbitMQConfig:
     """
@@ -675,7 +680,8 @@ def create_execution_queue_config() -> RabbitMQConfig:
             # Solution: Disable consumer timeout entirely - let graphs run indefinitely
             # Safety: Heartbeat mechanism now handles dead consumer detection instead
             # Use case: Graph executions that take hours to complete (AI model training, etc.)
-            "x-consumer-timeout": (7 * 24 * 60 * 60 * 1000),  # 7 days in milliseconds
+            "x-consumer-timeout": GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS
+            * 1000,
         },
     )
     cancel_queue = Queue(

@@ -259,8 +259,8 @@ class Scheduler(AppService):
 
     def cleanup(self):
         super().cleanup()
-        logger.info("⏳ Shutting down scheduler...")
         if self.scheduler:
+            logger.info("⏳ Shutting down scheduler...")
             self.scheduler.shutdown(wait=False)
 
     @expose
