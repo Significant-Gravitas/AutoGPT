@@ -39,7 +39,7 @@ from backend.data.rabbitmq import (
     RabbitMQConfig,
     SyncRabbitMQ,
 )
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import GraphValidationError, NotFoundError
 from backend.util.logging import TruncatedLogger
 from backend.util.mock import MockObject
 from backend.util.service import get_service_client
@@ -559,6 +559,53 @@ def make_node_credentials_input_map(
     return result
 
 
+async def validate_graph_with_credentials(
+    graph: GraphModel,
+    user_id: str,
+    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+) -> dict[str, dict[str, str]]:
+    """
+    Validate graph including credentials and return structured errors per node.
+
+    Returns:
+        dict[node_id, dict[field_name, error_message]]: Validation errors per node
+    """
+    node_errors = GraphModel._validate_graph_with_errors(
+        graph, for_run=True, nodes_input_masks=nodes_input_masks
+    )
+
+    # Then check credentials validation
+    try:
+        await _validate_node_input_credentials(graph, user_id, nodes_input_masks)
+    except ValueError as e:
+        # Parse credential errors and add them to node_errors
+        error_message = str(e)
+        # Try to extract node ID from error message patterns
+        if "node #" in error_message:
+            import re
+
+            node_match = re.search(r"node #(\w+)", error_message)
+            if node_match:
+                node_id = node_match.group(1)
+                if node_id not in node_errors:
+                    node_errors[node_id] = {}
+
+                # Try to extract field name from error
+                if "input '" in error_message:
+                    field_match = re.search(r"input '(\w+)'", error_message)
+                    if field_match:
+                        field_name = field_match.group(1)
+                        node_errors[node_id][
+                            field_name
+                        ] = "Invalid or missing credentials"
+                    else:
+                        node_errors[node_id]["_general"] = error_message
+                else:
+                    node_errors[node_id]["_general"] = error_message
+
+    return node_errors
+
+
 async def construct_node_execution_input(
     graph: GraphModel,
     user_id: str,
@@ -581,8 +628,14 @@ async def construct_node_execution_input(
         list[tuple[str, BlockInput]]: A list of tuples, each containing the node ID and
             the corresponding input data for that node.
     """
-    graph.validate_graph(for_run=True, nodes_input_masks=nodes_input_masks)
-    await _validate_node_input_credentials(graph, user_id, nodes_input_masks)
+    # Use new validation function that includes credentials
+    validation_errors = await validate_graph_with_credentials(
+        graph, user_id, nodes_input_masks
+    )
+    if validation_errors:
+        raise GraphValidationError(
+            "Graph validation failed", node_errors=validation_errors
+        )
 
     nodes_input = []
     for node in graph.starting_nodes:

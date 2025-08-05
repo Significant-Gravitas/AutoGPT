@@ -426,6 +426,30 @@ class GraphModel(Graph):
         for_run: bool = False,
         nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
     ):
+        """
+        Validate graph structure and raise ValueError on issues.
+        For structured error reporting, use _validate_graph_with_errors.
+        """
+        errors = GraphModel._validate_graph_with_errors(
+            graph, for_run, nodes_input_masks
+        )
+        if errors:
+            # Just raise the first error for backward compatibility
+            first_error = next(iter(errors.values()))
+            first_field_error = next(iter(first_error.values()))
+            raise ValueError(first_field_error)
+
+    @staticmethod
+    def _validate_graph_with_errors(
+        graph: BaseGraph,
+        for_run: bool = False,
+        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+    ) -> dict[str, dict[str, str]]:
+        """
+        Validate graph and return structured errors per node.
+        Returns: dict[node_id, dict[field_name, error_message]]
+        """
+
         def is_tool_pin(name: str) -> bool:
             return name.startswith("tools_^_")
 
@@ -434,6 +458,9 @@ class GraphModel(Graph):
             if is_tool_pin(sanitized_name):
                 return "tools"
             return sanitized_name
+
+        # Collect errors per node
+        node_errors: dict[str, dict[str, str]] = {}
 
         # Validate smart decision maker nodes
         nodes_block = {
@@ -450,6 +477,7 @@ class GraphModel(Graph):
         # Nodes: required fields are filled or connected and dependencies are satisfied
         for node in graph.nodes:
             if (block := nodes_block.get(node.id)) is None:
+                # For invalid blocks, we still raise immediately as this is a structural issue
                 raise ValueError(f"Invalid block {node.block_id} for node #{node.id}")
 
             node_input_mask = (
@@ -461,6 +489,10 @@ class GraphModel(Graph):
                 + ([name for name in node_input_mask] if node_input_mask else [])
             )
             InputSchema = block.input_schema
+
+            # Initialize node errors dict if we find any issues
+            node_id = node.id
+
             for name in (required_fields := InputSchema.get_required_fields()):
                 if (
                     name not in provided_inputs
@@ -477,19 +509,20 @@ class GraphModel(Graph):
                         ]
                     )
                 ):
-                    raise ValueError(
-                        f"Node {block.name} #{node.id} required input missing: `{name}`"
-                    )
+                    if node_id not in node_errors:
+                        node_errors[node_id] = {}
+                    node_errors[node_id][name] = "This field is required"
 
                 if (
                     block.block_type == BlockType.INPUT
                     and (input_key := node.input_default.get("name"))
                     and is_credentials_field_name(input_key)
                 ):
-                    raise ValueError(
-                        f"Agent input node uses reserved name '{input_key}'; "
-                        "'credentials' and `*_credentials` are reserved input names"
-                    )
+                    if node_id not in node_errors:
+                        node_errors[node_id] = {}
+                    node_errors[node_id][
+                        "name"
+                    ] = f"'{input_key}' is a reserved input name"
 
             # Get input schema properties and check dependencies
             input_fields = InputSchema.model_fields
@@ -538,11 +571,35 @@ class GraphModel(Graph):
                 # Check for missing dependencies when dependent field is present
                 missing_deps = [dep for dep in dependencies if not has_value(node, dep)]
                 if missing_deps and (field_has_value or field_is_required):
-                    raise ValueError(
-                        f"Node {block.name} #{node.id}: Field `{field_name}` requires [{', '.join(missing_deps)}] to be set"
-                    )
+                    if node_id not in node_errors:
+                        node_errors[node_id] = {}
+                    node_errors[node_id][
+                        field_name
+                    ] = f"Requires {', '.join(missing_deps)} to be set"
 
+        # For now, we'll validate the rest of the graph structure (links, etc.) with the original logic
+        # but only if we haven't found node-level validation errors
+        if not node_errors:
+            # Continue with the original validation for links and other structural checks
+            # This ensures backward compatibility for non-node-specific validations
+            try:
+                GraphModel._validate_graph_structure(
+                    graph, nodes_block, input_links, sanitize
+                )
+            except ValueError:
+                # If structural validation fails, we can't provide per-node errors
+                # so we re-raise as is
+                raise
+
+        return node_errors
+
+    @staticmethod
+    def _validate_graph_structure(graph, nodes_block, input_links, sanitize):
+        """Validate graph structure (links, connections, etc.)"""
         node_map = {v.id: v for v in graph.nodes}
+
+        def is_tool_pin(name: str) -> bool:
+            return name.startswith("tools_^_")
 
         def is_static_output_block(nid: str) -> bool:
             return node_map[nid].block.static_output

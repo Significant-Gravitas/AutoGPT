@@ -85,7 +85,7 @@ from backend.server.model import (
 )
 from backend.server.utils import get_user_id
 from backend.util.cloud_storage import get_cloud_storage_handler
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import GraphValidationError, NotFoundError
 from backend.util.service import get_service_client
 from backend.util.settings import Settings
 from backend.util.virus_scanner import scan_content_safe
@@ -753,15 +753,26 @@ async def execute_graph(
             detail="Insufficient balance to execute the agent. Please top up your account.",
         )
 
-    graph_exec = await execution_utils.add_graph_execution(
-        graph_id=graph_id,
-        user_id=user_id,
-        inputs=inputs,
-        preset_id=preset_id,
-        graph_version=graph_version,
-        graph_credentials_inputs=credentials_inputs,
-    )
-    return ExecuteGraphResponse(graph_exec_id=graph_exec.id)
+    try:
+        graph_exec = await execution_utils.add_graph_execution(
+            graph_id=graph_id,
+            user_id=user_id,
+            inputs=inputs,
+            preset_id=preset_id,
+            graph_version=graph_version,
+            graph_credentials_inputs=credentials_inputs,
+        )
+        return ExecuteGraphResponse(graph_exec_id=graph_exec.id)
+    except GraphValidationError as e:
+        # Return structured validation errors that the frontend can parse
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "validation_error",
+                "message": e.message,
+                "node_errors": e.node_errors,
+            },
+        )
 
 
 @v1_router.post(

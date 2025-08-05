@@ -2,15 +2,32 @@ import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { Key, storage } from "@/services/storage/local-storage";
 import { isServerSide } from "../utils/is-server-side";
 
-export class ApiError extends Error {
-  public status: number;
-  public response?: any;
+import { GraphValidationErrorResponse } from "./types";
 
-  constructor(message: string, status: number, response?: any) {
+export class ApiError<R = any> extends Error {
+  public status: number;
+  public response: R;
+
+  constructor(message: string, status: number, response: R) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.response = response;
+  }
+
+  /**
+   * Type guard to check if this error is a structured graph validation error
+   */
+  isGraphValidationError(): this is ApiError<GraphValidationErrorResponse> {
+    return (
+      this.response !== undefined &&
+      typeof this.response === "object" &&
+      this.response !== null &&
+      "type" in this.response &&
+      this.response.type === "validation_error" &&
+      "node_errors" in this.response &&
+      typeof this.response.node_errors === "object"
+    );
   }
 }
 

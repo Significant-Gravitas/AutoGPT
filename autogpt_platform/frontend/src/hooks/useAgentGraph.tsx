@@ -3,6 +3,7 @@ import { CustomNode } from "@/components/CustomNode";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import {
+  ApiError,
   Block,
   BlockIOSubSchema,
   BlockUIType,
@@ -610,135 +611,6 @@ export default function useAgentGraph(
     getToolFuncName,
   ]);
 
-  const validateGraph = useCallback(
-    (graph?: GraphCreatable): string | null => {
-      let errorMessage = null;
-
-      if (!graph) {
-        graph = prepareSaveableGraph();
-      }
-
-      graph.nodes.forEach((node) => {
-        const block = availableBlocks.find(
-          (block) => block.id === node.block_id,
-        );
-        if (!block) {
-          console.error(
-            `Node ${node.id} is invalid: unknown block ID ${node.block_id}`,
-          );
-          return;
-        }
-        const inputSchema = block.inputSchema;
-        const validate = ajv.compile(inputSchema);
-        const errors: Record<string, string> = {};
-        const errorPrefix = `${block.name} [${node.id.split("-")[0]}]`;
-
-        // Validate values against schema using AJV
-        const inputData = node.input_default;
-        const valid = validate(inputData);
-        if (!valid) {
-          // Populate errors if validation fails
-          validate.errors?.forEach((error) => {
-            const path =
-              "dataPath" in error
-                ? (error.dataPath as string)
-                : error.instancePath || error.params.missingProperty;
-            const handle = path.split(/[\/.]/)[0];
-            // Skip error if there's an edge connected
-            if (
-              graph.links.some(
-                (link) => link.sink_id == node.id && link.sink_name == handle,
-              )
-            ) {
-              return;
-            }
-            console.warn(`Error in ${block.name} input: ${error}`, {
-              data: inputData,
-              schema: inputSchema,
-            });
-            errorMessage =
-              `${errorPrefix}: ` + (error.message || "Invalid input");
-            if (path && error.message) {
-              const key = path.slice(1);
-              setNestedProperty(
-                errors,
-                key,
-                error.message[0].toUpperCase() + error.message.slice(1),
-              );
-            } else if (error.keyword === "required") {
-              const key = error.params.missingProperty;
-              setNestedProperty(errors, key, "This field is required");
-            }
-          });
-        }
-
-        Object.entries(inputSchema.properties).forEach(([key, schema]) => {
-          if (schema.depends_on) {
-            const dependencies = schema.depends_on;
-
-            // Check if dependent field has value
-            const hasValue =
-              inputData[key] != null ||
-              ("default" in schema && schema.default != null);
-
-            const mustHaveValue = inputSchema.required?.includes(key);
-
-            // Check for missing dependencies when dependent field is present
-            const missingDependencies = dependencies.filter(
-              (dep) =>
-                !inputData[dep as keyof typeof inputData] ||
-                String(inputData[dep as keyof typeof inputData]).trim() === "",
-            );
-
-            if ((hasValue || mustHaveValue) && missingDependencies.length > 0) {
-              setNestedProperty(
-                errors,
-                key,
-                `Requires ${missingDependencies.join(", ")} to be set`,
-              );
-              errorMessage = `${errorPrefix}: field ${key} requires ${missingDependencies.join(", ")} to be set`;
-            }
-
-            // Check if field is required when dependencies are present
-            const hasAllDependencies = dependencies.every(
-              (dep) =>
-                inputData[dep as keyof typeof inputData] &&
-                String(inputData[dep as keyof typeof inputData]).trim() !== "",
-            );
-
-            if (hasAllDependencies && !hasValue) {
-              setNestedProperty(
-                errors,
-                key,
-                `${key} is required when ${dependencies.join(", ")} are set`,
-              );
-              errorMessage = `${errorPrefix}: ${key} is required when ${dependencies.join(", ")} are set`;
-            }
-          }
-        });
-
-        // Set errors
-        setXYNodes((nodes) => {
-          return nodes.map((n) => {
-            if (n.id === node.id) {
-              return {
-                ...n,
-                data: {
-                  ...n.data,
-                  errors,
-                },
-              };
-            }
-            return n;
-          });
-        });
-      });
-
-      return errorMessage;
-    },
-    [prepareSaveableGraph, availableBlocks],
-  );
-
   const _saveAgent = useCallback(async () => {
     // FIXME: frontend IDs should be resolved better (e.g. returned from the server)
     // currently this relays on block_id and position
@@ -885,14 +757,10 @@ export default function useAgentGraph(
         setIsSaving(false);
       }
 
-      const validationError = validateGraph(savedAgent);
-      if (validationError) {
-        toast({
-          title: `Graph validation failed: ${validationError}`,
-          variant: "destructive",
-        });
-        return;
-      }
+      // NOTE: Client-side validation is skipped here because the backend now provides
+      // comprehensive validation that includes credentialsInputs, which the frontend
+      // validation cannot access. The backend will return structured validation errors
+      // if there are any issues.
 
       setIsRunning(true);
       processedUpdates.current = [];
@@ -918,6 +786,40 @@ export default function useAgentGraph(
           completeStep("BUILDER_RUN_AGENT");
         }
       } catch (error) {
+        // Check if this is a structured validation error from the backend
+        if (error instanceof ApiError && error.isGraphValidationError()) {
+          const errorData = error.response;
+
+          // 1. Apply validation errors to the corresponding nodes.
+          // 2. Clear existing errors for nodes that don't have validation issues.
+          setXYNodes((nodes) => {
+            return nodes.map((node) => {
+              const nodeErrors = node.data.backend_id
+                ? (errorData.node_errors[node.data.backend_id] ?? {})
+                : {};
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  errors: nodeErrors,
+                },
+              };
+            });
+          });
+
+          // Show a general toast about validation errors
+          toast({
+            variant: "destructive",
+            title: "Graph validation failed",
+            description:
+              "Please fix the validation errors on the highlighted nodes and try again.",
+          });
+          setIsRunning(false);
+          setActiveExecutionID(null);
+          return;
+        }
+
+        // Generic error handling for non-validation errors
         const errorMessage =
           error instanceof Error ? error.message : String(error);
         toast({
@@ -933,10 +835,6 @@ export default function useAgentGraph(
       _saveAgent,
       toast,
       completeStep,
-      savedAgent,
-      prepareSaveableGraph,
-      nodesSyncedWithSavedAgent,
-      validateGraph,
       api,
       searchParams,
       pathname,
