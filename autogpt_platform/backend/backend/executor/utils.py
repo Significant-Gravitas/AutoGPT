@@ -456,71 +456,6 @@ def validate_exec(
     return data, node_block.name
 
 
-def make_node_credentials_input_map(
-    graph: GraphModel,
-    graph_credentials_input: dict[str, CredentialsMetaInput],
-) -> dict[str, dict[str, JsonValue]]:
-    """
-    Maps credentials for an execution to the correct nodes.
-
-    Params:
-        graph: The graph to be executed.
-        graph_credentials_input: A (graph_input_name, credentials_meta) map.
-
-    Returns:
-        dict[node_id, dict[field_name, CredentialsMetaRaw]]: Node credentials input map.
-    """
-    result: dict[str, dict[str, JsonValue]] = {}
-
-    # Get aggregated credentials fields for the graph
-    graph_cred_inputs = graph.aggregate_credentials_inputs()
-
-    for graph_input_name, (_, compatible_node_fields) in graph_cred_inputs.items():
-        # Best-effort map: skip missing items
-        if graph_input_name not in graph_credentials_input:
-            continue
-
-        # Use passed-in credentials for all compatible node input fields
-        for node_id, node_field_name in compatible_node_fields:
-            if node_id not in result:
-                result[node_id] = {}
-            result[node_id][node_field_name] = graph_credentials_input[
-                graph_input_name
-            ].model_dump(exclude_none=True)
-
-    return result
-
-
-async def validate_graph_with_credentials(
-    graph: GraphModel,
-    user_id: str,
-    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
-) -> dict[str, dict[str, str]]:
-    """
-    Validate graph including credentials and return structured errors per node.
-
-    Returns:
-        dict[node_id, dict[field_name, error_message]]: Validation errors per node
-    """
-    # Get input validation errors
-    node_input_errors = GraphModel.validate_graph_get_errors(
-        graph, for_run=True, nodes_input_masks=nodes_input_masks
-    )
-
-    # Get credential input/availability/validation errors
-    node_credential_input_errors = await _validate_node_input_credentials(
-        graph, user_id, nodes_input_masks
-    )
-
-    # Merge credential errors with structural errors
-    for node_id, field_errors in node_credential_input_errors.items():
-        if node_id not in node_input_errors:
-            node_input_errors[node_id] = {}
-        node_input_errors[node_id].update(field_errors)
-
-    return node_input_errors
-
-
 async def _validate_node_input_credentials(
     graph: GraphModel,
     user_id: str,
@@ -600,6 +535,71 @@ async def _validate_node_input_credentials(
                 continue
 
     return credential_errors
+
+
+def make_node_credentials_input_map(
+    graph: GraphModel,
+    graph_credentials_input: dict[str, CredentialsMetaInput],
+) -> dict[str, dict[str, JsonValue]]:
+    """
+    Maps credentials for an execution to the correct nodes.
+
+    Params:
+        graph: The graph to be executed.
+        graph_credentials_input: A (graph_input_name, credentials_meta) map.
+
+    Returns:
+        dict[node_id, dict[field_name, CredentialsMetaRaw]]: Node credentials input map.
+    """
+    result: dict[str, dict[str, JsonValue]] = {}
+
+    # Get aggregated credentials fields for the graph
+    graph_cred_inputs = graph.aggregate_credentials_inputs()
+
+    for graph_input_name, (_, compatible_node_fields) in graph_cred_inputs.items():
+        # Best-effort map: skip missing items
+        if graph_input_name not in graph_credentials_input:
+            continue
+
+        # Use passed-in credentials for all compatible node input fields
+        for node_id, node_field_name in compatible_node_fields:
+            if node_id not in result:
+                result[node_id] = {}
+            result[node_id][node_field_name] = graph_credentials_input[
+                graph_input_name
+            ].model_dump(exclude_none=True)
+
+    return result
+
+
+async def validate_graph_with_credentials(
+    graph: GraphModel,
+    user_id: str,
+    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+) -> dict[str, dict[str, str]]:
+    """
+    Validate graph including credentials and return structured errors per node.
+
+    Returns:
+        dict[node_id, dict[field_name, error_message]]: Validation errors per node
+    """
+    # Get input validation errors
+    node_input_errors = GraphModel.validate_graph_get_errors(
+        graph, for_run=True, nodes_input_masks=nodes_input_masks
+    )
+
+    # Get credential input/availability/validation errors
+    node_credential_input_errors = await _validate_node_input_credentials(
+        graph, user_id, nodes_input_masks
+    )
+
+    # Merge credential errors with structural errors
+    for node_id, field_errors in node_credential_input_errors.items():
+        if node_id not in node_input_errors:
+            node_input_errors[node_id] = {}
+        node_input_errors[node_id].update(field_errors)
+
+    return node_input_errors
 
 
 async def construct_node_execution_input(
