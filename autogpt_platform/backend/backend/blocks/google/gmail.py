@@ -985,7 +985,7 @@ class GmailGetThreadBlock(Block):
             email = Email(
                 threadId=msg.get("threadId", thread_id),
                 labelIds=msg.get("labelIds", []),
-                id=msg.get("id", "No Id found"),
+                id=msg.get("id"),
                 subject=headers.get("subject", "No Subject"),
                 snippet=msg.get("snippet", ""),
                 from_=parseaddr(headers.get("from", ""))[1],
