@@ -12,7 +12,6 @@ from exa_py.websets.types import (
     Format,
     ImportItem,
     ImportSource,
-    Monitor,
     Option,
     ScopeItem,
     ScopeRelationship,
@@ -20,10 +19,8 @@ from exa_py.websets.types import (
     WebsetArticleEntity,
     WebsetCompanyEntity,
     WebsetCustomEntity,
-    WebsetEnrichment,
     WebsetPersonEntity,
     WebsetResearchPaperEntity,
-    WebsetSearch,
     WebsetStatus,
 )
 from pydantic import Field
@@ -68,38 +65,43 @@ class EnrichmentFormat(str, Enum):
 
 class Webset(BaseModel):
     id: str
-    status: WebsetStatus | None = Field(..., title='WebsetStatus')
+    status: WebsetStatus | None = Field(..., title="WebsetStatus")
     """
     The status of the webset
     """
-    external_id: Annotated[Optional[str], Field(alias='externalId')] = None
+    external_id: Annotated[Optional[str], Field(alias="externalId")] = None
     """
     The external identifier for the webset
+    NOTE: Returning dict to avoid ui crashing due to nested objects
     """
-    searches: List[WebsetSearch] | None = None
+    searches: List[dict[str, Any]] | None = None
     """
     The searches that have been performed on the webset.
+    NOTE: Returning dict to avoid ui crashing due to nested objects
     """
-    enrichments: List[WebsetEnrichment] | None = None
+    enrichments: List[dict[str, Any]] | None = None
     """
     The Enrichments to apply to the Webset Items.
-    """ 
-    monitors: List[Monitor] | None = None
+    NOTE: Returning dict to avoid ui crashing due to nested objects
+    """
+    monitors: List[dict[str, Any]] | None = None
     """
     The Monitors for the Webset.
+    NOTE: Returning dict to avoid ui crashing due to nested objects
     """
     metadata: Optional[Dict[str, Any]] = {}
     """
     Set of key-value pairs you want to associate with this object.
     """
-    created_at: Annotated[datetime, Field(alias='createdAt')] | None = None
+    created_at: Annotated[datetime, Field(alias="createdAt")] | None = None
     """
     The date and time the webset was created
     """
-    updated_at: Annotated[datetime, Field(alias='updatedAt')] | None = None
+    updated_at: Annotated[datetime, Field(alias="updatedAt")] | None = None
     """
     The date and time the webset was last updated
     """
+
 
 class ExaCreateWebsetBlock(Block):
     class Input(BlockSchema):
@@ -496,7 +498,9 @@ class ExaListWebsetsBlock(Block):
         )
 
     class Output(BlockSchema):
-        websets: list = SchemaField(description="List of websets", default_factory=list)
+        websets: list[Webset] = SchemaField(
+            description="List of websets", default_factory=list
+        )
         has_more: bool = SchemaField(
             description="Whether there are more results to paginate through",
             default=False,
@@ -554,9 +558,6 @@ class ExaGetWebsetBlock(Block):
             description="The ID or external ID of the Webset to retrieve",
             placeholder="webset-id-or-external-id",
         )
-        expand_items: bool = SchemaField(
-            default=False, description="Include items in the response", advanced=True
-        )
 
     class Output(BlockSchema):
         webset_id: str = SchemaField(description="The unique identifier for the webset")
@@ -608,12 +609,8 @@ class ExaGetWebsetBlock(Block):
             "x-api-key": credentials.api_key.get_secret_value(),
         }
 
-        params = {}
-        if input_data.expand_items:
-            params["expand[]"] = "items"
-
         try:
-            response = await Requests().get(url, headers=headers, params=params)
+            response = await Requests().get(url, headers=headers)
             data = response.json()
 
             yield "webset_id", data.get("id", "")
