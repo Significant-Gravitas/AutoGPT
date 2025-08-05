@@ -310,18 +310,18 @@ class GmailReadBlock(Block):
             ]
 
             email = Email(
-                threadId=msg["threadId"],
+                threadId=msg.get("threadId", None),
                 labelIds=msg.get("labelIds", []),
                 id=msg["id"],
                 subject=headers.get("subject", "No Subject"),
-                snippet=msg["snippet"],
+                snippet=msg.get("snippet", ""),
                 from_=parseaddr(headers.get("from", ""))[1],
                 to=to_recipients if to_recipients else [],
                 cc=cc_recipients,
                 bcc=bcc_recipients,
                 date=headers.get("date", ""),
                 body=await self._get_email_body(msg, service),
-                sizeEstimate=msg["sizeEstimate"],
+                sizeEstimate=msg.get("sizeEstimate", 0),
                 attachments=attachments,
             )
             email_data.append(email)
@@ -985,7 +985,7 @@ class GmailGetThreadBlock(Block):
             email = Email(
                 threadId=msg.get("threadId", thread_id),
                 labelIds=msg.get("labelIds", []),
-                id=msg["id"],
+                id=msg.get("id"),
                 subject=headers.get("subject", "No Subject"),
                 snippet=msg.get("snippet", ""),
                 from_=parseaddr(headers.get("from", ""))[1],
