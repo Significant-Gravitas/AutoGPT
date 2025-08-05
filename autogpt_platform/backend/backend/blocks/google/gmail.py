@@ -310,7 +310,7 @@ class GmailReadBlock(Block):
             ]
 
             email = Email(
-                threadId=msg.get("threadId", "No threadId found"),
+                threadId=msg.get("threadId", None),
                 labelIds=msg.get("labelIds", []),
                 id=msg["id"],
                 subject=headers.get("subject", "No Subject"),
