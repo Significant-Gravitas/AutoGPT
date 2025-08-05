@@ -379,8 +379,6 @@ export type GraphValidationErrorResponse = {
   node_errors: Record<string, Record<string, string>>;
 };
 
-export type NodeValidationErrors = Record<string, string>;
-
 /* *** LIBRARY *** */
 
 /* Mirror of backend/server/v2/library/model.py:LibraryAgent */
