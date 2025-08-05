@@ -43,11 +43,11 @@ def main(**kwargs):
 
     run_processes(
         DatabaseManager().set_log_level("warning"),
-        ExecutionManager(),
         Scheduler(),
         NotificationManager(),
         WebsocketServer(),
         AgentServer(),
+        ExecutionManager(),
         **kwargs,
     )
 

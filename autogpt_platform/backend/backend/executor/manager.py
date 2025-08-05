@@ -1090,6 +1090,8 @@ class ExecutionManager(AppProcess):
         self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
         self._stop_consuming = None
         self._executor = None
+        self._cancel_client = None
+        self._run_client = None
 
     @property
     def stop_consuming(self) -> threading.Event:
@@ -1129,14 +1131,14 @@ class ExecutionManager(AppProcess):
             daemon=True,
         ).start()
 
-        while True:
+        while not self.stop_consuming.is_set():
             time.sleep(1e5)
 
     @continuous_retry()
     def _consume_execution_cancel(self):
-        cancel_client = SyncRabbitMQ(create_execution_queue_config())
-        cancel_client.connect()
-        cancel_channel = cancel_client.get_channel()
+        self._cancel_client = SyncRabbitMQ(create_execution_queue_config())
+        self._cancel_client.connect()
+        cancel_channel = self._cancel_client.get_channel()
         logger.info(f"[{self.service_name}] ⏳ Starting cancel message consumer...")
         cancel_channel.basic_consume(
             queue=GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
@@ -1158,9 +1160,9 @@ class ExecutionManager(AppProcess):
             )
             return
 
-        run_client = SyncRabbitMQ(create_execution_queue_config())
-        run_client.connect()
-        run_channel = run_client.get_channel()
+        self._run_client = SyncRabbitMQ(create_execution_queue_config())
+        self._run_client.connect()
+        run_channel = self._run_client.get_channel()
         run_channel.basic_qos(prefetch_count=self.pool_size)
 
         # Configure consumer for long-running graph executions
@@ -1350,8 +1352,9 @@ class ExecutionManager(AppProcess):
                     logger.info(f"{prefix} ✅ All active executions completed")
                     break
                 else:
+                    ids = [k.split("-")[0] for k in self.active_graph_runs.keys()]
                     logger.info(
-                        f"{prefix} ⏳ Still waiting for {len(self.active_graph_runs)} executions..."
+                        f"{prefix} ⏳ Still waiting for {len(self.active_graph_runs)} executions: {ids}"
                     )
 
                 time.sleep(wait_interval)
@@ -1364,7 +1367,7 @@ class ExecutionManager(AppProcess):
             else:
                 logger.info(f"{prefix} ✅ All executions completed gracefully")
 
-        # NOW shutdown executor pool after all executions are complete
+        # NOW shutdown executor pool after all executions and cleanup are complete
         if self._executor:
             logger.info(f"{prefix} ⏳ Shutting down GraphExec pool...")
             try:
@@ -1373,6 +1376,25 @@ class ExecutionManager(AppProcess):
                 logger.info(f"{prefix} ✅ Executor shutdown completed")
             except Exception as e:
                 logger.error(f"{prefix} ⚠️ Error during executor shutdown: {e}")
+
+        # Clean up RabbitMQ connections
+        if self._cancel_client:
+            logger.info(f"{prefix} ⏳ Disconnecting cancel RabbitMQ client...")
+            try:
+                self._cancel_client.disconnect()
+                logger.info(f"{prefix} ✅ Cancel RabbitMQ client disconnected")
+            except Exception as e:
+                logger.error(
+                    f"{prefix} ⚠️ Error disconnecting cancel RabbitMQ client: {e}"
+                )
+
+        if self._run_client:
+            logger.info(f"{prefix} ⏳ Disconnecting run RabbitMQ client...")
+            try:
+                self._run_client.disconnect()
+                logger.info(f"{prefix} ✅ Run RabbitMQ client disconnected")
+            except Exception as e:
+                logger.error(f"{prefix} ⚠️ Error disconnecting run RabbitMQ client: {e}")
 
         logger.info(f"{prefix} ✅ Finished GraphExec cleanup")
 
