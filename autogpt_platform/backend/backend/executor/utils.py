@@ -841,7 +841,7 @@ async def add_graph_execution(
         await bus.publish(graph_exec)
 
         return graph_exec
-    except Exception as e:
+    except BaseException as e:
         logger.error(f"Unable to publish graph #{graph_id} exec #{graph_exec.id}: {e}")
         await edb.update_node_execution_status_batch(
             [node_exec.node_exec_id for node_exec in graph_exec.node_executions],

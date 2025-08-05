@@ -144,3 +144,41 @@ Key models (defined in `/backend/schema.prisma`):
 - Prevents sensitive data (auth tokens, API keys, user data) from being cached by browsers/proxies
 - To allow caching for a new endpoint, add it to `CACHEABLE_PATHS` in the middleware
 - Applied to both main API server and external API applications
+
+
+### Creating Pull Requests
+- Create the PR aginst the `dev` branch of the repository.
+- Ensure the branch name is descriptive (e.g., `feature/add-new-block`)/
+- Use conventional commit messages (see below)/
+- Fill out the .github/PULL_REQUEST_TEMPLATE.md template as the PR description/
+- Run the github pre-commit hooks to ensure code quality.
+
+### Conventional Commits
+
+Use this format for commit messages and Pull Request titles:
+
+**Conventional Commit Types:**
+
+- `feat`: Introduces a new feature to the codebase
+- `fix`: Patches a bug in the codebase
+- `refactor`: Code change that neither fixes a bug nor adds a feature; also applies to removing features
+- `ci`: Changes to CI configuration
+- `docs`: Documentation-only changes
+- `dx`: Improvements to the developer experience
+
+**Recommended Base Scopes:**
+
+- `platform`: Changes affecting both frontend and backend
+- `frontend`
+- `backend`
+- `infra`
+- `blocks`: Modifications/additions of individual blocks
+
+**Subscope Examples:**
+
+- `backend/executor`
+- `backend/db`
+- `frontend/builder` (includes changes to the block UI component)
+- `infra/prod`
+
+Use these scopes and subscopes for clarity and consistency in commit messages.

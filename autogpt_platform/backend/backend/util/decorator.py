@@ -42,16 +42,22 @@ T = TypeVar("T")
 logger = TruncatedLogger(logging.getLogger(__name__))
 
 
-def time_measured(func: Callable[P, T]) -> Callable[P, Tuple[TimingInfo, T]]:
+def time_measured(
+    func: Callable[P, T],
+) -> Callable[P, Tuple[TimingInfo, T | BaseException]]:
     """
     Decorator to measure the time taken by a synchronous function to execute.
     """
 
     @functools.wraps(func)
-    def wrapper(*args: P.args, **kwargs: P.kwargs) -> Tuple[TimingInfo, T]:
+    def wrapper(
+        *args: P.args, **kwargs: P.kwargs
+    ) -> Tuple[TimingInfo, T | BaseException]:
         start_wall_time, start_cpu_time = _start_measurement()
         try:
             result = func(*args, **kwargs)
+        except BaseException as e:
+            result = e
         finally:
             wall_duration, cpu_duration = _end_measurement(
                 start_wall_time, start_cpu_time
@@ -64,16 +70,20 @@ def time_measured(func: Callable[P, T]) -> Callable[P, Tuple[TimingInfo, T]]:
 
 def async_time_measured(
     func: Callable[P, Awaitable[T]],
-) -> Callable[P, Awaitable[Tuple[TimingInfo, T]]]:
+) -> Callable[P, Awaitable[Tuple[TimingInfo, T | BaseException]]]:
     """
     Decorator to measure the time taken by an async function to execute.
     """
 
     @functools.wraps(func)
-    async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> Tuple[TimingInfo, T]:
+    async def async_wrapper(
+        *args: P.args, **kwargs: P.kwargs
+    ) -> Tuple[TimingInfo, T | BaseException]:
         start_wall_time, start_cpu_time = _start_measurement()
         try:
             result = await func(*args, **kwargs)
+        except BaseException as e:
+            result = e
         finally:
             wall_duration, cpu_duration = _end_measurement(
                 start_wall_time, start_cpu_time

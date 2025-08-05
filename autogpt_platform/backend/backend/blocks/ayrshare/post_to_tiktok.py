@@ -6,10 +6,9 @@ from backend.sdk import (
     BlockSchema,
     BlockType,
     SchemaField,
-    SecretStr,
 )
 
-from ._util import BaseAyrshareInput, create_ayrshare_client
+from ._util import BaseAyrshareInput, create_ayrshare_client, get_profile_key
 
 
 class PostToTikTokBlock(Block):
@@ -108,9 +107,10 @@ class PostToTikTokBlock(Block):
         )
 
     async def run(
-        self, input_data: "PostToTikTokBlock.Input", *, profile_key: SecretStr, **kwargs
+        self, input_data: "PostToTikTokBlock.Input", *, user_id: str, **kwargs
     ) -> BlockOutput:
         """Post to TikTok with TikTok-specific validation and options."""
+        profile_key = await get_profile_key(user_id)
         if not profile_key:
             yield "error", "Please link a social account via Ayrshare"
             return
