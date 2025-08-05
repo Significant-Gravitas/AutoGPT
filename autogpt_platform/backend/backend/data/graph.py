@@ -513,9 +513,6 @@ class GraphModel(Graph):
             )
             InputSchema = block.input_schema
 
-            # Initialize node errors dict if we find any issues
-            node_id = node.id
-
             for name in (required_fields := InputSchema.get_required_fields()):
                 if (
                     name not in provided_inputs
@@ -532,14 +529,14 @@ class GraphModel(Graph):
                         ]
                     )
                 ):
-                    node_errors[node_id][name] = "This field is required"
+                    node_errors[node.id][name] = "This field is required"
 
                 if (
                     block.block_type == BlockType.INPUT
                     and (input_key := node.input_default.get("name"))
                     and is_credentials_field_name(input_key)
                 ):
-                    node_errors[node_id]["name"] = (
+                    node_errors[node.id]["name"] = (
                         f"'{input_key}' is a reserved input name: "
                         "'credentials' and `*_credentials` are reserved"
                     )
@@ -591,7 +588,7 @@ class GraphModel(Graph):
                 # Check for missing dependencies when dependent field is present
                 missing_deps = [dep for dep in dependencies if not has_value(node, dep)]
                 if missing_deps and (field_has_value or field_is_required):
-                    node_errors[node_id][
+                    node_errors[node.id][
                         field_name
                     ] = f"Requires {', '.join(missing_deps)} to be set"
 
