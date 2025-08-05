@@ -1112,8 +1112,7 @@ class ExecutionManager(AppProcess):
         logger.info(f"[{self.service_name}] ⏳ Spawn max-{self.pool_size} workers...")
 
         pool_size_gauge.set(self.pool_size)
-        active_runs_gauge.set(0)
-        utilization_gauge.set(0)
+        self._update_prompt_metrics()
 
         threading.Thread(
             target=lambda: self._consume_execution_cancel(),
@@ -1273,8 +1272,7 @@ class ExecutionManager(AppProcess):
             Executor.on_graph_execution, graph_exec_entry, cancel_event
         )
         self.active_graph_runs[graph_exec_id] = (future, cancel_event)
-        active_runs_gauge.set(len(self.active_graph_runs))
-        utilization_gauge.set(len(self.active_graph_runs) / self.pool_size)
+        self._update_prompt_metrics()
 
         def _on_run_done(f: Future):
             logger.info(f"[{self.service_name}] Run completed for {graph_exec_id}")
@@ -1309,7 +1307,7 @@ class ExecutionManager(AppProcess):
 
         future.add_done_callback(_on_run_done)
 
-    def _cleanup_completed_runs(self, log=logger.info) -> list[str]:
+    def _cleanup_completed_runs(self) -> list[str]:
         """Remove completed futures from active_graph_runs and update metrics"""
         completed_runs = []
         for graph_exec_id, (future, _) in self.active_graph_runs.items():
@@ -1317,15 +1315,19 @@ class ExecutionManager(AppProcess):
                 completed_runs.append(graph_exec_id)
 
         for geid in completed_runs:
-            log(f"[{self.service_name}] ✅ Cleaned up completed run {geid}")
+            logger.info(f"[{self.service_name}] ✅ Cleaned up completed run {geid}")
             self.active_graph_runs.pop(geid, None)
 
-        # Update metrics
+        self._update_prompt_metrics()
+        return completed_runs
+
+    def _update_prompt_metrics(self):
         active_count = len(self.active_graph_runs)
         active_runs_gauge.set(active_count)
-        utilization_gauge.set(active_count / self.pool_size)
-
-        return completed_runs
+        if self._stop_consuming and self._stop_consuming.is_set():
+            utilization_gauge.set(1.0)
+        else:
+            utilization_gauge.set(active_count / self.pool_size)
 
     def cleanup(self):
         """Override cleanup to implement graceful shutdown with active execution waiting."""
