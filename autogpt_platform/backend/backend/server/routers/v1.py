@@ -770,6 +770,7 @@ async def execute_graph(
             detail={
                 "type": "validation_error",
                 "message": e.message,
+                # TODO: only return node-specific errors if user has access to graph
                 "node_errors": e.node_errors,
             },
         )
