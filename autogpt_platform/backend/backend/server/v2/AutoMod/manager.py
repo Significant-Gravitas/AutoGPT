@@ -75,7 +75,9 @@ class AutoModManager:
         content = " ".join(all_inputs)
 
         # Run moderation
-        logger.warning(f"Moderating inputs for graph execution {graph_exec.graph_exec_id}")
+        logger.warning(
+            f"Moderating inputs for graph execution {graph_exec.graph_exec_id}"
+        )
         try:
             moderation_passed = await self._moderate_content(
                 content,
@@ -88,7 +90,9 @@ class AutoModManager:
             )
 
             if not moderation_passed:
-                logger.warning(f"Moderation failed for graph execution {graph_exec.graph_exec_id}")
+                logger.warning(
+                    f"Moderation failed for graph execution {graph_exec.graph_exec_id}"
+                )
                 # Update node statuses for frontend display before raising error
                 await self._update_failed_nodes_for_moderation(
                     db_client, graph_exec.graph_exec_id, "input"
