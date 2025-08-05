@@ -450,15 +450,6 @@ class GraphModel(Graph):
         Returns: dict[node_id, dict[field_name, error_message]]
         """
 
-        def is_tool_pin(name: str) -> bool:
-            return name.startswith("tools_^_")
-
-        def sanitize(name):
-            sanitized_name = name.split("_#_")[0].split("_@_")[0].split("_$_")[0]
-            if is_tool_pin(sanitized_name):
-                return "tools"
-            return sanitized_name
-
         # Collect errors per node
         node_errors: dict[str, dict[str, str]] = {}
 
@@ -469,7 +460,7 @@ class GraphModel(Graph):
             if (block := get_block(node.block_id)) is not None
         }
 
-        input_links = defaultdict(list)
+        input_links: dict[str, list[Link]] = defaultdict(list)
 
         for link in graph.links:
             input_links[link.sink_id].append(link)
@@ -484,8 +475,11 @@ class GraphModel(Graph):
                 nodes_input_masks.get(node.id, {}) if nodes_input_masks else {}
             )
             provided_inputs = set(
-                [sanitize(name) for name in node.input_default]
-                + [sanitize(link.sink_name) for link in input_links.get(node.id, [])]
+                [_sanitize_pin_name(name) for name in node.input_default]
+                + [
+                    _sanitize_pin_name(link.sink_name)
+                    for link in input_links.get(node.id, [])
+                ]
                 + ([name for name in node_input_mask] if node_input_mask else [])
             )
             InputSchema = block.input_schema
@@ -577,29 +571,19 @@ class GraphModel(Graph):
                         field_name
                     ] = f"Requires {', '.join(missing_deps)} to be set"
 
-        # For now, we'll validate the rest of the graph structure (links, etc.) with the original logic
-        # but only if we haven't found node-level validation errors
-        if not node_errors:
-            # Continue with the original validation for links and other structural checks
-            # This ensures backward compatibility for non-node-specific validations
-            try:
-                GraphModel._validate_graph_structure(
-                    graph, nodes_block, input_links, sanitize
-                )
-            except ValueError:
-                # If structural validation fails, we can't provide per-node errors
-                # so we re-raise as is
-                raise
+        try:
+            GraphModel._validate_graph_structure(graph)
+        except ValueError:
+            # If structural validation fails, we can't provide per-node errors
+            # so we re-raise as is
+            raise
 
         return node_errors
 
     @staticmethod
-    def _validate_graph_structure(graph, nodes_block, input_links, sanitize):
+    def _validate_graph_structure(graph: BaseGraph):
         """Validate graph structure (links, connections, etc.)"""
         node_map = {v.id: v for v in graph.nodes}
-
-        def is_tool_pin(name: str) -> bool:
-            return name.startswith("tools_^_")
 
         def is_static_output_block(nid: str) -> bool:
             return node_map[nid].block.static_output
@@ -624,7 +608,7 @@ class GraphModel(Graph):
                         f"{prefix}, {node.block_id} is invalid block id, available blocks: {blocks}"
                     )
 
-                sanitized_name = sanitize(name)
+                sanitized_name = _sanitize_pin_name(name)
                 vals = node.input_default
                 if i == 0:
                     fields = (
@@ -638,7 +622,7 @@ class GraphModel(Graph):
                         if block.block_type not in [BlockType.AGENT]
                         else vals.get("input_schema", {}).get("properties", {}).keys()
                     )
-                if sanitized_name not in fields and not is_tool_pin(name):
+                if sanitized_name not in fields and not _is_tool_pin(name):
                     fields_msg = f"Allowed fields: {fields}"
                     raise ValueError(f"{prefix}, `{name}` invalid, {fields_msg}")
 
@@ -673,6 +657,17 @@ class GraphModel(Graph):
                 for sub_graph in sub_graphs or []
             ],
         )
+
+
+def _is_tool_pin(name: str) -> bool:
+    return name.startswith("tools_^_")
+
+
+def _sanitize_pin_name(name: str) -> str:
+    sanitized_name = name.split("_#_")[0].split("_@_")[0].split("_$_")[0]
+    if _is_tool_pin(sanitized_name):
+        return "tools"
+    return sanitized_name
 
 
 class GraphMeta(Graph):
