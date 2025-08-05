@@ -784,7 +784,7 @@ export default function useAgentGraph(
       } catch (error) {
         // Check if this is a structured validation error from the backend
         if (error instanceof ApiError && error.isGraphValidationError()) {
-          const errorData = error.response;
+          const errorData = error.response.detail;
 
           // 1. Apply validation errors to the corresponding nodes.
           // 2. Clear existing errors for nodes that don't have validation issues.

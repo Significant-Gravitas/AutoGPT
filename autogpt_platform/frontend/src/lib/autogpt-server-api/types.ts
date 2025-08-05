@@ -374,9 +374,11 @@ export type NodeExecutionResult = {
 
 /* Structured validation error types for graph execution */
 export type GraphValidationErrorResponse = {
-  type: "validation_error";
-  message: string;
-  node_errors: Record<string, Record<string, string>>;
+  detail: {
+    type: "validation_error";
+    message: string;
+    node_errors: Record<string, Record<string, string>>;
+  };
 };
 
 /* *** LIBRARY *** */
