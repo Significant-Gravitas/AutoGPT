@@ -530,13 +530,13 @@ class SmartDecisionMakerBlock(Block):
         )
 
         # Add reasoning to conversation history if available
-         if response.reasoning:
-             prompt.append(
-                 {"role": "assistant", "content": f"[Reasoning]: {response.reasoning}"}
-             )
+        if response.reasoning:
+            prompt.append(
+                {"role": "assistant", "content": f"[Reasoning]: {response.reasoning}"}
+            )
 
-         prompt.append(response.raw_response)
-         yield "conversations", prompt
+        prompt.append(response.raw_response)
+        yield "conversations", prompt
 
         if not response.tool_calls:
             yield "finished", response.response
