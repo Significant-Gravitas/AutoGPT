@@ -158,6 +158,11 @@ export async function parseApiError(response: Response): Promise<string> {
       return errors.join("\n");
     }
 
+    if (typeof errorData.detail === "object" && errorData.detail !== null) {
+      if (errorData.detail.message) return errorData.detail.message;
+      return response.statusText; // Fallback to status text if no message
+    }
+
     return errorData.detail || response.statusText;
   } catch {
     return response.statusText;
