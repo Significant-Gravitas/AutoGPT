@@ -24,7 +24,6 @@ from backend.blocks.proxycurl.proxycurl import (
     ProxycurlProfilePictureBlock,
     ProxycurlRoleLookupBlock,
 )
-from backend.blocks.replicate_flux_advanced import ReplicateFluxAdvancedModelBlock
 from backend.blocks.replicate.flux_advanced import ReplicateFluxAdvancedModelBlock
 from backend.blocks.replicate.replicate_block import ReplicateModelBlock
 from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock

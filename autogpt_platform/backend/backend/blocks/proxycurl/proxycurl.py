@@ -163,7 +163,7 @@ class ProxycurlProfileFetchBlock(Block):
         )
         return profile
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         """
@@ -312,7 +312,7 @@ class ProxycurlPersonLookupBlock(Block):
         )
         return lookup_result
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         """
@@ -419,7 +419,7 @@ class ProxycurlRoleLookupBlock(Block):
         )
         return role_lookup_result
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         """
@@ -504,7 +504,7 @@ class ProxycurlProfilePictureBlock(Block):
         )
         return profile_picture
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         """
