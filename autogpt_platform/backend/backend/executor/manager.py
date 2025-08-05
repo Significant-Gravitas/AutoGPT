@@ -1250,7 +1250,9 @@ class ExecutionManager(AppProcess):
         try:
             graph_exec_entry = GraphExecutionEntry.model_validate_json(body)
         except Exception as e:
-            logger.error(f"[{self.service_name}] Could not parse run message: {e}")
+            logger.error(
+                f"[{self.service_name}] Could not parse run message: {e}, body={body}"
+            )
             channel.basic_nack(delivery_tag, requeue=False)
             return
 
