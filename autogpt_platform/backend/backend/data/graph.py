@@ -418,7 +418,7 @@ class GraphModel(Graph):
     ):
         """
         Validate graph structure and raise `ValueError` on issues.
-        For structured error reporting, use `validate_graph_with_errors`.
+        For structured error reporting, use `validate_graph_get_errors`.
         """
         self._validate_graph(self, for_run, nodes_input_masks)
         for sub_graph in self.sub_graphs:
@@ -430,7 +430,7 @@ class GraphModel(Graph):
         for_run: bool = False,
         nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
     ) -> None:
-        errors = GraphModel._validate_graph_with_errors(
+        errors = GraphModel._validate_graph_get_errors(
             graph, for_run, nodes_input_masks
         )
         if errors:
@@ -439,7 +439,7 @@ class GraphModel(Graph):
             first_field_error = next(iter(first_error.values()))
             raise ValueError(first_field_error)
 
-    def validate_graph_with_errors(
+    def validate_graph_get_errors(
         self,
         for_run: bool = False,
         nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
@@ -450,18 +450,18 @@ class GraphModel(Graph):
         Returns: dict[node_id, dict[field_name, error_message]]
         """
         return {
-            **self._validate_graph_with_errors(self, for_run, nodes_input_masks),
+            **self._validate_graph_get_errors(self, for_run, nodes_input_masks),
             **{
                 node_id: error
                 for sub_graph in self.sub_graphs
-                for node_id, error in self._validate_graph_with_errors(
+                for node_id, error in self._validate_graph_get_errors(
                     sub_graph, for_run, nodes_input_masks
                 ).items()
             },
         }
 
     @staticmethod
-    def _validate_graph_with_errors(
+    def _validate_graph_get_errors(
         graph: BaseGraph,
         for_run: bool = False,
         nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
