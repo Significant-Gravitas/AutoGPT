@@ -26,14 +26,13 @@ from backend.data.rabbitmq import SyncRabbitMQ
 from backend.executor.activity_status_generator import (
     generate_activity_status_for_execution,
 )
-from backend.executor.utils import LogMetadata, create_execution_queue_config
+from backend.executor.utils import LogMetadata
 from backend.notifications.notifications import queue_notification
 from backend.util.exceptions import InsufficientBalanceError
 
 if TYPE_CHECKING:
     from backend.executor import DatabaseManagerClient, DatabaseManagerAsyncClient
 
-from autogpt_libs.utils.cache import thread_cached
 from prometheus_client import Gauge, start_http_server
 
 from backend.blocks.agent import AgentExecutorBlock
@@ -63,14 +62,19 @@ from backend.executor.utils import (
     ExecutionOutputEntry,
     NodeExecutionProgress,
     block_usage_cost,
+    create_execution_queue_config,
     execution_usage_cost,
-    get_async_execution_event_bus,
-    get_execution_event_bus,
     parse_execution_output,
     validate_exec,
 )
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util import json
+from backend.util.clients import (
+    get_async_execution_event_bus,
+    get_database_manager_async_client,
+    get_database_manager_client,
+    get_execution_event_bus,
+)
 from backend.util.decorator import (
     async_error_logged,
     async_time_measured,
@@ -81,7 +85,6 @@ from backend.util.file import clean_exec_files
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.process import AppProcess, set_service_name
 from backend.util.retry import continuous_retry, func_retry
-from backend.util.service import get_service_client
 from backend.util.settings import Settings
 
 _logger = logging.getLogger(__name__)
@@ -1088,10 +1091,32 @@ class ExecutionManager(AppProcess):
         super().__init__()
         self.pool_size = settings.config.num_graph_workers
         self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
-        self._stop_consuming = None
+
         self._executor = None
+        self._stop_consuming = None
+
+        self._cancel_thread = None
         self._cancel_client = None
+        self._run_thread = None
         self._run_client = None
+
+    @property
+    def cancel_thread(self) -> threading.Thread:
+        if self._cancel_thread is None:
+            self._cancel_thread = threading.Thread(
+                target=lambda: self._consume_execution_cancel(),
+                daemon=True,
+            )
+        return self._cancel_thread
+
+    @property
+    def run_thread(self) -> threading.Thread:
+        if self._run_thread is None:
+            self._run_thread = threading.Thread(
+                target=lambda: self._consume_execution_run(),
+                daemon=True,
+            )
+        return self._run_thread
 
     @property
     def stop_consuming(self) -> threading.Event:
@@ -1108,44 +1133,49 @@ class ExecutionManager(AppProcess):
             )
         return self._executor
 
+    @property
+    def cancel_client(self) -> SyncRabbitMQ:
+        if self._cancel_client is None:
+            self._cancel_client = SyncRabbitMQ(create_execution_queue_config())
+        return self._cancel_client
+
+    @property
+    def run_client(self) -> SyncRabbitMQ:
+        if self._run_client is None:
+            self._run_client = SyncRabbitMQ(create_execution_queue_config())
+        return self._run_client
+
     def run(self):
         logger.info(f"[{self.service_name}] ⏳ Spawn max-{self.pool_size} workers...")
 
         pool_size_gauge.set(self.pool_size)
         self._update_prompt_metrics()
+        start_http_server(settings.config.execution_manager_port)
 
-        threading.Thread(
-            target=lambda: self._consume_execution_cancel(),
-            daemon=True,
-        ).start()
+        self.cancel_thread.start()
+        self.run_thread.start()
 
-        threading.Thread(
-            target=lambda: self._consume_execution_run(),
-            daemon=True,
-        ).start()
-
-        threading.Thread(
-            target=start_http_server,
-            args=(settings.config.execution_manager_port,),
-            daemon=True,
-        ).start()
-
-        while not self.stop_consuming.is_set():
+        while True:
             time.sleep(1e5)
 
     @continuous_retry()
     def _consume_execution_cancel(self):
-        self._cancel_client = SyncRabbitMQ(create_execution_queue_config())
-        self._cancel_client.connect()
-        cancel_channel = self._cancel_client.get_channel()
-        logger.info(f"[{self.service_name}] ⏳ Starting cancel message consumer...")
+        self.cancel_client.connect()
+        cancel_channel = self.cancel_client.get_channel()
         cancel_channel.basic_consume(
             queue=GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
             on_message_callback=self._handle_cancel_message,
             auto_ack=True,
         )
+        logger.info(f"[{self.service_name}] ⏳ Starting cancel message consumer...")
         cancel_channel.start_consuming()
-        raise RuntimeError(f"❌ cancel message consumer is stopped: {cancel_channel}")
+        if not self.stop_consuming.is_set() or self.active_graph_runs:
+            raise RuntimeError(
+                f"[{self.service_name}] ❌ cancel message consumer is stopped: {cancel_channel}"
+            )
+        logger.info(
+            f"[{self.service_name}] ✅ Cancel message consumer stopped gracefully"
+        )
 
     @continuous_retry()
     def _consume_execution_run(self):
@@ -1159,9 +1189,8 @@ class ExecutionManager(AppProcess):
             )
             return
 
-        self._run_client = SyncRabbitMQ(create_execution_queue_config())
-        self._run_client.connect()
-        run_channel = self._run_client.get_channel()
+        self.run_client.connect()
+        run_channel = self.run_client.get_channel()
         run_channel.basic_qos(prefetch_count=self.pool_size)
 
         # Configure consumer for long-running graph executions
@@ -1173,21 +1202,12 @@ class ExecutionManager(AppProcess):
             consumer_tag="graph_execution_consumer",
         )
         run_channel.confirm_delivery()
-
         logger.info(f"[{self.service_name}] ⏳ Starting to consume run messages...")
-
-        # Continue consuming messages until stop flag is set
-        # This keeps the connection alive but rejects new messages in _handle_run_message
-        while not self.stop_consuming.is_set():
-            try:
-                run_channel.connection.process_data_events(time_limit=1)
-            except Exception as e:
-                if self.stop_consuming.is_set():
-                    # Expected during shutdown
-                    break
-                logger.error(f"[{self.service_name}] Error processing events: {e}")
-                raise
-
+        run_channel.start_consuming()
+        if not self.stop_consuming.is_set():
+            raise RuntimeError(
+                f"[{self.service_name}] ❌ run message consumer is stopped: {run_channel}"
+            )
         logger.info(f"[{self.service_name}] ✅ Run message consumer stopped gracefully")
 
     @error_logged(swallow=True)
@@ -1233,18 +1253,30 @@ class ExecutionManager(AppProcess):
     ):
         delivery_tag = method.delivery_tag
 
+        @func_retry
+        def _ack_message(reject: bool = False):
+            """Acknowledge or reject the message based on execution status."""
+            if reject:
+                channel.connection.add_callback_threadsafe(
+                    lambda: channel.basic_nack(delivery_tag, requeue=True)
+                )
+            else:
+                channel.connection.add_callback_threadsafe(
+                    lambda: channel.basic_ack(delivery_tag)
+                )
+
         # Check if we're shutting down - reject new messages but keep connection alive
         if self.stop_consuming.is_set():
             logger.info(
                 f"[{self.service_name}] Rejecting new execution during shutdown"
             )
-            channel.basic_nack(delivery_tag, requeue=True)
+            _ack_message(reject=True)
             return
 
         # Check if we can accept more runs
         self._cleanup_completed_runs()
         if len(self.active_graph_runs) >= self.pool_size:
-            channel.basic_nack(delivery_tag, requeue=True)
+            _ack_message(reject=True)
             return
 
         try:
@@ -1253,7 +1285,7 @@ class ExecutionManager(AppProcess):
             logger.error(
                 f"[{self.service_name}] Could not parse run message: {e}, body={body}"
             )
-            channel.basic_nack(delivery_tag, requeue=False)
+            _ack_message(reject=True)
             return
 
         graph_exec_id = graph_exec_entry.graph_exec_id
@@ -1265,7 +1297,7 @@ class ExecutionManager(AppProcess):
             logger.error(
                 f"[{self.service_name}] Graph {graph_exec_id} already running; rejecting duplicate run."
             )
-            channel.basic_nack(delivery_tag, requeue=False)
+            _ack_message(reject=True)
             return
 
         cancel_event = multiprocessing.Manager().Event()
@@ -1283,23 +1315,9 @@ class ExecutionManager(AppProcess):
                     logger.error(
                         f"[{self.service_name}] Execution for {graph_exec_id} failed: {type(exec_error)} {exec_error}"
                     )
-                    try:
-                        channel.connection.add_callback_threadsafe(
-                            lambda: channel.basic_nack(delivery_tag, requeue=True)
-                        )
-                    except Exception as ack_error:
-                        logger.error(
-                            f"[{self.service_name}] Failed to NACK message for {graph_exec_id}: {ack_error}"
-                        )
+                    _ack_message(reject=True)
                 else:
-                    try:
-                        channel.connection.add_callback_threadsafe(
-                            lambda: channel.basic_ack(delivery_tag)
-                        )
-                    except Exception as ack_error:
-                        logger.error(
-                            f"[{self.service_name}] Failed to ACK message for {graph_exec_id}: {ack_error}"
-                        )
+                    _ack_message(reject=False)
             except BaseException as e:
                 logger.exception(
                     f"[{self.service_name}] Error in run completion callback: {e}"
@@ -1326,7 +1344,7 @@ class ExecutionManager(AppProcess):
     def _update_prompt_metrics(self):
         active_count = len(self.active_graph_runs)
         active_runs_gauge.set(active_count)
-        if self._stop_consuming and self._stop_consuming.is_set():
+        if self.stop_consuming.is_set():
             utilization_gauge.set(1.0)
         else:
             utilization_gauge.set(active_count / self.pool_size)
@@ -1337,8 +1355,15 @@ class ExecutionManager(AppProcess):
         logger.info(f"{prefix} 🧹 Starting graceful shutdown...")
 
         # Signal the consumer thread to stop (thread-safe)
-        self.stop_consuming.set()
-        logger.info(f"{prefix} ✅ Signaled execution message consumer to stop")
+        try:
+            self.stop_consuming.set()
+            run_channel = self.run_client.get_channel()
+            run_channel.connection.add_callback_threadsafe(
+                lambda: run_channel.stop_consuming()
+            )
+            logger.info(f"{prefix} ✅ Exec consumer has been signaled to stop")
+        except Exception as e:
+            logger.error(f"{prefix} ⚠️ Error signaling consumer to stop: {type(e)} {e}")
 
         # Wait for active executions to complete
         if self.active_graph_runs:
@@ -1371,34 +1396,34 @@ class ExecutionManager(AppProcess):
             else:
                 logger.info(f"{prefix} ✅ All executions completed gracefully")
 
-        # NOW shutdown executor pool after all executions and cleanup are complete
-        if self._executor:
-            logger.info(f"{prefix} ⏳ Shutting down GraphExec pool...")
-            try:
-                # All active executions are done, safe to shutdown workers
-                self._executor.shutdown(cancel_futures=True, wait=False)
-                logger.info(f"{prefix} ✅ Executor shutdown completed")
-            except Exception as e:
-                logger.error(f"{prefix} ⚠️ Error during executor shutdown: {e}")
+        # Shutdown the executor
+        try:
+            self.executor.shutdown(cancel_futures=True, wait=False)
+            logger.info(f"{prefix} ✅ Executor shutdown completed")
+        except Exception as e:
+            logger.error(f"{prefix} ⚠️ Error during executor shutdown: {type(e)} {e}")
 
-        # Clean up RabbitMQ connections
-        if self._cancel_client:
-            logger.info(f"{prefix} ⏳ Disconnecting cancel RabbitMQ client...")
-            try:
-                self._cancel_client.disconnect()
-                logger.info(f"{prefix} ✅ Cancel RabbitMQ client disconnected")
-            except Exception as e:
-                logger.error(
-                    f"{prefix} ⚠️ Error disconnecting cancel RabbitMQ client: {e}"
-                )
+        # Disconnect the run execution consumer
+        try:
+            run_channel = self.run_client.get_channel()
+            run_channel.connection.add_callback_threadsafe(
+                lambda: self.run_client.disconnect()
+            )
+            self.run_thread.join()
+            logger.info(f"{prefix} ✅ Run client disconnected")
+        except Exception as e:
+            logger.error(f"{prefix} ⚠️ Error disconnecting run client: {type(e)} {e}")
 
-        if self._run_client:
-            logger.info(f"{prefix} ⏳ Disconnecting run RabbitMQ client...")
-            try:
-                self._run_client.disconnect()
-                logger.info(f"{prefix} ✅ Run RabbitMQ client disconnected")
-            except Exception as e:
-                logger.error(f"{prefix} ⚠️ Error disconnecting run RabbitMQ client: {e}")
+        # Disconnect the cancel execution consumer
+        try:
+            cancel_channel = self.cancel_client.get_channel()
+            cancel_channel.connection.add_callback_threadsafe(
+                lambda: self.cancel_client.disconnect()
+            )
+            self.cancel_thread.join()
+            logger.info(f"{prefix} ✅ Cancel client disconnected")
+        except Exception as e:
+            logger.error(f"{prefix} ⚠️ Error disconnecting cancel client: {type(e)} {e}")
 
         logger.info(f"{prefix} ✅ Finished GraphExec cleanup")
 
@@ -1406,26 +1431,15 @@ class ExecutionManager(AppProcess):
 # ------- UTILITIES ------- #
 
 
-@thread_cached
 def get_db_client() -> "DatabaseManagerClient":
-    from backend.executor import DatabaseManagerClient
-
-    # Disable health check for the service client to avoid breaking process initializer.
-    return get_service_client(
-        DatabaseManagerClient, health_check=False, request_retry=True
-    )
+    return get_database_manager_client()
 
 
-@thread_cached
 def get_db_async_client() -> "DatabaseManagerAsyncClient":
-    from backend.executor import DatabaseManagerAsyncClient
-
-    # Disable health check for the service client to avoid breaking process initializer.
-    return get_service_client(
-        DatabaseManagerAsyncClient, health_check=False, request_retry=True
-    )
+    return get_database_manager_async_client()
 
 
+@func_retry
 async def send_async_execution_update(
     entry: GraphExecution | NodeExecutionResult | None,
 ) -> None:
@@ -1434,6 +1448,7 @@ async def send_async_execution_update(
     await get_async_execution_event_bus().publish(entry)
 
 
+@func_retry
 def send_execution_update(entry: GraphExecution | NodeExecutionResult | None):
     if entry is None:
         return

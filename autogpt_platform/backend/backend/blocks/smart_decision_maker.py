@@ -3,8 +3,6 @@ import re
 from collections import Counter
 from typing import TYPE_CHECKING, Any
 
-from autogpt_libs.utils.cache import thread_cached
-
 import backend.blocks.llm as llm
 from backend.blocks.agent import AgentExecutorBlock
 from backend.data.block import (
@@ -17,6 +15,7 @@ from backend.data.block import (
 )
 from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util import json
+from backend.util.clients import get_database_manager_async_client
 
 if TYPE_CHECKING:
     from backend.data.graph import Link, Node
@@ -24,12 +23,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@thread_cached
 def get_database_manager_client():
-    from backend.executor import DatabaseManagerAsyncClient
-    from backend.util.service import get_service_client
-
-    return get_service_client(DatabaseManagerAsyncClient, health_check=False)
+    return get_database_manager_async_client()
 
 
 def _get_tool_requests(entry: dict[str, Any]) -> list[str]:

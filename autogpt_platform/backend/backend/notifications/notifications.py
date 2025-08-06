@@ -36,16 +36,11 @@ from backend.data.rabbitmq import (
 )
 from backend.data.user import generate_unsubscribe_link
 from backend.notifications.email import EmailSender
+from backend.util.clients import get_database_manager_client
 from backend.util.logging import TruncatedLogger
 from backend.util.metrics import discord_send_alert
 from backend.util.retry import continuous_retry
-from backend.util.service import (
-    AppService,
-    AppServiceClient,
-    endpoint_to_sync,
-    expose,
-    get_service_client,
-)
+from backend.util.service import AppService, AppServiceClient, endpoint_to_sync, expose
 from backend.util.settings import Settings
 
 logger = TruncatedLogger(logging.getLogger(__name__), "[NotificationManager]")
@@ -116,11 +111,8 @@ def create_notification_config() -> RabbitMQConfig:
     )
 
 
-@thread_cached
 def get_db():
-    from backend.executor.database import DatabaseManagerClient
-
-    return get_service_client(DatabaseManagerClient)
+    return get_database_manager_client()
 
 
 @thread_cached

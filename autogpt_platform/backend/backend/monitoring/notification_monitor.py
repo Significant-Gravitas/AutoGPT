@@ -2,12 +2,10 @@
 
 import logging
 
-from autogpt_libs.utils.cache import thread_cached
 from prisma.enums import NotificationType
 from pydantic import BaseModel
 
-from backend.notifications.notifications import NotificationManagerClient
-from backend.util.service import get_service_client
+from backend.util.clients import get_notification_manager_client
 
 logger = logging.getLogger(__name__)
 
@@ -17,9 +15,8 @@ class NotificationJobArgs(BaseModel):
     cron: str
 
 
-@thread_cached
-def get_notification_manager_client():
-    return get_service_client(NotificationManagerClient)
+# Use the centralized client helper from util.clients
+# (imported above)
 
 
 def process_existing_batches(**kwargs):

@@ -236,10 +236,9 @@ class IntegrationCredentialsStore:
 
             return user
         else:
-            from backend.executor.database import DatabaseManagerAsyncClient
-            from backend.util.service import get_service_client
+            from backend.util.clients import get_database_manager_async_client
 
-            return get_service_client(DatabaseManagerAsyncClient)
+            return get_database_manager_async_client()
 
     # =============== USER-MANAGED CREDENTIALS =============== #
     async def add_creds(self, user_id: str, credentials: Credentials) -> None:

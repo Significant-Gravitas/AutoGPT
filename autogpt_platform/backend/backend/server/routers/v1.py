@@ -84,16 +84,15 @@ from backend.server.model import (
     UploadFileResponse,
 )
 from backend.server.utils import get_user_id
+from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.exceptions import NotFoundError
-from backend.util.service import get_service_client
 from backend.util.settings import Settings
 from backend.util.virus_scanner import scan_content_safe
 
 
-@thread_cached
 def execution_scheduler_client() -> scheduler.SchedulerClient:
-    return get_service_client(scheduler.SchedulerClient, health_check=False)
+    return get_scheduler_client()
 
 
 def _create_file_size_error(size_bytes: int, max_size_mb: int) -> HTTPException:

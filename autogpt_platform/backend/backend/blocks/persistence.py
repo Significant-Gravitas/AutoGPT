@@ -1,20 +1,15 @@
 import logging
 from typing import Any, Literal
 
-from autogpt_libs.utils.cache import thread_cached
-
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
+from backend.util.clients import get_database_manager_async_client
 
 logger = logging.getLogger(__name__)
 
 
-@thread_cached
 def get_database_manager_client():
-    from backend.executor import DatabaseManagerAsyncClient
-    from backend.util.service import get_service_client
-
-    return get_service_client(DatabaseManagerAsyncClient, health_check=False)
+    return get_database_manager_async_client()
 
 
 StorageScope = Literal["within_agent", "across_agents"]
