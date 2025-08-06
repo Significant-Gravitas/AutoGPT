@@ -4,7 +4,7 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future
-from typing import TYPE_CHECKING, Any, Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, JsonValue, ValidationError
 
@@ -33,9 +33,6 @@ from backend.util.logging import TruncatedLogger
 from backend.util.mock import MockObject
 from backend.util.settings import Config
 from backend.util.type import convert
-
-if TYPE_CHECKING:
-    pass
 
 config = Config()
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[GraphExecutorUtil]")
