@@ -75,7 +75,7 @@ class AppProcess(ABC):
             self.run()
         except BaseException as e:
             logger.warning(
-                f"[{self.service_name}] Termination request: {type(e).__name__}; executing cleanup."
+                f"[{self.service_name}] Termination request: {type(e).__name__}; {e} executing cleanup."
             )
         finally:
             self.cleanup()

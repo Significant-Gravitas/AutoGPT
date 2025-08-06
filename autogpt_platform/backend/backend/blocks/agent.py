@@ -14,7 +14,8 @@ from backend.data.block import (
 )
 from backend.data.execution import ExecutionStatus
 from backend.data.model import NodeExecutionStats, SchemaField
-from backend.util import json, retry
+from backend.util.json import validate_with_jsonschema
+from backend.util.retry import func_retry
 
 _logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ class AgentExecutorBlock(Block):
 
         @classmethod
         def get_mismatch_error(cls, data: BlockInput) -> str | None:
-            return json.validate_with_jsonschema(cls.get_input_schema(data), data)
+            return validate_with_jsonschema(cls.get_input_schema(data), data)
 
     class Output(BlockSchema):
         pass
@@ -180,7 +181,7 @@ class AgentExecutorBlock(Block):
                 )
                 yield output_name, output_data
 
-    @retry.func_retry
+    @func_retry
     async def _stop(
         self,
         graph_exec_id: str,
