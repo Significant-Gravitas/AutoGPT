@@ -15,10 +15,6 @@ class NotificationJobArgs(BaseModel):
     cron: str
 
 
-# Use the centralized client helper from util.clients
-# (imported above)
-
-
 def process_existing_batches(**kwargs):
     """Process existing notification batches."""
     args = NotificationJobArgs(**kwargs)
