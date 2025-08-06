@@ -4,7 +4,6 @@ import multiprocessing
 import os
 import threading
 import time
-from asyncio import CancelledError
 from collections import defaultdict
 from concurrent.futures import Future, ProcessPoolExecutor
 from contextlib import asynccontextmanager
@@ -938,16 +937,10 @@ class Executor:
                 execution_stats.error = str(error)
                 return ExecutionStatus.FAILED
 
-            if isinstance(exc, CancelledError):
-                execution_status = ExecutionStatus.TERMINATED
-                log_metadata.exception(
-                    f"Cancelled graph execution {graph_exec.graph_exec_id}: {error}"
-                )
-            else:
-                execution_status = ExecutionStatus.FAILED
-                log_metadata.exception(
-                    f"Failed graph execution {graph_exec.graph_exec_id}: {error}"
-                )
+            execution_status = ExecutionStatus.FAILED
+            log_metadata.exception(
+                f"Failed graph execution {graph_exec.graph_exec_id}: {error}"
+            )
             raise
 
         finally:

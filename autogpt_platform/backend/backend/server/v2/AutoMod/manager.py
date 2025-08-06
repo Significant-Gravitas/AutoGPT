@@ -197,7 +197,10 @@ class AutoModManager:
             )
 
     async def _update_failed_nodes_for_moderation(
-        self, db_client: "DatabaseManagerAsyncClient", graph_exec_id: str, moderation_type: Literal["input", "output"]
+        self,
+        db_client: "DatabaseManagerAsyncClient",
+        graph_exec_id: str,
+        moderation_type: Literal["input", "output"],
     ):
         """Update node execution statuses for frontend display when moderation fails"""
         # Import here to avoid circular imports
