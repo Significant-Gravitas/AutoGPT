@@ -285,7 +285,7 @@ poetry run lint
 To run the tests:
 
 ```sh
-poetry run test
+poetry run pytest -s 
 ```
 
 ## Adding a New Agent Block
