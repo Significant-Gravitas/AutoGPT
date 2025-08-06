@@ -107,3 +107,28 @@ def get_integration_credentials_store() -> "IntegrationCredentialsStore":
     from backend.integrations.credentials_store import IntegrationCredentialsStore
 
     return IntegrationCredentialsStore()
+
+
+# ============ Notification Queue Helpers ============ #
+
+
+@thread_cached
+def get_notification_queue() -> "SyncRabbitMQ":
+    """Get a thread-cached SyncRabbitMQ notification queue client."""
+    from backend.data.rabbitmq import SyncRabbitMQ
+    from backend.notifications.notifications import create_notification_config
+
+    client = SyncRabbitMQ(create_notification_config())
+    client.connect()
+    return client
+
+
+@thread_cached
+async def get_async_notification_queue() -> "AsyncRabbitMQ":
+    """Get a thread-cached AsyncRabbitMQ notification queue client."""
+    from backend.data.rabbitmq import AsyncRabbitMQ
+    from backend.notifications.notifications import create_notification_config
+
+    client = AsyncRabbitMQ(create_notification_config())
+    await client.connect()
+    return client

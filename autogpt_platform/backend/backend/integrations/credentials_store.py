@@ -5,7 +5,6 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from autogpt_libs.utils.cache import thread_cached
 from autogpt_libs.utils.synchronize import AsyncRedisKeyedMutex
 from pydantic import SecretStr
 
@@ -229,7 +228,6 @@ class IntegrationCredentialsStore:
         return self._locks
 
     @property
-    @thread_cached
     def db_manager(self):
         if prisma.is_connected():
             from backend.data import user

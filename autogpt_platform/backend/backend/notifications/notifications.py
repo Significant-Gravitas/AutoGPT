@@ -5,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Callable
 
 import aio_pika
-from autogpt_libs.utils.cache import thread_cached
 from prisma.enums import NotificationType
 
 from backend.data import rabbitmq
@@ -26,14 +25,7 @@ from backend.data.notifications import (
     get_notif_data_type,
     get_summary_params_type,
 )
-from backend.data.rabbitmq import (
-    AsyncRabbitMQ,
-    Exchange,
-    ExchangeType,
-    Queue,
-    RabbitMQConfig,
-    SyncRabbitMQ,
-)
+from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.data.user import generate_unsubscribe_link
 from backend.notifications.email import EmailSender
 from backend.util.clients import get_database_manager_client
@@ -115,20 +107,6 @@ def get_db():
     return get_database_manager_client()
 
 
-@thread_cached
-def get_notification_queue() -> SyncRabbitMQ:
-    client = SyncRabbitMQ(create_notification_config())
-    client.connect()
-    return client
-
-
-@thread_cached
-async def get_async_notification_queue() -> AsyncRabbitMQ:
-    client = AsyncRabbitMQ(create_notification_config())
-    await client.connect()
-    return client
-
-
 def get_routing_key(event_type: NotificationType) -> str:
     strategy = NotificationTypeOverride(event_type).strategy
     """Get the appropriate routing key for an event"""
@@ -152,6 +130,8 @@ def queue_notification(event: NotificationEventModel) -> NotificationResult:
 
         exchange = "notifications"
         routing_key = get_routing_key(event.type)
+
+        from backend.util.clients import get_notification_queue
 
         queue = get_notification_queue()
         queue.publish_message(
@@ -177,6 +157,8 @@ async def queue_notification_async(event: NotificationEventModel) -> Notificatio
 
         exchange = "notifications"
         routing_key = get_routing_key(event.type)
+
+        from backend.util.clients import get_async_notification_queue
 
         queue = await get_async_notification_queue()
         await queue.publish_message(

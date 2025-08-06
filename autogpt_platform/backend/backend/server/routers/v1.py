@@ -9,7 +9,6 @@ import pydantic
 import stripe
 from autogpt_libs.auth.middleware import auth_middleware
 from autogpt_libs.feature_flag.client import feature_flag
-from autogpt_libs.utils.cache import thread_cached
 from fastapi import (
     APIRouter,
     Body,
@@ -51,7 +50,6 @@ from backend.data.credit import (
     get_user_credit_model,
     set_auto_top_up,
 )
-from backend.data.execution import AsyncRedisExecutionEventBus
 from backend.data.model import CredentialsMetaInput
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.onboarding import (
@@ -101,11 +99,6 @@ def _create_file_size_error(size_bytes: int, max_size_mb: int) -> HTTPException:
         status_code=400,
         detail=f"File size ({size_bytes} bytes) exceeds the maximum allowed size of {max_size_mb}MB",
     )
-
-
-@thread_cached
-def execution_event_bus() -> AsyncRedisExecutionEventBus:
-    return AsyncRedisExecutionEventBus()
 
 
 settings = Settings()
