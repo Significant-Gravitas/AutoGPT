@@ -115,6 +115,8 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     OLLAMA_LLAMA3_405B = "llama3.1:405b"
     OLLAMA_DOLPHIN = "dolphin-mistral:latest"
     # OpenRouter models
+    OPENAI_GPT_OSS_120B = "openai/gpt-oss-120b"
+    OPENAI_GPT_OSS_20B = "openai/gpt-oss-20b"
     GEMINI_FLASH_1_5 = "google/gemini-flash-1.5"
     GEMINI_2_5_PRO = "google/gemini-2.5-pro-preview-03-25"
     GEMINI_2_5_FLASH = "google/gemini-2.5-flash"
