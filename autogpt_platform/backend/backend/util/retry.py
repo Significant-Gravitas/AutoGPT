@@ -161,14 +161,21 @@ def continuous_retry(*, retry_delay: float = 1.0):
 
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
+            counter = 0
             while True:
                 try:
                     return func(*args, **kwargs)
                 except Exception as exc:
-                    logger.exception(
-                        "%s failed with %s — retrying in %.2f s",
+                    counter += 1
+                    if counter % 10 == 0:
+                        log = logger.exception
+                    else:
+                        log = logger.warning
+                    log(
+                        "%s failed for the %s times, error: [%s] — retrying in %.2fs",
                         func.__name__,
-                        exc,
+                        counter,
+                        str(exc) or type(exc).__name__,
                         retry_delay,
                     )
                     time.sleep(retry_delay)
@@ -176,13 +183,20 @@ def continuous_retry(*, retry_delay: float = 1.0):
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
             while True:
+                counter = 0
                 try:
                     return await func(*args, **kwargs)
                 except Exception as exc:
-                    logger.exception(
-                        "%s failed with %s — retrying in %.2f s",
+                    counter += 1
+                    if counter % 10 == 0:
+                        log = logger.exception
+                    else:
+                        log = logger.warning
+                    log(
+                        "%s failed for the %s times, error: [%s] — retrying in %.2fs",
                         func.__name__,
-                        exc,
+                        counter,
+                        str(exc) or type(exc).__name__,
                         retry_delay,
                     )
                     await asyncio.sleep(retry_delay)
