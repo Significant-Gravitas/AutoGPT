@@ -21,7 +21,6 @@ export class LibraryPage extends BasePage {
     try {
       await this.page.waitForLoadState("domcontentloaded", { timeout: 10_000 });
 
-      // Wait for the search input to be visible
       await this.page.waitForSelector('[data-testid="library-textbox"]', {
         state: "visible",
         timeout: 10_000,
@@ -35,11 +34,22 @@ export class LibraryPage extends BasePage {
     }
   }
 
+  async navigateToLibrary(): Promise<void> {
+    await this.page.goto("/library");
+    await this.isLoaded();
+  }
+
   async getAgentCount(): Promise<number> {
     const { getId } = getSelectors(this.page);
     const countText = await getId("agents-count").textContent();
     const match = countText?.match(/^(\d+)/);
     return match ? parseInt(match[1], 10) : 0;
+  }
+
+  async getAgentCountByListLength(): Promise<number> {
+    const { getId } = getSelectors(this.page);
+    const agentCards = await getId("library-agent-card").all();
+    return agentCards.length;
   }
 
   async searchAgents(searchTerm: string): Promise<void> {
@@ -109,10 +119,8 @@ export class LibraryPage extends BasePage {
   }
 
   async closeUploadDialog(): Promise<void> {
-    console.log(`closing upload dialog`);
     await this.page.getByRole("button", { name: "Close" }).click();
 
-    // Wait for dialog to disappear
     await this.page.getByRole("dialog", { name: "Upload Agent" }).waitFor({
       state: "hidden",
       timeout: 5_000,
@@ -299,21 +307,11 @@ export class LibraryPage extends BasePage {
     finalCount: number;
     hasMore: boolean;
   }> {
-    console.log(`testing pagination functionality`);
-
-    // Get initial count
-    const initialCount = await this.getAgentCount();
-    console.log(`Initial agent count: ${initialCount}`);
-
-    // Scroll to load more
+    const initialCount = await this.getAgentCountByListLength();
     await this.scrollToLoadMore();
-
-    // Get final count
-    const finalCount = await this.getAgentCount();
-    console.log(`Final agent count: ${finalCount}`);
+    const finalCount = await this.getAgentCountByListLength();
 
     const hasMore = finalCount > initialCount;
-
     return {
       initialCount,
       finalCount,
@@ -379,17 +377,13 @@ export class LibraryPage extends BasePage {
   }
 
   async scrollAndWaitForNewAgents(): Promise<number> {
-    console.log(`scrolling and waiting for new agents to load`);
+    const initialCount = await this.getAgentCountByListLength();
 
-    const initialCount = await this.getAgentCount();
-
-    // Scroll down
     await this.scrollDown();
 
-    // Wait for potential new agents
     await this.waitForPaginationLoad();
 
-    const finalCount = await this.getAgentCount();
+    const finalCount = await this.getAgentCountByListLength();
     const newAgentsLoaded = finalCount - initialCount;
 
     console.log(

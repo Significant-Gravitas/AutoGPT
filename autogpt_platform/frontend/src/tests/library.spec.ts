@@ -1,24 +1,21 @@
 import { LibraryPage } from "./pages/library.page";
-import { LibraryUtils } from "./utils/library";
 import path from "path";
 import test, { expect } from "@playwright/test";
 import { TEST_CREDENTIALS } from "./credentials";
 import { LoginPage } from "./pages/login.page";
 import { getSelectors } from "./utils/selectors";
+import { hasUrl } from "./utils/assertion";
 
 test.describe("Library", () => {
   let libraryPage: LibraryPage;
-  let libraryUtils: LibraryUtils;
 
   test.beforeEach(async ({ page }) => {
     libraryPage = new LibraryPage(page);
-    libraryUtils = new LibraryUtils(page, libraryPage);
 
     await page.goto("/login");
     const loginPage = new LoginPage(page);
     await loginPage.login(TEST_CREDENTIALS.email, TEST_CREDENTIALS.password);
-
-    await test.expect(page).toHaveURL("/marketplace");
+    await hasUrl(page, "/marketplace");
   });
 
   test("library page loads successfully", async ({ page }) => {
@@ -34,16 +31,15 @@ test.describe("Library", () => {
     await page.goto("/library");
 
     const agents = await libraryPage.getAgents();
-
     expect(agents.length).toBeGreaterThan(0);
 
     const firstAgent = agents[0];
     expect(firstAgent).toBeTruthy();
 
     await libraryPage.clickAgent(firstAgent);
-    await expect(page).toHaveURL(`/library/agents/${firstAgent.id}`);
+    await hasUrl(page, `/library/agents/${firstAgent.id}`);
 
-    await page.goto("/library");
+    await libraryPage.navigateToLibrary();
 
     const updatedAgents = await libraryPage.getAgents();
     const agentWithBuilder = updatedAgents.find((agent) =>
@@ -282,7 +278,7 @@ test.describe("Library", () => {
       await page.getByRole("button", { name: "Delete" }).click();
 
       await page.waitForTimeout(1000);
-      await libraryUtils.navigateToLibrary();
+      await libraryPage.navigateToLibrary();
       await libraryPage.waitForAgentsToLoad();
 
       await libraryPage.searchAgents(testAgentName);
