@@ -89,7 +89,7 @@ class ServiceTestClient(AppServiceClient):
 
 @pytest.mark.asyncio
 async def test_service_creation(server):
-    with ServiceTest():  # ServiceTest now automatically waits for health check
+    with ServiceTest():
         client = get_service_client(ServiceTestClient)
         assert client.add(5, 3) == 8
         assert client.subtract(10, 4) == 6
@@ -348,7 +348,7 @@ def test_cached_property_behavior():
 
 def test_service_with_runtime_error_retries(server):
     """Test a real service method that throws RuntimeError and gets retried"""
-    with ServiceTest():  # ServiceTest now automatically waits for health check
+    with ServiceTest():
         # Get client with retry enabled
         client = get_service_client(ServiceTestClient, request_retry=True)
 
@@ -359,7 +359,7 @@ def test_service_with_runtime_error_retries(server):
 
 def test_service_no_retry_when_disabled(server):
     """Test that retry doesn't happen when disabled"""
-    with ServiceTest():  # ServiceTest now automatically waits for health check
+    with ServiceTest():
         # Get client with retry disabled
         client = get_service_client(ServiceTestClient, request_retry=False)
 
