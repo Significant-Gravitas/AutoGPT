@@ -1160,6 +1160,12 @@ class ExecutionManager(AppProcess):
 
     @continuous_retry()
     def _consume_execution_cancel(self):
+        if self.stop_consuming.is_set() and not self.active_graph_runs:
+            logger.info(
+                f"[{self.service_name}] Stop reconnecting cancel consumer since the service is cleaned up."
+            )
+            return
+
         self.cancel_client.connect()
         cancel_channel = self.cancel_client.get_channel()
         cancel_channel.basic_consume(

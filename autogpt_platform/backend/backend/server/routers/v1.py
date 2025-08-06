@@ -89,10 +89,6 @@ from backend.util.settings import Settings
 from backend.util.virus_scanner import scan_content_safe
 
 
-def execution_scheduler_client() -> scheduler.SchedulerClient:
-    return get_scheduler_client()
-
-
 def _create_file_size_error(size_bytes: int, max_size_mb: int) -> HTTPException:
     """Create standardized file size error response."""
     return HTTPException(
@@ -916,7 +912,7 @@ async def create_graph_execution_schedule(
             detail=f"Graph #{graph_id} v{schedule_params.graph_version} not found.",
         )
 
-    return await execution_scheduler_client().add_execution_schedule(
+    return await get_scheduler_client().add_execution_schedule(
         user_id=user_id,
         graph_id=graph_id,
         graph_version=graph.version,
@@ -937,7 +933,7 @@ async def list_graph_execution_schedules(
     user_id: Annotated[str, Depends(get_user_id)],
     graph_id: str = Path(),
 ) -> list[scheduler.GraphExecutionJobInfo]:
-    return await execution_scheduler_client().get_execution_schedules(
+    return await get_scheduler_client().get_execution_schedules(
         user_id=user_id,
         graph_id=graph_id,
     )
@@ -952,7 +948,7 @@ async def list_graph_execution_schedules(
 async def list_all_graphs_execution_schedules(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> list[scheduler.GraphExecutionJobInfo]:
-    return await execution_scheduler_client().get_execution_schedules(user_id=user_id)
+    return await get_scheduler_client().get_execution_schedules(user_id=user_id)
 
 
 @v1_router.delete(
@@ -966,7 +962,7 @@ async def delete_graph_execution_schedule(
     schedule_id: str = Path(..., description="ID of the schedule to delete"),
 ) -> dict[str, Any]:
     try:
-        await execution_scheduler_client().delete_schedule(schedule_id, user_id=user_id)
+        await get_scheduler_client().delete_schedule(schedule_id, user_id=user_id)
     except NotFoundError:
         raise HTTPException(
             status_code=HTTP_404_NOT_FOUND,

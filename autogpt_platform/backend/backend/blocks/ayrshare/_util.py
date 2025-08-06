@@ -10,13 +10,9 @@ from backend.util.clients import get_database_manager_async_client
 from backend.util.exceptions import MissingConfigError
 
 
-def get_database_manager_client():
-    return get_database_manager_async_client()
-
-
 async def get_profile_key(user_id: str):
     user_integrations: UserIntegrations = (
-        await get_database_manager_client().get_user_integrations(user_id)
+        await get_database_manager_async_client().get_user_integrations(user_id)
     )
     return user_integrations.managed_credentials.ayrshare_profile_key
 

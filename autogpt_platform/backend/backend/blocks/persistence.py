@@ -8,10 +8,6 @@ from backend.util.clients import get_database_manager_async_client
 logger = logging.getLogger(__name__)
 
 
-def get_database_manager_client():
-    return get_database_manager_async_client()
-
-
 StorageScope = Literal["within_agent", "across_agents"]
 
 
@@ -83,7 +79,7 @@ class PersistInformationBlock(Block):
     async def _store_data(
         self, user_id: str, node_exec_id: str, key: str, data: Any
     ) -> Any | None:
-        return await get_database_manager_client().set_execution_kv_data(
+        return await get_database_manager_async_client().set_execution_kv_data(
             user_id=user_id,
             node_exec_id=node_exec_id,
             key=key,
@@ -144,7 +140,7 @@ class RetrieveInformationBlock(Block):
             yield "value", input_data.default_value
 
     async def _retrieve_data(self, user_id: str, key: str) -> Any | None:
-        return await get_database_manager_client().get_execution_kv_data(
+        return await get_database_manager_async_client().get_execution_kv_data(
             user_id=user_id,
             key=key,
         )

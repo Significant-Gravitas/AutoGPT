@@ -23,10 +23,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def get_database_manager_client():
-    return get_database_manager_async_client()
-
-
 def _get_tool_requests(entry: dict[str, Any]) -> list[str]:
     """
     Return a list of tool_call_ids if the entry is a tool request.
@@ -328,7 +324,7 @@ class SmartDecisionMakerBlock(Block):
         if not graph_id or not graph_version:
             raise ValueError("Graph ID or Graph Version not found in sink node.")
 
-        db_client = get_database_manager_client()
+        db_client = get_database_manager_async_client()
         sink_graph_meta = await db_client.get_graph_metadata(graph_id, graph_version)
         if not sink_graph_meta:
             raise ValueError(
@@ -388,7 +384,7 @@ class SmartDecisionMakerBlock(Block):
             ValueError: If no tool links are found for the specified node_id, or if a sink node
                         or its metadata cannot be found.
         """
-        db_client = get_database_manager_client()
+        db_client = get_database_manager_async_client()
         tools = [
             (link, node)
             for link, node in await db_client.get_connected_output_nodes(node_id)
