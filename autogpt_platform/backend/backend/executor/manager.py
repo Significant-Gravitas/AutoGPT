@@ -196,11 +196,6 @@ async def execute_node(
             output_size += len(json.dumps(output_data))
             log_metadata.debug("Node produced output", **{output_name: output_data})
             yield output_name, output_data
-
-    except Exception as e:
-        yield "error", str(e) or type(e).__name__
-        raise e
-
     finally:
         # Ensure credentials are released even if execution fails
         if creds_lock and (await creds_lock.locked()) and (await creds_lock.owned()):
@@ -471,6 +466,27 @@ class Executor:
         log_metadata: LogMetadata,
         nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
     ) -> ExecutionStatus:
+        status = ExecutionStatus.RUNNING
+
+        async def persist_output(output_name: str, output_data: Any) -> None:
+            await db_client.upsert_execution_output(
+                node_exec_id=node_exec.node_exec_id,
+                output_name=output_name,
+                output_data=output_data,
+            )
+            if exec_update := await db_client.get_node_execution(
+                node_exec.node_exec_id
+            ):
+                await send_async_execution_update(exec_update)
+
+            node_exec_progress.add_output(
+                ExecutionOutputEntry(
+                    node=node,
+                    node_exec_id=node_exec.node_exec_id,
+                    data=(output_name, output_data),
+                )
+            )
+
         try:
             log_metadata.info(f"Start node execution {node_exec.node_exec_id}")
             await async_update_node_execution_status(
@@ -486,23 +502,8 @@ class Executor:
                 execution_stats=stats,
                 nodes_input_masks=nodes_input_masks,
             ):
-                await db_client.upsert_execution_output(
-                    node_exec_id=node_exec.node_exec_id,
-                    output_name=output_name,
-                    output_data=output_data,
-                )
-                if exec_update := await db_client.get_node_execution(
-                    node_exec.node_exec_id
-                ):
-                    await send_async_execution_update(exec_update)
+                await persist_output(output_name, output_data)
 
-                node_exec_progress.add_output(
-                    ExecutionOutputEntry(
-                        node=node,
-                        node_exec_id=node_exec.node_exec_id,
-                        data=(output_name, output_data),
-                    )
-                )
             log_metadata.info(f"Finished node execution {node_exec.node_exec_id}")
             status = ExecutionStatus.COMPLETED
 
@@ -512,7 +513,7 @@ class Executor:
             if isinstance(e, ValueError):
                 # Avoid user error being marked as an actual error.
                 log_metadata.info(
-                    f"Expected failure on node execution {node_exec.node_exec_id}: {e}"
+                    f"Expected failure on node execution {node_exec.node_exec_id}: {type(e).__name__} - {e}"
                 )
                 status = ExecutionStatus.FAILED
             elif isinstance(e, Exception):
@@ -527,6 +528,12 @@ class Executor:
                     f"Interruption error on node execution {node_exec.node_exec_id}: {type(e).__name__}"
                 )
                 status = ExecutionStatus.TERMINATED
+
+        finally:
+            if status == ExecutionStatus.FAILED and stats.error is not None:
+                await persist_output(
+                    "error", str(stats.error) or type(stats.error).__name__
+                )
 
         return status
 
