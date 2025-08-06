@@ -78,10 +78,12 @@ export class LibraryUtils {
     const testAgent = agents[0];
 
     // Replace isAgentVisible with direct locator check
-    const isVisible = await this.page.getByRole("heading", {
-      name: testAgent.name,
-      level: 3,
-    }).isVisible();
+    const isVisible = await this.page
+      .getByRole("heading", {
+        name: testAgent.name,
+        level: 3,
+      })
+      .isVisible();
 
     const agentHeading = this.page.getByRole("heading", {
       name: testAgent.name,

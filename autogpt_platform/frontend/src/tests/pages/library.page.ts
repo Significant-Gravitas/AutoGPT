@@ -161,7 +161,9 @@ export class LibraryPage extends BasePage {
     const { getId } = getSelectors(this.page);
     const agents: Agent[] = [];
 
-    await getId("library-agent-card").first().waitFor({ state: "visible", timeout: 10_000 });
+    await getId("library-agent-card")
+      .first()
+      .waitFor({ state: "visible", timeout: 10_000 });
     const agentCards = await getId("library-agent-card").all();
 
     for (const card of agentCards) {
@@ -217,11 +219,12 @@ export class LibraryPage extends BasePage {
     await builderLink.click();
   }
 
-
   async waitForAgentsToLoad(): Promise<void> {
     const { getId } = getSelectors(this.page);
     await Promise.race([
-      getId("library-agent-card").first().waitFor({ state: "visible", timeout: 10_000 }),
+      getId("library-agent-card")
+        .first()
+        .waitFor({ state: "visible", timeout: 10_000 }),
       getId("agents-count").waitFor({ state: "visible", timeout: 10_000 }),
     ]);
   }

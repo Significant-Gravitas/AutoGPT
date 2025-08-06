@@ -57,14 +57,15 @@ test.describe("Library", () => {
     }
   });
 
-  test("pagination works correctly", async ({page}) => {
+  test("pagination works correctly", async ({ page }) => {
     await page.goto("/library");
 
     const paginationResult = await libraryPage.testPagination();
 
     if (paginationResult.initialCount >= 10) {
-      expect(paginationResult.finalCount)
-        .toBeGreaterThanOrEqual(paginationResult.initialCount);
+      expect(paginationResult.finalCount).toBeGreaterThanOrEqual(
+        paginationResult.initialCount,
+      );
       expect(paginationResult.hasMore).toBeTruthy();
     }
 
@@ -77,13 +78,13 @@ test.describe("Library", () => {
     test.expect(allAgents.length).toEqual(displayedCount);
   });
 
-  test("sorting works correctly", async ({page}) => {
+  test("sorting works correctly", async ({ page }) => {
     await page.goto("/library");
 
     const initialAgents = await libraryPage.getAgents();
     expect(initialAgents.length).toBeGreaterThan(0);
 
-    await libraryPage.selectSortOption(page,"Creation Date");
+    await libraryPage.selectSortOption(page, "Creation Date");
     await libraryPage.waitForAgentsToLoad();
 
     const creationDateSortOption = await libraryPage.getCurrentSortOption();
@@ -92,7 +93,7 @@ test.describe("Library", () => {
     const creationDateAgents = await libraryPage.getAgents();
     expect(creationDateAgents.length).toBeGreaterThan(0);
 
-    await libraryPage.selectSortOption(page,"Last Modified");
+    await libraryPage.selectSortOption(page, "Last Modified");
     await libraryPage.waitForAgentsToLoad();
 
     const lastModifiedSortOption = await libraryPage.getCurrentSortOption();
@@ -117,7 +118,7 @@ test.describe("Library", () => {
     expect(lastModifiedAgents.length).toEqual(initialAgents.length);
   });
 
-  test("searching works correctly", async ({page}) => {
+  test("searching works correctly", async ({ page }) => {
     await page.goto("/library");
 
     const allAgents = await libraryPage.getAgents();
@@ -167,7 +168,7 @@ test.describe("Library", () => {
     test.expect(clearedSearchValue).toBe("");
   });
 
-  test("pagination while searching works correctly", async ({page}) => {
+  test("pagination while searching works correctly", async ({ page }) => {
     await page.goto("/library");
 
     const allAgents = await libraryPage.getAgents();
@@ -189,16 +190,17 @@ test.describe("Library", () => {
     const searchPaginationResult = await libraryPage.testPagination();
 
     if (searchPaginationResult.initialCount >= 10) {
-        expect(searchPaginationResult.finalCount)
-        .toBeGreaterThanOrEqual(searchPaginationResult.initialCount);
+      expect(searchPaginationResult.finalCount).toBeGreaterThanOrEqual(
+        searchPaginationResult.initialCount,
+      );
 
       const allPaginatedResults = await libraryPage.getAgentsWithPagination();
       const matchingPaginatedResults = allPaginatedResults.filter((agent) =>
         agent.name.toLowerCase().includes(searchTerm.toLowerCase()),
       );
-      expect(matchingPaginatedResults.length)
-        .toEqual(allPaginatedResults.length);
-
+      expect(matchingPaginatedResults.length).toEqual(
+        allPaginatedResults.length,
+      );
     } else {
     }
 
@@ -217,8 +219,9 @@ test.describe("Library", () => {
     await libraryPage.waitForAgentsToLoad();
 
     const clearedResults = await libraryPage.getAgents();
-    expect(clearedResults.length)
-      .toBeGreaterThanOrEqual(initialSearchResults.length);
+    expect(clearedResults.length).toBeGreaterThanOrEqual(
+      initialSearchResults.length,
+    );
   });
 
   test("uploading an agent works correctly", async ({ page }) => {
