@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import Any
 
 from backend.integrations.ayrshare import PostIds, PostResponse, SocialPlatform
@@ -8,10 +9,15 @@ from backend.sdk import (
     BlockSchema,
     BlockType,
     SchemaField,
-    SecretStr,
 )
 
-from ._util import BaseAyrshareInput, create_ayrshare_client
+from ._util import BaseAyrshareInput, create_ayrshare_client, get_profile_key
+
+
+class YouTubeVisibility(str, Enum):
+    PRIVATE = "private"
+    PUBLIC = "public"
+    UNLISTED = "unlisted"
 
 
 class PostToYouTubeBlock(Block):
@@ -23,7 +29,6 @@ class PostToYouTubeBlock(Block):
         # Override post field to include YouTube-specific information
         post: str = SchemaField(
             description="Video description (max 5,000 chars, empty string allowed). Cannot contain < or > characters.",
-            default="",
             advanced=False,
         )
 
@@ -37,55 +42,54 @@ class PostToYouTubeBlock(Block):
         # YouTube-specific required options
         title: str = SchemaField(
             description="Video title (max 100 chars, required). Cannot contain < or > characters.",
-            default="",
             advanced=False,
         )
 
         # YouTube-specific optional options
-        visibility: str = SchemaField(
-            description="Video visibility: 'private' (default), 'public', or 'unlisted'",
-            default="private",
-            advanced=True,
+        visibility: YouTubeVisibility = SchemaField(
+            description="Video visibility: 'private' (default), 'public' , or 'unlisted'",
+            default=YouTubeVisibility.PRIVATE,
+            advanced=False,
         )
-        thumbnail: str = SchemaField(
+        thumbnail: str | None = SchemaField(
             description="Thumbnail URL (JPEG/PNG under 2MB, must end in .png/.jpg/.jpeg). Requires phone verification.",
-            default="",
+            default=None,
             advanced=True,
         )
-        playlist_id: str = SchemaField(
+        playlist_id: str | None = SchemaField(
             description="Playlist ID to add video (user must own playlist)",
-            default="",
+            default=None,
             advanced=True,
         )
-        tags: list[str] = SchemaField(
+        tags: list[str] | None = SchemaField(
             description="Video tags (min 2 chars each, max 500 chars total)",
-            default_factory=list,
+            default=None,
             advanced=True,
         )
-        made_for_kids: bool = SchemaField(
-            description="Self-declared kids content", default=False, advanced=True
+        made_for_kids: bool | None = SchemaField(
+            description="Self-declared kids content", default=None, advanced=True
         )
-        is_shorts: bool = SchemaField(
+        is_shorts: bool | None = SchemaField(
             description="Post as YouTube Short (max 3 minutes, adds #shorts)",
-            default=False,
+            default=None,
             advanced=True,
         )
-        notify_subscribers: bool = SchemaField(
-            description="Send notification to subscribers", default=True, advanced=True
+        notify_subscribers: bool | None = SchemaField(
+            description="Send notification to subscribers", default=None, advanced=True
         )
-        category_id: int = SchemaField(
+        category_id: int | None = SchemaField(
             description="Video category ID (e.g., 24 = Entertainment)",
-            default=0,
+            default=None,
             advanced=True,
         )
-        contains_synthetic_media: bool = SchemaField(
+        contains_synthetic_media: bool | None = SchemaField(
             description="Disclose realistic AI/synthetic content",
-            default=False,
+            default=None,
             advanced=True,
         )
-        publish_at: str = SchemaField(
+        publish_at: str | None = SchemaField(
             description="UTC publish time (YouTube controlled, format: 2022-10-08T21:18:36Z)",
-            default="",
+            default=None,
             advanced=True,
         )
         # YouTube targeting options (flattened from YouTubeTargeting object)
@@ -99,19 +103,19 @@ class PostToYouTubeBlock(Block):
             default=None,
             advanced=True,
         )
-        subtitle_url: str = SchemaField(
+        subtitle_url: str | None = SchemaField(
             description="URL to SRT or SBV subtitle file (must be HTTPS and end in .srt/.sbv, under 100MB)",
-            default="",
+            default=None,
             advanced=True,
         )
-        subtitle_language: str = SchemaField(
+        subtitle_language: str | None = SchemaField(
             description="Language code for subtitles (default: 'en')",
-            default="en",
+            default=None,
             advanced=True,
         )
-        subtitle_name: str = SchemaField(
+        subtitle_name: str | None = SchemaField(
             description="Name of caption track (max 150 chars, default: 'English')",
-            default="English",
+            default=None,
             advanced=True,
         )
 
@@ -121,7 +125,6 @@ class PostToYouTubeBlock(Block):
 
     def __init__(self):
         super().__init__(
-            disabled=True,
             id="0082d712-ff1b-4c3d-8a8d-6c7721883b83",
             description="Post to YouTube using Ayrshare",
             categories={BlockCategory.SOCIAL},
@@ -134,10 +137,12 @@ class PostToYouTubeBlock(Block):
         self,
         input_data: "PostToYouTubeBlock.Input",
         *,
-        profile_key: SecretStr,
+        user_id: str,
         **kwargs,
     ) -> BlockOutput:
         """Post to YouTube with YouTube-specific validation and options."""
+
+        profile_key = await get_profile_key(user_id)
         if not profile_key:
             yield "error", "Please link a social account via Ayrshare"
             return
@@ -219,7 +224,7 @@ class PostToYouTubeBlock(Block):
                 yield "error", "YouTube subtitle URL must end in .srt or .sbv"
                 return
 
-        if len(input_data.subtitle_name) > 150:
+        if input_data.subtitle_name and len(input_data.subtitle_name) > 150:
             yield "error", f"YouTube subtitle name exceeds 150 character limit ({len(input_data.subtitle_name)} characters)"
             return
 
@@ -258,7 +263,7 @@ class PostToYouTubeBlock(Block):
         if not input_data.notify_subscribers:
             youtube_options["notifySubscribers"] = False
 
-        if input_data.category_id > 0:
+        if input_data.category_id and input_data.category_id > 0:
             youtube_options["categoryId"] = input_data.category_id
 
         if input_data.contains_synthetic_media:

@@ -1,8 +1,9 @@
-import { StoreSubmissionRequest } from "@/app/api/__generated__/models/storeSubmissionRequest";
+import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
+import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 
 interface useAgentTableRowProps {
   id: number;
-  onEditSubmission: (submission: StoreSubmissionRequest) => void;
+  onViewSubmission: (submission: StoreSubmission) => void;
   onDeleteSubmission: (submission_id: string) => void;
   agent_id: string;
   agent_version: number;
@@ -10,13 +11,14 @@ interface useAgentTableRowProps {
   sub_heading: string;
   description: string;
   imageSrc: string[];
-  selectedAgents: Set<string>;
-  setSelectedAgents: React.Dispatch<React.SetStateAction<Set<string>>>;
+  dateSubmitted: string;
+  status: string;
+  runs: number;
+  rating: number;
 }
 
 export const useAgentTableRow = ({
-  id,
-  onEditSubmission,
+  onViewSubmission,
   onDeleteSubmission,
   agent_id,
   agent_version,
@@ -24,13 +26,13 @@ export const useAgentTableRow = ({
   sub_heading,
   description,
   imageSrc,
-  selectedAgents,
-  setSelectedAgents,
+  dateSubmitted,
+  status,
+  runs,
+  rating,
 }: useAgentTableRowProps) => {
-  const checkboxId = `agent-${id}-checkbox`;
-
-  const handleEdit = () => {
-    onEditSubmission({
+  const handleView = () => {
+    onViewSubmission({
       agent_id,
       agent_version,
       slug: "",
@@ -38,22 +40,17 @@ export const useAgentTableRow = ({
       sub_heading,
       description,
       image_urls: imageSrc,
-      categories: [],
-    } satisfies StoreSubmissionRequest);
+      date_submitted: dateSubmitted,
+      // SafeCast: status is a string from the API...
+      status: status.toUpperCase() as SubmissionStatus,
+      runs,
+      rating,
+    } satisfies StoreSubmission);
   };
 
   const handleDelete = () => {
     onDeleteSubmission(agent_id);
   };
 
-  const handleCheckboxChange = () => {
-    if (selectedAgents.has(agent_id)) {
-      selectedAgents.delete(agent_id);
-    } else {
-      selectedAgents.add(agent_id);
-    }
-    setSelectedAgents(new Set(selectedAgents));
-  };
-
-  return { checkboxId, handleEdit, handleDelete, handleCheckboxChange };
+  return { handleView, handleDelete };
 };

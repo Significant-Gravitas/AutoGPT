@@ -167,6 +167,11 @@ class Scheduler(AppService):
     def db_pool_size(cls) -> int:
         return config.scheduler_db_pool_size
 
+    def health_check(self) -> str:
+        if not self.scheduler.running:
+            raise RuntimeError("Scheduler is not running")
+        return super().health_check()
+
     def run_service(self):
         load_dotenv()
         db_schema, db_url = _extract_schema_from_url(os.getenv("DIRECT_URL"))
@@ -254,8 +259,8 @@ class Scheduler(AppService):
 
     def cleanup(self):
         super().cleanup()
-        logger.info("⏳ Shutting down scheduler...")
         if self.scheduler:
+            logger.info("⏳ Shutting down scheduler...")
             self.scheduler.shutdown(wait=False)
 
     @expose

@@ -4,21 +4,14 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future
-from typing import TYPE_CHECKING, Any, Callable, Optional, cast
+from typing import TYPE_CHECKING, Any, Optional
 
 from autogpt_libs.utils.cache import thread_cached
-from pydantic import BaseModel, JsonValue
+from pydantic import BaseModel, JsonValue, ValidationError
 
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
-from backend.data.block import (
-    Block,
-    BlockData,
-    BlockInput,
-    BlockSchema,
-    BlockType,
-    get_block,
-)
+from backend.data.block import Block, BlockData, BlockInput, BlockType, get_block
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.cost import BlockCostType
 from backend.data.db import prisma
@@ -39,7 +32,7 @@ from backend.data.rabbitmq import (
     RabbitMQConfig,
     SyncRabbitMQ,
 )
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import GraphValidationError, NotFoundError
 from backend.util.logging import TruncatedLogger
 from backend.util.mock import MockObject
 from backend.util.service import get_service_client
@@ -467,47 +460,65 @@ async def _validate_node_input_credentials(
     graph: GraphModel,
     user_id: str,
     nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
-):
-    """Checks all credentials for all nodes of the graph"""
+) -> dict[str, dict[str, str]]:
+    """
+    Checks all credentials for all nodes of the graph and returns structured errors.
+
+    Returns:
+        dict[node_id, dict[field_name, error_message]]: Credential validation errors per node
+    """
+    credential_errors: dict[str, dict[str, str]] = defaultdict(dict)
 
     for node in graph.nodes:
         block = node.block
 
         # Find any fields of type CredentialsMetaInput
-        credentials_fields = cast(
-            type[BlockSchema], block.input_schema
-        ).get_credentials_fields()
+        credentials_fields = block.input_schema.get_credentials_fields()
         if not credentials_fields:
             continue
 
         for field_name, credentials_meta_type in credentials_fields.items():
-            if (
-                nodes_input_masks
-                and (node_input_mask := nodes_input_masks.get(node.id))
-                and field_name in node_input_mask
-            ):
-                credentials_meta = credentials_meta_type.model_validate(
-                    node_input_mask[field_name]
-                )
-            elif field_name in node.input_default:
-                credentials_meta = credentials_meta_type.model_validate(
-                    node.input_default[field_name]
-                )
-            else:
-                raise ValueError(
-                    f"Credentials absent for {block.name} node #{node.id} "
-                    f"input '{field_name}'"
-                )
+            try:
+                if (
+                    nodes_input_masks
+                    and (node_input_mask := nodes_input_masks.get(node.id))
+                    and field_name in node_input_mask
+                ):
+                    credentials_meta = credentials_meta_type.model_validate(
+                        node_input_mask[field_name]
+                    )
+                elif field_name in node.input_default:
+                    credentials_meta = credentials_meta_type.model_validate(
+                        node.input_default[field_name]
+                    )
+                else:
+                    # Missing credentials
+                    credential_errors[node.id][
+                        field_name
+                    ] = "These credentials are required"
+                    continue
+            except ValidationError as e:
+                credential_errors[node.id][field_name] = f"Invalid credentials: {e}"
+                continue
 
-            # Fetch the corresponding Credentials and perform sanity checks
-            credentials = await get_integration_credentials_store().get_creds_by_id(
-                user_id, credentials_meta.id
-            )
-            if not credentials:
-                raise ValueError(
-                    f"Unknown credentials #{credentials_meta.id} "
-                    f"for node #{node.id} input '{field_name}'"
+            try:
+                # Fetch the corresponding Credentials and perform sanity checks
+                credentials = await get_integration_credentials_store().get_creds_by_id(
+                    user_id, credentials_meta.id
                 )
+            except Exception as e:
+                # Handle any errors fetching credentials
+                credential_errors[node.id][
+                    field_name
+                ] = f"Credentials not available: {e}"
+                continue
+
+            if not credentials:
+                credential_errors[node.id][
+                    field_name
+                ] = f"Unknown credentials #{credentials_meta.id}"
+                continue
+
             if (
                 credentials.provider != credentials_meta.provider
                 or credentials.type != credentials_meta.type
@@ -518,10 +529,12 @@ async def _validate_node_input_credentials(
                     f"{credentials_meta.type}<>{credentials.type};"
                     f"{credentials_meta.provider}<>{credentials.provider}"
                 )
-                raise ValueError(
-                    f"Invalid credentials #{credentials.id} for node #{node.id}: "
-                    "type/provider mismatch"
-                )
+                credential_errors[node.id][
+                    field_name
+                ] = "Invalid credentials: type/provider mismatch"
+                continue
+
+    return credential_errors
 
 
 def make_node_credentials_input_map(
@@ -559,6 +572,36 @@ def make_node_credentials_input_map(
     return result
 
 
+async def validate_graph_with_credentials(
+    graph: GraphModel,
+    user_id: str,
+    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+) -> dict[str, dict[str, str]]:
+    """
+    Validate graph including credentials and return structured errors per node.
+
+    Returns:
+        dict[node_id, dict[field_name, error_message]]: Validation errors per node
+    """
+    # Get input validation errors
+    node_input_errors = GraphModel.validate_graph_get_errors(
+        graph, for_run=True, nodes_input_masks=nodes_input_masks
+    )
+
+    # Get credential input/availability/validation errors
+    node_credential_input_errors = await _validate_node_input_credentials(
+        graph, user_id, nodes_input_masks
+    )
+
+    # Merge credential errors with structural errors
+    for node_id, field_errors in node_credential_input_errors.items():
+        if node_id not in node_input_errors:
+            node_input_errors[node_id] = {}
+        node_input_errors[node_id].update(field_errors)
+
+    return node_input_errors
+
+
 async def construct_node_execution_input(
     graph: GraphModel,
     user_id: str,
@@ -581,8 +624,17 @@ async def construct_node_execution_input(
         list[tuple[str, BlockInput]]: A list of tuples, each containing the node ID and
             the corresponding input data for that node.
     """
-    graph.validate_graph(for_run=True, nodes_input_masks=nodes_input_masks)
-    await _validate_node_input_credentials(graph, user_id, nodes_input_masks)
+    # Use new validation function that includes credentials
+    validation_errors = await validate_graph_with_credentials(
+        graph, user_id, nodes_input_masks
+    )
+    n_error_nodes = len(validation_errors)
+    n_errors = sum(len(errors) for errors in validation_errors.values())
+    if validation_errors:
+        raise GraphValidationError(
+            f"Graph validation failed: {n_errors} issues on {n_error_nodes} nodes",
+            node_errors=validation_errors,
+        )
 
     nodes_input = []
     for node in graph.starting_nodes:
@@ -655,6 +707,11 @@ GRAPH_EXECUTION_CANCEL_EXCHANGE = Exchange(
 )
 GRAPH_EXECUTION_CANCEL_QUEUE_NAME = "graph_execution_cancel_queue"
 
+# Graceful shutdown timeout constants
+# Agent executions can run for up to 1 day, so we need a graceful shutdown period
+# that allows long-running executions to complete naturally
+GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS = 24 * 60 * 60  # 1 day to complete active executions
+
 
 def create_execution_queue_config() -> RabbitMQConfig:
     """
@@ -669,13 +726,14 @@ def create_execution_queue_config() -> RabbitMQConfig:
         durable=True,
         auto_delete=False,
         arguments={
-            # x-consumer-timeout (0 = disabled)
+            # x-consumer-timeout (1 week)
             # Problem: Default 30-minute consumer timeout kills long-running graph executions
             # Original error: "Consumer acknowledgement timed out after 1800000 ms (30 minutes)"
             # Solution: Disable consumer timeout entirely - let graphs run indefinitely
             # Safety: Heartbeat mechanism now handles dead consumer detection instead
             # Use case: Graph executions that take hours to complete (AI model training, etc.)
-            "x-consumer-timeout": 0,
+            "x-consumer-timeout": GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS
+            * 1000,
         },
     )
     cancel_queue = Queue(
@@ -737,51 +795,28 @@ async def stop_graph_execution(
             ExecutionStatus.QUEUED,
             ExecutionStatus.INCOMPLETE,
         ]:
-            break
+            # If the graph is still on the queue, we can prevent them from being executed
+            # by setting the status to TERMINATED.
+            graph_exec.status = ExecutionStatus.TERMINATED
+
+            await asyncio.gather(
+                # Update graph execution status
+                db.update_graph_execution_stats(
+                    graph_exec_id=graph_exec.id,
+                    status=ExecutionStatus.TERMINATED,
+                ),
+                # Publish graph execution event
+                get_async_execution_event_bus().publish(graph_exec),
+            )
+            return
 
         if graph_exec.status == ExecutionStatus.RUNNING:
             await asyncio.sleep(0.1)
 
-    # Set the termination status if the graph is not stopped after the timeout.
-    if graph_exec := await db.get_graph_execution_meta(
-        execution_id=graph_exec_id, user_id=user_id
-    ):
-        # If the graph is still on the queue, we can prevent them from being executed
-        # by setting the status to TERMINATED.
-        node_execs = await db.get_node_executions(
-            graph_exec_id=graph_exec_id,
-            statuses=[
-                ExecutionStatus.QUEUED,
-                ExecutionStatus.RUNNING,
-            ],
-            include_exec_data=False,
-        )
-
-        graph_exec.status = ExecutionStatus.TERMINATED
-        for node_exec in node_execs:
-            node_exec.status = ExecutionStatus.TERMINATED
-
-        await asyncio.gather(
-            # Update node execution statuses
-            db.update_node_execution_status_batch(
-                [node_exec.node_exec_id for node_exec in node_execs],
-                ExecutionStatus.TERMINATED,
-            ),
-            # Publish node execution events
-            *[
-                get_async_execution_event_bus().publish(node_exec)
-                for node_exec in node_execs
-            ],
-        )
-        await asyncio.gather(
-            # Update graph execution status
-            db.update_graph_execution_stats(
-                graph_exec_id=graph_exec_id,
-                status=ExecutionStatus.TERMINATED,
-            ),
-            # Publish graph execution event
-            get_async_execution_event_bus().publish(graph_exec),
-        )
+    raise TimeoutError(
+        f"Graph execution #{graph_exec_id} will need to take longer than {wait_timeout} seconds to stop. "
+        f"You can check the status of the execution in the UI or try again later."
+    )
 
 
 async def add_graph_execution(
@@ -840,16 +875,17 @@ async def add_graph_execution(
         graph_inputs=inputs or {},
         nodes_input_masks=nodes_input_masks,
     )
-
-    graph_exec = await edb.create_graph_execution(
-        user_id=user_id,
-        graph_id=graph_id,
-        graph_version=graph.version,
-        starting_nodes_input=starting_nodes_input,
-        preset_id=preset_id,
-    )
+    graph_exec = None
 
     try:
+        graph_exec = await edb.create_graph_execution(
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_version=graph.version,
+            starting_nodes_input=starting_nodes_input,
+            preset_id=preset_id,
+        )
+
         queue = await get_async_execution_queue()
         graph_exec_entry = graph_exec.to_graph_execution_entry()
         if nodes_input_masks:
@@ -864,8 +900,15 @@ async def add_graph_execution(
         await bus.publish(graph_exec)
 
         return graph_exec
-    except Exception as e:
-        logger.error(f"Unable to publish graph #{graph_id} exec #{graph_exec.id}: {e}")
+    except BaseException as e:
+        err = str(e) or type(e).__name__
+        if not graph_exec:
+            logger.error(f"Graph execution #{graph_id} failed: {err}")
+            raise
+
+        logger.error(
+            f"Unable to publish graph #{graph_id} exec #{graph_exec.id}: {err}"
+        )
         await edb.update_node_execution_status_batch(
             [node_exec.node_exec_id for node_exec in graph_exec.node_executions],
             ExecutionStatus.FAILED,
@@ -873,7 +916,7 @@ async def add_graph_execution(
         await edb.update_graph_execution_stats(
             graph_exec_id=graph_exec.id,
             status=ExecutionStatus.FAILED,
-            stats=GraphExecutionStats(error=str(e)),
+            stats=GraphExecutionStats(error=err),
         )
         raise
 
@@ -888,13 +931,9 @@ class ExecutionOutputEntry(BaseModel):
 
 
 class NodeExecutionProgress:
-    def __init__(
-        self,
-        on_done_task: Callable[[str, object], None],
-    ):
+    def __init__(self):
         self.output: dict[str, list[ExecutionOutputEntry]] = defaultdict(list)
         self.tasks: dict[str, Future] = {}
-        self.on_done_task = on_done_task
         self._lock = threading.Lock()
 
     def add_task(self, node_exec_id: str, task: Future):
@@ -934,7 +973,9 @@ class NodeExecutionProgress:
         except TimeoutError:
             pass
         except Exception as e:
-            logger.error(f"Task for exec ID {exec_id} failed with error: {str(e)}")
+            logger.error(
+                f"Task for exec ID {exec_id} failed with error: {e.__class__.__name__} {str(e)}"
+            )
             pass
         return self.is_done(0)
 
@@ -952,7 +993,7 @@ class NodeExecutionProgress:
             cancelled_ids.append(task_id)
         return cancelled_ids
 
-    def wait_for_cancellation(self, timeout: float = 5.0):
+    def wait_for_done(self, timeout: float = 5.0):
         """
         Wait for all cancelled tasks to complete cancellation.
 
@@ -962,9 +1003,12 @@ class NodeExecutionProgress:
         start_time = time.time()
 
         while time.time() - start_time < timeout:
-            # Check if all tasks are done (either completed or cancelled)
-            if all(task.done() for task in self.tasks.values()):
-                return True
+            while self.pop_output():
+                pass
+
+            if self.is_done():
+                return
+
             time.sleep(0.1)  # Small delay to avoid busy waiting
 
         raise TimeoutError(
@@ -983,11 +1027,7 @@ class NodeExecutionProgress:
             if self.output[exec_id]:
                 return False
 
-        if task := self.tasks.pop(exec_id):
-            try:
-                self.on_done_task(exec_id, task.result())
-            except Exception as e:
-                logger.error(f"Task for exec ID {exec_id} failed with error: {str(e)}")
+        self.tasks.pop(exec_id)
         return True
 
     def _next_exec(self) -> str | None:

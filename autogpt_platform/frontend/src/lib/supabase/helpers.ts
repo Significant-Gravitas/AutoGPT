@@ -1,6 +1,7 @@
 import { type CookieOptions } from "@supabase/ssr";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { Key, storage } from "@/services/storage/local-storage";
+import { isServerSide } from "../utils/is-server-side";
 
 export const PROTECTED_PAGES = [
   "/monitor",
@@ -82,7 +83,7 @@ export function setupSessionEventListeners(
   onFocus: () => void,
   onStorageChange: (e: StorageEvent) => void,
 ): EventListeners {
-  if (typeof window === "undefined" || typeof document === "undefined") {
+  if (isServerSide() || typeof document === "undefined") {
     return { cleanup: () => {} };
   }
 

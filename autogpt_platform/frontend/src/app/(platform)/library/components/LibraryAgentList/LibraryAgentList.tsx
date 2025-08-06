@@ -1,6 +1,7 @@
 "use client";
 import LibraryActionSubHeader from "../LibraryActionSubHeader/LibraryActionSubHeader";
 import LibraryAgentCard from "../LibraryAgentCard/LibraryAgentCard";
+import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
 import { useLibraryAgentList } from "./useLibraryAgentList";
 
 export default function LibraryAgentList() {
@@ -8,8 +9,9 @@ export default function LibraryAgentList() {
     agentLoading,
     agentCount,
     allAgents: agents,
+    hasNextPage,
     isFetchingNextPage,
-    isSearching,
+    fetchNextPage,
   } = useLibraryAgentList();
 
   const LoadingSpinner = () => (
@@ -18,7 +20,6 @@ export default function LibraryAgentList() {
 
   return (
     <>
-      {/* TODO: We need a new endpoint on backend that returns total number of agents */}
       <LibraryActionSubHeader agentCount={agentCount} />
       <div className="px-2">
         {agentLoading ? (
@@ -26,18 +27,19 @@ export default function LibraryAgentList() {
             <LoadingSpinner />
           </div>
         ) : (
-          <>
+          <InfiniteScroll
+            dataLength={agents.length}
+            isFetchingNextPage={isFetchingNextPage}
+            fetchNextPage={fetchNextPage}
+            hasNextPage={hasNextPage}
+            loader={<LoadingSpinner />}
+          >
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {agents.map((agent) => (
                 <LibraryAgentCard key={agent.id} agent={agent} />
               ))}
             </div>
-            {(isFetchingNextPage || isSearching) && (
-              <div className="flex items-center justify-center py-4 pt-8">
-                <LoadingSpinner />
-              </div>
-            )}
-          </>
+          </InfiniteScroll>
         )}
       </div>
     </>

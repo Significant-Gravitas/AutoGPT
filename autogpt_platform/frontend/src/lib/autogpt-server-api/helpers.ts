@@ -1,15 +1,36 @@
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { Key, storage } from "@/services/storage/local-storage";
+import { isServerSide } from "../utils/is-server-side";
 
-export class ApiError extends Error {
+import { GraphValidationErrorResponse } from "./types";
+
+export class ApiError<R = any> extends Error {
   public status: number;
-  public response?: any;
+  public response: R;
 
-  constructor(message: string, status: number, response?: any) {
+  constructor(message: string, status: number, response: R) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.response = response;
+  }
+
+  /**
+   * Type guard to check if this error is a structured graph validation error
+   */
+  isGraphValidationError(): this is ApiError<GraphValidationErrorResponse> {
+    return (
+      this.response !== undefined &&
+      typeof this.response === "object" &&
+      this.response !== null &&
+      "detail" in this.response &&
+      typeof this.response.detail === "object" &&
+      this.response.detail !== null &&
+      "type" in this.response.detail &&
+      this.response.detail.type === "validation_error" &&
+      "node_errors" in this.response.detail &&
+      typeof this.response.detail.node_errors === "object"
+    );
   }
 }
 
@@ -50,20 +71,13 @@ export function buildUrlWithQuery(
   return `${url}?${queryParams.toString()}`;
 }
 
-export function handleFetchError(response: Response, errorData: any): ApiError {
+export async function handleFetchError(response: Response): Promise<ApiError> {
+  const errorMessage = await parseApiError(response);
   return new ApiError(
-    errorData?.error || "Request failed",
+    errorMessage || "Request failed",
     response.status,
-    errorData,
+    await response.json(),
   );
-}
-
-export async function parseErrorResponse(response: Response): Promise<any> {
-  try {
-    return await response.json();
-  } catch {
-    return { error: response.statusText };
-  }
 }
 
 export async function getServerAuthToken(): Promise<string> {
@@ -125,7 +139,7 @@ export function serializeRequestBody(
 
 export async function parseApiError(response: Response): Promise<string> {
   try {
-    const errorData = await response.json();
+    const errorData = await response.clone().json();
 
     if (
       Array.isArray(errorData.detail) &&
@@ -140,7 +154,12 @@ export async function parseApiError(response: Response): Promise<string> {
       return errors.join("\n");
     }
 
-    return errorData.detail || response.statusText;
+    if (typeof errorData.detail === "object" && errorData.detail !== null) {
+      if (errorData.detail.message) return errorData.detail.message;
+      return response.statusText; // Fallback to status text if no message
+    }
+
+    return errorData.detail || errorData.error || response.statusText;
   } catch {
     return response.statusText;
   }
@@ -179,7 +198,7 @@ function isAuthenticationError(
 }
 
 function isLogoutInProgress(): boolean {
-  if (typeof window === "undefined") return false;
+  if (isServerSide()) return false;
 
   try {
     // Check if logout was recently triggered
@@ -224,10 +243,7 @@ export async function makeAuthenticatedRequest(
     // Try to parse the full response body for better error context
     let responseData = null;
     try {
-      const responseText = await response.clone().text();
-      if (responseText) {
-        responseData = JSON.parse(responseText);
-      }
+      responseData = await response.clone().json();
     } catch {
       // Ignore parsing errors
     }

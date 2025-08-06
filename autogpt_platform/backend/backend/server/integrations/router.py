@@ -29,7 +29,9 @@ from backend.data.model import (
     CredentialsType,
     HostScopedCredentials,
     OAuth2Credentials,
+    UserIntegrations,
 )
+from backend.data.user import get_user_integrations
 from backend.executor.utils import add_graph_execution
 from backend.integrations.ayrshare import AyrshareClient, SocialPlatform
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -585,7 +587,10 @@ async def get_ayrshare_sso_url(
     # Ayrshare profile key is stored in the credentials store
     # It is generated when creating a new profile, if there is no profile key,
     # we create a new profile and store the profile key in the credentials store
-    profile_key = await creds_manager.store.get_ayrshare_profile_key(user_id)
+
+    user_integrations: UserIntegrations = await get_user_integrations(user_id)
+    profile_key = user_integrations.managed_credentials.ayrshare_profile_key
+
     if not profile_key:
         logger.debug(f"Creating new Ayrshare profile for user {user_id}")
         try:
@@ -623,8 +628,8 @@ async def get_ayrshare_sso_url(
                 # SocialPlatform.FACEBOOK,
                 SocialPlatform.TWITTER,
                 SocialPlatform.LINKEDIN,
-                # SocialPlatform.INSTAGRAM,
-                # SocialPlatform.YOUTUBE,
+                SocialPlatform.INSTAGRAM,
+                SocialPlatform.YOUTUBE,
                 # SocialPlatform.REDDIT,
                 # SocialPlatform.TELEGRAM,
                 # SocialPlatform.GOOGLE_MY_BUSINESS,
