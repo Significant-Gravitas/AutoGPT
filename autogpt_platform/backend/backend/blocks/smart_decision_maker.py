@@ -3,8 +3,6 @@ import re
 from collections import Counter
 from typing import TYPE_CHECKING, Any
 
-from autogpt_libs.utils.cache import thread_cached
-
 import backend.blocks.llm as llm
 from backend.blocks.agent import AgentExecutorBlock
 from backend.data.block import (
@@ -17,19 +15,12 @@ from backend.data.block import (
 )
 from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util import json
+from backend.util.clients import get_database_manager_async_client
 
 if TYPE_CHECKING:
     from backend.data.graph import Link, Node
 
 logger = logging.getLogger(__name__)
-
-
-@thread_cached
-def get_database_manager_client():
-    from backend.executor import DatabaseManagerAsyncClient
-    from backend.util.service import get_service_client
-
-    return get_service_client(DatabaseManagerAsyncClient, health_check=False)
 
 
 def _get_tool_requests(entry: dict[str, Any]) -> list[str]:
@@ -333,7 +324,7 @@ class SmartDecisionMakerBlock(Block):
         if not graph_id or not graph_version:
             raise ValueError("Graph ID or Graph Version not found in sink node.")
 
-        db_client = get_database_manager_client()
+        db_client = get_database_manager_async_client()
         sink_graph_meta = await db_client.get_graph_metadata(graph_id, graph_version)
         if not sink_graph_meta:
             raise ValueError(
@@ -393,7 +384,7 @@ class SmartDecisionMakerBlock(Block):
             ValueError: If no tool links are found for the specified node_id, or if a sink node
                         or its metadata cannot be found.
         """
-        db_client = get_database_manager_client()
+        db_client = get_database_manager_async_client()
         tools = [
             (link, node)
             for link, node in await db_client.get_connected_output_nodes(node_id)
