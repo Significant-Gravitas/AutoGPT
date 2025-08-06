@@ -4,9 +4,8 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future
-from typing import TYPE_CHECKING, Any, Optional
+from typing import Any, Optional
 
-from autogpt_libs.utils.cache import thread_cached
 from pydantic import BaseModel, JsonValue, ValidationError
 
 from backend.data import execution as execution_db
@@ -16,32 +15,24 @@ from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.cost import BlockCostType
 from backend.data.db import prisma
 from backend.data.execution import (
-    AsyncRedisExecutionEventBus,
     ExecutionStatus,
     GraphExecutionStats,
     GraphExecutionWithNodes,
-    RedisExecutionEventBus,
 )
 from backend.data.graph import GraphModel, Node
 from backend.data.model import CredentialsMetaInput
-from backend.data.rabbitmq import (
-    AsyncRabbitMQ,
-    Exchange,
-    ExchangeType,
-    Queue,
-    RabbitMQConfig,
-    SyncRabbitMQ,
+from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
+from backend.util.clients import (
+    get_async_execution_event_bus,
+    get_async_execution_queue,
+    get_database_manager_async_client,
+    get_integration_credentials_store,
 )
 from backend.util.exceptions import GraphValidationError, NotFoundError
 from backend.util.logging import TruncatedLogger
 from backend.util.mock import MockObject
-from backend.util.service import get_service_client
 from backend.util.settings import Config
 from backend.util.type import convert
-
-if TYPE_CHECKING:
-    from backend.executor import DatabaseManagerAsyncClient, DatabaseManagerClient
-    from backend.integrations.credentials_store import IntegrationCredentialsStore
 
 config = Config()
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[GraphExecutorUtil]")
@@ -77,51 +68,6 @@ class LogMetadata(TruncatedLogger):
             prefix=prefix,
             metadata=metadata,
         )
-
-
-@thread_cached
-def get_execution_event_bus() -> RedisExecutionEventBus:
-    return RedisExecutionEventBus()
-
-
-@thread_cached
-def get_async_execution_event_bus() -> AsyncRedisExecutionEventBus:
-    return AsyncRedisExecutionEventBus()
-
-
-@thread_cached
-def get_execution_queue() -> SyncRabbitMQ:
-    client = SyncRabbitMQ(create_execution_queue_config())
-    client.connect()
-    return client
-
-
-@thread_cached
-async def get_async_execution_queue() -> AsyncRabbitMQ:
-    client = AsyncRabbitMQ(create_execution_queue_config())
-    await client.connect()
-    return client
-
-
-@thread_cached
-def get_integration_credentials_store() -> "IntegrationCredentialsStore":
-    from backend.integrations.credentials_store import IntegrationCredentialsStore
-
-    return IntegrationCredentialsStore()
-
-
-@thread_cached
-def get_db_client() -> "DatabaseManagerClient":
-    from backend.executor import DatabaseManagerClient
-
-    return get_service_client(DatabaseManagerClient)
-
-
-@thread_cached
-def get_db_async_client() -> "DatabaseManagerAsyncClient":
-    from backend.executor import DatabaseManagerAsyncClient
-
-    return get_service_client(DatabaseManagerAsyncClient)
 
 
 # ============ Execution Cost Helpers ============ #
@@ -450,7 +396,7 @@ def validate_exec(
     # Last validation: Validate the input values against the schema.
     if error := schema.get_mismatch_error(data):
         error_message = f"{error_prefix} {error}"
-        logger.error(error_message)
+        logger.warning(error_message)
         return None, error_message
 
     return data, node_block.name
@@ -685,11 +631,6 @@ def _merge_nodes_input_masks(
 
 # ============ Execution Queue Helpers ============ #
 
-
-class CancelExecutionEvent(BaseModel):
-    graph_exec_id: str
-
-
 GRAPH_EXECUTION_EXCHANGE = Exchange(
     name="graph_execution",
     type=ExchangeType.DIRECT,
@@ -750,6 +691,10 @@ def create_execution_queue_config() -> RabbitMQConfig:
     )
 
 
+class CancelExecutionEvent(BaseModel):
+    graph_exec_id: str
+
+
 async def stop_graph_execution(
     user_id: str,
     graph_exec_id: str,
@@ -763,7 +708,7 @@ async def stop_graph_execution(
     3. Update execution statuses in DB and set `error` outputs to `"TERMINATED"`.
     """
     queue_client = await get_async_execution_queue()
-    db = execution_db if prisma.is_connected() else get_db_async_client()
+    db = execution_db if prisma.is_connected() else get_database_manager_async_client()
     await queue_client.publish_message(
         routing_key="",
         message=CancelExecutionEvent(graph_exec_id=graph_exec_id).model_dump_json(),
@@ -849,8 +794,8 @@ async def add_graph_execution(
         gdb = graph_db
         edb = execution_db
     else:
-        gdb = get_db_async_client()
-        edb = get_db_async_client()
+        gdb = get_database_manager_async_client()
+        edb = get_database_manager_async_client()
 
     graph: GraphModel | None = await gdb.get_graph(
         graph_id=graph_id,
@@ -903,7 +848,7 @@ async def add_graph_execution(
     except BaseException as e:
         err = str(e) or type(e).__name__
         if not graph_exec:
-            logger.error(f"Graph execution #{graph_id} failed: {err}")
+            logger.error(f"Unable to execute graph #{graph_id} failed: {err}")
             raise
 
         logger.error(

@@ -93,6 +93,7 @@ async def _execute_graph(**kwargs):
             f"Graph execution started with ID {graph_exec.id} for graph {args.graph_id}"
         )
     except Exception as e:
+        # TODO: We need to communicate this error to the user somehow.
         logger.error(f"Error executing graph {args.graph_id}: {e}")
 
 
