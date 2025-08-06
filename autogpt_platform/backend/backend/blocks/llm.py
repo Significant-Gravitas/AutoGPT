@@ -222,6 +222,8 @@ MODEL_METADATA = {
     LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192, None),
     LlmModel.OLLAMA_DOLPHIN: ModelMetadata("ollama", 32768, None),
     # https://openrouter.ai/models
+    LlmModel.OPENAI_GPT_OSS_120B: ModelMetadata("open_router", 131072, 131072),
+    LlmModel.OPENAI_GPT_OSS_20B: ModelMetadata("open_router", 131072, 32768),
     LlmModel.GEMINI_FLASH_1_5: ModelMetadata("open_router", 1000000, 8192),
     LlmModel.GEMINI_2_5_PRO: ModelMetadata("open_router", 1050000, 8192),
     LlmModel.GEMINI_2_5_FLASH: ModelMetadata("open_router", 1048576, 65535),
