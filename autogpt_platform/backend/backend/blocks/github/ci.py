@@ -154,12 +154,10 @@ class GithubGetCIResultsBlock(Block):
                             "completed_at": "2024-01-01T00:05:00Z",
                             "html_url": "https://github.com/owner/repo/runs/123456",
                             "details_url": None,
-                            "output": {
-                                "title": "Build passed",
-                                "summary": "All tests passed",
-                                "text": "Build log output...",
-                                "annotations_count": 0,
-                            },
+                            "output_title": "Build passed",
+                            "output_summary": "All tests passed",
+                            "output_text": "Build log output...",
+                            "annotations": [],
                         }
                     ],
                     "total_count": 1,
@@ -382,17 +380,14 @@ class GithubGetCIResultsBlock(Block):
 
             # Output check runs
             yield "check_runs", check_runs
-            for run in check_runs:
-                yield "check_run", run
 
             # Search for patterns if specified
             if input_data.search_pattern:
                 matched_lines = await self.search_in_logs(
                     check_runs, input_data.search_pattern
                 )
-                yield "matched_lines", matched_lines
-                for line in matched_lines:
-                    yield "matched_line", line
+                if matched_lines:
+                    yield "matched_lines", matched_lines
 
         except Exception as e:
             yield "error", str(e)
