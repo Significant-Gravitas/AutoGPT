@@ -172,9 +172,10 @@ def continuous_retry(*, retry_delay: float = 1.0):
                     else:
                         log = logger.warning
                     log(
-                        "%s failed with [%s] — retrying in %.2f s",
+                        "%s failed for the %s times, error: [%s] — retrying in %.2fs",
                         func.__name__,
-                        exc,
+                        counter,
+                        str(exc) or type(exc).__name__,
                         retry_delay,
                     )
                     time.sleep(retry_delay)
@@ -192,9 +193,10 @@ def continuous_retry(*, retry_delay: float = 1.0):
                     else:
                         log = logger.warning
                     log(
-                        "%s failed with [%s] — retrying in %.2f s",
+                        "%s failed for the %s times, error: [%s] — retrying in %.2fs",
                         func.__name__,
-                        exc,
+                        counter,
+                        str(exc) or type(exc).__name__,
                         retry_delay,
                     )
                     await asyncio.sleep(retry_delay)
