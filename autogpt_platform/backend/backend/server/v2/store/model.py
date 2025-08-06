@@ -161,7 +161,7 @@ class StoreSubmissionRequest(pydantic.BaseModel):
 
 class StoreSubmissionEditRequest(pydantic.BaseModel):
     agent_id: str
-    agent_version: int
+    agent_version: int | None = None  # Optional since backend will use version from current submission
     name: str
     sub_heading: str
     video_url: str | None = None

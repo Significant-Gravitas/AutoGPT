@@ -16,6 +16,10 @@ interface useAgentTableRowProps {
   status: string;
   runs: number;
   rating: number;
+  video_url?: string;
+  categories?: string[];
+  slug: string;
+  store_listing_version_id?: string;
 }
 
 export const useAgentTableRow = ({
@@ -32,12 +36,16 @@ export const useAgentTableRow = ({
   status,
   runs,
   rating,
+  video_url,
+  categories,
+  slug,
+  store_listing_version_id,
 }: useAgentTableRowProps) => {
   const handleView = () => {
     onViewSubmission({
       agent_id,
       agent_version,
-      slug: "",
+      slug,
       name: agentName,
       sub_heading,
       description,
@@ -47,6 +55,9 @@ export const useAgentTableRow = ({
       status: status.toUpperCase() as SubmissionStatus,
       runs,
       rating,
+      video_url,
+      categories,
+      store_listing_version_id,
     } satisfies StoreSubmission);
   };
 
@@ -54,7 +65,7 @@ export const useAgentTableRow = ({
     onEditSubmission({
       agent_id,
       agent_version,
-      slug: "",
+      slug,
       name: agentName,
       sub_heading,
       description,
@@ -64,6 +75,9 @@ export const useAgentTableRow = ({
       status: status.toUpperCase() as SubmissionStatus,
       runs,
       rating,
+      video_url,
+      categories,
+      store_listing_version_id,
     } satisfies StoreSubmission);
   };
 

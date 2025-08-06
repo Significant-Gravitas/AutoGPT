@@ -466,6 +466,8 @@ async def get_store_submissions(
                 # internal_comments omitted for regular users
                 reviewed_at=sub.reviewed_at,
                 changes_summary=sub.changes_summary,
+                video_url=sub.video_url,
+                categories=sub.categories,
             )
             submission_models.append(submission_model)
 
@@ -493,66 +495,6 @@ async def get_store_submissions(
             ),
         )
 
-
-async def get_store_submission_by_id(
-    user_id: str, store_listing_version_id: str
-) -> backend.server.v2.store.model.StoreSubmission:
-    """Get a single store submission by its store_listing_version_id"""
-    logger.debug(f"Getting store submission {store_listing_version_id} for user {user_id}")
-
-    try:
-        submission = await prisma.models.StoreSubmission.prisma().find_first(
-            where=prisma.types.StoreSubmissionWhereInput(
-                user_id=user_id,
-                store_listing_version_id=store_listing_version_id,
-            )
-        )
-
-        if not submission:
-            raise backend.server.v2.store.exceptions.SubmissionNotFoundError(
-                f"Submission {store_listing_version_id} not found for user {user_id}"
-            )
-
-        # Get additional fields from StoreListingVersion table
-        store_listing_version = await prisma.models.StoreListingVersion.prisma().find_unique(
-            where={"id": store_listing_version_id},
-            include={"StoreListing": True}
-        )
-
-        if not store_listing_version:
-            raise backend.server.v2.store.exceptions.SubmissionNotFoundError(
-                f"Store listing version {store_listing_version_id} not found"
-            )
-
-        # Convert to response model with additional fields
-        return backend.server.v2.store.model.StoreSubmission(
-            agent_id=submission.agent_id,
-            agent_version=submission.agent_version,
-            name=submission.name,
-            sub_heading=submission.sub_heading,
-            slug=submission.slug,
-            description=submission.description,
-            image_urls=submission.image_urls,
-            date_submitted=submission.date_submitted,
-            status=submission.status,
-            runs=submission.runs,
-            rating=submission.rating,
-            store_listing_version_id=submission.store_listing_version_id,
-            version=submission.version,
-            reviewer_id=submission.reviewer_id,
-            review_comments=submission.review_comments,
-            internal_comments=submission.internal_comments,
-            reviewed_at=submission.reviewed_at,
-            changes_summary=submission.changes_summary,
-            video_url=store_listing_version.videoUrl,
-            categories=store_listing_version.categories or [],
-        )
-
-    except backend.server.v2.store.exceptions.SubmissionNotFoundError:
-        raise
-    except Exception as e:
-        logger.exception(f"Error getting store submission {store_listing_version_id} for user {user_id}")
-        raise e
 
 
 async def delete_store_submission(
@@ -818,15 +760,16 @@ async def edit_store_submission(
             )
 
         # Verify the agent belongs to this user
+        # Use the agent version from the current submission instead of the one passed in
         agent = await prisma.models.AgentGraph.prisma().find_first(
             where=prisma.types.AgentGraphWhereInput(
-                id=agent_id, version=agent_version, userId=user_id
+                id=agent_id, version=current_version.agentGraphVersion, userId=user_id
             )
         )
 
         if not agent:
             raise backend.server.v2.store.exceptions.AgentNotFoundError(
-                f"Agent not found for this user. User ID: {user_id}, Agent ID: {agent_id}, Version: {agent_version}"
+                f"Agent not found for this user. User ID: {user_id}, Agent ID: {agent_id}, Version: {current_version.agentGraphVersion}"
             )
 
         # Check if we can edit this submission
@@ -842,7 +785,7 @@ async def edit_store_submission(
             return await create_store_version(
                 user_id=user_id,
                 agent_id=agent_id,
-                agent_version=agent_version,
+                agent_version=current_version.agentGraphVersion,
                 store_listing_id=current_version.storeListingId,
                 name=name,
                 video_url=video_url,
@@ -860,7 +803,7 @@ async def edit_store_submission(
                 where={"id": store_listing_version_id},
                 data=prisma.types.StoreListingVersionUpdateInput(
                     agentGraphId=agent_id,
-                    agentGraphVersion=agent_version,
+                    agentGraphVersion=current_version.agentGraphVersion,
                     name=name,
                     videoUrl=video_url,
                     imageUrls=image_urls,
@@ -877,7 +820,7 @@ async def edit_store_submission(
 
             return backend.server.v2.store.model.StoreSubmission(
                 agent_id=agent_id,
-                agent_version=agent_version,
+                agent_version=current_version.agentGraphVersion,
                 name=name,
                 sub_heading=sub_heading,
                 description=description,

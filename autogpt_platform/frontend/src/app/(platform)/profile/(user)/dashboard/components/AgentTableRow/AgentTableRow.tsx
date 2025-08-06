@@ -4,10 +4,9 @@ import Image from "next/image";
 import { Text } from "@/components/atoms/Text/Text";
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Status, StatusType } from "@/components/agptui/Status";
+import { Status } from "@/components/agptui/Status";
 import { useAgentTableRow } from "./useAgentTableRow";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
-import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import {
   DotsThreeVerticalIcon,
   Eye,
@@ -16,6 +15,7 @@ import {
   Trash,
   PencilSimple,
 } from "@phosphor-icons/react/dist/ssr";
+import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 
 export interface AgentTableRowProps {
   agent_id: string;
@@ -25,11 +25,15 @@ export interface AgentTableRowProps {
   description: string;
   imageSrc: string[];
   date_submitted: string;
-  status: StatusType;
+  status: SubmissionStatus;
   runs: number;
   rating: number;
   dateSubmitted: string;
   id: number;
+  video_url?: string;
+  categories?: string[];
+  slug: string;
+  store_listing_version_id?: string;
   onViewSubmission: (submission: StoreSubmission) => void;
   onDeleteSubmission: (submission_id: string) => void;
   onEditSubmission: (submission: StoreSubmission) => void;
@@ -47,6 +51,10 @@ export const AgentTableRow = ({
   runs,
   rating,
   id,
+  video_url,
+  categories,
+  slug,
+  store_listing_version_id,
   onViewSubmission,
   onDeleteSubmission,
   onEditSubmission,
@@ -63,13 +71,17 @@ export const AgentTableRow = ({
     description,
     imageSrc,
     dateSubmitted,
-    status: status.toUpperCase(),
+    status,
     runs,
     rating,
+    video_url,
+    categories,
+    slug,
+    store_listing_version_id,
   });
 
   // Determine if we should show Edit or View button
-  const canEdit = status === "approved" || status === "awaiting_review";
+  const canEdit = status === SubmissionStatus.APPROVED || status === SubmissionStatus.PENDING.valueOf();
 
   return (
     <div className="hidden items-center border-b border-neutral-300 px-4 py-4 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800 md:flex">
@@ -96,7 +108,7 @@ export const AgentTableRow = ({
               className="line-clamp-1 text-ellipsis text-neutral-800 dark:text-neutral-200"
               size="large-medium"
             >
-              {agentName}
+              {agentName} - {status}
             </Text>
             <Text
               variant="body"

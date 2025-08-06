@@ -76,6 +76,23 @@ def get_video_url():
     return f"https://www.youtube.com/watch?v={video_id}"
 
 
+def get_category():
+    """Generate a random category from the predefined list."""
+    categories = [
+        "productivity",
+        "writing",
+        "development", 
+        "data",
+        "marketing",
+        "research",
+        "creative",
+        "business",
+        "personal",
+        "other"
+    ]
+    return random.choice(categories)
+
+
 class TestDataCreator:
     """Creates test data using API functions for E2E tests."""
 
@@ -560,7 +577,7 @@ class TestDataCreator:
                         video_url=get_video_url() if random.random() < 0.3 else None,
                         image_urls=[get_image() for _ in range(3)],
                         description=faker.text(),
-                        categories=[faker.word() for _ in range(3)],
+                        categories=[get_category()],  # Single category from predefined list
                         changes_summary="Initial E2E test submission",
                     )
                     submissions.append(submission.model_dump())

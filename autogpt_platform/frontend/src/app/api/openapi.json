@@ -2625,38 +2625,6 @@
       }
     },
     "/api/store/submissions/{store_listing_version_id}": {
-      "get": {
-        "tags": ["v2", "store", "private"],
-        "summary": "Get a single submission",
-        "description": "Get a single store submission by its store_listing_version_id.\n\nArgs:\n    store_listing_version_id (str): ID of the store listing version\n    user_id (str): ID of the authenticated user\n\nReturns:\n    StoreSubmission: The store submission details\n\nRaises:\n    HTTPException: If the submission is not found or there is an error",
-        "operationId": "getV2Get a single submission",
-        "parameters": [
-          {
-            "name": "store_listing_version_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Store Listing Version Id" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/StoreSubmission" }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      },
       "put": {
         "tags": ["v2", "store", "private"],
         "summary": "Edit store submission",

@@ -53,6 +53,7 @@ export function useAgentInfoStep({
 
   useEffect(() => {
     if (initialData) {
+      console.log("initialData", initialData);
       setAgentId(initialData.agent_id);
       const initialImages = [
         ...(initialData?.thumbnailSrc ? [initialData.thumbnailSrc] : []),
@@ -60,17 +61,28 @@ export function useAgentInfoStep({
       ];
       setImages(initialImages);
 
-      // Update form with initial data
-      form.reset({
-        title: initialData.title,
-        subheader: initialData.subheader,
-        slug: initialData.slug.toLocaleLowerCase().trim(),
-        youtubeLink: initialData.youtubeLink,
-        category: initialData.category,
-        description: initialData.description,
-      });
+      // Only reset form if the values are actually different
+      const currentValues = form.getValues();
+      const hasChanges = 
+        currentValues.title !== initialData.title ||
+        currentValues.subheader !== initialData.subheader ||
+        currentValues.slug !== initialData.slug.toLocaleLowerCase().trim() ||
+        currentValues.youtubeLink !== initialData.youtubeLink ||
+        currentValues.category !== initialData.category ||
+        currentValues.description !== initialData.description;
+
+      if (hasChanges) {
+        form.reset({
+          title: initialData.title,
+          subheader: initialData.subheader,
+          slug: initialData.slug.toLocaleLowerCase().trim(),
+          youtubeLink: initialData.youtubeLink,
+          category: initialData.category,
+          description: initialData.description,
+        });
+      }
     }
-  }, [initialData, form]);
+  }, [initialData]);
 
   const handleImagesChange = useCallback((newImages: string[]) => {
     setImages(newImages);
