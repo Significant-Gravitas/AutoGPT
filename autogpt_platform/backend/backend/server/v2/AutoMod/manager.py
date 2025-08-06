@@ -1,6 +1,9 @@
 import json
 import logging
-from typing import Any, Dict
+from typing import TYPE_CHECKING, Any, Dict, Literal
+
+if TYPE_CHECKING:
+    from backend.executor import DatabaseManagerAsyncClient
 
 from autogpt_libs.feature_flag.client import is_feature_enabled
 from pydantic import ValidationError
@@ -37,7 +40,7 @@ class AutoModManager:
         )
 
     async def moderate_graph_execution_inputs(
-        self, db_client, graph_exec, timeout: int = 10
+        self, db_client: "DatabaseManagerAsyncClient", graph_exec, timeout: int = 10
     ) -> Exception | None:
         """
         Complete input moderation flow for graph execution
@@ -118,7 +121,7 @@ class AutoModManager:
 
     async def moderate_graph_execution_outputs(
         self,
-        db_client,
+        db_client: "DatabaseManagerAsyncClient",
         graph_exec_id: str,
         user_id: str,
         graph_id: str,
@@ -194,7 +197,7 @@ class AutoModManager:
             )
 
     async def _update_failed_nodes_for_moderation(
-        self, db_client, graph_exec_id: str, moderation_type: str
+        self, db_client: "DatabaseManagerAsyncClient", graph_exec_id: str, moderation_type: Literal["input", "output"]
     ):
         """Update node execution statuses for frontend display when moderation fails"""
         # Import here to avoid circular imports
@@ -227,11 +230,11 @@ class AutoModManager:
 
             if exec_entry.input_data:
                 for name in exec_entry.input_data.keys():
-                    cleared_inputs[name] = "Failed due to content moderation"
+                    cleared_inputs[name] = ["Failed due to content moderation"]
 
             if exec_entry.output_data:
                 for name in exec_entry.output_data.keys():
-                    cleared_outputs[name] = "Failed due to content moderation"
+                    cleared_outputs[name] = ["Failed due to content moderation"]
 
             # Update the node execution status
             updated_exec = await db_client.update_node_execution_status(

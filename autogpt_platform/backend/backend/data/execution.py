@@ -318,37 +318,28 @@ class NodeExecutionResult(BaseModel):
 
     @staticmethod
     def from_db(_node_exec: AgentNodeExecution, user_id: Optional[str] = None):
-        # Parse execution stats using proper Pydantic model instead of dict access
         try:
             stats = NodeExecutionStats.model_validate(_node_exec.stats or {})
         except (ValueError, ValidationError):
-            # Fallback to empty stats if parsing fails
             stats = NodeExecutionStats()
 
-        if _node_exec.executionData:
-            # Execution that has been queued for execution will persist its data.
+        if stats.cleared_inputs:
+            input_data: BlockInput = defaultdict()
+            for name, messages in stats.cleared_inputs.items():
+                input_data[name] = messages[-1] if messages else ""
+        elif _node_exec.executionData:
             input_data = type_utils.convert(_node_exec.executionData, dict[str, Any])
         else:
-            # For incomplete execution, executionData will not be yet available.
             input_data: BlockInput = defaultdict()
             for data in _node_exec.Input or []:
                 input_data[data.name] = type_utils.convert(data.data, type[Any])
 
-        # Apply moderation input clearing if present
-        if stats.cleared_inputs:
-            # Replace input data with moderation messages
-            for name, message in stats.cleared_inputs.items():
-                input_data[name] = message
-
         output_data: CompletedBlockOutput = defaultdict(list)
 
-        # Apply moderation output clearing if present
         if stats.cleared_outputs:
-            # Use the cleared outputs instead of actual output data
-            for name, message in stats.cleared_outputs.items():
-                output_data[name].append(message)
+            for name, messages in stats.cleared_outputs.items():
+                output_data[name].extend(messages)
         else:
-            # Normal case - use actual output data
             for data in _node_exec.Output or []:
                 output_data[data.name].append(type_utils.convert(data.data, type[Any]))
 
