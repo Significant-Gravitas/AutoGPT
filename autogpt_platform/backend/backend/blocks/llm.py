@@ -82,10 +82,10 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     O1 = "o1"
     O1_MINI = "o1-mini"
     # GPT-5 models
-    GPT5 = "gpt-5"
-    GPT5_MINI = "gpt-5-mini"
-    GPT5_NANO = "gpt-5-nano"
-    GPT5_CHAT = "gpt-5-chat"
+    GPT5 = "gpt-5-2025-08-07"
+    GPT5_MINI = "gpt-5-mini-2025-08-07"
+    GPT5_NANO = "gpt-5-nano-2025-08-07"
+    GPT5_CHAT = "gpt-5-chat-latest"
     GPT41 = "gpt-4.1-2025-04-14"
     GPT41_MINI = "gpt-4.1-mini-2025-04-14"
     GPT4O_MINI = "gpt-4o-mini"
@@ -179,10 +179,10 @@ MODEL_METADATA = {
     LlmModel.O1: ModelMetadata("openai", 200000, 100000),  # o1-2024-12-17
     LlmModel.O1_MINI: ModelMetadata("openai", 128000, 65536),  # o1-mini-2024-09-12
     # GPT-5 models
-    LlmModel.GPT5: ModelMetadata("openai", 1047576, 32768),
-    LlmModel.GPT5_MINI: ModelMetadata("openai", 1047576, 32768),
-    LlmModel.GPT5_NANO: ModelMetadata("openai", 1047576, 32768),
-    LlmModel.GPT5_CHAT: ModelMetadata("openai", 1047576, 32768),
+    LlmModel.GPT5: ModelMetadata("openai", 400000, 128000),
+    LlmModel.GPT5_MINI: ModelMetadata("openai", 400000, 128000),
+    LlmModel.GPT5_NANO: ModelMetadata("openai", 400000, 128000),
+    LlmModel.GPT5_CHAT: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT41: ModelMetadata("openai", 1047576, 32768),
     LlmModel.GPT41_MINI: ModelMetadata("openai", 1047576, 32768),
     LlmModel.GPT4O_MINI: ModelMetadata(
