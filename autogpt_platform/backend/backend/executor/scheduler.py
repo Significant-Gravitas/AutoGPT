@@ -3,7 +3,6 @@ import logging
 import os
 import threading
 from enum import Enum
-from functools import cache
 from typing import Optional
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
@@ -70,29 +69,52 @@ def job_listener(event):
         logger.info(f"Job {event.job_id} completed successfully.")
 
 
-@cache
+_event_loop = None
+_event_loop_thread = None
+_event_loop_lock = threading.Lock()
+
 def get_event_loop():
     """Get a shared event loop that runs in a dedicated background thread."""
-    loop = asyncio.new_event_loop()
+    global _event_loop, _event_loop_thread
     
-    def run_loop():
-        asyncio.set_event_loop(loop)
-        try:
-            loop.run_forever()
-        except Exception as e:
-            logger.exception(f"Event loop thread error: {e}")
-        finally:
-            loop.close()
+    with _event_loop_lock:
+        if _event_loop is None or _event_loop.is_closed():
+            _event_loop = asyncio.new_event_loop()
+            
+            def run_loop():
+                asyncio.set_event_loop(_event_loop)
+                try:
+                    logger.info("Starting scheduler event loop thread")
+                    _event_loop.run_forever()
+                except Exception as e:
+                    logger.exception(f"Event loop thread error: {e}")
+                finally:
+                    logger.info("Scheduler event loop thread shutting down")
+                    _event_loop.close()
+            
+            # Use non-daemon thread so it survives APScheduler worker lifecycle
+            # Register cleanup to ensure graceful shutdown
+            _event_loop_thread = threading.Thread(
+                target=run_loop, 
+                daemon=False, 
+                name="SchedulerEventLoop"
+            )
+            _event_loop_thread.start()
+            
+            # Give the thread a moment to start the event loop
+            import time
+            time.sleep(0.1)
+            
+            # Register cleanup for graceful shutdown
+            import atexit
+            def cleanup_event_loop():
+                if _event_loop and not _event_loop.is_closed():
+                    _event_loop.call_soon_threadsafe(_event_loop.stop)
+                    _event_loop_thread.join(timeout=5)
+            
+            atexit.register(cleanup_event_loop)
     
-    # Start the event loop in a daemon thread
-    thread = threading.Thread(target=run_loop, daemon=True, name="SchedulerEventLoop")
-    thread.start()
-    
-    # Give the thread a moment to start the event loop
-    import time
-    time.sleep(0.1)
-    
-    return loop
+    return _event_loop
 
 
 def execute_graph(**kwargs):
