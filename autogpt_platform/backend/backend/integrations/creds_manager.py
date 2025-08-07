@@ -148,12 +148,35 @@ class IntegrationCredentialsManager:
                     # Wait until the credentials are no longer in use anywhere
                     _lock = await self._acquire_lock(user_id, credentials.id)
 
-                fresh_credentials = await oauth_handler.refresh_tokens(credentials)
-                await self.store.update_creds(user_id, fresh_credentials)
-                if _lock and (await _lock.locked()) and (await _lock.owned()):
-                    await _lock.release()
+                try:
+                    fresh_credentials = await oauth_handler.refresh_tokens(credentials)
+                    await self.store.update_creds(user_id, fresh_credentials)
+                    credentials = fresh_credentials
+                except Exception as e:
+                    # Check if this is an OAuth refresh token error (expired/revoked)
+                    error_msg = str(e).lower()
+                    if (
+                        "invalid_grant" in error_msg
+                        or "invalid token" in error_msg  
+                        or "token expired" in error_msg
+                        or "refresh token" in error_msg
+                    ):
+                        logger.warning(
+                            f"OAuth refresh token for {credentials.provider} "
+                            f"credentials #{credentials.id} is expired or revoked. "
+                            f"User will need to re-authenticate. Error: {e}"
+                        )
+                        # Return the original credentials - they can still be used for validation
+                        # but will need re-authentication for actual API calls
+                        pass
+                    else:
+                        # Re-raise non-OAuth errors
+                        logger.error(f"Unexpected error refreshing credentials: {e}")
+                        raise
+                finally:
+                    if _lock and (await _lock.locked()) and (await _lock.owned()):
+                        await _lock.release()
 
-                credentials = fresh_credentials
         return credentials
 
     async def update(self, user_id: str, updated: Credentials) -> None:
