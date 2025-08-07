@@ -55,6 +55,7 @@ TimezoneLiteral = Literal[
 class TimeStrftimeFormat(BaseModel):
     discriminator: Literal["strftime"]
     format: str = "%H:%M:%S"
+    timezone: TimezoneLiteral = "UTC"
 
 
 class TimeISO8601Format(BaseModel):
@@ -130,13 +131,16 @@ class GetCurrentTimeBlock(Block):
             current_time = full_iso.split("T")[1] if "T" in full_iso else full_iso
             current_time = f"T{current_time}"  # Add T prefix for ISO 8601 time format
         else:  # TimeStrftimeFormat
-            current_time = time.strftime(input_data.format_type.format)
+            tz = ZoneInfo(input_data.format_type.timezone)
+            dt = datetime.now(tz=tz)
+            current_time = dt.strftime(input_data.format_type.format)
         yield "time", current_time
 
 
 class DateStrftimeFormat(BaseModel):
     discriminator: Literal["strftime"]
     format: str = "%Y-%m-%d"
+    timezone: TimezoneLiteral = "UTC"
 
 
 class DateISO8601Format(BaseModel):
@@ -225,7 +229,8 @@ class GetCurrentDateBlock(Block):
             # ISO 8601 date format is YYYY-MM-DD
             date_str = current_date.date().isoformat()
         else:  # DateStrftimeFormat
-            current_date = datetime.now() - timedelta(days=offset)
+            tz = ZoneInfo(input_data.format_type.timezone)
+            current_date = datetime.now(tz=tz) - timedelta(days=offset)
             date_str = current_date.strftime(input_data.format_type.format)
 
         yield "date", date_str
@@ -234,6 +239,7 @@ class GetCurrentDateBlock(Block):
 class StrftimeFormat(BaseModel):
     discriminator: Literal["strftime"]
     format: str = "%Y-%m-%d %H:%M:%S"
+    timezone: TimezoneLiteral = "UTC"
 
 
 class ISO8601Format(BaseModel):
@@ -287,7 +293,8 @@ class GetCurrentDateAndTimeBlock(Block):
                 (
                     "date_time",
                     lambda t: abs(
-                        datetime.now() - datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
+                        datetime.now(tz=ZoneInfo("UTC"))
+                        - datetime.strptime(t + "+00:00", "%Y-%m-%d %H:%M:%S%z")
                     )
                     < timedelta(seconds=10),  # 10 seconds error margin.
                 ),
@@ -320,7 +327,9 @@ class GetCurrentDateAndTimeBlock(Block):
             else:
                 current_date_time = dt.isoformat(timespec="seconds")
         else:  # StrftimeFormat
-            current_date_time = time.strftime(input_data.format_type.format)
+            tz = ZoneInfo(input_data.format_type.timezone)
+            dt = datetime.now(tz=tz)
+            current_date_time = dt.strftime(input_data.format_type.format)
         yield "date_time", current_date_time
 
 
