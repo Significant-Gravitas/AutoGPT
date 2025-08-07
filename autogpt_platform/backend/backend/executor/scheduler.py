@@ -194,21 +194,9 @@ class Scheduler(AppService):
         global _event_loop
         _event_loop = asyncio.new_event_loop()
 
-        def run_loop():
-            if _event_loop is not None:
-                asyncio.set_event_loop(_event_loop)
-                try:
-                    logger.info("Starting scheduler event loop thread")
-                    _event_loop.run_forever()
-                except Exception as e:
-                    logger.exception(f"Event loop thread error: {e}")
-                finally:
-                    logger.info("Scheduler event loop thread shutting down")
-                    _event_loop.close()
-
         # Use daemon thread since it should die with the main service
         event_loop_thread = threading.Thread(
-            target=run_loop, daemon=True, name="SchedulerEventLoop"
+            target=_event_loop.run_forever, daemon=True, name="SchedulerEventLoop"
         )
         event_loop_thread.start()
 
@@ -300,12 +288,6 @@ class Scheduler(AppService):
         if self.scheduler:
             logger.info("⏳ Shutting down scheduler...")
             self.scheduler.shutdown(wait=False)
-
-        # Cleanup event loop
-        global _event_loop
-        if _event_loop and not _event_loop.is_closed():
-            logger.info("⏳ Shutting down scheduler event loop...")
-            _event_loop.call_soon_threadsafe(_event_loop.stop)
 
     @expose
     def add_graph_execution_schedule(
