@@ -3,6 +3,7 @@ import time
 import pytest
 
 from backend.util.decorator import async_error_logged, error_logged, time_measured
+from backend.util.retry import continuous_retry
 
 
 @time_measured
@@ -72,3 +73,26 @@ def test_async_error_decorator_swallow_false():
 
     with pytest.raises(ValueError, match="This async error should NOT be swallowed"):
         asyncio.run(run_test())
+
+
+def test_continuous_retry_basic():
+    """Test that continuous_retry decorator retries on exception."""
+
+    class MockManager:
+        def __init__(self):
+            self.call_count = 0
+
+        @continuous_retry(retry_delay=0.01)
+        def failing_method(self):
+            self.call_count += 1
+            if self.call_count <= 2:
+                # Fail on first two calls
+                raise RuntimeError("Simulated failure")
+            return "success"
+
+    mock_manager = MockManager()
+
+    # Should retry and eventually succeed
+    result = mock_manager.failing_method()
+    assert result == "success"
+    assert mock_manager.call_count == 3  # Failed twice, succeeded on third

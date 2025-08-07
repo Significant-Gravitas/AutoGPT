@@ -4,20 +4,12 @@ from enum import Enum
 from typing import Awaitable, Optional
 
 import aio_pika
-import aio_pika.exceptions as aio_ex
 import pika
 import pika.adapters.blocking_connection
-from pika.exceptions import AMQPError
 from pika.spec import BasicProperties
 from pydantic import BaseModel
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_random_exponential,
-)
 
-from backend.util.retry import conn_retry
+from backend.util.retry import conn_retry, func_retry
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -198,12 +190,7 @@ class SyncRabbitMQ(RabbitMQBase):
                     routing_key=queue.routing_key or queue.name,
                 )
 
-    @retry(
-        retry=retry_if_exception_type((AMQPError, ConnectionError)),
-        wait=wait_random_exponential(multiplier=1, max=5),
-        stop=stop_after_attempt(5),
-        reraise=True,
-    )
+    @func_retry
     def publish_message(
         self,
         routing_key: str,
@@ -302,12 +289,7 @@ class AsyncRabbitMQ(RabbitMQBase):
                     exchange, routing_key=queue.routing_key or queue.name
                 )
 
-    @retry(
-        retry=retry_if_exception_type((aio_ex.AMQPError, ConnectionError)),
-        wait=wait_random_exponential(multiplier=1, max=5),
-        stop=stop_after_attempt(5),
-        reraise=True,
-    )
+    @func_retry
     async def publish_message(
         self,
         routing_key: str,

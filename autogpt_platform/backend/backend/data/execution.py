@@ -39,6 +39,7 @@ from pydantic.fields import Field
 from backend.server.v2.store.exceptions import DatabaseError
 from backend.util import type as type_utils
 from backend.util.json import SafeJson
+from backend.util.retry import func_retry
 from backend.util.settings import Config
 from backend.util.truncate import truncate
 
@@ -883,15 +884,15 @@ class RedisExecutionEventBus(RedisEventBus[ExecutionEvent]):
 
     def publish(self, res: GraphExecution | NodeExecutionResult):
         if isinstance(res, GraphExecution):
-            self.publish_graph_exec_update(res)
+            self._publish_graph_exec_update(res)
         else:
-            self.publish_node_exec_update(res)
+            self._publish_node_exec_update(res)
 
-    def publish_node_exec_update(self, res: NodeExecutionResult):
+    def _publish_node_exec_update(self, res: NodeExecutionResult):
         event = NodeExecutionEvent.model_validate(res.model_dump())
         self._publish(event, f"{res.user_id}/{res.graph_id}/{res.graph_exec_id}")
 
-    def publish_graph_exec_update(self, res: GraphExecution):
+    def _publish_graph_exec_update(self, res: GraphExecution):
         event = GraphExecutionEvent.model_validate(res.model_dump())
         self._publish(event, f"{res.user_id}/{res.graph_id}/{res.id}")
 
@@ -923,17 +924,18 @@ class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
     def event_bus_name(self) -> str:
         return config.execution_event_bus_name
 
+    @func_retry
     async def publish(self, res: GraphExecutionMeta | NodeExecutionResult):
         if isinstance(res, GraphExecutionMeta):
-            await self.publish_graph_exec_update(res)
+            await self._publish_graph_exec_update(res)
         else:
-            await self.publish_node_exec_update(res)
+            await self._publish_node_exec_update(res)
 
-    async def publish_node_exec_update(self, res: NodeExecutionResult):
+    async def _publish_node_exec_update(self, res: NodeExecutionResult):
         event = NodeExecutionEvent.model_validate(res.model_dump())
         await self._publish(event, f"{res.user_id}/{res.graph_id}/{res.graph_exec_id}")
 
-    async def publish_graph_exec_update(self, res: GraphExecutionMeta):
+    async def _publish_graph_exec_update(self, res: GraphExecutionMeta):
         # GraphExecutionEvent requires inputs and outputs fields that GraphExecutionMeta doesn't have
         # Add default empty values for compatibility
         event_data = res.model_dump()
