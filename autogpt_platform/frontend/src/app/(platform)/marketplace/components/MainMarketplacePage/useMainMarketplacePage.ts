@@ -29,7 +29,7 @@ export const useMainMarketplacePage = () => {
   } = useGetV2ListStoreAgents(
     {
       sorted_by: "runs",
-      page_size: 20,
+      page_size: 200,
     },
     {
       query: {
