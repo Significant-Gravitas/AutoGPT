@@ -3,12 +3,6 @@ import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Key, storage } from "@/services/storage/local-storage";
-import {
-  getAgptServerUrl,
-  getAgptWsServerUrl,
-  getSupabaseUrl,
-  getSupabaseAnonKey,
-} from "@/lib/env-config";
 import * as Sentry from "@sentry/nextjs";
 import type {
   AddUserCreditsResponse,
@@ -92,8 +86,10 @@ export default class BackendAPI {
   heartbeatTimeoutID: number | null = null;
 
   constructor(
-    baseUrl: string = getAgptServerUrl(),
-    wsUrl: string = getAgptWsServerUrl(),
+    baseUrl: string = process.env.NEXT_PUBLIC_AGPT_SERVER_URL ||
+      "http://localhost:8006/api",
+    wsUrl: string = process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL ||
+      "ws://localhost:8001/ws",
   ) {
     this.baseUrl = baseUrl;
     this.wsUrl = wsUrl;
@@ -101,9 +97,11 @@ export default class BackendAPI {
 
   private async getSupabaseClient(): Promise<SupabaseClient | null> {
     return isClient
-      ? createBrowserClient(getSupabaseUrl(), getSupabaseAnonKey(), {
-          isSingleton: true,
-        })
+      ? createBrowserClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          { isSingleton: true },
+        )
       : await getServerSupabase();
   }
 

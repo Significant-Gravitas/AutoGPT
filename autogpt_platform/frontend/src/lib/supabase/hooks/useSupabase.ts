@@ -4,7 +4,6 @@ import { User } from "@supabase/supabase-js";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { getSupabaseUrl, getSupabaseAnonKey } from "@/lib/env-config";
 import {
   getCurrentUser,
   refreshSession,
@@ -33,12 +32,16 @@ export function useSupabase() {
 
   const supabase = useMemo(() => {
     try {
-      return createBrowserClient(getSupabaseUrl(), getSupabaseAnonKey(), {
-        isSingleton: true,
-        auth: {
-          persistSession: false, // Don't persist session on client with httpOnly cookies
+      return createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          isSingleton: true,
+          auth: {
+            persistSession: false, // Don't persist session on client with httpOnly cookies
+          },
         },
-      });
+      );
     } catch (error) {
       console.error("Error creating Supabase client", error);
       return null;
