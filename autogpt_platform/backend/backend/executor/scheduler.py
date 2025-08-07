@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import threading
 from enum import Enum
 from typing import Optional
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
@@ -11,7 +12,6 @@ from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
-from autogpt_libs.utils.cache import thread_cached
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
@@ -30,6 +30,7 @@ from backend.monitoring import (
 from backend.util.cloud_storage import cleanup_expired_files_async
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.logging import PrefixFilter
+from backend.util.retry import func_retry
 from backend.util.service import AppService, AppServiceClient, endpoint_to_async, expose
 from backend.util.settings import Config
 
@@ -69,13 +70,23 @@ def job_listener(event):
         logger.info(f"Job {event.job_id} completed successfully.")
 
 
-@thread_cached
+_event_loop: asyncio.AbstractEventLoop | None = None
+
+
+@func_retry
 def get_event_loop():
-    return asyncio.new_event_loop()
+    """Get the shared event loop."""
+    if _event_loop is None:
+        raise RuntimeError("Event loop not initialized. Scheduler not started.")
+    return _event_loop
 
 
 def execute_graph(**kwargs):
-    get_event_loop().run_until_complete(_execute_graph(**kwargs))
+    """Execute graph in the shared event loop and wait for completion."""
+    loop = get_event_loop()
+    future = asyncio.run_coroutine_threadsafe(_execute_graph(**kwargs), loop)
+    # Wait for completion to ensure job doesn't exit prematurely
+    future.result(timeout=300)  # 5 minute timeout for graph execution
 
 
 async def _execute_graph(**kwargs):
@@ -99,7 +110,10 @@ async def _execute_graph(**kwargs):
 
 def cleanup_expired_files():
     """Clean up expired files from cloud storage."""
-    get_event_loop().run_until_complete(cleanup_expired_files_async())
+    loop = get_event_loop()
+    future = asyncio.run_coroutine_threadsafe(cleanup_expired_files_async(), loop)
+    # Wait for completion
+    future.result(timeout=300)  # 5 minute timeout for cleanup
 
 
 # Monitoring functions are now imported from monitoring module
@@ -175,6 +189,17 @@ class Scheduler(AppService):
 
     def run_service(self):
         load_dotenv()
+
+        # Initialize the event loop for async jobs
+        global _event_loop
+        _event_loop = asyncio.new_event_loop()
+
+        # Use daemon thread since it should die with the main service
+        event_loop_thread = threading.Thread(
+            target=_event_loop.run_forever, daemon=True, name="SchedulerEventLoop"
+        )
+        event_loop_thread.start()
+
         db_schema, db_url = _extract_schema_from_url(os.getenv("DIRECT_URL"))
         self.scheduler = BlockingScheduler(
             jobstores={

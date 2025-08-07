@@ -21,6 +21,8 @@ from ._auth import (
     GoogleCredentialsInput,
 )
 
+settings = Settings()
+
 
 class CalendarEvent(BaseModel):
     """Structured representation of a Google Calendar event."""
@@ -221,8 +223,8 @@ class GoogleCalendarReadEventsBlock(Block):
                 else None
             ),
             token_uri="https://oauth2.googleapis.com/token",
-            client_id=Settings().secrets.google_client_id,
-            client_secret=Settings().secrets.google_client_secret,
+            client_id=settings.secrets.google_client_id,
+            client_secret=settings.secrets.google_client_secret,
             scopes=credentials.scopes,
         )
         return build("calendar", "v3", credentials=creds)
@@ -569,8 +571,8 @@ class GoogleCalendarCreateEventBlock(Block):
                 else None
             ),
             token_uri="https://oauth2.googleapis.com/token",
-            client_id=Settings().secrets.google_client_id,
-            client_secret=Settings().secrets.google_client_secret,
+            client_id=settings.secrets.google_client_id,
+            client_secret=settings.secrets.google_client_secret,
             scopes=credentials.scopes,
         )
         return build("calendar", "v3", credentials=creds)
