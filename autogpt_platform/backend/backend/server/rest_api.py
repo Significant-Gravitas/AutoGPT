@@ -40,6 +40,7 @@ from backend.integrations.providers import ProviderName
 from backend.server.external.api import external_app
 from backend.server.middleware.security import SecurityHeadersMiddleware
 from backend.util import json
+from backend.util.cloud_storage import shutdown_cloud_storage_handler
 
 settings = backend.util.settings.Settings()
 logger = logging.getLogger(__name__)
@@ -75,9 +76,6 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.graph.migrate_llm_models(LlmModel.GPT4O)
     with launch_darkly_context():
         yield
-
-    # Cleanup cloud storage handler to prevent unclosed client sessions
-    from backend.util.cloud_storage import shutdown_cloud_storage_handler
 
     try:
         await shutdown_cloud_storage_handler()
