@@ -30,6 +30,7 @@ from backend.monitoring import (
 from backend.util.cloud_storage import cleanup_expired_files_async
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.logging import PrefixFilter
+from backend.util.retry import func_retry
 from backend.util.service import AppService, AppServiceClient, endpoint_to_async, expose
 from backend.util.settings import Config
 
@@ -72,6 +73,7 @@ def job_listener(event):
 _event_loop: asyncio.AbstractEventLoop | None = None
 
 
+@func_retry
 def get_event_loop():
     """Get the shared event loop."""
     if _event_loop is None:
@@ -204,16 +206,11 @@ class Scheduler(AppService):
                     logger.info("Scheduler event loop thread shutting down")
                     _event_loop.close()
 
-        # Use non-daemon thread so it survives APScheduler worker lifecycle
+        # Use daemon thread since it should die with the main service
         event_loop_thread = threading.Thread(
-            target=run_loop, daemon=False, name="SchedulerEventLoop"
+            target=run_loop, daemon=True, name="SchedulerEventLoop"
         )
         event_loop_thread.start()
-
-        # Give the thread a moment to start the event loop
-        import time
-
-        time.sleep(0.1)
 
         db_schema, db_url = _extract_schema_from_url(os.getenv("DIRECT_URL"))
         self.scheduler = BlockingScheduler(
