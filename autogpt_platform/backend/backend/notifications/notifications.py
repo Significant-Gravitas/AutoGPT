@@ -5,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Callable
 
 import aio_pika
-from autogpt_libs.utils.cache import thread_cached
 from prisma.enums import NotificationType
 
 from backend.data import rabbitmq
@@ -26,26 +25,14 @@ from backend.data.notifications import (
     get_notif_data_type,
     get_summary_params_type,
 )
-from backend.data.rabbitmq import (
-    AsyncRabbitMQ,
-    Exchange,
-    ExchangeType,
-    Queue,
-    RabbitMQConfig,
-    SyncRabbitMQ,
-)
+from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.data.user import generate_unsubscribe_link
 from backend.notifications.email import EmailSender
+from backend.util.clients import get_database_manager_client
 from backend.util.logging import TruncatedLogger
 from backend.util.metrics import discord_send_alert
 from backend.util.retry import continuous_retry
-from backend.util.service import (
-    AppService,
-    AppServiceClient,
-    endpoint_to_sync,
-    expose,
-    get_service_client,
-)
+from backend.util.service import AppService, AppServiceClient, endpoint_to_sync, expose
 from backend.util.settings import Settings
 
 logger = TruncatedLogger(logging.getLogger(__name__), "[NotificationManager]")
@@ -116,27 +103,6 @@ def create_notification_config() -> RabbitMQConfig:
     )
 
 
-@thread_cached
-def get_db():
-    from backend.executor.database import DatabaseManagerClient
-
-    return get_service_client(DatabaseManagerClient)
-
-
-@thread_cached
-def get_notification_queue() -> SyncRabbitMQ:
-    client = SyncRabbitMQ(create_notification_config())
-    client.connect()
-    return client
-
-
-@thread_cached
-async def get_async_notification_queue() -> AsyncRabbitMQ:
-    client = AsyncRabbitMQ(create_notification_config())
-    await client.connect()
-    return client
-
-
 def get_routing_key(event_type: NotificationType) -> str:
     strategy = NotificationTypeOverride(event_type).strategy
     """Get the appropriate routing key for an event"""
@@ -160,6 +126,8 @@ def queue_notification(event: NotificationEventModel) -> NotificationResult:
 
         exchange = "notifications"
         routing_key = get_routing_key(event.type)
+
+        from backend.util.clients import get_notification_queue
 
         queue = get_notification_queue()
         queue.publish_message(
@@ -185,6 +153,8 @@ async def queue_notification_async(event: NotificationEventModel) -> Notificatio
 
         exchange = "notifications"
         routing_key = get_routing_key(event.type)
+
+        from backend.util.clients import get_async_notification_queue
 
         queue = await get_async_notification_queue()
         await queue.publish_message(
@@ -241,7 +211,7 @@ class NotificationManager(AppService):
             processed_count = 0
             current_time = datetime.now(tz=timezone.utc)
             start_time = current_time - timedelta(days=7)
-            users = get_db().get_active_user_ids_in_timerange(
+            users = get_database_manager_client().get_active_user_ids_in_timerange(
                 end_time=current_time.isoformat(),
                 start_time=start_time.isoformat(),
             )
@@ -275,14 +245,14 @@ class NotificationManager(AppService):
 
             for notification_type in notification_types:
                 # Get all batches for this notification type
-                batches = get_db().get_all_batches_by_type(notification_type)
+                batches = get_database_manager_client().get_all_batches_by_type(
+                    notification_type
+                )
 
                 for batch in batches:
                     # Check if batch has aged out
-                    oldest_message = (
-                        get_db().get_user_notification_oldest_message_in_batch(
-                            batch.user_id, notification_type
-                        )
+                    oldest_message = get_database_manager_client().get_user_notification_oldest_message_in_batch(
+                        batch.user_id, notification_type
                     )
 
                     if not oldest_message:
@@ -296,7 +266,11 @@ class NotificationManager(AppService):
 
                     # If batch has aged out, process it
                     if oldest_message.created_at + max_delay < current_time:
-                        recipient_email = get_db().get_user_email_by_id(batch.user_id)
+                        recipient_email = (
+                            get_database_manager_client().get_user_email_by_id(
+                                batch.user_id
+                            )
+                        )
 
                         if not recipient_email:
                             logger.error(
@@ -313,13 +287,15 @@ class NotificationManager(AppService):
                                 f"User {batch.user_id} does not want to receive {notification_type} notifications"
                             )
                             # Clear the batch
-                            get_db().empty_user_notification_batch(
+                            get_database_manager_client().empty_user_notification_batch(
                                 batch.user_id, notification_type
                             )
                             continue
 
-                        batch_data = get_db().get_user_notification_batch(
-                            batch.user_id, notification_type
+                        batch_data = (
+                            get_database_manager_client().get_user_notification_batch(
+                                batch.user_id, notification_type
+                            )
                         )
 
                         if not batch_data or not batch_data.notifications:
@@ -327,7 +303,7 @@ class NotificationManager(AppService):
                                 f"Batch data not found for user {batch.user_id}"
                             )
                             # Clear the batch
-                            get_db().empty_user_notification_batch(
+                            get_database_manager_client().empty_user_notification_batch(
                                 batch.user_id, notification_type
                             )
                             continue
@@ -363,7 +339,7 @@ class NotificationManager(AppService):
                         )
 
                         # Clear the batch
-                        get_db().empty_user_notification_batch(
+                        get_database_manager_client().empty_user_notification_batch(
                             batch.user_id, notification_type
                         )
 
@@ -412,9 +388,11 @@ class NotificationManager(AppService):
         self, user_id: str, event_type: NotificationType
     ) -> bool:
         """Check if a user wants to receive a notification based on their preferences and email verification status"""
-        validated_email = get_db().get_user_email_verification(user_id)
+        validated_email = get_database_manager_client().get_user_email_verification(
+            user_id
+        )
         preference = (
-            get_db()
+            get_database_manager_client()
             .get_user_notification_preference(user_id)
             .preferences.get(event_type, True)
         )
@@ -505,10 +483,14 @@ class NotificationManager(AppService):
         self, user_id: str, event_type: NotificationType, event: NotificationEventModel
     ) -> bool:
 
-        get_db().create_or_add_to_user_notification_batch(user_id, event_type, event)
+        get_database_manager_client().create_or_add_to_user_notification_batch(
+            user_id, event_type, event
+        )
 
-        oldest_message = get_db().get_user_notification_oldest_message_in_batch(
-            user_id, event_type
+        oldest_message = (
+            get_database_manager_client().get_user_notification_oldest_message_in_batch(
+                user_id, event_type
+            )
         )
         if not oldest_message:
             logger.error(
@@ -559,7 +541,9 @@ class NotificationManager(AppService):
                 return False
             logger.debug(f"Processing immediate notification: {event}")
 
-            recipient_email = get_db().get_user_email_by_id(event.user_id)
+            recipient_email = get_database_manager_client().get_user_email_by_id(
+                event.user_id
+            )
             if not recipient_email:
                 logger.error(f"User email not found for user {event.user_id}")
                 return False
@@ -594,7 +578,9 @@ class NotificationManager(AppService):
                 return False
             logger.info(f"Processing batch notification: {event}")
 
-            recipient_email = get_db().get_user_email_by_id(event.user_id)
+            recipient_email = get_database_manager_client().get_user_email_by_id(
+                event.user_id
+            )
             if not recipient_email:
                 logger.error(f"User email not found for user {event.user_id}")
                 return False
@@ -613,7 +599,9 @@ class NotificationManager(AppService):
             if not should_send:
                 logger.info("Batch not old enough to send")
                 return False
-            batch = get_db().get_user_notification_batch(event.user_id, event.type)
+            batch = get_database_manager_client().get_user_notification_batch(
+                event.user_id, event.type
+            )
             if not batch or not batch.notifications:
                 logger.error(f"Batch not found for user {event.user_id}")
                 return False
@@ -714,7 +702,9 @@ class NotificationManager(AppService):
                 logger.info(
                     f"Successfully sent all {successfully_sent_count} notifications, clearing batch"
                 )
-                get_db().empty_user_notification_batch(event.user_id, event.type)
+                get_database_manager_client().empty_user_notification_batch(
+                    event.user_id, event.type
+                )
             else:
                 logger.warning(
                     f"Only sent {successfully_sent_count} of {len(batch_messages)} notifications. "
@@ -736,7 +726,9 @@ class NotificationManager(AppService):
 
             logger.info(f"Processing summary notification: {model}")
 
-            recipient_email = get_db().get_user_email_by_id(event.user_id)
+            recipient_email = get_database_manager_client().get_user_email_by_id(
+                event.user_id
+            )
             if not recipient_email:
                 logger.error(f"User email not found for user {event.user_id}")
                 return False

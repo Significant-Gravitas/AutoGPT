@@ -16,6 +16,12 @@ from backend.util.service import (
 TEST_SERVICE_PORT = 8765
 
 
+def wait_for_service_ready(service_client_type, timeout_seconds=30):
+    """Helper method to wait for a service to be ready using health check with retry."""
+    client = get_service_client(service_client_type, request_retry=True)
+    client.health_check()  # This will retry until service is ready
+
+
 class ServiceTest(AppService):
     def __init__(self):
         super().__init__()
@@ -27,6 +33,15 @@ class ServiceTest(AppService):
     @classmethod
     def get_port(cls) -> int:
         return TEST_SERVICE_PORT
+
+    def __enter__(self):
+        # Start the service
+        result = super().__enter__()
+
+        # Wait for the service to be ready
+        wait_for_service_ready(ServiceTestClient)
+
+        return result
 
     @expose
     def add(self, a: int, b: int) -> int:
@@ -48,13 +63,13 @@ class ServiceTest(AppService):
         """Method that fails 2 times then succeeds - for testing retry logic"""
         self.fail_count += 1
         if self.fail_count <= 2:
-            raise RuntimeError("Database connection failed")
+            raise RuntimeError(f"Intended error for testing {self.fail_count}/2")
         return a + b
 
     @expose
     def always_failing_add(self, a: int, b: int) -> int:
         """Method that always fails - for testing no retry when disabled"""
-        raise RuntimeError("Database connection failed")
+        raise RuntimeError("Intended error for testing")
 
 
 class ServiceTestClient(AppServiceClient):
@@ -349,5 +364,5 @@ def test_service_no_retry_when_disabled(server):
         client = get_service_client(ServiceTestClient, request_retry=False)
 
         # This should fail immediately without retry
-        with pytest.raises(RuntimeError, match="Database connection failed"):
+        with pytest.raises(RuntimeError, match="Intended error for testing"):
             client.always_failing_add(5, 3)
