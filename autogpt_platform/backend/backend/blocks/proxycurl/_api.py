@@ -71,7 +71,28 @@ class Education(BaseModel):
 
 
 class PersonProfileResponse(BaseModel):
-    """Response model for LinkedIn person profile."""
+    """Response model for LinkedIn person profile.
+
+    This model represents the response from Proxycurl's LinkedIn profile API.
+    The API returns comprehensive profile data including work experience,
+    education, skills, and contact information (when available).
+
+    Example API Response:
+    {
+        "public_identifier": "johnsmith",
+        "full_name": "John Smith",
+        "occupation": "Software Engineer at Tech Corp",
+        "experiences": [
+            {
+                "company": "Tech Corp",
+                "title": "Software Engineer",
+                "starts_at": {"year": 2020, "month": 1}
+            }
+        ],
+        "education": [...],
+        "skills": ["Python", "JavaScript", ...]
+    }
+    """
 
     public_identifier: Optional[str] = None
     profile_pic_url: Optional[str] = None
@@ -104,7 +125,21 @@ class SimilarProfile(BaseModel):
 
 
 class PersonLookupResponse(BaseModel):
-    """Response model for LinkedIn person lookup."""
+    """Response model for LinkedIn person lookup.
+
+    This model represents the response from Proxycurl's person lookup API.
+    The API returns a LinkedIn profile URL and similarity scores when
+    searching for a person by name and company.
+
+    Example API Response:
+    {
+        "url": "https://www.linkedin.com/in/johnsmith/",
+        "name_similarity_score": 0.95,
+        "company_similarity_score": 0.88,
+        "title_similarity_score": 0.75,
+        "location_similarity_score": 0.60
+    }
+    """
 
     url: str | None = None
     name_similarity_score: float | None
@@ -116,14 +151,33 @@ class PersonLookupResponse(BaseModel):
 
 
 class RoleLookupResponse(BaseModel):
-    """Response model for LinkedIn role lookup."""
+    """Response model for LinkedIn role lookup.
+
+    This model represents the response from Proxycurl's role lookup API.
+    The API returns LinkedIn profile data for a specific role at a company.
+
+    Example API Response:
+    {
+        "linkedin_profile_url": "https://www.linkedin.com/in/johnsmith/",
+        "profile_data": {...}  // Full PersonProfileResponse data when enrich_profile=True
+    }
+    """
 
     linkedin_profile_url: Optional[str] = None
     profile_data: Optional[PersonProfileResponse] = None
 
 
 class ProfilePictureResponse(BaseModel):
-    """Response model for LinkedIn profile picture."""
+    """Response model for LinkedIn profile picture.
+
+    This model represents the response from Proxycurl's profile picture API.
+    The API returns a URL to the person's LinkedIn profile picture.
+
+    Example API Response:
+    {
+        "profile_picture_url": "https://media.licdn.com/dms/image/..."
+    }
+    """
 
     profile_picture_url: str = Field(..., description="URL of the profile picture")
 
