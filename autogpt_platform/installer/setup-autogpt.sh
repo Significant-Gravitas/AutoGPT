@@ -313,9 +313,6 @@ main() {
     setup_logs
     run_concurrent_setup
 
-    print_color "YELLOW" "Starting frontend..."
-    (cd "$REPO_DIR/autogpt_platform/frontend" && pnpm dev > "$LOG_DIR/frontend_dev.log" 2>&1 &)
-
     print_color "YELLOW" "Waiting for services to start..."
     sleep 20
 
@@ -330,7 +327,7 @@ main() {
 
     print_color "GREEN" "Setup complete!"
     print_color "BLUE" "Access AutoGPT at: http://localhost:3000"
-    print_color "YELLOW" "To stop services, press Ctrl+C and run 'docker compose down' in $REPO_DIR/autogpt_platform"
+    print_color "YELLOW" "To stop services, run 'docker compose down' in $REPO_DIR/autogpt_platform"
     echo ""
     print_color "GREEN" "Press Enter to exit (services will keep running)..."
     read -r

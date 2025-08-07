@@ -120,13 +120,10 @@ if errorlevel 1 (
 echo Frontend dependencies installed successfully.
 echo.
 
-REM --- Start frontend dev server in the same terminal ---
+REM --- Setup complete ---
 echo Setup complete!
 echo Access AutoGPT at: http://localhost:3000
-echo To stop services, press Ctrl+C and run "docker compose down" in %REPO_DIR%\autogpt_platform
+echo To stop services, run "docker compose down" in %REPO_DIR%\autogpt_platform
 echo.
-echo The frontend will now start in this terminal. Closing this window will stop the frontend.
-echo Press Ctrl+C to stop the frontend at any time.
-echo.
-
-call pnpm.cmd dev
+echo Press any key to exit (services will keep running)...
+pause >nul
