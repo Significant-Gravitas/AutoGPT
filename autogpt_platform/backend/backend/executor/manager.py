@@ -732,7 +732,6 @@ class ExecutionProcessor:
         log_metadata: LogMetadata,
         execution_stats: GraphExecutionStats,
     ) -> ExecutionStatus:
-
         """
         Returns:
             dict: The execution statistics of the graph execution.
