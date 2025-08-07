@@ -9,8 +9,7 @@ from backend.data.block import (
 )
 from backend.data.model import SchemaField
 from backend.integrations.providers import ProviderName
-from backend.util import settings
-from backend.util.settings import AppEnvironment, BehaveAs
+from backend.util.settings import AppEnvironment, BehaveAs, Settings
 
 from ._api import (
     TEST_CREDENTIALS,
@@ -19,7 +18,7 @@ from ._api import (
     Slant3DCredentialsInput,
 )
 
-settings = settings.Settings()
+settings = Settings()
 
 
 class Slant3DTriggerBase:
