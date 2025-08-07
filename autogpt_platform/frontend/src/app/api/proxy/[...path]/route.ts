@@ -3,14 +3,11 @@ import {
   makeAuthenticatedFileUpload,
   makeAuthenticatedRequest,
 } from "@/lib/autogpt-server-api/helpers";
+import { getAgptServerUrl } from "@/lib/env-config";
 import { NextRequest, NextResponse } from "next/server";
 
 function getBackendBaseUrl() {
-  if (process.env.NEXT_PUBLIC_AGPT_SERVER_URL) {
-    return process.env.NEXT_PUBLIC_AGPT_SERVER_URL.replace("/api", "");
-  }
-
-  return "http://localhost:8006";
+  return getAgptServerUrl().replace("/api", "");
 }
 
 function buildBackendUrl(path: string[], queryString: string): string {

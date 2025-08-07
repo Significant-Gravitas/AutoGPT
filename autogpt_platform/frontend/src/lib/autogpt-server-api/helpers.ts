@@ -1,5 +1,6 @@
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { Key, storage } from "@/services/storage/local-storage";
+import { getAgptServerUrl } from "@/lib/env-config";
 import { isServerSide } from "../utils/is-server-side";
 
 import { GraphValidationErrorResponse } from "./types";
@@ -56,9 +57,7 @@ export function buildClientUrl(path: string): string {
 }
 
 export function buildServerUrl(path: string): string {
-  const baseUrl =
-    process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006/api";
-  return `${baseUrl}${path}`;
+  return `${getAgptServerUrl()}${path}`;
 }
 
 export function buildUrlWithQuery(

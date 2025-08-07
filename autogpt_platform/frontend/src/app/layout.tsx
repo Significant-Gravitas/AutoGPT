@@ -28,7 +28,7 @@ export default async function RootLayout({
     >
       <head>
         <GoogleAnalytics
-          gaId={process.env.GA_MEASUREMENT_ID || "G-FH2XK2W4GN"} // This is the measurement Id for the Google Analytics dev project
+          gaId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-FH2XK2W4GN"} // This is the measurement Id for the Google Analytics dev project
         />
       </head>
       <body>
