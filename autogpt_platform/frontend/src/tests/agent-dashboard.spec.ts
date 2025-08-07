@@ -30,7 +30,9 @@ test.describe("Agent Dashboard", () => {
     await submitAgentButton.click();
 
     await expect(getText("Publish Agent")).toBeVisible();
-    await expect(getText("Select your project that you'd like to publish")).toBeVisible();
+    await expect(
+      getText("Select your project that you'd like to publish"),
+    ).toBeVisible();
 
     await page.locator('button[aria-label="Close"]').click();
     await expect(getText("Publish Agent")).not.toBeVisible();
@@ -47,7 +49,7 @@ test.describe("Agent Dashboard", () => {
     await expect(getText(TEST_AGENT_DATA.description)).toBeVisible();
   });
 
-//   test("agent table actions work correctly", async ({ page }) => {
-//     // TODO: Implement test for view and delete actions
-//   });
+  //   test("agent table actions work correctly", async ({ page }) => {
+  //     // TODO: Implement test for view and delete actions
+  //   });
 });
