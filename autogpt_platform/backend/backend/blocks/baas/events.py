@@ -11,10 +11,10 @@ from backend.sdk import (
     BlockOutput,
     BlockSchema,
     CredentialsMetaInput,
-    Requests,
     SchemaField,
 )
 
+from ._api import MeetingBaasAPI
 from ._config import baas
 
 
@@ -59,25 +59,19 @@ class BaasEventListBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         api_key = credentials.api_key.get_secret_value()
+        api = MeetingBaasAPI(api_key)
 
-        # Build query parameters
-        params = {"calendar_id": input_data.calendar_id}
-
-        if input_data.start_date_gte:
-            params["start_date_gte"] = input_data.start_date_gte
-        if input_data.start_date_lte:
-            params["start_date_lte"] = input_data.start_date_lte
-        if input_data.cursor:
-            params["cursor"] = input_data.cursor
-
-        # List events
-        response = await Requests().get(
-            "https://api.meetingbaas.com/calendar_events",
-            headers={"x-meeting-baas-api-key": api_key},
-            params=params,
+        # List events using API client
+        data = await api.list_calendar_events(
+            calendar_id=input_data.calendar_id,
+            start_date_gte=(
+                input_data.start_date_gte if input_data.start_date_gte else None
+            ),
+            start_date_lte=(
+                input_data.start_date_lte if input_data.start_date_lte else None
+            ),
+            cursor=input_data.cursor if input_data.cursor else None,
         )
-
-        data = response.json()
 
         yield "events", data.get("events", [])
         yield "next_cursor", data.get("next", "")
@@ -110,14 +104,10 @@ class BaasEventGetDetailsBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         api_key = credentials.api_key.get_secret_value()
+        api = MeetingBaasAPI(api_key)
 
         # Get event details
-        response = await Requests().get(
-            f"https://api.meetingbaas.com/calendar_events/{input_data.event_id}",
-            headers={"x-meeting-baas-api-key": api_key},
-        )
-
-        event = response.json()
+        event = await api.get_calendar_event(input_data.event_id)
 
         yield "event", event
 
@@ -157,19 +147,14 @@ class BaasEventScheduleBotBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         api_key = credentials.api_key.get_secret_value()
-
-        # Build query parameters
-        params = {"all_occurrences": str(input_data.all_occurrences).lower()}
+        api = MeetingBaasAPI(api_key)
 
         # Schedule bot
-        response = await Requests().post(
-            f"https://api.meetingbaas.com/calendar_events/{input_data.event_id}/bot",
-            headers={"x-meeting-baas-api-key": api_key},
-            params=params,
-            json=input_data.bot_config,
+        events = await api.schedule_bot_for_event(
+            event_id=input_data.event_id,
+            bot_config=input_data.bot_config,
+            all_occurrences=input_data.all_occurrences,
         )
-
-        events = response.json()
 
         yield "events", events
 
@@ -208,18 +193,13 @@ class BaasEventUnscheduleBotBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         api_key = credentials.api_key.get_secret_value()
-
-        # Build query parameters
-        params = {"all_occurrences": str(input_data.all_occurrences).lower()}
+        api = MeetingBaasAPI(api_key)
 
         # Unschedule bot
-        response = await Requests().delete(
-            f"https://api.meetingbaas.com/calendar_events/{input_data.event_id}/bot",
-            headers={"x-meeting-baas-api-key": api_key},
-            params=params,
+        events = await api.unschedule_bot_from_event(
+            event_id=input_data.event_id,
+            all_occurrences=input_data.all_occurrences,
         )
-
-        events = response.json()
 
         yield "events", events
 
@@ -257,20 +237,13 @@ class BaasEventPatchBotBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         api_key = credentials.api_key.get_secret_value()
-
-        # Build query parameters
-        params = {}
-        if input_data.all_occurrences is not None:
-            params["all_occurrences"] = str(input_data.all_occurrences).lower()
+        api = MeetingBaasAPI(api_key)
 
         # Patch bot
-        response = await Requests().patch(
-            f"https://api.meetingbaas.com/calendar_events/{input_data.event_id}/bot",
-            headers={"x-meeting-baas-api-key": api_key},
-            params=params,
-            json=input_data.bot_patch,
+        events = await api.patch_bot_for_event(
+            event_id=input_data.event_id,
+            bot_patch=input_data.bot_patch,
+            all_occurrences=input_data.all_occurrences,
         )
-
-        events = response.json()
 
         yield "events", events

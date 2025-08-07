@@ -9,10 +9,10 @@ from backend.sdk import (
     BlockOutput,
     BlockSchema,
     CredentialsMetaInput,
-    Requests,
     SchemaField,
 )
 
+from ._api import MeetingBaasAPI
 from ._config import baas
 
 
@@ -54,26 +54,20 @@ class BaasCalendarConnectBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         api_key = credentials.api_key.get_secret_value()
+        api = MeetingBaasAPI(api_key)
 
-        # Build request body
-        body = {
-            "oauth_client_id": input_data.oauth_client_id,
-            "oauth_client_secret": input_data.oauth_client_secret,
-            "oauth_refresh_token": input_data.oauth_refresh_token,
-            "platform": input_data.platform,
-        }
-
-        if input_data.calendar_email_or_id:
-            body["calendar_email"] = input_data.calendar_email_or_id
-
-        # Connect calendar
-        response = await Requests().post(
-            "https://api.meetingbaas.com/calendars",
-            headers={"x-meeting-baas-api-key": api_key},
-            json=body,
+        # Connect calendar using API client
+        calendar = await api.create_calendar(
+            oauth_client_id=input_data.oauth_client_id,
+            oauth_client_secret=input_data.oauth_client_secret,
+            oauth_refresh_token=input_data.oauth_refresh_token,
+            platform=input_data.platform,
+            raw_calendar_id=(
+                input_data.calendar_email_or_id
+                if input_data.calendar_email_or_id
+                else None
+            ),
         )
-
-        calendar = response.json()
 
         yield "calendar_id", calendar.get("uuid", "")
         yield "calendar_obj", calendar
@@ -107,14 +101,10 @@ class BaasCalendarListAllBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         api_key = credentials.api_key.get_secret_value()
+        api = MeetingBaasAPI(api_key)
 
         # List calendars
-        response = await Requests().get(
-            "https://api.meetingbaas.com/calendars",
-            headers={"x-meeting-baas-api-key": api_key},
-        )
-
-        calendars = response.json()
+        calendars = await api.list_calendars()
 
         yield "calendars", calendars
 
@@ -156,26 +146,16 @@ class BaasCalendarUpdateCredsBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         api_key = credentials.api_key.get_secret_value()
+        api = MeetingBaasAPI(api_key)
 
-        # Build request body with only provided fields
-        body = {}
-        if input_data.oauth_client_id:
-            body["oauth_client_id"] = input_data.oauth_client_id
-        if input_data.oauth_client_secret:
-            body["oauth_client_secret"] = input_data.oauth_client_secret
-        if input_data.oauth_refresh_token:
-            body["oauth_refresh_token"] = input_data.oauth_refresh_token
-        if input_data.platform:
-            body["platform"] = input_data.platform
-
-        # Update calendar
-        response = await Requests().patch(
-            f"https://api.meetingbaas.com/calendars/{input_data.calendar_id}",
-            headers={"x-meeting-baas-api-key": api_key},
-            json=body,
+        # Update calendar - API requires all fields for PATCH
+        calendar = await api.update_calendar(
+            calendar_id=input_data.calendar_id,
+            oauth_client_id=input_data.oauth_client_id,
+            oauth_client_secret=input_data.oauth_client_secret,
+            oauth_refresh_token=input_data.oauth_refresh_token,
+            platform=input_data.platform,
         )
-
-        calendar = response.json()
 
         yield "calendar_obj", calendar
 
@@ -209,14 +189,10 @@ class BaasCalendarDeleteBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         api_key = credentials.api_key.get_secret_value()
+        api = MeetingBaasAPI(api_key)
 
         # Delete calendar
-        response = await Requests().delete(
-            f"https://api.meetingbaas.com/calendars/{input_data.calendar_id}",
-            headers={"x-meeting-baas-api-key": api_key},
-        )
-
-        deleted = response.status in [200, 204]
+        deleted = await api.delete_calendar(input_data.calendar_id)
 
         yield "deleted", deleted
 
@@ -252,14 +228,10 @@ class BaasCalendarResyncAllBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         api_key = credentials.api_key.get_secret_value()
+        api = MeetingBaasAPI(api_key)
 
         # Resync all calendars
-        response = await Requests().post(
-            "https://api.meetingbaas.com/internal/calendar/resync_all",
-            headers={"x-meeting-baas-api-key": api_key},
-        )
-
-        data = response.json()
+        data = await api.resync_all_calendars()
 
         yield "synced_ids", data.get("synced_calendars", [])
         yield "errors", data.get("errors", [])

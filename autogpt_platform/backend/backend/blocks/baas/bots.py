@@ -11,10 +11,10 @@ from backend.sdk import (
     BlockOutput,
     BlockSchema,
     CredentialsMetaInput,
-    Requests,
     SchemaField,
 )
 
+from ._api import MeetingBaasAPI
 from ._config import baas
 
 
@@ -79,37 +79,23 @@ class BaasBotJoinMeetingBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         api_key = credentials.api_key.get_secret_value()
+        api = MeetingBaasAPI(api_key)
 
-        # Build request body
-        body = {
-            "meeting_url": input_data.meeting_url,
-            "bot_name": input_data.bot_name,
-            "reserved": input_data.reserved,
-            "speech_to_text": input_data.speech_to_text,
-        }
-
-        # Add optional fields
-        if input_data.bot_image:
-            body["bot_image"] = input_data.bot_image
-        if input_data.entry_message:
-            body["entry_message"] = input_data.entry_message
-        if input_data.start_time is not None:
-            body["start_time"] = input_data.start_time
-        if input_data.webhook_url:
-            body["webhook_url"] = input_data.webhook_url
-        if input_data.timeouts:
-            body["automatic_leave"] = input_data.timeouts
-        if input_data.extra:
-            body["extra"] = input_data.extra
-
-        # Join meeting
-        response = await Requests().post(
-            "https://api.meetingbaas.com/bots",
-            headers={"x-meeting-baas-api-key": api_key},
-            json=body,
+        # Call API with all parameters
+        data = await api.join_meeting(
+            bot_name=input_data.bot_name,
+            meeting_url=input_data.meeting_url,
+            reserved=input_data.reserved,
+            bot_image=input_data.bot_image if input_data.bot_image else None,
+            entry_message=(
+                input_data.entry_message if input_data.entry_message else None
+            ),
+            start_time=input_data.start_time,
+            speech_to_text=input_data.speech_to_text,
+            webhook_url=input_data.webhook_url if input_data.webhook_url else None,
+            automatic_leave=input_data.timeouts if input_data.timeouts else None,
+            extra=input_data.extra if input_data.extra else None,
         )
-
-        data = response.json()
 
         yield "bot_id", data.get("bot_id", "")
         yield "join_response", data
@@ -142,15 +128,10 @@ class BaasBotLeaveMeetingBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         api_key = credentials.api_key.get_secret_value()
+        api = MeetingBaasAPI(api_key)
 
         # Leave meeting
-        response = await Requests().delete(
-            f"https://api.meetingbaas.com/bots/{input_data.bot_id}",
-            headers={"x-meeting-baas-api-key": api_key},
-        )
-
-        # Check if successful
-        left = response.status in [200, 204]
+        left = await api.leave_meeting(input_data.bot_id)
 
         yield "left", left
 
@@ -189,21 +170,13 @@ class BaasBotFetchMeetingDataBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         api_key = credentials.api_key.get_secret_value()
-
-        # Build query parameters
-        params = {
-            "bot_id": input_data.bot_id,
-            "include_transcripts": str(input_data.include_transcripts).lower(),
-        }
+        api = MeetingBaasAPI(api_key)
 
         # Fetch meeting data
-        response = await Requests().get(
-            "https://api.meetingbaas.com/bots/meeting_data",
-            headers={"x-meeting-baas-api-key": api_key},
-            params=params,
+        data = await api.get_meeting_data(
+            bot_id=input_data.bot_id,
+            include_transcripts=input_data.include_transcripts,
         )
-
-        data = response.json()
 
         yield "mp4_url", data.get("mp4", "")
         yield "transcript", data.get("bot_data", {}).get("transcripts", [])
@@ -241,14 +214,10 @@ class BaasBotFetchScreenshotsBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         api_key = credentials.api_key.get_secret_value()
+        api = MeetingBaasAPI(api_key)
 
         # Fetch screenshots
-        response = await Requests().get(
-            f"https://api.meetingbaas.com/bots/{input_data.bot_id}/screenshots",
-            headers={"x-meeting-baas-api-key": api_key},
-        )
-
-        screenshots = response.json()
+        screenshots = await api.get_screenshots(input_data.bot_id)
 
         yield "screenshots", screenshots
 
@@ -282,15 +251,10 @@ class BaasBotDeleteRecordingBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         api_key = credentials.api_key.get_secret_value()
+        api = MeetingBaasAPI(api_key)
 
         # Delete recording data
-        response = await Requests().post(
-            f"https://api.meetingbaas.com/bots/{input_data.bot_id}/delete_data",
-            headers={"x-meeting-baas-api-key": api_key},
-        )
-
-        # Check if successful
-        deleted = response.status == 200
+        deleted = await api.delete_data(input_data.bot_id)
 
         yield "deleted", deleted
 
@@ -338,30 +302,23 @@ class BaasBotRetranscribeBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         api_key = credentials.api_key.get_secret_value()
+        api = MeetingBaasAPI(api_key)
 
-        # Build request body
-        body = {"bot_uuid": input_data.bot_id, "provider": input_data.provider}
-
-        if input_data.webhook_url:
-            body["webhook_url"] = input_data.webhook_url
-
+        # Build speech_to_text config from provider and custom options
+        speech_to_text = {"provider": input_data.provider}
         if input_data.custom_options:
-            body.update(input_data.custom_options)
+            speech_to_text.update(input_data.custom_options)
 
         # Start retranscription
-        response = await Requests().post(
-            "https://api.meetingbaas.com/bots/retranscribe",
-            headers={"x-meeting-baas-api-key": api_key},
-            json=body,
+        result = await api.retranscribe(
+            bot_uuid=input_data.bot_id,
+            speech_to_text=speech_to_text,
+            webhook_url=input_data.webhook_url if input_data.webhook_url else None,
         )
 
         # Check if accepted
-        accepted = response.status in [200, 202]
-        job_id = None
-
-        if accepted and response.status == 200:
-            data = response.json()
-            job_id = data.get("job_id")
+        accepted = result.get("accepted", False) or "job_id" in result
+        job_id = result.get("job_id")
 
         yield "job_id", job_id
         yield "accepted", accepted
