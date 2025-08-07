@@ -75,6 +75,15 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.graph.migrate_llm_models(LlmModel.GPT4O)
     with launch_darkly_context():
         yield
+
+    # Cleanup cloud storage handler to prevent unclosed client sessions
+    from backend.util.cloud_storage import shutdown_cloud_storage_handler
+
+    try:
+        await shutdown_cloud_storage_handler()
+    except Exception as e:
+        logger.warning(f"Error shutting down cloud storage handler: {e}")
+
     await backend.data.db.disconnect()
 
 
