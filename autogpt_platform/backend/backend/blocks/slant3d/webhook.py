@@ -19,6 +19,8 @@ from ._api import (
     Slant3DCredentialsInput,
 )
 
+settings = settings.Settings()
+
 
 class Slant3DTriggerBase:
     """Base class for Slant3D webhook triggers"""
@@ -76,8 +78,8 @@ class Slant3DOrderWebhookBlock(Slant3DTriggerBase, Block):
             ),
             # All webhooks are currently subscribed to for all orders. This works for self hosted, but not for cloud hosted prod
             disabled=(
-                settings.Settings().config.behave_as == BehaveAs.CLOUD
-                and settings.Settings().config.app_env != AppEnvironment.LOCAL
+                settings.config.behave_as == BehaveAs.CLOUD
+                and settings.config.app_env != AppEnvironment.LOCAL
             ),
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=self.Input,
