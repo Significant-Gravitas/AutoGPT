@@ -268,6 +268,7 @@ export type GraphExecutionMeta = {
     node_exec_time: number;
     node_exec_time_cpu_only: number;
     node_exec_count: number;
+    activity_status?: string;
   };
 };
 
@@ -369,6 +370,15 @@ export type NodeExecutionResult = {
   queue_time?: Date;
   start_time?: Date;
   end_time?: Date;
+};
+
+/* Structured validation error types for graph execution */
+export type GraphValidationErrorResponse = {
+  detail: {
+    type: "validation_error";
+    message: string;
+    node_errors: Record<string, Record<string, string>>;
+  };
 };
 
 /* *** LIBRARY *** */

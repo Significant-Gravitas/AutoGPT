@@ -116,6 +116,7 @@ const FlowEditor: React.FC<{
     isRunning,
     isStopping,
     isScheduling,
+    graphExecutionError,
     nodes,
     setNodes,
     edges,
@@ -764,6 +765,7 @@ const FlowEditor: React.FC<{
           ref={runnerUIRef}
           graph={savedAgent}
           nodes={nodes}
+          graphExecutionError={graphExecutionError}
           createRunSchedule={createRunSchedule}
           saveAndRun={saveAndRun}
         />

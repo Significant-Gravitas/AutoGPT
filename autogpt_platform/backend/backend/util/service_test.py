@@ -16,9 +16,16 @@ from backend.util.service import (
 TEST_SERVICE_PORT = 8765
 
 
+def wait_for_service_ready(service_client_type, timeout_seconds=30):
+    """Helper method to wait for a service to be ready using health check with retry."""
+    client = get_service_client(service_client_type, request_retry=True)
+    client.health_check()  # This will retry until service is ready
+
+
 class ServiceTest(AppService):
     def __init__(self):
         super().__init__()
+        self.fail_count = 0
 
     def cleanup(self):
         pass
@@ -26,6 +33,15 @@ class ServiceTest(AppService):
     @classmethod
     def get_port(cls) -> int:
         return TEST_SERVICE_PORT
+
+    def __enter__(self):
+        # Start the service
+        result = super().__enter__()
+
+        # Wait for the service to be ready
+        wait_for_service_ready(ServiceTestClient)
+
+        return result
 
     @expose
     def add(self, a: int, b: int) -> int:
@@ -42,6 +58,19 @@ class ServiceTest(AppService):
 
         return self.run_and_wait(add_async(a, b))
 
+    @expose
+    def failing_add(self, a: int, b: int) -> int:
+        """Method that fails 2 times then succeeds - for testing retry logic"""
+        self.fail_count += 1
+        if self.fail_count <= 2:
+            raise RuntimeError(f"Intended error for testing {self.fail_count}/2")
+        return a + b
+
+    @expose
+    def always_failing_add(self, a: int, b: int) -> int:
+        """Method that always fails - for testing no retry when disabled"""
+        raise RuntimeError("Intended error for testing")
+
 
 class ServiceTestClient(AppServiceClient):
     @classmethod
@@ -51,6 +80,8 @@ class ServiceTestClient(AppServiceClient):
     add = ServiceTest.add
     subtract = ServiceTest.subtract
     fun_with_async = ServiceTest.fun_with_async
+    failing_add = ServiceTest.failing_add
+    always_failing_add = ServiceTest.always_failing_add
 
     add_async = endpoint_to_async(ServiceTest.add)
     subtract_async = endpoint_to_async(ServiceTest.subtract)
@@ -313,3 +344,25 @@ def test_cached_property_behavior():
     resource3 = obj.expensive_resource
     assert creation_count == 2  # New creation
     assert resource1 != resource3
+
+
+def test_service_with_runtime_error_retries(server):
+    """Test a real service method that throws RuntimeError and gets retried"""
+    with ServiceTest():
+        # Get client with retry enabled
+        client = get_service_client(ServiceTestClient, request_retry=True)
+
+        # This should succeed after retries (fails 2 times, succeeds on 3rd try)
+        result = client.failing_add(5, 3)
+        assert result == 8
+
+
+def test_service_no_retry_when_disabled(server):
+    """Test that retry doesn't happen when disabled"""
+    with ServiceTest():
+        # Get client with retry disabled
+        client = get_service_client(ServiceTestClient, request_retry=False)
+
+        # This should fail immediately without retry
+        with pytest.raises(RuntimeError, match="Intended error for testing"):
+            client.always_failing_add(5, 3)

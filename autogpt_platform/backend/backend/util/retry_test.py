@@ -8,7 +8,7 @@ from backend.util.retry import conn_retry
 def test_conn_retry_sync_function():
     retry_count = 0
 
-    @conn_retry("Test", "Test function", max_retry=2, max_wait=0.1, min_wait=0.1)
+    @conn_retry("Test", "Test function", max_retry=2, max_wait=0.1)
     def test_function():
         nonlocal retry_count
         retry_count -= 1
@@ -30,7 +30,7 @@ def test_conn_retry_sync_function():
 async def test_conn_retry_async_function():
     retry_count = 0
 
-    @conn_retry("Test", "Test function", max_retry=2, max_wait=0.1, min_wait=0.1)
+    @conn_retry("Test", "Test function", max_retry=2, max_wait=0.1)
     async def test_function():
         nonlocal retry_count
         await asyncio.sleep(1)

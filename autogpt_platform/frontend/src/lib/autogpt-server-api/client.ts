@@ -66,8 +66,9 @@ import type {
   UserPasswordCredentials,
   UsersBalanceHistoryResponse,
 } from "./types";
+import { isServerSide } from "../utils/is-server-side";
 
-const isClient = typeof window !== "undefined";
+const isClient = !isServerSide();
 
 export default class BackendAPI {
   private baseUrl: string;
@@ -875,8 +876,7 @@ export default class BackendAPI {
     // Dynamic import is required even for client-only functions because helpers.ts
     // has server-only imports (like getServerSupabase) at the top level. Static imports
     // would bundle server-only code into the client bundle, causing runtime errors.
-    const { buildClientUrl, parseErrorResponse, handleFetchError } =
-      await import("./helpers");
+    const { buildClientUrl, handleFetchError } = await import("./helpers");
 
     const uploadUrl = buildClientUrl(path);
 
@@ -887,8 +887,7 @@ export default class BackendAPI {
     });
 
     if (!response.ok) {
-      const errorData = await parseErrorResponse(response);
-      throw handleFetchError(response, errorData);
+      throw await handleFetchError(response);
     }
 
     return await response.json();
@@ -993,12 +992,8 @@ export default class BackendAPI {
     // Dynamic import is required even for client-only functions because helpers.ts
     // has server-only imports (like getServerSupabase) at the top level. Static imports
     // would bundle server-only code into the client bundle, causing runtime errors.
-    const {
-      buildClientUrl,
-      buildUrlWithQuery,
-      parseErrorResponse,
-      handleFetchError,
-    } = await import("./helpers");
+    const { buildClientUrl, buildUrlWithQuery, handleFetchError } =
+      await import("./helpers");
 
     const payloadAsQuery = ["GET", "DELETE"].includes(method);
     let url = buildClientUrl(path);
@@ -1017,8 +1012,7 @@ export default class BackendAPI {
     });
 
     if (!response.ok) {
-      const errorData = await parseErrorResponse(response);
-      throw handleFetchError(response, errorData);
+      throw await handleFetchError(response);
     }
 
     return await response.json();

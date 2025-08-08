@@ -17,9 +17,13 @@ logger = logging.getLogger(__name__)
 P = ParamSpec("P")
 T = TypeVar("T")
 
+_is_initialized = False
+
 
 def get_client() -> LDClient:
     """Get the LaunchDarkly client singleton."""
+    if not _is_initialized:
+        initialize_launchdarkly()
     return ldclient.get()
 
 
@@ -37,6 +41,8 @@ def initialize_launchdarkly() -> None:
     ldclient.set_config(config)
 
     if ldclient.get().is_initialized():
+        global _is_initialized
+        _is_initialized = True
         logger.info("LaunchDarkly client initialized successfully")
     else:
         logger.error("LaunchDarkly client failed to initialize")
@@ -58,6 +64,30 @@ def create_context(
         for key, value in additional_attributes.items():
             builder.set(key, value)
     return builder.build()
+
+
+def is_feature_enabled(flag_key: str, user_id: str, default: bool = False) -> bool:
+    """
+    Simple helper to check if a feature flag is enabled for a user.
+
+    Args:
+        flag_key: The LaunchDarkly feature flag key
+        user_id: The user ID to evaluate the flag for
+        default: Default value if LaunchDarkly is unavailable or flag evaluation fails
+
+    Returns:
+        True if feature is enabled, False otherwise
+    """
+    try:
+        client = get_client()
+        context = create_context(str(user_id))
+        return client.variation(flag_key, context, default)
+
+    except Exception as e:
+        logger.debug(
+            f"LaunchDarkly flag evaluation failed for {flag_key}: {e}, using default={default}"
+        )
+        return default
 
 
 def feature_flag(

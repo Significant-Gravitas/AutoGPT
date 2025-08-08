@@ -5,7 +5,6 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from autogpt_libs.utils.cache import thread_cached
 from autogpt_libs.utils.synchronize import AsyncRedisKeyedMutex
 from pydantic import SecretStr
 
@@ -229,17 +228,15 @@ class IntegrationCredentialsStore:
         return self._locks
 
     @property
-    @thread_cached
     def db_manager(self):
         if prisma.is_connected():
             from backend.data import user
 
             return user
         else:
-            from backend.executor.database import DatabaseManagerAsyncClient
-            from backend.util.service import get_service_client
+            from backend.util.clients import get_database_manager_async_client
 
-            return get_service_client(DatabaseManagerAsyncClient)
+            return get_database_manager_async_client()
 
     # =============== USER-MANAGED CREDENTIALS =============== #
     async def add_creds(self, user_id: str, credentials: Credentials) -> None:
@@ -362,21 +359,6 @@ class IntegrationCredentialsStore:
             await self._set_user_integration_creds(user_id, filtered_credentials)
 
     # ============== SYSTEM-MANAGED CREDENTIALS ============== #
-
-    async def get_ayrshare_profile_key(self, user_id: str) -> SecretStr | None:
-        """Get the Ayrshare profile key for a user.
-
-        The profile key is used to authenticate API requests to Ayrshare's social media posting service.
-        See https://www.ayrshare.com/docs/apis/profiles/overview for more details.
-
-        Args:
-            user_id: The ID of the user to get the profile key for
-
-        Returns:
-            The profile key as a SecretStr if set, None otherwise
-        """
-        user_integrations = await self._get_user_integrations(user_id)
-        return user_integrations.managed_credentials.ayrshare_profile_key
 
     async def set_ayrshare_profile_key(self, user_id: str, profile_key: str) -> None:
         """Set the Ayrshare profile key for a user.

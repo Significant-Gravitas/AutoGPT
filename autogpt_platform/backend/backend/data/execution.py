@@ -39,6 +39,7 @@ from pydantic.fields import Field
 from backend.server.v2.store.exceptions import DatabaseError
 from backend.util import type as type_utils
 from backend.util.json import SafeJson
+from backend.util.retry import func_retry
 from backend.util.settings import Config
 from backend.util.truncate import truncate
 
@@ -58,7 +59,7 @@ from .includes import (
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     graph_execution_include,
 )
-from .model import GraphExecutionStats, NodeExecutionStats
+from .model import GraphExecutionStats
 
 T = TypeVar("T")
 
@@ -134,6 +135,10 @@ class GraphExecutionMeta(BaseDbModel):
             default=None,
             description="Error message if any",
         )
+        activity_status: str | None = Field(
+            default=None,
+            description="AI-generated summary of what the agent did",
+        )
 
         def to_db(self) -> GraphExecutionStats:
             return GraphExecutionStats(
@@ -145,6 +150,7 @@ class GraphExecutionMeta(BaseDbModel):
                 node_count=self.node_exec_count,
                 node_error_count=self.node_error_count,
                 error=self.error,
+                activity_status=self.activity_status,
             )
 
     stats: Stats | None
@@ -189,6 +195,7 @@ class GraphExecutionMeta(BaseDbModel):
                         if isinstance(stats.error, Exception)
                         else stats.error
                     ),
+                    activity_status=stats.activity_status,
                 )
                 if stats
                 else None
@@ -583,10 +590,10 @@ async def upsert_execution_output(
     """
     Insert AgentNodeExecutionInputOutput record for as one of AgentNodeExecution.Output.
     """
-    data = AgentNodeExecutionInputOutputCreateInput(
-        name=output_name,
-        referencedByOutputExecId=node_exec_id,
-    )
+    data: AgentNodeExecutionInputOutputCreateInput = {
+        "name": output_name,
+        "referencedByOutputExecId": node_exec_id,
+    }
     if output_data is not None:
         data["data"] = SafeJson(output_data)
     await AgentNodeExecutionInputOutput.prisma().create(data=data)
@@ -630,6 +637,8 @@ async def update_graph_execution_stats(
             "OR": [
                 {"executionStatus": ExecutionStatus.RUNNING},
                 {"executionStatus": ExecutionStatus.QUEUED},
+                # Terminated graph can be resumed.
+                {"executionStatus": ExecutionStatus.TERMINATED},
             ],
         },
         data=update_data,
@@ -644,27 +653,6 @@ async def update_graph_execution_stats(
         ),
     )
     return GraphExecution.from_db(graph_exec)
-
-
-async def update_node_execution_stats(
-    node_exec_id: str, stats: NodeExecutionStats
-) -> NodeExecutionResult:
-    data = stats.model_dump()
-    if isinstance(data["error"], Exception):
-        data["error"] = str(data["error"])
-
-    res = await AgentNodeExecution.prisma().update(
-        where={"id": node_exec_id},
-        data={
-            "stats": SafeJson(data),
-            "endedTime": datetime.now(tz=timezone.utc),
-        },
-        include=EXECUTION_RESULT_INCLUDE,
-    )
-    if not res:
-        raise ValueError(f"Node execution {node_exec_id} not found.")
-
-    return NodeExecutionResult.from_db(res)
 
 
 async def update_node_execution_status_batch(
@@ -896,15 +884,15 @@ class RedisExecutionEventBus(RedisEventBus[ExecutionEvent]):
 
     def publish(self, res: GraphExecution | NodeExecutionResult):
         if isinstance(res, GraphExecution):
-            self.publish_graph_exec_update(res)
+            self._publish_graph_exec_update(res)
         else:
-            self.publish_node_exec_update(res)
+            self._publish_node_exec_update(res)
 
-    def publish_node_exec_update(self, res: NodeExecutionResult):
+    def _publish_node_exec_update(self, res: NodeExecutionResult):
         event = NodeExecutionEvent.model_validate(res.model_dump())
         self._publish(event, f"{res.user_id}/{res.graph_id}/{res.graph_exec_id}")
 
-    def publish_graph_exec_update(self, res: GraphExecution):
+    def _publish_graph_exec_update(self, res: GraphExecution):
         event = GraphExecutionEvent.model_validate(res.model_dump())
         self._publish(event, f"{res.user_id}/{res.graph_id}/{res.id}")
 
@@ -936,17 +924,18 @@ class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
     def event_bus_name(self) -> str:
         return config.execution_event_bus_name
 
+    @func_retry
     async def publish(self, res: GraphExecutionMeta | NodeExecutionResult):
         if isinstance(res, GraphExecutionMeta):
-            await self.publish_graph_exec_update(res)
+            await self._publish_graph_exec_update(res)
         else:
-            await self.publish_node_exec_update(res)
+            await self._publish_node_exec_update(res)
 
-    async def publish_node_exec_update(self, res: NodeExecutionResult):
+    async def _publish_node_exec_update(self, res: NodeExecutionResult):
         event = NodeExecutionEvent.model_validate(res.model_dump())
         await self._publish(event, f"{res.user_id}/{res.graph_id}/{res.graph_exec_id}")
 
-    async def publish_graph_exec_update(self, res: GraphExecutionMeta):
+    async def _publish_graph_exec_update(self, res: GraphExecutionMeta):
         # GraphExecutionEvent requires inputs and outputs fields that GraphExecutionMeta doesn't have
         # Add default empty values for compatibility
         event_data = res.model_dump()

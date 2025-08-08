@@ -14,6 +14,17 @@ export interface TextFieldProps extends Omit<InputProps, "size"> {
   hint?: ReactNode;
   size?: "small" | "medium";
   wrapperClassName?: string;
+  type?:
+    | "text"
+    | "email"
+    | "password"
+    | "number"
+    | "amount"
+    | "tel"
+    | "url"
+    | "textarea";
+  // Textarea-specific props
+  rows?: number;
 }
 
 export function Input({
@@ -28,7 +39,11 @@ export function Input({
   wrapperClassName,
   ...props
 }: TextFieldProps) {
-  const { handleInputChange } = useInput({ ...props, decimalCount });
+  const { handleInputChange, handleTextareaChange } = useInput({
+    type: props.type,
+    onChange: props.onChange,
+    decimalCount,
+  });
   const [showPassword, setShowPassword] = useState(false);
 
   const isPasswordType = props.type === "password";
@@ -46,19 +61,55 @@ export function Input({
     setShowPassword(false);
   }
 
-  const input = (
-    <div className={cn("relative", wrapperClassName)}>
+  const baseStyles = cn(
+    // Base styles
+    "rounded-3xl border border-zinc-200 bg-white px-4 shadow-none",
+    "font-normal text-black",
+    "placeholder:font-normal placeholder:text-zinc-400",
+    // Focus and hover states
+    "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
+    className,
+  );
+
+  const errorStyles =
+    error && "!border !border-red-500 focus:border-red-500 focus:ring-red-500";
+
+  const renderInput = () => {
+    if (props.type === "textarea") {
+      return (
+        <textarea
+          className={cn(
+            baseStyles,
+            errorStyles,
+            "-mb-1 h-auto min-h-[2.875rem] w-full",
+            // Size variants for textarea
+            size === "small" && [
+              "min-h-[2.25rem]", // 36px minimum
+              "py-2",
+              "text-sm leading-[22px]",
+              "placeholder:text-sm placeholder:leading-[22px]",
+            ],
+            size === "medium" && [
+              "min-h-[2.875rem] text-sm leading-[22px]", // 46px minimum (current default)
+              "py-2.5",
+            ],
+          )}
+          placeholder={placeholder || label}
+          onChange={handleTextareaChange}
+          rows={props.rows || 3}
+          {...(hideLabel ? { "aria-label": label } : {})}
+          id={props.id}
+          disabled={props.disabled}
+          value={props.value}
+        />
+      );
+    }
+
+    return (
       <BaseInput
         className={cn(
-          // Base styles
-          "rounded-3xl border border-zinc-200 bg-white px-4 shadow-none",
-          "font-normal text-black",
-          "placeholder:font-normal placeholder:text-zinc-400",
-          // Focus and hover states
-          "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
-          // Error state
-          error &&
-            "border-1.5 border-red-500 focus:border-red-500 focus:ring-red-500",
+          baseStyles,
+          errorStyles,
           // Add padding for password toggle button
           isPasswordType && "pr-12",
           // Size variants
@@ -72,7 +123,6 @@ export function Input({
             "h-[2.875rem]", // 46px (current default)
             "py-2.5",
           ],
-          className,
         )}
         placeholder={placeholder || label}
         onChange={handleInputChange}
@@ -80,6 +130,12 @@ export function Input({
         {...props}
         type={inputType}
       />
+    );
+  };
+
+  const input = (
+    <div className={cn("relative", wrapperClassName)}>
+      {renderInput()}
       {isPasswordType && (
         <button
           type="button"

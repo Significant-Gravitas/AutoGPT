@@ -13,7 +13,7 @@ from prisma.models import User
 from prisma.types import JsonFilter, UserCreateInput, UserUpdateInput
 
 from backend.data.db import prisma
-from backend.data.model import UserIntegrations, UserMetadata, UserMetadataRaw
+from backend.data.model import UserIntegrations, UserMetadata
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.server.v2.store.exceptions import DatabaseError
 from backend.util.encryption import JSONCryptor
@@ -21,6 +21,7 @@ from backend.util.json import SafeJson
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
+settings = Settings()
 
 
 async def get_or_create_user(user_data: dict) -> User:
@@ -91,22 +92,6 @@ async def create_default_user() -> Optional[User]:
             )
         )
     return User.model_validate(user)
-
-
-async def get_user_metadata(user_id: str) -> UserMetadata:
-    user = await User.prisma().find_unique_or_raise(
-        where={"id": user_id},
-    )
-
-    metadata = cast(UserMetadataRaw, user.metadata)
-    return UserMetadata.model_validate(metadata)
-
-
-async def update_user_metadata(user_id: str, metadata: UserMetadata):
-    await User.prisma().update(
-        where={"id": user_id},
-        data={"metadata": SafeJson(metadata.model_dump())},
-    )
 
 
 async def get_user_integrations(user_id: str) -> UserIntegrations:
@@ -348,7 +333,7 @@ async def get_user_email_verification(user_id: str) -> bool:
 def generate_unsubscribe_link(user_id: str) -> str:
     """Generate a link to unsubscribe from all notifications"""
     # Create an HMAC using a secret key
-    secret_key = Settings().secrets.unsubscribe_secret_key
+    secret_key = settings.secrets.unsubscribe_secret_key
     signature = hmac.new(
         secret_key.encode("utf-8"), user_id.encode("utf-8"), hashlib.sha256
     ).digest()
@@ -359,7 +344,7 @@ def generate_unsubscribe_link(user_id: str) -> str:
     ).decode("utf-8")
     logger.info(f"Generating unsubscribe link for user {user_id}")
 
-    base_url = Settings().config.platform_base_url
+    base_url = settings.config.platform_base_url
     return f"{base_url}/api/email/unsubscribe?token={quote_plus(token)}"
 
 
@@ -371,7 +356,7 @@ async def unsubscribe_user_by_token(token: str) -> None:
         user_id, received_signature_hex = decoded.split(":", 1)
 
         # Verify the signature
-        secret_key = Settings().secrets.unsubscribe_secret_key
+        secret_key = settings.secrets.unsubscribe_secret_key
         expected_signature = hmac.new(
             secret_key.encode("utf-8"), user_id.encode("utf-8"), hashlib.sha256
         ).digest()

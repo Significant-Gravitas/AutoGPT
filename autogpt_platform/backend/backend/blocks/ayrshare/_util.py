@@ -4,9 +4,17 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from backend.data.block import BlockSchema
-from backend.data.model import SchemaField
+from backend.data.model import SchemaField, UserIntegrations
 from backend.integrations.ayrshare import AyrshareClient
+from backend.util.clients import get_database_manager_async_client
 from backend.util.exceptions import MissingConfigError
+
+
+async def get_profile_key(user_id: str):
+    user_integrations: UserIntegrations = (
+        await get_database_manager_async_client().get_user_integrations(user_id)
+    )
+    return user_integrations.managed_credentials.ayrshare_profile_key
 
 
 class BaseAyrshareInput(BlockSchema):

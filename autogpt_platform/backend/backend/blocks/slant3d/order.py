@@ -3,8 +3,7 @@ from typing import List
 
 from backend.data.block import BlockOutput, BlockSchema
 from backend.data.model import APIKeyCredentials, SchemaField
-from backend.util import settings
-from backend.util.settings import BehaveAs
+from backend.util.settings import BehaveAs, Settings
 
 from ._api import (
     TEST_CREDENTIALS,
@@ -15,6 +14,8 @@ from ._api import (
     Slant3DCredentialsInput,
 )
 from .base import Slant3DBlockBase
+
+settings = Settings()
 
 
 class Slant3DCreateOrderBlock(Slant3DBlockBase):
@@ -280,7 +281,7 @@ class Slant3DGetOrdersBlock(Slant3DBlockBase):
             input_schema=self.Input,
             output_schema=self.Output,
             # This block is disabled for cloud hosted because it allows access to all orders for the account
-            disabled=settings.Settings().config.behave_as == BehaveAs.CLOUD,
+            disabled=settings.config.behave_as == BehaveAs.CLOUD,
             test_input={"credentials": TEST_CREDENTIALS_INPUT},
             test_credentials=TEST_CREDENTIALS,
             test_output=[
