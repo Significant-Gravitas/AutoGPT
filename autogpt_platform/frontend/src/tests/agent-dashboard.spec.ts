@@ -51,21 +51,21 @@ test.describe("Agent Dashboard", () => {
 
   test("agent table actions work correctly", async ({ page }) => {
     await page.goto("/profile/dashboard");
-  
+
     const agentTable = page.getByTestId("agent-table");
     await expect(agentTable).toBeVisible();
-  
+
     const agentRow = agentTable
       .getByTestId("agent-table-row")
       .filter({ hasText: TEST_AGENT_DATA.name })
       .first();
     await agentRow.scrollIntoViewIfNeeded();
-  
+
     const actionsButton = agentRow.getByTestId("agent-table-row-actions");
     await actionsButton.waitFor({ state: "visible", timeout: 10000 });
     await actionsButton.scrollIntoViewIfNeeded();
     await actionsButton.click();
-  
+
     const viewButton = page.getByRole("menuitem", { name: "View" });
     await expect(viewButton).toBeVisible();
     await viewButton.click();

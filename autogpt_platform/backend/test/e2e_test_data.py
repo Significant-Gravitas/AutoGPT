@@ -531,12 +531,14 @@ class TestDataCreator:
         approved_submissions = []
 
         # Create a special test submission for test123@gmail.com
-        test_user = next((user for user in self.users if user["email"] == "test123@gmail.com"), None)
+        test_user = next(
+            (user for user in self.users if user["email"] == "test123@gmail.com"), None
+        )
         if test_user:
             # Special test data for consistent testing
             test_submission_data = {
                 "user_id": test_user["id"],
-                "agent_id": self.agent_graphs[0]["id"], # Use first available graph
+                "agent_id": self.agent_graphs[0]["id"],  # Use first available graph
                 "agent_version": 1,
                 "slug": "test-agent-submission",
                 "name": "Test Agent Submission",
@@ -545,17 +547,17 @@ class TestDataCreator:
                 "image_urls": [
                     "https://picsum.photos/200/300",
                     "https://picsum.photos/200/301",
-                    "https://picsum.photos/200/302"
+                    "https://picsum.photos/200/302",
                 ],
                 "description": "This is a test agent submission specifically created for frontend testing purposes.",
                 "categories": ["test", "demo", "frontend"],
-                "changes_summary": "Initial test submission"
+                "changes_summary": "Initial test submission",
             }
 
             try:
                 test_submission = await create_store_submission(**test_submission_data)
                 submissions.append(test_submission.model_dump())
-                print(f"✅ Created special test store submission for test123@gmail.com")
+                print("✅ Created special test store submission for test123@gmail.com")
 
                 # Auto-approve the test submission
                 if test_submission.store_listing_version_id:
@@ -564,21 +566,22 @@ class TestDataCreator:
                         is_approved=True,
                         external_comments="Test submission approved",
                         internal_comments="Auto-approved test submission",
-                        reviewer_id=test_user["id"]
+                        reviewer_id=test_user["id"],
                     )
                     approved_submissions.append(approved_submission.model_dump())
-                    print(f"✅ Approved test store submission")
+                    print("✅ Approved test store submission")
 
                     # Mark test submission as featured
                     await prisma.storelistingversion.update(
                         where={"id": test_submission.store_listing_version_id},
-                        data={"isFeatured": True}
+                        data={"isFeatured": True},
                     )
                     print("🌟 Marked test agent as FEATURED")
 
             except Exception as e:
                 print(f"Error creating test store submission: {e}")
                 import traceback
+
                 traceback.print_exc()
 
         # Create regular submissions for all users
@@ -673,6 +676,7 @@ class TestDataCreator:
                         f"Error creating store submission for user {user['id']} graph {graph['id']}: {e}"
                     )
                     import traceback
+
                     traceback.print_exc()
                     continue
 

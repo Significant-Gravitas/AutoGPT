@@ -65,9 +65,10 @@ export const AgentTableRow = ({
 
   return (
     <div
-    data-testid="agent-table-row"
-    data-agent-name={agentName}
-    className="hidden items-center border-b border-neutral-300 px-4 py-4 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800 md:flex">
+      data-testid="agent-table-row"
+      data-agent-name={agentName}
+      className="hidden items-center border-b border-neutral-300 px-4 py-4 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800 md:flex"
+    >
       <div className="grid w-full grid-cols-[minmax(400px,1fr),180px,140px,100px,100px,40px] items-center gap-4">
         {/* Agent info column */}
         <div className="flex items-center gap-4">
