@@ -1257,7 +1257,7 @@ class ExecutionManager(AppProcess):
 
     def _handle_run_message(
         self,
-        channel: BlockingChannel,
+        _channel: BlockingChannel,
         method: Basic.Deliver,
         _properties: BasicProperties,
         body: bytes,
@@ -1267,6 +1267,9 @@ class ExecutionManager(AppProcess):
         @func_retry
         def _ack_message(reject: bool = False):
             """Acknowledge or reject the message based on execution status."""
+
+            # Connection can be lost, so always get a fresh channel
+            channel = self.run_client.get_channel()
             if reject:
                 channel.connection.add_callback_threadsafe(
                     lambda: channel.basic_nack(delivery_tag, requeue=True)
@@ -1416,9 +1419,12 @@ class ExecutionManager(AppProcess):
         try:
             run_channel = self.run_client.get_channel()
             run_channel.connection.add_callback_threadsafe(
-                lambda: self.run_client.disconnect()
+                lambda: run_channel.stop_consuming()
             )
             self.run_thread.join()
+            run_channel.connection.add_callback_threadsafe(
+                lambda: self.run_client.disconnect()
+            )
             logger.info(f"{prefix} ✅ Run client disconnected")
         except Exception as e:
             logger.error(f"{prefix} ⚠️ Error disconnecting run client: {type(e)} {e}")
@@ -1427,9 +1433,12 @@ class ExecutionManager(AppProcess):
         try:
             cancel_channel = self.cancel_client.get_channel()
             cancel_channel.connection.add_callback_threadsafe(
-                lambda: self.cancel_client.disconnect()
+                lambda: cancel_channel.stop_consuming()
             )
             self.cancel_thread.join()
+            cancel_channel.connection.add_callback_threadsafe(
+                lambda: self.cancel_client.disconnect()
+            )
             logger.info(f"{prefix} ✅ Cancel client disconnected")
         except Exception as e:
             logger.error(f"{prefix} ⚠️ Error disconnecting cancel client: {type(e)} {e}")
