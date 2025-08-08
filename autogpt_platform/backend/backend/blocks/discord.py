@@ -318,7 +318,7 @@ class SendDiscordDMBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="8e0b5c91-4f45-4a2a-bc7e-d4f5a24b0e3d",
+            id="40d71a5a-e268-4060-9ee0-38ae6f225682",
             input_schema=SendDiscordDMBlock.Input,
             output_schema=SendDiscordDMBlock.Output,
             description="Sends a direct message to a Discord user using their user ID.",
@@ -435,7 +435,7 @@ class SendDiscordEmbedBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="f47a5b32-6e9d-4c8a-b1f2-3d8e5a7c9b4e",
+            id="c76293f4-9ae8-454d-a029-0a3f8c5bc499",
             input_schema=SendDiscordEmbedBlock.Input,
             output_schema=SendDiscordEmbedBlock.Output,
             description="Sends a rich embed message to a Discord channel.",
@@ -606,7 +606,7 @@ class SendDiscordFileBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="c3a7d9e1-8b4f-4e2a-9f6c-1d5e7a8b3c9d",
+            id="b1628cf2-4622-49bf-80cf-10e55826e247",
             input_schema=SendDiscordFileBlock.Input,
             output_schema=SendDiscordFileBlock.Output,
             description="Sends a file attachment to a Discord channel.",
@@ -799,7 +799,7 @@ class ReplyToDiscordMessageBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="a5b2c8d1-7e4f-4b9a-8c6d-2f5e9a7b4c1e",
+            id="7226cb99-6e7b-4672-b6b2-acec95336eec",
             input_schema=ReplyToDiscordMessageBlock.Input,
             output_schema=ReplyToDiscordMessageBlock.Output,
             description="Replies to a specific Discord message.",
@@ -928,7 +928,7 @@ class DiscordUserInfoBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="d7e3b9a2-5c8f-4a1b-9e7d-3f6a8c2b5d9e",
+            id="9aeed32a-6ebf-49b8-a0a3-e2e509d86120",
             input_schema=DiscordUserInfoBlock.Input,
             output_schema=DiscordUserInfoBlock.Output,
             description="Gets information about a Discord user by their ID.",
@@ -1046,7 +1046,7 @@ class DiscordChannelInfoBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="e9c3f5d2-7a1b-4e8f-9c3d-2b5a6f8e1d4c",
+            id="592f815e-35c3-4fed-96cd-a69966b45c8f",
             input_schema=DiscordChannelInfoBlock.Input,
             output_schema=DiscordChannelInfoBlock.Output,
             description="Resolves Discord channel names to IDs and vice versa.",
