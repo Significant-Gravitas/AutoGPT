@@ -128,6 +128,9 @@ Key models (defined in `/backend/schema.prisma`):
 5. Register in block registry
 6. Generate the block uuid using `uuid.uuid4()`
 
+Note: when making many new blocks analyze the interfaces for each of these blcoks and picture if they would go well together in a graph based editor or would they struggle to connect productively?
+ex: do the inputs and outputs tie well together?
+
 **Modifying the API:**
 1. Update route in `/backend/backend/server/routers/`
 2. Add/update Pydantic models in same directory
