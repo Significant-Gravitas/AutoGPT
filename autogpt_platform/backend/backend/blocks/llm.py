@@ -183,7 +183,7 @@ MODEL_METADATA = {
     LlmModel.GPT5: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_MINI: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_NANO: ModelMetadata("openai", 400000, 128000),
-    LlmModel.GPT5_CHAT: ModelMetadata("openai", 400000, 128000),
+    LlmModel.GPT5_CHAT: ModelMetadata("openai", 400000, 16384),
     LlmModel.GPT41: ModelMetadata("openai", 1047576, 32768),
     LlmModel.GPT41_MINI: ModelMetadata("openai", 1047576, 32768),
     LlmModel.GPT4O_MINI: ModelMetadata(
@@ -196,7 +196,7 @@ MODEL_METADATA = {
     LlmModel.GPT3_5_TURBO: ModelMetadata("openai", 16385, 4096),  # gpt-3.5-turbo-0125
     # https://docs.anthropic.com/en/docs/about-claude/models
     LlmModel.CLAUDE_4_1_OPUS: ModelMetadata(
-        "openai", 200000, 32000
+        "anthropic", 200000, 32000
     ),  # claude-opus-4-1-20250805
     LlmModel.CLAUDE_4_OPUS: ModelMetadata(
         "anthropic", 200000, 8192
@@ -493,6 +493,7 @@ async def llm_call(
                 messages=messages,
                 max_tokens=max_tokens,
                 tools=an_tools,
+                timeout=600,
             )
 
             if not resp.content:
