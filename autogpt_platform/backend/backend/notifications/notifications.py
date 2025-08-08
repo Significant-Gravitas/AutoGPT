@@ -31,7 +31,13 @@ from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
 from backend.util.metrics import discord_send_alert
 from backend.util.retry import continuous_retry
-from backend.util.service import AppService, AppServiceClient, endpoint_to_sync, expose
+from backend.util.service import (
+    AppService,
+    AppServiceClient,
+    UnhealthyServiceError,
+    endpoint_to_sync,
+    expose,
+)
 from backend.util.settings import Settings
 
 logger = TruncatedLogger(logging.getLogger(__name__), "[NotificationManager]")
@@ -182,23 +188,31 @@ class NotificationManager(AppService):
     @property
     def rabbit(self) -> rabbitmq.AsyncRabbitMQ:
         """Access the RabbitMQ service. Will raise if not configured."""
-        if not self.rabbitmq_service:
-            raise RuntimeError("RabbitMQ not configured for this service")
+        if not hasattr(self, "rabbitmq_service") or not self.rabbitmq_service:
+            raise UnhealthyServiceError("RabbitMQ not configured for this service")
         return self.rabbitmq_service
 
     @property
     def rabbit_config(self) -> rabbitmq.RabbitMQConfig:
         """Access the RabbitMQ config. Will raise if not configured."""
         if not self.rabbitmq_config:
-            raise RuntimeError("RabbitMQ not configured for this service")
+            raise UnhealthyServiceError("RabbitMQ not configured for this service")
         return self.rabbitmq_config
+
+    def health_check(self) -> str:
+        # Service is unhealthy if RabbitMQ is not ready
+        if not hasattr(self, "rabbitmq_service") or not self.rabbitmq_service:
+            raise UnhealthyServiceError("RabbitMQ not configured for this service")
+        if not self.rabbitmq_service.is_ready:
+            raise UnhealthyServiceError("RabbitMQ channel is not ready")
+        return super().health_check()
 
     @classmethod
     def get_port(cls) -> int:
         return settings.config.notification_service_port
 
     @expose
-    def queue_weekly_summary(self):
+    async def queue_weekly_summary(self):
         # Use the existing event loop instead of creating a new one with asyncio.run()
         asyncio.create_task(self._queue_weekly_summary())
 
@@ -232,7 +246,9 @@ class NotificationManager(AppService):
             logger.exception(f"Error processing weekly summary: {e}")
 
     @expose
-    def process_existing_batches(self, notification_types: list[NotificationType]):
+    async def process_existing_batches(
+        self, notification_types: list[NotificationType]
+    ):
         # Use the existing event loop instead of creating a new process
         asyncio.create_task(self._process_existing_batches(notification_types))
 
@@ -887,6 +903,8 @@ class NotificationManagerClient(AppServiceClient):
     def get_service_type(cls):
         return NotificationManager
 
-    process_existing_batches = NotificationManager.process_existing_batches
-    queue_weekly_summary = NotificationManager.queue_weekly_summary
+    process_existing_batches = endpoint_to_sync(
+        NotificationManager.process_existing_batches
+    )
+    queue_weekly_summary = endpoint_to_sync(NotificationManager.queue_weekly_summary)
     discord_system_alert = endpoint_to_sync(NotificationManager.discord_system_alert)

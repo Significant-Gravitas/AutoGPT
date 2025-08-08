@@ -97,6 +97,20 @@ class RemoteCallError(BaseModel):
     args: Optional[Tuple[Any, ...]] = None
 
 
+class UnhealthyServiceError(ValueError):
+    def __init__(
+        self, message: str = "Service is unhealthy or not ready", log: bool = True
+    ):
+        msg = f"[{get_service_name()}] - {message}"
+        super().__init__(msg)
+        self.message = msg
+        if log:
+            logger.error(self.message)
+
+    def __str__(self):
+        return self.message
+
+
 EXCEPTION_MAPPING = {
     e.__name__: e
     for e in [
@@ -104,6 +118,7 @@ EXCEPTION_MAPPING = {
         RuntimeError,
         TimeoutError,
         ConnectionError,
+        UnhealthyServiceError,
         *[
             ErrorType
             for _, ErrorType in inspect.getmembers(exceptions)
@@ -406,11 +421,43 @@ def get_service_client(
                 raise
 
         async def aclose(self) -> None:
-            self.sync_client.close()
-            await self.async_client.aclose()
+            if hasattr(self, "sync_client"):
+                self.sync_client.close()
+            if hasattr(self, "async_client"):
+                await self.async_client.aclose()
 
         def close(self) -> None:
-            self.sync_client.close()
+            if hasattr(self, "sync_client"):
+                self.sync_client.close()
+            # Note: Cannot close async client synchronously
+
+        def __del__(self):
+            """Cleanup HTTP clients on garbage collection to prevent resource leaks."""
+            try:
+                if hasattr(self, "sync_client"):
+                    self.sync_client.close()
+                if hasattr(self, "async_client"):
+                    # Note: Can't await in __del__, so we just close sync
+                    # The async client will be cleaned up by garbage collection
+                    import warnings
+
+                    warnings.warn(
+                        "DynamicClient async client not explicitly closed. "
+                        "Call aclose() before destroying the client.",
+                        ResourceWarning,
+                        stacklevel=2,
+                    )
+            except Exception:
+                # Silently ignore cleanup errors in __del__
+                pass
+
+        async def __aenter__(self):
+            """Async context manager entry."""
+            return self
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            """Async context manager exit."""
+            await self.aclose()
 
         def _get_params(
             self, signature: inspect.Signature, *args: Any, **kwargs: Any
