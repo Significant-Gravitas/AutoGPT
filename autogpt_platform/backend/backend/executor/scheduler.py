@@ -61,6 +61,9 @@ apscheduler_logger.addFilter(PrefixFilter("[Scheduler] [APScheduler]"))
 
 config = Config()
 
+# Timeout constants
+SCHEDULER_OPERATION_TIMEOUT_SECONDS = 300  # 5 minutes for scheduler operations
+
 
 def job_listener(event):
     """Logs job execution outcomes for better monitoring."""
@@ -71,6 +74,7 @@ def job_listener(event):
 
 
 _event_loop: asyncio.AbstractEventLoop | None = None
+_event_loop_thread: threading.Thread | None = None
 
 
 @func_retry
@@ -81,12 +85,17 @@ def get_event_loop():
     return _event_loop
 
 
+def run_async(coro, timeout: float = SCHEDULER_OPERATION_TIMEOUT_SECONDS):
+    """Run a coroutine in the shared event loop and wait for completion."""
+    loop = get_event_loop()
+    future = asyncio.run_coroutine_threadsafe(coro, loop)
+    return future.result(timeout=timeout)
+
+
 def execute_graph(**kwargs):
     """Execute graph in the shared event loop and wait for completion."""
-    loop = get_event_loop()
-    future = asyncio.run_coroutine_threadsafe(_execute_graph(**kwargs), loop)
     # Wait for completion to ensure job doesn't exit prematurely
-    future.result(timeout=300)  # 5 minute timeout for graph execution
+    run_async(_execute_graph(**kwargs))
 
 
 async def _execute_graph(**kwargs):
@@ -110,10 +119,8 @@ async def _execute_graph(**kwargs):
 
 def cleanup_expired_files():
     """Clean up expired files from cloud storage."""
-    loop = get_event_loop()
-    future = asyncio.run_coroutine_threadsafe(cleanup_expired_files_async(), loop)
     # Wait for completion
-    future.result(timeout=300)  # 5 minute timeout for cleanup
+    run_async(cleanup_expired_files_async())
 
 
 # Monitoring functions are now imported from monitoring module
@@ -195,10 +202,11 @@ class Scheduler(AppService):
         _event_loop = asyncio.new_event_loop()
 
         # Use daemon thread since it should die with the main service
-        event_loop_thread = threading.Thread(
+        global _event_loop_thread
+        _event_loop_thread = threading.Thread(
             target=_event_loop.run_forever, daemon=True, name="SchedulerEventLoop"
         )
-        event_loop_thread.start()
+        _event_loop_thread.start()
 
         db_schema, db_url = _extract_schema_from_url(os.getenv("DIRECT_URL"))
         self.scheduler = BlockingScheduler(
@@ -287,7 +295,19 @@ class Scheduler(AppService):
         super().cleanup()
         if self.scheduler:
             logger.info("⏳ Shutting down scheduler...")
-            self.scheduler.shutdown(wait=False)
+            self.scheduler.shutdown(wait=True)
+
+        global _event_loop
+        if _event_loop:
+            logger.info("⏳ Closing event loop...")
+            _event_loop.call_soon_threadsafe(_event_loop.stop)
+
+        global _event_loop_thread
+        if _event_loop_thread:
+            logger.info("⏳ Waiting for event loop thread to finish...")
+            _event_loop_thread.join(timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS)
+
+        logger.info("Scheduler cleanup complete.")
 
     @expose
     def add_graph_execution_schedule(
@@ -300,6 +320,18 @@ class Scheduler(AppService):
         input_credentials: dict[str, CredentialsMetaInput],
         name: Optional[str] = None,
     ) -> GraphExecutionJobInfo:
+        # Validate the graph before scheduling to prevent runtime failures
+        # We don't need the return value, just want the validation to run
+        run_async(
+            execution_utils.validate_and_construct_node_execution_input(
+                graph_id=graph_id,
+                user_id=user_id,
+                graph_inputs=input_data,
+                graph_version=graph_version,
+                graph_credentials_inputs=input_credentials,
+            )
+        )
+
         job_args = GraphExecutionJobArgs(
             user_id=user_id,
             graph_id=graph_id,
