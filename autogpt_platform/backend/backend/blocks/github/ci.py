@@ -1,3 +1,4 @@
+import logging
 import re
 from enum import Enum
 from typing import Optional
@@ -15,6 +16,8 @@ from ._auth import (
     GithubCredentialsField,
     GithubCredentialsInput,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class CheckRunStatus(Enum):
@@ -36,13 +39,13 @@ class CheckRunConclusion(Enum):
 class GithubGetCIResultsBlock(Block):
     class Input(BlockSchema):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
-        repo_url: str = SchemaField(
-            description="URL of the GitHub repository",
-            placeholder="https://github.com/owner/repo",
+        repo: str = SchemaField(
+            description="GitHub repository",
+            placeholder="owner/repo",
         )
-        target: str = SchemaField(
-            description="Commit SHA or PR URL to get CI results for",
-            placeholder="abc123def or https://github.com/owner/repo/pull/123",
+        target: str | int = SchemaField(
+            description="Commit SHA or PR number to get CI results for",
+            placeholder="abc123def or 123",
         )
         search_pattern: Optional[str] = SchemaField(
             description="Optional regex pattern to search for in CI logs (e.g., error messages, file names)",
@@ -111,7 +114,7 @@ class GithubGetCIResultsBlock(Block):
             input_schema=GithubGetCIResultsBlock.Input,
             output_schema=GithubGetCIResultsBlock.Output,
             test_input={
-                "repo_url": "https://github.com/owner/repo",
+                "repo": "owner/repo",
                 "target": "abc123def456",
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
@@ -166,20 +169,17 @@ class GithubGetCIResultsBlock(Block):
         )
 
     @staticmethod
-    async def get_commit_sha(api, repo_url: str, target: str) -> str:
+    async def get_commit_sha(api, repo: str, target: str | int) -> str:
         """Get commit SHA from either a commit SHA or PR URL."""
         # If it's already a SHA, return it
-        if re.match(r"^[0-9a-f]{6,40}$", target, re.IGNORECASE):
-            return target
+
+        if isinstance(target, str):
+            if re.match(r"^[0-9a-f]{6,40}$", target, re.IGNORECASE):
+                return target
 
         # If it's a PR URL, get the head SHA
-        if "/pull/" in target:
-            parts = target.split("/")
-            owner = parts[3]
-            repo = parts[4]
-            pr_number = parts[6]
-
-            pr_url = f"/repos/{owner}/{repo}/pulls/{pr_number}"
+        if isinstance(target, int):
+            pr_url = f"https://api.github.com/repos/{repo}/pulls/{target}"
             response = await api.get(pr_url)
             pr_data = response.json()
             return pr_data["head"]["sha"]
@@ -225,23 +225,20 @@ class GithubGetCIResultsBlock(Block):
     @staticmethod
     async def get_ci_results(
         credentials: GithubCredentials,
-        repo_url: str,
-        target: str,
+        repo: str,
+        target: str | int,
         search_pattern: Optional[str] = None,
         check_name_filter: Optional[str] = None,
     ) -> dict:
-        api = get_api(credentials)
-
-        # Extract owner and repo from URL
-        parts = repo_url.split("/")
-        owner = parts[3]
-        repo = parts[4]
+        api = get_api(credentials, convert_urls=False)
 
         # Get the commit SHA
-        commit_sha = await GithubGetCIResultsBlock.get_commit_sha(api, repo_url, target)
+        commit_sha = await GithubGetCIResultsBlock.get_commit_sha(api, repo, target)
 
         # Get check runs for the commit
-        check_runs_url = f"/repos/{owner}/{repo}/commits/{commit_sha}/check-runs"
+        check_runs_url = (
+            f"https://api.github.com/repos/{repo}/commits/{commit_sha}/check-runs"
+        )
 
         # Get all pages of check runs
         all_check_runs = []
@@ -310,9 +307,7 @@ class GithubGetCIResultsBlock(Block):
 
             # Get annotations if available
             if run.get("output", {}).get("annotations_count", 0) > 0:
-                annotations_url = (
-                    f"/repos/{owner}/{repo}/check-runs/{run['id']}/annotations"
-                )
+                annotations_url = f"https://api.github.com/repos/{repo}/check-runs/{run['id']}/annotations"
                 try:
                     ann_response = await api.get(annotations_url)
                     detailed_run["annotations"] = ann_response.json()
@@ -333,61 +328,61 @@ class GithubGetCIResultsBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
+
         try:
-            result = await self.get_ci_results(
-                credentials,
-                input_data.repo_url,
-                input_data.target,
-                input_data.search_pattern,
-                input_data.check_name_filter,
-            )
+            target = int(input_data.target)
+        except ValueError:
+            target = input_data.target
 
-            check_runs = result["check_runs"]
+        result = await self.get_ci_results(
+            credentials,
+            input_data.repo,
+            target,
+            input_data.search_pattern,
+            input_data.check_name_filter,
+        )
 
-            # Calculate overall status
-            if not check_runs:
-                yield "overall_status", "no_checks"
-                yield "overall_conclusion", "no_checks"
-            else:
-                all_completed = all(run["status"] == "completed" for run in check_runs)
-                if all_completed:
-                    yield "overall_status", "completed"
-                    # Determine overall conclusion
-                    has_failure = any(
-                        run["conclusion"] in ["failure", "timed_out", "action_required"]
-                        for run in check_runs
-                    )
-                    if has_failure:
-                        yield "overall_conclusion", "failure"
-                    else:
-                        yield "overall_conclusion", "success"
-                else:
-                    yield "overall_status", "pending"
-                    yield "overall_conclusion", "pending"
+        check_runs = result["check_runs"]
 
-            # Count checks
-            total = len(check_runs)
-            passed = sum(1 for run in check_runs if run.get("conclusion") == "success")
-            failed = sum(
-                1
-                for run in check_runs
-                if run.get("conclusion") in ["failure", "timed_out"]
-            )
-
-            yield "total_checks", total
-            yield "passed_checks", passed
-            yield "failed_checks", failed
-
-            # Output check runs
-            yield "check_runs", check_runs
-
-            # Search for patterns if specified
-            if input_data.search_pattern:
-                matched_lines = await self.search_in_logs(
-                    check_runs, input_data.search_pattern
+        # Calculate overall status
+        if not check_runs:
+            yield "overall_status", "no_checks"
+            yield "overall_conclusion", "no_checks"
+        else:
+            all_completed = all(run["status"] == "completed" for run in check_runs)
+            if all_completed:
+                yield "overall_status", "completed"
+                # Determine overall conclusion
+                has_failure = any(
+                    run["conclusion"] in ["failure", "timed_out", "action_required"]
+                    for run in check_runs
                 )
-                if matched_lines:
-                    yield "matched_lines", matched_lines
+                if has_failure:
+                    yield "overall_conclusion", "failure"
+                else:
+                    yield "overall_conclusion", "success"
+            else:
+                yield "overall_status", "pending"
+                yield "overall_conclusion", "pending"
 
-        except Exception as e:
-            yield "error", str(e)
+        # Count checks
+        total = len(check_runs)
+        passed = sum(1 for run in check_runs if run.get("conclusion") == "success")
+        failed = sum(
+            1 for run in check_runs if run.get("conclusion") in ["failure", "timed_out"]
+        )
+
+        yield "total_checks", total
+        yield "passed_checks", passed
+        yield "failed_checks", failed
+
+        # Output check runs
+        yield "check_runs", check_runs
+
+        # Search for patterns if specified
+        if input_data.search_pattern:
+            matched_lines = await self.search_in_logs(
+                check_runs, input_data.search_pattern
+            )
+            if matched_lines:
+                yield "matched_lines", matched_lines

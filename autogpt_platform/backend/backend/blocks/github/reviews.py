@@ -1,5 +1,6 @@
+import logging
 from enum import Enum
-from typing import Optional
+from typing import Any, List, Optional
 
 from typing_extensions import TypedDict
 
@@ -15,6 +16,8 @@ from ._auth import (
     GithubCredentialsInput,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class ReviewEvent(Enum):
     COMMENT = "COMMENT"
@@ -24,10 +27,20 @@ class ReviewEvent(Enum):
 
 class GithubCreatePRReviewBlock(Block):
     class Input(BlockSchema):
+        class ReviewComment(TypedDict, total=False):
+            path: str
+            position: Optional[int]
+            body: str
+            line: Optional[int]  # Will be used as position if position not provided
+
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
-        pr_url: str = SchemaField(
-            description="URL of the GitHub pull request",
-            placeholder="https://github.com/owner/repo/pull/1",
+        repo: str = SchemaField(
+            description="GitHub repository",
+            placeholder="owner/repo",
+        )
+        pr_number: int = SchemaField(
+            description="Pull request number",
+            placeholder="123",
         )
         body: str = SchemaField(
             description="Body of the review comment",
@@ -41,6 +54,11 @@ class GithubCreatePRReviewBlock(Block):
             description="Create the review as a draft (pending) or post it immediately",
             default=False,
             advanced=False,
+        )
+        comments: Optional[List[ReviewComment]] = SchemaField(
+            description="Optional inline comments to add to specific files/lines. Note: Only path, body, and position are supported. Position is line number in diff from first @@ hunk.",
+            default=None,
+            advanced=True,
         )
 
     class Output(BlockSchema):
@@ -56,12 +74,13 @@ class GithubCreatePRReviewBlock(Block):
     def __init__(self):
         super().__init__(
             id="84754b30-97d2-4c37-a3b8-eb39f268275b",
-            description="This block creates a review on a GitHub pull request. You can either create it as a draft or post it immediately.",
+            description="This block creates a review on a GitHub pull request with optional inline comments. You can create it as a draft or post immediately. Note: For inline comments, 'position' should be the line number in the diff (starting from the first @@ hunk header).",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubCreatePRReviewBlock.Input,
             output_schema=GithubCreatePRReviewBlock.Output,
             test_input={
-                "pr_url": "https://github.com/owner/repo/pull/1",
+                "repo": "owner/repo",
+                "pr_number": 1,
                 "body": "This looks good to me!",
                 "event": "APPROVE",
                 "create_as_draft": False,
@@ -88,39 +107,68 @@ class GithubCreatePRReviewBlock(Block):
     @staticmethod
     async def create_review(
         credentials: GithubCredentials,
-        pr_url: str,
+        repo: str,
+        pr_number: int,
         body: str,
         event: ReviewEvent,
         create_as_draft: bool,
+        comments: Optional[List[Input.ReviewComment]] = None,
     ) -> tuple[int, str, str]:
-        api = get_api(credentials)
-
-        # Extract owner, repo, and PR number from URL
-        # Format: https://github.com/owner/repo/pull/123
-        parts = pr_url.split("/")
-        owner = parts[3]
-        repo = parts[4]
-        pr_number = parts[6]
+        api = get_api(credentials, convert_urls=False)
 
         # GitHub API endpoint for creating reviews
-        reviews_url = f"/repos/{owner}/{repo}/pulls/{pr_number}/reviews"
+        reviews_url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}/reviews"
+
+        # Get commit_id if we have comments
+        commit_id = None
+        if comments:
+            # Get PR details to get the head commit for inline comments
+            pr_url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}"
+            pr_response = await api.get(pr_url)
+            pr_data = pr_response.json()
+            commit_id = pr_data["head"]["sha"]
 
         # Prepare the request data
-        data = {
-            "body": body,
-            "event": event.value if not create_as_draft else "PENDING",
-        }
+        # If create_as_draft is True, omit the event field (creates a PENDING review)
+        # Otherwise, use the actual event value which will auto-submit the review
+        data: dict[str, Any] = {"body": body}
+
+        # Add commit_id if we have it
+        if commit_id:
+            data["commit_id"] = commit_id
+
+        # Add comments if provided
+        if comments:
+            # Process comments to ensure they have the required fields
+            processed_comments = []
+            for comment in comments:
+                comment_data: dict = {
+                    "path": comment.get("path", ""),
+                    "body": comment.get("body", ""),
+                }
+                # Add position or line
+                # Note: For review comments, only position is supported (not line/side)
+                if "position" in comment and comment.get("position") is not None:
+                    comment_data["position"] = comment.get("position")
+                elif "line" in comment and comment.get("line") is not None:
+                    # Note: Using line as position - may not work correctly
+                    # Position should be calculated from the diff
+                    comment_data["position"] = comment.get("line")
+
+                # Note: side, start_line, and start_side are NOT supported for review comments
+                # They are only for standalone PR comments
+
+                processed_comments.append(comment_data)
+
+            data["comments"] = processed_comments
+
+        if not create_as_draft:
+            # Only add event field if not creating a draft
+            data["event"] = event.value
 
         # Create the review
         response = await api.post(reviews_url, json=data)
         review_data = response.json()
-
-        # If not a draft and event is not COMMENT, submit the review
-        if not create_as_draft and event != ReviewEvent.COMMENT:
-            submit_url = f"/repos/{owner}/{repo}/pulls/{pr_number}/reviews/{review_data['id']}/events"
-            submit_data = {"event": event.value}
-            submit_response = await api.post(submit_url, json=submit_data)
-            review_data = submit_response.json()
 
         return review_data["id"], review_data["state"], review_data["html_url"]
 
@@ -134,10 +182,12 @@ class GithubCreatePRReviewBlock(Block):
         try:
             review_id, state, html_url = await self.create_review(
                 credentials,
-                input_data.pr_url,
+                input_data.repo,
+                input_data.pr_number,
                 input_data.body,
                 input_data.event,
                 input_data.create_as_draft,
+                input_data.comments,
             )
             yield "review_id", review_id
             yield "state", state
@@ -149,9 +199,13 @@ class GithubCreatePRReviewBlock(Block):
 class GithubListPRReviewsBlock(Block):
     class Input(BlockSchema):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
-        pr_url: str = SchemaField(
-            description="URL of the GitHub pull request",
-            placeholder="https://github.com/owner/repo/pull/1",
+        repo: str = SchemaField(
+            description="GitHub repository",
+            placeholder="owner/repo",
+        )
+        pr_number: int = SchemaField(
+            description="Pull request number",
+            placeholder="123",
         )
 
     class Output(BlockSchema):
@@ -179,7 +233,8 @@ class GithubListPRReviewsBlock(Block):
             input_schema=GithubListPRReviewsBlock.Input,
             output_schema=GithubListPRReviewsBlock.Output,
             test_input={
-                "pr_url": "https://github.com/owner/repo/pull/1",
+                "repo": "owner/repo",
+                "pr_number": 1,
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
@@ -222,18 +277,12 @@ class GithubListPRReviewsBlock(Block):
 
     @staticmethod
     async def list_reviews(
-        credentials: GithubCredentials, pr_url: str
+        credentials: GithubCredentials, repo: str, pr_number: int
     ) -> list[Output.ReviewItem]:
-        api = get_api(credentials)
-
-        # Extract owner, repo, and PR number from URL
-        parts = pr_url.split("/")
-        owner = parts[3]
-        repo = parts[4]
-        pr_number = parts[6]
+        api = get_api(credentials, convert_urls=False)
 
         # GitHub API endpoint for listing reviews
-        reviews_url = f"/repos/{owner}/{repo}/pulls/{pr_number}/reviews"
+        reviews_url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}/reviews"
 
         response = await api.get(reviews_url)
         data = response.json()
@@ -259,7 +308,8 @@ class GithubListPRReviewsBlock(Block):
     ) -> BlockOutput:
         reviews = await self.list_reviews(
             credentials,
-            input_data.pr_url,
+            input_data.repo,
+            input_data.pr_number,
         )
         yield "reviews", reviews
         for review in reviews:
@@ -269,9 +319,13 @@ class GithubListPRReviewsBlock(Block):
 class GithubSubmitPendingReviewBlock(Block):
     class Input(BlockSchema):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
-        pr_url: str = SchemaField(
-            description="URL of the GitHub pull request",
-            placeholder="https://github.com/owner/repo/pull/1",
+        repo: str = SchemaField(
+            description="GitHub repository",
+            placeholder="owner/repo",
+        )
+        pr_number: int = SchemaField(
+            description="Pull request number",
+            placeholder="123",
         )
         review_id: int = SchemaField(
             description="ID of the pending review to submit",
@@ -297,7 +351,8 @@ class GithubSubmitPendingReviewBlock(Block):
             input_schema=GithubSubmitPendingReviewBlock.Input,
             output_schema=GithubSubmitPendingReviewBlock.Output,
             test_input={
-                "pr_url": "https://github.com/owner/repo/pull/1",
+                "repo": "owner/repo",
+                "pr_number": 1,
                 "review_id": 123456,
                 "event": "APPROVE",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -321,22 +376,15 @@ class GithubSubmitPendingReviewBlock(Block):
     @staticmethod
     async def submit_review(
         credentials: GithubCredentials,
-        pr_url: str,
+        repo: str,
+        pr_number: int,
         review_id: int,
         event: ReviewEvent,
     ) -> tuple[str, str]:
-        api = get_api(credentials)
-
-        # Extract owner, repo, and PR number from URL
-        parts = pr_url.split("/")
-        owner = parts[3]
-        repo = parts[4]
-        pr_number = parts[6]
+        api = get_api(credentials, convert_urls=False)
 
         # GitHub API endpoint for submitting a review
-        submit_url = (
-            f"/repos/{owner}/{repo}/pulls/{pr_number}/reviews/{review_id}/events"
-        )
+        submit_url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}/reviews/{review_id}/events"
 
         data = {"event": event.value}
 
@@ -355,7 +403,8 @@ class GithubSubmitPendingReviewBlock(Block):
         try:
             state, html_url = await self.submit_review(
                 credentials,
-                input_data.pr_url,
+                input_data.repo,
+                input_data.pr_number,
                 input_data.review_id,
                 input_data.event,
             )
@@ -365,169 +414,16 @@ class GithubSubmitPendingReviewBlock(Block):
             yield "error", str(e)
 
 
-class GithubCreatePRReviewCommentBlock(Block):
-    class Input(BlockSchema):
-        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
-        pr_url: str = SchemaField(
-            description="URL of the GitHub pull request",
-            placeholder="https://github.com/owner/repo/pull/1",
-        )
-        body: str = SchemaField(
-            description="The comment text",
-            placeholder="Enter your comment",
-        )
-        review_id: Optional[int] = SchemaField(
-            description="ID of an existing draft review to add this comment to (optional)",
-            placeholder="123456",
-            default=None,
-            advanced=True,
-        )
-        path: Optional[str] = SchemaField(
-            description="The relative path to the file to comment on (for inline comments)",
-            placeholder="src/main.py",
-            default=None,
-            advanced=True,
-        )
-        line: Optional[int] = SchemaField(
-            description="The line number to comment on (deprecated, use start_line for new comments)",
-            default=None,
-            advanced=True,
-        )
-        start_line: Optional[int] = SchemaField(
-            description="The first line of the range to comment on",
-            default=None,
-            advanced=True,
-        )
-        side: str = SchemaField(
-            description="The side of the diff to comment on (LEFT or RIGHT)",
-            default="RIGHT",
-            advanced=True,
-        )
-        start_side: str = SchemaField(
-            description="The side of the first line of the range (LEFT or RIGHT)",
-            default="RIGHT",
-            advanced=True,
-        )
-
-    class Output(BlockSchema):
-        comment_id: int = SchemaField(description="ID of the created comment")
-        html_url: str = SchemaField(description="URL of the created comment")
-        error: str = SchemaField(
-            description="Error message if the comment creation failed"
-        )
-
-    def __init__(self):
-        super().__init__(
-            id="4a5c6d8e-9f10-4b2a-8c3e-7d5a9b1e3f4c",
-            description="This block creates a comment on a GitHub pull request. Can be standalone or part of a draft review.",
-            categories={BlockCategory.DEVELOPER_TOOLS},
-            input_schema=GithubCreatePRReviewCommentBlock.Input,
-            output_schema=GithubCreatePRReviewCommentBlock.Output,
-            test_input={
-                "pr_url": "https://github.com/owner/repo/pull/1",
-                "body": "This looks good!",
-                "credentials": TEST_CREDENTIALS_INPUT,
-            },
-            test_credentials=TEST_CREDENTIALS,
-            test_output=[
-                ("comment_id", 456789),
-                (
-                    "html_url",
-                    "https://github.com/owner/repo/pull/1#issuecomment-456789",
-                ),
-            ],
-            test_mock={
-                "create_comment": lambda *args, **kwargs: (
-                    456789,
-                    "https://github.com/owner/repo/pull/1#issuecomment-456789",
-                )
-            },
-        )
-
-    @staticmethod
-    async def create_comment(
-        credentials: GithubCredentials,
-        pr_url: str,
-        body: str,
-        review_id: Optional[int] = None,
-        path: Optional[str] = None,
-        line: Optional[int] = None,
-        start_line: Optional[int] = None,
-        side: str = "RIGHT",
-        start_side: str = "RIGHT",
-    ) -> tuple[int, str]:
-        api = get_api(credentials)
-
-        # Extract owner, repo, and PR number from URL
-        parts = pr_url.split("/")
-        owner = parts[3]
-        repo = parts[4]
-        pr_number = parts[6]
-
-        # Prepare the comment data
-        data: dict = {"body": body}
-
-        # Add inline comment fields if provided
-        if path:
-            data["path"] = path
-            if line is not None:
-                data["line"] = line
-            if start_line is not None:
-                data["start_line"] = start_line
-                data["line"] = (
-                    line or start_line
-                )  # line is required when start_line is provided
-            if side:
-                data["side"] = side
-            if start_side and start_line is not None:
-                data["start_side"] = start_side
-
-        # Determine the endpoint based on whether this is part of a review
-        if review_id:
-            # Add comment to existing draft review
-            comment_url = (
-                f"/repos/{owner}/{repo}/pulls/{pr_number}/reviews/{review_id}/comments"
-            )
-        else:
-            # Create standalone comment
-            comment_url = f"/repos/{owner}/{repo}/pulls/{pr_number}/comments"
-
-        response = await api.post(comment_url, json=data)
-        comment_data = response.json()
-
-        return comment_data["id"], comment_data["html_url"]
-
-    async def run(
-        self,
-        input_data: Input,
-        *,
-        credentials: GithubCredentials,
-        **kwargs,
-    ) -> BlockOutput:
-        try:
-            comment_id, html_url = await self.create_comment(
-                credentials,
-                input_data.pr_url,
-                input_data.body,
-                input_data.review_id,
-                input_data.path,
-                input_data.line,
-                input_data.start_line,
-                input_data.side,
-                input_data.start_side,
-            )
-            yield "comment_id", comment_id
-            yield "html_url", html_url
-        except Exception as e:
-            yield "error", str(e)
-
-
 class GithubResolveReviewDiscussionBlock(Block):
     class Input(BlockSchema):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
-        pr_url: str = SchemaField(
-            description="URL of the GitHub pull request",
-            placeholder="https://github.com/owner/repo/pull/1",
+        repo: str = SchemaField(
+            description="GitHub repository",
+            placeholder="owner/repo",
+        )
+        pr_number: int = SchemaField(
+            description="Pull request number",
+            placeholder="123",
         )
         comment_id: int = SchemaField(
             description="ID of the review comment to resolve/unresolve",
@@ -550,7 +446,8 @@ class GithubResolveReviewDiscussionBlock(Block):
             input_schema=GithubResolveReviewDiscussionBlock.Input,
             output_schema=GithubResolveReviewDiscussionBlock.Output,
             test_input={
-                "pr_url": "https://github.com/owner/repo/pull/1",
+                "repo": "owner/repo",
+                "pr_number": 1,
                 "comment_id": 123456,
                 "resolve": True,
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -565,21 +462,21 @@ class GithubResolveReviewDiscussionBlock(Block):
     @staticmethod
     async def resolve_discussion(
         credentials: GithubCredentials,
-        pr_url: str,
+        repo: str,
+        pr_number: int,
         comment_id: int,
         resolve: bool,
     ) -> bool:
-        api = get_api(credentials)
+        api = get_api(credentials, convert_urls=False)
 
-        # Extract owner, repo, and PR number from URL
-        parts = pr_url.split("/")
-        owner = parts[3]
-        repo = parts[4]
-        pr_number = parts[6]
+        # Extract owner and repo name
+        parts = repo.split("/")
+        owner = parts[0]
+        repo_name = parts[1]
 
         # GitHub GraphQL API is needed for resolving/unresolving discussions
         # First, we need to get the node ID of the comment
-        graphql_url = "/graphql"
+        graphql_url = "https://api.github.com/graphql"
 
         # Query to get the review comment node ID
         query = """
@@ -603,7 +500,7 @@ class GithubResolveReviewDiscussionBlock(Block):
         }
         """
 
-        variables = {"owner": owner, "repo": repo, "number": int(pr_number)}
+        variables = {"owner": owner, "repo": repo_name, "number": pr_number}
 
         response = await api.post(
             graphql_url, json={"query": query, "variables": variables}
@@ -626,31 +523,29 @@ class GithubResolveReviewDiscussionBlock(Block):
             raise ValueError(f"Comment {comment_id} not found in pull request")
 
         # Now resolve or unresolve the thread
-        mutation = (
+        # GitHub's GraphQL API has separate mutations for resolve and unresolve
+        if resolve:
+            mutation = """
+            mutation($threadId: ID!) {
+              resolveReviewThread(input: {threadId: $threadId}) {
+                thread {
+                  isResolved
+                }
+              }
+            }
             """
-        mutation($threadId: ID!, $resolve: Boolean!) {
-          resolveReviewThread(input: {threadId: $threadId, resolve: $resolve}) {
-            thread {
-              isResolved
+        else:
+            mutation = """
+            mutation($threadId: ID!) {
+              unresolveReviewThread(input: {threadId: $threadId}) {
+                thread {
+                  isResolved
+                }
+              }
             }
-          }
-        }
-        """
-            if resolve
-            else """
-        mutation($threadId: ID!) {
-          unresolveReviewThread(input: {threadId: $threadId}) {
-            thread {
-              isResolved
-            }
-          }
-        }
-        """
-        )
+            """
 
         mutation_variables = {"threadId": thread_id}
-        if resolve:
-            mutation_variables["resolve"] = True
 
         response = await api.post(
             graphql_url, json={"query": mutation, "variables": mutation_variables}
@@ -672,7 +567,8 @@ class GithubResolveReviewDiscussionBlock(Block):
         try:
             success = await self.resolve_discussion(
                 credentials,
-                input_data.pr_url,
+                input_data.repo,
+                input_data.pr_number,
                 input_data.comment_id,
                 input_data.resolve,
             )
@@ -685,9 +581,13 @@ class GithubResolveReviewDiscussionBlock(Block):
 class GithubGetPRReviewCommentsBlock(Block):
     class Input(BlockSchema):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
-        pr_url: str = SchemaField(
-            description="URL of the GitHub pull request",
-            placeholder="https://github.com/owner/repo/pull/1",
+        repo: str = SchemaField(
+            description="GitHub repository",
+            placeholder="owner/repo",
+        )
+        pr_number: int = SchemaField(
+            description="Pull request number",
+            placeholder="123",
         )
         review_id: Optional[int] = SchemaField(
             description="ID of a specific review to get comments from (optional)",
@@ -726,7 +626,8 @@ class GithubGetPRReviewCommentsBlock(Block):
             input_schema=GithubGetPRReviewCommentsBlock.Input,
             output_schema=GithubGetPRReviewCommentsBlock.Output,
             test_input={
-                "pr_url": "https://github.com/owner/repo/pull/1",
+                "repo": "owner/repo",
+                "pr_number": 1,
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
@@ -785,26 +686,21 @@ class GithubGetPRReviewCommentsBlock(Block):
     @staticmethod
     async def get_comments(
         credentials: GithubCredentials,
-        pr_url: str,
+        repo: str,
+        pr_number: int,
         review_id: Optional[int] = None,
     ) -> list[Output.CommentItem]:
-        api = get_api(credentials)
-
-        # Extract owner, repo, and PR number from URL
-        parts = pr_url.split("/")
-        owner = parts[3]
-        repo = parts[4]
-        pr_number = parts[6]
+        api = get_api(credentials, convert_urls=False)
 
         # Determine the endpoint based on whether we want comments from a specific review
         if review_id:
             # Get comments from a specific review
-            comments_url = (
-                f"/repos/{owner}/{repo}/pulls/{pr_number}/reviews/{review_id}/comments"
-            )
+            comments_url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}/reviews/{review_id}/comments"
         else:
             # Get all review comments on the PR
-            comments_url = f"/repos/{owner}/{repo}/pulls/{pr_number}/comments"
+            comments_url = (
+                f"https://api.github.com/repos/{repo}/pulls/{pr_number}/comments"
+            )
 
         response = await api.get(comments_url)
         data = response.json()
@@ -836,7 +732,8 @@ class GithubGetPRReviewCommentsBlock(Block):
         try:
             comments = await self.get_comments(
                 credentials,
-                input_data.pr_url,
+                input_data.repo,
+                input_data.pr_number,
                 input_data.review_id,
             )
             yield "comments", comments
@@ -844,3 +741,100 @@ class GithubGetPRReviewCommentsBlock(Block):
                 yield "comment", comment
         except Exception as e:
             yield "error", str(e)
+
+
+class GithubCreateCommentObjectBlock(Block):
+    class Input(BlockSchema):
+        path: str = SchemaField(
+            description="The file path to comment on",
+            placeholder="src/main.py",
+        )
+        body: str = SchemaField(
+            description="The comment text",
+            placeholder="Please fix this issue",
+        )
+        position: Optional[int] = SchemaField(
+            description="Position in the diff (line number from first @@ hunk). Use this OR line.",
+            placeholder="6",
+            default=None,
+            advanced=True,
+        )
+        line: Optional[int] = SchemaField(
+            description="Line number in the file (will be used as position if position not provided)",
+            placeholder="42",
+            default=None,
+            advanced=True,
+        )
+        side: Optional[str] = SchemaField(
+            description="Side of the diff to comment on (NOTE: Only for standalone comments, not review comments)",
+            default="RIGHT",
+            advanced=True,
+        )
+        start_line: Optional[int] = SchemaField(
+            description="Start line for multi-line comments (NOTE: Only for standalone comments, not review comments)",
+            default=None,
+            advanced=True,
+        )
+        start_side: Optional[str] = SchemaField(
+            description="Side for the start of multi-line comments (NOTE: Only for standalone comments, not review comments)",
+            default=None,
+            advanced=True,
+        )
+
+    class Output(BlockSchema):
+        comment_object: dict = SchemaField(
+            description="The comment object formatted for GitHub API"
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="b7d5e4f2-8c3a-4e6b-9f1d-7a8b9c5e4d3f",
+            description="Creates a comment object for use with GitHub blocks. Note: For review comments, only path, body, and position are used. Side fields are only for standalone PR comments.",
+            categories={BlockCategory.DEVELOPER_TOOLS},
+            input_schema=GithubCreateCommentObjectBlock.Input,
+            output_schema=GithubCreateCommentObjectBlock.Output,
+            test_input={
+                "path": "src/main.py",
+                "body": "Please fix this issue",
+                "position": 6,
+            },
+            test_output=[
+                (
+                    "comment_object",
+                    {
+                        "path": "src/main.py",
+                        "body": "Please fix this issue",
+                        "position": 6,
+                    },
+                ),
+            ],
+        )
+
+    async def run(
+        self,
+        input_data: Input,
+        **kwargs,
+    ) -> BlockOutput:
+        # Build the comment object
+        comment_obj: dict = {
+            "path": input_data.path,
+            "body": input_data.body,
+        }
+
+        # Add position or line
+        if input_data.position is not None:
+            comment_obj["position"] = input_data.position
+        elif input_data.line is not None:
+            # Note: line will be used as position, which may not be accurate
+            # Position should be calculated from the diff
+            comment_obj["position"] = input_data.line
+
+        # Add optional fields
+        if input_data.side:
+            comment_obj["side"] = input_data.side
+        if input_data.start_line is not None:
+            comment_obj["start_line"] = input_data.start_line
+        if input_data.start_side:
+            comment_obj["start_side"] = input_data.start_side
+
+        yield "comment_object", comment_obj
