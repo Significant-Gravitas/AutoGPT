@@ -21,6 +21,7 @@ from backend.util.json import SafeJson
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
+settings = Settings()
 
 
 async def get_or_create_user(user_data: dict) -> User:
@@ -332,7 +333,7 @@ async def get_user_email_verification(user_id: str) -> bool:
 def generate_unsubscribe_link(user_id: str) -> str:
     """Generate a link to unsubscribe from all notifications"""
     # Create an HMAC using a secret key
-    secret_key = Settings().secrets.unsubscribe_secret_key
+    secret_key = settings.secrets.unsubscribe_secret_key
     signature = hmac.new(
         secret_key.encode("utf-8"), user_id.encode("utf-8"), hashlib.sha256
     ).digest()
@@ -343,7 +344,7 @@ def generate_unsubscribe_link(user_id: str) -> str:
     ).decode("utf-8")
     logger.info(f"Generating unsubscribe link for user {user_id}")
 
-    base_url = Settings().config.platform_base_url
+    base_url = settings.config.platform_base_url
     return f"{base_url}/api/email/unsubscribe?token={quote_plus(token)}"
 
 
@@ -355,7 +356,7 @@ async def unsubscribe_user_by_token(token: str) -> None:
         user_id, received_signature_hex = decoded.split(":", 1)
 
         # Verify the signature
-        secret_key = Settings().secrets.unsubscribe_secret_key
+        secret_key = settings.secrets.unsubscribe_secret_key
         expected_signature = hmac.new(
             secret_key.encode("utf-8"), user_id.encode("utf-8"), hashlib.sha256
         ).digest()

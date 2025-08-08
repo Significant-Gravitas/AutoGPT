@@ -1,11 +1,10 @@
 import asyncio
 import logging
-import multiprocessing
 import os
 import threading
 import time
 from collections import defaultdict
-from concurrent.futures import Future, ProcessPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
 
@@ -102,6 +101,22 @@ utilization_gauge = Gauge(
     "Ratio of active graph runs to max graph workers",
 )
 
+# Thread-local storage for ExecutionProcessor instances
+_tls = threading.local()
+
+
+def init_worker():
+    """Initialize ExecutionProcessor instance in thread-local storage"""
+    _tls.processor = ExecutionProcessor()
+    _tls.processor.on_graph_executor_start()
+
+
+def execute_graph(
+    graph_exec_entry: "GraphExecutionEntry", cancel_event: threading.Event
+):
+    """Execute graph using thread-local ExecutionProcessor instance"""
+    return _tls.processor.on_graph_execution(graph_exec_entry, cancel_event)
+
 
 T = TypeVar("T")
 
@@ -196,11 +211,6 @@ async def execute_node(
             output_size += len(json.dumps(output_data))
             log_metadata.debug("Node produced output", **{output_name: output_data})
             yield output_name, output_data
-
-    except Exception as e:
-        yield "error", str(e) or type(e).__name__
-        raise e
-
     finally:
         # Ensure credentials are released even if execution fails
         if creds_lock and (await creds_lock.locked()) and (await creds_lock.owned()):
@@ -371,7 +381,7 @@ async def _enqueue_next_nodes(
     ]
 
 
-class Executor:
+class ExecutionProcessor:
     """
     This class contains event handlers for the process pool executor events.
 
@@ -394,10 +404,9 @@ class Executor:
         9. Node executor enqueues the next executed nodes to the node execution queue.
     """
 
-    @classmethod
     @async_error_logged(swallow=True)
     async def on_node_execution(
-        cls,
+        self,
         node_exec: NodeExecutionEntry,
         node_exec_progress: NodeExecutionProgress,
         nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]],
@@ -416,7 +425,7 @@ class Executor:
         node = await db_client.get_node(node_exec.node_id)
         execution_stats = NodeExecutionStats()
 
-        timing_info, status = await cls._on_node_execution(
+        timing_info, status = await self._on_node_execution(
             node=node,
             node_exec=node_exec,
             node_exec_progress=node_exec_progress,
@@ -459,10 +468,9 @@ class Executor:
 
         return execution_stats
 
-    @classmethod
     @async_time_measured
     async def _on_node_execution(
-        cls,
+        self,
         node: Node,
         node_exec: NodeExecutionEntry,
         node_exec_progress: NodeExecutionProgress,
@@ -471,6 +479,27 @@ class Executor:
         log_metadata: LogMetadata,
         nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
     ) -> ExecutionStatus:
+        status = ExecutionStatus.RUNNING
+
+        async def persist_output(output_name: str, output_data: Any) -> None:
+            await db_client.upsert_execution_output(
+                node_exec_id=node_exec.node_exec_id,
+                output_name=output_name,
+                output_data=output_data,
+            )
+            if exec_update := await db_client.get_node_execution(
+                node_exec.node_exec_id
+            ):
+                await send_async_execution_update(exec_update)
+
+            node_exec_progress.add_output(
+                ExecutionOutputEntry(
+                    node=node,
+                    node_exec_id=node_exec.node_exec_id,
+                    data=(output_name, output_data),
+                )
+            )
+
         try:
             log_metadata.info(f"Start node execution {node_exec.node_exec_id}")
             await async_update_node_execution_status(
@@ -481,28 +510,13 @@ class Executor:
 
             async for output_name, output_data in execute_node(
                 node=node,
-                creds_manager=cls.creds_manager,
+                creds_manager=self.creds_manager,
                 data=node_exec,
                 execution_stats=stats,
                 nodes_input_masks=nodes_input_masks,
             ):
-                await db_client.upsert_execution_output(
-                    node_exec_id=node_exec.node_exec_id,
-                    output_name=output_name,
-                    output_data=output_data,
-                )
-                if exec_update := await db_client.get_node_execution(
-                    node_exec.node_exec_id
-                ):
-                    await send_async_execution_update(exec_update)
+                await persist_output(output_name, output_data)
 
-                node_exec_progress.add_output(
-                    ExecutionOutputEntry(
-                        node=node,
-                        node_exec_id=node_exec.node_exec_id,
-                        data=(output_name, output_data),
-                    )
-                )
             log_metadata.info(f"Finished node execution {node_exec.node_exec_id}")
             status = ExecutionStatus.COMPLETED
 
@@ -512,7 +526,7 @@ class Executor:
             if isinstance(e, ValueError):
                 # Avoid user error being marked as an actual error.
                 log_metadata.info(
-                    f"Expected failure on node execution {node_exec.node_exec_id}: {e}"
+                    f"Expected failure on node execution {node_exec.node_exec_id}: {type(e).__name__} - {e}"
                 )
                 status = ExecutionStatus.FAILED
             elif isinstance(e, Exception):
@@ -528,31 +542,35 @@ class Executor:
                 )
                 status = ExecutionStatus.TERMINATED
 
+        finally:
+            if status == ExecutionStatus.FAILED and stats.error is not None:
+                await persist_output(
+                    "error", str(stats.error) or type(stats.error).__name__
+                )
+
         return status
 
-    @classmethod
     @func_retry
-    def on_graph_executor_start(cls):
+    def on_graph_executor_start(self):
         configure_logging()
         set_service_name("GraphExecutor")
-        cls.pid = os.getpid()
-        cls.creds_manager = IntegrationCredentialsManager()
-        cls.node_execution_loop = asyncio.new_event_loop()
-        cls.node_evaluation_loop = asyncio.new_event_loop()
-        cls.node_execution_thread = threading.Thread(
-            target=cls.node_execution_loop.run_forever, daemon=True
+        self.tid = threading.get_ident()
+        self.creds_manager = IntegrationCredentialsManager()
+        self.node_execution_loop = asyncio.new_event_loop()
+        self.node_evaluation_loop = asyncio.new_event_loop()
+        self.node_execution_thread = threading.Thread(
+            target=self.node_execution_loop.run_forever, daemon=True
         )
-        cls.node_evaluation_thread = threading.Thread(
-            target=cls.node_evaluation_loop.run_forever, daemon=True
+        self.node_evaluation_thread = threading.Thread(
+            target=self.node_evaluation_loop.run_forever, daemon=True
         )
-        cls.node_execution_thread.start()
-        cls.node_evaluation_thread.start()
-        logger.info(f"[GraphExecutor] {cls.pid} started")
+        self.node_execution_thread.start()
+        self.node_evaluation_thread.start()
+        logger.info(f"[GraphExecutor] {self.tid} started")
 
-    @classmethod
     @error_logged(swallow=False)
     def on_graph_execution(
-        cls,
+        self,
         graph_exec: GraphExecutionEntry,
         cancel: threading.Event,
     ):
@@ -608,7 +626,7 @@ class Executor:
         else:
             exec_stats = exec_meta.stats.to_db()
 
-        timing_info, status = cls._on_graph_execution(
+        timing_info, status = self._on_graph_execution(
             graph_exec=graph_exec,
             cancel=cancel,
             log_metadata=log_metadata,
@@ -634,7 +652,7 @@ class Executor:
                     user_id=graph_exec.user_id,
                     execution_status=status,
                 ),
-                cls.node_execution_loop,
+                self.node_execution_loop,
             ).result(timeout=60.0)
             if activity_status is not None:
                 exec_stats.activity_status = activity_status
@@ -645,7 +663,7 @@ class Executor:
                 )
 
             # Communication handling
-            cls._handle_agent_run_notif(db_client, graph_exec, exec_stats)
+            self._handle_agent_run_notif(db_client, graph_exec, exec_stats)
 
         finally:
             update_graph_execution_state(
@@ -655,9 +673,8 @@ class Executor:
                 stats=exec_stats,
             )
 
-    @classmethod
     def _charge_usage(
-        cls,
+        self,
         node_exec: NodeExecutionEntry,
         execution_count: int,
     ) -> int:
@@ -707,22 +724,14 @@ class Executor:
 
         return total_cost
 
-    @classmethod
     @time_measured
     def _on_graph_execution(
-        cls,
+        self,
         graph_exec: GraphExecutionEntry,
         cancel: threading.Event,
         log_metadata: LogMetadata,
         execution_stats: GraphExecutionStats,
     ) -> ExecutionStatus:
-
-        # Agent execution is uninterrupted.
-        import signal
-
-        signal.signal(signal.SIGINT, signal.SIG_IGN)
-        signal.signal(signal.SIGTERM, signal.SIG_IGN)
-
         """
         Returns:
             dict: The execution statistics of the graph execution.
@@ -779,7 +788,7 @@ class Executor:
 
                 # Charge usage (may raise) ------------------------------
                 try:
-                    cost = cls._charge_usage(
+                    cost = self._charge_usage(
                         node_exec=queued_node_exec,
                         execution_count=increment_execution_count(graph_exec.user_id),
                     )
@@ -799,7 +808,7 @@ class Executor:
                         status=ExecutionStatus.FAILED,
                     )
 
-                    cls._handle_low_balance_notif(
+                    self._handle_low_balance_notif(
                         db_client,
                         graph_exec.user_id,
                         graph_exec.graph_id,
@@ -818,7 +827,7 @@ class Executor:
 
                 # Kick off async node execution -------------------------
                 node_execution_task = asyncio.run_coroutine_threadsafe(
-                    cls.on_node_execution(
+                    self.on_node_execution(
                         node_exec=queued_node_exec,
                         node_exec_progress=running_node_execution[node_id],
                         nodes_input_masks=nodes_input_masks,
@@ -827,7 +836,7 @@ class Executor:
                             execution_stats_lock,
                         ),
                     ),
-                    cls.node_execution_loop,
+                    self.node_execution_loop,
                 )
                 running_node_execution[node_id].add_task(
                     node_exec_id=queued_node_exec.node_exec_id,
@@ -868,7 +877,7 @@ class Executor:
                             node_output_found = True
                             running_node_evaluation[node_id] = (
                                 asyncio.run_coroutine_threadsafe(
-                                    cls._process_node_output(
+                                    self._process_node_output(
                                         output=output,
                                         node_id=node_id,
                                         graph_exec=graph_exec,
@@ -876,7 +885,7 @@ class Executor:
                                         nodes_input_masks=nodes_input_masks,
                                         execution_queue=execution_queue,
                                     ),
-                                    cls.node_evaluation_loop,
+                                    self.node_evaluation_loop,
                                 )
                             )
                     if (
@@ -919,7 +928,7 @@ class Executor:
             raise
 
         finally:
-            cls._cleanup_graph_execution(
+            self._cleanup_graph_execution(
                 execution_queue=execution_queue,
                 running_node_execution=running_node_execution,
                 running_node_evaluation=running_node_evaluation,
@@ -930,10 +939,9 @@ class Executor:
                 db_client=db_client,
             )
 
-    @classmethod
     @error_logged(swallow=True)
     def _cleanup_graph_execution(
-        cls,
+        self,
         execution_queue: ExecutionQueue[NodeExecutionEntry],
         running_node_execution: dict[str, "NodeExecutionProgress"],
         running_node_evaluation: dict[str, Future],
@@ -984,10 +992,9 @@ class Executor:
 
         clean_exec_files(graph_exec_id)
 
-    @classmethod
     @async_error_logged(swallow=True)
     async def _process_node_output(
-        cls,
+        self,
         output: ExecutionOutputEntry,
         node_id: str,
         graph_exec: GraphExecutionEntry,
@@ -1020,9 +1027,8 @@ class Executor:
         ):
             execution_queue.add(next_execution)
 
-    @classmethod
     def _handle_agent_run_notif(
-        cls,
+        self,
         db_client: "DatabaseManagerClient",
         graph_exec: GraphExecutionEntry,
         exec_stats: GraphExecutionStats,
@@ -1058,9 +1064,8 @@ class Executor:
             )
         )
 
-    @classmethod
     def _handle_low_balance_notif(
-        cls,
+        self,
         db_client: "DatabaseManagerClient",
         user_id: str,
         graph_id: str,
@@ -1125,11 +1130,11 @@ class ExecutionManager(AppProcess):
         return self._stop_consuming
 
     @property
-    def executor(self) -> ProcessPoolExecutor:
+    def executor(self) -> ThreadPoolExecutor:
         if self._executor is None:
-            self._executor = ProcessPoolExecutor(
+            self._executor = ThreadPoolExecutor(
                 max_workers=self.pool_size,
-                initializer=Executor.on_graph_executor_start,
+                initializer=init_worker,
             )
         return self._executor
 
@@ -1252,7 +1257,7 @@ class ExecutionManager(AppProcess):
 
     def _handle_run_message(
         self,
-        channel: BlockingChannel,
+        _channel: BlockingChannel,
         method: Basic.Deliver,
         _properties: BasicProperties,
         body: bytes,
@@ -1262,6 +1267,9 @@ class ExecutionManager(AppProcess):
         @func_retry
         def _ack_message(reject: bool = False):
             """Acknowledge or reject the message based on execution status."""
+
+            # Connection can be lost, so always get a fresh channel
+            channel = self.run_client.get_channel()
             if reject:
                 channel.connection.add_callback_threadsafe(
                     lambda: channel.basic_nack(delivery_tag, requeue=True)
@@ -1306,11 +1314,9 @@ class ExecutionManager(AppProcess):
             _ack_message(reject=True)
             return
 
-        cancel_event = multiprocessing.Manager().Event()
+        cancel_event = threading.Event()
 
-        future = self.executor.submit(
-            Executor.on_graph_execution, graph_exec_entry, cancel_event
-        )
+        future = self.executor.submit(execute_graph, graph_exec_entry, cancel_event)
         self.active_graph_runs[graph_exec_id] = (future, cancel_event)
         self._update_prompt_metrics()
 
@@ -1413,9 +1419,12 @@ class ExecutionManager(AppProcess):
         try:
             run_channel = self.run_client.get_channel()
             run_channel.connection.add_callback_threadsafe(
-                lambda: self.run_client.disconnect()
+                lambda: run_channel.stop_consuming()
             )
             self.run_thread.join()
+            run_channel.connection.add_callback_threadsafe(
+                lambda: self.run_client.disconnect()
+            )
             logger.info(f"{prefix} ✅ Run client disconnected")
         except Exception as e:
             logger.error(f"{prefix} ⚠️ Error disconnecting run client: {type(e)} {e}")
@@ -1424,9 +1433,12 @@ class ExecutionManager(AppProcess):
         try:
             cancel_channel = self.cancel_client.get_channel()
             cancel_channel.connection.add_callback_threadsafe(
-                lambda: self.cancel_client.disconnect()
+                lambda: cancel_channel.stop_consuming()
             )
             self.cancel_thread.join()
+            cancel_channel.connection.add_callback_threadsafe(
+                lambda: self.cancel_client.disconnect()
+            )
             logger.info(f"{prefix} ✅ Cancel client disconnected")
         except Exception as e:
             logger.error(f"{prefix} ⚠️ Error disconnecting cancel client: {type(e)} {e}")
