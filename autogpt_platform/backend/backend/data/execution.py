@@ -16,7 +16,6 @@ from typing import (
     overload,
 )
 
-from prisma import Json
 from prisma.enums import AgentExecutionStatus
 from prisma.models import (
     AgentGraphExecution,
@@ -39,7 +38,10 @@ from pydantic.fields import Field
 
 from backend.server.v2.store.exceptions import DatabaseError
 from backend.util import type as type_utils
+from backend.util.json import SafeJson
+from backend.util.retry import func_retry
 from backend.util.settings import Config
+from backend.util.truncate import truncate
 
 from .block import (
     BlockInput,
@@ -57,7 +59,7 @@ from .includes import (
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     graph_execution_include,
 )
-from .model import GraphExecutionStats, NodeExecutionStats
+from .model import GraphExecutionStats
 
 T = TypeVar("T")
 
@@ -133,6 +135,10 @@ class GraphExecutionMeta(BaseDbModel):
             default=None,
             description="Error message if any",
         )
+        activity_status: str | None = Field(
+            default=None,
+            description="AI-generated summary of what the agent did",
+        )
 
         def to_db(self) -> GraphExecutionStats:
             return GraphExecutionStats(
@@ -144,6 +150,7 @@ class GraphExecutionMeta(BaseDbModel):
                 node_count=self.node_exec_count,
                 node_error_count=self.node_error_count,
                 error=self.error,
+                activity_status=self.activity_status,
             )
 
     stats: Stats | None
@@ -188,6 +195,7 @@ class GraphExecutionMeta(BaseDbModel):
                         if isinstance(stats.error, Exception)
                         else stats.error
                     ),
+                    activity_status=stats.activity_status,
                 )
                 if stats
                 else None
@@ -372,6 +380,7 @@ async def get_graph_executions(
     created_time_lte: datetime | None = None,
     limit: int | None = None,
 ) -> list[GraphExecutionMeta]:
+    """⚠️ **Optional `user_id` check**: MUST USE check in user-facing endpoints."""
     where_filter: AgentGraphExecutionWhereInput = {
         "isDeleted": False,
     }
@@ -480,7 +489,7 @@ async def create_graph_execution(
                         queuedTime=datetime.now(tz=timezone.utc),
                         Input={
                             "create": [
-                                {"name": name, "data": Json(data)}
+                                {"name": name, "data": SafeJson(data)}
                                 for name, data in node_input.items()
                             ]
                         },
@@ -538,7 +547,7 @@ async def upsert_execution_input(
         order={"addedTime": "asc"},
         include={"Input": True},
     )
-    json_input_data = Json(input_data)
+    json_input_data = SafeJson(input_data)
 
     if existing_execution:
         await AgentNodeExecutionInputOutput.prisma().create(
@@ -581,12 +590,12 @@ async def upsert_execution_output(
     """
     Insert AgentNodeExecutionInputOutput record for as one of AgentNodeExecution.Output.
     """
-    data = AgentNodeExecutionInputOutputCreateInput(
-        name=output_name,
-        referencedByOutputExecId=node_exec_id,
-    )
+    data: AgentNodeExecutionInputOutputCreateInput = {
+        "name": output_name,
+        "referencedByOutputExecId": node_exec_id,
+    }
     if output_data is not None:
-        data["data"] = Json(output_data)
+        data["data"] = SafeJson(output_data)
     await AgentNodeExecutionInputOutput.prisma().create(data=data)
 
 
@@ -617,7 +626,7 @@ async def update_graph_execution_stats(
         stats_dict = stats.model_dump()
         if isinstance(stats_dict.get("error"), Exception):
             stats_dict["error"] = str(stats_dict["error"])
-        update_data["stats"] = Json(stats_dict)
+        update_data["stats"] = SafeJson(stats_dict)
 
     if status:
         update_data["executionStatus"] = status
@@ -628,6 +637,8 @@ async def update_graph_execution_stats(
             "OR": [
                 {"executionStatus": ExecutionStatus.RUNNING},
                 {"executionStatus": ExecutionStatus.QUEUED},
+                # Terminated graph can be resumed.
+                {"executionStatus": ExecutionStatus.TERMINATED},
             ],
         },
         data=update_data,
@@ -642,27 +653,6 @@ async def update_graph_execution_stats(
         ),
     )
     return GraphExecution.from_db(graph_exec)
-
-
-async def update_node_execution_stats(
-    node_exec_id: str, stats: NodeExecutionStats
-) -> NodeExecutionResult:
-    data = stats.model_dump()
-    if isinstance(data["error"], Exception):
-        data["error"] = str(data["error"])
-
-    res = await AgentNodeExecution.prisma().update(
-        where={"id": node_exec_id},
-        data={
-            "stats": Json(data),
-            "endedTime": datetime.now(tz=timezone.utc),
-        },
-        include=EXECUTION_RESULT_INCLUDE,
-    )
-    if not res:
-        raise ValueError(f"Node execution {node_exec_id} not found.")
-
-    return NodeExecutionResult.from_db(res)
 
 
 async def update_node_execution_status_batch(
@@ -712,9 +702,9 @@ def _get_update_status_data(
         update_data["endedTime"] = now
 
     if execution_data:
-        update_data["executionData"] = Json(execution_data)
+        update_data["executionData"] = SafeJson(execution_data)
     if stats:
-        update_data["stats"] = Json(stats)
+        update_data["stats"] = SafeJson(stats)
 
     return update_data
 
@@ -737,6 +727,7 @@ async def delete_graph_execution(
 
 
 async def get_node_execution(node_exec_id: str) -> NodeExecutionResult | None:
+    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
     execution = await AgentNodeExecution.prisma().find_first(
         where={"id": node_exec_id},
         include=EXECUTION_RESULT_INCLUDE,
@@ -756,6 +747,7 @@ async def get_node_executions(
     created_time_lte: datetime | None = None,
     include_exec_data: bool = True,
 ) -> list[NodeExecutionResult]:
+    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
     where_clause: AgentNodeExecutionWhereInput = {}
     if graph_exec_id:
         where_clause["agentGraphExecutionId"] = graph_exec_id
@@ -789,6 +781,7 @@ async def get_node_executions(
 async def get_latest_node_execution(
     node_id: str, graph_eid: str
 ) -> NodeExecutionResult | None:
+    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
     execution = await AgentNodeExecution.prisma().find_first(
         where={
             "agentGraphExecutionId": graph_eid,
@@ -862,6 +855,7 @@ class ExecutionQueue(Generic[T]):
 class ExecutionEventType(str, Enum):
     GRAPH_EXEC_UPDATE = "graph_execution_update"
     NODE_EXEC_UPDATE = "node_execution_update"
+    ERROR_COMMS_UPDATE = "error_comms_update"
 
 
 class GraphExecutionEvent(GraphExecution):
@@ -890,17 +884,31 @@ class RedisExecutionEventBus(RedisEventBus[ExecutionEvent]):
 
     def publish(self, res: GraphExecution | NodeExecutionResult):
         if isinstance(res, GraphExecution):
-            self.publish_graph_exec_update(res)
+            self._publish_graph_exec_update(res)
         else:
-            self.publish_node_exec_update(res)
+            self._publish_node_exec_update(res)
 
-    def publish_node_exec_update(self, res: NodeExecutionResult):
+    def _publish_node_exec_update(self, res: NodeExecutionResult):
         event = NodeExecutionEvent.model_validate(res.model_dump())
-        self.publish_event(event, f"{res.user_id}/{res.graph_id}/{res.graph_exec_id}")
+        self._publish(event, f"{res.user_id}/{res.graph_id}/{res.graph_exec_id}")
 
-    def publish_graph_exec_update(self, res: GraphExecution):
+    def _publish_graph_exec_update(self, res: GraphExecution):
         event = GraphExecutionEvent.model_validate(res.model_dump())
-        self.publish_event(event, f"{res.user_id}/{res.graph_id}/{res.id}")
+        self._publish(event, f"{res.user_id}/{res.graph_id}/{res.id}")
+
+    def _publish(self, event: ExecutionEvent, channel: str):
+        """
+        truncate inputs and outputs to avoid large payloads
+        """
+        limit = config.max_message_size_limit // 2
+        if isinstance(event, GraphExecutionEvent):
+            event.inputs = truncate(event.inputs, limit)
+            event.outputs = truncate(event.outputs, limit)
+        elif isinstance(event, NodeExecutionEvent):
+            event.input_data = truncate(event.input_data, limit)
+            event.output_data = truncate(event.output_data, limit)
+
+        super().publish_event(event, channel)
 
     def listen(
         self, user_id: str, graph_id: str = "*", graph_exec_id: str = "*"
@@ -916,21 +924,39 @@ class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
     def event_bus_name(self) -> str:
         return config.execution_event_bus_name
 
+    @func_retry
     async def publish(self, res: GraphExecutionMeta | NodeExecutionResult):
         if isinstance(res, GraphExecutionMeta):
-            await self.publish_graph_exec_update(res)
+            await self._publish_graph_exec_update(res)
         else:
-            await self.publish_node_exec_update(res)
+            await self._publish_node_exec_update(res)
 
-    async def publish_node_exec_update(self, res: NodeExecutionResult):
+    async def _publish_node_exec_update(self, res: NodeExecutionResult):
         event = NodeExecutionEvent.model_validate(res.model_dump())
-        await self.publish_event(
-            event, f"{res.user_id}/{res.graph_id}/{res.graph_exec_id}"
-        )
+        await self._publish(event, f"{res.user_id}/{res.graph_id}/{res.graph_exec_id}")
 
-    async def publish_graph_exec_update(self, res: GraphExecutionMeta):
-        event = GraphExecutionEvent.model_validate(res.model_dump())
-        await self.publish_event(event, f"{res.user_id}/{res.graph_id}/{res.id}")
+    async def _publish_graph_exec_update(self, res: GraphExecutionMeta):
+        # GraphExecutionEvent requires inputs and outputs fields that GraphExecutionMeta doesn't have
+        # Add default empty values for compatibility
+        event_data = res.model_dump()
+        event_data.setdefault("inputs", {})
+        event_data.setdefault("outputs", {})
+        event = GraphExecutionEvent.model_validate(event_data)
+        await self._publish(event, f"{res.user_id}/{res.graph_id}/{res.id}")
+
+    async def _publish(self, event: ExecutionEvent, channel: str):
+        """
+        truncate inputs and outputs to avoid large payloads
+        """
+        limit = config.max_message_size_limit // 2
+        if isinstance(event, GraphExecutionEvent):
+            event.inputs = truncate(event.inputs, limit)
+            event.outputs = truncate(event.outputs, limit)
+        elif isinstance(event, NodeExecutionEvent):
+            event.input_data = truncate(event.input_data, limit)
+            event.output_data = truncate(event.output_data, limit)
+
+        await super().publish_event(event, channel)
 
     async def listen(
         self, user_id: str, graph_id: str = "*", graph_exec_id: str = "*"
@@ -982,11 +1008,11 @@ async def set_execution_kv_data(
                 userId=user_id,
                 agentNodeExecutionId=node_exec_id,
                 key=key,
-                data=Json(data) if data is not None else None,
+                data=SafeJson(data) if data is not None else None,
             ),
             "update": {
                 "agentNodeExecutionId": node_exec_id,
-                "data": Json(data) if data is not None else None,
+                "data": SafeJson(data) if data is not None else None,
             },
         },
     )

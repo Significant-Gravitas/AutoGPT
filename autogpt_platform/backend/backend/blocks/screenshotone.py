@@ -108,6 +108,7 @@ class ScreenshotWebPageBlock(Block):
     async def take_screenshot(
         credentials: APIKeyCredentials,
         graph_exec_id: str,
+        user_id: str,
         url: str,
         viewport_width: int,
         viewport_height: int,
@@ -153,6 +154,7 @@ class ScreenshotWebPageBlock(Block):
                 file=MediaFileType(
                     f"data:image/{format.value};base64,{b64encode(content).decode('utf-8')}"
                 ),
+                user_id=user_id,
                 return_content=True,
             )
         }
@@ -163,12 +165,14 @@ class ScreenshotWebPageBlock(Block):
         *,
         credentials: APIKeyCredentials,
         graph_exec_id: str,
+        user_id: str,
         **kwargs,
     ) -> BlockOutput:
         try:
             screenshot_data = await self.take_screenshot(
                 credentials=credentials,
                 graph_exec_id=graph_exec_id,
+                user_id=user_id,
                 url=input_data.url,
                 viewport_width=input_data.viewport_width,
                 viewport_height=input_data.viewport_height,

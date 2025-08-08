@@ -1,13 +1,14 @@
-import React, { FC } from "react";
+import React, { FC, useState } from "react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, UploadIcon } from "lucide-react";
 import { Cross2Icon, FileTextIcon } from "@radix-ui/react-icons";
 
 import { Input as BaseInput } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import {
   Popover,
   PopoverTrigger,
@@ -35,6 +36,7 @@ import {
   DataType,
   determineDataType,
 } from "@/lib/autogpt-server-api/types";
+import BackendAPI from "@/lib/autogpt-server-api/client";
 
 /**
  * A generic prop structure for the TypeBasedInput.
@@ -369,108 +371,166 @@ export function TimePicker({ value, onChange }: TimePickerProps) {
   );
 }
 
-function getFileLabel(value: string) {
-  if (value.startsWith("data:")) {
-    const matches = value.match(/^data:([^;]+);/);
-    if (matches?.[1]) {
-      const mimeParts = matches[1].split("/");
-      if (mimeParts.length > 1) {
-        return `${mimeParts[1].toUpperCase()} file`;
-      }
-      return `${matches[1]} file`;
+function getFileLabel(filename: string, contentType?: string) {
+  if (contentType) {
+    const mimeParts = contentType.split("/");
+    if (mimeParts.length > 1) {
+      return `${mimeParts[1].toUpperCase()} file`;
     }
-  } else {
-    const pathParts = value.split(".");
-    if (pathParts.length > 1) {
-      const ext = pathParts.pop();
-      if (ext) return `${ext.toUpperCase()} file`;
-    }
+    return `${contentType} file`;
+  }
+
+  const pathParts = filename.split(".");
+  if (pathParts.length > 1) {
+    const ext = pathParts.pop();
+    if (ext) return `${ext.toUpperCase()} file`;
   }
   return "File";
 }
 
-function getFileSize(value: string) {
-  if (value.startsWith("data:")) {
-    const matches = value.match(/;base64,(.*)/);
-    if (matches?.[1]) {
-      const size = Math.ceil((matches[1].length * 3) / 4);
-      if (size > 1024 * 1024) {
-        return `${(size / (1024 * 1024)).toFixed(2)} MB`;
-      } else {
-        return `${(size / 1024).toFixed(2)} KB`;
-      }
-    }
+function formatFileSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  } else if (bytes >= 1024) {
+    return `${(bytes / 1024).toFixed(2)} KB`;
   } else {
-    return "";
+    return `${bytes} B`;
   }
 }
 
 interface FileInputProps {
-  value?: string; // base64 string or empty
+  value?: string; // file URI or empty
   placeholder?: string; // e.g. "Resume", "Document", etc.
   onChange: (value: string) => void;
   className?: string;
 }
 
 const FileInput: FC<FileInputProps> = ({ value, onChange, className }) => {
-  const loadFile = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const base64String = e.target?.result as string;
-      onChange(base64String);
-    };
-    reader.readAsDataURL(file);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [fileInfo, setFileInfo] = useState<{
+    name: string;
+    size: number;
+    content_type: string;
+  } | null>(null);
+
+  const api = new BackendAPI();
+
+  const uploadFile = async (file: File) => {
+    setIsUploading(true);
+    setUploadProgress(0);
+    setUploadError(null);
+
+    try {
+      const result = await api.uploadFile(
+        file,
+        "gcs",
+        24, // 24 hours expiration
+        (progress) => setUploadProgress(progress),
+      );
+
+      setFileInfo({
+        name: result.file_name,
+        size: result.size,
+        content_type: result.content_type,
+      });
+
+      // Set the file URI as the value
+      onChange(result.file_uri);
+    } catch (error) {
+      console.error("Upload failed:", error);
+      setUploadError(error instanceof Error ? error.message : "Upload failed");
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
+    }
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) loadFile(file);
+    if (file) uploadFile(file);
   };
 
   const handleFileDrop = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     const file = event.dataTransfer.files[0];
-    if (file) loadFile(file);
+    if (file) uploadFile(file);
   };
 
   const inputRef = React.useRef<HTMLInputElement>(null);
 
+  const storageNote =
+    "Files are stored securely and will be automatically deleted at most 24 hours after upload.";
+
   return (
     <div className={cn("w-full", className)}>
-      {value ? (
-        <div className="flex min-h-14 items-center gap-4">
-          <div className="agpt-border-input flex min-h-14 w-full items-center justify-between rounded-xl bg-zinc-50 p-4 text-sm text-gray-500">
-            <div className="flex items-center gap-2">
-              <FileTextIcon className="h-7 w-7 text-black" />
-              <div className="flex flex-col gap-0.5">
-                <span className="font-normal text-black">
-                  {getFileLabel(value)}
+      {isUploading ? (
+        <div className="space-y-2">
+          <div className="flex min-h-14 items-center gap-4">
+            <div className="agpt-border-input flex min-h-14 w-full flex-col justify-center rounded-xl bg-zinc-50 p-4 text-sm">
+              <div className="mb-2 flex items-center gap-2">
+                <UploadIcon className="h-5 w-5 text-blue-600" />
+                <span className="text-gray-700">Uploading...</span>
+                <span className="text-gray-500">
+                  {Math.round(uploadProgress)}%
                 </span>
-                <span>{getFileSize(value)}</span>
               </div>
+              <Progress value={uploadProgress} className="w-full" />
             </div>
-            <Cross2Icon
-              className="h-5 w-5 cursor-pointer text-black"
-              onClick={() => {
-                if (inputRef.current) inputRef.current.value = "";
-                onChange("");
-              }}
-            />
           </div>
+          <p className="text-xs text-gray-500">{storageNote}</p>
+        </div>
+      ) : value ? (
+        <div className="space-y-2">
+          <div className="flex min-h-14 items-center gap-4">
+            <div className="agpt-border-input flex min-h-14 w-full items-center justify-between rounded-xl bg-zinc-50 p-4 text-sm text-gray-500">
+              <div className="flex items-center gap-2">
+                <FileTextIcon className="h-7 w-7 text-black" />
+                <div className="flex flex-col gap-0.5">
+                  <span className="font-normal text-black">
+                    {fileInfo
+                      ? getFileLabel(fileInfo.name, fileInfo.content_type)
+                      : "File"}
+                  </span>
+                  <span>{fileInfo ? formatFileSize(fileInfo.size) : ""}</span>
+                </div>
+              </div>
+              <Cross2Icon
+                className="h-5 w-5 cursor-pointer text-black"
+                onClick={() => {
+                  if (inputRef.current) {
+                    inputRef.current.value = "";
+                  }
+                  onChange("");
+                  setFileInfo(null);
+                }}
+              />
+            </div>
+          </div>
+          <p className="text-xs text-gray-500">{storageNote}</p>
         </div>
       ) : (
-        <div className="flex min-h-14 items-center gap-4">
-          <div
-            onDrop={handleFileDrop}
-            onDragOver={(e) => e.preventDefault()}
-            className="agpt-border-input flex min-h-14 w-full items-center justify-center rounded-xl border-dashed bg-zinc-50 text-sm text-gray-500"
-          >
-            Choose a file or drag and drop it here
+        <div className="space-y-2">
+          <div className="flex min-h-14 items-center gap-4">
+            <div
+              onDrop={handleFileDrop}
+              onDragOver={(e) => e.preventDefault()}
+              className="agpt-border-input flex min-h-14 w-full items-center justify-center rounded-xl border-dashed bg-zinc-50 text-sm text-gray-500"
+            >
+              Choose a file or drag and drop it here
+            </div>
+
+            <Button variant="default" onClick={() => inputRef.current?.click()}>
+              Browse File
+            </Button>
           </div>
 
-          <Button variant="default" onClick={() => inputRef.current?.click()}>
-            Browse File
-          </Button>
+          {uploadError && (
+            <div className="text-sm text-red-600">Error: {uploadError}</div>
+          )}
+
+          <p className="text-xs text-gray-500">{storageNote}</p>
         </div>
       )}
 
@@ -480,6 +540,7 @@ const FileInput: FC<FileInputProps> = ({ value, onChange, className }) => {
         accept="*/*"
         className="hidden"
         onChange={handleFileChange}
+        disabled={isUploading}
       />
     </div>
   );

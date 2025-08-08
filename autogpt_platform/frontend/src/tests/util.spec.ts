@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures";
+import test, { expect } from "@playwright/test";
 import { setNestedProperty } from "../lib/utils";
 
 const testCases = [
@@ -34,74 +34,64 @@ const testCases = [
   },
 ];
 
-// Test Suite
-test.describe("Nested Property Setter Tests", () => {
-  test.describe("Valid Usage Tests", () => {
-    // Test secure implementation
-    for (const { name, path, value, expected } of testCases) {
-      test(name, () => {
-        const obj = {};
-        setNestedProperty(obj, path, value);
-        expect(obj).toEqual(expected);
-      });
-    }
+for (const { name, path, value, expected } of testCases) {
+  test(name, () => {
+    const obj = {};
+    setNestedProperty(obj, path, value);
+    expect(obj).toEqual(expected);
   });
+}
 
-  test.describe("Security Improvements", () => {
-    test("should throw error for null object", () => {
-      expect(() => {
-        setNestedProperty(null, "test", "value");
-      }).toThrow("Target must be a non-null object");
-    });
+test("should throw error for null object", () => {
+  expect(() => {
+    setNestedProperty(null, "test", "value");
+  }).toThrow("Target must be a non-null object");
+});
 
-    test("should throw error for undefined object", () => {
-      expect(() => {
-        setNestedProperty(undefined, "test", "value");
-      }).toThrow("Target must be a non-null object");
-    });
+test("should throw error for undefined object", () => {
+  expect(() => {
+    setNestedProperty(undefined, "test", "value");
+  }).toThrow("Target must be a non-null object");
+});
 
-    test("should throw error for non-object target", () => {
-      expect(() => {
-        setNestedProperty("string", "test", "value");
-      }).toThrow("Target must be a non-null object");
-    });
+test("should throw error for non-object target", () => {
+  expect(() => {
+    setNestedProperty("string", "test", "value");
+  }).toThrow("Target must be a non-null object");
+});
 
-    test("should throw error for empty path", () => {
-      expect(() => {
-        setNestedProperty({}, "", "value");
-      }).toThrow("Path must be a non-empty string");
-    });
+test("should throw error for empty path", () => {
+  expect(() => {
+    setNestedProperty({}, "", "value");
+  }).toThrow("Path must be a non-empty string");
+});
 
-    test("should throw error for __proto__ access", () => {
-      expect(() => {
-        setNestedProperty({}, "__proto__.malicious", "attack");
-      }).toThrow("Invalid property name: __proto__");
-    });
+test("should throw error for __proto__ access", () => {
+  expect(() => {
+    setNestedProperty({}, "__proto__.malicious", "attack");
+  }).toThrow("Invalid property name: __proto__");
+});
 
-    test("should throw error for constructor access", () => {
-      expect(() => {
-        setNestedProperty({}, "constructor.prototype.malicious", "attack");
-      }).toThrow("Invalid property name: constructor");
-    });
+test("should throw error for constructor access", () => {
+  expect(() => {
+    setNestedProperty({}, "constructor.prototype.malicious", "attack");
+  }).toThrow("Invalid property name: constructor");
+});
 
-    test("should throw error for prototype access", () => {
-      expect(() => {
-        setNestedProperty({}, "obj.prototype.malicious", "attack");
-      }).toThrow("Invalid property name: prototype");
-    });
-  });
+test("should throw error for prototype access", () => {
+  expect(() => {
+    setNestedProperty({}, "obj.prototype.malicious", "attack");
+  }).toThrow("Invalid property name: prototype");
+});
 
-  test.describe("Prototype Pollution Vulnerability Demo", () => {
-    test("secure implementation prevents prototype pollution", () => {
-      const obj = {};
-      expect(() => {
-        setNestedProperty(obj, "__proto__.polluted", true);
-      }).toThrow("Invalid property name: __proto__");
+test("secure implementation prevents prototype pollution", () => {
+  const obj = {};
+  expect(() => {
+    setNestedProperty(obj, "__proto__.polluted", true);
+  }).toThrow("Invalid property name: __proto__");
 
-      // Verify no pollution occurred
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      expect({}.polluted).toBeUndefined();
-    });
-  });
+  // Verify no pollution occurred
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-ignore
+  expect({}.polluted).toBeUndefined();
 });

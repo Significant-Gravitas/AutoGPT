@@ -337,10 +337,10 @@ You will need to add the provider (api or oauth) to the `CredentialsInput` compo
 --8<-- "autogpt_platform/frontend/src/components/integrations/credentials-input.tsx:ProviderIconsEmbed"
 ```
 
-You will also need to add the provider to the `CredentialsProvider` component in [`frontend/src/components/integrations/credentials-provider.tsx`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/frontend/src/components/integrations/credentials-provider.tsx).
+You will also need to add the provider to the credentials provider list in [`frontend/src/components/integrations/helper.ts`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/frontend/src/components/integrations/helper.ts).
 
-```ts title="frontend/src/components/integrations/credentials-provider.tsx"
---8<-- "autogpt_platform/frontend/src/components/integrations/credentials-provider.tsx:CredentialsProviderNames"
+```ts title="frontend/src/components/integrations/helper.ts"
+--8<-- "autogpt_platform/frontend/src/components/integrations/helper.ts:CredentialsProviderNames"
 ```
 
 Finally you will need to add the provider to the `CredentialsType` enum in [`frontend/src/lib/autogpt-server-api/types.ts`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/frontend/src/lib/autogpt-server-api/types.ts).

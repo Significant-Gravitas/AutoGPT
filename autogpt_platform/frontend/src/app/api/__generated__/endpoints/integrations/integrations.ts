@@ -21,6 +21,8 @@ import type {
   UseQueryResult,
 } from "@tanstack/react-query";
 
+import type { AyrshareSSOResponse } from "../../models/ayrshareSSOResponse";
+
 import type { BodyPostV1Callback } from "../../models/bodyPostV1Callback";
 
 import type { CredentialsMetaResponse } from "../../models/credentialsMetaResponse";
@@ -41,7 +43,11 @@ import type { PostV1CreateCredentials201 } from "../../models/postV1CreateCreden
 
 import type { PostV1CreateCredentialsBody } from "../../models/postV1CreateCredentialsBody";
 
-import type { ProviderName } from "../../models/providerName";
+import type { ProviderConstants } from "../../models/providerConstants";
+
+import type { ProviderEnumResponse } from "../../models/providerEnumResponse";
+
+import type { ProviderNamesResponse } from "../../models/providerNamesResponse";
 
 import { customMutator } from "../../../mutators/custom-mutator";
 
@@ -69,7 +75,7 @@ export type getV1LoginResponse = getV1LoginResponseComposite & {
 };
 
 export const getGetV1LoginUrl = (
-  provider: ProviderName,
+  provider: string,
   params?: GetV1LoginParams,
 ) => {
   const normalizedParams = new URLSearchParams();
@@ -88,7 +94,7 @@ export const getGetV1LoginUrl = (
 };
 
 export const getV1Login = async (
-  provider: ProviderName,
+  provider: string,
   params?: GetV1LoginParams,
   options?: RequestInit,
 ): Promise<getV1LoginResponse> => {
@@ -99,7 +105,7 @@ export const getV1Login = async (
 };
 
 export const getGetV1LoginQueryKey = (
-  provider: ProviderName,
+  provider: string,
   params?: GetV1LoginParams,
 ) => {
   return [
@@ -112,7 +118,7 @@ export const getGetV1LoginQueryOptions = <
   TData = Awaited<ReturnType<typeof getV1Login>>,
   TError = HTTPValidationError,
 >(
-  provider: ProviderName,
+  provider: string,
   params?: GetV1LoginParams,
   options?: {
     query?: Partial<
@@ -151,7 +157,7 @@ export function useGetV1Login<
   TData = Awaited<ReturnType<typeof getV1Login>>,
   TError = HTTPValidationError,
 >(
-  provider: ProviderName,
+  provider: string,
   params: undefined | GetV1LoginParams,
   options: {
     query: Partial<
@@ -175,7 +181,7 @@ export function useGetV1Login<
   TData = Awaited<ReturnType<typeof getV1Login>>,
   TError = HTTPValidationError,
 >(
-  provider: ProviderName,
+  provider: string,
   params?: GetV1LoginParams,
   options?: {
     query?: Partial<
@@ -199,7 +205,7 @@ export function useGetV1Login<
   TData = Awaited<ReturnType<typeof getV1Login>>,
   TError = HTTPValidationError,
 >(
-  provider: ProviderName,
+  provider: string,
   params?: GetV1LoginParams,
   options?: {
     query?: Partial<
@@ -219,7 +225,7 @@ export function useGetV1Login<
   TData = Awaited<ReturnType<typeof getV1Login>>,
   TError = HTTPValidationError,
 >(
-  provider: ProviderName,
+  provider: string,
   params?: GetV1LoginParams,
   options?: {
     query?: Partial<
@@ -244,6 +250,30 @@ export function useGetV1Login<
 }
 
 /**
+ * @summary Login
+ */
+export const prefetchGetV1LoginQuery = async <
+  TData = Awaited<ReturnType<typeof getV1Login>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  provider: string,
+  params?: GetV1LoginParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1Login>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1LoginQueryOptions(provider, params, options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * @summary Callback
  */
 export type postV1CallbackResponse200 = {
@@ -264,12 +294,12 @@ export type postV1CallbackResponse = postV1CallbackResponseComposite & {
   headers: Headers;
 };
 
-export const getPostV1CallbackUrl = (provider: ProviderName) => {
+export const getPostV1CallbackUrl = (provider: string) => {
   return `/api/integrations/${provider}/callback`;
 };
 
 export const postV1Callback = async (
-  provider: ProviderName,
+  provider: string,
   bodyPostV1Callback: BodyPostV1Callback,
   options?: RequestInit,
 ): Promise<postV1CallbackResponse> => {
@@ -288,14 +318,14 @@ export const getPostV1CallbackMutationOptions = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof postV1Callback>>,
     TError,
-    { provider: ProviderName; data: BodyPostV1Callback },
+    { provider: string; data: BodyPostV1Callback },
     TContext
   >;
   request?: SecondParameter<typeof customMutator>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof postV1Callback>>,
   TError,
-  { provider: ProviderName; data: BodyPostV1Callback },
+  { provider: string; data: BodyPostV1Callback },
   TContext
 > => {
   const mutationKey = ["postV1Callback"];
@@ -309,7 +339,7 @@ export const getPostV1CallbackMutationOptions = <
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof postV1Callback>>,
-    { provider: ProviderName; data: BodyPostV1Callback }
+    { provider: string; data: BodyPostV1Callback }
   > = (props) => {
     const { provider, data } = props ?? {};
 
@@ -336,7 +366,7 @@ export const usePostV1Callback = <
     mutation?: UseMutationOptions<
       Awaited<ReturnType<typeof postV1Callback>>,
       TError,
-      { provider: ProviderName; data: BodyPostV1Callback },
+      { provider: string; data: BodyPostV1Callback },
       TContext
     >;
     request?: SecondParameter<typeof customMutator>;
@@ -345,7 +375,7 @@ export const usePostV1Callback = <
 ): UseMutationResult<
   Awaited<ReturnType<typeof postV1Callback>>,
   TError,
-  { provider: ProviderName; data: BodyPostV1Callback },
+  { provider: string; data: BodyPostV1Callback },
   TContext
 > => {
   const mutationOptions = getPostV1CallbackMutationOptions(options);
@@ -526,6 +556,32 @@ export function useGetV1ListCredentials<
 }
 
 /**
+ * @summary List Credentials
+ */
+export const prefetchGetV1ListCredentialsQuery = async <
+  TData = Awaited<ReturnType<typeof getV1ListCredentials>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1ListCredentials>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1ListCredentialsQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * @summary List Credentials By Provider
  */
 export type getV1ListCredentialsByProviderResponse200 = {
@@ -547,14 +603,12 @@ export type getV1ListCredentialsByProviderResponse =
     headers: Headers;
   };
 
-export const getGetV1ListCredentialsByProviderUrl = (
-  provider: ProviderName,
-) => {
+export const getGetV1ListCredentialsByProviderUrl = (provider: string) => {
   return `/api/integrations/${provider}/credentials`;
 };
 
 export const getV1ListCredentialsByProvider = async (
-  provider: ProviderName,
+  provider: string,
   options?: RequestInit,
 ): Promise<getV1ListCredentialsByProviderResponse> => {
   return customMutator<getV1ListCredentialsByProviderResponse>(
@@ -566,9 +620,7 @@ export const getV1ListCredentialsByProvider = async (
   );
 };
 
-export const getGetV1ListCredentialsByProviderQueryKey = (
-  provider: ProviderName,
-) => {
+export const getGetV1ListCredentialsByProviderQueryKey = (provider: string) => {
   return [`/api/integrations/${provider}/credentials`] as const;
 };
 
@@ -576,7 +628,7 @@ export const getGetV1ListCredentialsByProviderQueryOptions = <
   TData = Awaited<ReturnType<typeof getV1ListCredentialsByProvider>>,
   TError = HTTPValidationError,
 >(
-  provider: ProviderName,
+  provider: string,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -620,7 +672,7 @@ export function useGetV1ListCredentialsByProvider<
   TData = Awaited<ReturnType<typeof getV1ListCredentialsByProvider>>,
   TError = HTTPValidationError,
 >(
-  provider: ProviderName,
+  provider: string,
   options: {
     query: Partial<
       UseQueryOptions<
@@ -647,7 +699,7 @@ export function useGetV1ListCredentialsByProvider<
   TData = Awaited<ReturnType<typeof getV1ListCredentialsByProvider>>,
   TError = HTTPValidationError,
 >(
-  provider: ProviderName,
+  provider: string,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -674,7 +726,7 @@ export function useGetV1ListCredentialsByProvider<
   TData = Awaited<ReturnType<typeof getV1ListCredentialsByProvider>>,
   TError = HTTPValidationError,
 >(
-  provider: ProviderName,
+  provider: string,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -697,7 +749,7 @@ export function useGetV1ListCredentialsByProvider<
   TData = Awaited<ReturnType<typeof getV1ListCredentialsByProvider>>,
   TError = HTTPValidationError,
 >(
-  provider: ProviderName,
+  provider: string,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -728,6 +780,36 @@ export function useGetV1ListCredentialsByProvider<
 }
 
 /**
+ * @summary List Credentials By Provider
+ */
+export const prefetchGetV1ListCredentialsByProviderQuery = async <
+  TData = Awaited<ReturnType<typeof getV1ListCredentialsByProvider>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  provider: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1ListCredentialsByProvider>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1ListCredentialsByProviderQueryOptions(
+    provider,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * @summary Create Credentials
  */
 export type postV1CreateCredentialsResponse201 = {
@@ -749,12 +831,12 @@ export type postV1CreateCredentialsResponse =
     headers: Headers;
   };
 
-export const getPostV1CreateCredentialsUrl = (provider: ProviderName) => {
+export const getPostV1CreateCredentialsUrl = (provider: string) => {
   return `/api/integrations/${provider}/credentials`;
 };
 
 export const postV1CreateCredentials = async (
-  provider: ProviderName,
+  provider: string,
   postV1CreateCredentialsBody: PostV1CreateCredentialsBody,
   options?: RequestInit,
 ): Promise<postV1CreateCredentialsResponse> => {
@@ -776,14 +858,14 @@ export const getPostV1CreateCredentialsMutationOptions = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof postV1CreateCredentials>>,
     TError,
-    { provider: ProviderName; data: PostV1CreateCredentialsBody },
+    { provider: string; data: PostV1CreateCredentialsBody },
     TContext
   >;
   request?: SecondParameter<typeof customMutator>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof postV1CreateCredentials>>,
   TError,
-  { provider: ProviderName; data: PostV1CreateCredentialsBody },
+  { provider: string; data: PostV1CreateCredentialsBody },
   TContext
 > => {
   const mutationKey = ["postV1CreateCredentials"];
@@ -797,7 +879,7 @@ export const getPostV1CreateCredentialsMutationOptions = <
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof postV1CreateCredentials>>,
-    { provider: ProviderName; data: PostV1CreateCredentialsBody }
+    { provider: string; data: PostV1CreateCredentialsBody }
   > = (props) => {
     const { provider, data } = props ?? {};
 
@@ -824,7 +906,7 @@ export const usePostV1CreateCredentials = <
     mutation?: UseMutationOptions<
       Awaited<ReturnType<typeof postV1CreateCredentials>>,
       TError,
-      { provider: ProviderName; data: PostV1CreateCredentialsBody },
+      { provider: string; data: PostV1CreateCredentialsBody },
       TContext
     >;
     request?: SecondParameter<typeof customMutator>;
@@ -833,7 +915,7 @@ export const usePostV1CreateCredentials = <
 ): UseMutationResult<
   Awaited<ReturnType<typeof postV1CreateCredentials>>,
   TError,
-  { provider: ProviderName; data: PostV1CreateCredentialsBody },
+  { provider: string; data: PostV1CreateCredentialsBody },
   TContext
 > => {
   const mutationOptions = getPostV1CreateCredentialsMutationOptions(options);
@@ -861,15 +943,12 @@ export type getV1GetCredentialResponse = getV1GetCredentialResponseComposite & {
   headers: Headers;
 };
 
-export const getGetV1GetCredentialUrl = (
-  provider: ProviderName,
-  credId: string,
-) => {
+export const getGetV1GetCredentialUrl = (provider: string, credId: string) => {
   return `/api/integrations/${provider}/credentials/${credId}`;
 };
 
 export const getV1GetCredential = async (
-  provider: ProviderName,
+  provider: string,
   credId: string,
   options?: RequestInit,
 ): Promise<getV1GetCredentialResponse> => {
@@ -883,7 +962,7 @@ export const getV1GetCredential = async (
 };
 
 export const getGetV1GetCredentialQueryKey = (
-  provider: ProviderName,
+  provider: string,
   credId: string,
 ) => {
   return [`/api/integrations/${provider}/credentials/${credId}`] as const;
@@ -893,7 +972,7 @@ export const getGetV1GetCredentialQueryOptions = <
   TData = Awaited<ReturnType<typeof getV1GetCredential>>,
   TError = HTTPValidationError,
 >(
-  provider: ProviderName,
+  provider: string,
   credId: string,
   options?: {
     query?: Partial<
@@ -937,7 +1016,7 @@ export function useGetV1GetCredential<
   TData = Awaited<ReturnType<typeof getV1GetCredential>>,
   TError = HTTPValidationError,
 >(
-  provider: ProviderName,
+  provider: string,
   credId: string,
   options: {
     query: Partial<
@@ -965,7 +1044,7 @@ export function useGetV1GetCredential<
   TData = Awaited<ReturnType<typeof getV1GetCredential>>,
   TError = HTTPValidationError,
 >(
-  provider: ProviderName,
+  provider: string,
   credId: string,
   options?: {
     query?: Partial<
@@ -993,7 +1072,7 @@ export function useGetV1GetCredential<
   TData = Awaited<ReturnType<typeof getV1GetCredential>>,
   TError = HTTPValidationError,
 >(
-  provider: ProviderName,
+  provider: string,
   credId: string,
   options?: {
     query?: Partial<
@@ -1017,7 +1096,7 @@ export function useGetV1GetCredential<
   TData = Awaited<ReturnType<typeof getV1GetCredential>>,
   TError = HTTPValidationError,
 >(
-  provider: ProviderName,
+  provider: string,
   credId: string,
   options?: {
     query?: Partial<
@@ -1050,6 +1129,38 @@ export function useGetV1GetCredential<
 }
 
 /**
+ * @summary Get Credential
+ */
+export const prefetchGetV1GetCredentialQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetCredential>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  provider: string,
+  credId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetCredential>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetCredentialQueryOptions(
+    provider,
+    credId,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * @summary Delete Credentials
  */
 export type deleteV1DeleteCredentialsResponse200 = {
@@ -1072,7 +1183,7 @@ export type deleteV1DeleteCredentialsResponse =
   };
 
 export const getDeleteV1DeleteCredentialsUrl = (
-  provider: ProviderName,
+  provider: string,
   credId: string,
   params?: DeleteV1DeleteCredentialsParams,
 ) => {
@@ -1092,7 +1203,7 @@ export const getDeleteV1DeleteCredentialsUrl = (
 };
 
 export const deleteV1DeleteCredentials = async (
-  provider: ProviderName,
+  provider: string,
   credId: string,
   params?: DeleteV1DeleteCredentialsParams,
   options?: RequestInit,
@@ -1114,7 +1225,7 @@ export const getDeleteV1DeleteCredentialsMutationOptions = <
     Awaited<ReturnType<typeof deleteV1DeleteCredentials>>,
     TError,
     {
-      provider: ProviderName;
+      provider: string;
       credId: string;
       params?: DeleteV1DeleteCredentialsParams;
     },
@@ -1125,7 +1236,7 @@ export const getDeleteV1DeleteCredentialsMutationOptions = <
   Awaited<ReturnType<typeof deleteV1DeleteCredentials>>,
   TError,
   {
-    provider: ProviderName;
+    provider: string;
     credId: string;
     params?: DeleteV1DeleteCredentialsParams;
   },
@@ -1143,7 +1254,7 @@ export const getDeleteV1DeleteCredentialsMutationOptions = <
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof deleteV1DeleteCredentials>>,
     {
-      provider: ProviderName;
+      provider: string;
       credId: string;
       params?: DeleteV1DeleteCredentialsParams;
     }
@@ -1174,7 +1285,7 @@ export const useDeleteV1DeleteCredentials = <
       Awaited<ReturnType<typeof deleteV1DeleteCredentials>>,
       TError,
       {
-        provider: ProviderName;
+        provider: string;
         credId: string;
         params?: DeleteV1DeleteCredentialsParams;
       },
@@ -1187,7 +1298,7 @@ export const useDeleteV1DeleteCredentials = <
   Awaited<ReturnType<typeof deleteV1DeleteCredentials>>,
   TError,
   {
-    provider: ProviderName;
+    provider: string;
     credId: string;
     params?: DeleteV1DeleteCredentialsParams;
   },
@@ -1220,14 +1331,14 @@ export type postV1WebhookIngressGenericResponse =
   };
 
 export const getPostV1WebhookIngressGenericUrl = (
-  provider: ProviderName,
+  provider: string,
   webhookId: string,
 ) => {
   return `/api/integrations/${provider}/webhooks/${webhookId}/ingress`;
 };
 
 export const postV1WebhookIngressGeneric = async (
-  provider: ProviderName,
+  provider: string,
   webhookId: string,
   options?: RequestInit,
 ): Promise<postV1WebhookIngressGenericResponse> => {
@@ -1247,14 +1358,14 @@ export const getPostV1WebhookIngressGenericMutationOptions = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof postV1WebhookIngressGeneric>>,
     TError,
-    { provider: ProviderName; webhookId: string },
+    { provider: string; webhookId: string },
     TContext
   >;
   request?: SecondParameter<typeof customMutator>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof postV1WebhookIngressGeneric>>,
   TError,
-  { provider: ProviderName; webhookId: string },
+  { provider: string; webhookId: string },
   TContext
 > => {
   const mutationKey = ["postV1WebhookIngressGeneric"];
@@ -1268,7 +1379,7 @@ export const getPostV1WebhookIngressGenericMutationOptions = <
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof postV1WebhookIngressGeneric>>,
-    { provider: ProviderName; webhookId: string }
+    { provider: string; webhookId: string }
   > = (props) => {
     const { provider, webhookId } = props ?? {};
 
@@ -1295,7 +1406,7 @@ export const usePostV1WebhookIngressGeneric = <
     mutation?: UseMutationOptions<
       Awaited<ReturnType<typeof postV1WebhookIngressGeneric>>,
       TError,
-      { provider: ProviderName; webhookId: string },
+      { provider: string; webhookId: string },
       TContext
     >;
     request?: SecondParameter<typeof customMutator>;
@@ -1304,7 +1415,7 @@ export const usePostV1WebhookIngressGeneric = <
 ): UseMutationResult<
   Awaited<ReturnType<typeof postV1WebhookIngressGeneric>>,
   TError,
-  { provider: ProviderName; webhookId: string },
+  { provider: string; webhookId: string },
   TContext
 > => {
   const mutationOptions =
@@ -1420,4 +1531,1023 @@ export const usePostV1WebhookPing = <
   const mutationOptions = getPostV1WebhookPingMutationOptions(options);
 
   return useMutation(mutationOptions, queryClient);
+};
+/**
+ * Generate an SSO URL for Ayrshare social media integration.
+
+Returns:
+    dict: Contains the SSO URL for Ayrshare integration
+ * @summary Get Ayrshare Sso Url
+ */
+export type getV1GetAyrshareSsoUrlResponse200 = {
+  data: AyrshareSSOResponse;
+  status: 200;
+};
+
+export type getV1GetAyrshareSsoUrlResponseComposite =
+  getV1GetAyrshareSsoUrlResponse200;
+
+export type getV1GetAyrshareSsoUrlResponse =
+  getV1GetAyrshareSsoUrlResponseComposite & {
+    headers: Headers;
+  };
+
+export const getGetV1GetAyrshareSsoUrlUrl = () => {
+  return `/api/integrations/ayrshare/sso_url`;
+};
+
+export const getV1GetAyrshareSsoUrl = async (
+  options?: RequestInit,
+): Promise<getV1GetAyrshareSsoUrlResponse> => {
+  return customMutator<getV1GetAyrshareSsoUrlResponse>(
+    getGetV1GetAyrshareSsoUrlUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetV1GetAyrshareSsoUrlQueryKey = () => {
+  return [`/api/integrations/ayrshare/sso_url`] as const;
+};
+
+export const getGetV1GetAyrshareSsoUrlQueryOptions = <
+  TData = Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+  TError = unknown,
+>(options?: {
+  query?: Partial<
+    UseQueryOptions<
+      Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+      TError,
+      TData
+    >
+  >;
+  request?: SecondParameter<typeof customMutator>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetV1GetAyrshareSsoUrlQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>
+  > = ({ signal }) => getV1GetAyrshareSsoUrl({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetV1GetAyrshareSsoUrlQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>
+>;
+export type GetV1GetAyrshareSsoUrlQueryError = unknown;
+
+export function useGetV1GetAyrshareSsoUrl<
+  TData = Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+  TError = unknown,
+>(
+  options: {
+    query: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+          TError,
+          Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetV1GetAyrshareSsoUrl<
+  TData = Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+          TError,
+          Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetV1GetAyrshareSsoUrl<
+  TData = Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+/**
+ * @summary Get Ayrshare Sso Url
+ */
+
+export function useGetV1GetAyrshareSsoUrl<
+  TData = Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+} {
+  const queryOptions = getGetV1GetAyrshareSsoUrlQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Get Ayrshare Sso Url
+ */
+export const prefetchGetV1GetAyrshareSsoUrlQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetAyrshareSsoUrl>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetAyrshareSsoUrlQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
+ * Get a list of all available provider names.
+
+Returns both statically defined providers (from ProviderName enum)
+and dynamically registered providers (from SDK decorators).
+
+Note: The complete list of provider names is also available as a constant
+in the generated TypeScript client via PROVIDER_NAMES.
+ * @summary List Providers
+ */
+export type getV1ListProvidersResponse200 = {
+  data: string[];
+  status: 200;
+};
+
+export type getV1ListProvidersResponseComposite = getV1ListProvidersResponse200;
+
+export type getV1ListProvidersResponse = getV1ListProvidersResponseComposite & {
+  headers: Headers;
+};
+
+export const getGetV1ListProvidersUrl = () => {
+  return `/api/integrations/providers`;
+};
+
+export const getV1ListProviders = async (
+  options?: RequestInit,
+): Promise<getV1ListProvidersResponse> => {
+  return customMutator<getV1ListProvidersResponse>(getGetV1ListProvidersUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetV1ListProvidersQueryKey = () => {
+  return [`/api/integrations/providers`] as const;
+};
+
+export const getGetV1ListProvidersQueryOptions = <
+  TData = Awaited<ReturnType<typeof getV1ListProviders>>,
+  TError = unknown,
+>(options?: {
+  query?: Partial<
+    UseQueryOptions<
+      Awaited<ReturnType<typeof getV1ListProviders>>,
+      TError,
+      TData
+    >
+  >;
+  request?: SecondParameter<typeof customMutator>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetV1ListProvidersQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getV1ListProviders>>
+  > = ({ signal }) => getV1ListProviders({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getV1ListProviders>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetV1ListProvidersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getV1ListProviders>>
+>;
+export type GetV1ListProvidersQueryError = unknown;
+
+export function useGetV1ListProviders<
+  TData = Awaited<ReturnType<typeof getV1ListProviders>>,
+  TError = unknown,
+>(
+  options: {
+    query: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1ListProviders>>,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getV1ListProviders>>,
+          TError,
+          Awaited<ReturnType<typeof getV1ListProviders>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetV1ListProviders<
+  TData = Awaited<ReturnType<typeof getV1ListProviders>>,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1ListProviders>>,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getV1ListProviders>>,
+          TError,
+          Awaited<ReturnType<typeof getV1ListProviders>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetV1ListProviders<
+  TData = Awaited<ReturnType<typeof getV1ListProviders>>,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1ListProviders>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+/**
+ * @summary List Providers
+ */
+
+export function useGetV1ListProviders<
+  TData = Awaited<ReturnType<typeof getV1ListProviders>>,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1ListProviders>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+} {
+  const queryOptions = getGetV1ListProvidersQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary List Providers
+ */
+export const prefetchGetV1ListProvidersQuery = async <
+  TData = Awaited<ReturnType<typeof getV1ListProviders>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1ListProviders>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1ListProvidersQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
+ * Get all provider names in a structured format.
+
+This endpoint is specifically designed to expose the provider names
+in the OpenAPI schema so that code generators like Orval can create
+appropriate TypeScript constants.
+ * @summary Get Provider Names
+ */
+export type getV1GetProviderNamesResponse200 = {
+  data: ProviderNamesResponse;
+  status: 200;
+};
+
+export type getV1GetProviderNamesResponseComposite =
+  getV1GetProviderNamesResponse200;
+
+export type getV1GetProviderNamesResponse =
+  getV1GetProviderNamesResponseComposite & {
+    headers: Headers;
+  };
+
+export const getGetV1GetProviderNamesUrl = () => {
+  return `/api/integrations/providers/names`;
+};
+
+export const getV1GetProviderNames = async (
+  options?: RequestInit,
+): Promise<getV1GetProviderNamesResponse> => {
+  return customMutator<getV1GetProviderNamesResponse>(
+    getGetV1GetProviderNamesUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetV1GetProviderNamesQueryKey = () => {
+  return [`/api/integrations/providers/names`] as const;
+};
+
+export const getGetV1GetProviderNamesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getV1GetProviderNames>>,
+  TError = unknown,
+>(options?: {
+  query?: Partial<
+    UseQueryOptions<
+      Awaited<ReturnType<typeof getV1GetProviderNames>>,
+      TError,
+      TData
+    >
+  >;
+  request?: SecondParameter<typeof customMutator>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetV1GetProviderNamesQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getV1GetProviderNames>>
+  > = ({ signal }) => getV1GetProviderNames({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getV1GetProviderNames>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetV1GetProviderNamesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getV1GetProviderNames>>
+>;
+export type GetV1GetProviderNamesQueryError = unknown;
+
+export function useGetV1GetProviderNames<
+  TData = Awaited<ReturnType<typeof getV1GetProviderNames>>,
+  TError = unknown,
+>(
+  options: {
+    query: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetProviderNames>>,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getV1GetProviderNames>>,
+          TError,
+          Awaited<ReturnType<typeof getV1GetProviderNames>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetV1GetProviderNames<
+  TData = Awaited<ReturnType<typeof getV1GetProviderNames>>,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetProviderNames>>,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getV1GetProviderNames>>,
+          TError,
+          Awaited<ReturnType<typeof getV1GetProviderNames>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetV1GetProviderNames<
+  TData = Awaited<ReturnType<typeof getV1GetProviderNames>>,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetProviderNames>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+/**
+ * @summary Get Provider Names
+ */
+
+export function useGetV1GetProviderNames<
+  TData = Awaited<ReturnType<typeof getV1GetProviderNames>>,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetProviderNames>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+} {
+  const queryOptions = getGetV1GetProviderNamesQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Get Provider Names
+ */
+export const prefetchGetV1GetProviderNamesQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetProviderNames>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetProviderNames>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetProviderNamesQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
+ * Get provider names as constants.
+
+This endpoint returns a model with provider names as constants,
+specifically designed for OpenAPI code generation tools to create
+TypeScript constants.
+ * @summary Get Provider Constants
+ */
+export type getV1GetProviderConstantsResponse200 = {
+  data: ProviderConstants;
+  status: 200;
+};
+
+export type getV1GetProviderConstantsResponseComposite =
+  getV1GetProviderConstantsResponse200;
+
+export type getV1GetProviderConstantsResponse =
+  getV1GetProviderConstantsResponseComposite & {
+    headers: Headers;
+  };
+
+export const getGetV1GetProviderConstantsUrl = () => {
+  return `/api/integrations/providers/constants`;
+};
+
+export const getV1GetProviderConstants = async (
+  options?: RequestInit,
+): Promise<getV1GetProviderConstantsResponse> => {
+  return customMutator<getV1GetProviderConstantsResponse>(
+    getGetV1GetProviderConstantsUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetV1GetProviderConstantsQueryKey = () => {
+  return [`/api/integrations/providers/constants`] as const;
+};
+
+export const getGetV1GetProviderConstantsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getV1GetProviderConstants>>,
+  TError = unknown,
+>(options?: {
+  query?: Partial<
+    UseQueryOptions<
+      Awaited<ReturnType<typeof getV1GetProviderConstants>>,
+      TError,
+      TData
+    >
+  >;
+  request?: SecondParameter<typeof customMutator>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetV1GetProviderConstantsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getV1GetProviderConstants>>
+  > = ({ signal }) => getV1GetProviderConstants({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getV1GetProviderConstants>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetV1GetProviderConstantsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getV1GetProviderConstants>>
+>;
+export type GetV1GetProviderConstantsQueryError = unknown;
+
+export function useGetV1GetProviderConstants<
+  TData = Awaited<ReturnType<typeof getV1GetProviderConstants>>,
+  TError = unknown,
+>(
+  options: {
+    query: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetProviderConstants>>,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getV1GetProviderConstants>>,
+          TError,
+          Awaited<ReturnType<typeof getV1GetProviderConstants>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetV1GetProviderConstants<
+  TData = Awaited<ReturnType<typeof getV1GetProviderConstants>>,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetProviderConstants>>,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getV1GetProviderConstants>>,
+          TError,
+          Awaited<ReturnType<typeof getV1GetProviderConstants>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetV1GetProviderConstants<
+  TData = Awaited<ReturnType<typeof getV1GetProviderConstants>>,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetProviderConstants>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+/**
+ * @summary Get Provider Constants
+ */
+
+export function useGetV1GetProviderConstants<
+  TData = Awaited<ReturnType<typeof getV1GetProviderConstants>>,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetProviderConstants>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+} {
+  const queryOptions = getGetV1GetProviderConstantsQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Get Provider Constants
+ */
+export const prefetchGetV1GetProviderConstantsQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetProviderConstants>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetProviderConstants>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetProviderConstantsQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
+ * Example endpoint that uses the CompleteProviderNames enum.
+
+This endpoint exists to ensure that the CompleteProviderNames enum is included
+in the OpenAPI schema, which will cause Orval to generate it as a
+TypeScript enum/constant.
+ * @summary Get Provider Enum Example
+ */
+export type getV1GetProviderEnumExampleResponse200 = {
+  data: ProviderEnumResponse;
+  status: 200;
+};
+
+export type getV1GetProviderEnumExampleResponseComposite =
+  getV1GetProviderEnumExampleResponse200;
+
+export type getV1GetProviderEnumExampleResponse =
+  getV1GetProviderEnumExampleResponseComposite & {
+    headers: Headers;
+  };
+
+export const getGetV1GetProviderEnumExampleUrl = () => {
+  return `/api/integrations/providers/enum-example`;
+};
+
+export const getV1GetProviderEnumExample = async (
+  options?: RequestInit,
+): Promise<getV1GetProviderEnumExampleResponse> => {
+  return customMutator<getV1GetProviderEnumExampleResponse>(
+    getGetV1GetProviderEnumExampleUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetV1GetProviderEnumExampleQueryKey = () => {
+  return [`/api/integrations/providers/enum-example`] as const;
+};
+
+export const getGetV1GetProviderEnumExampleQueryOptions = <
+  TData = Awaited<ReturnType<typeof getV1GetProviderEnumExample>>,
+  TError = unknown,
+>(options?: {
+  query?: Partial<
+    UseQueryOptions<
+      Awaited<ReturnType<typeof getV1GetProviderEnumExample>>,
+      TError,
+      TData
+    >
+  >;
+  request?: SecondParameter<typeof customMutator>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetV1GetProviderEnumExampleQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getV1GetProviderEnumExample>>
+  > = ({ signal }) =>
+    getV1GetProviderEnumExample({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getV1GetProviderEnumExample>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetV1GetProviderEnumExampleQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getV1GetProviderEnumExample>>
+>;
+export type GetV1GetProviderEnumExampleQueryError = unknown;
+
+export function useGetV1GetProviderEnumExample<
+  TData = Awaited<ReturnType<typeof getV1GetProviderEnumExample>>,
+  TError = unknown,
+>(
+  options: {
+    query: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetProviderEnumExample>>,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getV1GetProviderEnumExample>>,
+          TError,
+          Awaited<ReturnType<typeof getV1GetProviderEnumExample>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetV1GetProviderEnumExample<
+  TData = Awaited<ReturnType<typeof getV1GetProviderEnumExample>>,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetProviderEnumExample>>,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getV1GetProviderEnumExample>>,
+          TError,
+          Awaited<ReturnType<typeof getV1GetProviderEnumExample>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetV1GetProviderEnumExample<
+  TData = Awaited<ReturnType<typeof getV1GetProviderEnumExample>>,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetProviderEnumExample>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+/**
+ * @summary Get Provider Enum Example
+ */
+
+export function useGetV1GetProviderEnumExample<
+  TData = Awaited<ReturnType<typeof getV1GetProviderEnumExample>>,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetProviderEnumExample>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+} {
+  const queryOptions = getGetV1GetProviderEnumExampleQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Get Provider Enum Example
+ */
+export const prefetchGetV1GetProviderEnumExampleQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetProviderEnumExample>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetProviderEnumExample>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetProviderEnumExampleQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
 };

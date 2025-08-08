@@ -28,6 +28,11 @@ export default isDevelopmentBuild
       org: "significant-gravitas",
       project: "builder",
 
+      // Expose Vercel env to the client
+      env: {
+        NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV,
+      },
+
       // Only print logs for uploading source maps in CI
       silent: !process.env.CI,
 

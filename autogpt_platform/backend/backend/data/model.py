@@ -14,7 +14,6 @@ from typing import (
     Generic,
     Literal,
     Optional,
-    TypedDict,
     TypeVar,
     cast,
     get_args,
@@ -38,6 +37,7 @@ from pydantic_core import (
     ValidationError,
     core_schema,
 )
+from typing_extensions import TypedDict
 
 from backend.integrations.providers import ProviderName
 from backend.util.settings import Secrets
@@ -316,15 +316,32 @@ class OAuthState(BaseModel):
 
 class UserMetadata(BaseModel):
     integration_credentials: list[Credentials] = Field(default_factory=list)
+    """⚠️ Deprecated; use `UserIntegrations.credentials` instead"""
     integration_oauth_states: list[OAuthState] = Field(default_factory=list)
+    """⚠️ Deprecated; use `UserIntegrations.oauth_states` instead"""
 
 
 class UserMetadataRaw(TypedDict, total=False):
     integration_credentials: list[dict]
+    """⚠️ Deprecated; use `UserIntegrations.credentials` instead"""
     integration_oauth_states: list[dict]
+    """⚠️ Deprecated; use `UserIntegrations.oauth_states` instead"""
 
 
 class UserIntegrations(BaseModel):
+
+    class ManagedCredentials(BaseModel):
+        """Integration credentials managed by us, rather than by the user"""
+
+        ayrshare_profile_key: Optional[SecretStr] = None
+
+        @field_serializer("*")
+        def dump_secret_strings(value: Any, _info):
+            if isinstance(value, SecretStr):
+                return value.get_secret_value()
+            return value
+
+    managed_credentials: ManagedCredentials = Field(default_factory=ManagedCredentials)
     credentials: list[Credentials] = Field(default_factory=list)
     oauth_states: list[OAuthState] = Field(default_factory=list)
 
@@ -627,7 +644,7 @@ class NodeExecutionStats(BaseModel):
         arbitrary_types_allowed=True,
     )
 
-    error: Optional[Exception | str] = None
+    error: Optional[BaseException | str] = None
     walltime: float = 0
     cputime: float = 0
     input_size: int = 0
@@ -636,6 +653,35 @@ class NodeExecutionStats(BaseModel):
     llm_retry_count: int = 0
     input_token_count: int = 0
     output_token_count: int = 0
+    extra_cost: int = 0
+    extra_steps: int = 0
+
+    def __iadd__(self, other: "NodeExecutionStats") -> "NodeExecutionStats":
+        """Mutate this instance by adding another NodeExecutionStats."""
+        if not isinstance(other, NodeExecutionStats):
+            return NotImplemented
+
+        stats_dict = other.model_dump()
+        current_stats = self.model_dump()
+
+        for key, value in stats_dict.items():
+            if key not in current_stats:
+                # Field doesn't exist yet, just set it
+                setattr(self, key, value)
+            elif isinstance(value, dict) and isinstance(current_stats[key], dict):
+                current_stats[key].update(value)
+                setattr(self, key, current_stats[key])
+            elif isinstance(value, (int, float)) and isinstance(
+                current_stats[key], (int, float)
+            ):
+                setattr(self, key, current_stats[key] + value)
+            elif isinstance(value, list) and isinstance(current_stats[key], list):
+                current_stats[key].extend(value)
+                setattr(self, key, current_stats[key])
+            else:
+                setattr(self, key, value)
+
+        return self
 
 
 class GraphExecutionStats(BaseModel):
@@ -660,3 +706,6 @@ class GraphExecutionStats(BaseModel):
         default=0, description="Total number of errors generated"
     )
     cost: int = Field(default=0, description="Total execution cost (cents)")
+    activity_status: Optional[str] = Field(
+        default=None, description="AI-generated summary of what the agent did"
+    )

@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Clipboard } from "lucide-react";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 
-export type BlockOutput = {
+export type OutputNodeInfo = {
   metadata: {
     name: string;
     description: string;
@@ -23,8 +23,9 @@ export type BlockOutput = {
 
 interface OutputModalProps {
   isOpen: boolean;
-  onClose: () => void;
-  blockOutputs: BlockOutput[];
+  doClose: () => void;
+  outputs: OutputNodeInfo[];
+  graphExecutionError?: string | null;
 }
 
 const formatOutput = (output: any): string => {
@@ -49,8 +50,9 @@ const formatOutput = (output: any): string => {
 
 export function RunnerOutputUI({
   isOpen,
-  onClose,
-  blockOutputs,
+  doClose,
+  outputs,
+  graphExecutionError,
 }: OutputModalProps) {
   const { toast } = useToast();
 
@@ -70,7 +72,7 @@ export function RunnerOutputUI({
   };
 
   return (
-    <Sheet open={isOpen} onOpenChange={onClose}>
+    <Sheet open={isOpen} onOpenChange={doClose}>
       <SheetContent
         side="right"
         className="flex h-full w-full flex-col overflow-hidden sm:max-w-[600px]"
@@ -84,16 +86,23 @@ export function RunnerOutputUI({
         <div className="flex-grow overflow-y-auto px-2 py-2">
           <ScrollArea className="h-full overflow-auto pr-4">
             <div className="space-y-4">
-              {blockOutputs && blockOutputs.length > 0 ? (
-                blockOutputs.map((block, i) => (
+              {graphExecutionError && (
+                <div className="rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
+                  <p className="text-sm text-red-800 dark:text-red-200">
+                    <strong>Error:</strong> {graphExecutionError}
+                  </p>
+                </div>
+              )}
+              {outputs && outputs.length > 0 ? (
+                outputs.map((output, i) => (
                   <div key={i} className="space-y-1">
                     <Label className="text-base font-semibold">
-                      {block.metadata.name || "Unnamed Output"}
+                      {output.metadata.name || "Unnamed Output"}
                     </Label>
 
-                    {block.metadata.description && (
+                    {output.metadata.description && (
                       <Label className="block text-sm text-gray-600">
-                        {block.metadata.description}
+                        {output.metadata.description}
                       </Label>
                     )}
 
@@ -104,8 +113,8 @@ export function RunnerOutputUI({
                         size="icon"
                         onClick={() =>
                           copyOutput(
-                            block.metadata.name || "Unnamed Output",
-                            block.result,
+                            output.metadata.name || "Unnamed Output",
+                            output.result,
                           )
                         }
                         title="Copy Output"
@@ -114,7 +123,7 @@ export function RunnerOutputUI({
                       </Button>
                       <Textarea
                         readOnly
-                        value={formatOutput(block.result ?? "No output yet")}
+                        value={formatOutput(output.result ?? "No output yet")}
                         className="w-full resize-none whitespace-pre-wrap break-words border-none bg-transparent text-sm"
                         style={{
                           height: "auto",
