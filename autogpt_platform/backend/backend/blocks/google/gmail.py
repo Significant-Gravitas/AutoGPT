@@ -21,6 +21,8 @@ from ._auth import (
     GoogleCredentialsInput,
 )
 
+settings = Settings()
+
 
 def serialize_email_recipients(recipients: list[str]) -> str:
     """Serialize recipients list to comma-separated string."""
@@ -255,8 +257,8 @@ class GmailReadBlock(Block):
                 else None
             ),
             token_uri="https://oauth2.googleapis.com/token",
-            client_id=Settings().secrets.google_client_id,
-            client_secret=Settings().secrets.google_client_secret,
+            client_id=settings.secrets.google_client_id,
+            client_secret=settings.secrets.google_client_secret,
             scopes=credentials.scopes,
         )
         return build("gmail", "v1", credentials=creds)

@@ -163,23 +163,6 @@ class DatabaseManagerClient(AppServiceClient):
     spend_credits = _(d.spend_credits)
     get_credits = _(d.get_credits)
 
-    # User Comms - async
-    get_active_user_ids_in_timerange = _(d.get_active_user_ids_in_timerange)
-    get_user_email_by_id = _(d.get_user_email_by_id)
-    get_user_email_verification = _(d.get_user_email_verification)
-    get_user_notification_preference = _(d.get_user_notification_preference)
-
-    # Notifications - async
-    create_or_add_to_user_notification_batch = _(
-        d.create_or_add_to_user_notification_batch
-    )
-    empty_user_notification_batch = _(d.empty_user_notification_batch)
-    get_all_batches_by_type = _(d.get_all_batches_by_type)
-    get_user_notification_batch = _(d.get_user_notification_batch)
-    get_user_notification_oldest_message_in_batch = _(
-        d.get_user_notification_oldest_message_in_batch
-    )
-
     # Block error monitoring
     get_block_error_stats = _(d.get_block_error_stats)
 
@@ -209,3 +192,20 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_user_integrations = d.update_user_integrations
     get_execution_kv_data = d.get_execution_kv_data
     set_execution_kv_data = d.set_execution_kv_data
+
+    # User Comms
+    get_active_user_ids_in_timerange = d.get_active_user_ids_in_timerange
+    get_user_email_by_id = d.get_user_email_by_id
+    get_user_email_verification = d.get_user_email_verification
+    get_user_notification_preference = d.get_user_notification_preference
+
+    # Notifications
+    create_or_add_to_user_notification_batch = (
+        d.create_or_add_to_user_notification_batch
+    )
+    empty_user_notification_batch = d.empty_user_notification_batch
+    get_all_batches_by_type = d.get_all_batches_by_type
+    get_user_notification_batch = d.get_user_notification_batch
+    get_user_notification_oldest_message_in_batch = (
+        d.get_user_notification_oldest_message_in_batch
+    )

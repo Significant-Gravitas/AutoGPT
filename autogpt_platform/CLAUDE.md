@@ -30,6 +30,12 @@ poetry run test
 # Run specific test
 poetry run pytest path/to/test_file.py::test_function_name
 
+# Run block tests (tests that validate all blocks work correctly)
+poetry run pytest backend/blocks/test/test_block.py -xvs
+
+# Run tests for a specific block (e.g., GetCurrentTimeBlock)
+poetry run pytest 'backend/blocks/test/test_block.py::test_available_blocks[GetCurrentTimeBlock]' -xvs
+
 # Lint and format
 # prefer format if you want to just "fix" it and only get the errors that can't be autofixed
 poetry run format  # Black + isort
