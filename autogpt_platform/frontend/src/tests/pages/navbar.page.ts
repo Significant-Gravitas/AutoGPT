@@ -13,7 +13,11 @@ export class NavBar {
   }
 
   async clickBuildLink() {
-    await this.page.getByTestId("navbar-link-build").click();
+    const link = this.page.getByTestId("navbar-link-build");
+    await link.waitFor({ state: "visible", timeout: 15000 });
+    await link.scrollIntoViewIfNeeded();
+    await link.click();
+    await this.page.waitForURL(/\/build$/, { timeout: 15000 });
   }
 
   async clickMarketplaceLink() {

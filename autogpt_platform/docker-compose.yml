@@ -70,6 +70,12 @@ services:
       file: ./docker-compose.platform.yml
       service: scheduler_server
 
+  notification_server:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: notification_server
+
   clamav:
     <<: *agpt-services
     image: clamav/clamav-debian:latest
@@ -90,11 +96,11 @@ services:
       timeout: 10s
       retries: 3
 
-  frontend:
-    <<: *agpt-services
-    extends:
-      file: ./docker-compose.platform.yml
-      service: frontend
+  #  frontend:
+  #    <<: *agpt-services
+  #    extends:
+  #      file: ./docker-compose.platform.yml
+  #      service: frontend
 
   kong:
     <<: *supabase-services
@@ -132,17 +138,3 @@ services:
       - redis
       - rabbitmq
       - clamav
-      - migrate
-
-  deps_backend:
-    <<: *agpt-services
-    profiles:
-      - local
-    image: busybox
-    command: /bin/true
-    depends_on:
-      - deps
-      - rest_server
-      - executor
-      - websocket_server
-      - database_manager

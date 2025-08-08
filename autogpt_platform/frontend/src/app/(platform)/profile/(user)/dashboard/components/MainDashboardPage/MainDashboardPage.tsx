@@ -48,7 +48,11 @@ export const MainDashboardPage = () => {
           targetState={publishState}
           onStateChange={onPublishStateChange}
           trigger={
-            <Button size="small" onClick={onOpenSubmitModal}>
+            <Button
+              data-testid="submit-agent-button"
+              size="small"
+              onClick={onOpenSubmitModal}
+            >
               Submit agent
             </Button>
           }
