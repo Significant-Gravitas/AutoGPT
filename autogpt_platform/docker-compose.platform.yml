@@ -73,8 +73,6 @@ services:
         condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
-      # scheduler_server:
-      #   condition: service_healthy
     environment:
       - SUPABASE_URL=http://kong:8000
       - SUPABASE_JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters-long
