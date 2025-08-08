@@ -43,7 +43,7 @@ class BaasCalendarConnectBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="3f4a5b6c-7d8e-9f0a-1b2c-3d4e5f6a7b8c",
+            id="a9d926dc-f050-40e3-88a7-75e63cf8b0fa",
             description="Connect a Google or Microsoft calendar for integration",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=self.Input,
@@ -90,7 +90,7 @@ class BaasCalendarListAllBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+            id="80bc1ab0-7f53-483d-8258-3c7fdf3209fe",
             description="List all integrated calendars",
             categories={BlockCategory.SEARCH},
             input_schema=self.Input,
@@ -135,7 +135,7 @@ class BaasCalendarUpdateCredsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="5b6c7d8e-9f0a-1b2c-3d4e-5f6a7b8c9d0e",
+            id="f349c9e4-7417-413b-a9da-a20548944b44",
             description="Update calendar credentials or platform",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=self.Input,
@@ -178,7 +178,7 @@ class BaasCalendarDeleteBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="6c7d8e9f-0a1b-2c3d-4e5f-6a7b8c9d0e1f",
+            id="95bfa87e-aaf2-4f5d-b77d-14baae3019e9",
             description="Remove a calendar integration",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=self.Input,
@@ -217,7 +217,7 @@ class BaasCalendarResyncAllBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="7d8e9f0a-1b2c-3d4e-5f6a-7b8c9d0e1f2a",
+            id="65690c06-c997-4b9a-b48f-8b27dc15f588",
             description="Force immediate re-sync of all connected calendars",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=self.Input,

@@ -68,7 +68,7 @@ class BaasBotJoinMeetingBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="7f8e9d0c-1b2a-3c4d-5e6f-7a8b9c0d1e2f",
+            id="377d1a6a-a99b-46cf-9af3-1d1b12758e04",
             description="Deploy a bot to join and record a meeting",
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
@@ -117,7 +117,7 @@ class BaasBotLeaveMeetingBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="8a9b0c1d-2e3f-4a5b-6c7d-8e9f0a1b2c3d",
+            id="bf77d128-8b25-4280-b5c7-2d553ba7e482",
             description="Remove a bot from an ongoing meeting",
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
@@ -159,7 +159,7 @@ class BaasBotFetchMeetingDataBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="9b0c1d2e-3f4a-5b6c-7d8e-9f0a1b2c3d4e",
+            id="ea7c1309-303c-4da1-893f-89c0e9d64e78",
             description="Retrieve recorded meeting data",
             categories={BlockCategory.DATA},
             input_schema=self.Input,
@@ -203,7 +203,7 @@ class BaasBotFetchScreenshotsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="0c1d2e3f-4a5b-6c7d-8e9f-0a1b2c3d4e5f",
+            id="87cfee2a-7e17-4a03-83ec-ba4a3eb3bb74",
             description="Retrieve screenshots captured during a meeting",
             categories={BlockCategory.DATA},
             input_schema=self.Input,
@@ -240,7 +240,7 @@ class BaasBotDeleteRecordingBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="1d2e3f4a-5b6c-7d8e-9f0a-1b2c3d4e5f6a",
+            id="bf8d1aa6-42d8-4944-b6bd-6bac554c0d3b",
             description="Permanently delete a meeting's recorded data",
             categories={BlockCategory.DATA},
             input_schema=self.Input,
@@ -291,7 +291,7 @@ class BaasBotRetranscribeBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="2e3f4a5b-6c7d-8e9f-0a1b-2c3d4e5f6a7b",
+            id="ad5ada2b-73f3-49a4-8a43-9fecdc07d888",
             description="Re-run transcription on a meeting's audio",
             categories={BlockCategory.AI},
             input_schema=self.Input,

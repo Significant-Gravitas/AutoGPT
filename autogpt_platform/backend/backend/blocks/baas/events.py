@@ -48,7 +48,7 @@ class BaasEventListBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="8e9f0a1b-2c3d-4e5f-6a7b-8c9d0e1f2a3b",
+            id="1a5458d4-1445-469c-8208-6fff37587e32",
             description="List calendar events with optional date filtering",
             categories={BlockCategory.SEARCH},
             input_schema=self.Input,
@@ -93,7 +93,7 @@ class BaasEventGetDetailsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="9f0a1b2c-3d4e-5f6a-7b8c-9d0e1f2a3b4c",
+            id="d9ebc549-f255-482a-a868-f3cfed70daa2",
             description="Get detailed information for a specific calendar event",
             categories={BlockCategory.SEARCH},
             input_schema=self.Input,
@@ -136,7 +136,7 @@ class BaasEventScheduleBotBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d",
+            id="f19d8d25-cfe4-4701-ab88-51dbc5ba819d",
             description="Schedule a recording bot for a calendar event",
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
@@ -182,7 +182,7 @@ class BaasEventUnscheduleBotBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="1b2c3d4e-5f6a-7b8c-9d0e-1f2a3b4c5d6e",
+            id="f8553dfe-c471-48bb-bc44-6a1f893b4ade",
             description="Cancel a scheduled recording for an event",
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
@@ -226,7 +226,7 @@ class BaasEventPatchBotBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="2c3d4e5f-6a7b-8c9d-0e1f-2a3b4c5d6e7f",
+            id="25e1ee5e-c9bd-4a5e-a33b-94a4f9a83908",
             description="Update configuration of a scheduled bot",
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
