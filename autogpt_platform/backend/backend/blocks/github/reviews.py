@@ -829,8 +829,8 @@ class GithubCreateCommentObjectBlock(Block):
             # Position should be calculated from the diff
             comment_obj["position"] = input_data.line
 
-        # Add optional fields
-        if input_data.side:
+        # Add optional fields only if they differ from defaults or are explicitly provided
+        if input_data.side and input_data.side != "RIGHT":
             comment_obj["side"] = input_data.side
         if input_data.start_line is not None:
             comment_obj["start_line"] = input_data.start_line
