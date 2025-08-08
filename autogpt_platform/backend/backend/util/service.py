@@ -128,9 +128,6 @@ EXCEPTION_MAPPING = {
 }
 
 
-# Ensure UnhealthyServiceError is included in EXCEPTION_MAPPING by construction
-
-
 class AppService(BaseAppService, ABC):
     fastapi_app: FastAPI
     log_level: str = "info"
