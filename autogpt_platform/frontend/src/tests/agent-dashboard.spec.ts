@@ -51,23 +51,65 @@ test.describe("Agent Dashboard", () => {
 
   test("agent table actions work correctly", async ({ page }) => {
     await page.goto("/profile/dashboard");
-
+  
     const agentTable = page.getByTestId("agent-table");
     await expect(agentTable).toBeVisible();
-
-    const agentRow = agentTable
-      .getByTestId("agent-table-row")
-      .filter({ hasText: TEST_AGENT_DATA.name })
-      .first();
-    await agentRow.scrollIntoViewIfNeeded();
-
-    const actionsButton = agentRow.getByTestId("agent-table-row-actions");
+  
+    const rows = agentTable.getByTestId("agent-table-row");
+  
+    const testRow = rows.filter({ hasText: TEST_AGENT_DATA.name }).first();
+    await testRow.scrollIntoViewIfNeeded();
+  
+    const actionsButton = testRow.getByTestId("agent-table-row-actions");
     await actionsButton.waitFor({ state: "visible", timeout: 10000 });
     await actionsButton.scrollIntoViewIfNeeded();
     await actionsButton.click();
-
+  
+    // View button testing
     const viewButton = page.getByRole("menuitem", { name: "View" });
     await expect(viewButton).toBeVisible();
     await viewButton.click();
+  
+    const modal = page.getByTestId("publish-agent-modal");
+    await expect(modal).toBeVisible();
+    const viewAgentName = page.getByTestId("view-agent-name");
+    await expect(viewAgentName).toBeVisible();
+    await expect(viewAgentName).toHaveText(TEST_AGENT_DATA.name);
+  
+    await page.getByRole("button", { name: "Done" }).click();
+    await expect(modal).not.toBeVisible();
+  
+    // Delete button testing
+    const beforeCount = await rows.count();
+  
+    let deletableIndex = -1;
+    for (let i = 0; i < beforeCount; i++) {
+      const nameAttr = await rows.nth(i).getAttribute("data-agent-name");
+      if (nameAttr && nameAttr !== TEST_AGENT_DATA.name) {
+        deletableIndex = i;
+        break;
+      }
+    }
+  
+    if (deletableIndex === -1) {
+      console.log("Only the test agent exists; skipping delete flow.");
+      return;
+    }
+  
+    const deletableRow = rows.nth(deletableIndex);
+    await deletableRow.scrollIntoViewIfNeeded();
+  
+    const delActionsButton = deletableRow.getByTestId("agent-table-row-actions");
+    await delActionsButton.waitFor({ state: "visible", timeout: 10000 });
+    await delActionsButton.scrollIntoViewIfNeeded();
+    await delActionsButton.click();
+  
+    const deleteButton = page.getByRole("menuitem", { name: "Delete" });
+    await expect(deleteButton).toBeVisible();
+    await deleteButton.click();
+  
+    await expect.poll(async () => await rows.count(), { timeout: 15000 }).toBe(
+      beforeCount - 1,
+    );
   });
 });
