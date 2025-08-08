@@ -31,7 +31,13 @@ from backend.util.cloud_storage import cleanup_expired_files_async
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.logging import PrefixFilter
 from backend.util.retry import func_retry
-from backend.util.service import AppService, AppServiceClient, endpoint_to_async, expose
+from backend.util.service import (
+    AppService,
+    AppServiceClient,
+    UnhealthyServiceError,
+    endpoint_to_async,
+    expose,
+)
 from backend.util.settings import Config
 
 
@@ -192,7 +198,7 @@ class Scheduler(AppService):
     def health_check(self) -> str:
         # Thread-safe health check with proper initialization handling
         if not hasattr(self, "scheduler"):
-            raise RuntimeError("Scheduler is still initializing")
+            raise UnhealthyServiceError("Scheduler is still initializing")
 
         # Check if we're in the middle of cleanup
         if self.cleaned_up:
@@ -200,8 +206,7 @@ class Scheduler(AppService):
 
         # Normal operation - check if scheduler is running
         if not self.scheduler.running:
-            logger.error(f"{self.service_name} the scheduler is not running!")
-            raise RuntimeError("Scheduler is not running")
+            raise UnhealthyServiceError("Scheduler is not running")
 
         return super().health_check()
 
