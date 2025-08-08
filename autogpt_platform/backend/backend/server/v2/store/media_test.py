@@ -26,6 +26,10 @@ def mock_storage_client(mocker):
     mock_client = AsyncMock()
     mock_client.upload = AsyncMock()
 
+    # Mock context manager methods
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
     # Mock the constructor to return our mock client
     mocker.patch(
         "backend.server.v2.store.media.async_storage.Storage", return_value=mock_client
