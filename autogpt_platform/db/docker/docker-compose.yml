@@ -95,8 +95,6 @@ services:
       db:
         # Disable this if you are using an external Postgres database
         condition: service_healthy
-      # analytics:
-      #   condition: service_healthy
     environment:
       GOTRUE_API_HOST: 0.0.0.0
       GOTRUE_API_PORT: 9999
