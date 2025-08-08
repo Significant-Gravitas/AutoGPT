@@ -950,7 +950,7 @@ class DiscordUserInfoBlock(Block):
                 ("created_at", "2020-01-01T00:00:00"),
             ],
             test_mock={
-                "get_user_info": lambda *args: {
+                "get_user_info": lambda token, user_id: {
                     "user_id": "123456789012345678",
                     "username": "testuser",
                     "display_name": "Test User",
@@ -1063,7 +1063,7 @@ class DiscordChannelInfoBlock(Block):
                 ("channel_type", "text"),
             ],
             test_mock={
-                "get_channel_info": lambda *args: {
+                "get_channel_info": lambda token, channel_identifier, server_name: {
                     "channel_id": "123456789012345678",
                     "channel_name": "general",
                     "server_id": "987654321098765432",
