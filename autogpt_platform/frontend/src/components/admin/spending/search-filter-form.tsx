@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/select";
 
 export function SearchAndFilterAdminSpending({
-  initialStatus,
   initialSearch,
 }: {
   initialStatus?: CreditTransactionType;
@@ -74,7 +73,7 @@ export function SearchAndFilterAdminSpending({
 
       <Select
         value={selectedStatus}
-        onValueChange={(value) => {
+        onValueChange={(value: string) => {
           setSelectedStatus(value);
           const params = new URLSearchParams(searchParams.toString());
           if (value === "ALL") {

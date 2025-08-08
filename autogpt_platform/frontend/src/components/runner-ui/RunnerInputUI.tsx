@@ -1,87 +1,90 @@
-import React from "react";
+import React, { useCallback } from "react";
+
+import type {
+  CredentialsMetaInput,
+  GraphMeta,
+} from "@/lib/autogpt-server-api/types";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogFooter,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { BlockIORootSchema } from "@/lib/autogpt-server-api/types";
-import { InputList } from "./RunnerInputList";
+import AgentRunDraftView from "@/components/agents/agent-run-draft-view";
 
-export interface BlockInput {
-  id: string;
-  inputSchema: BlockIORootSchema;
-  hardcodedValues: {
-    name: string;
-    description: string;
-    value: any;
-    placeholder_values?: any[];
-  };
-}
-
-interface RunSettingsUiProps {
+interface RunInputDialogProps {
   isOpen: boolean;
-  onClose: () => void;
-  blockInputs: BlockInput[];
-  onInputChange: (nodeId: string, field: string, value: any) => void;
-  onRun: () => void;
-  onSchedule: () => Promise<void>;
-  scheduledInput: boolean;
-  isScheduling: boolean;
-  isRunning: boolean;
+  doClose: () => void;
+  graph: GraphMeta;
+  doRun?: (
+    inputs: Record<string, any>,
+    credentialsInputs: Record<string, CredentialsMetaInput>,
+  ) => Promise<void> | void;
+  doCreateSchedule?: (
+    cronExpression: string,
+    scheduleName: string,
+    inputs: Record<string, any>,
+    credentialsInputs: Record<string, CredentialsMetaInput>,
+  ) => Promise<void> | void;
 }
 
-export function RunnerInputUI({
+export function RunnerInputDialog({
   isOpen,
-  onClose,
-  blockInputs,
-  isScheduling,
-  onInputChange,
-  onRun,
-  onSchedule,
-  scheduledInput,
-  isRunning,
-}: RunSettingsUiProps) {
-  const handleRun = () => {
-    onRun();
-    onClose();
-  };
+  doClose,
+  graph,
+  doRun,
+  doCreateSchedule,
+}: RunInputDialogProps) {
+  const handleRun = useCallback(
+    doRun
+      ? async (
+          inputs: Record<string, any>,
+          credentials_inputs: Record<string, CredentialsMetaInput>,
+        ) => {
+          await doRun(inputs, credentials_inputs);
+          doClose();
+        }
+      : async () => {},
+    [doRun, doClose],
+  );
 
-  const handleSchedule = async () => {
-    onClose();
-    await onSchedule();
-  };
+  const handleSchedule = useCallback(
+    doCreateSchedule
+      ? async (
+          cronExpression: string,
+          scheduleName: string,
+          inputs: Record<string, any>,
+          credentialsInputs: Record<string, CredentialsMetaInput>,
+        ) => {
+          await doCreateSchedule(
+            cronExpression,
+            scheduleName,
+            inputs,
+            credentialsInputs,
+          );
+          doClose();
+        }
+      : async () => {},
+    [doCreateSchedule, doClose],
+  );
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="flex flex-col px-10 py-8">
+    <Dialog open={isOpen} onOpenChange={doClose}>
+      <DialogContent className="flex w-[90vw] max-w-4xl flex-col p-10">
         <DialogHeader>
-          <DialogTitle className="text-2xl">
-            {scheduledInput ? "Schedule Settings" : "Run Settings"}
-          </DialogTitle>
-          <DialogDescription className="mt-2 text-sm">
-            Configure settings for running your agent.
-          </DialogDescription>
+          <DialogTitle className="text-2xl">Run your agent</DialogTitle>
+          <DialogDescription className="mt-2">{graph.name}</DialogDescription>
         </DialogHeader>
-        <div className="flex-grow overflow-y-auto">
-          <InputList blockInputs={blockInputs} onInputChange={onInputChange} />
-        </div>
-        <DialogFooter>
-          <Button
-            data-testid="run-dialog-run-button"
-            onClick={scheduledInput ? handleSchedule : handleRun}
-            className="text-lg"
-            disabled={scheduledInput ? isScheduling : isRunning}
-          >
-            {scheduledInput ? "Schedule" : isRunning ? "Running..." : "Run"}
-          </Button>
-        </DialogFooter>
+        <AgentRunDraftView
+          className="p-0"
+          graph={graph}
+          doRun={doRun ? handleRun : undefined}
+          onRun={doRun ? undefined : doClose}
+          doCreateSchedule={doCreateSchedule ? handleSchedule : undefined}
+          onCreateSchedule={doCreateSchedule ? undefined : doClose}
+        />
       </DialogContent>
     </Dialog>
   );
 }
-
-export default RunnerInputUI;

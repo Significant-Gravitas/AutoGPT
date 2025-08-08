@@ -7,10 +7,15 @@ import prisma.errors
 import prisma.models
 import prisma.types
 
-import backend.data.graph
 import backend.server.v2.store.exceptions
 import backend.server.v2.store.model
-from backend.data.graph import GraphModel, get_sub_graphs
+from backend.data.graph import (
+    GraphMeta,
+    GraphModel,
+    get_graph,
+    get_graph_as_admin,
+    get_sub_graphs,
+)
 from backend.data.includes import AGENT_GRAPH_INCLUDE
 
 logger = logging.getLogger(__name__)
@@ -193,9 +198,7 @@ async def get_store_agent_details(
         ) from e
 
 
-async def get_available_graph(
-    store_listing_version_id: str,
-):
+async def get_available_graph(store_listing_version_id: str) -> GraphMeta:
     try:
         # Get avaialble, non-deleted store listing version
         store_listing_version = (
@@ -215,18 +218,7 @@ async def get_available_graph(
                 detail=f"Store listing version {store_listing_version_id} not found",
             )
 
-        graph = GraphModel.from_db(store_listing_version.AgentGraph)
-        # We return graph meta, without nodes, they cannot be just removed
-        # because then input_schema would be empty
-        return {
-            "id": graph.id,
-            "version": graph.version,
-            "is_active": graph.is_active,
-            "name": graph.name,
-            "description": graph.description,
-            "input_schema": graph.input_schema,
-            "output_schema": graph.output_schema,
-        }
+        return GraphModel.from_db(store_listing_version.AgentGraph).meta()
 
     except Exception as e:
         logger.error(f"Error getting agent: {e}")
@@ -1024,7 +1016,7 @@ async def get_agent(
     if not store_listing_version:
         raise ValueError(f"Store listing version {store_listing_version_id} not found")
 
-    graph = await backend.data.graph.get_graph(
+    graph = await get_graph(
         user_id=user_id,
         graph_id=store_listing_version.agentGraphId,
         version=store_listing_version.agentGraphVersion,
@@ -1383,7 +1375,7 @@ async def get_agent_as_admin(
     if not store_listing_version:
         raise ValueError(f"Store listing version {store_listing_version_id} not found")
 
-    graph = await backend.data.graph.get_graph_as_admin(
+    graph = await get_graph_as_admin(
         user_id=user_id,
         graph_id=store_listing_version.agentGraphId,
         version=store_listing_version.agentGraphVersion,

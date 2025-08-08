@@ -10,7 +10,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.request import requests
+from backend.util.request import Requests
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -71,7 +71,7 @@ class UnrealTextToSpeechBlock(Block):
         )
 
     @staticmethod
-    def call_unreal_speech_api(
+    async def call_unreal_speech_api(
         api_key: SecretStr, text: str, voice_id: str
     ) -> dict[str, Any]:
         url = "https://api.v7.unrealspeech.com/speech"
@@ -88,13 +88,13 @@ class UnrealTextToSpeechBlock(Block):
             "TimestampType": "sentence",
         }
 
-        response = requests.post(url, headers=headers, json=data)
+        response = await Requests().post(url, headers=headers, json=data)
         return response.json()
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        api_response = self.call_unreal_speech_api(
+        api_response = await self.call_unreal_speech_api(
             credentials.api_key,
             input_data.text,
             input_data.voice_id,

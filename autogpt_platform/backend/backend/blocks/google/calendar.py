@@ -1,3 +1,4 @@
+import asyncio
 import enum
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -9,7 +10,7 @@ from pydantic import BaseModel
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from backend.util.settings import AppEnvironment, Settings
+from backend.util.settings import Settings
 
 from ._auth import (
     GOOGLE_OAUTH_IS_CONFIGURED,
@@ -19,6 +20,8 @@ from ._auth import (
     GoogleCredentialsField,
     GoogleCredentialsInput,
 )
+
+settings = Settings()
 
 
 class CalendarEvent(BaseModel):
@@ -87,8 +90,6 @@ class GoogleCalendarReadEventsBlock(Block):
         )
 
     def __init__(self):
-        settings = Settings()
-
         # Create realistic test data for events
         test_now = datetime.now(tz=timezone.utc)
         test_tomorrow = test_now + timedelta(days=1)
@@ -115,8 +116,7 @@ class GoogleCalendarReadEventsBlock(Block):
             categories={BlockCategory.PRODUCTIVITY, BlockCategory.DATA},
             input_schema=GoogleCalendarReadEventsBlock.Input,
             output_schema=GoogleCalendarReadEventsBlock.Output,
-            disabled=not GOOGLE_OAUTH_IS_CONFIGURED
-            or settings.config.app_env == AppEnvironment.PRODUCTION,
+            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "calendar_id": "primary",
@@ -168,7 +168,7 @@ class GoogleCalendarReadEventsBlock(Block):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         try:
@@ -180,7 +180,8 @@ class GoogleCalendarReadEventsBlock(Block):
             )
 
             # Call Google Calendar API
-            result = self._read_calendar(
+            result = await asyncio.to_thread(
+                self._read_calendar,
                 service=service,
                 calendarId=input_data.calendar_id,
                 time_min=input_data.start_time.isoformat(),
@@ -222,8 +223,8 @@ class GoogleCalendarReadEventsBlock(Block):
                 else None
             ),
             token_uri="https://oauth2.googleapis.com/token",
-            client_id=Settings().secrets.google_client_id,
-            client_secret=Settings().secrets.google_client_secret,
+            client_id=settings.secrets.google_client_id,
+            client_secret=settings.secrets.google_client_secret,
             scopes=credentials.scopes,
         )
         return build("calendar", "v3", credentials=creds)
@@ -440,16 +441,13 @@ class GoogleCalendarCreateEventBlock(Block):
         error: str = SchemaField(description="Error message if event creation failed")
 
     def __init__(self):
-        settings = Settings()
-
         super().__init__(
             id="ed2ec950-fbff-4204-94c0-023fb1d625e0",
             description="This block creates a new event in Google Calendar with customizable parameters.",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=GoogleCalendarCreateEventBlock.Input,
             output_schema=GoogleCalendarCreateEventBlock.Output,
-            disabled=not GOOGLE_OAUTH_IS_CONFIGURED
-            or settings.config.app_env == AppEnvironment.PRODUCTION,
+            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "event_title": "Team Meeting",
@@ -477,12 +475,13 @@ class GoogleCalendarCreateEventBlock(Block):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         try:
             service = self._build_service(credentials, **kwargs)
 
+            # Create event body
             # Get start and end times based on the timing option
             if input_data.timing.discriminator == "exact_timing":
                 start_datetime = input_data.timing.start_datetime
@@ -543,7 +542,8 @@ class GoogleCalendarCreateEventBlock(Block):
                 event_body["recurrence"] = [rule]
 
             # Create the event
-            result = self._create_event(
+            result = await asyncio.to_thread(
+                self._create_event,
                 service=service,
                 calendar_id=input_data.calendar_id,
                 event_body=event_body,
@@ -551,8 +551,9 @@ class GoogleCalendarCreateEventBlock(Block):
                 conference_data_version=1 if input_data.add_google_meet else 0,
             )
 
-            yield "event_id", result.get("id", "")
-            yield "event_link", result.get("htmlLink", "")
+            yield "event_id", result["id"]
+            yield "event_link", result["htmlLink"]
+
         except Exception as e:
             yield "error", str(e)
 
@@ -570,8 +571,8 @@ class GoogleCalendarCreateEventBlock(Block):
                 else None
             ),
             token_uri="https://oauth2.googleapis.com/token",
-            client_id=Settings().secrets.google_client_id,
-            client_secret=Settings().secrets.google_client_secret,
+            client_id=settings.secrets.google_client_id,
+            client_secret=settings.secrets.google_client_secret,
             scopes=credentials.scopes,
         )
         return build("calendar", "v3", credentials=creds)

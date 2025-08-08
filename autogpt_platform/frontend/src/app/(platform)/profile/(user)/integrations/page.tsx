@@ -2,9 +2,10 @@
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import { IconKey, IconUser } from "@/components/ui/icons";
 import { Trash2Icon } from "lucide-react";
+import { KeyIcon } from "@phosphor-icons/react/dist/ssr";
 import { providerIcons } from "@/components/integrations/credentials-input";
 import { CredentialsProvidersContext } from "@/components/integrations/credentials-provider";
 import {
@@ -26,7 +27,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import useSupabase from "@/lib/supabase/useSupabase";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import LoadingBox from "@/components/ui/loading";
 
 export default function UserIntegrationsPage() {
@@ -103,6 +104,7 @@ export default function UserIntegrationsPage() {
       "6b9fc200-4726-4973-86c9-cd526f5ce5db", // Replicate
       "53c25cb8-e3ee-465c-a4d1-e75a4c899c2a", // OpenAI
       "24e5d942-d9e3-4798-8151-90143ee55629", // Anthropic
+      "aad82a89-9794-4ebb-977f-d736aa5260a3", // AI/ML
       "4ec22295-8f97-4dd1-b42b-2c6957a02545", // Groq
       "7f7b0654-c36b-4565-8fa7-9a52575dfae2", // D-ID
       "7f26de70-ba0d-494e-ba76-238e65e7b45f", // Jina
@@ -132,21 +134,27 @@ export default function UserIntegrationsPage() {
   }
 
   const allCredentials = providers
-    ? Object.values(providers).flatMap((provider) =>
-        provider.savedCredentials
-          .filter((cred) => !hiddenCredentials.includes(cred.id))
-          .map((credentials) => ({
-            ...credentials,
-            provider: provider.provider,
-            providerName: provider.providerName,
-            ProviderIcon: providerIcons[provider.provider],
-            TypeIcon: {
-              oauth2: IconUser,
-              api_key: IconKey,
-              user_password: IconKey,
-            }[credentials.type],
-          })),
-      )
+    ? Object.values(providers)
+        .filter(
+          (provider): provider is NonNullable<typeof provider> =>
+            provider != null,
+        )
+        .flatMap((provider) =>
+          provider.savedCredentials
+            .filter((cred) => !hiddenCredentials.includes(cred.id))
+            .map((credentials) => ({
+              ...credentials,
+              provider: provider.provider,
+              providerName: provider.providerName,
+              ProviderIcon: providerIcons[provider.provider] || KeyIcon,
+              TypeIcon: {
+                oauth2: IconUser,
+                api_key: IconKey,
+                user_password: IconKey,
+                host_scoped: IconKey,
+              }[credentials.type],
+            })),
+        )
     : [];
 
   return (
@@ -180,6 +188,7 @@ export default function UserIntegrationsPage() {
                       oauth2: "OAuth2 credentials",
                       api_key: "API key",
                       user_password: "Username & password",
+                      host_scoped: "Host-scoped credentials",
                     }[cred.type]
                   }{" "}
                   - <code>{cred.id}</code>

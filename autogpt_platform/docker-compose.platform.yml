@@ -93,7 +93,8 @@ services:
       - SCHEDULER_HOST=scheduler_server
       - EXECUTIONMANAGER_HOST=executor
       - NOTIFICATIONMANAGER_HOST=rest_server
-      - FRONTEND_BASE_URL=http://localhost:3000
+      - CLAMAV_SERVICE_HOST=clamav
+      - NEXT_PUBLIC_FRONTEND_BASE_URL=http://localhost:3000
       - BACKEND_CORS_ALLOW_ORIGINS=["http://localhost:3000"]
       - ENCRYPTION_KEY=dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw= # DO NOT USE IN PRODUCTION!!
       - UNSUBSCRIBE_SECRET_KEY=HlP8ivStJjmbf6NKi78m_3FnOogut0t5ckzjsIqeaio= # DO NOT USE IN PRODUCTION!!
@@ -123,8 +124,10 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      database_manager:
+        condition: service_started
     environment:
-      - DATABASEMANAGER_HOST=rest_server
+      - DATABASEMANAGER_HOST=database_manager
       - SUPABASE_URL=http://kong:8000
       - SUPABASE_JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters-long
       - SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJzZXJ2aWNlX3JvbGUiLAogICAgImlzcyI6ICJzdXBhYmFzZS1kZW1vIiwKICAgICJpYXQiOiAxNjQxNzY5MjAwLAogICAgImV4cCI6IDE3OTk1MzU2MDAKfQ.DaYlNEoUrrEn2Ig7tqibS-PHK5vgusbcbo7X36XVt4Q
@@ -141,6 +144,7 @@ services:
       - PYRO_HOST=0.0.0.0
       - AGENTSERVER_HOST=rest_server
       - NOTIFICATIONMANAGER_HOST=rest_server
+      - CLAMAV_SERVICE_HOST=clamav
       - ENCRYPTION_KEY=dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw= # DO NOT USE IN PRODUCTION!!
     ports:
       - "8002:8002"
@@ -167,8 +171,10 @@ services:
       #   condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      database_manager:
+        condition: service_started
     environment:
-      - DATABASEMANAGER_HOST=rest_server
+      - DATABASEMANAGER_HOST=database_manager
       - SUPABASE_JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters-long
       - DATABASE_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
       - DIRECT_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
@@ -185,6 +191,32 @@ services:
 
     ports:
       - "8001:8001"
+    networks:
+      - app-network
+
+  database_manager:
+    build:
+      context: ../
+      dockerfile: autogpt_platform/backend/Dockerfile
+      target: server
+    command: ["python", "-m", "backend.db"]
+    develop:
+      watch:
+        - path: ./
+          target: autogpt_platform/backend/
+          action: rebuild
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      - DATABASE_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+      - DIRECT_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+      - PYRO_HOST=0.0.0.0
+      - ENCRYPTION_KEY=dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw= # DO NOT USE IN PRODUCTION!!
+    ports:
+      - "8005:8005"
     networks:
       - app-network
 
@@ -208,6 +240,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      database_manager:
+        condition: service_started
     # healthcheck:
     #   test:
     #     [
@@ -222,7 +256,7 @@ services:
     #   timeout: 10s
     #   retries: 5
     environment:
-      - DATABASEMANAGER_HOST=rest_server
+      - DATABASEMANAGER_HOST=database_manager
       - NOTIFICATIONMANAGER_HOST=rest_server
       - SUPABASE_JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters-long
       - DATABASE_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
@@ -243,34 +277,47 @@ services:
     networks:
       - app-network
 
-#  frontend:
-#    build:
-#      context: ../
-#      dockerfile: autogpt_platform/frontend/Dockerfile
-#      target: dev
-#    depends_on:
-#      db:
-#        condition: service_healthy
-#      rest_server:
-#        condition: service_started
-#      websocket_server:
-#        condition: service_started
-#      migrate:
-#        condition: service_completed_successfully
-#    environment:
-#      - NEXT_PUBLIC_SUPABASE_URL=http://kong:8000
-#      - NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE
-#      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/postgres?connect_timeout=60&schema=platform
-#      - DIRECT_URL=postgresql://agpt_user:pass123@postgres:5432/postgres?connect_timeout=60&schema=platform
-#      - NEXT_PUBLIC_AGPT_SERVER_URL=http://localhost:8006/api
-#      - NEXT_PUBLIC_AGPT_WS_SERVER_URL=ws://localhost:8001/ws
-#      - NEXT_PUBLIC_AGPT_MARKETPLACE_URL=http://localhost:8015/api/v1/market
-#      - NEXT_PUBLIC_BEHAVE_AS=LOCAL
-#    ports:
-#      - "3000:3000"
-#    networks:
-#      - app-network
+  # Frontend environment variables
+  x-frontend-vars: &frontend-vars
+    NEXT_PUBLIC_SUPABASE_URL: http://localhost:8000
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE
+    NEXT_PUBLIC_AGPT_SERVER_URL: http://localhost:8006/api
+    NEXT_PUBLIC_AGPT_WS_SERVER_URL: ws://localhost:8001/ws
+    NEXT_PUBLIC_FRONTEND_BASE_URL: http://localhost:3000
+    NEXT_PUBLIC_BEHAVE_AS: LOCAL
+    NEXT_PUBLIC_LAUNCHDARKLY_ENABLED: false
+    NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID: 687ab1372f497809b131e06e
+    NEXT_PUBLIC_APP_ENV: local
+    NEXT_PUBLIC_DEFAULT_LOCALE: en
+    NEXT_PUBLIC_LOCALES: en,es
+    NEXT_PUBLIC_SHOW_BILLING_PAGE: false
+    NEXT_PUBLIC_TURNSTILE: disabled
+    NEXT_PUBLIC_REACT_QUERY_DEVTOOL: true
+    NEXT_PUBLIC_GA_MEASUREMENT_ID: G-FH2XK2W4GN
+    NEXT_PUBLIC_PW_TEST: "${NEXT_PUBLIC_PW_TEST:-}"
 
+  frontend:
+    build:
+      context: ../
+      dockerfile: autogpt_platform/frontend/Dockerfile
+      target: prod
+      args: *frontend-vars
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "3000:3000"
+    networks:
+      - app-network
+    environment:
+      <<: *frontend-vars
+      # Server-side environment variables (Docker service names)
+      AUTH_CALLBACK_URL: http://rest_server:8006/auth/callback
+      SUPABASE_URL: http://kong:8000
+      AGPT_SERVER_URL: http://rest_server:8006/api
+      AGPT_WS_SERVER_URL: ws://websocket_server:8001/ws
 networks:
   app-network:
     driver: bridge

@@ -3,7 +3,7 @@ import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
 import { Maximize2, Minimize2, Clipboard } from "lucide-react";
 import { createPortal } from "react-dom";
-import { toast } from "./ui/use-toast";
+import { toast } from "./molecules/Toast/use-toast";
 
 interface ModalProps {
   isOpen: boolean;

@@ -122,7 +122,7 @@
 #             print(f"Unexpected error: {str(e)}")
 #             raise
 
-#     def run(
+#     async def run(
 #         self,
 #         input_data: Input,
 #         *,
@@ -239,7 +239,7 @@
 #             print(f"Unexpected error: {str(e)}")
 #             raise
 
-#     def run(
+#     async def run(
 #         self,
 #         input_data: Input,
 #         *,

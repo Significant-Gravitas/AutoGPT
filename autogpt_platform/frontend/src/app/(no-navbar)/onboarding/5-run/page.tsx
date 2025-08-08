@@ -1,23 +1,23 @@
 "use client";
+import SmartImage from "@/components/agptui/SmartImage";
+import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 import OnboardingButton from "@/components/onboarding/OnboardingButton";
 import {
-  OnboardingStep,
   OnboardingHeader,
+  OnboardingStep,
 } from "@/components/onboarding/OnboardingStep";
 import { OnboardingText } from "@/components/onboarding/OnboardingText";
 import StarRating from "@/components/onboarding/StarRating";
-import { Play } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { useCallback, useEffect, useState } from "react";
-import { GraphMeta, StoreAgentDetails } from "@/lib/autogpt-server-api";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { useRouter } from "next/navigation";
-import { useOnboarding } from "@/components/onboarding/onboarding-provider";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import SchemaTooltip from "@/components/SchemaTooltip";
 import { TypeBasedInput } from "@/components/type-based-input";
-import SmartImage from "@/components/agptui/SmartImage";
-import { useToast } from "@/components/ui/use-toast";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useToast } from "@/components/molecules/Toast/use-toast";
+import { GraphMeta, StoreAgentDetails } from "@/lib/autogpt-server-api";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { cn } from "@/lib/utils";
+import { Play } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 
 export default function Page() {
   const { state, updateState, setStep } = useOnboarding(
@@ -46,9 +46,10 @@ export default function Page() {
         setStoreAgent(storeAgent);
       });
     api
-      .getAgentMetaByStoreListingVersionId(state?.selectedStoreListingVersionId)
+      .getGraphMetaByStoreListingVersionID(state.selectedStoreListingVersionId)
       .then((agent) => {
         setAgent(agent);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const update: { [key: string]: any } = {};
         // Set default values from schema
         Object.entries(agent.input_schema.properties).forEach(

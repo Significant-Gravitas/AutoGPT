@@ -56,5 +56,5 @@ class CompassAITriggerBlock(Block):
             # ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "transcription", input_data.payload.transcription

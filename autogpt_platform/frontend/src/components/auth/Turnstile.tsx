@@ -1,6 +1,7 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { isServerSide } from "@/lib/utils/is-server-side";
+import { useEffect, useRef, useState } from "react";
 
 export interface TurnstileProps {
   siteKey: string;
@@ -31,7 +32,7 @@ export function Turnstile({
 
   // Load the Turnstile script
   useEffect(() => {
-    if (typeof window === "undefined" || !shouldRender) return;
+    if (isServerSide() || !shouldRender) return;
 
     // Skip if already loaded
     if (window.turnstile) {
@@ -120,7 +121,7 @@ export function Turnstile({
   ]);
 
   // Method to reset the widget manually
-  const reset = useCallback(() => {
+  useEffect(() => {
     if (loaded && widgetIdRef.current && window.turnstile && shouldRender) {
       window.turnstile.reset(widgetIdRef.current);
     }

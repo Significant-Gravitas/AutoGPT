@@ -1,6 +1,15 @@
-import getServerSupabase from "@/lib/supabase/getServerSupabase";
+import { getWebSocketToken } from "@/lib/supabase/actions";
+import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { Key, storage } from "@/services/storage/local-storage";
+import {
+  getAgptServerUrl,
+  getAgptWsServerUrl,
+  getSupabaseUrl,
+  getSupabaseAnonKey,
+} from "@/lib/env-config";
+import * as Sentry from "@sentry/nextjs";
 import type {
   AddUserCreditsResponse,
   AnalyticsDetails,
@@ -31,6 +40,7 @@ import type {
   GraphID,
   GraphMeta,
   GraphUpdateable,
+  HostScopedCredentials,
   LibraryAgent,
   LibraryAgentID,
   LibraryAgentPreset,
@@ -71,8 +81,9 @@ import type {
   UserPasswordCredentials,
   UsersBalanceHistoryResponse,
 } from "./types";
+import { isServerSide } from "../utils/is-server-side";
 
-const isClient = typeof window !== "undefined";
+const isClient = !isServerSide();
 
 export default class BackendAPI {
   private baseUrl: string;
@@ -82,6 +93,7 @@ export default class BackendAPI {
   private wsOnConnectHandlers: Set<() => void> = new Set();
   private wsOnDisconnectHandlers: Set<() => void> = new Set();
   private wsMessageHandlers: Record<string, Set<(data: any) => void>> = {};
+  private isIntentionallyDisconnected: boolean = false;
 
   readonly HEARTBEAT_INTERVAL = 100_000; // 100 seconds
   readonly HEARTBEAT_TIMEOUT = 10_000; // 10 seconds
@@ -89,10 +101,8 @@ export default class BackendAPI {
   heartbeatTimeoutID: number | null = null;
 
   constructor(
-    baseUrl: string = process.env.NEXT_PUBLIC_AGPT_SERVER_URL ||
-      "http://localhost:8006/api",
-    wsUrl: string = process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL ||
-      "ws://localhost:8001/ws",
+    baseUrl: string = getAgptServerUrl(),
+    wsUrl: string = getAgptWsServerUrl(),
   ) {
     this.baseUrl = baseUrl;
     this.wsUrl = wsUrl;
@@ -100,11 +110,9 @@ export default class BackendAPI {
 
   private async getSupabaseClient(): Promise<SupabaseClient | null> {
     return isClient
-      ? createBrowserClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-          { isSingleton: true },
-        )
+      ? createBrowserClient(getSupabaseUrl(), getSupabaseAnonKey(), {
+          isSingleton: true,
+        })
       : await getServerSupabase();
   }
 
@@ -132,7 +140,7 @@ export default class BackendAPI {
   getUserCredit(): Promise<{ credits: number }> {
     try {
       return this._get("/credits");
-    } catch (error) {
+    } catch {
       return Promise.resolve({ credits: 0 });
     }
   }
@@ -270,7 +278,7 @@ export default class BackendAPI {
     version?: number,
     for_export?: boolean,
   ): Promise<Graph> {
-    let query: Record<string, any> = {};
+    const query: Record<string, any> = {};
     if (version !== undefined) {
       query["version"] = version;
     }
@@ -287,7 +295,7 @@ export default class BackendAPI {
   }
 
   createGraph(graph: GraphCreatable): Promise<Graph> {
-    let requestBody = { graph } as GraphCreateRequestBody;
+    const requestBody = { graph } as GraphCreateRequestBody;
 
     return this._request("POST", "/graphs", requestBody);
   }
@@ -390,6 +398,20 @@ export default class BackendAPI {
       `/integrations/${credentials.provider}/credentials`,
       { ...credentials, type: "user_password" },
     );
+  }
+
+  createHostScopedCredentials(
+    credentials: Omit<HostScopedCredentials, "id" | "type">,
+  ): Promise<HostScopedCredentials> {
+    return this._request(
+      "POST",
+      `/integrations/${credentials.provider}/credentials`,
+      { ...credentials, type: "host_scoped" },
+    );
+  }
+
+  listProviders(): Promise<string[]> {
+    return this._get("/integrations/providers");
   }
 
   listCredentials(provider?: string): Promise<CredentialsMetaResponse[]> {
@@ -502,7 +524,7 @@ export default class BackendAPI {
     );
   }
 
-  getAgentMetaByStoreListingVersionId(
+  getGraphMetaByStoreListingVersionID(
     storeListingVersionID: string,
   ): Promise<GraphMeta> {
     return this._get(`/store/graph/${storeListingVersionID}`);
@@ -555,9 +577,35 @@ export default class BackendAPI {
   }
 
   uploadStoreSubmissionMedia(file: File): Promise<string> {
-    const formData = new FormData();
-    formData.append("file", file);
     return this._uploadFile("/store/submissions/media", file);
+  }
+
+  uploadFile(
+    file: File,
+    provider: string = "gcs",
+    expiration_hours: number = 24,
+    onProgress?: (progress: number) => void,
+  ): Promise<{
+    file_uri: string;
+    file_name: string;
+    size: number;
+    content_type: string;
+    expires_in_hours: number;
+  }> {
+    return this._uploadFileWithProgress(
+      "/files/upload",
+      file,
+      {
+        provider,
+        expiration_hours,
+      },
+      onProgress,
+    ).then((response) => {
+      if (typeof response === "string") {
+        return JSON.parse(response);
+      }
+      return response;
+    });
   }
 
   updateStoreProfile(profile: ProfileDetails): Promise<ProfileDetails> {
@@ -669,6 +717,15 @@ export default class BackendAPI {
     return this._get(`/library/agents/marketplace/${storeListingVersionId}`);
   }
 
+  getLibraryAgentByGraphID(
+    graphID: GraphID,
+    graphVersion?: number,
+  ): Promise<LibraryAgent> {
+    return this._get(`/library/agents/by-graph/${graphID}`, {
+      version: graphVersion,
+    });
+  }
+
   addMarketplaceAgentToLibrary(
     storeListingVersionID: string,
   ): Promise<LibraryAgent> {
@@ -677,20 +734,36 @@ export default class BackendAPI {
     });
   }
 
-  async updateLibraryAgent(
+  updateLibraryAgent(
     libraryAgentId: LibraryAgentID,
     params: {
       auto_update_version?: boolean;
       is_favorite?: boolean;
       is_archived?: boolean;
-      is_deleted?: boolean;
     },
-  ): Promise<void> {
-    await this._request("PUT", `/library/agents/${libraryAgentId}`, params);
+  ): Promise<LibraryAgent> {
+    return this._request("PATCH", `/library/agents/${libraryAgentId}`, params);
+  }
+
+  async deleteLibraryAgent(libraryAgentId: LibraryAgentID): Promise<void> {
+    await this._request("DELETE", `/library/agents/${libraryAgentId}`);
   }
 
   forkLibraryAgent(libraryAgentId: LibraryAgentID): Promise<LibraryAgent> {
     return this._request("POST", `/library/agents/${libraryAgentId}/fork`);
+  }
+
+  async setupAgentTrigger(params: {
+    name: string;
+    description?: string;
+    graph_id: GraphID;
+    graph_version: number;
+    trigger_config: Record<string, any>;
+    agent_credentials: Record<string, CredentialsMetaInput>;
+  }): Promise<LibraryAgentPreset> {
+    return parseLibraryAgentPresetTimestamp(
+      await this._request("POST", `/library/presets/setup-trigger`, params),
+    );
   }
 
   async listLibraryAgentPresets(params?: {
@@ -744,14 +817,10 @@ export default class BackendAPI {
 
   executeLibraryAgentPreset(
     presetID: LibraryAgentPresetID,
-    graphID: GraphID,
-    graphVersion: number,
-    nodeInput: { [key: string]: any },
+    inputs?: { [key: string]: any },
   ): Promise<{ id: GraphExecutionID }> {
     return this._request("POST", `/library/presets/${presetID}/execute`, {
-      graph_id: graphID,
-      graph_version: graphVersion,
-      node_input: nodeInput,
+      inputs,
     });
   }
 
@@ -759,20 +828,33 @@ export default class BackendAPI {
   /////////// SCHEDULES ////////////
   //////////////////////////////////
 
-  async createSchedule(schedule: ScheduleCreatable): Promise<Schedule> {
-    return this._request("POST", `/schedules`, schedule).then(
-      parseScheduleTimestamp,
+  async createGraphExecutionSchedule(
+    params: ScheduleCreatable,
+  ): Promise<Schedule> {
+    return this._request(
+      "POST",
+      `/graphs/${params.graph_id}/schedules`,
+      params,
+    ).then(parseScheduleTimestamp);
+  }
+
+  async listGraphExecutionSchedules(graphID: GraphID): Promise<Schedule[]> {
+    return this._get(`/graphs/${graphID}/schedules`).then((schedules) =>
+      schedules.map(parseScheduleTimestamp),
     );
   }
 
-  async deleteSchedule(scheduleId: ScheduleID): Promise<{ id: string }> {
-    return this._request("DELETE", `/schedules/${scheduleId}`);
-  }
-
-  async listSchedules(): Promise<Schedule[]> {
+  /** @deprecated only used in legacy `Monitor` */
+  async listAllGraphsExecutionSchedules(): Promise<Schedule[]> {
     return this._get(`/schedules`).then((schedules) =>
       schedules.map(parseScheduleTimestamp),
     );
+  }
+
+  async deleteGraphExecutionSchedule(
+    scheduleID: ScheduleID,
+  ): Promise<{ id: ScheduleID }> {
+    return this._request("DELETE", `/schedules/${scheduleID}`);
   }
 
   //////////////////////////////////
@@ -791,50 +873,148 @@ export default class BackendAPI {
     return this._request("GET", path, query);
   }
 
+  private async getAuthToken(): Promise<string> {
+    // Only try client-side session (for WebSocket connections)
+    // This will return "no-token-found" with httpOnly cookies, which is expected
+    const supabaseClient = await this.getSupabaseClient();
+    const {
+      data: { session },
+    } = (await supabaseClient?.auth.getSession()) || {
+      data: { session: null },
+    };
+
+    return session?.access_token || "no-token-found";
+  }
+
   private async _uploadFile(path: string, file: File): Promise<string> {
-    // Get session with retry logic
-    let token = "no-token-found";
-    let retryCount = 0;
-    const maxRetries = 3;
-
-    while (retryCount < maxRetries) {
-      const supabaseClient = await this.getSupabaseClient();
-      const {
-        data: { session },
-      } = (await supabaseClient?.auth.getSession()) || {
-        data: { session: null },
-      };
-
-      if (session?.access_token) {
-        token = session.access_token;
-        break;
-      }
-
-      retryCount++;
-      if (retryCount < maxRetries) {
-        await new Promise((resolve) => setTimeout(resolve, 100 * retryCount));
-      }
-    }
-
-    // Create a FormData object and append the file
     const formData = new FormData();
     formData.append("file", file);
 
-    const response = await fetch(this.baseUrl + path, {
+    if (isClient) {
+      return this._makeClientFileUpload(path, formData);
+    } else {
+      return this._makeServerFileUpload(path, formData);
+    }
+  }
+
+  private async _uploadFileWithProgress(
+    path: string,
+    file: File,
+    params?: Record<string, any>,
+    onProgress?: (progress: number) => void,
+  ): Promise<string> {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    if (isClient) {
+      return this._makeClientFileUploadWithProgress(
+        path,
+        formData,
+        params,
+        onProgress,
+      );
+    } else {
+      return this._makeServerFileUploadWithProgress(path, formData, params);
+    }
+  }
+
+  private async _makeClientFileUpload(
+    path: string,
+    formData: FormData,
+  ): Promise<string> {
+    // Dynamic import is required even for client-only functions because helpers.ts
+    // has server-only imports (like getServerSupabase) at the top level. Static imports
+    // would bundle server-only code into the client bundle, causing runtime errors.
+    const { buildClientUrl, handleFetchError } = await import("./helpers");
+
+    const uploadUrl = buildClientUrl(path);
+
+    const response = await fetch(uploadUrl, {
       method: "POST",
-      headers: {
-        ...(token && { Authorization: `Bearer ${token}` }),
-      },
       body: formData,
+      credentials: "include",
     });
 
     if (!response.ok) {
-      throw new Error(`Error uploading file: ${response.statusText}`);
+      throw await handleFetchError(response);
     }
 
-    // Parse the response appropriately
-    const media_url = await response.text();
-    return media_url;
+    return await response.json();
+  }
+
+  private async _makeServerFileUpload(
+    path: string,
+    formData: FormData,
+  ): Promise<string> {
+    const { makeAuthenticatedFileUpload, buildServerUrl } = await import(
+      "./helpers"
+    );
+    const url = buildServerUrl(path);
+    return await makeAuthenticatedFileUpload(url, formData);
+  }
+
+  private async _makeClientFileUploadWithProgress(
+    path: string,
+    formData: FormData,
+    params?: Record<string, any>,
+    onProgress?: (progress: number) => void,
+  ): Promise<any> {
+    const { buildClientUrl, buildUrlWithQuery } = await import("./helpers");
+
+    let url = buildClientUrl(path);
+    if (params) {
+      url = buildUrlWithQuery(url, params);
+    }
+
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+
+      if (onProgress) {
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable) {
+            const progress = (e.loaded / e.total) * 100;
+            onProgress(progress);
+          }
+        });
+      }
+
+      xhr.addEventListener("load", () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const response = JSON.parse(xhr.responseText);
+            resolve(response);
+          } catch (_error) {
+            reject(new Error("Invalid JSON response"));
+          }
+        } else {
+          reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
+        }
+      });
+
+      xhr.addEventListener("error", () => {
+        reject(new Error("Network error"));
+      });
+
+      xhr.open("POST", url);
+      xhr.withCredentials = true;
+      xhr.send(formData);
+    });
+  }
+
+  private async _makeServerFileUploadWithProgress(
+    path: string,
+    formData: FormData,
+    params?: Record<string, any>,
+  ): Promise<string> {
+    const { makeAuthenticatedFileUpload, buildServerUrl, buildUrlWithQuery } =
+      await import("./helpers");
+
+    let url = buildServerUrl(path);
+    if (params) {
+      url = buildUrlWithQuery(url, params);
+    }
+
+    return await makeAuthenticatedFileUpload(url, formData);
   }
 
   private async _request(
@@ -846,103 +1026,57 @@ export default class BackendAPI {
       console.debug(`${method} ${path} payload:`, payload);
     }
 
-    // Get session with retry logic
-    let token = "no-token-found";
-    let retryCount = 0;
-    const maxRetries = 3;
-
-    while (retryCount < maxRetries) {
-      const supabaseClient = await this.getSupabaseClient();
-      const {
-        data: { session },
-      } = (await supabaseClient?.auth.getSession()) || {
-        data: { session: null },
-      };
-
-      if (session?.access_token) {
-        token = session.access_token;
-        break;
-      }
-
-      retryCount++;
-      if (retryCount < maxRetries) {
-        await new Promise((resolve) => setTimeout(resolve, 100 * retryCount));
-      }
+    if (isClient) {
+      return this._makeClientRequest(method, path, payload);
+    } else {
+      return this._makeServerRequest(method, path, payload);
     }
+  }
 
-    let url = this.baseUrl + path;
+  private async _makeClientRequest(
+    method: string,
+    path: string,
+    payload?: Record<string, any>,
+  ) {
+    // Dynamic import is required even for client-only functions because helpers.ts
+    // has server-only imports (like getServerSupabase) at the top level. Static imports
+    // would bundle server-only code into the client bundle, causing runtime errors.
+    const { buildClientUrl, buildUrlWithQuery, handleFetchError } =
+      await import("./helpers");
+
     const payloadAsQuery = ["GET", "DELETE"].includes(method);
+    let url = buildClientUrl(path);
+
     if (payloadAsQuery && payload) {
-      // For GET requests, use payload as query
-      const queryParams = new URLSearchParams(payload);
-      url += `?${queryParams.toString()}`;
+      url = buildUrlWithQuery(url, payload);
     }
 
-    const hasRequestBody = !payloadAsQuery && payload !== undefined;
     const response = await fetch(url, {
       method,
       headers: {
-        ...(hasRequestBody && { "Content-Type": "application/json" }),
-        ...(token && { Authorization: `Bearer ${token}` }),
+        "Content-Type": "application/json",
       },
-      body: hasRequestBody ? JSON.stringify(payload) : undefined,
+      body: !payloadAsQuery && payload ? JSON.stringify(payload) : undefined,
+      credentials: "include",
     });
 
     if (!response.ok) {
-      console.warn(`${method} ${path} returned non-OK response:`, response);
-
-      // console.warn("baseClient is attempting to redirect by changing window location")
-      // if (
-      //   response.status === 403 &&
-      //   response.statusText === "Not authenticated" &&
-      //   typeof window !== "undefined" // Check if in browser environment
-      // ) {
-      //   window.location.href = "/login";
-      // }
-
-      let errorDetail;
-      try {
-        const errorData = await response.json();
-        if (
-          Array.isArray(errorData.detail) &&
-          errorData.detail.length > 0 &&
-          errorData.detail[0].loc
-        ) {
-          // This appears to be a Pydantic validation error
-          const errors = errorData.detail.map(
-            (err: _PydanticValidationError) => {
-              const location = err.loc.join(" -> ");
-              return `${location}: ${err.msg}`;
-            },
-          );
-          errorDetail = errors.join("\n");
-        } else {
-          errorDetail = errorData.detail || response.statusText;
-        }
-      } catch (e) {
-        errorDetail = response.statusText;
-      }
-
-      throw new Error(errorDetail);
+      throw await handleFetchError(response);
     }
 
-    // Handle responses with no content (like DELETE requests)
-    if (
-      response.status === 204 ||
-      response.headers.get("Content-Length") === "0"
-    ) {
-      return null;
-    }
+    return await response.json();
+  }
 
-    try {
-      return await response.json();
-    } catch (e) {
-      if (e instanceof SyntaxError) {
-        console.warn(`${method} ${path} returned invalid JSON:`, e);
-        return null;
-      }
-      throw e;
-    }
+  private async _makeServerRequest(
+    method: string,
+    path: string,
+    payload?: Record<string, any>,
+  ) {
+    const { makeAuthenticatedRequest, buildServerUrl } = await import(
+      "./helpers"
+    );
+    const url = buildServerUrl(path);
+    return await makeAuthenticatedRequest(method, url, payload);
   }
 
   ////////////////////////////////////////
@@ -1028,12 +1162,22 @@ export default class BackendAPI {
   }
 
   async connectWebSocket(): Promise<void> {
+    this.isIntentionallyDisconnected = false;
     return (this.wsConnecting ??= new Promise(async (resolve, reject) => {
       try {
-        const supabaseClient = await this.getSupabaseClient();
-        const token =
-          (await supabaseClient?.auth.getSession())?.data.session
-            ?.access_token || "";
+        let token = "";
+        try {
+          const { token: serverToken, error } = await getWebSocketToken();
+          if (serverToken && !error) {
+            token = serverToken;
+          } else if (error) {
+            console.warn("Failed to get WebSocket token from server:", error);
+          }
+        } catch (error) {
+          console.warn("Failed to get token for WebSocket connection:", error);
+          // Continue with empty token, connection might still work
+        }
+
         const wsUrlWithToken = `${this.wsUrl}?token=${token}`;
         this.webSocket = new WebSocket(wsUrlWithToken);
         this.webSocket.state = "connecting";
@@ -1042,6 +1186,7 @@ export default class BackendAPI {
           this.webSocket!.state = "connected";
           console.info("[BackendAPI] WebSocket connected to", this.wsUrl);
           this._startWSHeartbeat(); // Start heartbeat when connection opens
+          this._clearDisconnectIntent(); // Clear disconnect intent when connected
           this.wsOnConnectHandlers.forEach((handler) => handler());
           resolve();
         };
@@ -1062,9 +1207,14 @@ export default class BackendAPI {
 
           this._stopWSHeartbeat(); // Stop heartbeat when connection closes
           this.wsConnecting = null;
-          this.wsOnDisconnectHandlers.forEach((handler) => handler());
-          // Attempt to reconnect after a delay
-          setTimeout(() => this.connectWebSocket().then(resolve), 1000);
+
+          const wasIntentional =
+            this.isIntentionallyDisconnected || this._hasDisconnectIntent();
+
+          if (!wasIntentional) {
+            this.wsOnDisconnectHandlers.forEach((handler) => handler());
+            setTimeout(() => this.connectWebSocket().then(resolve), 1000);
+          }
         };
 
         this.webSocket.onerror = (error) => {
@@ -1072,7 +1222,6 @@ export default class BackendAPI {
             console.error("[BackendAPI] WebSocket error:", error);
           }
         };
-
         this.webSocket.onmessage = (event) => this._handleWSMessage(event);
       } catch (error) {
         console.error("[BackendAPI] Error connecting to WebSocket:", error);
@@ -1082,9 +1231,32 @@ export default class BackendAPI {
   }
 
   disconnectWebSocket() {
+    this.isIntentionallyDisconnected = true;
     this._stopWSHeartbeat(); // Stop heartbeat when disconnecting
     if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
       this.webSocket.close();
+    }
+  }
+
+  private _hasDisconnectIntent(): boolean {
+    if (!isClient) return false;
+
+    try {
+      return storage.get(Key.WEBSOCKET_DISCONNECT_INTENT) === "true";
+    } catch {
+      return false;
+    }
+  }
+
+  private _clearDisconnectIntent(): void {
+    if (!isClient) return;
+
+    try {
+      storage.clean(Key.WEBSOCKET_DISCONNECT_INTENT);
+    } catch {
+      Sentry.captureException(
+        new Error("Failed to clear WebSocket disconnect intent"),
+      );
     }
   }
 

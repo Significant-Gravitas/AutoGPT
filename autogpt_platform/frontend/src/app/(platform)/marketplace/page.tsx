@@ -1,21 +1,12 @@
-import React from "react";
-import { HeroSection } from "@/components/agptui/composite/HeroSection";
-import { FeaturedSection } from "@/components/agptui/composite/FeaturedSection";
-import {
-  AgentsSection,
-  Agent,
-} from "@/components/agptui/composite/AgentsSection";
-import { BecomeACreator } from "@/components/agptui/BecomeACreator";
-import {
-  FeaturedCreators,
-  FeaturedCreator,
-} from "@/components/agptui/composite/FeaturedCreators";
-import { Separator } from "@/components/ui/separator";
 import { Metadata } from "next";
+import {
+  prefetchGetV2ListStoreAgentsQuery,
+  prefetchGetV2ListStoreCreatorsQuery,
+} from "@/app/api/__generated__/endpoints/store/store";
+import { getQueryClient } from "@/lib/react-query/queryClient";
+import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
+import { MainMarkeplacePage } from "./components/MainMarketplacePage/MainMarketplacePage";
 
-import { getMarketplaceData } from "./actions";
-
-// Force dynamic rendering to avoid static generation issues with cookies
 export const dynamic = "force-dynamic";
 
 // FIX: Correct metadata
@@ -63,31 +54,24 @@ export const metadata: Metadata = {
 };
 
 export default async function MarketplacePage(): Promise<React.ReactElement> {
-  const { featuredAgents, topAgents, featuredCreators } =
-    await getMarketplaceData();
+  const queryClient = getQueryClient();
+
+  await Promise.all([
+    prefetchGetV2ListStoreAgentsQuery(queryClient, {
+      featured: true,
+    }),
+    prefetchGetV2ListStoreAgentsQuery(queryClient, {
+      sorted_by: "runs",
+    }),
+    prefetchGetV2ListStoreCreatorsQuery(queryClient, {
+      featured: true,
+      sorted_by: "num_agents",
+    }),
+  ]);
 
   return (
-    <div className="mx-auto w-screen max-w-[1360px]">
-      <main className="px-4">
-        <HeroSection />
-        <FeaturedSection featuredAgents={featuredAgents.agents} />
-        {/* 100px margin because our featured sections button are placed 40px below the container */}
-        <Separator className="mb-6 mt-24" />
-        <AgentsSection
-          sectionTitle="Top Agents"
-          agents={topAgents.agents as Agent[]}
-        />
-        <Separator className="mb-[25px] mt-[60px]" />
-        <FeaturedCreators
-          featuredCreators={featuredCreators.creators as FeaturedCreator[]}
-        />
-        <Separator className="mb-[25px] mt-[60px]" />
-        <BecomeACreator
-          title="Become a Creator"
-          description="Join our ever-growing community of hackers and tinkerers"
-          buttonText="Become a Creator"
-        />
-      </main>
-    </div>
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <MainMarkeplacePage />
+    </HydrationBoundary>
   );
 }

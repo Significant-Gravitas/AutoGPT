@@ -77,10 +77,9 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
   handleInputChange,
   errors,
   className,
-  displayName,
 }) => {
   object ||= ("default" in schema ? schema.default : null) ?? {};
-  return (
+  return schema.properties ? (
     <div className={cn(className, "w-full flex-col")}>
       {Object.entries(schema.properties).map(([propKey, propSchema]) => {
         const childKey = selfKey ? `${selfKey}.${propKey}` : propKey;
@@ -109,7 +108,7 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
         );
       })}
     </div>
-  );
+  ) : null;
 };
 
 export default NodeObjectInputTree;
@@ -126,12 +125,10 @@ const NodeDateTimeInput: FC<{
   hideTime?: boolean;
 }> = ({
   selfKey,
-  schema,
   value = "",
   error,
   handleInputChange,
   className,
-  displayName,
   hideDate = false,
   hideTime = false,
 }) => {
@@ -219,7 +216,6 @@ const NodeFileInput: FC<{
   displayName: string;
 }> = ({
   selfKey,
-  schema,
   value = "",
   error,
   handleInputChange,
@@ -229,7 +225,6 @@ const NodeFileInput: FC<{
   const handleFileChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
-      console.log(">>> file", file);
       if (!file) return;
 
       const reader = new FileReader();
@@ -280,7 +275,7 @@ const NodeFileInput: FC<{
               variant="ghost"
               className="text-red-500 hover:text-red-700"
               onClick={() => {
-                inputRef.current && (inputRef.current!.value = "");
+                if (inputRef.current) inputRef.current.value = "";
                 handleInputChange(selfKey, "");
               }}
             >
@@ -649,7 +644,7 @@ const NodeOneOfDiscriminatorField: FC<{
         </SelectContent>
       </Select>
 
-      {chosenVariantSchema && (
+      {chosenVariantSchema && chosenVariantSchema.properties && (
         <div className={cn(className, "w-full flex-col")}>
           {Object.entries(chosenVariantSchema.properties).map(
             ([someKey, childSchema]) => {
@@ -884,13 +879,6 @@ const NodeKeyValueInput: FC<{
     </div>
   );
 };
-
-// Checking if schema is type of string
-function isStringSubSchema(
-  schema: BlockIOSimpleTypeSubSchema,
-): schema is BlockIOStringSubSchema {
-  return "type" in schema && schema.type === "string";
-}
 
 const NodeArrayInput: FC<{
   nodeId: string;
@@ -1156,6 +1144,13 @@ export const NodeTextBoxInput: FC<{
   displayName,
 }) => {
   value ||= schema.default || "";
+
+  const [localValue, setLocalValue] = useState(value || schema.default || "");
+
+  useEffect(() => {
+    setLocalValue(value || schema.default || "");
+  }, [value, schema.default]);
+
   return (
     <div className={className}>
       <div
@@ -1164,12 +1159,13 @@ export const NodeTextBoxInput: FC<{
       >
         <textarea
           id={selfKey}
-          value={schema.secret && value ? "********" : value}
+          value={schema.secret && localValue ? "********" : localValue}
+          onChange={(e) => setLocalValue(e.target.value)}
+          onBlur={() => handleInputChange(selfKey, localValue)}
           readOnly={schema.secret}
           placeholder={
             schema?.placeholder || `Enter ${beautifyString(displayName)}`
           }
-          onChange={(e) => handleInputChange(selfKey, e.target.value)}
           className="h-full w-full resize-none overflow-hidden border-none bg-transparent text-lg text-black outline-none dark:text-white"
           style={{
             fontSize: "min(1em, 16px)",
@@ -1230,16 +1226,10 @@ const NodeBooleanInput: FC<{
   handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
   className?: string;
   displayName: string;
-}> = ({
-  selfKey,
-  schema,
-  value,
-  error,
-  handleInputChange,
-  className,
-  displayName,
-}) => {
-  value ||= schema.default ?? false;
+}> = ({ selfKey, schema, value, error, handleInputChange, className }) => {
+  if (value == null) {
+    value = schema.default ?? false;
+  }
   return (
     <div className={className}>
       <Switch

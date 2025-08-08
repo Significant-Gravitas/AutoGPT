@@ -27,10 +27,11 @@ import {
   cn,
   getValue,
   hasNonNullNonObjectValue,
+  isObject,
   parseKeys,
   setNestedProperty,
 } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { Switch } from "@/components/ui/switch";
 import { TextRenderer } from "@/components/ui/render";
 import { history } from "./history";
@@ -53,8 +54,10 @@ import {
   CopyIcon,
   ExitIcon,
 } from "@radix-ui/react-icons";
-
+import { Key } from "@phosphor-icons/react";
 import useCredits from "@/hooks/useCredits";
+import { getV1GetAyrshareSsoUrl } from "@/app/api/__generated__/endpoints/integrations/integrations";
+import { toast } from "@/components/molecules/Toast/use-toast";
 
 export type ConnectionData = Array<{
   edge_id: string;
@@ -82,6 +85,7 @@ export type CustomNodeData = {
   executionResults?: {
     execId: string;
     data: NodeExecutionResult["output_data"];
+    status: NodeExecutionResult["status"];
   }[];
   block_id: string;
   backend_id?: string;
@@ -93,13 +97,7 @@ export type CustomNodeData = {
 export type CustomNode = XYNode<CustomNodeData, "custom">;
 
 export const CustomNode = React.memo(
-  function CustomNode({
-    data,
-    id,
-    width,
-    height,
-    selected,
-  }: NodeProps<CustomNode>) {
+  function CustomNode({ data, id, height, selected }: NodeProps<CustomNode>) {
     const [isOutputOpen, setIsOutputOpen] = useState(
       data.isOutputOpen || false,
     );
@@ -116,6 +114,8 @@ export const CustomNode = React.memo(
     const flowContext = useContext(FlowContext);
     const api = useBackendAPI();
     const { formatCredits } = useCredits();
+    const [isLoading, setIsLoading] = useState(false);
+
     let nodeFlowId = "";
 
     if (data.uiType === BlockUIType.AGENT) {
@@ -197,10 +197,6 @@ export const CustomNode = React.memo(
       [id, updateNodeData],
     );
 
-    const toggleOutput = (checked: boolean) => {
-      setIsOutputOpen(checked);
-    };
-
     const toggleAdvancedSettings = (checked: boolean) => {
       setIsAdvancedOpen(checked);
     };
@@ -249,12 +245,65 @@ export const CustomNode = React.memo(
       return renderHandles(schema.properties);
     };
 
+    const generateAyrshareSSOHandles = () => {
+      const handleSSOLogin = async () => {
+        setIsLoading(true);
+        try {
+          const {
+            data: { sso_url },
+          } = await getV1GetAyrshareSsoUrl();
+          const popup = window.open(sso_url, "_blank", "popup=true");
+          if (!popup) {
+            throw new Error(
+              "Please allow popups for this site to be able to login with Ayrshare",
+            );
+          }
+        } catch (error) {
+          toast({
+            title: "Error",
+            description: `Error getting SSO URL: ${error}`,
+            variant: "destructive",
+          });
+        } finally {
+          setIsLoading(false);
+        }
+      };
+
+      return (
+        <div className="flex flex-col gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={handleSSOLogin}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              "Loading..."
+            ) : (
+              <>
+                <Key className="mr-2 h-4 w-4" />
+                Connect Social Media Accounts
+              </>
+            )}
+          </Button>
+          <NodeHandle
+            title="SSO Token"
+            keyName="sso_token"
+            isConnected={false}
+            schema={{ type: "string" }}
+            side="right"
+          />
+        </div>
+      );
+    };
+
     const generateInputHandles = (
       schema: BlockIORootSchema,
       nodeType: BlockUIType,
     ) => {
       if (!schema?.properties) return null;
-      let keys = Object.entries(schema.properties);
+      const keys = Object.entries(schema.properties);
       switch (nodeType) {
         case BlockUIType.NOTE:
           // For NOTE blocks, don't render any input handles
@@ -276,7 +325,7 @@ export const CustomNode = React.memo(
 
         default:
           const getInputPropKey = (key: string) =>
-            nodeType == BlockUIType.AGENT ? `data.${key}` : key;
+            nodeType == BlockUIType.AGENT ? `inputs.${key}` : key;
 
           return keys.map(([propKey, propSchema]) => {
             const isRequired = data.inputSchema.required?.includes(propKey);
@@ -434,8 +483,15 @@ export const CustomNode = React.memo(
         if (activeKey) {
           try {
             const parsedValue = JSON.parse(value);
-            handleInputChange(activeKey, parsedValue);
-          } catch (error) {
+            // Validate that the parsed value is safe before using it
+            if (isObject(parsedValue) || Array.isArray(parsedValue)) {
+              handleInputChange(activeKey, parsedValue);
+            } else {
+              // For primitive values, use the original string
+              handleInputChange(activeKey, value);
+            }
+          } catch {
+            // If JSON parsing fails, treat as plain text
             handleInputChange(activeKey, value);
           }
         }
@@ -720,7 +776,9 @@ export const CustomNode = React.memo(
       <div
         className={`${blockClasses} ${errorClass} ${statusClass}`}
         data-id={`custom-node-${id}`}
+        id={data.block_id}
         z-index={1}
+        data-testid={data.block_id}
         data-blockid={data.block_id}
         data-blockname={data.title}
         data-blocktype={data.blockType}
@@ -826,8 +884,18 @@ export const CustomNode = React.memo(
                       (A Webhook URL will be generated when you save the agent)
                     </p>
                   ))}
-                {data.inputSchema &&
-                  generateInputHandles(data.inputSchema, data.uiType)}
+                {data.uiType === BlockUIType.AYRSHARE ? (
+                  <>
+                    {generateAyrshareSSOHandles()}
+                    {generateInputHandles(
+                      data.inputSchema,
+                      BlockUIType.STANDARD,
+                    )}
+                  </>
+                ) : (
+                  data.inputSchema &&
+                  generateInputHandles(data.inputSchema, data.uiType)
+                )}
               </div>
             </div>
           ) : (

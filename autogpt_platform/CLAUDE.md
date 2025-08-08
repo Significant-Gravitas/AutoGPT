@@ -1,7 +1,6 @@
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Repository Overview
 
 AutoGPT Platform is a monorepo containing:
@@ -19,7 +18,7 @@ cd backend && poetry install
 # Run database migrations
 poetry run prisma migrate dev
 
-# Start all services (database, redis, rabbitmq)
+# Start all services (database, redis, rabbitmq, clamav)
 docker compose up -d
 
 # Run the backend server
@@ -32,6 +31,7 @@ poetry run test
 poetry run pytest path/to/test_file.py::test_function_name
 
 # Lint and format
+# prefer format if you want to just "fix" it and only get the errors that can't be autofixed
 poetry run format  # Black + isort
 poetry run lint    # ruff
 ```
@@ -77,6 +77,7 @@ npm run type-check
 - **Queue System**: RabbitMQ for async task processing
 - **Execution Engine**: Separate executor service processes agent workflows
 - **Authentication**: JWT-based with Supabase integration
+- **Security**: Cache protection middleware prevents sensitive data caching in browsers/proxies
 
 ### Frontend Architecture
 - **Framework**: Next.js App Router with React Server Components
@@ -90,6 +91,7 @@ npm run type-check
 2. **Blocks**: Reusable components in `/backend/blocks/` that perform specific tasks
 3. **Integrations**: OAuth and API connections stored per user
 4. **Store**: Marketplace for sharing agent templates
+5. **Virus Scanning**: ClamAV integration for file upload security
 
 ### Testing Approach
 - Backend uses pytest with snapshot testing for API responses
@@ -118,6 +120,7 @@ Key models (defined in `/backend/schema.prisma`):
 3. Define input/output schemas
 4. Implement `run` method
 5. Register in block registry
+6. Generate the block uuid using `uuid.uuid4()`
 
 **Modifying the API:**
 1. Update route in `/backend/backend/server/routers/`
@@ -130,3 +133,52 @@ Key models (defined in `/backend/schema.prisma`):
 2. Use existing UI components from `/frontend/src/components/ui/`
 3. Add Storybook stories for new components
 4. Test with Playwright if user-facing
+
+### Security Implementation
+
+**Cache Protection Middleware:**
+- Located in `/backend/backend/server/middleware/security.py`
+- Default behavior: Disables caching for ALL endpoints with `Cache-Control: no-store, no-cache, must-revalidate, private`
+- Uses an allow list approach - only explicitly permitted paths can be cached
+- Cacheable paths include: static assets (`/static/*`, `/_next/static/*`), health checks, public store pages, documentation
+- Prevents sensitive data (auth tokens, API keys, user data) from being cached by browsers/proxies
+- To allow caching for a new endpoint, add it to `CACHEABLE_PATHS` in the middleware
+- Applied to both main API server and external API applications
+
+
+### Creating Pull Requests
+- Create the PR aginst the `dev` branch of the repository.
+- Ensure the branch name is descriptive (e.g., `feature/add-new-block`)/
+- Use conventional commit messages (see below)/
+- Fill out the .github/PULL_REQUEST_TEMPLATE.md template as the PR description/
+- Run the github pre-commit hooks to ensure code quality.
+
+### Conventional Commits
+
+Use this format for commit messages and Pull Request titles:
+
+**Conventional Commit Types:**
+
+- `feat`: Introduces a new feature to the codebase
+- `fix`: Patches a bug in the codebase
+- `refactor`: Code change that neither fixes a bug nor adds a feature; also applies to removing features
+- `ci`: Changes to CI configuration
+- `docs`: Documentation-only changes
+- `dx`: Improvements to the developer experience
+
+**Recommended Base Scopes:**
+
+- `platform`: Changes affecting both frontend and backend
+- `frontend`
+- `backend`
+- `infra`
+- `blocks`: Modifications/additions of individual blocks
+
+**Subscope Examples:**
+
+- `backend/executor`
+- `backend/db`
+- `frontend/builder` (includes changes to the block UI component)
+- `infra/prod`
+
+Use these scopes and subscopes for clarity and consistency in commit messages.

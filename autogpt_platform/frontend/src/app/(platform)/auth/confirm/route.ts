@@ -2,7 +2,7 @@ import { type EmailOtpType } from "@supabase/supabase-js";
 import { type NextRequest } from "next/server";
 
 import { redirect } from "next/navigation";
-import getServerSupabase from "@/lib/supabase/getServerSupabase";
+import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 
 // Email confirmation route
 export async function GET(request: NextRequest) {
