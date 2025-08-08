@@ -766,7 +766,7 @@ class ExecutionProcessor:
                     db_client=get_db_async_client(),
                     graph_exec=graph_exec,
                 ),
-                cls.node_evaluation_loop,
+                self.node_evaluation_loop,
             ).result():
                 raise moderation_error
 
@@ -917,7 +917,7 @@ class ExecutionProcessor:
                     user_id=graph_exec.user_id,
                     graph_id=graph_exec.graph_id,
                 ),
-                cls.node_evaluation_loop,
+                self.node_evaluation_loop,
             ).result():
                 raise moderation_error
 
