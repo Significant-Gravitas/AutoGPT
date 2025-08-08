@@ -1,17 +1,22 @@
 import asyncio
 import logging
 import os
+import threading
 from enum import Enum
 from typing import Optional
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
-from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
+from apscheduler.events import (
+    EVENT_JOB_ERROR,
+    EVENT_JOB_EXECUTED,
+    EVENT_JOB_MAX_INSTANCES,
+    EVENT_JOB_MISSED,
+)
 from apscheduler.job import Job as JobObj
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
-from autogpt_libs.utils.cache import thread_cached
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
@@ -30,7 +35,14 @@ from backend.monitoring import (
 from backend.util.cloud_storage import cleanup_expired_files_async
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.logging import PrefixFilter
-from backend.util.service import AppService, AppServiceClient, endpoint_to_async, expose
+from backend.util.retry import func_retry
+from backend.util.service import (
+    AppService,
+    AppServiceClient,
+    UnhealthyServiceError,
+    endpoint_to_async,
+    expose,
+)
 from backend.util.settings import Config
 
 
@@ -60,22 +72,64 @@ apscheduler_logger.addFilter(PrefixFilter("[Scheduler] [APScheduler]"))
 
 config = Config()
 
+# Timeout constants
+SCHEDULER_OPERATION_TIMEOUT_SECONDS = 300  # 5 minutes for scheduler operations
+
 
 def job_listener(event):
     """Logs job execution outcomes for better monitoring."""
     if event.exception:
-        logger.error(f"Job {event.job_id} failed.")
+        logger.error(
+            f"Job {event.job_id} failed: {type(event.exception).__name__}: {event.exception}"
+        )
     else:
         logger.info(f"Job {event.job_id} completed successfully.")
 
 
-@thread_cached
+def job_missed_listener(event):
+    """Logs when jobs are missed due to scheduling issues."""
+    logger.warning(
+        f"Job {event.job_id} was missed at scheduled time {event.scheduled_run_time}. "
+        f"This can happen if the scheduler is overloaded or if previous executions are still running."
+    )
+
+
+def job_max_instances_listener(event):
+    """Logs when jobs hit max instances limit."""
+    logger.warning(
+        f"Job {event.job_id} execution was SKIPPED - max instances limit reached. "
+        f"Previous execution(s) are still running. "
+        f"Consider increasing max_instances or check why previous executions are taking too long."
+    )
+
+
+_event_loop: asyncio.AbstractEventLoop | None = None
+_event_loop_thread: threading.Thread | None = None
+
+
+@func_retry
 def get_event_loop():
-    return asyncio.new_event_loop()
+    """Get the shared event loop."""
+    if _event_loop is None:
+        raise RuntimeError("Event loop not initialized. Scheduler not started.")
+    return _event_loop
+
+
+def run_async(coro, timeout: float = SCHEDULER_OPERATION_TIMEOUT_SECONDS):
+    """Run a coroutine in the shared event loop and wait for completion."""
+    loop = get_event_loop()
+    future = asyncio.run_coroutine_threadsafe(coro, loop)
+    try:
+        return future.result(timeout=timeout)
+    except Exception as e:
+        logger.error(f"Async operation failed: {type(e).__name__}: {e}")
+        raise
 
 
 def execute_graph(**kwargs):
-    get_event_loop().run_until_complete(_execute_graph(**kwargs))
+    """Execute graph in the shared event loop and wait for completion."""
+    # Wait for completion to ensure job doesn't exit prematurely
+    run_async(_execute_graph(**kwargs))
 
 
 async def _execute_graph(**kwargs):
@@ -99,7 +153,8 @@ async def _execute_graph(**kwargs):
 
 def cleanup_expired_files():
     """Clean up expired files from cloud storage."""
-    get_event_loop().run_until_complete(cleanup_expired_files_async())
+    # Wait for completion
+    run_async(cleanup_expired_files_async())
 
 
 # Monitoring functions are now imported from monitoring module
@@ -169,14 +224,47 @@ class Scheduler(AppService):
         return config.scheduler_db_pool_size
 
     def health_check(self) -> str:
+        # Thread-safe health check with proper initialization handling
+        if not hasattr(self, "scheduler"):
+            raise UnhealthyServiceError("Scheduler is still initializing")
+
+        # Check if we're in the middle of cleanup
+        if self.cleaned_up:
+            return super().health_check()
+
+        # Normal operation - check if scheduler is running
         if not self.scheduler.running:
-            raise RuntimeError("Scheduler is not running")
+            raise UnhealthyServiceError("Scheduler is not running")
+
         return super().health_check()
 
     def run_service(self):
         load_dotenv()
+
+        # Initialize the event loop for async jobs
+        global _event_loop
+        _event_loop = asyncio.new_event_loop()
+
+        # Use daemon thread since it should die with the main service
+        global _event_loop_thread
+        _event_loop_thread = threading.Thread(
+            target=_event_loop.run_forever, daemon=True, name="SchedulerEventLoop"
+        )
+        _event_loop_thread.start()
+
         db_schema, db_url = _extract_schema_from_url(os.getenv("DIRECT_URL"))
+        # Configure executors to limit concurrency without skipping jobs
+        from apscheduler.executors.pool import ThreadPoolExecutor
+
         self.scheduler = BlockingScheduler(
+            executors={
+                "default": ThreadPoolExecutor(max_workers=10),  # Max 10 concurrent jobs
+            },
+            job_defaults={
+                "coalesce": True,  # Skip redundant missed jobs - just run the latest
+                "max_instances": 1000,  # Effectively unlimited - never drop executions
+                "misfire_grace_time": None,  # No time limit for missed jobs
+            },
             jobstores={
                 Jobstores.EXECUTION.value: SQLAlchemyJobStore(
                     engine=create_engine(
@@ -256,13 +344,27 @@ class Scheduler(AppService):
             )
 
         self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
+        self.scheduler.add_listener(job_missed_listener, EVENT_JOB_MISSED)
+        self.scheduler.add_listener(job_max_instances_listener, EVENT_JOB_MAX_INSTANCES)
         self.scheduler.start()
 
     def cleanup(self):
         super().cleanup()
         if self.scheduler:
             logger.info("⏳ Shutting down scheduler...")
-            self.scheduler.shutdown(wait=False)
+            self.scheduler.shutdown(wait=True)
+
+        global _event_loop
+        if _event_loop:
+            logger.info("⏳ Closing event loop...")
+            _event_loop.call_soon_threadsafe(_event_loop.stop)
+
+        global _event_loop_thread
+        if _event_loop_thread:
+            logger.info("⏳ Waiting for event loop thread to finish...")
+            _event_loop_thread.join(timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS)
+
+        logger.info("Scheduler cleanup complete.")
 
     @expose
     def add_graph_execution_schedule(
@@ -275,6 +377,18 @@ class Scheduler(AppService):
         input_credentials: dict[str, CredentialsMetaInput],
         name: Optional[str] = None,
     ) -> GraphExecutionJobInfo:
+        # Validate the graph before scheduling to prevent runtime failures
+        # We don't need the return value, just want the validation to run
+        run_async(
+            execution_utils.validate_and_construct_node_execution_input(
+                graph_id=graph_id,
+                user_id=user_id,
+                graph_inputs=input_data,
+                graph_version=graph_version,
+                graph_credentials_inputs=input_credentials,
+            )
+        )
+
         job_args = GraphExecutionJobArgs(
             user_id=user_id,
             graph_id=graph_id,

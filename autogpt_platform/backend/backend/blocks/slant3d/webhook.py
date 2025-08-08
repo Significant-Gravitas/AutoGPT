@@ -9,8 +9,7 @@ from backend.data.block import (
 )
 from backend.data.model import SchemaField
 from backend.integrations.providers import ProviderName
-from backend.util import settings
-from backend.util.settings import AppEnvironment, BehaveAs
+from backend.util.settings import AppEnvironment, BehaveAs, Settings
 
 from ._api import (
     TEST_CREDENTIALS,
@@ -18,6 +17,8 @@ from ._api import (
     Slant3DCredentialsField,
     Slant3DCredentialsInput,
 )
+
+settings = Settings()
 
 
 class Slant3DTriggerBase:
@@ -76,8 +77,8 @@ class Slant3DOrderWebhookBlock(Slant3DTriggerBase, Block):
             ),
             # All webhooks are currently subscribed to for all orders. This works for self hosted, but not for cloud hosted prod
             disabled=(
-                settings.Settings().config.behave_as == BehaveAs.CLOUD
-                and settings.Settings().config.app_env != AppEnvironment.LOCAL
+                settings.config.behave_as == BehaveAs.CLOUD
+                and settings.config.app_env != AppEnvironment.LOCAL
             ),
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=self.Input,

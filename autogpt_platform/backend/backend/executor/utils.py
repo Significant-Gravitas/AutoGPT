@@ -548,7 +548,7 @@ async def validate_graph_with_credentials(
     return node_input_errors
 
 
-async def construct_node_execution_input(
+async def _construct_node_execution_input(
     graph: GraphModel,
     user_id: str,
     graph_inputs: BlockInput,
@@ -613,6 +613,67 @@ async def construct_node_execution_input(
         )
 
     return nodes_input
+
+
+async def validate_and_construct_node_execution_input(
+    graph_id: str,
+    user_id: str,
+    graph_inputs: BlockInput,
+    graph_version: Optional[int] = None,
+    graph_credentials_inputs: Optional[dict[str, CredentialsMetaInput]] = None,
+    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+) -> tuple[GraphModel, list[tuple[str, BlockInput]]]:
+    """
+    Public wrapper that handles graph fetching, credential mapping, and validation+construction.
+    This centralizes the logic used by both scheduler validation and actual execution.
+
+    Args:
+        graph_id: The ID of the graph to validate/construct.
+        user_id: The ID of the user.
+        graph_inputs: The input data for the graph execution.
+        graph_version: The version of the graph to use.
+        graph_credentials_inputs: Credentials inputs to use.
+        nodes_input_masks: Node inputs to use.
+
+    Returns:
+        tuple[GraphModel, list[tuple[str, BlockInput]]]: Graph model and list of tuples for node execution input.
+
+    Raises:
+        NotFoundError: If the graph is not found.
+        GraphValidationError: If the graph has validation issues.
+        ValueError: If there are other validation errors.
+    """
+    if prisma.is_connected():
+        gdb = graph_db
+    else:
+        gdb = get_database_manager_async_client()
+
+    graph: GraphModel | None = await gdb.get_graph(
+        graph_id=graph_id,
+        user_id=user_id,
+        version=graph_version,
+        include_subgraphs=True,
+    )
+    if not graph:
+        raise NotFoundError(f"Graph #{graph_id} not found.")
+
+    nodes_input_masks = _merge_nodes_input_masks(
+        (
+            make_node_credentials_input_map(graph, graph_credentials_inputs)
+            if graph_credentials_inputs
+            else {}
+        ),
+        nodes_input_masks or {},
+    )
+
+    starting_nodes_input = await _construct_node_execution_input(
+        graph=graph,
+        user_id=user_id,
+        graph_inputs=graph_inputs,
+        nodes_input_masks=nodes_input_masks,
+    )
+
+    return graph, starting_nodes_input
 
 
 def _merge_nodes_input_masks(
@@ -791,33 +852,16 @@ async def add_graph_execution(
         ValueError: If the graph is not found or if there are validation errors.
     """
     if prisma.is_connected():
-        gdb = graph_db
         edb = execution_db
     else:
-        gdb = get_database_manager_async_client()
         edb = get_database_manager_async_client()
 
-    graph: GraphModel | None = await gdb.get_graph(
+    graph, starting_nodes_input = await validate_and_construct_node_execution_input(
         graph_id=graph_id,
         user_id=user_id,
-        version=graph_version,
-        include_subgraphs=True,
-    )
-    if not graph:
-        raise NotFoundError(f"Graph #{graph_id} not found.")
-
-    nodes_input_masks = _merge_nodes_input_masks(
-        (
-            make_node_credentials_input_map(graph, graph_credentials_inputs)
-            if graph_credentials_inputs
-            else {}
-        ),
-        nodes_input_masks or {},
-    )
-    starting_nodes_input = await construct_node_execution_input(
-        graph=graph,
-        user_id=user_id,
         graph_inputs=inputs or {},
+        graph_version=graph_version,
+        graph_credentials_inputs=graph_credentials_inputs,
         nodes_input_masks=nodes_input_masks,
     )
     graph_exec = None
@@ -835,11 +879,19 @@ async def add_graph_execution(
         graph_exec_entry = graph_exec.to_graph_execution_entry()
         if nodes_input_masks:
             graph_exec_entry.nodes_input_masks = nodes_input_masks
+
+        logger.info(
+            f"Created graph execution #{graph_exec.id} for graph "
+            f"#{graph_id} with {len(starting_nodes_input)} starting nodes. "
+            f"Now publishing to execution queue."
+        )
+
         await queue.publish_message(
             routing_key=GRAPH_EXECUTION_ROUTING_KEY,
             message=graph_exec_entry.model_dump_json(),
             exchange=GRAPH_EXECUTION_EXCHANGE,
         )
+        logger.info(f"Published execution {graph_exec.id} to RabbitMQ queue")
 
         bus = get_async_execution_event_bus()
         await bus.publish(graph_exec)

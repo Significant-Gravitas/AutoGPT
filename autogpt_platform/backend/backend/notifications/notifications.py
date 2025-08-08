@@ -1,8 +1,7 @@
 import asyncio
 import logging
-from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, timedelta, timezone
-from typing import Callable
+from typing import Awaitable, Callable
 
 import aio_pika
 from prisma.enums import NotificationType
@@ -28,11 +27,17 @@ from backend.data.notifications import (
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.data.user import generate_unsubscribe_link
 from backend.notifications.email import EmailSender
-from backend.util.clients import get_database_manager_client
+from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
 from backend.util.metrics import discord_send_alert
 from backend.util.retry import continuous_retry
-from backend.util.service import AppService, AppServiceClient, endpoint_to_sync, expose
+from backend.util.service import (
+    AppService,
+    AppServiceClient,
+    UnhealthyServiceError,
+    endpoint_to_sync,
+    expose,
+)
 from backend.util.settings import Settings
 
 logger = TruncatedLogger(logging.getLogger(__name__), "[NotificationManager]")
@@ -42,8 +47,6 @@ settings = Settings()
 NOTIFICATION_EXCHANGE = Exchange(name="notifications", type=ExchangeType.TOPIC)
 DEAD_LETTER_EXCHANGE = Exchange(name="dead_letter", type=ExchangeType.TOPIC)
 EXCHANGES = [NOTIFICATION_EXCHANGE, DEAD_LETTER_EXCHANGE]
-
-background_executor = ProcessPoolExecutor(max_workers=2)
 
 
 def create_notification_config() -> RabbitMQConfig:
@@ -185,24 +188,33 @@ class NotificationManager(AppService):
     @property
     def rabbit(self) -> rabbitmq.AsyncRabbitMQ:
         """Access the RabbitMQ service. Will raise if not configured."""
-        if not self.rabbitmq_service:
-            raise RuntimeError("RabbitMQ not configured for this service")
+        if not hasattr(self, "rabbitmq_service") or not self.rabbitmq_service:
+            raise UnhealthyServiceError("RabbitMQ not configured for this service")
         return self.rabbitmq_service
 
     @property
     def rabbit_config(self) -> rabbitmq.RabbitMQConfig:
         """Access the RabbitMQ config. Will raise if not configured."""
         if not self.rabbitmq_config:
-            raise RuntimeError("RabbitMQ not configured for this service")
+            raise UnhealthyServiceError("RabbitMQ not configured for this service")
         return self.rabbitmq_config
+
+    def health_check(self) -> str:
+        # Service is unhealthy if RabbitMQ is not ready
+        if not hasattr(self, "rabbitmq_service") or not self.rabbitmq_service:
+            raise UnhealthyServiceError("RabbitMQ not configured for this service")
+        if not self.rabbitmq_service.is_ready:
+            raise UnhealthyServiceError("RabbitMQ channel is not ready")
+        return super().health_check()
 
     @classmethod
     def get_port(cls) -> int:
         return settings.config.notification_service_port
 
     @expose
-    def queue_weekly_summary(self):
-        background_executor.submit(lambda: asyncio.run(self._queue_weekly_summary()))
+    async def queue_weekly_summary(self):
+        # Use the existing event loop instead of creating a new one with asyncio.run()
+        asyncio.create_task(self._queue_weekly_summary())
 
     async def _queue_weekly_summary(self):
         """Process weekly summary for specified notification types"""
@@ -211,7 +223,7 @@ class NotificationManager(AppService):
             processed_count = 0
             current_time = datetime.now(tz=timezone.utc)
             start_time = current_time - timedelta(days=7)
-            users = get_database_manager_client().get_active_user_ids_in_timerange(
+            users = await get_database_manager_async_client().get_active_user_ids_in_timerange(
                 end_time=current_time.isoformat(),
                 start_time=start_time.isoformat(),
             )
@@ -234,10 +246,15 @@ class NotificationManager(AppService):
             logger.exception(f"Error processing weekly summary: {e}")
 
     @expose
-    def process_existing_batches(self, notification_types: list[NotificationType]):
-        background_executor.submit(self._process_existing_batches, notification_types)
+    async def process_existing_batches(
+        self, notification_types: list[NotificationType]
+    ):
+        # Use the existing event loop instead of creating a new process
+        asyncio.create_task(self._process_existing_batches(notification_types))
 
-    def _process_existing_batches(self, notification_types: list[NotificationType]):
+    async def _process_existing_batches(
+        self, notification_types: list[NotificationType]
+    ):
         """Process existing batches for specified notification types"""
         try:
             processed_count = 0
@@ -245,13 +262,15 @@ class NotificationManager(AppService):
 
             for notification_type in notification_types:
                 # Get all batches for this notification type
-                batches = get_database_manager_client().get_all_batches_by_type(
-                    notification_type
+                batches = (
+                    await get_database_manager_async_client().get_all_batches_by_type(
+                        notification_type
+                    )
                 )
 
                 for batch in batches:
                     # Check if batch has aged out
-                    oldest_message = get_database_manager_client().get_user_notification_oldest_message_in_batch(
+                    oldest_message = await get_database_manager_async_client().get_user_notification_oldest_message_in_batch(
                         batch.user_id, notification_type
                     )
 
@@ -266,10 +285,8 @@ class NotificationManager(AppService):
 
                     # If batch has aged out, process it
                     if oldest_message.created_at + max_delay < current_time:
-                        recipient_email = (
-                            get_database_manager_client().get_user_email_by_id(
-                                batch.user_id
-                            )
+                        recipient_email = await get_database_manager_async_client().get_user_email_by_id(
+                            batch.user_id
                         )
 
                         if not recipient_email:
@@ -278,7 +295,7 @@ class NotificationManager(AppService):
                             )
                             continue
 
-                        should_send = self._should_email_user_based_on_preference(
+                        should_send = await self._should_email_user_based_on_preference(
                             batch.user_id, notification_type
                         )
 
@@ -287,15 +304,13 @@ class NotificationManager(AppService):
                                 f"User {batch.user_id} does not want to receive {notification_type} notifications"
                             )
                             # Clear the batch
-                            get_database_manager_client().empty_user_notification_batch(
+                            await get_database_manager_async_client().empty_user_notification_batch(
                                 batch.user_id, notification_type
                             )
                             continue
 
-                        batch_data = (
-                            get_database_manager_client().get_user_notification_batch(
-                                batch.user_id, notification_type
-                            )
+                        batch_data = await get_database_manager_async_client().get_user_notification_batch(
+                            batch.user_id, notification_type
                         )
 
                         if not batch_data or not batch_data.notifications:
@@ -303,7 +318,7 @@ class NotificationManager(AppService):
                                 f"Batch data not found for user {batch.user_id}"
                             )
                             # Clear the batch
-                            get_database_manager_client().empty_user_notification_batch(
+                            await get_database_manager_async_client().empty_user_notification_batch(
                                 batch.user_id, notification_type
                             )
                             continue
@@ -339,7 +354,7 @@ class NotificationManager(AppService):
                         )
 
                         # Clear the batch
-                        get_database_manager_client().empty_user_notification_batch(
+                        await get_database_manager_async_client().empty_user_notification_batch(
                             batch.user_id, notification_type
                         )
 
@@ -384,18 +399,20 @@ class NotificationManager(AppService):
         except Exception as e:
             logger.exception(f"Error queueing notification: {e}")
 
-    def _should_email_user_based_on_preference(
+    async def _should_email_user_based_on_preference(
         self, user_id: str, event_type: NotificationType
     ) -> bool:
         """Check if a user wants to receive a notification based on their preferences and email verification status"""
-        validated_email = get_database_manager_client().get_user_email_verification(
-            user_id
+        validated_email = (
+            await get_database_manager_async_client().get_user_email_verification(
+                user_id
+            )
         )
         preference = (
-            get_database_manager_client()
-            .get_user_notification_preference(user_id)
-            .preferences.get(event_type, True)
-        )
+            await get_database_manager_async_client().get_user_notification_preference(
+                user_id
+            )
+        ).preferences.get(event_type, True)
         # only if both are true, should we email this person
         return validated_email and preference
 
@@ -479,18 +496,16 @@ class NotificationManager(AppService):
         else:
             raise ValueError("Invalid event type or params")
 
-    def _should_batch(
+    async def _should_batch(
         self, user_id: str, event_type: NotificationType, event: NotificationEventModel
     ) -> bool:
 
-        get_database_manager_client().create_or_add_to_user_notification_batch(
+        await get_database_manager_async_client().create_or_add_to_user_notification_batch(
             user_id, event_type, event
         )
 
-        oldest_message = (
-            get_database_manager_client().get_user_notification_oldest_message_in_batch(
-                user_id, event_type
-            )
+        oldest_message = await get_database_manager_async_client().get_user_notification_oldest_message_in_batch(
+            user_id, event_type
         )
         if not oldest_message:
             logger.error(
@@ -519,7 +534,7 @@ class NotificationManager(AppService):
             logger.error(f"Error parsing message due to non matching schema {e}")
             return None
 
-    def _process_admin_message(self, message: str) -> bool:
+    async def _process_admin_message(self, message: str) -> bool:
         """Process a single notification, sending to an admin, returning whether to put into the failed queue"""
         try:
             event = self._parse_message(message)
@@ -533,7 +548,7 @@ class NotificationManager(AppService):
             logger.exception(f"Error processing notification for admin queue: {e}")
             return False
 
-    def _process_immediate(self, message: str) -> bool:
+    async def _process_immediate(self, message: str) -> bool:
         """Process a single notification immediately, returning whether to put into the failed queue"""
         try:
             event = self._parse_message(message)
@@ -541,14 +556,16 @@ class NotificationManager(AppService):
                 return False
             logger.debug(f"Processing immediate notification: {event}")
 
-            recipient_email = get_database_manager_client().get_user_email_by_id(
-                event.user_id
+            recipient_email = (
+                await get_database_manager_async_client().get_user_email_by_id(
+                    event.user_id
+                )
             )
             if not recipient_email:
                 logger.error(f"User email not found for user {event.user_id}")
                 return False
 
-            should_send = self._should_email_user_based_on_preference(
+            should_send = await self._should_email_user_based_on_preference(
                 event.user_id, event.type
             )
             if not should_send:
@@ -570,7 +587,7 @@ class NotificationManager(AppService):
             logger.exception(f"Error processing notification for immediate queue: {e}")
             return False
 
-    def _process_batch(self, message: str) -> bool:
+    async def _process_batch(self, message: str) -> bool:
         """Process a single notification with a batching strategy, returning whether to put into the failed queue"""
         try:
             event = self._parse_message(message)
@@ -578,14 +595,16 @@ class NotificationManager(AppService):
                 return False
             logger.info(f"Processing batch notification: {event}")
 
-            recipient_email = get_database_manager_client().get_user_email_by_id(
-                event.user_id
+            recipient_email = (
+                await get_database_manager_async_client().get_user_email_by_id(
+                    event.user_id
+                )
             )
             if not recipient_email:
                 logger.error(f"User email not found for user {event.user_id}")
                 return False
 
-            should_send = self._should_email_user_based_on_preference(
+            should_send = await self._should_email_user_based_on_preference(
                 event.user_id, event.type
             )
             if not should_send:
@@ -594,13 +613,15 @@ class NotificationManager(AppService):
                 )
                 return True
 
-            should_send = self._should_batch(event.user_id, event.type, event)
+            should_send = await self._should_batch(event.user_id, event.type, event)
 
             if not should_send:
                 logger.info("Batch not old enough to send")
                 return False
-            batch = get_database_manager_client().get_user_notification_batch(
-                event.user_id, event.type
+            batch = (
+                await get_database_manager_async_client().get_user_notification_batch(
+                    event.user_id, event.type
+                )
             )
             if not batch or not batch.notifications:
                 logger.error(f"Batch not found for user {event.user_id}")
@@ -702,7 +723,7 @@ class NotificationManager(AppService):
                 logger.info(
                     f"Successfully sent all {successfully_sent_count} notifications, clearing batch"
                 )
-                get_database_manager_client().empty_user_notification_batch(
+                await get_database_manager_async_client().empty_user_notification_batch(
                     event.user_id, event.type
                 )
             else:
@@ -715,7 +736,7 @@ class NotificationManager(AppService):
             logger.exception(f"Error processing notification for batch queue: {e}")
             return False
 
-    def _process_summary(self, message: str) -> bool:
+    async def _process_summary(self, message: str) -> bool:
         """Process a single notification with a summary strategy, returning whether to put into the failed queue"""
         try:
             logger.info(f"Processing summary notification: {message}")
@@ -726,13 +747,15 @@ class NotificationManager(AppService):
 
             logger.info(f"Processing summary notification: {model}")
 
-            recipient_email = get_database_manager_client().get_user_email_by_id(
-                event.user_id
+            recipient_email = (
+                await get_database_manager_async_client().get_user_email_by_id(
+                    event.user_id
+                )
             )
             if not recipient_email:
                 logger.error(f"User email not found for user {event.user_id}")
                 return False
-            should_send = self._should_email_user_based_on_preference(
+            should_send = await self._should_email_user_based_on_preference(
                 event.user_id, event.type
             )
             if not should_send:
@@ -767,7 +790,7 @@ class NotificationManager(AppService):
     async def _consume_queue(
         self,
         queue: aio_pika.abc.AbstractQueue,
-        process_func: Callable[[str], bool],
+        process_func: Callable[[str], Awaitable[bool]],
         queue_name: str,
     ):
         """Continuously consume messages from a queue using async iteration"""
@@ -781,7 +804,7 @@ class NotificationManager(AppService):
 
                     try:
                         async with message.process():
-                            result = process_func(message.body.decode())
+                            result = await process_func(message.body.decode())
                             if not result:
                                 # Message will be rejected when exiting context without exception
                                 raise aio_pika.exceptions.MessageProcessError(
@@ -880,6 +903,8 @@ class NotificationManagerClient(AppServiceClient):
     def get_service_type(cls):
         return NotificationManager
 
-    process_existing_batches = NotificationManager.process_existing_batches
-    queue_weekly_summary = NotificationManager.queue_weekly_summary
+    process_existing_batches = endpoint_to_sync(
+        NotificationManager.process_existing_batches
+    )
+    queue_weekly_summary = endpoint_to_sync(NotificationManager.queue_weekly_summary)
     discord_system_alert = endpoint_to_sync(NotificationManager.discord_system_alert)
