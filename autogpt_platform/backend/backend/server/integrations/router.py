@@ -634,7 +634,7 @@ async def get_ayrshare_sso_url(
                 # SocialPlatform.TELEGRAM,
                 # SocialPlatform.GOOGLE_MY_BUSINESS,
                 # SocialPlatform.PINTEREST,
-                # SocialPlatform.TIKTOK,
+                SocialPlatform.TIKTOK,
                 # SocialPlatform.BLUESKY,
                 # SocialPlatform.SNAPCHAT,
                 # SocialPlatform.THREADS,
