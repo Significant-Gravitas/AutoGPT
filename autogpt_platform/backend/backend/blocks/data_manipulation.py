@@ -31,14 +31,6 @@ class CreateDictionaryBlock(Block):
             # For regular fields, use the parent implementation
             return super().get_field_schema(field_name)
 
-        @classmethod
-        def validate_field(cls, field_name: str, data: Any) -> str | None:
-            # Dynamic values_#_* fields are always valid
-            if field_name.startswith("values_#_"):
-                return None
-            # For regular fields, use the parent implementation
-            return super().validate_field(field_name, data)
-
     class Output(BlockSchema):
         dictionary: dict[str, Any] = SchemaField(
             description="The created dictionary containing the specified key-value pairs"
