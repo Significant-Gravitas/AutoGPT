@@ -70,6 +70,12 @@ services:
       file: ./docker-compose.platform.yml
       service: scheduler_server
 
+  notification_server:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: notification_server
+
   clamav:
     <<: *agpt-services
     image: clamav/clamav-debian:latest

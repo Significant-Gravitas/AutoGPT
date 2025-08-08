@@ -185,7 +185,7 @@ class NotificationManager(AppService):
     @property
     def rabbit(self) -> rabbitmq.AsyncRabbitMQ:
         """Access the RabbitMQ service. Will raise if not configured."""
-        if not self.rabbitmq_service:
+        if not hasattr(self, "rabbitmq_service") or not self.rabbitmq_service:
             raise RuntimeError("RabbitMQ not configured for this service")
         return self.rabbitmq_service
 
