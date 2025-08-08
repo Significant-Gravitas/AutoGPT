@@ -33,30 +33,30 @@ async def check_media_exists(user_id: str, filename: str) -> str | None:
     if not settings.config.media_gcs_bucket_name:
         raise MissingConfigError("GCS media bucket is not configured")
 
-    async_client = async_storage.Storage()
-    bucket_name = settings.config.media_gcs_bucket_name
+    async with async_storage.Storage() as async_client:
+        bucket_name = settings.config.media_gcs_bucket_name
 
-    # Check images
-    image_path = f"users/{user_id}/images/{filename}"
-    try:
-        await async_client.download_metadata(bucket_name, image_path)
-        # If we get here, the file exists - construct public URL
-        return f"https://storage.googleapis.com/{bucket_name}/{image_path}"
-    except Exception:
-        # File doesn't exist, continue to check videos
-        pass
+        # Check images
+        image_path = f"users/{user_id}/images/{filename}"
+        try:
+            await async_client.download_metadata(bucket_name, image_path)
+            # If we get here, the file exists - construct public URL
+            return f"https://storage.googleapis.com/{bucket_name}/{image_path}"
+        except Exception:
+            # File doesn't exist, continue to check videos
+            pass
 
-    # Check videos
-    video_path = f"users/{user_id}/videos/{filename}"
-    try:
-        await async_client.download_metadata(bucket_name, video_path)
-        # If we get here, the file exists - construct public URL
-        return f"https://storage.googleapis.com/{bucket_name}/{video_path}"
-    except Exception:
-        # File doesn't exist
-        pass
+        # Check videos
+        video_path = f"users/{user_id}/videos/{filename}"
+        try:
+            await async_client.download_metadata(bucket_name, video_path)
+            # If we get here, the file exists - construct public URL
+            return f"https://storage.googleapis.com/{bucket_name}/{video_path}"
+        except Exception:
+            # File doesn't exist
+            pass
 
-    return None
+        return None
 
 
 async def upload_media(
@@ -177,22 +177,24 @@ async def upload_media(
         storage_path = f"users/{user_id}/{media_type}/{unique_filename}"
 
         try:
-            async_client = async_storage.Storage()
-            bucket_name = settings.config.media_gcs_bucket_name
+            async with async_storage.Storage() as async_client:
+                bucket_name = settings.config.media_gcs_bucket_name
 
-            file_bytes = await file.read()
-            await scan_content_safe(file_bytes, filename=unique_filename)
+                file_bytes = await file.read()
+                await scan_content_safe(file_bytes, filename=unique_filename)
 
-            # Upload using pure async client
-            await async_client.upload(
-                bucket_name, storage_path, file_bytes, content_type=content_type
-            )
+                # Upload using pure async client
+                await async_client.upload(
+                    bucket_name, storage_path, file_bytes, content_type=content_type
+                )
 
-            # Construct public URL
-            public_url = f"https://storage.googleapis.com/{bucket_name}/{storage_path}"
+                # Construct public URL
+                public_url = (
+                    f"https://storage.googleapis.com/{bucket_name}/{storage_path}"
+                )
 
-            logger.info(f"Successfully uploaded file to: {storage_path}")
-            return public_url
+                logger.info(f"Successfully uploaded file to: {storage_path}")
+                return public_url
 
         except Exception as e:
             logger.error(f"GCS storage error: {str(e)}")
