@@ -97,6 +97,20 @@ class RemoteCallError(BaseModel):
     args: Optional[Tuple[Any, ...]] = None
 
 
+class UnhealthyServiceError(ValueError):
+    def __init__(
+        self, message: str = "Service is unhealthy or not ready", log: bool = True
+    ):
+        msg = f"[{get_service_name()}] - {message}"
+        super().__init__(msg)
+        self.message = msg
+        if log:
+            logger.error(self.message)
+
+    def __str__(self):
+        return self.message
+
+
 EXCEPTION_MAPPING = {
     e.__name__: e
     for e in [
@@ -104,6 +118,7 @@ EXCEPTION_MAPPING = {
         RuntimeError,
         TimeoutError,
         ConnectionError,
+        UnhealthyServiceError,
         *[
             ErrorType
             for _, ErrorType in inspect.getmembers(exceptions)
