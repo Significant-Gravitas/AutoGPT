@@ -879,11 +879,19 @@ async def add_graph_execution(
         graph_exec_entry = graph_exec.to_graph_execution_entry()
         if nodes_input_masks:
             graph_exec_entry.nodes_input_masks = nodes_input_masks
+
+        logger.info(
+            f"Created graph execution #{graph_exec.id} for graph "
+            f"#{graph_id} with {len(starting_nodes_input)} starting nodes. "
+            f"Now publishing to execution queue."
+        )
+
         await queue.publish_message(
             routing_key=GRAPH_EXECUTION_ROUTING_KEY,
             message=graph_exec_entry.model_dump_json(),
             exchange=GRAPH_EXECUTION_EXCHANGE,
         )
+        logger.info(f"Published execution {graph_exec.id} to RabbitMQ queue")
 
         bus = get_async_execution_event_bus()
         await bus.publish(graph_exec)
