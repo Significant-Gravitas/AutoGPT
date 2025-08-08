@@ -190,8 +190,19 @@ class Scheduler(AppService):
         return config.scheduler_db_pool_size
 
     def health_check(self) -> str:
+        # Thread-safe health check with proper initialization handling
+        if not hasattr(self, "scheduler"):
+            raise RuntimeError("Scheduler is still initializing")
+
+        # Check if we're in the middle of cleanup
+        if self.cleaned_up:
+            return super().health_check()
+
+        # Normal operation - check if scheduler is running
         if not self.scheduler.running:
+            logger.error(f"{self.service_name} the scheduler is not running!")
             raise RuntimeError("Scheduler is not running")
+
         return super().health_check()
 
     def run_service(self):
