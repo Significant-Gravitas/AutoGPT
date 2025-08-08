@@ -40,7 +40,7 @@ export class LoginPage {
     const leaveLoginPage = this.page
       .waitForURL(
         (url) => /^\/(marketplace|onboarding(\/.*)?)?$/.test(url.pathname),
-        { timeout: 25_000 },
+        { timeout: 10_000 },
       )
       .catch((reason) => {
         console.error(
