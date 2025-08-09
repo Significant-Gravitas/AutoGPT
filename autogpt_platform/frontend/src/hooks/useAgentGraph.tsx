@@ -18,6 +18,7 @@ import {
   NodeCreatable,
   NodeExecutionResult,
   SpecialBlockID,
+  Node,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
@@ -155,6 +156,16 @@ export default function useAgentGraph(
     setAgentName(graph.name);
     setAgentDescription(graph.description);
 
+    const getGraphName = (node: Node) => {
+      if (node.input_default.agent_name) {
+        return node.input_default.agent_name;
+      }
+      return (
+        availableFlows.find((flow) => flow.id === node.input_default.graph_id)
+          ?.name || null
+      );
+    };
+
     setXYNodes((prevNodes) => {
       const _newNodes = graph.nodes.map((node) => {
         const block = availableBlocks.find(
@@ -162,12 +173,8 @@ export default function useAgentGraph(
         )!;
         if (!block) return null;
         const prevNode = prevNodes.find((n) => n.id === node.id);
-        const flow =
-          block.uiType == BlockUIType.AGENT
-            ? availableFlows.find(
-                (flow) => flow.id === node.input_default.graph_id,
-              )
-            : null;
+        const graphName =
+          (block.uiType == BlockUIType.AGENT && getGraphName(node)) || null;
         const newNode: CustomNode = {
           id: node.id,
           type: "custom",
@@ -179,7 +186,7 @@ export default function useAgentGraph(
             isOutputOpen: false,
             ...prevNode?.data,
             block_id: block.id,
-            blockType: flow?.name || block.name,
+            blockType: graphName || block.name,
             blockCosts: block.costs,
             categories: block.categories,
             description: block.description,
@@ -257,15 +264,16 @@ export default function useAgentGraph(
   const getToolFuncName = useCallback(
     (nodeID: string) => {
       const sinkNode = xyNodes.find((node) => node.id === nodeID);
-      const sinkNodeName = sinkNode
-        ? sinkNode.data.block_id === SpecialBlockID.AGENT
-          ? sinkNode.data.hardcodedValues?.graph_id
-            ? availableFlows.find(
-                (flow) => flow.id === sinkNode.data.hardcodedValues.graph_id,
-              )?.name || "agentexecutorblock"
-            : "agentexecutorblock"
-          : sinkNode.data.title.split(" ")[0]
-        : "";
+      if (!sinkNode) return "";
+
+      const sinkNodeName =
+        sinkNode.data.block_id === SpecialBlockID.AGENT
+          ? sinkNode.data.hardcodedValues?.agent_name ||
+            availableFlows.find(
+              (flow) => flow.id === sinkNode.data.hardcodedValues.graph_id,
+            )?.name ||
+            "agentexecutorblock"
+          : sinkNode.data.title.split(" ")[0];
 
       return sinkNodeName;
     },
