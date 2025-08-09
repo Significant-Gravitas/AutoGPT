@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "types": ["node"],
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "moduleResolution": "bundler",
+    "verbatimModuleSyntax": true,
+    "target": "ES2020",
+    "module": "ESNext",
+    "jsx": "preserve",
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "declarationDir": "./node_modules/.types",
+    "noEmit": false
+  },
+  "include": ["src/**/*", "src/**/*.vue"]
+}

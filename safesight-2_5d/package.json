@@ -1,0 +1,26 @@
+{
+  "name": "safesight-2_5d",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@types/openseadragon": "^4.1.0",
+    "element-plus": "^2.10.6",
+    "openseadragon": "^5.0.1",
+    "pinia": "^3.0.3",
+    "vue": "^3.5.18"
+  },
+  "devDependencies": {
+    "@types/node": "^24.2.1",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "@vue/tsconfig": "^0.7.0",
+    "typescript": "~5.8.3",
+    "vite": "^7.1.0",
+    "vue-tsc": "^3.0.5"
+  }
+}
