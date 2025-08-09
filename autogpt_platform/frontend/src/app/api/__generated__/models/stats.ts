@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1
  */
 import type { StatsError } from "./statsError";
+import type { StatsActivityStatus } from "./statsActivityStatus";
 
 export interface Stats {
   /** Execution cost (cents) */
@@ -24,5 +25,7 @@ export interface Stats {
   node_error_count?: number;
   /** Error message if any */
   error?: StatsError;
+  /** AI-generated summary of what the agent did */
+  activity_status?: StatsActivityStatus;
   [key: string]: unknown;
 }

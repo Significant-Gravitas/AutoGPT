@@ -659,6 +659,8 @@ view StoreSubmission {
   internal_comments        String?
   reviewed_at              DateTime?
   changes_summary          String?
+  video_url                String?
+  categories               String[]
 
   // Index or unique are not applied to views
 }
