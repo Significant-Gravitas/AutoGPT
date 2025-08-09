@@ -17,6 +17,9 @@ export type TiledImageInfo = {
   tileSize: number
   tileOverlap: number
   levels: number
+  // Preferred runtime tile source (with getTileUrl)
+  tileSource?: any
+  // Optional legacy DZI url
   dziUrl?: string
 }
 

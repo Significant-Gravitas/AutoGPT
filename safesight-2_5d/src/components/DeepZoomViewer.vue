@@ -58,8 +58,9 @@ function initViewer() {
     }
   })
 
-  if (imageStore.image?.dziUrl) {
-    viewer.open(imageStore.image.dziUrl)
+  const src = imageStore.image?.tileSource || imageStore.image?.dziUrl
+  if (src) {
+    viewer.open(src as any)
     viewer.addOnceHandler('open', () => {
       renderMarkers()
     })
@@ -68,7 +69,6 @@ function initViewer() {
 
 function renderMarkers() {
   if (!viewer) return
-  // Clear previous overlays
   markerElements.forEach((el) => {
     try { viewer!.removeOverlay(el) } catch {}
   })
@@ -84,7 +84,6 @@ function renderMarkers() {
     el.innerHTML = `<span class="dot"></span><span class="label">${m.name}</span>`
     el.onclick = () => imageStore.selectMarker(m.id)
 
-    // Blink if alarm
     const shouldBlink = alertStore.blinkingDeviceIds.has(m.id)
     if (shouldBlink) el.classList.add('blinking')
 
@@ -96,8 +95,7 @@ function renderMarkers() {
   }
 }
 
-// watch for data changes
-watch(() => imageStore.image?.dziUrl, async () => {
+watch(() => imageStore.image?.tileSource || imageStore.image?.dziUrl, async () => {
   await nextTick()
   initViewer()
 })
@@ -107,7 +105,6 @@ watch(() => imageStore.markers.slice(), () => {
 }, { deep: true })
 
 watch(() => alertStore.blinkingDeviceIds.size, () => {
-  // update blink classes
   markerElements.forEach((el, id) => {
     if (alertStore.blinkingDeviceIds.has(id)) el.classList.add('blinking')
     else el.classList.remove('blinking')
