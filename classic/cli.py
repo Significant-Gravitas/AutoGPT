@@ -129,6 +129,7 @@ def start(agent_name: str, no_setup: bool):
     """Start agent command"""
     import os
     import subprocess
+    import sys
 
     script_dir = os.path.dirname(os.path.realpath(__file__))
     agent_dir = os.path.join(
@@ -151,11 +152,24 @@ def start(agent_name: str, no_setup: bool):
             setup_process.wait()
             click.echo()
 
-        # FIXME: Doesn't work: Command not found: agbenchmark
-        # subprocess.Popen(["./run_benchmark", "serve"], cwd=agent_dir)
-        # click.echo("⌛ (Re)starting benchmark server...")
-        # wait_until_conn_ready(8080)
-        # click.echo()
+        # Start benchmark server if available
+        benchmark_dir = os.path.join(script_dir, "benchmark")
+        if os.path.exists(benchmark_dir):
+            try:
+                subprocess.Popen(
+                    [sys.executable, "-m", "agbenchmark", "serve"], 
+                    cwd=benchmark_dir
+                )
+                click.echo("⌛ (Re)starting benchmark server...")
+                wait_until_conn_ready(8080)
+                click.echo()
+            except Exception as e:
+                click.echo(
+                    click.style(
+                        f"⚠️  Warning: Could not start benchmark server: {e}", 
+                        fg="yellow"
+                    )
+                )
 
         subprocess.Popen(["./run"], cwd=agent_dir)
         click.echo(f"⌛ (Re)starting agent '{agent_name}'...")
