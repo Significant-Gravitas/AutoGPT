@@ -1,8 +1,9 @@
 import json
+from datetime import datetime
 from io import BytesIO
 from unittest.mock import AsyncMock, Mock, patch
 
-import autogpt_libs.auth.depends
+import autogpt_libs.auth
 import fastapi
 import fastapi.testclient
 import pytest
@@ -272,6 +273,7 @@ def test_get_graphs(
         name="Test Graph",
         description="A test graph",
         user_id="test-user-id",
+        created_at=datetime.now(),
     )
 
     mocker.patch(
@@ -305,6 +307,7 @@ def test_get_graph(
         name="Test Graph",
         description="A test graph",
         user_id="test-user-id",
+        created_at=datetime.now(),
     )
 
     mocker.patch(
@@ -353,6 +356,7 @@ def test_delete_graph(
         name="Test Graph",
         description="A test graph",
         user_id="test-user-id",
+        created_at=datetime.now(),
     )
 
     mocker.patch(
