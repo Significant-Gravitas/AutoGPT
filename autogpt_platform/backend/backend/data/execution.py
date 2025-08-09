@@ -33,7 +33,7 @@ from prisma.types import (
     AgentNodeExecutionUpdateInput,
     AgentNodeExecutionWhereInput,
 )
-from pydantic import BaseModel, ConfigDict, JsonValue
+from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 from pydantic.fields import Field
 
 from backend.server.v2.store.exceptions import DatabaseError
@@ -59,7 +59,7 @@ from .includes import (
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     graph_execution_include,
 )
-from .model import GraphExecutionStats
+from .model import GraphExecutionStats, NodeExecutionStats
 
 T = TypeVar("T")
 
@@ -318,18 +318,30 @@ class NodeExecutionResult(BaseModel):
 
     @staticmethod
     def from_db(_node_exec: AgentNodeExecution, user_id: Optional[str] = None):
-        if _node_exec.executionData:
-            # Execution that has been queued for execution will persist its data.
+        try:
+            stats = NodeExecutionStats.model_validate(_node_exec.stats or {})
+        except (ValueError, ValidationError):
+            stats = NodeExecutionStats()
+
+        if stats.cleared_inputs:
+            input_data: BlockInput = defaultdict()
+            for name, messages in stats.cleared_inputs.items():
+                input_data[name] = messages[-1] if messages else ""
+        elif _node_exec.executionData:
             input_data = type_utils.convert(_node_exec.executionData, dict[str, Any])
         else:
-            # For incomplete execution, executionData will not be yet available.
             input_data: BlockInput = defaultdict()
             for data in _node_exec.Input or []:
                 input_data[data.name] = type_utils.convert(data.data, type[Any])
 
         output_data: CompletedBlockOutput = defaultdict(list)
-        for data in _node_exec.Output or []:
-            output_data[data.name].append(type_utils.convert(data.data, type[Any]))
+
+        if stats.cleared_outputs:
+            for name, messages in stats.cleared_outputs.items():
+                output_data[name].extend(messages)
+        else:
+            for data in _node_exec.Output or []:
+                output_data[data.name].append(type_utils.convert(data.data, type[Any]))
 
         graph_execution: AgentGraphExecution | None = _node_exec.GraphExecution
         if graph_execution:
