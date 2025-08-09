@@ -1,0 +1,14 @@
+{
+  "name": "safesight-2_5d-server",
+  "private": true,
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

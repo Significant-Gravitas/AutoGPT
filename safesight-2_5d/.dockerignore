@@ -1,0 +1,11 @@
+node_modules
+.dist
+.git
+Dockerfile
+README.md
+**/.DS_Store
+**/node_modules
+**/npm-debug.log*
+**/yarn-error.log
+**/.vite
+**/.cache
