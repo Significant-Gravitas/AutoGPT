@@ -16,4 +16,5 @@ export type LibraryAgentSort =
 export const LibraryAgentSort = {
   createdAt: "createdAt",
   updatedAt: "updatedAt",
+  lastExecuted: "lastExecuted",
 } as const;
