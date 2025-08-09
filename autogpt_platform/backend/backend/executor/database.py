@@ -79,10 +79,10 @@ class DatabaseManager(AppService):
         logger.info(f"[{self.service_name}] ⏳ Disconnecting Database...")
         self.run_and_wait(db.disconnect())
 
-    def health_check(self) -> str:
+    async def health_check(self) -> str:
         if not db.is_connected():
             raise UnhealthyServiceError("Database is not connected")
-        return super().health_check()
+        return await super().health_check()
 
     @classmethod
     def get_port(cls) -> int:
