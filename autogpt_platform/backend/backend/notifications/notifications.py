@@ -199,13 +199,13 @@ class NotificationManager(AppService):
             raise UnhealthyServiceError("RabbitMQ not configured for this service")
         return self.rabbitmq_config
 
-    def health_check(self) -> str:
+    async def health_check(self) -> str:
         # Service is unhealthy if RabbitMQ is not ready
         if not hasattr(self, "rabbitmq_service") or not self.rabbitmq_service:
             raise UnhealthyServiceError("RabbitMQ not configured for this service")
         if not self.rabbitmq_service.is_ready:
             raise UnhealthyServiceError("RabbitMQ channel is not ready")
-        return super().health_check()
+        return await super().health_check()
 
     @classmethod
     def get_port(cls) -> int:
