@@ -15,7 +15,7 @@ from apscheduler.events import (
 from apscheduler.job import Job as JobObj
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
-from apscheduler.schedulers.blocking import BlockingScheduler
+from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
@@ -134,6 +134,7 @@ def execute_graph(**kwargs):
 
 async def _execute_graph(**kwargs):
     args = GraphExecutionJobArgs(**kwargs)
+    start_time = asyncio.get_event_loop().time()
     try:
         logger.info(f"Executing recurring job for graph #{args.graph_id}")
         graph_exec: GraphExecutionWithNodes = await execution_utils.add_graph_execution(
@@ -143,12 +144,22 @@ async def _execute_graph(**kwargs):
             inputs=args.input_data,
             graph_credentials_inputs=args.input_credentials,
         )
+        elapsed = asyncio.get_event_loop().time() - start_time
         logger.info(
-            f"Graph execution started with ID {graph_exec.id} for graph {args.graph_id}"
+            f"Graph execution started with ID {graph_exec.id} for graph {args.graph_id} "
+            f"(took {elapsed:.2f}s to create and publish)"
         )
+        if elapsed > 10:
+            logger.warning(
+                f"Graph execution {graph_exec.id} took {elapsed:.2f}s to create/publish - "
+                f"this is unusually slow and may indicate resource contention"
+            )
     except Exception as e:
-        # TODO: We need to communicate this error to the user somehow.
-        logger.error(f"Error executing graph {args.graph_id}: {e}")
+        elapsed = asyncio.get_event_loop().time() - start_time
+        logger.error(
+            f"Error executing graph {args.graph_id} after {elapsed:.2f}s: "
+            f"{type(e).__name__}: {e}"
+        )
 
 
 def cleanup_expired_files():
@@ -210,7 +221,7 @@ class NotificationJobInfo(NotificationJobArgs):
 
 
 class Scheduler(AppService):
-    scheduler: BlockingScheduler
+    scheduler: BackgroundScheduler
 
     def __init__(self, register_system_tasks: bool = True):
         self.register_system_tasks = register_system_tasks
@@ -223,20 +234,20 @@ class Scheduler(AppService):
     def db_pool_size(cls) -> int:
         return config.scheduler_db_pool_size
 
-    def health_check(self) -> str:
+    async def health_check(self) -> str:
         # Thread-safe health check with proper initialization handling
         if not hasattr(self, "scheduler"):
             raise UnhealthyServiceError("Scheduler is still initializing")
 
         # Check if we're in the middle of cleanup
         if self.cleaned_up:
-            return super().health_check()
+            return await super().health_check()
 
         # Normal operation - check if scheduler is running
         if not self.scheduler.running:
             raise UnhealthyServiceError("Scheduler is not running")
 
-        return super().health_check()
+        return await super().health_check()
 
     def run_service(self):
         load_dotenv()
@@ -256,7 +267,7 @@ class Scheduler(AppService):
         # Configure executors to limit concurrency without skipping jobs
         from apscheduler.executors.pool import ThreadPoolExecutor
 
-        self.scheduler = BlockingScheduler(
+        self.scheduler = BackgroundScheduler(
             executors={
                 "default": ThreadPoolExecutor(max_workers=10),  # Max 10 concurrent jobs
             },
@@ -347,6 +358,9 @@ class Scheduler(AppService):
         self.scheduler.add_listener(job_missed_listener, EVENT_JOB_MISSED)
         self.scheduler.add_listener(job_max_instances_listener, EVENT_JOB_MAX_INSTANCES)
         self.scheduler.start()
+
+        # Keep the service running since BackgroundScheduler doesn't block
+        super().run_service()
 
     def cleanup(self):
         super().cleanup()
