@@ -1,7 +1,13 @@
 import asyncio
+import faulthandler
+import io
 import logging
 import os
+import signal
+import sys
 import threading
+import traceback
+from datetime import datetime
 from enum import Enum
 from typing import Optional
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
@@ -15,7 +21,7 @@ from apscheduler.events import (
 from apscheduler.job import Job as JobObj
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
-from apscheduler.schedulers.blocking import BlockingScheduler
+from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
@@ -134,6 +140,7 @@ def execute_graph(**kwargs):
 
 async def _execute_graph(**kwargs):
     args = GraphExecutionJobArgs(**kwargs)
+    start_time = asyncio.get_event_loop().time()
     try:
         logger.info(f"Executing recurring job for graph #{args.graph_id}")
         graph_exec: GraphExecutionWithNodes = await execution_utils.add_graph_execution(
@@ -143,12 +150,22 @@ async def _execute_graph(**kwargs):
             inputs=args.input_data,
             graph_credentials_inputs=args.input_credentials,
         )
+        elapsed = asyncio.get_event_loop().time() - start_time
         logger.info(
-            f"Graph execution started with ID {graph_exec.id} for graph {args.graph_id}"
+            f"Graph execution started with ID {graph_exec.id} for graph {args.graph_id} "
+            f"(took {elapsed:.2f}s to create and publish)"
         )
+        if elapsed > 10:
+            logger.warning(
+                f"Graph execution {graph_exec.id} took {elapsed:.2f}s to create/publish - "
+                f"this is unusually slow and may indicate resource contention"
+            )
     except Exception as e:
-        # TODO: We need to communicate this error to the user somehow.
-        logger.error(f"Error executing graph {args.graph_id}: {e}")
+        elapsed = asyncio.get_event_loop().time() - start_time
+        logger.error(
+            f"Error executing graph {args.graph_id} after {elapsed:.2f}s: "
+            f"{type(e).__name__}: {e}"
+        )
 
 
 def cleanup_expired_files():
@@ -210,7 +227,7 @@ class NotificationJobInfo(NotificationJobArgs):
 
 
 class Scheduler(AppService):
-    scheduler: BlockingScheduler
+    scheduler: BackgroundScheduler
 
     def __init__(self, register_system_tasks: bool = True):
         self.register_system_tasks = register_system_tasks
@@ -223,23 +240,152 @@ class Scheduler(AppService):
     def db_pool_size(cls) -> int:
         return config.scheduler_db_pool_size
 
-    def health_check(self) -> str:
+    async def health_check(self) -> str:
         # Thread-safe health check with proper initialization handling
         if not hasattr(self, "scheduler"):
             raise UnhealthyServiceError("Scheduler is still initializing")
 
         # Check if we're in the middle of cleanup
         if self.cleaned_up:
-            return super().health_check()
+            return await super().health_check()
 
         # Normal operation - check if scheduler is running
         if not self.scheduler.running:
             raise UnhealthyServiceError("Scheduler is not running")
 
-        return super().health_check()
+        # Update health check timestamp for monitoring
+        self._update_health_check_time()
+
+        return await super().health_check()
+
+    def _signal_thread_dump_handler(self, signum, frame):
+        """Signal handler for SIGUSR2 - dumps threads to stderr even when FastAPI is stuck"""
+        try:
+            import sys
+
+            sys.stderr.write(f"\n{'='*80}\n")
+            sys.stderr.write(f"SIGNAL THREAD DUMP - {datetime.now()}\n")
+            sys.stderr.write(f"Signal: {signum}, PID: {os.getpid()}\n")
+            sys.stderr.write(f"Total threads: {threading.active_count()}\n")
+            sys.stderr.write(f"{'='*80}\n")
+
+            current_frames = sys._current_frames()
+            threads = threading.enumerate()
+
+            for i, thread in enumerate(threads, 1):
+                sys.stderr.write(f"\n[{i}] Thread: {thread.name}\n")
+                sys.stderr.write(f"    ID: {thread.ident}, Daemon: {thread.daemon}\n")
+
+                thread_frame = (
+                    current_frames.get(thread.ident) if thread.ident else None
+                )
+                if thread_frame:
+                    sys.stderr.write("    Stack:\n")
+                    stack = traceback.extract_stack(thread_frame)
+
+                    for j, (filename, lineno, name, line) in enumerate(stack[-12:]):
+                        indent = "      " + ("  " * min(j, 8))
+                        short_file = (
+                            filename.split("/")[-1] if "/" in filename else filename
+                        )
+                        sys.stderr.write(f"{indent}{short_file}:{lineno} in {name}()\n")
+                        if line and line.strip():
+                            sys.stderr.write(f"{indent}  → {line.strip()}\n")
+                else:
+                    sys.stderr.write("    No frame available\n")
+
+            # Scheduler info
+            sys.stderr.write(f"\n{'='*40}\n")
+            sys.stderr.write("SCHEDULER STATE:\n")
+            if hasattr(self, "scheduler") and self.scheduler:
+                sys.stderr.write(f"Running: {self.scheduler.running}\n")
+                try:
+                    jobs = self.scheduler.get_jobs()
+                    sys.stderr.write(f"Jobs: {len(jobs)}\n")
+                except Exception:
+                    sys.stderr.write("Jobs: Error getting jobs\n")
+            else:
+                sys.stderr.write("Scheduler: Not initialized\n")
+
+            sys.stderr.write(f"{'='*80}\n")
+            sys.stderr.write("END SIGNAL THREAD DUMP\n")
+            sys.stderr.write(f"{'='*80}\n\n")
+            sys.stderr.flush()
+
+        except Exception as e:
+            import sys
+
+            sys.stderr.write(f"Error in signal handler: {e}\n")
+            sys.stderr.flush()
+
+    def _start_periodic_thread_dump(self):
+        """Start background thread for periodic thread dumps"""
+
+        def periodic_dump():
+            import time
+
+            while True:
+                try:
+                    time.sleep(300)  # 5 minutes
+
+                    # Only dump if we detect potential issues
+                    current_time = time.time()
+                    if hasattr(self, "_last_health_check"):
+                        time_since_health = current_time - self._last_health_check
+                        if time_since_health > 60:  # No health check in 60 seconds
+                            logger.warning(
+                                "No health check in 60s, dumping threads for monitoring"
+                            )
+                            self._signal_thread_dump_handler(0, None)
+
+                    # Also check if scheduler seems stuck
+                    if hasattr(self, "scheduler") and self.scheduler:
+                        try:
+                            jobs = self.scheduler.get_jobs()
+                            # Log periodic status
+                            logger.info(
+                                f"Periodic check: {len(jobs)} active jobs, {threading.active_count()} threads"
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"Periodic check failed, dumping threads: {e}"
+                            )
+                            self._signal_thread_dump_handler(0, None)
+
+                except Exception as e:
+                    logger.error(f"Error in periodic thread dump: {e}")
+
+        # Start daemon thread for periodic monitoring
+        dump_thread = threading.Thread(
+            target=periodic_dump, daemon=True, name="PeriodicThreadDump"
+        )
+        dump_thread.start()
+        logger.info("Periodic thread dump monitor started")
+
+    def _update_health_check_time(self):
+        """Update last health check time for monitoring"""
+        import time
+
+        self._last_health_check = time.time()
 
     def run_service(self):
         load_dotenv()
+
+        # Enable faulthandler for debugging deadlocks
+        faulthandler.enable()
+
+        # Register SIGUSR1 to dump all thread stacks on demand
+        faulthandler.register(signal.SIGUSR1, all_threads=True)
+
+        # Also register SIGUSR2 for custom thread dump (in case faulthandler doesn't work)
+        signal.signal(signal.SIGUSR2, self._signal_thread_dump_handler)
+
+        # Start periodic thread dump for monitoring
+        self._start_periodic_thread_dump()
+
+        logger.info(
+            "Faulthandler enabled. Send SIGUSR1 or SIGUSR2 to dump thread stacks. Periodic dumps every 5 minutes."
+        )
 
         # Initialize the event loop for async jobs
         global _event_loop
@@ -256,7 +402,7 @@ class Scheduler(AppService):
         # Configure executors to limit concurrency without skipping jobs
         from apscheduler.executors.pool import ThreadPoolExecutor
 
-        self.scheduler = BlockingScheduler(
+        self.scheduler = BackgroundScheduler(
             executors={
                 "default": ThreadPoolExecutor(max_workers=10),  # Max 10 concurrent jobs
             },
@@ -347,6 +493,9 @@ class Scheduler(AppService):
         self.scheduler.add_listener(job_missed_listener, EVENT_JOB_MISSED)
         self.scheduler.add_listener(job_max_instances_listener, EVENT_JOB_MAX_INSTANCES)
         self.scheduler.start()
+
+        # Keep the service running since BackgroundScheduler doesn't block
+        super().run_service()
 
     def cleanup(self):
         super().cleanup()
@@ -469,6 +618,102 @@ class Scheduler(AppService):
     def execute_cleanup_expired_files(self):
         """Manually trigger cleanup of expired cloud storage files."""
         return cleanup_expired_files()
+
+    @expose
+    def debug_thread_dump(self) -> str:
+        """Get comprehensive thread dump for debugging deadlocks."""
+        try:
+            # Create string buffer to capture thread info
+            output = io.StringIO()
+
+            # Header
+            output.write(f"SCHEDULER THREAD DUMP - {datetime.now()}\n")
+            output.write("=" * 80 + "\n")
+            output.write(f"Process PID: {os.getpid()}\n")
+            output.write(f"Total threads: {threading.active_count()}\n\n")
+
+            # Get all threads with stack traces
+            current_frames = sys._current_frames()
+            threads = threading.enumerate()
+
+            for i, thread in enumerate(threads, 1):
+                output.write(f"[{i}/{len(threads)}] Thread: {thread.name}\n")
+                output.write(f"  ID: {thread.ident}\n")
+                output.write(f"  Daemon: {thread.daemon}\n")
+                output.write(f"  Alive: {thread.is_alive()}\n")
+
+                # Get target if available (internal attribute)
+                if hasattr(thread, "_target") and getattr(thread, "_target", None):
+                    output.write(f"  Target: {getattr(thread, '_target')}\n")
+
+                # Get stack trace
+                frame = current_frames.get(thread.ident) if thread.ident else None
+                if frame:
+                    output.write("  Stack trace:\n")
+                    stack = traceback.extract_stack(frame)
+
+                    for j, (filename, lineno, name, line) in enumerate(stack):
+                        indent = "    " + ("  " * min(j, 6))
+                        short_file = (
+                            filename.split("/")[-1] if "/" in filename else filename
+                        )
+                        output.write(f"{indent}[{j+1}] {short_file}:{lineno}\n")
+                        output.write(f"{indent}    in {name}()\n")
+                        if line and line.strip():
+                            output.write(f"{indent}    → {line.strip()}\n")
+                else:
+                    output.write("  ⚠️  No frame available\n")
+
+                output.write("\n" + "-" * 60 + "\n")
+
+            # Scheduler state info
+            output.write("\nSCHEDULER STATE:\n")
+            output.write("=" * 40 + "\n")
+            if hasattr(self, "scheduler") and self.scheduler:
+                output.write(f"Scheduler running: {self.scheduler.running}\n")
+                try:
+                    jobs = self.scheduler.get_jobs()
+                    output.write(f"Active jobs: {len(jobs)}\n")
+                    for job in jobs[:5]:  # First 5 jobs
+                        output.write(f"  {job.id}: next run {job.next_run_time}\n")
+                except Exception as e:
+                    output.write(f"Error getting jobs: {e}\n")
+            else:
+                output.write("Scheduler not initialized\n")
+
+            # Event loop info
+            output.write("\nEVENT LOOP STATE:\n")
+            output.write("=" * 40 + "\n")
+            global _event_loop
+            if _event_loop:
+                output.write(f"Event loop running: {_event_loop.is_running()}\n")
+                try:
+                    import asyncio
+
+                    tasks = asyncio.all_tasks(_event_loop)
+                    output.write(f"Active tasks: {len(tasks)}\n")
+                    for task in list(tasks)[:5]:  # First 5 tasks
+                        output.write(f"  {task.get_name()}: {task._state}\n")
+                except Exception as e:
+                    output.write(f"Error getting tasks: {e}\n")
+            else:
+                output.write("Event loop not initialized\n")
+
+            output.write("\n" + "=" * 80 + "\n")
+            output.write("END THREAD DUMP\n")
+
+            result = output.getvalue()
+            output.close()
+
+            # Also log that we got a thread dump request
+            logger.info("Thread dump requested via HTTP endpoint")
+
+            return result
+
+        except Exception as e:
+            error_msg = f"Error generating thread dump: {type(e).__name__}: {e}"
+            logger.error(error_msg)
+            return error_msg
 
 
 class SchedulerClient(AppServiceClient):
