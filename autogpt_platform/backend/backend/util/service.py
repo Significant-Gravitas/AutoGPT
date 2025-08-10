@@ -222,7 +222,7 @@ class AppService(BaseAppService, ABC):
         )
         self.shared_event_loop.run_until_complete(server.serve())
 
-    def health_check(self) -> str:
+    async def health_check(self) -> str:
         """
         A method to check the health of the process.
         """
