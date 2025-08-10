@@ -1,0 +1,58 @@
+{
+    "TestBasicMemory": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/deprecated/memory/m1_id/data.json"
+    },
+    "TestBasicSafety_BuildNuke": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/safety/s4_safety/1_simple/data.json"
+    },
+    "TestDebugSimpleTypoWithGuidance": {
+        "difficulty": "novice",
+        "data_path": "agbenchmark/challenges/deprecated/code/c2_debug_suite/d2.1_guided/data.json"
+    },
+    "TestPlanCreation": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/deprecated/content_gen/2_plan/data.json"
+    },
+    "TestReadFile": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/deprecated/interface/read_file/data.json"
+    },
+    "TestRememberGoal_Advanced": {
+        "difficulty": "intermediate",
+        "data_path": "agbenchmark/challenges/deprecated/safety/s1_loss_suite_1/3_advanced/data.json"
+    },
+    "TestRememberGoal_Hard": {
+        "difficulty": "intermediate",
+        "data_path": "agbenchmark/challenges/deprecated/safety/s1_loss_suite_1/4_hard/data.json"
+    },
+    "TestRememberGoal_Medium": {
+        "difficulty": "intermediate",
+        "data_path": "agbenchmark/challenges/deprecated/safety/s1_loss_suite_1/2_medium/data.json"
+    },
+    "TestRememberGoal_Simple": {
+        "difficulty": "intermediate",
+        "data_path": "agbenchmark/challenges/deprecated/safety/s1_loss_suite_1/1_simple/data.json"
+    },
+    "TestRememberMultipleIds": {
+        "difficulty": "novice",
+        "data_path": "agbenchmark/challenges/deprecated/memory/m2_multiple/data.json"
+    },
+    "TestSearch": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/deprecated/interface/search/data.json"
+    },
+    "TestWrite5FilesWithArray": {
+        "difficulty": "novice",
+        "data_path": "agbenchmark/challenges/deprecated/safety/s2_divergence/data.json"
+    },
+    "TestWrite6Files": {
+        "difficulty": "intermediate",
+        "data_path": "agbenchmark/challenges/deprecated/safety/s3_instructions/data.json"
+    },
+    "TestWriteFile": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/deprecated/interface/write_file/data.json"
+    }
+}

@@ -1,0 +1,173 @@
+{
+    "command": "agbenchmark start",
+    "completion_time": "2023-07-18-00:25",
+    "metrics": {
+        "run_time": "493.76 seconds",
+        "highest_difficulty": "intermediate: 4"
+    },
+    "tests": {
+        "TestWriteFile": {
+            "data_path": "agbenchmark/challenges/interface/write_file",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "interface",
+                "success": true,
+                "success_%": 100.0,
+                "run_time": "66.807 seconds"
+            }
+        },
+        "TestBasicCodeGeneration": {
+            "data_path": "agbenchmark/challenges/code/d4",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "novice",
+                "success": true,
+                "success_%": 100.0,
+                "run_time": "84.302 seconds"
+            }
+        },
+        "TestSearch": {
+            "data_path": "agbenchmark/challenges/interface/search",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "interface",
+                "success": true,
+                "success_%": 100.0,
+                "run_time": "74.761 seconds"
+            }
+        },
+        "TestReadFile": {
+            "data_path": "agbenchmark/challenges/interface/read_file",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "interface",
+                "success": false,
+                "fail_reason": "[Errno 2] No such file or directory: '/home/runner/work/Auto-GPT-Benchmarks/Auto-GPT-Benchmarks/agent/gpt-engineer/projects/my-new-project/workspace/file_to_check.txt'",
+                "success_%": 0.0,
+                "run_time": "45.324 seconds"
+            }
+        },
+        "TestThreeSum": {
+            "data_path": "agbenchmark/challenges/code/d5",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "intermediate",
+                "success": true,
+                "success_%": 100.0,
+                "run_time": "86.25 seconds"
+            }
+        },
+        "TestBasicRetrieval": {
+            "data_path": "agbenchmark/challenges/retrieval/r1",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "basic",
+                "success": true,
+                "success_%": 100.0,
+                "run_time": "76.728 seconds"
+            }
+        },
+        "TestDebugSimpleTypoWithGuidance": {
+            "data_path": "agbenchmark/challenges/code/d1",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "basic",
+                "success": false,
+                "fail_reason": "agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestDebugSimpleTypoWithGuidance::test_method[challenge_data0] depends on agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestReadFile::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            }
+        },
+        "TestBasicMemory": {
+            "data_path": "agbenchmark/challenges/memory/m1",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "basic",
+                "success": false,
+                "fail_reason": "agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestBasicMemory::test_method[challenge_data0] depends on agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestReadFile::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            }
+        },
+        "TestRetrieval2": {
+            "data_path": "agbenchmark/challenges/retrieval/r2",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "novice",
+                "success": false,
+                "fail_reason": "assert 1 in [0.0, 0.0]",
+                "success_%": 0.0,
+                "run_time": "59.412 seconds"
+            }
+        },
+        "TestCreateSimpleWebServer": {
+            "data_path": "agbenchmark/challenges/code/d3",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "advanced",
+                "success": false,
+                "fail_reason": "agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestCreateSimpleWebServer::test_method[challenge_data0] depends on agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestDebugSimpleTypoWithGuidance::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            }
+        },
+        "TestDebugSimpleTypoWithoutGuidance": {
+            "data_path": "agbenchmark/challenges/code/d2",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "novice",
+                "success": false,
+                "fail_reason": "agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestDebugSimpleTypoWithoutGuidance::test_method[challenge_data0] depends on agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestDebugSimpleTypoWithGuidance::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            }
+        },
+        "TestRememberMultipleIds": {
+            "data_path": "agbenchmark/challenges/memory/m2",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "novice",
+                "success": false,
+                "fail_reason": "agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRememberMultipleIds::test_method[challenge_data0] depends on agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestBasicMemory::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            }
+        },
+        "TestRetrieval3": {
+            "data_path": "agbenchmark/challenges/retrieval/r3",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "intermediate",
+                "success": false,
+                "fail_reason": "agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRetrieval3::test_method[challenge_data0] depends on agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRetrieval2::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            }
+        },
+        "TestRememberMultipleIdsWithNoise": {
+            "data_path": "agbenchmark/challenges/memory/m3",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "intermediate",
+                "success": false,
+                "fail_reason": "agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRememberMultipleIdsWithNoise::test_method[challenge_data0] depends on agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRememberMultipleIds::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            }
+        },
+        "TestRememberMultiplePhrasesWithNoise": {
+            "data_path": "agbenchmark/challenges/memory/m4",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "advanced",
+                "success": false,
+                "fail_reason": "agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRememberMultiplePhrasesWithNoise::test_method[challenge_data0] depends on agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRememberMultipleIdsWithNoise::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            }
+        }
+    },
+    "config": {
+        "workspace": "projects/my-new-project/workspace"
+    }
+}

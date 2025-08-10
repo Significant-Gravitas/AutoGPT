@@ -1,0 +1,228 @@
+name: AutoGPT Platform - Backend CI
+
+on:
+  push:
+    branches: [master, dev, ci-test*]
+    paths:
+      - ".github/workflows/platform-backend-ci.yml"
+      - "autogpt_platform/backend/**"
+      - "autogpt_platform/autogpt_libs/**"
+  pull_request:
+    branches: [master, dev, release-*]
+    paths:
+      - ".github/workflows/platform-backend-ci.yml"
+      - "autogpt_platform/backend/**"
+      - "autogpt_platform/autogpt_libs/**"
+  merge_group:
+
+concurrency:
+  group: ${{ format('backend-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
+  cancel-in-progress: ${{ startsWith(github.event_name, 'pull_request') }}
+
+defaults:
+  run:
+    shell: bash
+    working-directory: autogpt_platform/backend
+
+jobs:
+  test:
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11"]
+    runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: bitnami/redis:6.2
+        env:
+          REDIS_PASSWORD: testpassword
+        ports:
+          - 6379:6379
+      rabbitmq:
+        image: rabbitmq:3.12-management
+        ports:
+          - 5672:5672
+          - 15672:15672
+        env:
+          RABBITMQ_DEFAULT_USER: ${{ env.RABBITMQ_DEFAULT_USER }}
+          RABBITMQ_DEFAULT_PASS: ${{ env.RABBITMQ_DEFAULT_PASS }}
+      clamav:
+        image: clamav/clamav-debian:latest
+        ports:
+          - 3310:3310
+        env:
+          CLAMAV_NO_FRESHCLAMD: false
+          CLAMD_CONF_StreamMaxLength: 50M
+          CLAMD_CONF_MaxFileSize: 100M
+          CLAMD_CONF_MaxScanSize: 100M
+          CLAMD_CONF_MaxThreads: 4
+          CLAMD_CONF_ReadTimeout: 300
+        options: >-
+          --health-cmd "clamdscan --version || exit 1"
+          --health-interval 30s
+          --health-timeout 10s
+          --health-retries 5
+          --health-start-period 180s
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Setup Supabase
+        uses: supabase/setup-cli@v1
+        with:
+          version: 1.178.1
+
+      - id: get_date
+        name: Get date
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
+
+      - name: Install Poetry (Unix)
+        run: |
+          # Extract Poetry version from backend/poetry.lock
+          HEAD_POETRY_VERSION=$(python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)
+          echo "Found Poetry version ${HEAD_POETRY_VERSION} in backend/poetry.lock"
+
+          if [ -n "$BASE_REF" ]; then
+            BASE_BRANCH=${BASE_REF/refs\/heads\//}
+            BASE_POETRY_VERSION=$((git show "origin/$BASE_BRANCH":./poetry.lock; true) | python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry -)
+            echo "Found Poetry version ${BASE_POETRY_VERSION} in backend/poetry.lock on ${BASE_REF}"
+            POETRY_VERSION=$(printf '%s\n' "$HEAD_POETRY_VERSION" "$BASE_POETRY_VERSION" | sort -V | tail -n1)
+          else
+            POETRY_VERSION=$HEAD_POETRY_VERSION
+          fi
+          echo "Using Poetry version ${POETRY_VERSION}"
+
+          # Install Poetry
+          curl -sSL https://install.python-poetry.org | POETRY_VERSION=$POETRY_VERSION python3 -
+
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            PATH="$HOME/.local/bin:$PATH"
+            echo "$HOME/.local/bin" >> $GITHUB_PATH
+          fi
+        env:
+          BASE_REF: ${{ github.base_ref || github.event.merge_group.base_ref }}
+
+      - name: Check poetry.lock
+        run: |
+          poetry lock
+
+          if ! git diff --quiet --ignore-matching-lines="^# " poetry.lock; then
+            echo "Error: poetry.lock not up to date."
+            echo
+            git diff poetry.lock
+            exit 1
+          fi
+
+      - name: Install Python dependencies
+        run: poetry install
+
+      - name: Generate Prisma Client
+        run: poetry run prisma generate
+
+      - id: supabase
+        name: Start Supabase
+        working-directory: .
+        run: |
+          supabase init
+          supabase start --exclude postgres-meta,realtime,storage-api,imgproxy,inbucket,studio,edge-runtime,logflare,vector,supavisor
+          supabase status -o env | sed 's/="/=/; s/"$//' >> $GITHUB_OUTPUT
+        # outputs:
+        # DB_URL, API_URL, GRAPHQL_URL, ANON_KEY, SERVICE_ROLE_KEY, JWT_SECRET
+
+      - name: Wait for ClamAV to be ready
+        run: |
+          echo "Waiting for ClamAV daemon to start..."
+          max_attempts=60
+          attempt=0
+          
+          until nc -z localhost 3310 || [ $attempt -eq $max_attempts ]; do
+            echo "ClamAV is unavailable - sleeping (attempt $((attempt+1))/$max_attempts)"
+            sleep 5
+            attempt=$((attempt+1))
+          done
+          
+          if [ $attempt -eq $max_attempts ]; then
+            echo "ClamAV failed to start after $((max_attempts*5)) seconds"
+            echo "Checking ClamAV service logs..."
+            docker logs $(docker ps -q --filter "ancestor=clamav/clamav-debian:latest") 2>&1 | tail -50 || echo "No ClamAV container found"
+            exit 1
+          fi
+          
+          echo "ClamAV is ready!"
+          
+          # Verify ClamAV is responsive
+          echo "Testing ClamAV connection..."
+          timeout 10 bash -c 'echo "PING" | nc localhost 3310' || {
+            echo "ClamAV is not responding to PING"
+            docker logs $(docker ps -q --filter "ancestor=clamav/clamav-debian:latest") 2>&1 | tail -50 || echo "No ClamAV container found"
+            exit 1
+          }
+
+      - name: Run Database Migrations
+        run: poetry run prisma migrate dev --name updates
+        env:
+          DATABASE_URL: ${{ steps.supabase.outputs.DB_URL }}
+          DIRECT_URL: ${{ steps.supabase.outputs.DB_URL }}
+
+      - id: lint
+        name: Run Linter
+        run: poetry run lint
+
+      - name: Run pytest with coverage
+        run: |
+          if [[ "${{ runner.debug }}" == "1" ]]; then
+            poetry run pytest -s -vv -o log_cli=true -o log_cli_level=DEBUG
+          else
+            poetry run pytest -s -vv
+          fi
+        if: success() || (failure() && steps.lint.outcome == 'failure')
+        env:
+          LOG_LEVEL: ${{ runner.debug && 'DEBUG' || 'INFO' }}
+          DATABASE_URL: ${{ steps.supabase.outputs.DB_URL }}
+          DIRECT_URL: ${{ steps.supabase.outputs.DB_URL }}
+          SUPABASE_URL: ${{ steps.supabase.outputs.API_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ steps.supabase.outputs.SERVICE_ROLE_KEY }}
+          SUPABASE_JWT_SECRET: ${{ steps.supabase.outputs.JWT_SECRET }}
+          REDIS_HOST: "localhost"
+          REDIS_PORT: "6379"
+          REDIS_PASSWORD: "testpassword"
+          ENCRYPTION_KEY: "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw=" # DO NOT USE IN PRODUCTION!!
+
+    env:
+      CI: true
+      PLAIN_OUTPUT: True
+      RUN_ENV: local
+      PORT: 8080
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      # We know these are here, don't report this as a security vulnerability
+      # This is used as the default credential for the entire system's RabbitMQ instance
+      # If you want to replace this, you can do so by making our entire system generate
+      # new credentials for each local user and update the environment variables in
+      # the backend service, docker composes, and examples
+      RABBITMQ_DEFAULT_USER: "rabbitmq_user_default"
+      RABBITMQ_DEFAULT_PASS: "k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7"
+
+      # - name: Upload coverage reports to Codecov
+      #   uses: codecov/codecov-action@v4
+      #   with:
+      #     token: ${{ secrets.CODECOV_TOKEN }}
+      #     flags: backend,${{ runner.os }}

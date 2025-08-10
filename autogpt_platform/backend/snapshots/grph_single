@@ -1,0 +1,29 @@
+{
+  "credentials_input_schema": {
+    "properties": {},
+    "title": "TestGraphCredentialsInputSchema",
+    "type": "object"
+  },
+  "description": "A test graph",
+  "forked_from_id": null,
+  "forked_from_version": null,
+  "has_external_trigger": false,
+  "id": "graph-123",
+  "input_schema": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "is_active": true,
+  "links": [],
+  "name": "Test Graph",
+  "nodes": [],
+  "output_schema": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "sub_graphs": [],
+  "user_id": "test-user-id",
+  "version": 1
+}

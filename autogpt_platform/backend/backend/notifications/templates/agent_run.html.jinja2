@@ -1,0 +1,142 @@
+{# Agent Run #}
+{# Template variables:
+notification.data: the stuff below but a list of them
+data.agent_name: the name of the agent
+data.credits_used: the number of credits used by the agent
+data.node_count: the number of nodes the agent ran on
+data.execution_time: the time it took to run the agent
+data.graph_id: the id of the graph the agent ran on
+data.outputs: the list of outputs of the agent
+#}
+{% if notifications is defined %}
+  {# BATCH MODE #}
+  <div style="font-family: 'Poppins', sans-serif; color: #070629;">
+    <h2 style="color: #5D23BB; margin-bottom: 15px;">Agent Run Summary</h2>
+    <p style="font-size: 16px; line-height: 165%; margin-top: 0; margin-bottom: 15px;">
+      <strong>{{ notifications|length }}</strong> agent runs have completed!
+    </p>
+    
+    {# Calculate summary stats #}
+    {% set total_time = 0 %}
+    {% set total_nodes = 0 %}
+    {% set total_credits = 0 %}
+    {% set agent_names = [] %}
+    
+    {% for notification in notifications %}
+      {% set total_time = total_time + notification.data.execution_time %}
+      {% set total_nodes = total_nodes + notification.data.node_count %}
+      {% set total_credits = total_credits + notification.data.credits_used %}
+      {% if notification.data.agent_name not in agent_names %}
+        {% set agent_names = agent_names + [notification.data.agent_name] %}
+      {% endif %}
+    {% endfor %}
+    
+    <div style="background-color: #f8f7ff; border-radius: 8px; padding: 15px; margin-bottom: 25px;">
+      <h3 style="margin-top: 0; margin-bottom: 10px; color: #5D23BB;">Summary</h3>
+      <p style="margin: 5px 0;"><strong>Agents:</strong> {{ agent_names|join(", ") }}</p>
+      <p style="margin: 5px 0;"><strong>Total Time:</strong> {{ total_time | int }} seconds</p>
+      <p style="margin: 5px 0;"><strong>Total Nodes:</strong> {{ total_nodes }}</p>
+      <p style="margin: 5px 0;"><strong>Total Cost:</strong> ${{ "{:.2f}".format((total_credits|float)/100) }}</p>
+    </div>
+    
+    <h3 style="margin-top: 25px; margin-bottom: 15px; color: #5D23BB;">Individual Runs</h3>
+    
+    {% for notification in notifications %}
+      <div style="margin-bottom: 30px; border-left: 3px solid #5D23BB; padding-left: 15px;">
+        <p style="font-size: 16px; font-weight: 600; margin-top: 0; margin-bottom: 10px;">
+          Agent: <strong>{{ notification.data.agent_name }}</strong>
+        </p>
+        
+        <div style="margin-left: 10px;">
+          <p style="margin: 5px 0;"><strong>Time:</strong> {{ notification.data.execution_time | int }} seconds</p>
+          <p style="margin: 5px 0;"><strong>Nodes:</strong> {{ notification.data.node_count }}</p>
+          <p style="margin: 5px 0;"><strong>Cost:</strong> ${{ "{:.2f}".format((notification.data.credits_used|float)/100) }}</p>
+        </div>
+        
+        {% if notification.data.outputs and notification.data.outputs|length > 0 %}
+        <div style="margin-left: 10px; margin-top: 15px;">
+          <p style="font-weight: 600; margin-bottom: 10px;">Results:</p>
+          
+          {% for output in notification.data.outputs %}
+          <div style="margin-left: 10px; margin-bottom: 12px;">
+            <p style="color: #5D23BB; font-weight: 500; margin-top: 0; margin-bottom: 5px;">
+              {{ output.name }}
+            </p>
+            
+            {% for key, value in output.items() %}
+              {% if key != 'name' %}
+              <div style="margin-left: 10px; background-color: #f5f5ff; padding: 8px 12px; border-radius: 4px; 
+                          font-family: 'Roboto Mono', monospace; white-space: pre-wrap; word-break: break-word; 
+                          overflow-wrap: break-word; max-width: 100%; overflow-x: auto; margin-top: 3px; 
+                          margin-bottom: 8px; line-height: 1.4;">
+              {% if value is iterable and value is not string %}
+                {% if value|length == 1 %}
+                  {{ value[0] }}
+                {% else %}
+                  [{% for item in value %}{{ item }}{% if not loop.last %}, {% endif %}{% endfor %}]
+                {% endif %}
+              {% else %}
+                {{ value }}
+              {% endif %}
+              </div>
+              {% endif %}
+            {% endfor %}
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+
+{% else %}
+  {# SINGLE NOTIFICATION MODE - Original template #}
+  <p style="font-family: 'Poppins', sans-serif; color: #070629; font-size: 16px; line-height: 165%; 
+            margin-top: 0; margin-bottom: 10px;">
+    Your agent, <strong>{{ data.agent_name }}</strong>, has completed its run!
+  </p>
+  
+  <p style="font-family: 'Poppins', sans-serif; color: #070629; font-size: 16px; line-height: 165%; 
+            margin-top: 0; margin-bottom: 20px; padding-left: 20px;">
+    <p style="margin-bottom: 10px;"><strong>Time Taken:</strong> {{ data.execution_time | int }} seconds</p>
+    <p style="margin-bottom: 10px;"><strong>Nodes Used:</strong> {{ data.node_count }}</p>
+    <p style="margin-bottom: 10px;"><strong>Cost:</strong> ${{ "{:.2f}".format((data.credits_used|float)/100) }}</p>
+  </p>
+  
+  {% if data.outputs and data.outputs|length > 0 %}
+  <div style="margin-left: 15px; margin-bottom: 20px;">
+    <p style="font-family: 'Poppins', sans-serif; color: #070629; font-weight: 600; 
+              font-size: 16px; margin-bottom: 10px;">
+      Results:
+    </p>
+  
+    {% for output in data.outputs %}
+    <div style="margin-left: 15px; margin-bottom: 15px;">
+      <p style="font-family: 'Poppins', sans-serif; color: #5D23BB; font-weight: 500; 
+                font-size: 16px; margin-top: 0; margin-bottom: 8px;">
+        {{ output.name }}
+      </p>
+      
+      {% for key, value in output.items() %}
+        {% if key != 'name' %}
+        <div style="margin-left: 15px; background-color: #f5f5ff; padding: 8px 12px; border-radius: 4px; 
+                    font-family: 'Roboto Mono', monospace; white-space: pre-wrap; word-break: break-word; 
+                    overflow-wrap: break-word; max-width: 100%; overflow-x: auto; margin-top: 5px; 
+                    margin-bottom: 10px; line-height: 1.4;">
+        {% if value is iterable and value is not string %}
+          {% if value|length == 1 %}
+            {{ value[0] }}
+          {% else %}
+            [{% for item in value %}{{ item }}{% if not loop.last %}, {% endif %}{% endfor %}]
+          {% endif %}
+        {% else %}
+          {{ value }}
+        {% endif %}
+        </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+{% endif %}

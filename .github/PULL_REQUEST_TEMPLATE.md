@@ -1,49 +1,38 @@
-<!-- ⚠️ At the moment any non-essential commands are not being merged.
-If you want to add non-essential commands to Auto-GPT, please create a plugin instead.
-We are expecting to ship plugin support within the week (PR #757).
-Resources:
-* https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template
--->
+<!-- Clearly explain the need for these changes: -->
 
-<!-- 📢 Announcement
-We've recently noticed an increase in pull requests focusing on combining multiple changes. While the intentions behind these PRs are appreciated, it's essential to maintain a clean and manageable git history. To ensure the quality of our repository, we kindly ask you to adhere to the following guidelines when submitting PRs:
+### Changes 🏗️
 
-Focus on a single, specific change.
-Do not include any unrelated or "extra" modifications.
-Provide clear documentation and explanations of the changes made.
-Ensure diffs are limited to the intended lines — no applying preferred formatting styles or line endings (unless that's what the PR is about).
-For guidance on committing only the specific lines you have changed, refer to this helpful video: https://youtu.be/8-hSNHHbiZg
+<!-- Concisely describe all of the changes made in this pull request: -->
 
-Check out our [wiki page on Contributing](https://github.com/Significant-Gravitas/Nexus/wiki/Contributing)
+### Checklist 📋
 
-By following these guidelines, your PRs are more likely to be merged quickly after testing, as long as they align with the project's overall direction. -->
+#### For code changes:
+- [ ] I have clearly listed my changes in the PR description
+- [ ] I have made a test plan
+- [ ] I have tested my changes according to the test plan:
+  <!-- Put your test plan here: -->
+  - [ ] ...
 
-### Background
-<!-- Provide a concise overview of the rationale behind this change. Include relevant context, prior discussions, or links to related issues. Ensure that the change aligns with the project's overall direction. -->
+<details>
+  <summary>Example test plan</summary>
+  
+  - [ ] Create from scratch and execute an agent with at least 3 blocks
+  - [ ] Import an agent from file upload, and confirm it executes correctly
+  - [ ] Upload agent to marketplace
+  - [ ] Import an agent from marketplace and confirm it executes correctly
+  - [ ] Edit an agent from monitor, and confirm it executes correctly
+</details>
 
-### Changes
-<!-- Describe the specific, focused change made in this pull request. Detail the modifications clearly and avoid any unrelated or "extra" changes. -->
+#### For configuration changes:
+- [ ] `.env.example` is updated or already compatible with my changes
+- [ ] `docker-compose.yml` is updated or already compatible with my changes
+- [ ] I have included a list of my configuration changes in the PR description (under **Changes**)
 
-### Documentation
-<!-- Explain how your changes are documented, such as in-code comments or external documentation. Ensure that the documentation is clear, concise, and easy to understand. -->
+<details>
+  <summary>Examples of configuration changes</summary>
 
-### Test Plan
-<!-- Describe how you tested this functionality. Include steps to reproduce, relevant test cases, and any other pertinent information. -->
-
-### PR Quality Checklist
-- [ ] My pull request is atomic and focuses on a single change.
-- [ ] I have thoroughly tested my changes with multiple different prompts.
-- [ ] I have considered potential risks and mitigations for my changes.
-- [ ] I have documented my changes clearly and comprehensively.
-- [ ] I have not snuck in any "extra" small tweaks changes. <!-- Submit these as separate Pull Requests, they are the easiest to merge! -->
-- [ ] I have run the following commands against my code to ensure it passes our linters:
-    ```shell
-    black .
-    isort .
-    mypy
-    autoflake --remove-all-unused-imports --recursive --ignore-init-module-imports autogpt tests --in-place
-    ```
-
-<!-- If you haven't added tests, please explain why. If you have, check the appropriate box. If you've ensured your PR is atomic and well-documented, check the corresponding boxes. -->
-
-<!-- By submitting this, I agree that my pull request should be closed if I do not fill this out or follow the guidelines. -->
+  - Changing ports
+  - Adding new services that need to communicate with each other
+  - Secrets or environment variable changes
+  - New or infrastructure changes such as databases
+</details>

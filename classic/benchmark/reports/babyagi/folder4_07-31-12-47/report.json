@@ -1,0 +1,13 @@
+{
+    "command": "agbenchmark start",
+    "completion_time": "2023-07-31-12:48",
+    "benchmark_start_time": "2023-07-31-12:47",
+    "metrics": {
+        "run_time": "62.42 seconds",
+        "highest_difficulty": "No successful tests"
+    },
+    "tests": {},
+    "config": {
+        "workspace": "babycoder/playground"
+    }
+}
