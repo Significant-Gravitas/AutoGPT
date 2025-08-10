@@ -372,6 +372,15 @@ export type NodeExecutionResult = {
   end_time?: Date;
 };
 
+/* Structured validation error types for graph execution */
+export type GraphValidationErrorResponse = {
+  detail: {
+    type: "validation_error";
+    message: string;
+    node_errors: Record<string, Record<string, string>>;
+  };
+};
+
 /* *** LIBRARY *** */
 
 /* Mirror of backend/server/v2/library/model.py:LibraryAgent */

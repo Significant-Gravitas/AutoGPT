@@ -52,7 +52,7 @@ export function useSignupPage() {
   async function handleProviderSignup(provider: LoginProvider) {
     setIsGoogleLoading(true);
 
-    if (!turnstile.verified && !isVercelPreview) {
+    if (isCloudEnv && !turnstile.verified && !isVercelPreview) {
       toast({
         title: "Please complete the CAPTCHA challenge.",
         variant: "default",
@@ -78,7 +78,7 @@ export function useSignupPage() {
   async function handleSignup(data: z.infer<typeof signupFormSchema>) {
     setIsLoading(true);
 
-    if (!turnstile.verified && !isVercelPreview) {
+    if (isCloudEnv && !turnstile.verified && !isVercelPreview) {
       toast({
         title: "Please complete the CAPTCHA challenge.",
         variant: "default",

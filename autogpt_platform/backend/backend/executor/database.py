@@ -49,7 +49,13 @@ from backend.data.user import (
     get_user_notification_preference,
     update_user_integrations,
 )
-from backend.util.service import AppService, AppServiceClient, endpoint_to_sync, expose
+from backend.util.service import (
+    AppService,
+    AppServiceClient,
+    UnhealthyServiceError,
+    endpoint_to_sync,
+    expose,
+)
 from backend.util.settings import Config
 
 config = Config()
@@ -81,10 +87,10 @@ class DatabaseManager(AppService):
         logger.info(f"[{self.service_name}] ⏳ Disconnecting Database...")
         self.run_and_wait(db.disconnect())
 
-    def health_check(self) -> str:
+    async def health_check(self) -> str:
         if not db.is_connected():
-            raise RuntimeError("Database is not connected")
-        return super().health_check()
+            raise UnhealthyServiceError("Database is not connected")
+        return await super().health_check()
 
     @classmethod
     def get_port(cls) -> int:
@@ -233,3 +239,28 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_user_integrations = d.update_user_integrations
     get_execution_kv_data = d.get_execution_kv_data
     set_execution_kv_data = d.set_execution_kv_data
+
+    # User Comms
+    get_active_user_ids_in_timerange = d.get_active_user_ids_in_timerange
+    get_user_email_by_id = d.get_user_email_by_id
+    get_user_email_verification = d.get_user_email_verification
+    get_user_notification_preference = d.get_user_notification_preference
+
+    # Notifications
+    create_or_add_to_user_notification_batch = (
+        d.create_or_add_to_user_notification_batch
+    )
+    empty_user_notification_batch = d.empty_user_notification_batch
+    get_all_batches_by_type = d.get_all_batches_by_type
+    get_user_notification_batch = d.get_user_notification_batch
+    get_user_notification_oldest_message_in_batch = (
+        d.get_user_notification_oldest_message_in_batch
+    )
+
+    # Summary data
+    get_user_credits_summary = d.get_user_credits_summary
+    get_user_execution_summary = d.get_user_execution_summary
+    get_most_used_agent = d.get_most_used_agent
+    get_execution_time_stats = d.get_execution_time_stats
+    get_cost_breakdown_by_agent = d.get_cost_breakdown_by_agent
+    get_user_summary_data = d.get_user_summary_data

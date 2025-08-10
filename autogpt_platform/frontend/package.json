@@ -56,7 +56,6 @@
     "@tanstack/react-table": "8.21.3",
     "@types/jaro-winkler": "0.2.4",
     "@xyflow/react": "12.8.2",
-    "ajv": "8.17.1",
     "boring-avatars": "1.11.2",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
