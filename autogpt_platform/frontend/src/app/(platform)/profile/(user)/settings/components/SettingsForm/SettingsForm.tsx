@@ -44,7 +44,7 @@ export const SettingsForm = ({
               <FormItem>
                 <FormLabel>Email</FormLabel>
                 <FormControl>
-                  <Input {...field} type="email" />
+                  <Input {...field} type="email" data-testid="settings-email" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -62,6 +62,7 @@ export const SettingsForm = ({
                     {...field}
                     type="password"
                     placeholder="************"
+                    data-testid="settings-password"
                   />
                 </FormControl>
                 <FormMessage />
@@ -80,6 +81,7 @@ export const SettingsForm = ({
                     {...field}
                     type="password"
                     placeholder="************"
+                    data-testid="settings-confirm-password"
                   />
                 </FormControl>
                 <FormMessage />
@@ -117,6 +119,7 @@ export const SettingsForm = ({
                     <Switch
                       checked={field.value}
                       onCheckedChange={field.onChange}
+                      data-testid="settings-notify-on-agent-run"
                     />
                   </FormControl>
                 </FormItem>
@@ -141,6 +144,7 @@ export const SettingsForm = ({
                     <Switch
                       checked={field.value}
                       onCheckedChange={field.onChange}
+                      data-testid="settings-notify-on-block-execution-failed"
                     />
                   </FormControl>
                 </FormItem>
@@ -164,6 +168,7 @@ export const SettingsForm = ({
                     <Switch
                       checked={field.value}
                       onCheckedChange={field.onChange}
+                      data-testid="settings-notify-on-continuous-agent-error"
                     />
                   </FormControl>
                 </FormItem>
@@ -193,6 +198,7 @@ export const SettingsForm = ({
                     <Switch
                       checked={field.value}
                       onCheckedChange={field.onChange}
+                      data-testid="settings-notify-on-zero-balance"
                     />
                   </FormControl>
                 </FormItem>
@@ -216,6 +222,7 @@ export const SettingsForm = ({
                     <Switch
                       checked={field.value}
                       onCheckedChange={field.onChange}
+                      data-testid="settings-notify-on-low-balance"
                     />
                   </FormControl>
                 </FormItem>
@@ -243,6 +250,7 @@ export const SettingsForm = ({
                     <Switch
                       checked={field.value}
                       onCheckedChange={field.onChange}
+                      data-testid="settings-notify-on-daily-summary"
                     />
                   </FormControl>
                 </FormItem>
@@ -264,6 +272,7 @@ export const SettingsForm = ({
                     <Switch
                       checked={field.value}
                       onCheckedChange={field.onChange}
+                      data-testid="settings-notify-on-weekly-summary"
                     />
                   </FormControl>
                 </FormItem>
@@ -285,6 +294,7 @@ export const SettingsForm = ({
                     <Switch
                       checked={field.value}
                       onCheckedChange={field.onChange}
+                      data-testid="settings-notify-on-monthly-summary"
                     />
                   </FormControl>
                 </FormItem>
@@ -300,6 +310,7 @@ export const SettingsForm = ({
             type="button"
             onClick={onCancel}
             disabled={form.formState.isSubmitting}
+            data-testid="settings-cancel"
           >
             Cancel
           </Button>
