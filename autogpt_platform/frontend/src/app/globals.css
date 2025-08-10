@@ -1,0 +1,154 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@plugin 'tailwind-scrollbar';
+
+@layer base {
+  :root {
+    --background: 0 0% 98%; /* neutral-50#FAFAFA */
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 240 5.9% 10%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 262 83% 58%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 85%;
+    --ring: 240 5.9% 10%;
+    --radius: 0.5rem;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+  }
+
+  .dark {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 5.9% 10%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 240 4.9% 83.9%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background font-sans text-foreground antialiased transition-colors;
+  }
+}
+
+/* *** AutoGPT Design Components *** */
+
+@layer components {
+  .agpt-border-input {
+    @apply m-0.5 border border-input focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400 data-[state=open]:border-gray-400 data-[state=open]:ring-1 data-[state=open]:ring-gray-400;
+  }
+
+  .agpt-shadow-input {
+    @apply shadow-sm focus-visible:shadow-md;
+  }
+
+  .agpt-rounded-card {
+    @apply rounded-2xl;
+  }
+
+  .agpt-rounded-box {
+    @apply rounded-3xl;
+  }
+
+  .agpt-card {
+    @apply agpt-rounded-card border border-zinc-300 bg-white p-[1px];
+  }
+
+  .agpt-box {
+    @apply agpt-card agpt-rounded-box;
+  }
+
+  .agpt-div {
+    @apply border-zinc-200 p-5;
+  }
+}
+
+@layer utilities {
+  .agpt-card-selected {
+    @apply border-2 border-accent bg-violet-50/50 p-0;
+  }
+}
+
+@layer utilities {
+  /* TODO: 1. remove unused utility classes */
+  /* TODO: 2. fix naming of numbered dimensions so that the number is 4*dimension */
+  /* TODO: 3. move to tailwind.config.ts spacing config */
+  .h-7\.5 {
+    height: 1.1875rem;
+  }
+  .h-18 {
+    height: 4.5rem;
+  }
+  .h-238 {
+    height: 14.875rem;
+  }
+  .top-158 {
+    top: 9.875rem;
+  }
+  .top-254 {
+    top: 15.875rem;
+  }
+  .top-284 {
+    top: 17.75rem;
+  }
+  .top-360 {
+    top: 22.5rem;
+  }
+  .left-297 {
+    left: 18.5625rem;
+  }
+  .left-34 {
+    left: 2.125rem;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+}

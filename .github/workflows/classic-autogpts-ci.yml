@@ -1,0 +1,76 @@
+name: Classic - Agent smoke tests
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 8 * * *'
+  push:
+    branches: [ master, dev, ci-test* ]
+    paths:
+      - '.github/workflows/classic-autogpts-ci.yml'
+      - 'classic/original_autogpt/**'
+      - 'classic/forge/**'
+      - 'classic/benchmark/**'
+      - 'classic/run'
+      - 'classic/cli.py'
+      - 'classic/setup.py'
+      - '!**/*.md'
+  pull_request:
+    branches: [ master, dev, release-* ]
+    paths:
+      - '.github/workflows/classic-autogpts-ci.yml'
+      - 'classic/original_autogpt/**'
+      - 'classic/forge/**'
+      - 'classic/benchmark/**'
+      - 'classic/run'
+      - 'classic/cli.py'
+      - 'classic/setup.py'
+      - '!**/*.md'
+
+defaults:
+  run:
+    shell: bash
+    working-directory: classic
+
+jobs:
+  serve-agent-protocol:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        agent-name: [ original_autogpt ]
+      fail-fast: false
+    timeout-minutes: 20
+    env:
+      min-python-version: '3.10'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Set up Python ${{ env.min-python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.min-python-version }}
+
+      - name: Install Poetry
+        working-directory: ./classic/${{ matrix.agent-name }}/
+        run: |
+          curl -sSL https://install.python-poetry.org | python -
+
+      - name: Run regression tests
+        run: |
+          ./run agent start ${{ matrix.agent-name }}
+          cd ${{ matrix.agent-name }}
+          poetry run agbenchmark --mock --test=BasicRetrieval --test=Battleship --test=WebArenaTask_0
+          poetry run agbenchmark --test=WriteFile
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          AGENT_NAME: ${{ matrix.agent-name }}
+          REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
+          HELICONE_CACHE_ENABLED: false
+          HELICONE_PROPERTY_AGENT: ${{ matrix.agent-name }}
+          REPORTS_FOLDER: ${{ format('../../reports/{0}', matrix.agent-name) }}
+          TELEMETRY_ENVIRONMENT: autogpt-ci
+          TELEMETRY_OPT_IN: ${{ github.ref_name == 'master' }}

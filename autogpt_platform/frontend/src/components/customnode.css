@@ -1,0 +1,136 @@
+.custom-node {
+  color: #000000;
+  box-sizing: border-box;
+  transition: border-color 0.3s ease-in-out;
+}
+
+.custom-node [data-id="input-handles"],
+.custom-node [data-id="input-handles"] > div > div {
+  margin-bottom: 1rem;
+}
+
+.custom-node .custom-switch {
+  padding: 0.5rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.error-message {
+  color: #d9534f;
+  font-size: 13px;
+  padding-left: 0.5rem;
+}
+
+/* Existing styles */
+.handle-container {
+  display: flex;
+  position: relative;
+  margin-bottom: 0px;
+  padding: 5px;
+  min-height: 44px;
+  height: 100%;
+}
+
+.react-flow__handle {
+  background: transparent;
+  width: auto;
+  height: auto;
+  border: 0;
+  position: relative;
+  transform: none;
+}
+
+.border-error {
+  border: 1px solid #d9534f;
+}
+
+.select-input {
+  width: 100%;
+  padding: 5px;
+  border-radius: 4px;
+  border: 1px solid #000;
+  background: #fff;
+  color: #000;
+}
+
+.radio-label {
+  display: block;
+  margin: 5px 0;
+  color: #000;
+}
+
+.number-input {
+  width: 100%;
+  padding: 5px;
+  border-radius: 4px;
+  background: #fff;
+  color: #000;
+}
+
+.array-item-container {
+  display: flex;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.array-item-input {
+  flex-grow: 1;
+  padding: 5px;
+  border-radius: 4px;
+  border: 1px solid #000;
+  background: #fff;
+  color: #000;
+}
+
+.array-item-remove {
+  background: #d9534f;
+  border: none;
+  color: white;
+  cursor: pointer;
+  margin-left: 5px;
+  border-radius: 4px;
+  padding: 5px 10px;
+}
+
+.array-item-add {
+  background: #5bc0de;
+  border: none;
+  color: white;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 5px 10px;
+  margin-top: 5px;
+}
+
+.error-message {
+  color: #d9534f;
+  font-size: 13px;
+  margin-top: 5px;
+  margin-left: 5px;
+}
+
+/* Styles for node states */
+.completed {
+  border-color: #27ae60; /* Green border for completed nodes */
+}
+
+.running {
+  border-color: #f39c12; /* Orange border for running nodes */
+}
+
+.failed {
+  border-color: #c0392b; /* Red border for failed nodes */
+}
+
+.incomplete {
+  border-color: #9f14ab; /* Pink border for incomplete nodes */
+}
+
+.queued {
+  border-color: #25e6e6; /* Cyan border for queued nodes */
+}
+
+.custom-switch {
+  padding-left: 2px;
+}

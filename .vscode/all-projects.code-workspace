@@ -1,0 +1,62 @@
+{
+  "folders": [
+    {
+      "name": "frontend",
+      "path": "../autogpt_platform/frontend"
+    },
+    {
+      "name": "backend",
+      "path": "../autogpt_platform/backend"
+    },
+    {
+      "name": "market",
+      "path": "../autogpt_platform/market"
+    },
+    {
+      "name": "lib",
+      "path": "../autogpt_platform/autogpt_libs"
+    },
+    {
+      "name": "infra",
+      "path": "../autogpt_platform/infra"
+    },
+    {
+      "name": "docs",
+      "path": "../docs"
+    },
+
+    {
+      "name": "classic - autogpt",
+      "path": "../classic/original_autogpt"
+    },
+    {
+      "name": "classic - benchmark",
+      "path": "../classic/benchmark"
+    },
+    {
+      "name": "classic - forge",
+      "path": "../classic/forge"
+    },
+    {
+      "name": "classic - frontend",
+      "path": "../classic/frontend"
+    },
+    {
+      "name": "[root]",
+      "path": ".."
+    }
+  ],
+  "settings": {
+    "python.analysis.typeCheckingMode": "basic"
+  },
+  "extensions": {
+    "recommendations": [
+      "charliermarsh.ruff",
+      "dart-code.flutter",
+      "ms-python.black-formatter",
+      "ms-python.vscode-pylance",
+      "prisma.prisma",
+      "qwtel.sqlite-viewer"
+    ]
+  }
+}

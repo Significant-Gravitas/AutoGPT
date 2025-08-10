@@ -1,0 +1,7 @@
+{
+  "channel": "3e53486c-cf57-477e-ba2a-cb02dc828e1a|graph_exec#test-graph-exec-1",
+  "data": null,
+  "error": null,
+  "method": "subscribe_graph_execution",
+  "success": true
+}

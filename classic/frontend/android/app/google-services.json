@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "387936576242",
+    "project_id": "prod-auto-gpt",
+    "storage_bucket": "prod-auto-gpt.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:387936576242:android:dad0614943c3242ad7a66b",
+        "android_client_info": {
+          "package_name": "com.example.auto_gpt_flutter_client"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "387936576242-iejdacrjljds7hf99q0p6eqna8rju3sb.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBvDJ9m38ZgRGquV3ZoTaldQTFCxFHdkiI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "387936576242-9a68qea5415i71e4mk545pdee92k9kfo.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

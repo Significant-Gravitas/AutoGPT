@@ -1,0 +1,31 @@
+{
+  "command": "agbenchmark start --test TestRememberMultipleIds",
+  "completion_time": "2023-07-17-18:33",
+  "metrics": {
+    "run_time": "61.32 seconds",
+    "highest_difficulty": "No successful tests"
+  },
+  "tests": {
+    "TestRememberMultipleIds": {
+      "data_path": "agbenchmark/challenges/memory/m2_noise",
+      "is_regression": false,
+      "task": "Follow the instructions in the instructions_1.txt file",
+      "answer": "3145\n3791\n9317\n9471",
+      "description": "Tests ability for the agent to remember information between each action. Multiple ids are presented in different files and the last file instructs the agent to write these ids into another file.",
+      "metrics": {
+        "difficulty": "novice",
+        "success": false,
+        "fail_reason": "[Errno 2] No such file or directory: 'C:\\\\Users\\\\silen\\\\miniagi\\\\result.txt'",
+        "success_%": 0.0,
+        "run_time": "61.089 seconds"
+      },
+      "reached_cutoff": true
+    }
+  },
+  "config": {
+    "workspace": "${os.path.join(Path.home(), 'miniagi')}"
+  },
+  "additional": {
+    "model": "gpt-3.5-turbo"
+  }
+}

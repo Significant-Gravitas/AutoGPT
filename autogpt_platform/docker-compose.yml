@@ -1,0 +1,198 @@
+networks:
+  app-network:
+    name: app-network
+  shared-network:
+    name: shared-network
+
+volumes:
+  supabase-config:
+  clamav-data:
+
+x-agpt-services:
+  &agpt-services
+  networks:
+    - app-network
+    - shared-network
+
+x-supabase-services:
+  &supabase-services
+  networks:
+    - app-network
+    - shared-network
+
+services:
+  # AGPT services
+  migrate:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: migrate
+
+  redis:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: redis
+
+  rabbitmq:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: rabbitmq
+
+  rest_server:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: rest_server
+
+  executor:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: executor
+
+  websocket_server:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: websocket_server
+
+  database_manager:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: database_manager
+
+  scheduler_server:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: scheduler_server
+
+  notification_server:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: notification_server
+
+  clamav:
+    <<: *agpt-services
+    image: clamav/clamav-debian:latest
+    ports:
+      - "3310:3310"
+    volumes:
+      - clamav-data:/var/lib/clamav
+    environment:
+      - CLAMAV_NO_FRESHCLAMD=false
+      - CLAMD_CONF_StreamMaxLength=50M
+      - CLAMD_CONF_MaxFileSize=100M
+      - CLAMD_CONF_MaxScanSize=100M
+      - CLAMD_CONF_MaxThreads=12
+      - CLAMD_CONF_ReadTimeout=300
+    healthcheck:
+      test: ["CMD-SHELL", "clamdscan --version || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  #  frontend:
+  #    <<: *agpt-services
+  #    extends:
+  #      file: ./docker-compose.platform.yml
+  #      service: frontend
+
+  # Supabase services
+  studio:
+    <<: *supabase-services
+    extends:
+      file: ./db/docker/docker-compose.yml
+      service: studio
+
+  kong:
+    <<: *supabase-services
+    extends:
+      file: ./db/docker/docker-compose.yml
+      service: kong
+
+  auth:
+    <<: *supabase-services
+    extends:
+      file: ./db/docker/docker-compose.yml
+      service: auth
+    environment:
+      GOTRUE_MAILER_AUTOCONFIRM: true
+
+  rest:
+    <<: *supabase-services
+    extends:
+      file: ./db/docker/docker-compose.yml
+      service: rest
+
+  realtime:
+    <<: *supabase-services
+    extends:
+      file: ./db/docker/docker-compose.yml
+      service: realtime
+
+  storage:
+    <<: *supabase-services
+    extends:
+      file: ./db/docker/docker-compose.yml
+      service: storage
+
+  imgproxy:
+    <<: *supabase-services
+    extends:
+      file: ./db/docker/docker-compose.yml
+      service: imgproxy
+
+  meta:
+    <<: *supabase-services
+    extends:
+      file: ./db/docker/docker-compose.yml
+      service: meta
+
+  functions:
+    <<: *supabase-services
+    extends:
+      file: ./db/docker/docker-compose.yml
+      service: functions
+
+  analytics:
+    <<: *supabase-services
+    extends:
+      file: ./db/docker/docker-compose.yml
+      service: analytics
+
+  db:
+    <<: *supabase-services
+    extends:
+      file: ./db/docker/docker-compose.yml
+      service: db
+    ports:
+      - ${POSTGRES_PORT}:5432 # We don't use Supavisor locally, so we expose the db directly.
+
+  vector:
+    <<: *supabase-services
+    extends:
+      file: ./db/docker/docker-compose.yml
+      service: vector
+
+  deps:
+    <<: *supabase-services
+    profiles:
+      - local
+    image: busybox
+    command: /bin/true
+    depends_on:
+      - studio
+      - kong
+      - auth
+      - meta
+      - analytics
+      - db
+      - vector
+      - redis
+      - rabbitmq
+      - clamav

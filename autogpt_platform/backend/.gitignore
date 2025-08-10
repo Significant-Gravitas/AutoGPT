@@ -1,0 +1,11 @@
+database.db
+database.db-journal
+dev.db
+dev.db-journal
+build/
+config.json
+secrets/*
+!secrets/.gitkeep
+
+*.ignore.*
+*.ign.*

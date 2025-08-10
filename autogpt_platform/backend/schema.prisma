@@ -1,0 +1,843 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider             = "prisma-client-py"
+  recursive_type_depth = -1
+  interface            = "asyncio"
+  previewFeatures      = ["views"]
+}
+
+// User model to mirror Auth provider users
+model User {
+  id               String   @id // This should match the Supabase user ID
+  email            String   @unique
+  emailVerified    Boolean  @default(true)
+  name             String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  metadata         Json     @default("{}")
+  integrations     String   @default("")
+  stripeCustomerId String?
+  topUpConfig      Json?
+
+  maxEmailsPerDay              Int     @default(3)
+  notifyOnAgentRun             Boolean @default(true)
+  notifyOnZeroBalance          Boolean @default(true)
+  notifyOnLowBalance           Boolean @default(true)
+  notifyOnBlockExecutionFailed Boolean @default(true)
+  notifyOnContinuousAgentError Boolean @default(true)
+  notifyOnDailySummary         Boolean @default(true)
+  notifyOnWeeklySummary        Boolean @default(true)
+  notifyOnMonthlySummary       Boolean @default(true)
+
+  // Relations
+
+  AgentGraphs          AgentGraph[]
+  AgentGraphExecutions AgentGraphExecution[]
+  AnalyticsDetails     AnalyticsDetails[]
+  AnalyticsMetrics     AnalyticsMetrics[]
+  CreditTransactions   CreditTransaction[]
+
+  AgentPresets  AgentPreset[]
+  LibraryAgents LibraryAgent[]
+
+  Profile               Profile[]
+  UserOnboarding        UserOnboarding?
+  StoreListings         StoreListing[]
+  StoreListingReviews   StoreListingReview[]
+  StoreVersionsReviewed StoreListingVersion[]
+  APIKeys               APIKey[]
+  IntegrationWebhooks   IntegrationWebhook[]
+  NotificationBatches   UserNotificationBatch[]
+}
+
+enum OnboardingStep {
+  // Introductory onboarding (Library)
+  WELCOME
+  USAGE_REASON
+  INTEGRATIONS
+  AGENT_CHOICE
+  AGENT_NEW_RUN
+  AGENT_INPUT
+  CONGRATS
+  GET_RESULTS
+  RUN_AGENTS
+  // Marketplace
+  MARKETPLACE_VISIT
+  MARKETPLACE_ADD_AGENT
+  MARKETPLACE_RUN_AGENT
+  // Builder
+  BUILDER_OPEN
+  BUILDER_SAVE_AGENT
+  BUILDER_RUN_AGENT
+}
+
+model UserOnboarding {
+  id        String    @id @default(uuid())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime? @updatedAt
+
+  completedSteps                OnboardingStep[] @default([])
+  notificationDot               Boolean          @default(true)
+  notified                      OnboardingStep[] @default([])
+  rewardedFor                   OnboardingStep[] @default([])
+  usageReason                   String?
+  integrations                  String[]         @default([])
+  otherIntegrations             String?
+  selectedStoreListingVersionId String?
+  agentInput                    Json?
+  onboardingAgentExecutionId    String?
+  agentRuns                     Int              @default(0)
+
+  userId String @unique
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// This model describes the Agent Graph/Flow (Multi Agent System).
+model AgentGraph {
+  id        String    @default(uuid())
+  version   Int       @default(1)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime? @updatedAt
+
+  name        String?
+  description String?
+
+  isActive Boolean @default(true)
+
+  // Link to User model
+  userId String
+  // FIX: Do not cascade delete the agent when the user is deleted
+  // This allows us to delete user data with deleting the agent which maybe in use by other users
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  forkedFromId      String?
+  forkedFromVersion Int?
+  forkedFrom        AgentGraph?  @relation("AgentGraphForks", fields: [forkedFromId, forkedFromVersion], references: [id, version])
+  forks             AgentGraph[] @relation("AgentGraphForks")
+
+  Nodes      AgentNode[]
+  Executions AgentGraphExecution[]
+
+  Presets              AgentPreset[]
+  LibraryAgents        LibraryAgent[]
+  StoreListings        StoreListing[]
+  StoreListingVersions StoreListingVersion[]
+
+  @@id(name: "graphVersionId", [id, version])
+  @@index([userId, isActive])
+  @@index([forkedFromId, forkedFromVersion])
+}
+
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+////////////////   USER SPECIFIC DATA   ////////////////////
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+
+// An AgentPrest is an Agent + User Configuration of that agent.
+// For example, if someone has created a weather agent and they want to set it up to
+// Inform them of extreme weather warnings in Texas, the agent with the configuration to set it to
+// monitor texas, along with the cron setup or webhook tiggers, is an AgentPreset
+model AgentPreset {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  name        String
+  description String
+
+  // For agents that can be triggered by webhooks or cronjob
+  // This bool allows us to disable a configured agent without deleting it
+  isActive Boolean @default(true)
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  agentGraphId      String
+  agentGraphVersion Int
+  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Restrict)
+
+  InputPresets AgentNodeExecutionInputOutput[] @relation("AgentPresetsInputData")
+  Executions   AgentGraphExecution[]
+
+  // For webhook-triggered agents: reference to the webhook that triggers the agent
+  webhookId String?
+  Webhook   IntegrationWebhook? @relation(fields: [webhookId], references: [id])
+
+  isDeleted Boolean @default(false)
+
+  @@index([userId])
+  @@index([agentGraphId, agentGraphVersion])
+  @@index([webhookId])
+}
+
+enum NotificationType {
+  AGENT_RUN
+  ZERO_BALANCE
+  LOW_BALANCE
+  BLOCK_EXECUTION_FAILED
+  CONTINUOUS_AGENT_ERROR
+  DAILY_SUMMARY
+  WEEKLY_SUMMARY
+  MONTHLY_SUMMARY
+  REFUND_REQUEST
+  REFUND_PROCESSED
+}
+
+model NotificationEvent {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  UserNotificationBatch   UserNotificationBatch? @relation(fields: [userNotificationBatchId], references: [id])
+  userNotificationBatchId String?
+
+  type NotificationType
+  data Json
+
+  @@index([userNotificationBatchId])
+}
+
+model UserNotificationBatch {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type NotificationType
+
+  Notifications NotificationEvent[]
+
+  // Each user can only have one batch of a notification type at a time
+  @@unique([userId, type])
+}
+
+// For the library page
+// It is a user controlled list of agents, that they will see in their library
+model LibraryAgent {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  imageUrl String?
+
+  agentGraphId      String
+  agentGraphVersion Int
+  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Restrict)
+
+  creatorId String?
+  Creator   Profile? @relation(fields: [creatorId], references: [id])
+
+  useGraphIsActiveVersion Boolean @default(false)
+
+  isFavorite      Boolean @default(false)
+  isCreatedByUser Boolean @default(false)
+  isArchived      Boolean @default(false)
+  isDeleted       Boolean @default(false)
+
+  @@unique([userId, agentGraphId, agentGraphVersion])
+  @@index([agentGraphId, agentGraphVersion])
+  @@index([creatorId])
+}
+
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+////////   AGENT DEFINITION AND EXECUTION TABLES    ////////
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+
+// This model describes a single node in the Agent Graph/Flow (Multi Agent System).
+model AgentNode {
+  id String @id @default(uuid())
+
+  agentBlockId String
+  AgentBlock   AgentBlock @relation(fields: [agentBlockId], references: [id], onUpdate: Cascade)
+
+  agentGraphId      String
+  agentGraphVersion Int        @default(1)
+  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
+
+  // List of consumed input, that the parent node should provide.
+  Input AgentNodeLink[] @relation("AgentNodeSink")
+
+  // List of produced output, that the child node should be executed.
+  Output AgentNodeLink[] @relation("AgentNodeSource")
+
+  constantInput Json @default("{}")
+
+  // For webhook-triggered blocks: reference to the webhook that triggers the node
+  webhookId String?
+  Webhook   IntegrationWebhook? @relation(fields: [webhookId], references: [id])
+
+  metadata Json @default("{}")
+
+  Executions AgentNodeExecution[]
+
+  @@index([agentGraphId, agentGraphVersion])
+  @@index([agentBlockId])
+  @@index([webhookId])
+}
+
+// This model describes the link between two AgentNodes.
+model AgentNodeLink {
+  id String @id @default(uuid())
+
+  // Output of a node is connected to the source of the link.
+  agentNodeSourceId String
+  AgentNodeSource   AgentNode @relation("AgentNodeSource", fields: [agentNodeSourceId], references: [id], onDelete: Cascade)
+  sourceName        String
+
+  // Input of a node is connected to the sink of the link.
+  agentNodeSinkId String
+  AgentNodeSink   AgentNode @relation("AgentNodeSink", fields: [agentNodeSinkId], references: [id], onDelete: Cascade)
+  sinkName        String
+
+  // Default: the data coming from the source can only be consumed by the sink once, Static: input data will be reused.
+  isStatic Boolean @default(false)
+
+  @@index([agentNodeSourceId])
+  @@index([agentNodeSinkId])
+}
+
+// This model describes a component that will be executed by the AgentNode.
+model AgentBlock {
+  id   String @id @default(uuid())
+  name String @unique
+
+  // We allow a block to have multiple types of input & output.
+  // Serialized object-typed `jsonschema` with top-level properties as input/output name.
+  inputSchema  String
+  outputSchema String
+
+  // Prisma requires explicit back-references.
+  ReferencedByAgentNode AgentNode[]
+}
+
+// This model describes the status of an AgentGraphExecution or AgentNodeExecution.
+enum AgentExecutionStatus {
+  INCOMPLETE
+  QUEUED
+  RUNNING
+  COMPLETED
+  TERMINATED
+  FAILED
+}
+
+// This model describes the execution of an AgentGraph.
+model AgentGraphExecution {
+  id        String    @id @default(uuid())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime? @updatedAt
+  startedAt DateTime?
+
+  isDeleted Boolean @default(false)
+
+  executionStatus AgentExecutionStatus @default(COMPLETED)
+
+  agentGraphId      String
+  agentGraphVersion Int        @default(1)
+  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
+
+  NodeExecutions AgentNodeExecution[]
+
+  // Link to User model -- Executed by this user
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  stats         Json?
+  agentPresetId String?
+  AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
+
+  @@index([agentGraphId, agentGraphVersion])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([agentPresetId])
+}
+
+// This model describes the execution of an AgentNode.
+model AgentNodeExecution {
+  id String @id @default(uuid())
+
+  agentGraphExecutionId String
+  GraphExecution        AgentGraphExecution @relation(fields: [agentGraphExecutionId], references: [id], onDelete: Cascade)
+
+  agentNodeId String
+  Node        AgentNode @relation(fields: [agentNodeId], references: [id], onDelete: Cascade)
+
+  Input  AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionInput")
+  Output AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionOutput")
+
+  executionStatus AgentExecutionStatus @default(COMPLETED)
+  executionData   Json?
+  addedTime       DateTime             @default(now())
+  queuedTime      DateTime?
+  startedTime     DateTime?
+  endedTime       DateTime?
+
+  stats Json?
+
+  @@index([agentGraphExecutionId, agentNodeId, executionStatus])
+  @@index([agentNodeId, executionStatus])
+  @@index([addedTime, queuedTime])
+}
+
+// This model describes the output of an AgentNodeExecution.
+model AgentNodeExecutionInputOutput {
+  id String @id @default(uuid())
+
+  name String
+  data Json?
+  time DateTime @default(now())
+
+  // Prisma requires explicit back-references.
+  referencedByInputExecId  String?
+  ReferencedByInputExec    AgentNodeExecution? @relation("AgentNodeExecutionInput", fields: [referencedByInputExecId], references: [id], onDelete: Cascade)
+  referencedByOutputExecId String?
+  ReferencedByOutputExec   AgentNodeExecution? @relation("AgentNodeExecutionOutput", fields: [referencedByOutputExecId], references: [id], onDelete: Cascade)
+
+  agentPresetId String?
+  AgentPreset   AgentPreset? @relation("AgentPresetsInputData", fields: [agentPresetId], references: [id])
+
+  // Input and Output pin names are unique for each AgentNodeExecution.
+  @@unique([referencedByInputExecId, referencedByOutputExecId, name])
+  @@index([referencedByOutputExecId])
+  // Composite index for `upsert_execution_input`.
+  @@index([name, time])
+  @@index([agentPresetId])
+}
+
+model AgentNodeExecutionKeyValueData {
+  userId               String
+  key                  String
+  agentNodeExecutionId String
+  data                 Json?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime? @updatedAt
+
+  @@id([userId, key])
+}
+
+// Webhook that is registered with a provider and propagates to one or more nodes
+model IntegrationWebhook {
+  id        String    @id @default(uuid())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime? @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Restrict) // Webhooks must be deregistered before deleting
+
+  provider      String // e.g. 'github'
+  credentialsId String // relation to the credentials that the webhook was created with
+  webhookType   String // e.g. 'repo'
+  resource      String // e.g. 'Significant-Gravitas/AutoGPT'
+  events        String[] // e.g. ['created', 'updated']
+  config        Json
+  secret        String // crypto string, used to verify payload authenticity
+
+  providerWebhookId String // Webhook ID assigned by the provider
+
+  AgentNodes   AgentNode[]
+  AgentPresets AgentPreset[]
+}
+
+model AnalyticsDetails {
+  // PK uses gen_random_uuid() to allow the db inserts to happen outside of prisma
+  // typical uuid() inserts are handled by prisma
+  id String @id @default(dbgenerated("gen_random_uuid()"))
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // Link to User model
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Analytics Categorical data used for filtering (indexable w and w/o userId)
+  type String
+
+  // Analytic Specific Data. We should use a union type here, but prisma doesn't support it.
+  data Json?
+
+  // Indexable field for any count based analytical measures like page order clicking, tutorial step completion, etc.
+  dataIndex String?
+
+  @@index([userId, type])
+}
+
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+//////////////   METRICS TRACKING TABLES    ////////////////
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+model AnalyticsMetrics {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Analytics Categorical data used for filtering (indexable w and w/o userId)
+  analyticMetric String
+  // Any numeric data that should be counted upon, summed, or otherwise aggregated.
+  value          Float
+  // Any string data that should be used to identify the metric as distinct.
+  // ex: '/build' vs '/market'
+  dataString     String?
+
+  // Link to User model
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+////////   ACCOUNTING AND CREDIT SYSTEM TABLES    //////////
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+
+enum CreditTransactionType {
+  TOP_UP
+  USAGE
+  GRANT
+  REFUND
+  CARD_CHECK
+}
+
+model CreditTransaction {
+  transactionKey String   @default(uuid())
+  createdAt      DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  amount Int
+  type   CreditTransactionType
+
+  runningBalance Int?
+
+  isActive Boolean @default(true)
+  metadata Json?
+
+  @@id(name: "creditTransactionIdentifier", [transactionKey, userId])
+  @@index([userId, createdAt])
+}
+
+enum CreditRefundRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model CreditRefundRequest {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId         String
+  transactionKey String
+
+  amount Int
+  reason String
+  result String?
+  status CreditRefundRequestStatus @default(PENDING)
+
+  @@index([userId, transactionKey])
+}
+
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+//////////////   Store TABLES    ///////////////////////////
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+
+model Profile {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // Only 1 of user or group can be set.
+  // The user this profile belongs to, if any.
+  userId String?
+  User   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name        String
+  username    String @unique
+  description String
+
+  links String[]
+
+  avatarUrl String?
+
+  isFeatured Boolean @default(false)
+
+  LibraryAgents LibraryAgent[]
+
+  @@index([userId])
+}
+
+view Creator {
+  username    String @unique
+  name        String
+  avatar_url  String
+  description String
+
+  top_categories String[]
+  links          String[]
+
+  num_agents   Int
+  agent_rating Float
+  agent_runs   Int
+  is_featured  Boolean
+
+  // Materialized views used (refreshed every 15 minutes via pg_cron):
+  // - mv_agent_run_counts - Pre-aggregated agent execution counts by agentGraphId
+  //   * idx_mv_agent_run_counts (UNIQUE on agentGraphId) - Primary lookup
+  // - mv_review_stats - Pre-aggregated review statistics (count, avg rating) by storeListingId
+  //   * idx_mv_review_stats (UNIQUE on storeListingId) - Primary lookup
+  //   * idx_mv_review_stats_rating (avg_rating DESC) - Sort by rating performance
+  //   * idx_mv_review_stats_count (review_count DESC) - Sort by review count performance
+  //
+  // Query strategy: Uses CTEs to efficiently aggregate creator statistics leveraging materialized views
+}
+
+view StoreAgent {
+  listing_id            String   @id
+  storeListingVersionId String
+  updated_at            DateTime
+
+  slug        String
+  agent_name  String
+  agent_video String?
+  agent_image String[]
+
+  featured         Boolean  @default(false)
+  creator_username String
+  creator_avatar   String
+  sub_heading      String
+  description      String
+  categories       String[]
+  runs             Int
+  rating           Float
+  versions         String[]
+
+  // Materialized views used (refreshed every 15 minutes via pg_cron):
+  // - mv_agent_run_counts - Pre-aggregated agent execution counts by agentGraphId
+  //   * idx_mv_agent_run_counts (UNIQUE on agentGraphId) - Primary lookup
+  // - mv_review_stats - Pre-aggregated review statistics (count, avg rating) by storeListingId
+  //   * idx_mv_review_stats (UNIQUE on storeListingId) - Primary lookup
+  //   * idx_mv_review_stats_rating (avg_rating DESC) - Sort by rating performance
+  //   * idx_mv_review_stats_count (review_count DESC) - Sort by review count performance
+  //
+  // Query strategy: Uses CTE for version aggregation and joins with materialized views for performance
+}
+
+view StoreSubmission {
+  listing_id               String           @id
+  user_id                  String
+  slug                     String
+  name                     String
+  sub_heading              String
+  description              String
+  image_urls               String[]
+  date_submitted           DateTime
+  status                   SubmissionStatus
+  runs                     Int
+  rating                   Float
+  agent_id                 String
+  agent_version            Int
+  store_listing_version_id String
+  reviewer_id              String?
+  review_comments          String?
+  internal_comments        String?
+  reviewed_at              DateTime?
+  changes_summary          String?
+
+  // Index or unique are not applied to views
+}
+
+// Note: This is actually a MATERIALIZED VIEW in the database
+// Refreshed automatically every 15 minutes via pg_cron (with fallback to manual refresh)
+view mv_agent_run_counts {
+  agentGraphId String @unique
+  run_count    Int
+
+  // Pre-aggregated count of AgentGraphExecution records by agentGraphId
+  // Used by StoreAgent and Creator views for performance optimization
+  // Unique index created automatically on agentGraphId for fast lookups
+  // Refresh uses CONCURRENTLY to avoid blocking reads
+}
+
+// Note: This is actually a MATERIALIZED VIEW in the database
+// Refreshed automatically every 15 minutes via pg_cron (with fallback to manual refresh)
+view mv_review_stats {
+  storeListingId String @unique
+  review_count   Int
+  avg_rating     Float
+
+  // Pre-aggregated review statistics from StoreListingReview
+  // Includes count of reviews and average rating per StoreListing
+  // Only includes approved versions (submissionStatus = 'APPROVED') and non-deleted listings
+  // Used by StoreAgent view for performance optimization
+  // Unique index created automatically on storeListingId for fast lookups
+  // Refresh uses CONCURRENTLY to avoid blocking reads
+}
+
+model StoreListing {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  isDeleted          Boolean @default(false)
+  // Whether any version has been approved and is available for display
+  hasApprovedVersion Boolean @default(false)
+
+  // URL-friendly identifier for this agent (moved from StoreListingVersion)
+  slug String
+
+  // The currently active version that should be shown to users
+  activeVersionId String?              @unique
+  ActiveVersion   StoreListingVersion? @relation("ActiveVersion", fields: [activeVersionId], references: [id])
+
+  // The agent link here is only so we can do lookup on agentId
+  agentGraphId      String
+  agentGraphVersion Int
+  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
+
+  owningUserId String
+  OwningUser   User   @relation(fields: [owningUserId], references: [id])
+
+  // Relations
+  Versions StoreListingVersion[] @relation("ListingVersions")
+
+  // Unique index on agentId to ensure only one listing per agent, regardless of number of versions the agent has.
+  @@unique([agentGraphId])
+  @@unique([owningUserId, slug])
+  // Used in the view query
+  @@index([isDeleted, hasApprovedVersion])
+  @@index([agentGraphId, agentGraphVersion])
+}
+
+model StoreListingVersion {
+  id        String   @id @default(uuid())
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // The agent and version to be listed on the store
+  agentGraphId      String
+  agentGraphVersion Int
+  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version])
+
+  // Content fields
+  name        String
+  subHeading  String
+  videoUrl    String?
+  imageUrls   String[]
+  description String
+  categories  String[]
+
+  isFeatured Boolean @default(false)
+
+  isDeleted   Boolean @default(false)
+  // Old versions can be made unavailable by the author if desired
+  isAvailable Boolean @default(true)
+
+  // Version workflow state
+  submissionStatus SubmissionStatus @default(DRAFT)
+  submittedAt      DateTime?
+
+  // Relations
+  storeListingId String
+  StoreListing   StoreListing @relation("ListingVersions", fields: [storeListingId], references: [id], onDelete: Cascade)
+
+  // This version might be the active version for a listing
+  ActiveFor StoreListing? @relation("ActiveVersion")
+
+  // Submission history
+  changesSummary String?
+
+  // Review information
+  reviewerId       String?
+  Reviewer         User?     @relation(fields: [reviewerId], references: [id])
+  internalComments String? // Private notes for admin use only
+  reviewComments   String? // Comments visible to creator
+  reviewedAt       DateTime?
+
+  // Reviews for this specific version
+  Reviews StoreListingReview[]
+
+  @@unique([storeListingId, version])
+  @@index([storeListingId, submissionStatus, isAvailable])
+  @@index([submissionStatus])
+  @@index([reviewerId])
+  @@index([agentGraphId, agentGraphVersion]) // Non-unique index for efficient lookups
+}
+
+model StoreListingReview {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  storeListingVersionId String
+  StoreListingVersion   StoreListingVersion @relation(fields: [storeListingVersionId], references: [id], onDelete: Cascade)
+
+  reviewByUserId String
+  ReviewByUser   User   @relation(fields: [reviewByUserId], references: [id])
+
+  score    Int
+  comments String?
+
+  @@unique([storeListingVersionId, reviewByUserId])
+  @@index([reviewByUserId])
+}
+
+enum SubmissionStatus {
+  DRAFT // Being prepared, not yet submitted
+  PENDING // Submitted, awaiting review
+  APPROVED // Reviewed and approved
+  REJECTED // Reviewed and rejected
+}
+
+enum APIKeyPermission {
+  EXECUTE_GRAPH // Can execute agent graphs
+  READ_GRAPH // Can get graph versions and details
+  EXECUTE_BLOCK // Can execute individual blocks
+  READ_BLOCK // Can get block information
+}
+
+model APIKey {
+  id          String             @id @default(uuid())
+  name        String
+  prefix      String // First 8 chars for identification
+  postfix     String
+  key         String             @unique // Hashed key
+  status      APIKeyStatus       @default(ACTIVE)
+  permissions APIKeyPermission[]
+
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  description String?
+
+  // Relation to user
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([prefix, name])
+  @@index([userId, status])
+}
+
+enum APIKeyStatus {
+  ACTIVE
+  REVOKED
+  SUSPENDED
+}

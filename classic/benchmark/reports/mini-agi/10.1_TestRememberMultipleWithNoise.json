@@ -1,0 +1,30 @@
+{
+  "command": "agbenchmark start --test TestRememberMultipleWithNoise",
+  "completion_time": "2023-07-17-21:24",
+  "metrics": {
+    "run_time": "77.71 seconds",
+    "highest_difficulty": "intermediate: 4"
+  },
+  "tests": {
+    "TestRememberMultipleWithNoise": {
+      "data_path": "agbenchmark/challenges/memory/m3",
+      "is_regression": false,
+      "task": "Follow the instructions in the instructions_1.txt file",
+      "answer": "3145\n3791\n9317\n9471",
+      "description": "Tests ability for the agent to remember information between each action. Multiple ids are presented in different files and the last file instructs the agent to write these ids into another file. Some noise is also added to the files to test the agent's ability to filter out noise.",
+      "metrics": {
+        "difficulty": "intermediate",
+        "success": true,
+        "success_%": 50.0,
+        "run_time": "77.397 seconds"
+      },
+      "reached_cutoff": true
+    }
+  },
+  "config": {
+    "workspace": "${os.path.join(Path.home(), 'miniagi')}"
+  },
+  "additional": {
+    "model": "gpt-4"
+  }
+}

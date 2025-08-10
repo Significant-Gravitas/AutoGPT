@@ -1,23 +1,17 @@
 ## Original ignores
-autogpt/keys.py
-autogpt/*json
-autogpt/node_modules/
-autogpt/__pycache__/keys.cpython-310.pyc
-autogpt/auto_gpt_workspace
-package-lock.json
-*.pyc
+.github_access_token
+classic/original_autogpt/keys.py
+classic/original_autogpt/*.json
 auto_gpt_workspace/*
 *.mpeg
 .env
 azure.yaml
-ai_settings.yaml
-last_run_ai_settings.yaml
 .vscode
 .idea/*
 auto-gpt.json
 log.txt
 log-ingestion.txt
-logs
+/logs
 *.log
 *.mp3
 mem.sqlite3
@@ -33,14 +27,11 @@ __pycache__/
 
 # Distribution / packaging
 .Python
-build/
 develop-eggs/
 dist/
-plugins/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
 parts/
 sdist/
@@ -164,3 +155,25 @@ openai/
 
 # news
 CURRENT_BULLETIN.md
+
+# AgBenchmark
+classic/benchmark/agbenchmark/reports/
+
+# Nodejs
+package-lock.json
+
+
+# Allow for locally private items
+# private
+pri*
+# ignore
+ig*
+.github_access_token
+LICENSE.rtf
+autogpt_platform/backend/settings.py
+/.auth
+/autogpt_platform/frontend/.auth
+
+*.ign.*
+.test-contents
+.claude/settings.local.json

@@ -1,0 +1,31 @@
+{
+    "category": [
+        "scrape_synthesize",
+        "general"
+    ],
+    "cutoff": 60,
+    "dependencies": [
+        "TestSearch"
+    ],
+    "eval_id": "cd96e6b2-779d-4a4a-8367-d520023e27ae",
+    "ground": {
+        "answer": "\u00a325.89",
+        "eval": {
+            "type": "file"
+        },
+        "files": [
+            ".txt"
+        ],
+        "should_contain": [
+            "25.89"
+        ],
+        "should_not_contain": []
+    },
+    "info": {
+        "description": "Tests if the agent can retrieve a specific information from a website.",
+        "difficulty": "basic",
+        "side_effects": []
+    },
+    "name": "BasicRetrieval",
+    "task": "Write the price of the book in this url 'http://books.toscrape.com/catalogue/meditations_33/index.html' to a .txt file."
+}
