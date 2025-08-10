@@ -31,7 +31,13 @@ from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
 from backend.util.metrics import discord_send_alert
 from backend.util.retry import continuous_retry
-from backend.util.service import AppService, AppServiceClient, endpoint_to_sync, expose
+from backend.util.service import (
+    AppService,
+    AppServiceClient,
+    UnhealthyServiceError,
+    endpoint_to_sync,
+    expose,
+)
 from backend.util.settings import Settings
 
 logger = TruncatedLogger(logging.getLogger(__name__), "[NotificationManager]")
@@ -182,16 +188,24 @@ class NotificationManager(AppService):
     @property
     def rabbit(self) -> rabbitmq.AsyncRabbitMQ:
         """Access the RabbitMQ service. Will raise if not configured."""
-        if not self.rabbitmq_service:
-            raise RuntimeError("RabbitMQ not configured for this service")
+        if not hasattr(self, "rabbitmq_service") or not self.rabbitmq_service:
+            raise UnhealthyServiceError("RabbitMQ not configured for this service")
         return self.rabbitmq_service
 
     @property
     def rabbit_config(self) -> rabbitmq.RabbitMQConfig:
         """Access the RabbitMQ config. Will raise if not configured."""
         if not self.rabbitmq_config:
-            raise RuntimeError("RabbitMQ not configured for this service")
+            raise UnhealthyServiceError("RabbitMQ not configured for this service")
         return self.rabbitmq_config
+
+    async def health_check(self) -> str:
+        # Service is unhealthy if RabbitMQ is not ready
+        if not hasattr(self, "rabbitmq_service") or not self.rabbitmq_service:
+            raise UnhealthyServiceError("RabbitMQ not configured for this service")
+        if not self.rabbitmq_service.is_ready:
+            raise UnhealthyServiceError("RabbitMQ channel is not ready")
+        return await super().health_check()
 
     @classmethod
     def get_port(cls) -> int:

@@ -30,6 +30,12 @@ poetry run test
 # Run specific test
 poetry run pytest path/to/test_file.py::test_function_name
 
+# Run block tests (tests that validate all blocks work correctly)
+poetry run pytest backend/blocks/test/test_block.py -xvs
+
+# Run tests for a specific block (e.g., GetCurrentTimeBlock)
+poetry run pytest 'backend/blocks/test/test_block.py::test_available_blocks[GetCurrentTimeBlock]' -xvs
+
 # Lint and format
 # prefer format if you want to just "fix" it and only get the errors that can't be autofixed
 poetry run format  # Black + isort
@@ -121,6 +127,9 @@ Key models (defined in `/backend/schema.prisma`):
 4. Implement `run` method
 5. Register in block registry
 6. Generate the block uuid using `uuid.uuid4()`
+
+Note: when making many new blocks analyze the interfaces for each of these blcoks and picture if they would go well together in a graph based editor or would they struggle to connect productively?
+ex: do the inputs and outputs tie well together?
 
 **Modifying the API:**
 1. Update route in `/backend/backend/server/routers/`

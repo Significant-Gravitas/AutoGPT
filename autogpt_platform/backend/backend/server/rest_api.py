@@ -42,6 +42,8 @@ from backend.integrations.providers import ProviderName
 from backend.server.external.api import external_app
 from backend.server.middleware.security import SecurityHeadersMiddleware
 from backend.util import json
+from backend.util.cloud_storage import shutdown_cloud_storage_handler
+from backend.util.service import UnhealthyServiceError
 
 settings = backend.util.settings.Settings()
 logger = logging.getLogger(__name__)
@@ -77,6 +79,12 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.graph.migrate_llm_models(LlmModel.GPT4O)
     with launch_darkly_context():
         yield
+
+    try:
+        await shutdown_cloud_storage_handler()
+    except Exception as e:
+        logger.warning(f"Error shutting down cloud storage handler: {e}")
+
     await backend.data.db.disconnect()
 
 
@@ -230,7 +238,7 @@ app.mount("/external-api", external_app)
 @app.get(path="/health", tags=["health"], dependencies=[])
 async def health():
     if not backend.data.db.is_connected():
-        raise RuntimeError("Database is not connected")
+        raise UnhealthyServiceError("Database is not connected")
     return {"status": "healthy"}
 
 
