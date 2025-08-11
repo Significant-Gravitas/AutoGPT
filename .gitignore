@@ -7,6 +7,8 @@ auto_gpt_workspace/*
 # Ignore .env files
 autogpt_platform/backend/.env
 autogpt_platform/backend/.env.docker
+autogpt_platform/frontend/.env
+autogpt_platform/frontend/.env.local
 autogpt_platform/db/.env
 autogpt_platform/.env
 classic/original_autogpt/.env
