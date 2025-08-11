@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from typing import TYPE_CHECKING, Any, Dict, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from backend.executor import DatabaseManagerAsyncClient
@@ -112,7 +112,9 @@ class AutoModManager:
             return None
 
         except asyncio.TimeoutError:
-            logger.warning(f"Input moderation timed out for graph execution {graph_exec.graph_exec_id}, bypassing moderation")
+            logger.warning(
+                f"Input moderation timed out for graph execution {graph_exec.graph_exec_id}, bypassing moderation"
+            )
             return None  # Bypass moderation on timeout
         except Exception as e:
             logger.warning(f"Input moderation execution failed: {e}")
@@ -192,7 +194,9 @@ class AutoModManager:
             return None
 
         except asyncio.TimeoutError:
-            logger.warning(f"Output moderation timed out for graph execution {graph_exec_id}, bypassing moderation")
+            logger.warning(
+                f"Output moderation timed out for graph execution {graph_exec_id}, bypassing moderation"
+            )
             return None  # Bypass moderation on timeout
         except Exception as e:
             logger.warning(f"Output moderation execution failed: {e}")
@@ -264,15 +268,20 @@ class AutoModManager:
         updated_execs = await asyncio.gather(*exec_updates)
 
         # Send all websocket updates in parallel
-        await asyncio.gather(*[send_async_execution_update(updated_exec) for updated_exec in updated_execs])
+        await asyncio.gather(
+            *[
+                send_async_execution_update(updated_exec)
+                for updated_exec in updated_execs
+            ]
+        )
 
     async def _moderate_content(self, content: str, metadata: dict[str, Any]) -> bool:
         """Moderate content using AutoMod API
-        
+
         Returns:
             True: Content approved or timeout occurred
             False: Content rejected by moderation
-        
+
         Raises:
             asyncio.TimeoutError: When moderation times out (should be bypassed)
         """
@@ -298,7 +307,9 @@ class AutoModManager:
 
         except asyncio.TimeoutError:
             # Re-raise timeout to be handled by calling methods
-            logger.warning(f"AutoMod API timeout for {metadata.get('graph_exec_id', 'unknown')}")
+            logger.warning(
+                f"AutoMod API timeout for {metadata.get('graph_exec_id', 'unknown')}"
+            )
             raise
         except Exception as e:
             logger.error(f"AutoMod moderation error: {e}")

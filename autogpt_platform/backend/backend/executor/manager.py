@@ -771,7 +771,9 @@ class ExecutionProcessor:
                 ).result(timeout=30.0):
                     raise moderation_error
             except asyncio.TimeoutError:
-                log_metadata.warning(f"Input moderation timed out for graph execution {graph_exec.graph_exec_id}, bypassing moderation and continuing execution")
+                log_metadata.warning(
+                    f"Input moderation timed out for graph execution {graph_exec.graph_exec_id}, bypassing moderation and continuing execution"
+                )
                 # Continue execution without moderation
 
             # ------------------------------------------------------------
@@ -926,7 +928,9 @@ class ExecutionProcessor:
                 ).result(timeout=30.0):
                     raise moderation_error
             except asyncio.TimeoutError:
-                log_metadata.warning(f"Output moderation timed out for graph execution {graph_exec.graph_exec_id}, bypassing moderation and continuing execution")
+                log_metadata.warning(
+                    f"Output moderation timed out for graph execution {graph_exec.graph_exec_id}, bypassing moderation and continuing execution"
+                )
                 # Continue execution without moderation
 
             # Determine final execution status based on whether there was an error or termination
