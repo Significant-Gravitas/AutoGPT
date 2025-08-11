@@ -70,7 +70,6 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
               <Image
                 src={profileData.avatar_url}
                 alt="Profile"
-                data-testid="profile-info-form-profile-photo"
                 fill
                 className="rounded-full"
               />
@@ -83,7 +82,6 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
               type="file"
               accept="image/*"
               className="hidden"
-              data-testid="profile-info-form-edit-photo"
               onChange={async (e) => {
                 const file = e.target.files?.[0];
                 if (file) {
@@ -97,12 +95,16 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
 
         <form className="space-y-4 sm:space-y-6" onSubmit={submitForm}>
           <div className="w-full">
-            <label className="font-circular mb-1.5 block text-base font-normal leading-tight text-neutral-700 dark:text-neutral-300">
+            <label
+              htmlFor="displayName"
+              className="font-circular mb-1.5 block text-base font-normal leading-tight text-neutral-700 dark:text-neutral-300"
+            >
               Display name
             </label>
             <div className="rounded-[55px] border border-slate-200 px-4 py-2.5 dark:border-slate-700 dark:bg-slate-800">
               <input
                 type="text"
+                id="displayName"
                 name="displayName"
                 data-testid="profile-info-form-display-name"
                 defaultValue={profileData.name}
@@ -120,14 +122,17 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
           </div>
 
           <div className="w-full">
-            <label className="font-circular mb-1.5 block text-base font-normal leading-tight text-neutral-700 dark:text-neutral-300">
+            <label
+              htmlFor="handle"
+              className="font-circular mb-1.5 block text-base font-normal leading-tight text-neutral-700 dark:text-neutral-300"
+            >
               Handle
             </label>
             <div className="rounded-[55px] border border-slate-200 px-4 py-2.5 dark:border-slate-700 dark:bg-slate-800">
               <input
                 type="text"
                 name="handle"
-                data-testid="profile-info-form-handle"
+                id="handle"
                 defaultValue={profileData.username}
                 placeholder="@username"
                 className="font-circular w-full border-none bg-transparent text-base font-normal text-neutral-900 placeholder:text-neutral-400 focus:outline-none dark:text-white dark:placeholder:text-neutral-500"
@@ -143,13 +148,16 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
           </div>
 
           <div className="w-full">
-            <label className="font-circular mb-1.5 block text-base font-normal leading-tight text-neutral-700 dark:text-neutral-300">
+            <label
+              htmlFor="bio"
+              className="font-circular mb-1.5 block text-base font-normal leading-tight text-neutral-700 dark:text-neutral-300"
+            >
               Bio
             </label>
             <div className="h-[220px] rounded-2xl border border-slate-200 py-2.5 pl-4 pr-4 dark:border-slate-700 dark:bg-slate-800">
               <textarea
                 name="bio"
-                data-testid="profile-info-form-bio"
+                id="bio"
                 defaultValue={profileData.description}
                 placeholder="Tell us about yourself..."
                 className="font-circular h-full w-full resize-none border-none bg-transparent text-base font-normal text-neutral-900 placeholder:text-neutral-400 focus:outline-none dark:text-white dark:placeholder:text-neutral-500"
@@ -177,14 +185,17 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
                 const link = profileData.links[linkNum - 1];
                 return (
                   <div key={linkNum} className="w-full">
-                    <label className="font-circular mb-1.5 block text-base font-normal leading-tight text-neutral-700 dark:text-neutral-300">
+                    <label
+                      htmlFor={`link${linkNum}`}
+                      className="font-circular mb-1.5 block text-base font-normal leading-tight text-neutral-700 dark:text-neutral-300"
+                    >
                       Link {linkNum}
                     </label>
                     <div className="rounded-[55px] border border-slate-200 px-4 py-2.5 dark:border-slate-700 dark:bg-slate-800">
                       <input
                         type="text"
                         name={`link${linkNum}`}
-                        data-testid={`profile-info-form-link${linkNum}`}
+                        id={`link${linkNum}`}
                         placeholder="https://"
                         defaultValue={link || ""}
                         className="font-circular w-full border-none bg-transparent text-base font-normal text-neutral-900 placeholder:text-neutral-400 focus:outline-none dark:text-white dark:placeholder:text-neutral-500"
@@ -208,8 +219,8 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
           <Separator />
 
           <div className="flex h-[50px] items-center justify-end gap-3 py-8">
-            <Button
-              data-testid="profile-info-form-cancel"
+            {/* FRONTEND-TODO: Need to fix it */}
+            {/* <Button
               type="button"
               variant="secondary"
               className="font-circular h-[50px] rounded-[35px] bg-neutral-200 px-6 py-3 text-base font-medium text-neutral-800 transition-colors hover:bg-neutral-300 dark:border-neutral-700 dark:bg-neutral-700 dark:text-neutral-200 dark:hover:border-neutral-600 dark:hover:bg-neutral-600"
@@ -218,9 +229,8 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
               }}
             >
               Cancel
-            </Button>
+            </Button> */}
             <Button
-              data-testid="profile-info-form-save"
               type="submit"
               disabled={isSubmitting}
               className="font-circular h-[50px] rounded-[35px] bg-neutral-800 px-6 py-3 text-base font-medium text-white transition-colors hover:bg-neutral-900 dark:bg-neutral-200 dark:text-neutral-900 dark:hover:bg-neutral-100"

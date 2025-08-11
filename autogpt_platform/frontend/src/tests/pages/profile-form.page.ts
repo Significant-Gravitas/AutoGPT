@@ -25,37 +25,35 @@ export class ProfileFormPage extends BasePage {
     return this.getId("profile-info-form-title");
   }
 
-  profilePhoto(): Locator {
-    return this.getId("profile-info-form-profile-photo");
-  }
-
-  editPhotoInput(): Locator {
-    return this.getId("profile-info-form-edit-photo");
-  }
-
   displayNameField(): Locator {
-    return this.getId("profile-info-form-display-name");
+    const { getField } = getSelectors(this.page);
+    return getField("Display name");
   }
 
   handleField(): Locator {
-    return this.getId("profile-info-form-handle");
+    const { getField } = getSelectors(this.page);
+    return getField("Handle");
   }
 
   bioField(): Locator {
-    return this.getId("profile-info-form-bio");
+    const { getField } = getSelectors(this.page);
+    return getField("Bio");
   }
 
   linkField(index: number): Locator {
     this.assertValidLinkIndex(index);
-    return this.getId(`profile-info-form-link${index}`);
+    const { getField } = getSelectors(this.page);
+    return getField(`Link ${index}`);
   }
 
   cancelButton(): Locator {
-    return this.getId("profile-info-form-cancel");
+    const { getButton } = getSelectors(this.page);
+    return getButton("Cancel");
   }
 
   saveButton(): Locator {
-    return this.getId("profile-info-form-save");
+    const { getButton } = getSelectors(this.page);
+    return getButton("Save changes");
   }
 
   // State
@@ -74,10 +72,6 @@ export class ProfileFormPage extends BasePage {
   }
 
   // Actions
-  async uploadPhoto(filePath: string): Promise<void> {
-    await this.editPhotoInput().setInputFiles(filePath);
-  }
-
   async setDisplayName(name: string): Promise<void> {
     await this.displayNameField().fill(name);
   }
@@ -132,14 +126,15 @@ export class ProfileFormPage extends BasePage {
   }
 
   async waitForSaveComplete(timeoutMs: number = 15_000): Promise<void> {
-    await this.page.waitForSelector(
-      '[data-testid="profile-info-form-save"]:not([disabled])',
-      { timeout: timeoutMs },
-    );
-    await this.page.waitForSelector(
-      '[data-testid="profile-info-form-save"]:not(:has-text("Saving..."))',
-      { timeout: timeoutMs },
-    );
+    const { getButton } = getSelectors(this.page);
+    await getButton("Save changes").waitFor({
+      state: "attached",
+      timeout: timeoutMs,
+    });
+    await getButton("Save changes").waitFor({
+      state: "visible",
+      timeout: timeoutMs,
+    });
   }
 
   private assertValidLinkIndex(index: number) {

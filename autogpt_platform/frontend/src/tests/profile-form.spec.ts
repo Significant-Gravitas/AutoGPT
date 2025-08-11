@@ -53,11 +53,6 @@ test.describe("Profile Form", () => {
     await profileFormPage.setHandle(newHandle);
     await profileFormPage.setBio(newBio);
     await profileFormPage.setLinks(newLinks);
-
-    try {
-      await page.keyboard.press("Escape");
-    } catch {}
-
     await profileFormPage.saveChanges();
 
     expect(await profileFormPage.getDisplayName()).toBe(newDisplayName);
