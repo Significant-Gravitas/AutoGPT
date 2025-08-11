@@ -109,6 +109,23 @@ async def _fetch_user_context_data(user_id: str) -> dict[str, Any]:
     return _build_launchdarkly_context(user)
 
 
+def _add_role_to_attributes(
+    attrs: dict[str, Any], user_role: str, existing_segments: Optional[list[str]] = None
+) -> dict[str, Any]:
+    """Add user role to attributes and segments, avoiding duplication."""
+    attrs["role"] = user_role
+
+    # Get existing segments from attrs or use provided existing_segments
+    segments = attrs.get("segments", existing_segments or [])
+    if not isinstance(segments, list):
+        segments = [user_role] if segments else [user_role]
+    else:
+        segments.append(user_role)
+
+    attrs["segments"] = list(set(segments))  # Remove duplicates
+    return attrs
+
+
 def _build_launchdarkly_context(user: "User") -> dict[str, Any]:
     """
     Build LaunchDarkly context data with segments from user object.
@@ -227,17 +244,9 @@ async def is_feature_enabled(
 
         if use_user_id_only:
             # Simple context with just user ID (for backward compatibility)
-            # But still add role if provided
             attrs = additional_attributes or {}
             if user_role:
-                attrs["role"] = user_role
-                # Also add role as a segment for LaunchDarkly targeting
-                segments = attrs.get("segments", [])
-                if isinstance(segments, list):
-                    segments.append(user_role)
-                else:
-                    segments = [user_role]
-                attrs["segments"] = list(set(segments))  # Remove duplicates
+                attrs = _add_role_to_attributes(attrs, user_role)
             context = create_context(str(user_id), attrs)
         else:
             # Full context with user segments and metadata from database
@@ -255,13 +264,9 @@ async def is_feature_enabled(
             # Merge additional attributes and role
             attrs = additional_attributes or {}
             if user_role:
-                attrs["role"] = user_role
-                # Add role to segments if we have them
-                if "segments" in user_data:
-                    user_data["segments"].append(user_role)
-                    user_data["segments"] = list(set(user_data["segments"]))
-                else:
-                    user_data["segments"] = [user_role]
+                attrs = _add_role_to_attributes(
+                    attrs, user_role, user_data.get("segments")
+                )
 
             # Merge attributes with user data
             final_attrs = {**user_data, **attrs}
