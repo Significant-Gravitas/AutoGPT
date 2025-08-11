@@ -13,14 +13,7 @@ const MILLISECONDS_PER_MINUTE = SECONDS_PER_MINUTE * MILLISECONDS_PER_SECOND;
 const MILLISECONDS_PER_HOUR = MINUTES_PER_HOUR * MILLISECONDS_PER_MINUTE;
 const MILLISECONDS_PER_DAY = HOURS_PER_DAY * MILLISECONDS_PER_HOUR;
 const MILLISECONDS_PER_WEEK = DAYS_PER_WEEK * MILLISECONDS_PER_DAY;
-
-// Display constants
 const SHORT_DURATION_THRESHOLD_SECONDS = 5;
-
-// State sanity limits - keep only most recent executions to prevent unbounded growth
-const MAX_ACTIVE_EXECUTIONS_IN_STATE = 200; // Most important - these are running
-const MAX_RECENT_COMPLETIONS_IN_STATE = 100;
-const MAX_RECENT_FAILURES_IN_STATE = 100;
 
 export function formatTimeAgo(dateStr: string): string {
   const date = new Date(dateStr);
@@ -210,17 +203,15 @@ export function categorizeExecutions(
   );
 
   // Filter and limit each category to prevent unbounded state growth
-  const activeExecutions = enrichedExecutions
-    .filter(isActiveExecution)
-    .slice(0, MAX_ACTIVE_EXECUTIONS_IN_STATE);
+  const activeExecutions = enrichedExecutions.filter(isActiveExecution);
 
-  const recentCompletions = enrichedExecutions
-    .filter((execution) => isRecentCompletion(execution, oneWeekAgo))
-    .slice(0, MAX_RECENT_COMPLETIONS_IN_STATE);
+  const recentCompletions = enrichedExecutions.filter((execution) =>
+    isRecentCompletion(execution, oneWeekAgo),
+  );
 
-  const recentFailures = enrichedExecutions
-    .filter((execution) => isRecentFailure(execution, oneWeekAgo))
-    .slice(0, MAX_RECENT_FAILURES_IN_STATE);
+  const recentFailures = enrichedExecutions.filter((execution) =>
+    isRecentFailure(execution, oneWeekAgo),
+  );
 
   return {
     activeExecutions,
@@ -263,20 +254,11 @@ export function addExecutionToCategory(
   const newState = { ...state };
 
   if (isActiveExecution(execution)) {
-    newState.activeExecutions = [execution, ...newState.activeExecutions].slice(
-      0,
-      MAX_ACTIVE_EXECUTIONS_IN_STATE,
-    );
+    newState.activeExecutions = [execution, ...newState.activeExecutions];
   } else if (isRecentCompletion(execution, oneWeekAgo)) {
-    newState.recentCompletions = [
-      execution,
-      ...newState.recentCompletions,
-    ].slice(0, MAX_RECENT_COMPLETIONS_IN_STATE);
+    newState.recentCompletions = [execution, ...newState.recentCompletions];
   } else if (isRecentFailure(execution, oneWeekAgo)) {
-    newState.recentFailures = [execution, ...newState.recentFailures].slice(
-      0,
-      MAX_RECENT_FAILURES_IN_STATE,
-    );
+    newState.recentFailures = [execution, ...newState.recentFailures];
   }
 
   return newState;
