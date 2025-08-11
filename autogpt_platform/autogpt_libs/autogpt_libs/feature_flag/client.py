@@ -1,9 +1,14 @@
 import contextlib
 import logging
 from functools import wraps
-from typing import Any, Awaitable, Callable, Optional, TypeVar
+from json import JSONDecodeError
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional, TypeVar
+
+if TYPE_CHECKING:
+    from backend.data.model import User
 
 import ldclient
+from backend.util.json import loads as json_loads
 from fastapi import HTTPException
 from ldclient import Context, LDClient
 from ldclient.config import Config
@@ -104,7 +109,7 @@ async def _fetch_user_context_data(user_id: str) -> dict[str, Any]:
     return _build_launchdarkly_context(user)
 
 
-def _build_launchdarkly_context(user) -> dict[str, Any]:
+def _build_launchdarkly_context(user: "User") -> dict[str, Any]:
     """
     Build LaunchDarkly context data with segments from user object.
 
@@ -114,7 +119,6 @@ def _build_launchdarkly_context(user) -> dict[str, Any]:
     Returns:
         Dictionary with user context data including segments
     """
-    import json
     from datetime import datetime
 
     from autogpt_libs.auth.models import DEFAULT_USER_ID
@@ -123,7 +127,7 @@ def _build_launchdarkly_context(user) -> dict[str, Any]:
     context_data = {
         "email": user.email,
         "name": user.name,
-        "createdAt": user.createdAt.isoformat() if user.createdAt else None,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
     }
 
     # Determine user segments for LaunchDarkly targeting
@@ -148,11 +152,13 @@ def _build_launchdarkly_context(user) -> dict[str, Any]:
     # Parse metadata for additional segments and custom attributes
     if user.metadata:
         try:
-            metadata = (
-                json.loads(user.metadata)
-                if isinstance(user.metadata, str)
-                else user.metadata
-            )
+            # Handle both string (direct DB) and dict (RPC) formats
+            if isinstance(user.metadata, str):
+                metadata = json_loads(user.metadata)
+            elif isinstance(user.metadata, dict):
+                metadata = user.metadata
+            else:
+                metadata = {}  # Fallback for unexpected types
 
             # Extract explicit segments from metadata if they exist
             if "segments" in metadata:
@@ -173,12 +179,12 @@ def _build_launchdarkly_context(user) -> dict[str, Any]:
                 if key not in ["segments", "role"]:  # Skip processed fields
                     context_data[f"custom_{key}"] = value
 
-        except (json.JSONDecodeError, TypeError) as e:
+        except (JSONDecodeError, TypeError) as e:
             logger.debug(f"Failed to parse user metadata for context: {e}")
 
     # Add account age segment for targeting new vs old users
-    if user.createdAt:
-        account_age_days = (datetime.now(user.createdAt.tzinfo) - user.createdAt).days
+    if user.created_at:
+        account_age_days = (datetime.now(user.created_at.tzinfo) - user.created_at).days
         if account_age_days < 7:
             segments.append("new_user")
         elif account_age_days < 30:

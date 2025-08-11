@@ -45,6 +45,34 @@ api_comm_retry = config.pyro_client_comm_retry
 api_comm_timeout = config.pyro_client_comm_timeout
 api_call_timeout = config.rpc_client_call_timeout
 
+
+def _validate_no_prisma_objects(obj: Any, path: str = "result") -> None:
+    """
+    Recursively validate that no Prisma objects are being returned from service methods.
+    This enforces proper separation of layers - only application models should cross service boundaries.
+    """
+    if obj is None:
+        return
+
+    # Check if it's a Prisma model object
+    if hasattr(obj, "__class__") and hasattr(obj.__class__, "__module__"):
+        module_name = obj.__class__.__module__
+        if module_name and "prisma.models" in module_name:
+            raise ValueError(
+                f"Prisma object {obj.__class__.__name__} found in {path}. "
+                "Service methods must return application models, not Prisma objects. "
+                f"Use {obj.__class__.__name__}.from_db() to convert to application model."
+            )
+
+    # Recursively check collections
+    if isinstance(obj, (list, tuple)):
+        for i, item in enumerate(obj):
+            _validate_no_prisma_objects(item, f"{path}[{i}]")
+    elif isinstance(obj, dict):
+        for key, value in obj.items():
+            _validate_no_prisma_objects(value, f"{path}['{key}']")
+
+
 P = ParamSpec("P")
 R = TypeVar("R")
 EXPOSED_FLAG = "__exposed__"
@@ -209,17 +237,21 @@ class AppService(BaseAppService, ABC):
         if asyncio.iscoroutinefunction(f):
 
             async def async_endpoint(body: RequestBodyModel):  # type: ignore #RequestBodyModel being variable
-                return await f(
+                result = await f(
                     **{name: getattr(body, name) for name in type(body).model_fields}
                 )
+                _validate_no_prisma_objects(result, f"{func.__name__} result")
+                return result
 
             return async_endpoint
         else:
 
             def sync_endpoint(body: RequestBodyModel):  # type: ignore #RequestBodyModel being variable
-                return f(
+                result = f(
                     **{name: getattr(body, name) for name in type(body).model_fields}
                 )
+                _validate_no_prisma_objects(result, f"{func.__name__} result")
+                return result
 
             return sync_endpoint
 
