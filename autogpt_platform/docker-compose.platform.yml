@@ -319,12 +319,13 @@ services:
       - "3000:3000"
     networks:
       - app-network
-    # Load environment variables from .env file
+    # Load environment variables in order (later overrides earlier)
     env_file:
-      - ./frontend/.env
+      - ./frontend/.env.example  # Base defaults (always exists)
+      - ./frontend/.env          # User overrides (optional)
     environment:
       # Server-side environment variables (Docker service names)
-      # These override the localhost URLs from .env file when running in Docker
+      # These override the localhost URLs from env files when running in Docker
       AUTH_CALLBACK_URL: http://rest_server:8006/auth/callback
       SUPABASE_URL: http://kong:8000
       AGPT_SERVER_URL: http://rest_server:8006/api
