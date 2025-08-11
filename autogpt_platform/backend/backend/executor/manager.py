@@ -767,7 +767,7 @@ class ExecutionProcessor:
                     graph_exec=graph_exec,
                 ),
                 self.node_evaluation_loop,
-            ).result():
+            ).result(timeout=30.0):
                 raise moderation_error
 
             # ------------------------------------------------------------
@@ -918,7 +918,7 @@ class ExecutionProcessor:
                     graph_id=graph_exec.graph_id,
                 ),
                 self.node_evaluation_loop,
-            ).result():
+            ).result(timeout=30.0):
                 raise moderation_error
 
             # Determine final execution status based on whether there was an error or termination
