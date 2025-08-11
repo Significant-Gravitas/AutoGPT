@@ -4,7 +4,12 @@ classic/original_autogpt/keys.py
 classic/original_autogpt/*.json
 auto_gpt_workspace/*
 *.mpeg
-.env
+# Ignore specific .env files (frontend and backend .env allowed for Docker builds)
+autogpt_platform/db/.env
+autogpt_platform/.env
+classic/original_autogpt/.env
+# Root .env files
+/.env
 azure.yaml
 .vscode
 .idea/*
@@ -121,7 +126,6 @@ celerybeat.pid
 
 # Environments
 .direnv/
-.env
 .venv
 env/
 venv*/

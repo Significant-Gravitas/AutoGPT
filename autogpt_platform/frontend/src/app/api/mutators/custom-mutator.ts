@@ -3,6 +3,7 @@ import {
   getServerAuthToken,
 } from "@/lib/autogpt-server-api/helpers";
 import { isServerSide } from "@/lib/utils/is-server-side";
+import { getAgptServerBaseUrl } from "@/lib/env-config";
 
 const FRONTEND_BASE_URL =
   process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "http://localhost:3000";
@@ -12,9 +13,7 @@ const getBaseUrl = (): string => {
   if (!isServerSide()) {
     return API_PROXY_BASE_URL;
   } else {
-    return (
-      process.env.NEXT_PUBLIC_AGPT_SERVER_BASE_URL || "http://localhost:8006"
-    );
+    return getAgptServerBaseUrl();
   }
 };
 
