@@ -33,6 +33,33 @@ class InsufficientBalanceError(ValueError):
         return self.message
 
 
+class ModerationError(ValueError):
+    """Content moderation failure during execution"""
+
+    user_id: str
+    message: str
+    graph_exec_id: str
+    moderation_type: str
+
+    def __init__(
+        self,
+        message: str,
+        user_id: str,
+        graph_exec_id: str,
+        moderation_type: str = "content",
+    ):
+        super().__init__(message)
+        self.args = (message, user_id, graph_exec_id, moderation_type)
+        self.message = message
+        self.user_id = user_id
+        self.graph_exec_id = graph_exec_id
+        self.moderation_type = moderation_type
+
+    def __str__(self):
+        """Used to display the error message in the frontend, because we str() the error when sending the execution update"""
+        return self.message
+
+
 class GraphValidationError(ValueError):
     """Structured validation error for graph validation failures"""
 
