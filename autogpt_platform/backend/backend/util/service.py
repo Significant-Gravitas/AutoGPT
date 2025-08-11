@@ -111,6 +111,22 @@ class UnhealthyServiceError(ValueError):
         return self.message
 
 
+class HTTPClientError(Exception):
+    """Exception for HTTP client errors (4xx status codes) that should not be retried."""
+
+    def __init__(self, status_code: int, message: str):
+        self.status_code = status_code
+        super().__init__(f"HTTP {status_code}: {message}")
+
+
+class HTTPServerError(Exception):
+    """Exception for HTTP server errors (5xx status codes) that can be retried."""
+
+    def __init__(self, status_code: int, message: str):
+        self.status_code = status_code
+        super().__init__(f"HTTP {status_code}: {message}")
+
+
 EXCEPTION_MAPPING = {
     e.__name__: e
     for e in [
@@ -119,6 +135,8 @@ EXCEPTION_MAPPING = {
         TimeoutError,
         ConnectionError,
         UnhealthyServiceError,
+        HTTPClientError,
+        HTTPServerError,
         *[
             ErrorType
             for _, ErrorType in inspect.getmembers(exceptions)
@@ -313,6 +331,7 @@ def get_service_client(
                 AttributeError,  # Missing attributes
                 asyncio.CancelledError,  # Task was cancelled
                 concurrent.futures.CancelledError,  # Future was cancelled
+                HTTPClientError,  # HTTP 4xx client errors - don't retry
             ),
         )(fn)
 
@@ -390,11 +409,31 @@ def get_service_client(
                 self._connection_failure_count = 0
                 return response.json()
             except httpx.HTTPStatusError as e:
-                error = RemoteCallError.model_validate(e.response.json())
-                # DEBUG HELP: if you made a custom exception, make sure you override self.args to be how to make your exception
-                raise EXCEPTION_MAPPING.get(error.type, Exception)(
-                    *(error.args or [str(e)])
-                )
+                status_code = e.response.status_code
+
+                # Try to parse the error response as RemoteCallError for mapped exceptions
+                error_response = None
+                try:
+                    error_response = RemoteCallError.model_validate(e.response.json())
+                except Exception:
+                    pass
+
+                # If we successfully parsed a mapped exception type, re-raise it
+                if error_response and error_response.type in EXCEPTION_MAPPING:
+                    exception_class = EXCEPTION_MAPPING[error_response.type]
+                    args = error_response.args or [str(e)]
+                    raise exception_class(*args)
+
+                # Otherwise categorize by HTTP status code
+                if 400 <= status_code < 500:
+                    # Client errors (4xx) - wrap to prevent retries
+                    raise HTTPClientError(status_code, str(e))
+                elif 500 <= status_code < 600:
+                    # Server errors (5xx) - wrap but allow retries
+                    raise HTTPServerError(status_code, str(e))
+                else:
+                    # Other status codes (1xx, 2xx, 3xx) - re-raise original error
+                    raise e
 
         @_maybe_retry
         def _call_method_sync(self, method_name: str, **kwargs: Any) -> Any:
