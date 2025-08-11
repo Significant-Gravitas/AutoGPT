@@ -27,7 +27,7 @@ from backend.executor.activity_status_generator import (
 )
 from backend.executor.utils import LogMetadata
 from backend.notifications.notifications import queue_notification
-from backend.util.exceptions import InsufficientBalanceError
+from backend.util.exceptions import InsufficientBalanceError, ModerationError
 
 if TYPE_CHECKING:
     from backend.executor import DatabaseManagerClient, DatabaseManagerAsyncClient
@@ -67,6 +67,7 @@ from backend.executor.utils import (
     validate_exec,
 )
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.server.v2.AutoMod.manager import automod_manager
 from backend.util import json
 from backend.util.clients import (
     get_async_execution_event_bus,
@@ -759,6 +760,22 @@ class ExecutionProcessor:
                     amount=1,
                 )
 
+            # Input moderation
+            try:
+                if moderation_error := asyncio.run_coroutine_threadsafe(
+                    automod_manager.moderate_graph_execution_inputs(
+                        db_client=get_db_async_client(),
+                        graph_exec=graph_exec,
+                    ),
+                    self.node_evaluation_loop,
+                ).result(timeout=30.0):
+                    raise moderation_error
+            except asyncio.TimeoutError:
+                log_metadata.warning(
+                    f"Input moderation timed out for graph execution {graph_exec.graph_exec_id}, bypassing moderation and continuing execution"
+                )
+                # Continue execution without moderation
+
             # ------------------------------------------------------------
             # Pre‑populate queue ---------------------------------------
             # ------------------------------------------------------------
@@ -897,6 +914,25 @@ class ExecutionProcessor:
                         time.sleep(0.1)
 
             # loop done --------------------------------------------------
+
+            # Output moderation
+            try:
+                if moderation_error := asyncio.run_coroutine_threadsafe(
+                    automod_manager.moderate_graph_execution_outputs(
+                        db_client=get_db_async_client(),
+                        graph_exec_id=graph_exec.graph_exec_id,
+                        user_id=graph_exec.user_id,
+                        graph_id=graph_exec.graph_id,
+                    ),
+                    self.node_evaluation_loop,
+                ).result(timeout=30.0):
+                    raise moderation_error
+            except asyncio.TimeoutError:
+                log_metadata.warning(
+                    f"Output moderation timed out for graph execution {graph_exec.graph_exec_id}, bypassing moderation and continuing execution"
+                )
+                # Continue execution without moderation
+
             # Determine final execution status based on whether there was an error or termination
             if cancel.is_set():
                 execution_status = ExecutionStatus.TERMINATED
@@ -917,11 +953,12 @@ class ExecutionProcessor:
                 else Exception(f"{e.__class__.__name__}: {e}")
             )
 
-            known_errors = (InsufficientBalanceError,)
+            known_errors = (InsufficientBalanceError, ModerationError)
             if isinstance(error, known_errors):
                 execution_stats.error = str(error)
                 return ExecutionStatus.FAILED
 
+            execution_status = ExecutionStatus.FAILED
             log_metadata.exception(
                 f"Failed graph execution {graph_exec.graph_exec_id}: {error}"
             )
