@@ -444,14 +444,14 @@ class NotificationManager(AppService):
             )
 
             # Extract data from summary
-            total_credits_used = summary_data.get("total_credits_used", 0.0)
-            total_executions = summary_data.get("total_executions", 0)
-            most_used_agent = summary_data.get("most_used_agent", "No agents used")
-            successful_runs = summary_data.get("successful_runs", 0)
-            failed_runs = summary_data.get("failed_runs", 0)
-            total_execution_time = summary_data.get("total_execution_time", 0.0)
-            average_execution_time = summary_data.get("average_execution_time", 0.0)
-            cost_breakdown = summary_data.get("cost_breakdown", {})
+            total_credits_used = summary_data.total_credits_used
+            total_executions = summary_data.total_executions
+            most_used_agent = summary_data.most_used_agent
+            successful_runs = summary_data.successful_runs
+            failed_runs = summary_data.failed_runs
+            total_execution_time = summary_data.total_execution_time
+            average_execution_time = summary_data.average_execution_time
+            cost_breakdown = summary_data.cost_breakdown
 
             if event_type == NotificationType.DAILY_SUMMARY and isinstance(
                 params, DailySummaryParams
