@@ -26,7 +26,8 @@ x-backend-env: &backend-env
 x-backend-env-files: &backend-env-files
   env_file:
     - backend/.env.example   # Base defaults (always exists)
-    - backend/.env           # User overrides (optional)
+    - path: backend/.env           # User overrides (optional)
+      required: false
 
 services:
   migrate:
@@ -295,8 +296,10 @@ services:
       - app-network
     # Load environment variables in order (later overrides earlier)
     env_file:
-      - ./frontend/.env.example  # Base defaults (always exists)
-      - ./frontend/.env          # User overrides (optional)
+      - path: ./frontend/.env.example  # Base defaults (always exists)
+        required: false
+      - path: ./frontend/.env          # User overrides (optional)
+        required: false
     environment:
       # Server-side environment variables (Docker service names)
       # These override the localhost URLs from env files when running in Docker
