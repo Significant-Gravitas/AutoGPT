@@ -1,14 +1,15 @@
-import asyncio
 import contextlib
 import logging
 from functools import wraps
-from typing import Any, Awaitable, Callable, Dict, Optional, TypeVar, Union, cast
+from typing import Any, Awaitable, Callable, Optional, TypeVar
 
 import ldclient
 from fastapi import HTTPException
 from ldclient import Context, LDClient
 from ldclient.config import Config
 from typing_extensions import ParamSpec
+
+from autogpt_libs.utils.cache import async_ttl_cache
 
 from .config import SETTINGS
 
@@ -56,7 +57,7 @@ def shutdown_launchdarkly() -> None:
 
 
 def create_context(
-    user_id: str, additional_attributes: Optional[Dict[str, Any]] = None
+    user_id: str, additional_attributes: Optional[dict[str, Any]] = None
 ) -> Context:
     """Create LaunchDarkly context with optional additional attributes."""
     builder = Context.builder(str(user_id)).kind("user")
@@ -66,22 +67,215 @@ def create_context(
     return builder.build()
 
 
-def is_feature_enabled(flag_key: str, user_id: str, default: bool = False) -> bool:
+@async_ttl_cache(maxsize=1000, ttl_seconds=86400)  # 1000 entries, 24 hours TTL
+async def _fetch_user_context_data(user_id: str) -> dict[str, Any]:
     """
-    Simple helper to check if a feature flag is enabled for a user.
+    Fetch user data and build complete LaunchDarkly context with segments.
+
+    Uses the existing get_user_by_id function and applies segmentation logic
+    within the LaunchDarkly client for clean separation of concerns.
+
+    Args:
+        user_id: The user ID to fetch data for
+
+    Returns:
+        Dictionary with user context data including segments
+
+    Raises:
+        Exception: If database query fails (not cached)
+    """
+    # Import here to avoid circular dependencies
+    from backend.data.db import prisma
+
+    # Check if we're in a context with direct database access
+    if prisma.is_connected():
+        # Direct database query using existing function
+        from backend.data.user import get_user_by_id
+
+        user = await get_user_by_id(user_id)
+    else:
+        # Use database manager client for RPC calls
+        from backend.util.clients import get_database_manager_async_client
+
+        db_client = get_database_manager_async_client()
+        user = await db_client.get_user_by_id(user_id)
+
+    # Build and return LaunchDarkly context with segments
+    return _build_launchdarkly_context(user)
+
+
+def _build_launchdarkly_context(user) -> dict[str, Any]:
+    """
+    Build LaunchDarkly context data with segments from user object.
+
+    Args:
+        user: User object from database
+
+    Returns:
+        Dictionary with user context data including segments
+    """
+    import json
+    from datetime import datetime
+
+    from autogpt_libs.auth.models import DEFAULT_USER_ID
+
+    # Build basic context data
+    context_data = {
+        "email": user.email,
+        "name": user.name,
+        "createdAt": user.createdAt.isoformat() if user.createdAt else None,
+    }
+
+    # Determine user segments for LaunchDarkly targeting
+    segments = []
+
+    # Add role-based segment
+    if user.id == DEFAULT_USER_ID:
+        segments.extend(
+            ["system", "admin"]
+        )  # Default user has admin privileges when auth is disabled
+    else:
+        segments.append("user")  # Regular users
+
+    # Add email domain-based segments for targeting
+    if user.email:
+        domain = user.email.split("@")[-1] if "@" in user.email else ""
+        if domain:
+            context_data["email_domain"] = domain
+            if domain in ["agpt.co"]:
+                segments.append("employee")
+
+    # Parse metadata for additional segments and custom attributes
+    if user.metadata:
+        try:
+            metadata = (
+                json.loads(user.metadata)
+                if isinstance(user.metadata, str)
+                else user.metadata
+            )
+
+            # Extract explicit segments from metadata if they exist
+            if "segments" in metadata:
+                if isinstance(metadata["segments"], list):
+                    segments.extend(metadata["segments"])
+                elif isinstance(metadata["segments"], str):
+                    segments.append(metadata["segments"])
+
+            # Extract role from metadata if present
+            if "role" in metadata:
+                role = metadata["role"]
+                if role in ["admin", "moderator", "employee"]:
+                    segments.append(role)
+                context_data["role"] = role
+
+            # Add custom attributes with prefix to avoid conflicts
+            for key, value in metadata.items():
+                if key not in ["segments", "role"]:  # Skip processed fields
+                    context_data[f"custom_{key}"] = value
+
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.debug(f"Failed to parse user metadata for context: {e}")
+
+    # Add account age segment for targeting new vs old users
+    if user.createdAt:
+        account_age_days = (datetime.now(user.createdAt.tzinfo) - user.createdAt).days
+        if account_age_days < 7:
+            segments.append("new_user")
+        elif account_age_days < 30:
+            segments.append("recent_user")
+        else:
+            segments.append("established_user")
+
+        context_data["account_age_days"] = account_age_days
+
+    # Remove duplicates and sort for consistency
+    context_data["segments"] = sorted(list(set(segments)))
+
+    return context_data
+
+
+async def is_feature_enabled(
+    flag_key: str,
+    user_id: str,
+    default: bool = False,
+    use_user_id_only: bool = False,
+    additional_attributes: Optional[dict[str, Any]] = None,
+    user_role: Optional[str] = None,
+) -> bool:
+    """
+    Check if a feature flag is enabled for a user with full LaunchDarkly context support.
 
     Args:
         flag_key: The LaunchDarkly feature flag key
         user_id: The user ID to evaluate the flag for
         default: Default value if LaunchDarkly is unavailable or flag evaluation fails
+        use_user_id_only: If True, only use user_id without fetching database context
+        additional_attributes: Additional attributes to include in the context
+        user_role: Optional user role (e.g., "admin", "user") to add to segments
 
     Returns:
         True if feature is enabled, False otherwise
     """
     try:
         client = get_client()
-        context = create_context(str(user_id))
-        return client.variation(flag_key, context, default)
+
+        if use_user_id_only:
+            # Simple context with just user ID (for backward compatibility)
+            # But still add role if provided
+            attrs = additional_attributes or {}
+            if user_role:
+                attrs["role"] = user_role
+                # Also add role as a segment for LaunchDarkly targeting
+                segments = attrs.get("segments", [])
+                if isinstance(segments, list):
+                    segments.append(user_role)
+                else:
+                    segments = [user_role]
+                attrs["segments"] = list(set(segments))  # Remove duplicates
+            context = create_context(str(user_id), attrs)
+        else:
+            # Full context with user segments and metadata from database
+            try:
+                user_data = await _fetch_user_context_data(user_id)
+            except ImportError as e:
+                # Database modules not available - fallback to simple context
+                logger.debug(f"Database modules not available: {e}")
+                user_data = {}
+            except Exception as e:
+                # Database error - log and fallback to simple context
+                logger.warning(f"Failed to fetch user context for {user_id}: {e}")
+                user_data = {}
+
+            # Merge additional attributes and role
+            attrs = additional_attributes or {}
+            if user_role:
+                attrs["role"] = user_role
+                # Add role to segments if we have them
+                if "segments" in user_data:
+                    user_data["segments"].append(user_role)
+                    user_data["segments"] = list(set(user_data["segments"]))
+                else:
+                    user_data["segments"] = [user_role]
+
+            # Merge attributes with user data
+            final_attrs = {**user_data, **attrs}
+
+            # Handle segment merging if both have segments
+            if "segments" in user_data and "segments" in attrs:
+                combined = list(set(user_data["segments"] + attrs["segments"]))
+                final_attrs["segments"] = combined
+
+            context = create_context(str(user_id), final_attrs)
+
+        # Evaluate the flag
+        result = client.variation(flag_key, context, default)
+
+        logger.debug(
+            f"Feature flag {flag_key} for user {user_id}: {result} "
+            f"(use_user_id_only: {use_user_id_only})"
+        )
+
+        return result
 
     except Exception as e:
         logger.debug(
@@ -93,16 +287,19 @@ def is_feature_enabled(flag_key: str, user_id: str, default: bool = False) -> bo
 def feature_flag(
     flag_key: str,
     default: bool = False,
-) -> Callable[
-    [Callable[P, Union[T, Awaitable[T]]]], Callable[P, Union[T, Awaitable[T]]]
-]:
+) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T]]]:
     """
-    Decorator for feature flag protected endpoints.
+    Decorator for async feature flag protected endpoints.
+
+    Args:
+        flag_key: The LaunchDarkly feature flag key
+        default: Default value if flag evaluation fails
+
+    Returns:
+        Decorator that only works with async functions
     """
 
-    def decorator(
-        func: Callable[P, Union[T, Awaitable[T]]],
-    ) -> Callable[P, Union[T, Awaitable[T]]]:
+    def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
         @wraps(func)
         async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             try:
@@ -116,71 +313,22 @@ def feature_flag(
                     )
                     is_enabled = default
                 else:
-                    context = create_context(str(user_id))
-                    is_enabled = get_client().variation(flag_key, context, default)
-
-                if not is_enabled:
-                    raise HTTPException(status_code=404, detail="Feature not available")
-
-                result = func(*args, **kwargs)
-                if asyncio.iscoroutine(result):
-                    return await result
-                return cast(T, result)
-            except Exception as e:
-                logger.error(f"Error evaluating feature flag {flag_key}: {e}")
-                raise
-
-        @wraps(func)
-        def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            try:
-                user_id = kwargs.get("user_id")
-                if not user_id:
-                    raise ValueError("user_id is required")
-
-                if not get_client().is_initialized():
-                    logger.warning(
-                        f"LaunchDarkly not initialized, using default={default}"
+                    # Use the unified function with full context support
+                    is_enabled = await is_feature_enabled(
+                        flag_key, str(user_id), default, use_user_id_only=False
                     )
-                    is_enabled = default
-                else:
-                    context = create_context(str(user_id))
-                    is_enabled = get_client().variation(flag_key, context, default)
 
                 if not is_enabled:
                     raise HTTPException(status_code=404, detail="Feature not available")
 
-                return cast(T, func(*args, **kwargs))
+                return await func(*args, **kwargs)
             except Exception as e:
                 logger.error(f"Error evaluating feature flag {flag_key}: {e}")
                 raise
 
-        return cast(
-            Callable[P, Union[T, Awaitable[T]]],
-            async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper,
-        )
+        return async_wrapper
 
     return decorator
-
-
-def percentage_rollout(
-    flag_key: str,
-    default: bool = False,
-) -> Callable[
-    [Callable[P, Union[T, Awaitable[T]]]], Callable[P, Union[T, Awaitable[T]]]
-]:
-    """Decorator for percentage-based rollouts."""
-    return feature_flag(flag_key, default)
-
-
-def beta_feature(
-    flag_key: Optional[str] = None,
-    unauthorized_response: Any = {"message": "Not available in beta"},
-) -> Callable[
-    [Callable[P, Union[T, Awaitable[T]]]], Callable[P, Union[T, Awaitable[T]]]
-]:
-    """Decorator for beta features."""
-    actual_key = f"beta-{flag_key}" if flag_key else "beta"
-    return feature_flag(actual_key, False)
 
 
 @contextlib.contextmanager
