@@ -4,7 +4,9 @@ classic/original_autogpt/keys.py
 classic/original_autogpt/*.json
 auto_gpt_workspace/*
 *.mpeg
-# Ignore specific .env files (frontend and backend .env allowed for Docker builds)
+# Ignore .env files
+autogpt_platform/backend/.env
+autogpt_platform/backend/.env.docker
 autogpt_platform/db/.env
 autogpt_platform/.env
 classic/original_autogpt/.env
@@ -181,3 +183,4 @@ autogpt_platform/backend/settings.py
 *.ign.*
 .test-contents
 .claude/settings.local.json
+*.old
