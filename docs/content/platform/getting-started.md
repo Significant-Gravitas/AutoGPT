@@ -116,13 +116,15 @@ To run the platform, follow these steps:
    cd AutoGPT/autogpt_platform
   ```
 
-* Copy the `.env.example` file to `.env` in `autogpt_platform`:
-  ```
-   cp .env.example .env
-  ```
-  This command will copy the `.env.example` file to `.env` in the `autogpt_platform` directory. You can modify the `.env` file to add your own environment variables.
+- Copy the `.env.default` file to `.env` in `autogpt_platform`:
 
-* Run the platform services:
+  ```
+   cp .env.default .env
+  ```
+
+  This command will copy the `.env.default` file to `.env` in the `autogpt_platform` directory. You can modify the `.env` file to add your own environment variables.
+
+- Run the platform services:
   ```
    docker compose up -d --build
   ```

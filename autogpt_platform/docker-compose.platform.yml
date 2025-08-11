@@ -1,13 +1,13 @@
 # Environment Variable Loading Order (first → last, later overrides earlier):
-# 1. backend/.env.example - Default values for all settings
+# 1. backend/.env.default - Default values for all settings
 # 2. backend/.env - User's custom configuration (if exists)
 # 3. environment key - Docker-specific overrides defined below
 # 4. Shell environment - Variables exported before running docker compose
 # 5. CLI arguments - docker compose run -e VAR=value
 
 # Common backend environment - Docker service names
-x-backend-env: &backend-env
-  # Docker internal service hostnames (override localhost defaults)
+x-backend-env:
+  &backend-env # Docker internal service hostnames (override localhost defaults)
   PYRO_HOST: "0.0.0.0"
   AGENTSERVER_HOST: rest_server
   SCHEDULER_HOST: scheduler_server
@@ -21,12 +21,11 @@ x-backend-env: &backend-env
   # Override Supabase URL for Docker network
   SUPABASE_URL: http://kong:8000
 
-
 # Common env_file configuration for backend services
 x-backend-env-files: &backend-env-files
   env_file:
-    - backend/.env.example   # Base defaults (always exists)
-    - path: backend/.env           # User overrides (optional)
+    - backend/.env.default # Base defaults (always exists)
+    - path: backend/.env # User overrides (optional)
       required: false
 
 services:
@@ -296,9 +295,9 @@ services:
       - app-network
     # Load environment variables in order (later overrides earlier)
     env_file:
-      - path: ./frontend/.env.example  # Base defaults (always exists)
+      - path: ./frontend/.env.default # Base defaults (always exists)
         required: false
-      - path: ./frontend/.env          # User overrides (optional)
+      - path: ./frontend/.env # User overrides (optional)
         required: false
     environment:
       # Server-side environment variables (Docker service names)

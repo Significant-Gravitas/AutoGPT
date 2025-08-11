@@ -176,7 +176,7 @@ jobs:
 
       - name: Copy default supabase .env
         run: |
-          cp ../.env.example ../.env
+          cp ../.env.default ../.env
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

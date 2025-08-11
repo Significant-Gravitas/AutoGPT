@@ -23,10 +23,10 @@ To run the AutoGPT Platform, follow these steps:
 2. Run the following command:
 
    ```
-   cp .env.example .env
+   cp .env.default .env
    ```
 
-   This command will copy the `.env.example` file to `.env`. You can modify the `.env` file to add your own environment variables.
+   This command will copy the `.env.default` file to `.env`. You can modify the `.env` file to add your own environment variables.
 
 3. Run the following command:
 
@@ -146,6 +146,7 @@ The platform includes scripts for generating and managing the API client:
 If you need to update the API client after making changes to the backend API:
 
 1. Ensure the backend services are running:
+
    ```
    docker compose up -d
    ```

@@ -213,11 +213,11 @@ prompt_sentry_enablement() {
 setup_backend() {
     print_color "BLUE" "Setting up backend services..."
     cd "$REPO_DIR/autogpt_platform" || handle_error "Failed to navigate to backend directory."
-    cp .env.example .env || handle_error "Failed to copy environment file."
+    cp .env.default .env || handle_error "Failed to copy environment file."
 
     # Set SENTRY_DSN in backend/.env
     cd backend || handle_error "Failed to navigate to backend subdirectory."
-    cp .env.example .env || handle_error "Failed to copy backend environment file."
+    cp .env.default .env || handle_error "Failed to copy backend environment file."
     sentry_url="https://11d0640fef35640e0eb9f022eb7d7626@o4505260022104064.ingest.us.sentry.io/4507890252447744"
     if [ "$SENTRY_ENABLED" = "1" ]; then
         sed -i "s|^SENTRY_DSN=.*$|SENTRY_DSN=$sentry_url|" .env || echo "SENTRY_DSN=$sentry_url" >> .env
@@ -237,7 +237,7 @@ setup_backend() {
 setup_frontend() {
     print_color "BLUE" "Setting up frontend application..."
     cd "$REPO_DIR/autogpt_platform/frontend" || handle_error "Failed to navigate to frontend directory."
-    cp .env.example .env || handle_error "Failed to copy frontend environment file."
+    cp .env.default .env || handle_error "Failed to copy frontend environment file."
     corepack enable || handle_error "Failed to enable corepack."
     pnpm install || handle_error "Failed to install frontend dependencies."
     print_color "GREEN" "✓ Frontend dependencies installed successfully"
