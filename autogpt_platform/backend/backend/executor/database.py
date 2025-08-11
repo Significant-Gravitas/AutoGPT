@@ -41,7 +41,13 @@ from backend.data.user import (
     get_user_notification_preference,
     update_user_integrations,
 )
-from backend.util.service import AppService, AppServiceClient, endpoint_to_sync, expose
+from backend.util.service import (
+    AppService,
+    AppServiceClient,
+    UnhealthyServiceError,
+    endpoint_to_sync,
+    expose,
+)
 from backend.util.settings import Config
 
 config = Config()
@@ -73,10 +79,10 @@ class DatabaseManager(AppService):
         logger.info(f"[{self.service_name}] ⏳ Disconnecting Database...")
         self.run_and_wait(db.disconnect())
 
-    def health_check(self) -> str:
+    async def health_check(self) -> str:
         if not db.is_connected():
-            raise RuntimeError("Database is not connected")
-        return super().health_check()
+            raise UnhealthyServiceError("Database is not connected")
+        return await super().health_check()
 
     @classmethod
     def get_port(cls) -> int:
