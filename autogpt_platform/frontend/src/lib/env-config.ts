@@ -41,13 +41,6 @@ export function getAgptWsServerUrl(): string {
  * Client-side: Falls back to NEXT_PUBLIC_SUPABASE_URL (http://localhost:8000)
  */
 export function getSupabaseUrl(): string {
-  console.log("Is serverside code running?", typeof window === "undefined");
-  console.log("Supabase URL:", process.env.SUPABASE_URL);
-  console.log(
-    "Next public Supabase URL:",
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-  );
-  console.log("Supabase URL fallback:", "http://localhost:8000");
   return (
     process.env.SUPABASE_URL ||
     process.env.NEXT_PUBLIC_SUPABASE_URL ||
