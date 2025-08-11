@@ -56,7 +56,10 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
 
   return (
     <div className="w-full min-w-[800px] px-4 sm:px-8">
-      <h1 className="font-circular mb-6 text-[28px] font-normal text-neutral-900 dark:text-neutral-100 sm:mb-8 sm:text-[35px]">
+      <h1
+        data-testid="profile-info-form-title"
+        className="font-circular mb-6 text-[28px] font-normal text-neutral-900 dark:text-neutral-100 sm:mb-8 sm:text-[35px]"
+      >
         Profile
       </h1>
 
@@ -67,6 +70,7 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
               <Image
                 src={profileData.avatar_url}
                 alt="Profile"
+                data-testid="profile-info-form-profile-photo"
                 fill
                 className="rounded-full"
               />
@@ -79,6 +83,7 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
               type="file"
               accept="image/*"
               className="hidden"
+              data-testid="profile-info-form-edit-photo"
               onChange={async (e) => {
                 const file = e.target.files?.[0];
                 if (file) {
@@ -99,6 +104,7 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
               <input
                 type="text"
                 name="displayName"
+                data-testid="profile-info-form-display-name"
                 defaultValue={profileData.name}
                 placeholder="Enter your display name"
                 className="font-circular w-full border-none bg-transparent text-base font-normal text-neutral-900 placeholder:text-neutral-400 focus:outline-none dark:text-white dark:placeholder:text-neutral-500"
@@ -121,6 +127,7 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
               <input
                 type="text"
                 name="handle"
+                data-testid="profile-info-form-handle"
                 defaultValue={profileData.username}
                 placeholder="@username"
                 className="font-circular w-full border-none bg-transparent text-base font-normal text-neutral-900 placeholder:text-neutral-400 focus:outline-none dark:text-white dark:placeholder:text-neutral-500"
@@ -142,6 +149,7 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
             <div className="h-[220px] rounded-2xl border border-slate-200 py-2.5 pl-4 pr-4 dark:border-slate-700 dark:bg-slate-800">
               <textarea
                 name="bio"
+                data-testid="profile-info-form-bio"
                 defaultValue={profileData.description}
                 placeholder="Tell us about yourself..."
                 className="font-circular h-full w-full resize-none border-none bg-transparent text-base font-normal text-neutral-900 placeholder:text-neutral-400 focus:outline-none dark:text-white dark:placeholder:text-neutral-500"
@@ -176,6 +184,7 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
                       <input
                         type="text"
                         name={`link${linkNum}`}
+                        data-testid={`profile-info-form-link${linkNum}`}
                         placeholder="https://"
                         defaultValue={link || ""}
                         className="font-circular w-full border-none bg-transparent text-base font-normal text-neutral-900 placeholder:text-neutral-400 focus:outline-none dark:text-white dark:placeholder:text-neutral-500"
@@ -200,6 +209,7 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
 
           <div className="flex h-[50px] items-center justify-end gap-3 py-8">
             <Button
+              data-testid="profile-info-form-cancel"
               type="button"
               variant="secondary"
               className="font-circular h-[50px] rounded-[35px] bg-neutral-200 px-6 py-3 text-base font-medium text-neutral-800 transition-colors hover:bg-neutral-300 dark:border-neutral-700 dark:bg-neutral-700 dark:text-neutral-200 dark:hover:border-neutral-600 dark:hover:bg-neutral-600"
@@ -210,6 +220,7 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
               Cancel
             </Button>
             <Button
+              data-testid="profile-info-form-save"
               type="submit"
               disabled={isSubmitting}
               className="font-circular h-[50px] rounded-[35px] bg-neutral-800 px-6 py-3 text-base font-medium text-white transition-colors hover:bg-neutral-900 dark:bg-neutral-200 dark:text-neutral-900 dark:hover:bg-neutral-100"
