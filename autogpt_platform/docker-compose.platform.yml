@@ -20,10 +20,7 @@ x-backend-env: &backend-env
   RABBITMQ_HOST: rabbitmq
   # Override Supabase URL for Docker network
   SUPABASE_URL: http://kong:8000
-  # Default secrets (OVERRIDE IN PRODUCTION!)
-  ENCRYPTION_KEY: "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw="
-  UNSUBSCRIBE_SECRET_KEY: "HlP8ivStJjmbf6NKi78m_3FnOogut0t5ckzjsIqeaio="
-  ENABLE_AUTH: true
+
 
 # Common env_file configuration for backend services
 x-backend-env-files: &backend-env-files
@@ -112,11 +109,6 @@ services:
       # Service-specific overrides
       DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
       DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
-      SUPABASE_JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters-long
-      SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJzZXJ2aWNlX3JvbGUiLAogICAgImlzcyI6ICJzdXBhYmFzZS1kZW1vIiwKICAgICJpYXQiOiAxNjQxNzY5MjAwLAogICAgImV4cCI6IDE3OTk1MzU2MDAKfQ.DaYlNEoUrrEn2Ig7tqibS-PHK5vgusbcbo7X36XVt4Q
-      RABBITMQ_DEFAULT_USER: rabbitmq_user_default
-      RABBITMQ_DEFAULT_PASS: k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7
-      REDIS_PASSWORD: password
     ports:
       - "8006:8006"
     networks:
@@ -150,11 +142,6 @@ services:
       # Service-specific overrides
       DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
       DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
-      SUPABASE_JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters-long
-      SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJzZXJ2aWNlX3JvbGUiLAogICAgImlzcyI6ICJzdXBhYmFzZS1kZW1vIiwKICAgICJpYXQiOiAxNjQxNzY5MjAwLAogICAgImV4cCI6IDE3OTk1MzU2MDAKfQ.DaYlNEoUrrEn2Ig7tqibS-PHK5vgusbcbo7X36XVt4Q
-      RABBITMQ_DEFAULT_USER: rabbitmq_user_default
-      RABBITMQ_DEFAULT_PASS: k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7
-      REDIS_PASSWORD: password
     ports:
       - "8002:8002"
     networks:
@@ -186,9 +173,6 @@ services:
       # Service-specific overrides
       DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
       DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
-      SUPABASE_JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters-long
-      REDIS_PASSWORD: password
-
     ports:
       - "8001:8001"
     networks:
@@ -262,11 +246,6 @@ services:
       # Service-specific overrides
       DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
       DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
-      SUPABASE_JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters-long
-      RABBITMQ_DEFAULT_USER: rabbitmq_user_default
-      RABBITMQ_DEFAULT_PASS: k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7
-      REDIS_PASSWORD: password
-
     ports:
       - "8003:8003"
     networks:
@@ -295,11 +274,6 @@ services:
     <<: *backend-env-files
     environment:
       <<: *backend-env
-      # Service-specific overrides
-      RABBITMQ_DEFAULT_USER: rabbitmq_user_default
-      RABBITMQ_DEFAULT_PASS: k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7
-      REDIS_PASSWORD: password
-
     ports:
       - "8007:8007"
     networks:
