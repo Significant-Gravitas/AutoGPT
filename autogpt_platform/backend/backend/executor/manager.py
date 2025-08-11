@@ -761,14 +761,18 @@ class ExecutionProcessor:
                 )
 
             # Input moderation
-            if moderation_error := asyncio.run_coroutine_threadsafe(
-                automod_manager.moderate_graph_execution_inputs(
-                    db_client=get_db_async_client(),
-                    graph_exec=graph_exec,
-                ),
-                self.node_evaluation_loop,
-            ).result(timeout=30.0):
-                raise moderation_error
+            try:
+                if moderation_error := asyncio.run_coroutine_threadsafe(
+                    automod_manager.moderate_graph_execution_inputs(
+                        db_client=get_db_async_client(),
+                        graph_exec=graph_exec,
+                    ),
+                    self.node_evaluation_loop,
+                ).result(timeout=30.0):
+                    raise moderation_error
+            except asyncio.TimeoutError:
+                log_metadata.warning(f"Input moderation timed out for graph execution {graph_exec.graph_exec_id}, bypassing moderation and continuing execution")
+                # Continue execution without moderation
 
             # ------------------------------------------------------------
             # Pre‑populate queue ---------------------------------------
@@ -910,16 +914,20 @@ class ExecutionProcessor:
             # loop done --------------------------------------------------
 
             # Output moderation
-            if moderation_error := asyncio.run_coroutine_threadsafe(
-                automod_manager.moderate_graph_execution_outputs(
-                    db_client=get_db_async_client(),
-                    graph_exec_id=graph_exec.graph_exec_id,
-                    user_id=graph_exec.user_id,
-                    graph_id=graph_exec.graph_id,
-                ),
-                self.node_evaluation_loop,
-            ).result(timeout=30.0):
-                raise moderation_error
+            try:
+                if moderation_error := asyncio.run_coroutine_threadsafe(
+                    automod_manager.moderate_graph_execution_outputs(
+                        db_client=get_db_async_client(),
+                        graph_exec_id=graph_exec.graph_exec_id,
+                        user_id=graph_exec.user_id,
+                        graph_id=graph_exec.graph_id,
+                    ),
+                    self.node_evaluation_loop,
+                ).result(timeout=30.0):
+                    raise moderation_error
+            except asyncio.TimeoutError:
+                log_metadata.warning(f"Output moderation timed out for graph execution {graph_exec.graph_exec_id}, bypassing moderation and continuing execution")
+                # Continue execution without moderation
 
             # Determine final execution status based on whether there was an error or termination
             if cancel.is_set():
