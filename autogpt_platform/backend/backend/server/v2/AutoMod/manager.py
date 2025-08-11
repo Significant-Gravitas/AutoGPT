@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from typing import TYPE_CHECKING, Any, Dict, Literal
@@ -225,7 +226,8 @@ class AutoModManager:
         if not executions_to_update:
             return
 
-        # Update each execution with cleared data
+        # Prepare database update tasks
+        exec_updates = []
         for exec_entry in executions_to_update:
             # Collect all input and output names to clear
             cleared_inputs = {}
@@ -239,21 +241,26 @@ class AutoModManager:
                 for name in exec_entry.output_data.keys():
                     cleared_outputs[name] = ["Failed due to content moderation"]
 
-            # Update the node execution status
-            updated_exec = await db_client.update_node_execution_status(
-                exec_entry.node_exec_id,
-                status=ExecutionStatus.FAILED,
-                stats={
-                    "error": "Failed due to content moderation",
-                    "cleared_inputs": cleared_inputs,
-                    "cleared_outputs": cleared_outputs,
-                },
+            # Add update task to list
+            exec_updates.append(
+                db_client.update_node_execution_status(
+                    exec_entry.node_exec_id,
+                    status=ExecutionStatus.FAILED,
+                    stats={
+                        "error": "Failed due to content moderation",
+                        "cleared_inputs": cleared_inputs,
+                        "cleared_outputs": cleared_outputs,
+                    },
+                )
             )
 
-            # Send websocket update to notify frontend
-            await send_async_execution_update(updated_exec)
+        # Execute all database updates in parallel
+        updated_execs = await asyncio.gather(*exec_updates)
 
-    async def _moderate_content(self, content: str, metadata: Dict[str, Any]) -> bool:
+        # Send all websocket updates in parallel
+        await asyncio.gather(*[send_async_execution_update(updated_exec) for updated_exec in updated_execs])
+
+    async def _moderate_content(self, content: str, metadata: dict[str, Any]) -> bool:
         """Moderate content using AutoMod API"""
         try:
             request_data = AutoModRequest(
