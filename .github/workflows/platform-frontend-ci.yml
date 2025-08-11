@@ -191,8 +191,9 @@ jobs:
 
       - name: Run docker compose
         run: |
-          NEXT_PUBLIC_PW_TEST=true docker compose -f ../docker-compose.yml up -d
+          docker compose -f ../docker-compose.yml up -d
         env:
+          NEXT_PUBLIC_PW_TEST: true
           DOCKER_BUILDKIT: 1
           BUILDX_CACHE_FROM: type=local,src=/tmp/.buildx-cache
           BUILDX_CACHE_TO: type=local,dest=/tmp/.buildx-cache-new,mode=max
@@ -247,10 +248,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      - name: Build frontend
-        run: pnpm build --turbo
-        # uses Turbopack, much faster and safe enough for a test pipeline
 
       - name: Install Browser 'chromium'
         run: pnpm playwright install --with-deps chromium
