@@ -1,13 +1,12 @@
 from pathlib import Path
 
-from prisma.models import User
-
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.block import BlockInstallationBlock
 from backend.blocks.http import SendWebRequestBlock
 from backend.blocks.llm import AITextGeneratorBlock
 from backend.blocks.text import ExtractTextInformationBlock, FillTextTemplateBlock
 from backend.data.graph import Graph, Link, Node, create_graph
+from backend.data.model import User
 from backend.data.user import get_or_create_user
 from backend.util.test import SpinTestServer, wait_execution
 
