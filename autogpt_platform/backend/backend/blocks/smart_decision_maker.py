@@ -478,10 +478,6 @@ class SmartDecisionMakerBlock(Block):
                 }
             )
             prompt.extend(tool_output)
-        if input_data.multiple_tool_calls:
-            input_data.sys_prompt += "\nYou can call a tool (different tools) multiple times in a single response."
-        else:
-            input_data.sys_prompt += "\nOnly provide EXACTLY one function call, multiple tool calls is strictly prohibited."
 
         values = input_data.prompt_values
         if values:

@@ -5,6 +5,7 @@ import enum
 import logging
 from collections import defaultdict
 from datetime import datetime, timezone
+from json import JSONDecodeError
 from typing import (
     TYPE_CHECKING,
     Annotated,
@@ -40,12 +41,120 @@ from pydantic_core import (
 from typing_extensions import TypedDict
 
 from backend.integrations.providers import ProviderName
+from backend.util.json import loads as json_loads
 from backend.util.settings import Secrets
 
 # Type alias for any provider name (including custom ones)
 AnyProviderName = str  # Will be validated as ProviderName at runtime
 
+
+class User(BaseModel):
+    """Application-layer User model with snake_case convention."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
+
+    id: str = Field(..., description="User ID")
+    email: str = Field(..., description="User email address")
+    email_verified: bool = Field(default=True, description="Whether email is verified")
+    name: Optional[str] = Field(None, description="User display name")
+    created_at: datetime = Field(..., description="When user was created")
+    updated_at: datetime = Field(..., description="When user was last updated")
+    metadata: dict[str, Any] = Field(
+        default_factory=dict, description="User metadata as dict"
+    )
+    integrations: str = Field(default="", description="Encrypted integrations data")
+    stripe_customer_id: Optional[str] = Field(None, description="Stripe customer ID")
+    top_up_config: Optional["AutoTopUpConfig"] = Field(
+        None, description="Top up configuration"
+    )
+
+    # Notification preferences
+    max_emails_per_day: int = Field(default=3, description="Maximum emails per day")
+    notify_on_agent_run: bool = Field(default=True, description="Notify on agent run")
+    notify_on_zero_balance: bool = Field(
+        default=True, description="Notify on zero balance"
+    )
+    notify_on_low_balance: bool = Field(
+        default=True, description="Notify on low balance"
+    )
+    notify_on_block_execution_failed: bool = Field(
+        default=True, description="Notify on block execution failure"
+    )
+    notify_on_continuous_agent_error: bool = Field(
+        default=True, description="Notify on continuous agent error"
+    )
+    notify_on_daily_summary: bool = Field(
+        default=True, description="Notify on daily summary"
+    )
+    notify_on_weekly_summary: bool = Field(
+        default=True, description="Notify on weekly summary"
+    )
+    notify_on_monthly_summary: bool = Field(
+        default=True, description="Notify on monthly summary"
+    )
+
+    @classmethod
+    def from_db(cls, prisma_user: "PrismaUser") -> "User":
+        """Convert a database User object to application User model."""
+        # Handle metadata field - convert from JSON string or dict to dict
+        metadata = {}
+        if prisma_user.metadata:
+            if isinstance(prisma_user.metadata, str):
+                try:
+                    metadata = json_loads(prisma_user.metadata)
+                except (JSONDecodeError, TypeError):
+                    metadata = {}
+            elif isinstance(prisma_user.metadata, dict):
+                metadata = prisma_user.metadata
+
+        # Handle topUpConfig field
+        top_up_config = None
+        if prisma_user.topUpConfig:
+            if isinstance(prisma_user.topUpConfig, str):
+                try:
+                    config_dict = json_loads(prisma_user.topUpConfig)
+                    top_up_config = AutoTopUpConfig.model_validate(config_dict)
+                except (JSONDecodeError, TypeError, ValueError):
+                    top_up_config = None
+            elif isinstance(prisma_user.topUpConfig, dict):
+                try:
+                    top_up_config = AutoTopUpConfig.model_validate(
+                        prisma_user.topUpConfig
+                    )
+                except ValueError:
+                    top_up_config = None
+
+        return cls(
+            id=prisma_user.id,
+            email=prisma_user.email,
+            email_verified=prisma_user.emailVerified or True,
+            name=prisma_user.name,
+            created_at=prisma_user.createdAt,
+            updated_at=prisma_user.updatedAt,
+            metadata=metadata,
+            integrations=prisma_user.integrations or "",
+            stripe_customer_id=prisma_user.stripeCustomerId,
+            top_up_config=top_up_config,
+            max_emails_per_day=prisma_user.maxEmailsPerDay or 3,
+            notify_on_agent_run=prisma_user.notifyOnAgentRun or True,
+            notify_on_zero_balance=prisma_user.notifyOnZeroBalance or True,
+            notify_on_low_balance=prisma_user.notifyOnLowBalance or True,
+            notify_on_block_execution_failed=prisma_user.notifyOnBlockExecutionFailed
+            or True,
+            notify_on_continuous_agent_error=prisma_user.notifyOnContinuousAgentError
+            or True,
+            notify_on_daily_summary=prisma_user.notifyOnDailySummary or True,
+            notify_on_weekly_summary=prisma_user.notifyOnWeeklySummary or True,
+            notify_on_monthly_summary=prisma_user.notifyOnMonthlySummary or True,
+        )
+
+
 if TYPE_CHECKING:
+    from prisma.models import User as PrismaUser
+
     from backend.data.block import BlockSchema
 
 T = TypeVar("T")
@@ -655,6 +764,9 @@ class NodeExecutionStats(BaseModel):
     output_token_count: int = 0
     extra_cost: int = 0
     extra_steps: int = 0
+    # Moderation fields
+    cleared_inputs: Optional[dict[str, list[str]]] = None
+    cleared_outputs: Optional[dict[str, list[str]]] = None
 
     def __iadd__(self, other: "NodeExecutionStats") -> "NodeExecutionStats":
         """Mutate this instance by adding another NodeExecutionStats."""
