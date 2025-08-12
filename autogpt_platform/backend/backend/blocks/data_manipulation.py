@@ -18,19 +18,6 @@ class CreateDictionaryBlock(Block):
             placeholder="e.g., {'name': 'Alice', 'age': 25}",
         )
 
-        @classmethod
-        def get_field_schema(cls, field_name: str) -> dict[str, Any]:
-            # Handle dynamic values_#_* fields (original format)
-            if field_name.startswith("values_#_"):
-                # Return a simple string type for compatibility with OpenAI
-                # The actual value can be any JSON-serializable type
-                return {
-                    "type": "string",
-                    "description": f"Dynamic value for key '{field_name[9:]}'",
-                }
-            # For regular fields, use the parent implementation
-            return super().get_field_schema(field_name)
-
     class Output(BlockSchema):
         dictionary: dict[str, Any] = SchemaField(
             description="The created dictionary containing the specified key-value pairs"
@@ -53,15 +40,6 @@ class CreateDictionaryBlock(Block):
                 {
                     "values": {"numbers": [1, 2, 3], "active": True, "score": 95.5},
                 },
-                {
-                    # When the executor processes values_#_* inputs, they get merged into values
-                    # So by the time the block runs, values already contains all dynamic values
-                    "values": {
-                        "existing": "value",
-                        "dynamic1": "test1",
-                        "dynamic2": 42,
-                    },
-                },
             ],
             test_output=[
                 (
@@ -72,18 +50,12 @@ class CreateDictionaryBlock(Block):
                     "dictionary",
                     {"numbers": [1, 2, 3], "active": True, "score": 95.5},
                 ),
-                (
-                    "dictionary",
-                    {"existing": "value", "dynamic1": "test1", "dynamic2": 42},
-                ),
             ],
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
-            # The executor's merge_execution_input function automatically merges
-            # values_#_* inputs into the values dict, so input_data.values
-            # already contains all the dynamic values
+            # The values are already validated by Pydantic schema
             yield "dictionary", input_data.values
         except Exception as e:
             yield "error", f"Failed to create dictionary: {str(e)}"
