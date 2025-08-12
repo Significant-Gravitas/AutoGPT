@@ -59,7 +59,8 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
             onClick={onClickRunAgent}
             disabled={!onClickRunAgent}
             title="Run the agent"
-            data-id="primary-action-run-agent"
+            aria-label="Run the agent"
+            data-testid="primary-action-run-agent"
           >
             <IconPlay /> Run
           </Button>

@@ -1,14 +1,15 @@
-import asyncio
 import contextlib
 import logging
 from functools import wraps
-from typing import Any, Awaitable, Callable, Dict, Optional, TypeVar, Union, cast
+from typing import Any, Awaitable, Callable, TypeVar
 
 import ldclient
 from fastapi import HTTPException
 from ldclient import Context, LDClient
 from ldclient.config import Config
 from typing_extensions import ParamSpec
+
+from autogpt_libs.utils.cache import async_ttl_cache
 
 from .config import SETTINGS
 
@@ -17,9 +18,13 @@ logger = logging.getLogger(__name__)
 P = ParamSpec("P")
 T = TypeVar("T")
 
+_is_initialized = False
+
 
 def get_client() -> LDClient:
     """Get the LaunchDarkly client singleton."""
+    if not _is_initialized:
+        initialize_launchdarkly()
     return ldclient.get()
 
 
@@ -37,6 +42,8 @@ def initialize_launchdarkly() -> None:
     ldclient.set_config(config)
 
     if ldclient.get().is_initialized():
+        global _is_initialized
+        _is_initialized = True
         logger.info("LaunchDarkly client initialized successfully")
     else:
         logger.error("LaunchDarkly client failed to initialize")
@@ -49,30 +56,90 @@ def shutdown_launchdarkly() -> None:
         logger.info("LaunchDarkly client closed successfully")
 
 
-def create_context(
-    user_id: str, additional_attributes: Optional[Dict[str, Any]] = None
-) -> Context:
-    """Create LaunchDarkly context with optional additional attributes."""
-    builder = Context.builder(str(user_id)).kind("user")
-    if additional_attributes:
-        for key, value in additional_attributes.items():
-            builder.set(key, value)
+@async_ttl_cache(maxsize=1000, ttl_seconds=86400)  # 1000 entries, 24 hours TTL
+async def _fetch_user_context_data(user_id: str) -> Context:
+    """
+    Fetch user context for LaunchDarkly from Supabase.
+
+    Args:
+        user_id: The user ID to fetch data for
+
+    Returns:
+        LaunchDarkly Context object
+    """
+    builder = Context.builder(user_id).kind("user").anonymous(True)
+
+    try:
+        from backend.util.clients import get_supabase
+
+        # If we have user data, update context
+        response = get_supabase().auth.admin.get_user_by_id(user_id)
+        if response and response.user:
+            user = response.user
+            builder.anonymous(False)
+            if user.role:
+                builder.set("role", user.role)
+            if user.email:
+                builder.set("email", user.email)
+                builder.set("email_domain", user.email.split("@")[-1])
+
+    except Exception as e:
+        logger.warning(f"Failed to fetch user context for {user_id}: {e}")
+
     return builder.build()
+
+
+async def is_feature_enabled(
+    flag_key: str,
+    user_id: str,
+    default: bool = False,
+) -> bool:
+    """
+    Check if a feature flag is enabled for a user.
+
+    Args:
+        flag_key: The LaunchDarkly feature flag key
+        user_id: The user ID to evaluate the flag for
+        default: Default value if LaunchDarkly is unavailable or flag evaluation fails
+
+    Returns:
+        True if feature is enabled, False otherwise
+    """
+    try:
+        client = get_client()
+
+        # Get user context from Supabase
+        context = await _fetch_user_context_data(user_id)
+
+        # Evaluate flag
+        result = client.variation(flag_key, context, default)
+
+        logger.debug(f"Feature flag {flag_key} for user {user_id}: {result}")
+        return result
+
+    except Exception as e:
+        logger.warning(
+            f"LaunchDarkly flag evaluation failed for {flag_key}: {e}, using default={default}"
+        )
+        return default
 
 
 def feature_flag(
     flag_key: str,
     default: bool = False,
-) -> Callable[
-    [Callable[P, Union[T, Awaitable[T]]]], Callable[P, Union[T, Awaitable[T]]]
-]:
+) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T]]]:
     """
-    Decorator for feature flag protected endpoints.
+    Decorator for async feature flag protected endpoints.
+
+    Args:
+        flag_key: The LaunchDarkly feature flag key
+        default: Default value if flag evaluation fails
+
+    Returns:
+        Decorator that only works with async functions
     """
 
-    def decorator(
-        func: Callable[P, Union[T, Awaitable[T]]],
-    ) -> Callable[P, Union[T, Awaitable[T]]]:
+    def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
         @wraps(func)
         async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             try:
@@ -86,71 +153,22 @@ def feature_flag(
                     )
                     is_enabled = default
                 else:
-                    context = create_context(str(user_id))
-                    is_enabled = get_client().variation(flag_key, context, default)
-
-                if not is_enabled:
-                    raise HTTPException(status_code=404, detail="Feature not available")
-
-                result = func(*args, **kwargs)
-                if asyncio.iscoroutine(result):
-                    return await result
-                return cast(T, result)
-            except Exception as e:
-                logger.error(f"Error evaluating feature flag {flag_key}: {e}")
-                raise
-
-        @wraps(func)
-        def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            try:
-                user_id = kwargs.get("user_id")
-                if not user_id:
-                    raise ValueError("user_id is required")
-
-                if not get_client().is_initialized():
-                    logger.warning(
-                        f"LaunchDarkly not initialized, using default={default}"
+                    # Use the simplified function
+                    is_enabled = await is_feature_enabled(
+                        flag_key, str(user_id), default
                     )
-                    is_enabled = default
-                else:
-                    context = create_context(str(user_id))
-                    is_enabled = get_client().variation(flag_key, context, default)
 
                 if not is_enabled:
                     raise HTTPException(status_code=404, detail="Feature not available")
 
-                return cast(T, func(*args, **kwargs))
+                return await func(*args, **kwargs)
             except Exception as e:
                 logger.error(f"Error evaluating feature flag {flag_key}: {e}")
                 raise
 
-        return cast(
-            Callable[P, Union[T, Awaitable[T]]],
-            async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper,
-        )
+        return async_wrapper
 
     return decorator
-
-
-def percentage_rollout(
-    flag_key: str,
-    default: bool = False,
-) -> Callable[
-    [Callable[P, Union[T, Awaitable[T]]]], Callable[P, Union[T, Awaitable[T]]]
-]:
-    """Decorator for percentage-based rollouts."""
-    return feature_flag(flag_key, default)
-
-
-def beta_feature(
-    flag_key: Optional[str] = None,
-    unauthorized_response: Any = {"message": "Not available in beta"},
-) -> Callable[
-    [Callable[P, Union[T, Awaitable[T]]]], Callable[P, Union[T, Awaitable[T]]]
-]:
-    """Decorator for beta features."""
-    actual_key = f"beta-{flag_key}" if flag_key else "beta"
-    return feature_flag(actual_key, False)
 
 
 @contextlib.contextmanager

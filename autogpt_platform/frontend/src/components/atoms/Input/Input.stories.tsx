@@ -17,7 +17,16 @@ const meta: Meta<typeof Input> = {
   argTypes: {
     type: {
       control: "select",
-      options: ["text", "email", "password", "number", "amount", "tel", "url"],
+      options: [
+        "text",
+        "email",
+        "password",
+        "number",
+        "amount",
+        "tel",
+        "url",
+        "textarea",
+      ],
       description: "Input type",
     },
     placeholder: {
@@ -50,6 +59,10 @@ const meta: Meta<typeof Input> = {
       control: "text",
       description: "Error message to display below the input",
     },
+    rows: {
+      control: "number",
+      description: "Number of rows for textarea type. Default is 3.",
+    },
   },
   args: {
     placeholder: "Enter text...",
@@ -58,6 +71,7 @@ const meta: Meta<typeof Input> = {
     disabled: false,
     hideLabel: false,
     decimalCount: 4,
+    rows: 3,
   },
 };
 
@@ -93,6 +107,15 @@ export const WithError: Story = {
     type: "email",
     placeholder: "Enter your email",
     error: "Please enter a valid email address",
+  },
+};
+
+export const TextareaInput: Story = {
+  args: {
+    label: "Description",
+    type: "textarea",
+    placeholder: "Enter your description",
+    rows: 4,
   },
 };
 
@@ -176,6 +199,19 @@ function renderInputTypes() {
         placeholder="https://example.com"
         id="website"
       />
+      <div className="flex flex-col gap-4">
+        <p className="font-mono text-sm">
+          If type=&quot;textarea&quot; prop is provided, it renders a multi-line
+          text area with specified rows.
+        </p>
+        <Input
+          label="Description"
+          type="textarea"
+          placeholder="Enter your description"
+          id="description"
+          rows={4}
+        />
+      </div>
     </div>
   );
 }

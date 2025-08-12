@@ -18,7 +18,8 @@ from backend.blocks.llm import (
     AITextSummarizerBlock,
     LlmModel,
 )
-from backend.blocks.replicate_flux_advanced import ReplicateFluxAdvancedModelBlock
+from backend.blocks.replicate.flux_advanced import ReplicateFluxAdvancedModelBlock
+from backend.blocks.replicate.replicate_block import ReplicateModelBlock
 from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
 from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.blocks.text_to_speech_block import UnrealTextToSpeechBlock
@@ -46,13 +47,19 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.O3: 4,
     LlmModel.O3_MINI: 2,  # $1.10 / $4.40
     LlmModel.O1: 16,  # $15 / $60
-    LlmModel.O1_PREVIEW: 16,
     LlmModel.O1_MINI: 4,
+    # GPT-5 models
+    LlmModel.GPT5: 2,
+    LlmModel.GPT5_MINI: 1,
+    LlmModel.GPT5_NANO: 1,
+    LlmModel.GPT5_CHAT: 2,
     LlmModel.GPT41: 2,
+    LlmModel.GPT41_MINI: 1,
     LlmModel.GPT4O_MINI: 1,
     LlmModel.GPT4O: 3,
     LlmModel.GPT4_TURBO: 10,
     LlmModel.GPT3_5_TURBO: 1,
+    LlmModel.CLAUDE_4_1_OPUS: 21,
     LlmModel.CLAUDE_4_OPUS: 21,
     LlmModel.CLAUDE_4_SONNET: 5,
     LlmModel.CLAUDE_3_7_SONNET: 5,
@@ -66,7 +73,6 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.AIML_API_LLAMA_3_2_3B: 1,
     LlmModel.LLAMA3_8B: 1,
     LlmModel.LLAMA3_70B: 1,
-    LlmModel.MIXTRAL_8X7B: 1,
     LlmModel.GEMMA2_9B: 1,
     LlmModel.LLAMA3_3_70B: 1,  # $0.59 / $0.79
     LlmModel.LLAMA3_1_8B: 1,
@@ -76,19 +82,17 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.OLLAMA_LLAMA3_405B: 1,
     LlmModel.DEEPSEEK_LLAMA_70B: 1,  # ? / ?
     LlmModel.OLLAMA_DOLPHIN: 1,
+    LlmModel.OPENAI_GPT_OSS_120B: 1,
+    LlmModel.OPENAI_GPT_OSS_20B: 1,
     LlmModel.GEMINI_FLASH_1_5: 1,
     LlmModel.GEMINI_2_5_PRO: 4,
-    LlmModel.GROK_BETA: 5,
     LlmModel.MISTRAL_NEMO: 1,
     LlmModel.COHERE_COMMAND_R_08_2024: 1,
     LlmModel.COHERE_COMMAND_R_PLUS_08_2024: 3,
-    LlmModel.EVA_QWEN_2_5_32B: 1,
     LlmModel.DEEPSEEK_CHAT: 2,
-    LlmModel.PERPLEXITY_LLAMA_3_1_SONAR_LARGE_128K_ONLINE: 1,
     LlmModel.PERPLEXITY_SONAR: 1,
     LlmModel.PERPLEXITY_SONAR_PRO: 5,
     LlmModel.PERPLEXITY_SONAR_DEEP_RESEARCH: 10,
-    LlmModel.QWEN_QWQ_32B_PREVIEW: 2,
     LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B: 1,
     LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B: 1,
     LlmModel.AMAZON_NOVA_LITE_V1: 1,
@@ -102,6 +106,15 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.LLAMA_API_LLAMA4_MAVERICK: 1,
     LlmModel.LLAMA_API_LLAMA3_3_8B: 1,
     LlmModel.LLAMA_API_LLAMA3_3_70B: 1,
+    LlmModel.GROK_4: 9,
+    LlmModel.KIMI_K2: 1,
+    LlmModel.QWEN3_235B_A22B_THINKING: 1,
+    LlmModel.QWEN3_CODER: 9,
+    LlmModel.GEMINI_2_5_FLASH: 1,
+    LlmModel.GEMINI_2_0_FLASH: 1,
+    LlmModel.GEMINI_2_5_FLASH_LITE_PREVIEW: 1,
+    LlmModel.GEMINI_2_0_FLASH_LITE: 1,
+    LlmModel.DEEPSEEK_R1_0528: 1,
 }
 
 for model in LlmModel:
@@ -280,6 +293,18 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         )
     ],
     ReplicateFluxAdvancedModelBlock: [
+        BlockCost(
+            cost_amount=10,
+            cost_filter={
+                "credentials": {
+                    "id": replicate_credentials.id,
+                    "provider": replicate_credentials.provider,
+                    "type": replicate_credentials.type,
+                }
+            },
+        )
+    ],
+    ReplicateModelBlock: [
         BlockCost(
             cost_amount=10,
             cost_filter={

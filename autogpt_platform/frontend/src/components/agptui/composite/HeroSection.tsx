@@ -8,12 +8,12 @@ import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 
 export const HeroSection: React.FC = () => {
   const router = useRouter();
-  const { completeStep } = useOnboarding();
+  const onboarding = useOnboarding();
 
   // Mark marketplace visit task as completed
   React.useEffect(() => {
-    completeStep("MARKETPLACE_VISIT");
-  }, [completeStep]);
+    onboarding?.completeStep("MARKETPLACE_VISIT");
+  }, [onboarding?.completeStep]);
 
   function onFilterChange(selectedFilters: string[]) {
     const encodedTerm = encodeURIComponent(selectedFilters.join(", "));

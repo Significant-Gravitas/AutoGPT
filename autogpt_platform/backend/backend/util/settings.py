@@ -68,7 +68,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The default timeout in seconds, for Pyro client connections.",
     )
     pyro_client_comm_retry: int = Field(
-        default=3,
+        default=5,
         description="The default number of retries for Pyro client connections.",
     )
     rpc_client_call_timeout: int = Field(
@@ -281,6 +281,46 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Whether to enable example blocks in production",
     )
 
+    cloud_storage_cleanup_interval_hours: int = Field(
+        default=6,
+        ge=1,
+        le=24,
+        description="Hours between cloud storage cleanup runs (1-24 hours)",
+    )
+
+    upload_file_size_limit_mb: int = Field(
+        default=256,
+        ge=1,
+        le=1024,
+        description="Maximum file size in MB for file uploads (1-1024 MB)",
+    )
+
+    # AutoMod configuration
+    automod_enabled: bool = Field(
+        default=False,
+        description="Whether AutoMod content moderation is enabled",
+    )
+    automod_api_url: str = Field(
+        default="",
+        description="AutoMod API base URL - Make sure it ends in /api",
+    )
+    automod_timeout: int = Field(
+        default=30,
+        description="Timeout in seconds for AutoMod API requests",
+    )
+    automod_retry_attempts: int = Field(
+        default=3,
+        description="Number of retry attempts for AutoMod API requests",
+    )
+    automod_retry_delay: float = Field(
+        default=1.0,
+        description="Delay between retries for AutoMod API requests in seconds",
+    )
+    automod_fail_open: bool = Field(
+        default=False,
+        description="If True, allow execution to continue if AutoMod fails",
+    )
+
     @field_validator("platform_base_url", "frontend_base_url")
     @classmethod
     def validate_platform_base_url(cls, v: str, info: ValidationInfo) -> str:
@@ -313,6 +353,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     trust_endpoints_for_requests: List[str] = Field(
         default_factory=list,
         description="A whitelist of trusted internal endpoints for the backend to make requests to.",
+    )
+
+    max_message_size_limit: int = Field(
+        default=16 * 1024 * 1024,  # 16 MB
+        description="Maximum message size limit for communication with the message bus",
     )
 
     backend_cors_allow_origins: List[str] = Field(default_factory=list)
@@ -477,6 +522,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     smartlead_api_key: str = Field(default="", description="SmartLead API Key")
     zerobounce_api_key: str = Field(default="", description="ZeroBounce API Key")
 
+    # AutoMod API credentials
+    automod_api_key: str = Field(default="", description="AutoMod API key")
+
+    ayrshare_api_key: str = Field(default="", description="Ayrshare API Key")
+    ayrshare_jwt_key: str = Field(default="", description="Ayrshare private Key")
     # Add more secret fields as needed
 
     model_config = SettingsConfigDict(

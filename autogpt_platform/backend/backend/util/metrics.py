@@ -7,14 +7,16 @@ from sentry_sdk.integrations.logging import LoggingIntegration
 
 from backend.util.settings import Settings
 
+settings = Settings()
+
 
 def sentry_init():
-    sentry_dsn = Settings().secrets.sentry_dsn
+    sentry_dsn = settings.secrets.sentry_dsn
     sentry_sdk.init(
         dsn=sentry_dsn,
         traces_sample_rate=1.0,
         profiles_sample_rate=1.0,
-        environment=f"app:{Settings().config.app_env.value}-behave:{Settings().config.behave_as.value}",
+        environment=f"app:{settings.config.app_env.value}-behave:{settings.config.behave_as.value}",
         _experiments={"enable_logs": True},
         integrations=[
             LoggingIntegration(sentry_logs_level=logging.INFO),
@@ -33,9 +35,7 @@ def sentry_capture_error(error: Exception):
 async def discord_send_alert(content: str):
     from backend.blocks.discord import SendDiscordMessageBlock
     from backend.data.model import APIKeyCredentials, CredentialsMetaInput, ProviderName
-    from backend.util.settings import Settings
 
-    settings = Settings()
     creds = APIKeyCredentials(
         provider="discord",
         api_key=SecretStr(settings.secrets.discord_bot_token),

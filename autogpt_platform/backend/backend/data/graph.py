@@ -3,7 +3,6 @@ import uuid
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Literal, Optional, cast
 
-from prisma import Json
 from prisma.enums import SubmissionStatus
 from prisma.models import AgentGraph, AgentNode, AgentNodeLink, StoreListingVersion
 from prisma.types import (
@@ -28,6 +27,7 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
+from backend.util.json import SafeJson
 
 from .block import Block, BlockInput, BlockSchema, BlockType, get_block, get_blocks
 from .db import BaseDbModel, query_raw_with_schema, transaction
@@ -212,9 +212,9 @@ class BaseGraph(BaseDbModel):
         schema_fields: list[AgentInputBlock.Input | AgentOutputBlock.Input] = []
         for type_class, input_default in props:
             try:
-                schema_fields.append(type_class(**input_default))
+                schema_fields.append(type_class.model_construct(**input_default))
             except Exception as e:
-                logger.warning(f"Invalid {type_class}: {input_default}, {e}")
+                logger.error(f"Invalid {type_class}: {input_default}, {e}")
 
         return {
             "type": "object",
@@ -416,6 +416,10 @@ class GraphModel(Graph):
         for_run: bool = False,
         nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
     ):
+        """
+        Validate graph structure and raise `ValueError` on issues.
+        For structured error reporting, use `validate_graph_get_errors`.
+        """
         self._validate_graph(self, for_run, nodes_input_masks)
         for sub_graph in self.sub_graphs:
             self._validate_graph(sub_graph, for_run, nodes_input_masks)
@@ -425,15 +429,58 @@ class GraphModel(Graph):
         graph: BaseGraph,
         for_run: bool = False,
         nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
-    ):
-        def is_tool_pin(name: str) -> bool:
-            return name.startswith("tools_^_")
+    ) -> None:
+        errors = GraphModel._validate_graph_get_errors(
+            graph, for_run, nodes_input_masks
+        )
+        if errors:
+            # Just raise the first error for backward compatibility
+            first_error = next(iter(errors.values()))
+            first_field_error = next(iter(first_error.values()))
+            raise ValueError(first_field_error)
 
-        def sanitize(name):
-            sanitized_name = name.split("_#_")[0].split("_@_")[0].split("_$_")[0]
-            if is_tool_pin(sanitized_name):
-                return "tools"
-            return sanitized_name
+    def validate_graph_get_errors(
+        self,
+        for_run: bool = False,
+        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+    ) -> dict[str, dict[str, str]]:
+        """
+        Validate graph and return structured errors per node.
+
+        Returns: dict[node_id, dict[field_name, error_message]]
+        """
+        return {
+            **self._validate_graph_get_errors(self, for_run, nodes_input_masks),
+            **{
+                node_id: error
+                for sub_graph in self.sub_graphs
+                for node_id, error in self._validate_graph_get_errors(
+                    sub_graph, for_run, nodes_input_masks
+                ).items()
+            },
+        }
+
+    @staticmethod
+    def _validate_graph_get_errors(
+        graph: BaseGraph,
+        for_run: bool = False,
+        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+    ) -> dict[str, dict[str, str]]:
+        """
+        Validate graph and return structured errors per node.
+
+        Returns: dict[node_id, dict[field_name, error_message]]
+        """
+        # First, check for structural issues with the graph
+        try:
+            GraphModel._validate_graph_structure(graph)
+        except ValueError:
+            # If structural validation fails, we can't provide per-node errors
+            # so we re-raise as is
+            raise
+
+        # Collect errors per node
+        node_errors: dict[str, dict[str, str]] = defaultdict(dict)
 
         # Validate smart decision maker nodes
         nodes_block = {
@@ -442,7 +489,7 @@ class GraphModel(Graph):
             if (block := get_block(node.block_id)) is not None
         }
 
-        input_links = defaultdict(list)
+        input_links: dict[str, list[Link]] = defaultdict(list)
 
         for link in graph.links:
             input_links[link.sink_id].append(link)
@@ -450,17 +497,22 @@ class GraphModel(Graph):
         # Nodes: required fields are filled or connected and dependencies are satisfied
         for node in graph.nodes:
             if (block := nodes_block.get(node.id)) is None:
+                # For invalid blocks, we still raise immediately as this is a structural issue
                 raise ValueError(f"Invalid block {node.block_id} for node #{node.id}")
 
             node_input_mask = (
                 nodes_input_masks.get(node.id, {}) if nodes_input_masks else {}
             )
             provided_inputs = set(
-                [sanitize(name) for name in node.input_default]
-                + [sanitize(link.sink_name) for link in input_links.get(node.id, [])]
+                [_sanitize_pin_name(name) for name in node.input_default]
+                + [
+                    _sanitize_pin_name(link.sink_name)
+                    for link in input_links.get(node.id, [])
+                ]
                 + ([name for name in node_input_mask] if node_input_mask else [])
             )
             InputSchema = block.input_schema
+
             for name in (required_fields := InputSchema.get_required_fields()):
                 if (
                     name not in provided_inputs
@@ -477,18 +529,16 @@ class GraphModel(Graph):
                         ]
                     )
                 ):
-                    raise ValueError(
-                        f"Node {block.name} #{node.id} required input missing: `{name}`"
-                    )
+                    node_errors[node.id][name] = "This field is required"
 
                 if (
                     block.block_type == BlockType.INPUT
                     and (input_key := node.input_default.get("name"))
                     and is_credentials_field_name(input_key)
                 ):
-                    raise ValueError(
-                        f"Agent input node uses reserved name '{input_key}'; "
-                        "'credentials' and `*_credentials` are reserved input names"
+                    node_errors[node.id]["name"] = (
+                        f"'{input_key}' is a reserved input name: "
+                        "'credentials' and `*_credentials` are reserved"
                     )
 
             # Get input schema properties and check dependencies
@@ -538,10 +588,15 @@ class GraphModel(Graph):
                 # Check for missing dependencies when dependent field is present
                 missing_deps = [dep for dep in dependencies if not has_value(node, dep)]
                 if missing_deps and (field_has_value or field_is_required):
-                    raise ValueError(
-                        f"Node {block.name} #{node.id}: Field `{field_name}` requires [{', '.join(missing_deps)}] to be set"
-                    )
+                    node_errors[node.id][
+                        field_name
+                    ] = f"Requires {', '.join(missing_deps)} to be set"
 
+        return node_errors
+
+    @staticmethod
+    def _validate_graph_structure(graph: BaseGraph):
+        """Validate graph structure (links, connections, etc.)"""
         node_map = {v.id: v for v in graph.nodes}
 
         def is_static_output_block(nid: str) -> bool:
@@ -567,7 +622,7 @@ class GraphModel(Graph):
                         f"{prefix}, {node.block_id} is invalid block id, available blocks: {blocks}"
                     )
 
-                sanitized_name = sanitize(name)
+                sanitized_name = _sanitize_pin_name(name)
                 vals = node.input_default
                 if i == 0:
                     fields = (
@@ -581,7 +636,7 @@ class GraphModel(Graph):
                         if block.block_type not in [BlockType.AGENT]
                         else vals.get("input_schema", {}).get("properties", {}).keys()
                     )
-                if sanitized_name not in fields and not is_tool_pin(name):
+                if sanitized_name not in fields and not _is_tool_pin(name):
                     fields_msg = f"Allowed fields: {fields}"
                     raise ValueError(f"{prefix}, `{name}` invalid, {fields_msg}")
 
@@ -616,6 +671,17 @@ class GraphModel(Graph):
                 for sub_graph in sub_graphs or []
             ],
         )
+
+
+def _is_tool_pin(name: str) -> bool:
+    return name.startswith("tools_^_")
+
+
+def _sanitize_pin_name(name: str) -> str:
+    sanitized_name = name.split("_#_")[0].split("_@_")[0].split("_$_")[0]
+    if _is_tool_pin(sanitized_name):
+        return "tools"
+    return sanitized_name
 
 
 class GraphMeta(Graph):
@@ -952,18 +1018,18 @@ async def fork_graph(graph_id: str, graph_version: int, user_id: str) -> GraphMo
     """
     Forks a graph by copying it and all its nodes and links to a new graph.
     """
+    graph = await get_graph(graph_id, graph_version, user_id, True)
+    if not graph:
+        raise ValueError(f"Graph {graph_id} v{graph_version} not found")
+
+    # Set forked from ID and version as itself as it's about ot be copied
+    graph.forked_from_id = graph.id
+    graph.forked_from_version = graph.version
+    graph.name = f"{graph.name} (copy)"
+    graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
+    graph.validate_graph(for_run=False)
+
     async with transaction() as tx:
-        graph = await get_graph(graph_id, graph_version, user_id, True)
-        if not graph:
-            raise ValueError(f"Graph {graph_id} v{graph_version} not found")
-
-        # Set forked from ID and version as itself as it's about ot be copied
-        graph.forked_from_id = graph.id
-        graph.forked_from_version = graph.version
-        graph.name = f"{graph.name} (copy)"
-        graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
-        graph.validate_graph(for_run=False)
-
         await __create_graph(tx, graph, user_id)
 
     return graph
@@ -995,8 +1061,8 @@ async def __create_graph(tx, graph: Graph, user_id: str):
                 agentGraphId=graph.id,
                 agentGraphVersion=graph.version,
                 agentBlockId=node.block_id,
-                constantInput=Json(node.input_default),
-                metadata=Json(node.metadata),
+                constantInput=SafeJson(node.input_default),
+                metadata=SafeJson(node.metadata),
             )
             for graph in graphs
             for node in graph.nodes
@@ -1121,7 +1187,7 @@ async def fix_llm_provider_credentials():
         await store.update_creds(user_id, credentials)
         await AgentNode.prisma().update(
             where={"id": node_id},
-            data={"constantInput": Json(node_preset_input)},
+            data={"constantInput": SafeJson(node_preset_input)},
         )
 
 

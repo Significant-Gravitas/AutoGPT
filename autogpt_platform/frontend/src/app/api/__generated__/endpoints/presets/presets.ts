@@ -37,6 +37,8 @@ import type { PostV2CreateANewPresetBody } from "../../models/postV2CreateANewPr
 
 import type { PostV2ExecuteAPreset200 } from "../../models/postV2ExecuteAPreset200";
 
+import type { TriggeredPresetSetupRequest } from "../../models/triggeredPresetSetupRequest";
+
 import { customMutator } from "../../../mutators/custom-mutator";
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
@@ -240,6 +242,33 @@ export function useGetV2ListPresets<
 
   return query;
 }
+
+/**
+ * @summary List presets
+ */
+export const prefetchGetV2ListPresetsQuery = async <
+  TData = Awaited<ReturnType<typeof getV2ListPresets>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  params: GetV2ListPresetsParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2ListPresets>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2ListPresetsQueryOptions(params, options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * Create a new preset for the current user.
@@ -553,6 +582,36 @@ export function useGetV2GetASpecificPreset<
 }
 
 /**
+ * @summary Get a specific preset
+ */
+export const prefetchGetV2GetASpecificPresetQuery = async <
+  TData = Awaited<ReturnType<typeof getV2GetASpecificPreset>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  presetId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2GetASpecificPreset>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2GetASpecificPresetQueryOptions(
+    presetId,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * Update an existing preset by its ID.
  * @summary Update an existing preset
  */
@@ -776,6 +835,116 @@ export const useDeleteV2DeleteAPreset = <
   TContext
 > => {
   const mutationOptions = getDeleteV2DeleteAPresetMutationOptions(options);
+
+  return useMutation(mutationOptions, queryClient);
+};
+/**
+ * Sets up a webhook-triggered `LibraryAgentPreset` for a `LibraryAgent`.
+Returns the correspondingly created `LibraryAgentPreset` with `webhook_id` set.
+ * @summary Setup Trigger
+ */
+export type postV2SetupTriggerResponse200 = {
+  data: LibraryAgentPreset;
+  status: 200;
+};
+
+export type postV2SetupTriggerResponse422 = {
+  data: HTTPValidationError;
+  status: 422;
+};
+
+export type postV2SetupTriggerResponseComposite =
+  | postV2SetupTriggerResponse200
+  | postV2SetupTriggerResponse422;
+
+export type postV2SetupTriggerResponse = postV2SetupTriggerResponseComposite & {
+  headers: Headers;
+};
+
+export const getPostV2SetupTriggerUrl = () => {
+  return `/api/library/presets/setup-trigger`;
+};
+
+export const postV2SetupTrigger = async (
+  triggeredPresetSetupRequest: TriggeredPresetSetupRequest,
+  options?: RequestInit,
+): Promise<postV2SetupTriggerResponse> => {
+  return customMutator<postV2SetupTriggerResponse>(getPostV2SetupTriggerUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(triggeredPresetSetupRequest),
+  });
+};
+
+export const getPostV2SetupTriggerMutationOptions = <
+  TError = HTTPValidationError,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof postV2SetupTrigger>>,
+    TError,
+    { data: TriggeredPresetSetupRequest },
+    TContext
+  >;
+  request?: SecondParameter<typeof customMutator>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof postV2SetupTrigger>>,
+  TError,
+  { data: TriggeredPresetSetupRequest },
+  TContext
+> => {
+  const mutationKey = ["postV2SetupTrigger"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof postV2SetupTrigger>>,
+    { data: TriggeredPresetSetupRequest }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return postV2SetupTrigger(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PostV2SetupTriggerMutationResult = NonNullable<
+  Awaited<ReturnType<typeof postV2SetupTrigger>>
+>;
+export type PostV2SetupTriggerMutationBody = TriggeredPresetSetupRequest;
+export type PostV2SetupTriggerMutationError = HTTPValidationError;
+
+/**
+ * @summary Setup Trigger
+ */
+export const usePostV2SetupTrigger = <
+  TError = HTTPValidationError,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof postV2SetupTrigger>>,
+      TError,
+      { data: TriggeredPresetSetupRequest },
+      TContext
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof postV2SetupTrigger>>,
+  TError,
+  { data: TriggeredPresetSetupRequest },
+  TContext
+> => {
+  const mutationOptions = getPostV2SetupTriggerMutationOptions(options);
 
   return useMutation(mutationOptions, queryClient);
 };

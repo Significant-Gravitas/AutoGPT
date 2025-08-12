@@ -9,6 +9,7 @@ This test suite verifies:
 5. Block configuration association
 """
 
+import os
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -61,20 +62,29 @@ class TestAutoRegistry:
 
         from backend.sdk.provider import OAuthConfig
 
-        provider = Provider(
-            name="oauth_provider",
-            oauth_config=OAuthConfig(oauth_handler=TestOAuthHandler),
-            webhook_manager=None,
-            default_credentials=[],
-            base_costs=[],
-            supported_auth_types={"oauth2"},
-        )
+        # Set environment variables so OAuth handler gets registered
+        with patch.dict(
+            os.environ,
+            {"TEST_CLIENT_ID": "test_id", "TEST_CLIENT_SECRET": "test_secret"},
+        ):
+            provider = Provider(
+                name="oauth_provider",
+                oauth_config=OAuthConfig(
+                    oauth_handler=TestOAuthHandler,
+                    client_id_env_var="TEST_CLIENT_ID",
+                    client_secret_env_var="TEST_CLIENT_SECRET",
+                ),
+                webhook_manager=None,
+                default_credentials=[],
+                base_costs=[],
+                supported_auth_types={"oauth2"},
+            )
 
-        AutoRegistry.register_provider(provider)
+            AutoRegistry.register_provider(provider)
 
-        # Verify OAuth handler is registered
-        assert "oauth_provider" in AutoRegistry._oauth_handlers
-        assert AutoRegistry._oauth_handlers["oauth_provider"] == TestOAuthHandler
+            # Verify OAuth handler is registered
+            assert "oauth_provider" in AutoRegistry._oauth_handlers
+            assert AutoRegistry._oauth_handlers["oauth_provider"] == TestOAuthHandler
 
     def test_provider_with_webhook_manager(self):
         """Test provider registration with webhook manager."""
@@ -170,32 +180,45 @@ class TestAutoRegistry:
 
         from backend.sdk.provider import OAuthConfig
 
-        provider1 = Provider(
-            name="provider1",
-            oauth_config=OAuthConfig(oauth_handler=TestOAuth1),
-            webhook_manager=None,
-            default_credentials=[],
-            base_costs=[],
-            supported_auth_types={"oauth2"},
-        )
+        # Set environment variables so OAuth handlers get registered
+        with patch.dict(
+            os.environ,
+            {"TEST_CLIENT_ID": "test_id", "TEST_CLIENT_SECRET": "test_secret"},
+        ):
+            provider1 = Provider(
+                name="provider1",
+                oauth_config=OAuthConfig(
+                    oauth_handler=TestOAuth1,
+                    client_id_env_var="TEST_CLIENT_ID",
+                    client_secret_env_var="TEST_CLIENT_SECRET",
+                ),
+                webhook_manager=None,
+                default_credentials=[],
+                base_costs=[],
+                supported_auth_types={"oauth2"},
+            )
 
-        provider2 = Provider(
-            name="provider2",
-            oauth_config=OAuthConfig(oauth_handler=TestOAuth2),
-            webhook_manager=None,
-            default_credentials=[],
-            base_costs=[],
-            supported_auth_types={"oauth2"},
-        )
+            provider2 = Provider(
+                name="provider2",
+                oauth_config=OAuthConfig(
+                    oauth_handler=TestOAuth2,
+                    client_id_env_var="TEST_CLIENT_ID",
+                    client_secret_env_var="TEST_CLIENT_SECRET",
+                ),
+                webhook_manager=None,
+                default_credentials=[],
+                base_costs=[],
+                supported_auth_types={"oauth2"},
+            )
 
-        AutoRegistry.register_provider(provider1)
-        AutoRegistry.register_provider(provider2)
+            AutoRegistry.register_provider(provider1)
+            AutoRegistry.register_provider(provider2)
 
-        handlers = AutoRegistry.get_oauth_handlers()
-        assert "provider1" in handlers
-        assert "provider2" in handlers
-        assert handlers["provider1"] == TestOAuth1
-        assert handlers["provider2"] == TestOAuth2
+            handlers = AutoRegistry.get_oauth_handlers()
+            assert "provider1" in handlers
+            assert "provider2" in handlers
+            assert handlers["provider1"] == TestOAuth1
+            assert handlers["provider2"] == TestOAuth2
 
     def test_block_configuration_registration(self):
         """Test registering block configuration."""
@@ -316,15 +339,22 @@ class TestProviderBuilder:
         class TestOAuth(BaseOAuthHandler):
             PROVIDER_NAME = ProviderName.GITHUB
 
-        provider = (
-            ProviderBuilder("oauth_test")
-            .with_oauth(TestOAuth, scopes=["read", "write"])
-            .build()
-        )
+        with patch.dict(
+            os.environ,
+            {
+                "OAUTH_TEST_CLIENT_ID": "test_id",
+                "OAUTH_TEST_CLIENT_SECRET": "test_secret",
+            },
+        ):
+            provider = (
+                ProviderBuilder("oauth_test")
+                .with_oauth(TestOAuth, scopes=["read", "write"])
+                .build()
+            )
 
-        assert provider.oauth_config is not None
-        assert provider.oauth_config.oauth_handler == TestOAuth
-        assert "oauth2" in provider.supported_auth_types
+            assert provider.oauth_config is not None
+            assert provider.oauth_config.oauth_handler == TestOAuth
+            assert "oauth2" in provider.supported_auth_types
 
     def test_provider_builder_with_webhook(self):
         """Test building a provider with webhook manager."""
@@ -395,34 +425,43 @@ class TestProviderBuilder:
         def error_handler(exc):
             return str(exc)
 
-        provider = (
-            ProviderBuilder("complete_test")
-            .with_api_key("COMPLETE_API_KEY", "Complete API Key")
-            .with_oauth(TestOAuth, scopes=["read"])
-            .with_webhook_manager(TestWebhook)
-            .with_base_cost(100, BlockCostType.RUN)
-            .with_api_client(client_factory)
-            .with_error_handler(error_handler)
-            .with_config(custom_setting="value")
-            .build()
-        )
+        # Set environment variables for OAuth to be registered
+        with patch.dict(
+            os.environ,
+            {
+                "COMPLETE_TEST_CLIENT_ID": "test_id",
+                "COMPLETE_TEST_CLIENT_SECRET": "test_secret",
+                "COMPLETE_API_KEY": "test_api_key",
+            },
+        ):
+            provider = (
+                ProviderBuilder("complete_test")
+                .with_api_key("COMPLETE_API_KEY", "Complete API Key")
+                .with_oauth(TestOAuth, scopes=["read"])
+                .with_webhook_manager(TestWebhook)
+                .with_base_cost(100, BlockCostType.RUN)
+                .with_api_client(client_factory)
+                .with_error_handler(error_handler)
+                .with_config(custom_setting="value")
+                .build()
+            )
 
-        # Verify all settings
-        assert provider.name == "complete_test"
-        assert "api_key" in provider.supported_auth_types
-        assert "oauth2" in provider.supported_auth_types
-        assert provider.oauth_config is not None
-        assert provider.oauth_config.oauth_handler == TestOAuth
-        assert provider.webhook_manager == TestWebhook
-        assert len(provider.base_costs) == 1
-        assert provider._api_client_factory == client_factory
-        assert provider._error_handler == error_handler
-        assert provider.get_config("custom_setting") == "value"  # from with_config
+            # Verify all settings
+            assert provider.name == "complete_test"
+            assert "api_key" in provider.supported_auth_types
+            assert "oauth2" in provider.supported_auth_types
+            assert provider.oauth_config is not None
+            assert provider.oauth_config.oauth_handler == TestOAuth
+            assert provider.webhook_manager == TestWebhook
+            assert len(provider.base_costs) == 1
+            assert provider._api_client_factory == client_factory
+            assert provider._error_handler == error_handler
+            assert provider.get_config("custom_setting") == "value"  # from with_config
 
-        # Verify it's registered
-        assert AutoRegistry.get_provider("complete_test") == provider
-        assert "complete_test" in AutoRegistry._oauth_handlers
-        assert "complete_test" in AutoRegistry._webhook_managers
+            # Verify it's registered
+            assert AutoRegistry.get_provider("complete_test") == provider
+            assert "complete_test" in AutoRegistry._oauth_handlers
+            assert "complete_test" in AutoRegistry._webhook_managers
 
 
 class TestSDKImports:

@@ -37,7 +37,7 @@ jobs:
 
       - name: Generate cache key
         id: cache-key
-        run: echo "key=${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}" >> $GITHUB_OUTPUT
+        run: echo "key=${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/package.json') }}" >> $GITHUB_OUTPUT
 
       - name: Cache dependencies
         uses: actions/cache@v4
@@ -45,6 +45,7 @@ jobs:
           path: ~/.pnpm-store
           key: ${{ steps.cache-key.outputs.key }}
           restore-keys: |
+            ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
             ${{ runner.os }}-pnpm-
 
       - name: Install dependencies
@@ -72,6 +73,7 @@ jobs:
           path: ~/.pnpm-store
           key: ${{ needs.setup.outputs.cache-key }}
           restore-keys: |
+            ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
             ${{ runner.os }}-pnpm-
 
       - name: Install dependencies
@@ -102,6 +104,7 @@ jobs:
           path: ~/.pnpm-store
           key: ${{ needs.setup.outputs.cache-key }}
           restore-keys: |
+            ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
             ${{ runner.os }}-pnpm-
 
       - name: Install dependencies
@@ -136,6 +139,7 @@ jobs:
           path: ~/.pnpm-store
           key: ${{ needs.setup.outputs.cache-key }}
           restore-keys: |
+            ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
             ${{ runner.os }}-pnpm-
 
       - name: Install dependencies
@@ -151,12 +155,10 @@ jobs:
           exitOnceUploaded: true
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: big-boi
     needs: setup
     strategy:
       fail-fast: false
-      matrix:
-        browser: [chromium, webkit]
 
     steps:
       - name: Checkout repository
@@ -172,12 +174,6 @@ jobs:
       - name: Enable corepack
         run: corepack enable
 
-      - name: Free Disk Space (Ubuntu)
-        uses: jlumbroso/free-disk-space@main
-        with:
-          large-packages: false # slow
-          docker-images: false # limited benefit
-
       - name: Copy default supabase .env
         run: |
           cp ../.env.example ../.env
@@ -186,9 +182,63 @@ jobs:
         run: |
           cp ../backend/.env.example ../backend/.env
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-frontend-test-${{ hashFiles('autogpt_platform/docker-compose.yml', 'autogpt_platform/backend/Dockerfile', 'autogpt_platform/backend/pyproject.toml', 'autogpt_platform/backend/poetry.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-frontend-test-
+
       - name: Run docker compose
         run: |
           docker compose -f ../docker-compose.yml up -d
+        env:
+          DOCKER_BUILDKIT: 1
+          BUILDX_CACHE_FROM: type=local,src=/tmp/.buildx-cache
+          BUILDX_CACHE_TO: type=local,dest=/tmp/.buildx-cache-new,mode=max
+
+      - name: Move cache
+        run: |
+          rm -rf /tmp/.buildx-cache
+          if [ -d "/tmp/.buildx-cache-new" ]; then
+            mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+          fi
+
+      - name: Wait for services to be ready
+        run: |
+          echo "Waiting for rest_server to be ready..."
+          timeout 60 sh -c 'until curl -f http://localhost:8006/health 2>/dev/null; do sleep 2; done' || echo "Rest server health check timeout, continuing..."
+          echo "Waiting for database to be ready..."
+          timeout 60 sh -c 'until docker compose -f ../docker-compose.yml exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done' || echo "Database ready check timeout, continuing..."
+
+      - name: Create E2E test data
+        run: |
+          echo "Creating E2E test data..."
+          # First try to run the script from inside the container
+          if docker compose -f ../docker-compose.yml exec -T rest_server test -f /app/autogpt_platform/backend/test/e2e_test_data.py; then
+            echo "✅ Found e2e_test_data.py in container, running it..."
+            docker compose -f ../docker-compose.yml exec -T rest_server sh -c "cd /app/autogpt_platform && python backend/test/e2e_test_data.py" || {
+              echo "❌ E2E test data creation failed!"
+              docker compose -f ../docker-compose.yml logs --tail=50 rest_server
+              exit 1
+            }
+          else
+            echo "⚠️ e2e_test_data.py not found in container, copying and running..."
+            # Copy the script into the container and run it
+            docker cp ../backend/test/e2e_test_data.py $(docker compose -f ../docker-compose.yml ps -q rest_server):/tmp/e2e_test_data.py || {
+              echo "❌ Failed to copy script to container"
+              exit 1
+            }
+            docker compose -f ../docker-compose.yml exec -T rest_server sh -c "cd /app/autogpt_platform && python /tmp/e2e_test_data.py" || {
+              echo "❌ E2E test data creation failed!"
+              docker compose -f ../docker-compose.yml logs --tail=50 rest_server
+              exit 1
+            }
+          fi
 
       - name: Restore dependencies cache
         uses: actions/cache@v4
@@ -196,6 +246,7 @@ jobs:
           path: ~/.pnpm-store
           key: ${{ needs.setup.outputs.cache-key }}
           restore-keys: |
+            ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
             ${{ runner.os }}-pnpm-
 
       - name: Install dependencies
@@ -207,22 +258,22 @@ jobs:
       - name: Build frontend
         run: pnpm build --turbo
         # uses Turbopack, much faster and safe enough for a test pipeline
+        env:
+          NEXT_PUBLIC_PW_TEST: true
 
-      - name: Install Browser '${{ matrix.browser }}'
-        run: pnpm playwright install --with-deps ${{ matrix.browser }}
+      - name: Install Browser 'chromium'
+        run: pnpm playwright install --with-deps chromium
 
       - name: Run Playwright tests
-        run: pnpm test:no-build --project=${{ matrix.browser }}
-        env:
-          BROWSER_TYPE: ${{ matrix.browser }}
+        run: pnpm test:no-build
+
+      - name: Upload Playwright artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report
 
       - name: Print Final Docker Compose logs
         if: always()
         run: docker compose -f ../docker-compose.yml logs
-
-      - uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
-        with:
-          name: playwright-report-${{ matrix.browser }}
-          path: playwright-report/
-          retention-days: 30

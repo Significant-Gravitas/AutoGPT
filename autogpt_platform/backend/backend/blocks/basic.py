@@ -39,11 +39,13 @@ class FileStoreBlock(Block):
         input_data: Input,
         *,
         graph_exec_id: str,
+        user_id: str,
         **kwargs,
     ) -> BlockOutput:
         yield "file_out", await store_media_file(
             graph_exec_id=graph_exec_id,
             file=input_data.file_in,
+            user_id=user_id,
             return_content=input_data.base_64,
         )
 
@@ -186,3 +188,31 @@ class UniversalTypeConverterBlock(Block):
             yield "value", converted_value
         except Exception as e:
             yield "error", f"Failed to convert value: {str(e)}"
+
+
+class ReverseListOrderBlock(Block):
+    """
+    A block which takes in a list and returns it in the opposite order.
+    """
+
+    class Input(BlockSchema):
+        input_list: list[Any] = SchemaField(description="The list to reverse")
+
+    class Output(BlockSchema):
+        reversed_list: list[Any] = SchemaField(description="The list in reversed order")
+
+    def __init__(self):
+        super().__init__(
+            id="422cb708-3109-4277-bfe3-bc2ae5812777",
+            description="Reverses the order of elements in a list",
+            categories={BlockCategory.BASIC},
+            input_schema=ReverseListOrderBlock.Input,
+            output_schema=ReverseListOrderBlock.Output,
+            test_input={"input_list": [1, 2, 3, 4, 5]},
+            test_output=[("reversed_list", [5, 4, 3, 2, 1])],
+        )
+
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        reversed_list = list(input_data.input_list)
+        reversed_list.reverse()
+        yield "reversed_list", reversed_list
