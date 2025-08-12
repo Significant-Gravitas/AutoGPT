@@ -8,6 +8,8 @@ import pytest
 from backend.util.service import (
     AppService,
     AppServiceClient,
+    HTTPClientError,
+    HTTPServerError,
     endpoint_to_async,
     expose,
     get_service_client,
@@ -366,3 +368,125 @@ def test_service_no_retry_when_disabled(server):
         # This should fail immediately without retry
         with pytest.raises(RuntimeError, match="Intended error for testing"):
             client.always_failing_add(5, 3)
+
+
+class TestHTTPErrorRetryBehavior:
+    """Test that HTTP client errors (4xx) are not retried but server errors (5xx) can be."""
+
+    # Note: These tests access private methods for testing internal behavior
+    # Type ignore comments are used to suppress warnings about accessing private methods
+
+    def test_http_client_error_not_retried(self):
+        """Test that 4xx errors are wrapped as HTTPClientError and not retried."""
+        # Create a mock response with 404 status
+        mock_response = Mock()
+        mock_response.status_code = 404
+        mock_response.json.return_value = {"message": "Not found"}
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "404 Not Found", request=Mock(), response=mock_response
+        )
+
+        # Create client
+        client = get_service_client(ServiceTestClient)
+        dynamic_client = client
+
+        # Test the _handle_call_method_response directly
+        with pytest.raises(HTTPClientError) as exc_info:
+            dynamic_client._handle_call_method_response(  # type: ignore[attr-defined]
+                response=mock_response, method_name="test_method"
+            )
+
+        assert exc_info.value.status_code == 404
+        assert "404" in str(exc_info.value)
+
+    def test_http_server_error_can_be_retried(self):
+        """Test that 5xx errors are wrapped as HTTPServerError and can be retried."""
+        # Create a mock response with 500 status
+        mock_response = Mock()
+        mock_response.status_code = 500
+        mock_response.json.return_value = {"message": "Internal server error"}
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "500 Internal Server Error", request=Mock(), response=mock_response
+        )
+
+        # Create client
+        client = get_service_client(ServiceTestClient)
+        dynamic_client = client
+
+        # Test the _handle_call_method_response directly
+        with pytest.raises(HTTPServerError) as exc_info:
+            dynamic_client._handle_call_method_response(  # type: ignore[attr-defined]
+                response=mock_response, method_name="test_method"
+            )
+
+        assert exc_info.value.status_code == 500
+        assert "500" in str(exc_info.value)
+
+    def test_mapped_exception_preserves_original_type(self):
+        """Test that mapped exceptions preserve their original type regardless of HTTP status."""
+        # Create a mock response with ValueError in the remote call error
+        mock_response = Mock()
+        mock_response.status_code = 400
+        mock_response.json.return_value = {
+            "type": "ValueError",
+            "args": ["Invalid parameter value"],
+        }
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "400 Bad Request", request=Mock(), response=mock_response
+        )
+
+        # Create client
+        client = get_service_client(ServiceTestClient)
+        dynamic_client = client
+
+        # Test the _handle_call_method_response directly
+        with pytest.raises(ValueError) as exc_info:
+            dynamic_client._handle_call_method_response(  # type: ignore[attr-defined]
+                response=mock_response, method_name="test_method"
+            )
+
+        assert "Invalid parameter value" in str(exc_info.value)
+
+    def test_client_error_status_codes_coverage(self):
+        """Test that various 4xx status codes are all wrapped as HTTPClientError."""
+        client_error_codes = [400, 401, 403, 404, 405, 409, 422, 429]
+
+        for status_code in client_error_codes:
+            mock_response = Mock()
+            mock_response.status_code = status_code
+            mock_response.json.return_value = {"message": f"Error {status_code}"}
+            mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+                f"{status_code} Error", request=Mock(), response=mock_response
+            )
+
+            client = get_service_client(ServiceTestClient)
+            dynamic_client = client
+
+            with pytest.raises(HTTPClientError) as exc_info:
+                dynamic_client._handle_call_method_response(  # type: ignore
+                    response=mock_response, method_name="test_method"
+                )
+
+            assert exc_info.value.status_code == status_code
+
+    def test_server_error_status_codes_coverage(self):
+        """Test that various 5xx status codes are all wrapped as HTTPServerError."""
+        server_error_codes = [500, 501, 502, 503, 504, 505]
+
+        for status_code in server_error_codes:
+            mock_response = Mock()
+            mock_response.status_code = status_code
+            mock_response.json.return_value = {"message": f"Error {status_code}"}
+            mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+                f"{status_code} Error", request=Mock(), response=mock_response
+            )
+
+            client = get_service_client(ServiceTestClient)
+            dynamic_client = client
+
+            with pytest.raises(HTTPServerError) as exc_info:
+                dynamic_client._handle_call_method_response(  # type: ignore
+                    response=mock_response, method_name="test_method"
+                )
+
+            assert exc_info.value.status_code == status_code
