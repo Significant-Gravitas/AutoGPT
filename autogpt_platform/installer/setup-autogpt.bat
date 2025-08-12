@@ -80,9 +80,9 @@ REM --- Setup backend ---
 echo Setting up backend services...
 echo.
 cd /d "%REPO_DIR%\autogpt_platform"
-if exist .env.example copy /Y .env.example .env >nul
+if exist .env.default copy /Y .env.default .env >nul
 cd backend
-if exist .env.example copy /Y .env.example .env >nul
+if exist .env.default copy /Y .env.default .env >nul
 
 REM --- Set SENTRY_DSN in backend/.env ---
 set SENTRY_DSN=https://11d0640fef35640e0eb9f022eb7d7626@o4505260022104064.ingest.us.sentry.io/4507890252447744
@@ -110,7 +110,7 @@ REM --- Setup frontend ---
 echo Setting up frontend application...
 echo.
 cd frontend
-if exist .env.example copy /Y .env.example .env >nul
+if exist .env.default copy /Y .env.default .env >nul
 call pnpm.cmd install
 if errorlevel 1 (
     echo pnpm install failed!
