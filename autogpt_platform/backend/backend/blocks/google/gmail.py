@@ -1196,7 +1196,10 @@ class GmailReplyBlock(Block):
 
     class Input(BlockSchema):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
-            ["https://www.googleapis.com/auth/gmail.send"]
+            [
+                "https://www.googleapis.com/auth/gmail.send",
+                "https://www.googleapis.com/auth/gmail.readonly",
+            ]
         )
         threadId: str = SchemaField(description="Thread ID to reply in")
         parentMessageId: str = SchemaField(
