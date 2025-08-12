@@ -461,7 +461,7 @@ class TestAsyncTTLCache:
 
         # Cache size should be reduced (cleanup removes oldest entries)
         info = size_limited_function.cache_info()
-        assert info["size"] <= 3  # Should be cleaned up
+        assert info["size"] is not None and info["size"] <= 3  # Should be cleaned up
 
     @pytest.mark.asyncio
     async def test_argument_variations(self):

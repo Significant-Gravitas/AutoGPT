@@ -4,7 +4,6 @@ import threading
 import time
 from functools import wraps
 from typing import (
-    Any,
     Awaitable,
     Callable,
     ParamSpec,
@@ -23,11 +22,13 @@ logger = logging.getLogger(__name__)
 
 
 @overload
-def thread_cached(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]: ...
+def thread_cached(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
+    pass
 
 
 @overload
-def thread_cached(func: Callable[P, R]) -> Callable[P, R]: ...
+def thread_cached(func: Callable[P, R]) -> Callable[P, R]:
+    pass
 
 
 def thread_cached(
@@ -75,26 +76,32 @@ def clear_thread_cache(func: Callable) -> None:
         clear()
 
 
+FuncT = TypeVar("FuncT")
+
+
+R_co = TypeVar("R_co", covariant=True)
+
+
 @runtime_checkable
-class AsyncCachedFunction(Protocol):
+class AsyncCachedFunction(Protocol[P, R_co]):
     """Protocol for async functions with cache management methods."""
 
     def cache_clear(self) -> None:
         """Clear all cached entries."""
         return None
 
-    def cache_info(self) -> dict[str, Any]:
+    def cache_info(self) -> dict[str, int | None]:
         """Get cache statistics."""
         return {}
 
-    async def __call__(self, *args: Any, **kwargs: Any) -> Any:
+    async def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R_co:
         """Call the cached function."""
-        return None
+        return None  # type: ignore
 
 
 def async_ttl_cache(
     maxsize: int = 128, ttl_seconds: int | None = None
-) -> Callable[[Callable[..., Awaitable[Any]]], AsyncCachedFunction]:
+) -> Callable[[Callable[P, Awaitable[R]]], AsyncCachedFunction[P, R]]:
     """
     TTL (Time To Live) cache decorator for async functions.
 
@@ -120,13 +127,13 @@ def async_ttl_cache(
     """
 
     def decorator(
-        async_func: Callable[..., Awaitable[Any]],
-    ) -> AsyncCachedFunction:
+        async_func: Callable[P, Awaitable[R]],
+    ) -> AsyncCachedFunction[P, R]:
         # Cache storage - use union type to handle both cases
-        cache_storage: dict[Any, Any | Tuple[Any, float]] = {}
+        cache_storage: dict[tuple, R | Tuple[R, float]] = {}
 
         @wraps(async_func)
-        async def wrapper(*args, **kwargs):
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             # Create cache key from arguments
             key = (args, tuple(sorted(kwargs.items())))
             current_time = time.time()
@@ -138,7 +145,7 @@ def async_ttl_cache(
                     logger.debug(
                         f"Cache hit for {async_func.__name__} with key: {str(key)[:50]}"
                     )
-                    return cache_storage[key]
+                    return cast(R, cache_storage[key])
                 else:
                     # With TTL - check expiration
                     cached_data = cache_storage[key]
@@ -148,7 +155,7 @@ def async_ttl_cache(
                             logger.debug(
                                 f"Cache hit for {async_func.__name__} with key: {str(key)[:50]}"
                             )
-                            return result
+                            return cast(R, result)
                         else:
                             # Expired entry
                             del cache_storage[key]
@@ -185,7 +192,7 @@ def async_ttl_cache(
         def cache_clear() -> None:
             cache_storage.clear()
 
-        def cache_info() -> dict[str, Any]:
+        def cache_info() -> dict[str, int | None]:
             return {
                 "size": len(cache_storage),
                 "maxsize": maxsize,
@@ -196,14 +203,35 @@ def async_ttl_cache(
         setattr(wrapper, "cache_clear", cache_clear)
         setattr(wrapper, "cache_info", cache_info)
 
-        return cast(AsyncCachedFunction, wrapper)
+        return cast(AsyncCachedFunction[P, R], wrapper)
 
     return decorator
 
 
+@overload
 def async_cache(
+    func: Callable[P, Awaitable[R]],
+) -> AsyncCachedFunction[P, R]:
+    pass
+
+
+@overload
+def async_cache(
+    func: None = None,
+    *,
     maxsize: int = 128,
-) -> Callable[[Callable[..., Awaitable[Any]]], AsyncCachedFunction]:
+) -> Callable[[Callable[P, Awaitable[R]]], AsyncCachedFunction[P, R]]:
+    pass
+
+
+def async_cache(
+    func: Callable[P, Awaitable[R]] | None = None,
+    *,
+    maxsize: int = 128,
+) -> (
+    AsyncCachedFunction[P, R]
+    | Callable[[Callable[P, Awaitable[R]]], AsyncCachedFunction[P, R]]
+):
     """
     Process-level cache decorator for async functions (no TTL).
 
@@ -211,15 +239,28 @@ def async_cache(
     This is a convenience wrapper around async_ttl_cache with ttl_seconds=None.
 
     Args:
+        func: The async function to cache (when used without parentheses)
         maxsize: Maximum number of cached entries
 
     Returns:
-        Decorator function
+        Decorated function or decorator
 
     Example:
+        # Without parentheses (uses default maxsize=128)
+        @async_cache
+        async def get_data(param: str) -> dict:
+            return {"result": param}
+
+        # With parentheses and custom maxsize
         @async_cache(maxsize=1000)
         async def expensive_computation(param: str) -> dict:
             # Expensive computation here
             return {"result": param}
     """
-    return async_ttl_cache(maxsize=maxsize, ttl_seconds=None)
+    if func is None:
+        # Called with parentheses @async_cache() or @async_cache(maxsize=...)
+        return async_ttl_cache(maxsize=maxsize, ttl_seconds=None)
+    else:
+        # Called without parentheses @async_cache
+        decorator = async_ttl_cache(maxsize=maxsize, ttl_seconds=None)
+        return decorator(func)

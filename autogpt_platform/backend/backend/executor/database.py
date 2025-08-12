@@ -35,7 +35,6 @@ from backend.data.notifications import (
 )
 from backend.data.user import (
     get_active_user_ids_in_timerange,
-    get_user_by_id,
     get_user_email_by_id,
     get_user_email_verification,
     get_user_integrations,
@@ -130,7 +129,6 @@ class DatabaseManager(AppService):
 
     # User Comms - async
     get_active_user_ids_in_timerange = _(get_active_user_ids_in_timerange)
-    get_user_by_id = _(get_user_by_id)
     get_user_email_by_id = _(get_user_email_by_id)
     get_user_email_verification = _(get_user_email_verification)
     get_user_notification_preference = _(get_user_notification_preference)
@@ -203,7 +201,6 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # User Comms
     get_active_user_ids_in_timerange = d.get_active_user_ids_in_timerange
-    get_user_by_id = d.get_user_by_id
     get_user_email_by_id = d.get_user_email_by_id
     get_user_email_verification = d.get_user_email_verification
     get_user_notification_preference = d.get_user_notification_preference
