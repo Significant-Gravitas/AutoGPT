@@ -59,6 +59,8 @@ services:
       dockerfile: autogpt_platform/backend/Dockerfile
       target: server
     command: ["python", "-m", "backend.rest"]
+    cap_add:
+      - SYS_PTRACE
     develop:
       watch:
         - path: ./
@@ -107,6 +109,8 @@ services:
       dockerfile: autogpt_platform/backend/Dockerfile
       target: server
     command: ["python", "-m", "backend.exec"]
+    cap_add:
+      - SYS_PTRACE
     develop:
       watch:
         - path: ./
@@ -154,6 +158,8 @@ services:
       dockerfile: autogpt_platform/backend/Dockerfile
       target: server
     command: ["python", "-m", "backend.ws"]
+    cap_add:
+      - SYS_PTRACE
     develop:
       watch:
         - path: ./
@@ -195,6 +201,8 @@ services:
       dockerfile: autogpt_platform/backend/Dockerfile
       target: server
     command: ["python", "-m", "backend.db"]
+    cap_add:
+      - SYS_PTRACE
     develop:
       watch:
         - path: ./
@@ -221,6 +229,8 @@ services:
       dockerfile: autogpt_platform/backend/Dockerfile
       target: server
     command: ["python", "-m", "backend.scheduler"]
+    cap_add:
+      - SYS_PTRACE
     develop:
       watch:
         - path: ./
@@ -278,6 +288,8 @@ services:
       dockerfile: autogpt_platform/backend/Dockerfile
       target: server
     command: ["python", "-m", "backend.notification"]
+    cap_add:
+      - SYS_PTRACE
     develop:
       watch:
         - path: ./
