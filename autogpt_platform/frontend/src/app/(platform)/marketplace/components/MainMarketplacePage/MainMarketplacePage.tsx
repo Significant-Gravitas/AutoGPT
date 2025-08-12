@@ -51,7 +51,7 @@ export const MainMarkeplacePage = () => {
         <Separator className="mb-6 mt-24" />
 
         {topAgents && (
-          <AgentsSection sectionTitle="Top Agents" agents={topAgents.agents} />
+          <AgentsSection sectionTitle="Top Agents" agents={topAgents.agents} margin = "37px"/>
         )}
         <Separator className="mb-[25px] mt-[60px]" />
         {featuredCreators && (
