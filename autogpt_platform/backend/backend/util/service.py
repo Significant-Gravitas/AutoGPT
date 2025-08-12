@@ -45,6 +45,34 @@ api_comm_retry = config.pyro_client_comm_retry
 api_comm_timeout = config.pyro_client_comm_timeout
 api_call_timeout = config.rpc_client_call_timeout
 
+
+def _validate_no_prisma_objects(obj: Any, path: str = "result") -> None:
+    """
+    Recursively validate that no Prisma objects are being returned from service methods.
+    This enforces proper separation of layers - only application models should cross service boundaries.
+    """
+    if obj is None:
+        return
+
+    # Check if it's a Prisma model object
+    if hasattr(obj, "__class__") and hasattr(obj.__class__, "__module__"):
+        module_name = obj.__class__.__module__
+        if module_name and "prisma.models" in module_name:
+            raise ValueError(
+                f"Prisma object {obj.__class__.__name__} found in {path}. "
+                "Service methods must return application models, not Prisma objects. "
+                f"Use {obj.__class__.__name__}.from_db() to convert to application model."
+            )
+
+    # Recursively check collections
+    if isinstance(obj, (list, tuple)):
+        for i, item in enumerate(obj):
+            _validate_no_prisma_objects(item, f"{path}[{i}]")
+    elif isinstance(obj, dict):
+        for key, value in obj.items():
+            _validate_no_prisma_objects(value, f"{path}['{key}']")
+
+
 P = ParamSpec("P")
 R = TypeVar("R")
 EXPOSED_FLAG = "__exposed__"
@@ -111,6 +139,22 @@ class UnhealthyServiceError(ValueError):
         return self.message
 
 
+class HTTPClientError(Exception):
+    """Exception for HTTP client errors (4xx status codes) that should not be retried."""
+
+    def __init__(self, status_code: int, message: str):
+        self.status_code = status_code
+        super().__init__(f"HTTP {status_code}: {message}")
+
+
+class HTTPServerError(Exception):
+    """Exception for HTTP server errors (5xx status codes) that can be retried."""
+
+    def __init__(self, status_code: int, message: str):
+        self.status_code = status_code
+        super().__init__(f"HTTP {status_code}: {message}")
+
+
 EXCEPTION_MAPPING = {
     e.__name__: e
     for e in [
@@ -119,6 +163,8 @@ EXCEPTION_MAPPING = {
         TimeoutError,
         ConnectionError,
         UnhealthyServiceError,
+        HTTPClientError,
+        HTTPServerError,
         *[
             ErrorType
             for _, ErrorType in inspect.getmembers(exceptions)
@@ -191,17 +237,21 @@ class AppService(BaseAppService, ABC):
         if asyncio.iscoroutinefunction(f):
 
             async def async_endpoint(body: RequestBodyModel):  # type: ignore #RequestBodyModel being variable
-                return await f(
+                result = await f(
                     **{name: getattr(body, name) for name in type(body).model_fields}
                 )
+                _validate_no_prisma_objects(result, f"{func.__name__} result")
+                return result
 
             return async_endpoint
         else:
 
             def sync_endpoint(body: RequestBodyModel):  # type: ignore #RequestBodyModel being variable
-                return f(
+                result = f(
                     **{name: getattr(body, name) for name in type(body).model_fields}
                 )
+                _validate_no_prisma_objects(result, f"{func.__name__} result")
+                return result
 
             return sync_endpoint
 
@@ -313,6 +363,7 @@ def get_service_client(
                 AttributeError,  # Missing attributes
                 asyncio.CancelledError,  # Task was cancelled
                 concurrent.futures.CancelledError,  # Future was cancelled
+                HTTPClientError,  # HTTP 4xx client errors - don't retry
             ),
         )(fn)
 
@@ -390,11 +441,31 @@ def get_service_client(
                 self._connection_failure_count = 0
                 return response.json()
             except httpx.HTTPStatusError as e:
-                error = RemoteCallError.model_validate(e.response.json())
-                # DEBUG HELP: if you made a custom exception, make sure you override self.args to be how to make your exception
-                raise EXCEPTION_MAPPING.get(error.type, Exception)(
-                    *(error.args or [str(e)])
-                )
+                status_code = e.response.status_code
+
+                # Try to parse the error response as RemoteCallError for mapped exceptions
+                error_response = None
+                try:
+                    error_response = RemoteCallError.model_validate(e.response.json())
+                except Exception:
+                    pass
+
+                # If we successfully parsed a mapped exception type, re-raise it
+                if error_response and error_response.type in EXCEPTION_MAPPING:
+                    exception_class = EXCEPTION_MAPPING[error_response.type]
+                    args = error_response.args or [str(e)]
+                    raise exception_class(*args)
+
+                # Otherwise categorize by HTTP status code
+                if 400 <= status_code < 500:
+                    # Client errors (4xx) - wrap to prevent retries
+                    raise HTTPClientError(status_code, str(e))
+                elif 500 <= status_code < 600:
+                    # Server errors (5xx) - wrap but allow retries
+                    raise HTTPServerError(status_code, str(e))
+                else:
+                    # Other status codes (1xx, 2xx, 3xx) - re-raise original error
+                    raise e
 
         @_maybe_retry
         def _call_method_sync(self, method_name: str, **kwargs: Any) -> Any:
