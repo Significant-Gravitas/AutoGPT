@@ -193,7 +193,6 @@ jobs:
         run: |
           docker compose -f ../docker-compose.yml up -d
         env:
-          NEXT_PUBLIC_PW_TEST: true
           DOCKER_BUILDKIT: 1
           BUILDX_CACHE_FROM: type=local,src=/tmp/.buildx-cache
           BUILDX_CACHE_TO: type=local,dest=/tmp/.buildx-cache-new,mode=max
