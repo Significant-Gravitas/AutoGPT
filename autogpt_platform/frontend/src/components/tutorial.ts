@@ -1,6 +1,7 @@
 import Shepherd from "shepherd.js";
 import "shepherd.js/dist/css/shepherd.css";
 import { sendGAEvent } from "@/components/analytics/google-analytics";
+import { Key, storage } from "@/services/storage/local-storage";
 
 export const startTutorial = (
   emptyNodeList: (forceEmpty: boolean) => boolean,
@@ -152,7 +153,7 @@ export const startTutorial = (
         text: "Skip Tutorial",
         action: () => {
           tour.cancel(); // Ends the tour
-          localStorage.setItem("shepherd-tour", "skipped"); // Set the tutorial as skipped in local storage
+          storage.set(Key.SHEPHERD_TOUR, "skipped"); // Set the tutorial as skipped in local storage
         },
         classes: "shepherd-button-secondary", // Optionally add a class for styling the skip button differently
       },
@@ -326,14 +327,17 @@ export const startTutorial = (
     id: "press-run",
     title: "Press Run",
     text: "Start your first flow by pressing the Run button!",
-    attachTo: { element: '[data-id="primary-action-run-agent"]', on: "top" },
+    attachTo: {
+      element: '[data-testid="primary-action-run-agent"]',
+      on: "top",
+    },
     advanceOn: {
-      selector: '[data-id="primary-action-run-agent"]',
+      selector: '[data-testid="primary-action-run-agent"]',
       event: "click",
     },
     buttons: [],
     beforeShowPromise: () =>
-      waitForElement('[data-id="primary-action-run-agent"]'),
+      waitForElement('[data-testid="primary-action-run-agent"]'),
     when: {
       hide: () => {
         setTimeout(() => {
@@ -503,14 +507,17 @@ export const startTutorial = (
     id: "press-run-again",
     title: "Press Run Again",
     text: "Now, press the Run button again to execute the flow with the new Calculator Block added!",
-    attachTo: { element: '[data-id="primary-action-run-agent"]', on: "top" },
+    attachTo: {
+      element: '[data-testid="primary-action-run-agent"]',
+      on: "top",
+    },
     advanceOn: {
-      selector: '[data-id="primary-action-run-agent"]',
+      selector: '[data-testid="primary-action-run-agent"]',
       event: "click",
     },
     buttons: [],
     beforeShowPromise: () =>
-      waitForElement('[data-id="primary-action-run-agent"]'),
+      waitForElement('[data-testid="primary-action-run-agent"]'),
     when: {
       hide: () => {
         setTimeout(() => {
@@ -540,7 +547,7 @@ export const startTutorial = (
   tour.on("complete", () => {
     setPinBlocksPopover(false);
     setPinSavePopover(false);
-    localStorage.setItem("shepherd-tour", "completed"); // Optionally mark the tutorial as completed
+    storage.set(Key.SHEPHERD_TOUR, "completed"); // Optionally mark the tutorial as completed
   });
 
   for (const step of tour.steps) {
@@ -555,7 +562,7 @@ export const startTutorial = (
   tour.on("cancel", () => {
     setPinBlocksPopover(false);
     setPinSavePopover(false);
-    localStorage.setItem("shepherd-tour", "canceled"); // Optionally mark the tutorial as canceled
+    storage.set(Key.SHEPHERD_TOUR, "canceled"); // Optionally mark the tutorial as canceled
   });
 
   tour.start();

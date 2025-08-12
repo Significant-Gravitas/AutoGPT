@@ -30,7 +30,10 @@ class GithubWebhooksManager(BaseWebhooksManager):
 
     @classmethod
     async def validate_payload(
-        cls, webhook: integrations.Webhook, request: Request
+        cls,
+        webhook: integrations.Webhook,
+        request: Request,
+        credentials: Credentials | None,
     ) -> tuple[dict, str]:
         if not (event_type := request.headers.get("X-GitHub-Event")):
             raise HTTPException(

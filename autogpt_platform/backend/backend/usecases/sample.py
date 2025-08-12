@@ -1,10 +1,9 @@
-from prisma.models import User
-
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.io import AgentInputBlock
 from backend.blocks.text import FillTextTemplateBlock
 from backend.data import graph
 from backend.data.graph import create_graph
+from backend.data.model import User
 from backend.data.user import get_or_create_user
 from backend.util.test import SpinTestServer, wait_execution
 

@@ -1,5 +1,6 @@
 "use client";
 import { useParams, useRouter } from "next/navigation";
+import { useQueryState } from "nuqs";
 import React, {
   useCallback,
   useEffect,
@@ -45,6 +46,7 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 
 export default function AgentRunsPage(): React.ReactElement {
   const { id: agentID }: { id: LibraryAgentID } = useParams();
+  const [executionId, setExecutionId] = useQueryState("executionId");
   const { toast } = useToast();
   const router = useRouter();
   const api = useBackendAPI();
@@ -202,6 +204,13 @@ export default function AgentRunsPage(): React.ReactElement {
     selectPreset,
   ]);
 
+  useEffect(() => {
+    if (executionId) {
+      selectRun(executionId as GraphExecutionID);
+      setExecutionId(null);
+    }
+  }, [executionId, selectRun, setExecutionId]);
+
   // Initial load
   useEffect(() => {
     refreshPageData();
@@ -218,8 +227,8 @@ export default function AgentRunsPage(): React.ReactElement {
             <LoadingSpinner className="ml-1.5 size-3.5" />
           </div>
         ),
-        duration: Infinity, // show until connection is re-established
-        dismissable: false,
+        duration: Infinity,
+        dismissable: true,
       });
     });
     const cancelConnectHandler = api.onWebSocketConnect(() => {
@@ -468,7 +477,7 @@ export default function AgentRunsPage(): React.ReactElement {
   }
 
   return (
-    <div className="container justify-stretch p-0 lg:flex">
+    <div className="container justify-stretch p-0 pt-16 lg:flex">
       {/* Sidebar w/ list of runs */}
       {/* TODO: render this below header in sm and md layouts */}
       <AgentRunsSelectorList
@@ -490,7 +499,10 @@ export default function AgentRunsPage(): React.ReactElement {
       <div className="flex-1">
         {/* Header */}
         <div className="agpt-div w-full border-b">
-          <h1 className="font-poppins text-3xl font-medium">
+          <h1
+            data-testid="agent-title"
+            className="font-poppins text-3xl font-medium"
+          >
             {
               agent.name /* TODO: use dynamic/custom run title - https://github.com/Significant-Gravitas/AutoGPT/issues/9184 */
             }

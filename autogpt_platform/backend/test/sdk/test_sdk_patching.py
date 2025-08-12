@@ -14,6 +14,7 @@ from backend.sdk import (
     AutoRegistry,
     BaseOAuthHandler,
     BaseWebhooksManager,
+    Credentials,
     ProviderBuilder,
 )
 
@@ -34,7 +35,7 @@ class MockWebhookManager(BaseWebhooksManager):
     PROVIDER_NAME = ProviderName.GITHUB
 
     @classmethod
-    async def validate_payload(cls, webhook, request):
+    async def validate_payload(cls, webhook, request, credentials: Credentials | None):
         return {}, "test_event"
 
     async def _register_webhook(self, *args, **kwargs):

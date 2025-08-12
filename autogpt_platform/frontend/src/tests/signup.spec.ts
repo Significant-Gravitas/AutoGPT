@@ -1,133 +1,126 @@
-import { expect, test } from "./fixtures";
+import test, { expect } from "@playwright/test";
 import {
   generateTestEmail,
   generateTestPassword,
   signupTestUser,
   validateSignupForm,
 } from "./utils/signup";
+import { getSelectors } from "./utils/selectors";
+import { hasUrl, isVisible } from "./utils/assertion";
 
-test.describe("Signup Flow", () => {
-  test("user can signup successfully", async ({ page }) => {
-    console.log("🧪 Testing user signup flow...");
+test("user can signup successfully", async ({ page }) => {
+  try {
+    const testUser = await signupTestUser(page);
+    const { getText, getId } = getSelectors(page);
+
+    // Verify user was created
+    expect(testUser.email).toBeTruthy();
+    expect(testUser.password).toBeTruthy();
+    expect(testUser.createdAt).toBeTruthy();
+
+    const marketplaceText = getText(
+      "Bringing you AI agents designed by thinkers from around the world",
+    );
+
+    // Verify we're on marketplace and authenticated
+    await hasUrl(page, "/marketplace");
+    await isVisible(marketplaceText);
+    await isVisible(getId("profile-popout-menu-trigger"));
+  } catch (error) {
+    console.error("❌ Signup test failed:", error);
+  }
+});
+
+test("signup form validation works", async ({ page }) => {
+  const { getField, getRole, getButton } = getSelectors(page);
+  const emailInput = getField("Email");
+  const passwordInput = page.locator("#password");
+  const confirmPasswordInput = page.locator("#confirmPassword");
+  const signupButton = getButton("Sign up");
+  const termsCheckbox = getRole("checkbox");
+
+  await validateSignupForm(page);
+
+  // Additional validation tests
+  await page.goto("/signup");
+
+  // Test with mismatched passwords
+  await emailInput.fill(generateTestEmail());
+  await passwordInput.fill("password1");
+  await confirmPasswordInput.fill("password2");
+  await termsCheckbox.click();
+  await signupButton.click();
+
+  // Should still be on signup page
+  await hasUrl(page, /\/signup/);
+});
+
+test("user can signup with custom credentials", async ({ page }) => {
+  const { getId } = getSelectors(page);
+
+  try {
+    const customEmail = generateTestEmail();
+    const customPassword = generateTestPassword();
+
+    const testUser = await signupTestUser(page, customEmail, customPassword);
+
+    // Verify correct credentials were used
+    expect(testUser.email).toBe(customEmail);
+    expect(testUser.password).toBe(customPassword);
+
+    // Verify successful signup
+    await hasUrl(page, "/marketplace");
+    await isVisible(getId("profile-popout-menu-trigger"));
+  } catch (error) {
+    console.error("❌ Custom credentials signup test failed:", error);
+  }
+});
+
+test("user can signup with existing email handling", async ({
+  page,
+  browser,
+}) => {
+  try {
+    const testEmail = generateTestEmail();
+    const testPassword = generateTestPassword();
+
+    // First signup
+    const firstUser = await signupTestUser(page, testEmail, testPassword);
+    expect(firstUser.email).toBe(testEmail);
+
+    // Create new browser context for second signup (simulates new browser window)
+    const newContext = await browser.newContext();
+    const newPage = await newContext.newPage();
 
     try {
-      const testUser = await signupTestUser(page);
+      const { getText, getField, getRole, getButton } = getSelectors(newPage);
 
-      // Verify user was created
-      expect(testUser.email).toBeTruthy();
-      expect(testUser.password).toBeTruthy();
-      expect(testUser.createdAt).toBeTruthy();
+      // Second signup attempt with same email in new browser context
+      // Navigate to signup page
+      await newPage.goto("http://localhost:3000/signup");
 
-      // Verify we're on marketplace and authenticated
-      await expect(page).toHaveURL("/marketplace");
-      await expect(
-        page.getByText(
-          "Bringing you AI agents designed by thinkers from around the world",
-        ),
-      ).toBeVisible();
-      await expect(
-        page.getByTestId("profile-popout-menu-trigger"),
-      ).toBeVisible();
+      // Wait for page to load
+      getText("Create a new account");
 
-      console.log(`✅ User successfully signed up: ${testUser.email}`);
-    } catch (error) {
-      console.error("❌ Signup test failed:", error);
+      // Fill form
+      const emailInput = getField("Email");
+      await emailInput.fill(testEmail);
+      const passwordInput = newPage.locator("#password");
+      await passwordInput.fill(testPassword);
+      const confirmPasswordInput = newPage.locator("#confirmPassword");
+      await confirmPasswordInput.fill(testPassword);
+
+      // Agree to terms and submit
+      await getRole("checkbox").click();
+      const signupButton = getButton("Sign up");
+      await signupButton.click();
+      await isVisible(getText("User with this email already exists"));
+    } catch (_error) {
+    } finally {
+      // Clean up new browser context
+      await newContext.close();
     }
-  });
-
-  test("signup form validation works", async ({ page }) => {
-    console.log("🧪 Testing signup form validation...");
-
-    await validateSignupForm(page);
-
-    // Additional validation tests
-    await page.goto("/signup");
-
-    // Test with mismatched passwords
-    console.log("❌ Testing mismatched passwords...");
-    await page.getByLabel("Email").fill(generateTestEmail());
-    const passwordInput = page.getByLabel("Password", { exact: true });
-    const confirmPasswordInput = page.getByLabel("Confirm Password", {
-      exact: true,
-    });
-    await passwordInput.fill("password1");
-    await confirmPasswordInput.fill("password2");
-    await page.getByRole("checkbox").click();
-    await page.getByRole("button", { name: "Sign up" }).click();
-
-    // Should still be on signup page
-    await expect(page).toHaveURL(/\/signup/);
-    console.log("✅ Mismatched passwords correctly blocked");
-  });
-
-  test("user can signup with custom credentials", async ({ page }) => {
-    console.log("🧪 Testing signup with custom credentials...");
-
-    try {
-      const customEmail = generateTestEmail();
-      const customPassword = generateTestPassword();
-
-      const testUser = await signupTestUser(page, customEmail, customPassword);
-
-      // Verify correct credentials were used
-      expect(testUser.email).toBe(customEmail);
-      expect(testUser.password).toBe(customPassword);
-
-      // Verify successful signup
-      await expect(page).toHaveURL("/marketplace");
-      await expect(
-        page.getByTestId("profile-popout-menu-trigger"),
-      ).toBeVisible();
-
-      console.log(`✅ Custom credentials signup worked: ${testUser.email}`);
-    } catch (error) {
-      console.error("❌ Custom credentials signup test failed:", error);
-    }
-  });
-
-  test("user can signup with existing email handling", async ({
-    page,
-    browser,
-  }) => {
-    console.log("🧪 Testing duplicate email handling...");
-
-    try {
-      const testEmail = generateTestEmail();
-      const testPassword = generateTestPassword();
-
-      // First signup
-      console.log(`👤 First signup attempt: ${testEmail}`);
-      const firstUser = await signupTestUser(page, testEmail, testPassword);
-
-      expect(firstUser.email).toBe(testEmail);
-      console.log("✅ First signup successful");
-
-      // Create new browser context for second signup (simulates new browser window)
-      console.log("🔄 Creating new browser context...");
-      const newContext = await browser.newContext();
-      const newPage = await newContext.newPage();
-
-      try {
-        // Second signup attempt with same email in new browser context
-        console.log(
-          `👤 Second signup attempt in new browser context: ${testEmail}`,
-        );
-        await signupTestUser(newPage, testEmail, testPassword);
-        expect(
-          newPage.getByText("User with this email already exists"),
-        ).toBeVisible();
-        console.log("ℹ️ Second signup handled gracefully");
-      } catch (_error) {
-        console.log("ℹ️ Second signup rejected as expected");
-      } finally {
-        // Clean up new browser context
-        await newContext.close();
-        console.log("🧹 New browser context closed");
-      }
-
-      console.log("✅ Duplicate email handling test completed");
-    } catch (error) {
-      console.error("❌ Duplicate email handling test failed:", error);
-    }
-  });
+  } catch (error) {
+    console.error("❌ Duplicate email handling test failed:", error);
+  }
 });
