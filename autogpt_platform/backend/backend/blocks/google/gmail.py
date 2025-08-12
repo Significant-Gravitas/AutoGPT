@@ -1,3 +1,4 @@
+import asyncio
 import base64
 from abc import ABC
 from email import encoders
@@ -270,8 +271,8 @@ class GmailBase(Block, ABC):
     async def _download_attachment_body(self, attachment_id, msg_id, service):
         """Download attachment content when email body is stored as attachment."""
         try:
-            attachment = (
-                service.users()
+            attachment = await asyncio.to_thread(
+                lambda: service.users()
                 .messages()
                 .attachments()
                 .get(userId="me", messageId=msg_id, id=attachment_id)
@@ -295,9 +296,9 @@ class GmailBase(Block, ABC):
                     attachments.append(attachment)
         return attachments
 
-    def download_attachment(self, service, message_id: str, attachment_id: str):
-        attachment = (
-            service.users()
+    async def download_attachment(self, service, message_id: str, attachment_id: str):
+        attachment = await asyncio.to_thread(
+            lambda: service.users()
             .messages()
             .attachments()
             .get(userId="me", messageId=message_id, id=attachment_id)
@@ -308,7 +309,9 @@ class GmailBase(Block, ABC):
 
     async def _get_label_id(self, service, label_name: str) -> str | None:
         """Get label ID by name from Gmail."""
-        results = service.users().labels().list(userId="me").execute()
+        results = await asyncio.to_thread(
+            lambda: service.users().labels().list(userId="me").execute()
+        )
         labels = results.get("labels", [])
         for label in labels:
             if label["name"] == label_name:
@@ -443,7 +446,9 @@ class GmailReadBlock(GmailBase):
         if query and "https://www.googleapis.com/auth/gmail.metadata" not in scopes:
             list_kwargs["q"] = query
 
-        results = service.users().messages().list(**list_kwargs).execute()
+        results = await asyncio.to_thread(
+            lambda: service.users().messages().list(**list_kwargs).execute()
+        )
 
         messages = results.get("messages", [])
 
@@ -454,8 +459,8 @@ class GmailReadBlock(GmailBase):
                 if "https://www.googleapis.com/auth/gmail.metadata" in scopes
                 else "full"
             )
-            msg = (
-                service.users()
+            msg = await asyncio.to_thread(
+                lambda: service.users()
                 .messages()
                 .get(userId="me", id=message["id"], format=format_type)
                 .execute()
@@ -592,8 +597,8 @@ class GmailSendBlock(GmailBase):
                 "At least one recipient, subject, and body are required for sending an email"
             )
         raw_message = await create_mime_message(input_data, graph_exec_id, user_id)
-        sent_message = (
-            service.users()
+        sent_message = await asyncio.to_thread(
+            lambda: service.users()
             .messages()
             .send(userId="me", body={"raw": raw_message})
             .execute()
@@ -705,8 +710,8 @@ class GmailCreateDraftBlock(GmailBase):
             )
 
         raw_message = await create_mime_message(input_data, graph_exec_id, user_id)
-        draft = (
-            service.users()
+        draft = await asyncio.to_thread(
+            lambda: service.users()
             .drafts()
             .create(userId="me", body={"message": {"raw": raw_message}})
             .execute()
@@ -766,7 +771,9 @@ class GmailListLabelsBlock(GmailBase):
         yield "result", result
 
     async def _list_labels(self, service) -> list[dict]:
-        results = service.users().labels().list(userId="me").execute()
+        results = await asyncio.to_thread(
+            lambda: service.users().labels().list(userId="me").execute()
+        )
         labels = results.get("labels", [])
         return [{"id": label["id"], "name": label["name"]} for label in labels]
 
@@ -830,8 +837,8 @@ class GmailAddLabelBlock(GmailBase):
 
     async def _add_label(self, service, message_id: str, label_name: str) -> dict:
         label_id = await self._get_or_create_label(service, label_name)
-        result = (
-            service.users()
+        result = await asyncio.to_thread(
+            lambda: service.users()
             .messages()
             .modify(userId="me", id=message_id, body={"addLabelIds": [label_id]})
             .execute()
@@ -847,8 +854,8 @@ class GmailAddLabelBlock(GmailBase):
     async def _get_or_create_label(self, service, label_name: str) -> str:
         label_id = await self._get_label_id(service, label_name)
         if not label_id:
-            label = (
-                service.users()
+            label = await asyncio.to_thread(
+                lambda: service.users()
                 .labels()
                 .create(userId="me", body={"name": label_name})
                 .execute()
@@ -917,8 +924,8 @@ class GmailRemoveLabelBlock(GmailBase):
     async def _remove_label(self, service, message_id: str, label_name: str) -> dict:
         label_id = await self._get_label_id(service, label_name)
         if label_id:
-            result = (
-                service.users()
+            result = await asyncio.to_thread(
+                lambda: service.users()
                 .messages()
                 .modify(userId="me", id=message_id, body={"removeLabelIds": [label_id]})
                 .execute()
@@ -1039,8 +1046,8 @@ class GmailGetThreadBlock(GmailBase):
             if "https://www.googleapis.com/auth/gmail.metadata" in scopes
             else "full"
         )
-        thread = (
-            service.users()
+        thread = await asyncio.to_thread(
+            lambda: service.users()
             .threads()
             .get(userId="me", id=thread_id, format=format_type)
             .execute()
@@ -1223,8 +1230,8 @@ class GmailReplyBlock(GmailBase):
     async def _reply(
         self, service, input_data: Input, graph_exec_id: str, user_id: str
     ) -> dict:
-        parent = (
-            service.users()
+        parent = await asyncio.to_thread(
+            lambda: service.users()
             .messages()
             .get(
                 userId="me",
@@ -1302,8 +1309,8 @@ class GmailReplyBlock(GmailBase):
             msg.attach(part)
 
         raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
-        return (
-            service.users()
+        return await asyncio.to_thread(
+            lambda: service.users()
             .messages()
             .send(userId="me", body={"threadId": input_data.threadId, "raw": raw})
             .execute()
@@ -1361,7 +1368,9 @@ class GmailGetProfileBlock(GmailBase):
         yield "profile", profile
 
     async def _get_profile(self, service) -> Profile:
-        result = service.users().getProfile(userId="me").execute()
+        result = await asyncio.to_thread(
+            lambda: service.users().getProfile(userId="me").execute()
+        )
         return Profile(
             emailAddress=result.get("emailAddress", ""),
             messagesTotal=result.get("messagesTotal", 0),
@@ -1424,7 +1433,7 @@ class GmailForwardBlock(GmailBase):
 
     def __init__(self):
         super().__init__(
-            id="b2a7c3e4-d5f6-4789-9abc-def123456789",
+            id="64d2301c-b3f5-4174-8ac0-111ca1e1a7c0",
             description="Forward Gmail messages to other recipients with automatic HTML detection and proper formatting. Preserves original message threading and attachments.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=GmailForwardBlock.Input,
@@ -1477,8 +1486,8 @@ class GmailForwardBlock(GmailBase):
             raise ValueError("At least one recipient is required for forwarding")
 
         # Get the original message
-        original = (
-            service.users()
+        original = await asyncio.to_thread(
+            lambda: service.users()
             .messages()
             .get(userId="me", id=input_data.messageId, format="full")
             .execute()
@@ -1538,7 +1547,7 @@ To: {original_to}
             attachments = await self._get_attachments(service, original)
             for attachment in attachments:
                 # Download and attach each original attachment
-                attachment_data = self.download_attachment(
+                attachment_data = await self.download_attachment(
                     service, input_data.messageId, attachment.attachment_id
                 )
                 part = MIMEBase("application", "octet-stream")
@@ -1570,4 +1579,9 @@ To: {original_to}
 
         # Send the forwarded message
         raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
-        return service.users().messages().send(userId="me", body={"raw": raw}).execute()
+        return await asyncio.to_thread(
+            lambda: service.users()
+            .messages()
+            .send(userId="me", body={"raw": raw})
+            .execute()
+        )
