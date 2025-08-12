@@ -6,7 +6,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { User } from "@supabase/supabase-js";
 import { usePostV1UpdateUserEmail } from "@/app/api/__generated__/endpoints/auth/auth";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 
 const emailFormSchema = z.object({
   email: z
@@ -21,9 +20,25 @@ function createEmailDefaultValues(user: { email?: string }) {
   };
 }
 
+async function updateUserEmailAPI(email: string) {
+  const response = await fetch("/api/auth/user", {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ email }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to update email");
+  }
+
+  return response.json();
+}
+
 export function useEmailForm({ user }: { user: User }) {
   const { toast } = useToast();
-  const { supabase } = useSupabase();
   const defaultValues = createEmailDefaultValues(user);
 
   const form = useForm<z.infer<typeof emailFormSchema>>({
@@ -49,12 +64,9 @@ export function useEmailForm({ user }: { user: User }) {
     try {
       if (values.email !== user.email) {
         await Promise.all([
-          supabase?.auth.updateUser({ email: values.email }),
+          updateUserEmailAPI(values.email),
           updateEmailMutation.mutateAsync({ data: values.email }),
-        ]).then(([supabaseResult]) => {
-          if (supabaseResult?.error)
-            throw new Error(supabaseResult.error.message);
-        });
+        ]);
 
         toast({
           title: "Successfully updated email",

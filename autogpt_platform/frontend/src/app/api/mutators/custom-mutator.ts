@@ -93,7 +93,7 @@ export const customMutator = async <T = any>(
   // 4. If the request succeeds on the server side, the data will be cached, and the client will use it instead of sending a request to the proxy.
 
   if (!response.ok && isServerSide()) {
-    console.error("Request failed on server side", response);
+    console.error("Request failed on server side", response, fullUrl);
     throw new Error(`Request failed with status ${response.status}`);
   }
 
