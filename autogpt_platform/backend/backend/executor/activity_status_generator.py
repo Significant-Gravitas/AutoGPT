@@ -102,8 +102,10 @@ async def generate_activity_status_for_execution(
     Returns:
         AI-generated activity status string, or None if feature is disabled
     """
-    # Check LaunchDarkly feature flag for AI activity status generation
-    if not is_feature_enabled(AI_ACTIVITY_STATUS_FLAG_KEY, user_id, default=False):
+    # Check LaunchDarkly feature flag for AI activity status generation with full context support
+    if not await is_feature_enabled(
+        AI_ACTIVITY_STATUS_FLAG_KEY, user_id, default=False
+    ):
         logger.debug("AI activity status generation is disabled via LaunchDarkly")
         return None
 
