@@ -4,14 +4,7 @@ classic/original_autogpt/keys.py
 classic/original_autogpt/*.json
 auto_gpt_workspace/*
 *.mpeg
-# Ignore .env files
-autogpt_platform/.env
-autogpt_platform/backend/.env
-autogpt_platform/backend/.env.docker
-autogpt_platform/frontend/.env
-autogpt_platform/frontend/.env.local
-autogpt_platform/db/.env
-autogpt_platform/db/docker/.env
+.env
 # Root .env files
 /.env
 azure.yaml
