@@ -29,7 +29,7 @@ export const AgentTable: React.FC<AgentTableProps> = ({
   onEditSubmission,
 }) => {
   return (
-    <div className="w-full">
+    <div className="w-full" data-testid="agent-table">
       {/* Table header - Hide on mobile */}
       <div className="hidden flex-col md:flex">
         <div className="border-t border-neutral-300 dark:border-neutral-700" />

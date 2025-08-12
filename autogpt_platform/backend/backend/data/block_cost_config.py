@@ -48,12 +48,18 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.O3_MINI: 2,  # $1.10 / $4.40
     LlmModel.O1: 16,  # $15 / $60
     LlmModel.O1_MINI: 4,
+    # GPT-5 models
+    LlmModel.GPT5: 2,
+    LlmModel.GPT5_MINI: 1,
+    LlmModel.GPT5_NANO: 1,
+    LlmModel.GPT5_CHAT: 2,
     LlmModel.GPT41: 2,
     LlmModel.GPT41_MINI: 1,
     LlmModel.GPT4O_MINI: 1,
     LlmModel.GPT4O: 3,
     LlmModel.GPT4_TURBO: 10,
     LlmModel.GPT3_5_TURBO: 1,
+    LlmModel.CLAUDE_4_1_OPUS: 21,
     LlmModel.CLAUDE_4_OPUS: 21,
     LlmModel.CLAUDE_4_SONNET: 5,
     LlmModel.CLAUDE_3_7_SONNET: 5,
@@ -76,6 +82,8 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.OLLAMA_LLAMA3_405B: 1,
     LlmModel.DEEPSEEK_LLAMA_70B: 1,  # ? / ?
     LlmModel.OLLAMA_DOLPHIN: 1,
+    LlmModel.OPENAI_GPT_OSS_120B: 1,
+    LlmModel.OPENAI_GPT_OSS_20B: 1,
     LlmModel.GEMINI_FLASH_1_5: 1,
     LlmModel.GEMINI_2_5_PRO: 4,
     LlmModel.MISTRAL_NEMO: 1,

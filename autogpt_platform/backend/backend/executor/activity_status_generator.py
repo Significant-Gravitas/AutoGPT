@@ -13,6 +13,7 @@ from backend.blocks.llm import LlmModel, llm_call
 from backend.data.block import get_block
 from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.data.model import APIKeyCredentials, GraphExecutionStats
+from backend.util.retry import func_retry
 from backend.util.settings import Settings
 from backend.util.truncate import truncate
 
@@ -415,6 +416,7 @@ def _build_execution_summary(
     }
 
 
+@func_retry
 async def _call_llm_direct(
     credentials: APIKeyCredentials, prompt: list[dict[str, str]]
 ) -> str:

@@ -9,6 +9,24 @@ from backend.sdk import BaseModel, Credentials, Requests
 logger = getLogger(__name__)
 
 
+def _convert_bools(
+    obj: Any,
+) -> Any:  # noqa: ANN401 – allow Any for deep conversion utility
+    """Recursively walk *obj* and coerce string booleans to real booleans."""
+    if isinstance(obj, str):
+        lowered = obj.lower()
+        if lowered == "true":
+            return True
+        if lowered == "false":
+            return False
+        return obj
+    if isinstance(obj, list):
+        return [_convert_bools(item) for item in obj]
+    if isinstance(obj, dict):
+        return {k: _convert_bools(v) for k, v in obj.items()}
+    return obj
+
+
 class WebhookFilters(BaseModel):
     dataTypes: list[str]
     changeTypes: list[str] | None = None
@@ -579,7 +597,7 @@ async def update_table(
     response = await Requests().patch(
         f"https://api.airtable.com/v0/meta/bases/{base_id}/tables/{table_id}",
         headers={"Authorization": credentials.auth_header()},
-        json=params,
+        json=_convert_bools(params),
     )
 
     return response.json()
@@ -609,7 +627,7 @@ async def create_field(
     response = await Requests().post(
         f"https://api.airtable.com/v0/meta/bases/{base_id}/tables/{table_id}/fields",
         headers={"Authorization": credentials.auth_header()},
-        json=params,
+        json=_convert_bools(params),
     )
     return response.json()
 
@@ -633,7 +651,7 @@ async def update_field(
     response = await Requests().patch(
         f"https://api.airtable.com/v0/meta/bases/{base_id}/tables/{table_id}/fields/{field_id}",
         headers={"Authorization": credentials.auth_header()},
-        json=params,
+        json=_convert_bools(params),
     )
     return response.json()
 
@@ -691,7 +709,7 @@ async def list_records(
     response = await Requests().get(
         f"https://api.airtable.com/v0/{base_id}/{table_id_or_name}",
         headers={"Authorization": credentials.auth_header()},
-        params=params,
+        json=_convert_bools(params),
     )
     return response.json()
 
@@ -720,20 +738,22 @@ async def update_multiple_records(
     typecast: bool | None = None,
 ) -> dict[str, dict[str, dict[str, str]]]:
 
-    params: dict[str, str | dict[str, list[str]] | list[dict[str, dict[str, str]]]] = {}
+    params: dict[
+        str, str | bool | dict[str, list[str]] | list[dict[str, dict[str, str]]]
+    ] = {}
     if perform_upsert:
         params["performUpsert"] = perform_upsert
     if return_fields_by_field_id:
         params["returnFieldsByFieldId"] = str(return_fields_by_field_id)
     if typecast:
-        params["typecast"] = str(typecast)
+        params["typecast"] = typecast
 
-    params["records"] = records
+    params["records"] = [_convert_bools(record) for record in records]
 
     response = await Requests().patch(
         f"https://api.airtable.com/v0/{base_id}/{table_id_or_name}",
         headers={"Authorization": credentials.auth_header()},
-        json=params,
+        json=_convert_bools(params),
     )
     return response.json()
 
@@ -747,18 +767,20 @@ async def update_record(
     typecast: bool | None = None,
     fields: dict[str, Any] | None = None,
 ) -> dict[str, dict[str, dict[str, str]]]:
-    params: dict[str, str | dict[str, Any] | list[dict[str, dict[str, str]]]] = {}
+    params: dict[str, str | bool | dict[str, Any] | list[dict[str, dict[str, str]]]] = (
+        {}
+    )
     if return_fields_by_field_id:
-        params["returnFieldsByFieldId"] = str(return_fields_by_field_id)
+        params["returnFieldsByFieldId"] = return_fields_by_field_id
     if typecast:
-        params["typecast"] = str(typecast)
+        params["typecast"] = typecast
     if fields:
         params["fields"] = fields
 
     response = await Requests().patch(
         f"https://api.airtable.com/v0/{base_id}/{table_id_or_name}/{record_id}",
         headers={"Authorization": credentials.auth_header()},
-        json=params,
+        json=_convert_bools(params),
     )
     return response.json()
 
@@ -779,21 +801,22 @@ async def create_record(
             len(records) <= 10
         ), "Only up to 10 records can be provided when using records"
 
-    params: dict[str, str | dict[str, Any] | list[dict[str, Any]]] = {}
+    params: dict[str, str | bool | dict[str, Any] | list[dict[str, Any]]] = {}
     if fields:
         params["fields"] = fields
     if records:
         params["records"] = records
     if return_fields_by_field_id:
-        params["returnFieldsByFieldId"] = str(return_fields_by_field_id)
+        params["returnFieldsByFieldId"] = return_fields_by_field_id
     if typecast:
-        params["typecast"] = str(typecast)
+        params["typecast"] = typecast
 
     response = await Requests().post(
         f"https://api.airtable.com/v0/{base_id}/{table_id_or_name}",
         headers={"Authorization": credentials.auth_header()},
-        json=params,
+        json=_convert_bools(params),
     )
+
     return response.json()
 
 
@@ -850,7 +873,7 @@ async def create_webhook(
     response = await Requests().post(
         f"https://api.airtable.com/v0/bases/{base_id}/webhooks",
         headers={"Authorization": credentials.auth_header()},
-        json=params,
+        json=_convert_bools(params),
     )
     return response.json()
 
@@ -1195,7 +1218,7 @@ async def create_base(
             "Authorization": credentials.auth_header(),
             "Content-Type": "application/json",
         },
-        json=params,
+        json=_convert_bools(params),
     )
 
     return response.json()
