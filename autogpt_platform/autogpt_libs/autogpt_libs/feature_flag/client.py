@@ -65,30 +65,56 @@ def create_context(
     user_id: str, additional_attributes: Optional[dict[str, Any]] = None
 ) -> Context:
     """Create LaunchDarkly context with optional additional attributes."""
-    builder = Context.builder(str(user_id)).kind("user")
+    # Use the key from attributes if provided, otherwise use user_id
+    context_key = user_id
+    if additional_attributes and "key" in additional_attributes:
+        context_key = additional_attributes["key"]
+
+    builder = Context.builder(str(context_key)).kind("user")
+
     if additional_attributes:
         for key, value in additional_attributes.items():
-            builder.set(key, value)
+            # Skip kind and key as they're already set
+            if key in ["kind", "key"]:
+                continue
+            elif key == "custom" and isinstance(value, dict):
+                # Handle custom attributes object - these go as individual attributes
+                for custom_key, custom_value in value.items():
+                    builder.set(custom_key, custom_value)
+            else:
+                builder.set(key, value)
     return builder.build()
 
 
 @async_ttl_cache(maxsize=1000, ttl_seconds=86400)  # 1000 entries, 24 hours TTL
 async def _fetch_user_context_data(user_id: str) -> dict[str, Any]:
     """
-    Fetch user data and build complete LaunchDarkly context with segments.
+    Fetch user data and build complete LaunchDarkly context.
 
-    Uses the existing get_user_by_id function and applies segmentation logic
-    within the LaunchDarkly client for clean separation of concerns.
+    First attempts to fetch role from Supabase auth system, then falls back
+    to database metadata if needed.
 
     Args:
         user_id: The user ID to fetch data for
 
     Returns:
-        Dictionary with user context data including segments
+        Dictionary with user context data including role
 
     Raises:
         Exception: If database query fails (not cached)
     """
+    # Try to get auth data from Supabase first
+    supabase_auth_data = None
+    try:
+        from backend.data.supabase_auth import get_user_auth_data_from_supabase
+
+        supabase_auth_data = await get_user_auth_data_from_supabase(user_id)
+        logger.debug(f"Fetched Supabase auth data for {user_id}: {supabase_auth_data}")
+    except ImportError:
+        logger.debug("Supabase auth module not available")
+    except Exception as e:
+        logger.warning(f"Failed to fetch Supabase auth data for {user_id}: {e}")
+
     # Import here to avoid circular dependencies
     from backend.data.db import prisma
 
@@ -105,68 +131,70 @@ async def _fetch_user_context_data(user_id: str) -> dict[str, Any]:
         db_client = get_database_manager_async_client()
         user = await db_client.get_user_by_id(user_id)
 
-    # Build and return LaunchDarkly context with segments
-    return _build_launchdarkly_context(user)
+    # Build LaunchDarkly context with Supabase auth data if available
+    context_data = _build_launchdarkly_context(user)
 
+    # Override with Supabase auth data if available
+    if supabase_auth_data:
+        # Update role from Supabase if present
+        if "role" in supabase_auth_data:
+            if "custom" not in context_data:
+                context_data["custom"] = {}
+            context_data["custom"]["role"] = supabase_auth_data["role"]
+            logger.debug(
+                f"Using Supabase role for {user_id}: {supabase_auth_data['role']}"
+            )
 
-def _add_role_to_attributes(
-    attrs: dict[str, Any], user_role: str, existing_segments: Optional[list[str]] = None
-) -> dict[str, Any]:
-    """Add user role to attributes and segments, avoiding duplication."""
-    attrs["role"] = user_role
+        # Update email if different
+        if "email" in supabase_auth_data and supabase_auth_data["email"]:
+            context_data["email"] = supabase_auth_data["email"]
 
-    # Get existing segments from attrs or use provided existing_segments
-    segments = attrs.get("segments", existing_segments or [])
-    if not isinstance(segments, list):
-        segments = [user_role] if segments else [user_role]
-    else:
-        segments.append(user_role)
-
-    attrs["segments"] = list(set(segments))  # Remove duplicates
-    return attrs
+    return context_data
 
 
 def _build_launchdarkly_context(user: "User") -> dict[str, Any]:
     """
-    Build LaunchDarkly context data with segments from user object.
+    Build LaunchDarkly context data matching frontend format.
+
+    Returns a context like:
+    {
+        "kind": "user",
+        "key": "user-id",
+        "email": "user@example.com",
+        "custom": {
+            "role": "admin",
+            "age": 365
+        }
+    }
 
     Args:
         user: User object from database
 
     Returns:
-        Dictionary with user context data including segments
+        Dictionary with user context data
     """
     from datetime import datetime
 
     from autogpt_libs.auth.models import DEFAULT_USER_ID
 
-    # Build basic context data
+    # Build basic context data with kind, key, and email at root level
     context_data = {
+        "kind": "user",
+        "key": user.id,
         "email": user.email,
-        "name": user.name,
-        "created_at": user.created_at.isoformat() if user.created_at else None,
     }
 
-    # Determine user segments for LaunchDarkly targeting
-    segments = []
+    # Initialize custom attributes dictionary
+    custom = {}
 
-    # Add role-based segment
+    # Determine user role from metadata
+    role = "authenticated"  # Default role for authenticated users
+
+    # Check if user is default/system user
     if user.id == DEFAULT_USER_ID:
-        segments.extend(
-            ["system", "admin"]
-        )  # Default user has admin privileges when auth is disabled
-    else:
-        segments.append("user")  # Regular users
+        role = "admin"  # Default user has admin privileges when auth is disabled
 
-    # Add email domain-based segments for targeting
-    if user.email:
-        domain = user.email.split("@")[-1] if "@" in user.email else ""
-        if domain:
-            context_data["email_domain"] = domain
-            if domain in ["agpt.co"]:
-                segments.append("employee")
-
-    # Parse metadata for additional segments and custom attributes
+    # Check for role in metadata to override default
     if user.metadata:
         try:
             # Handle both string (direct DB) and dict (RPC) formats
@@ -177,42 +205,23 @@ def _build_launchdarkly_context(user: "User") -> dict[str, Any]:
             else:
                 metadata = {}  # Fallback for unexpected types
 
-            # Extract explicit segments from metadata if they exist
-            if "segments" in metadata:
-                if isinstance(metadata["segments"], list):
-                    segments.extend(metadata["segments"])
-                elif isinstance(metadata["segments"], str):
-                    segments.append(metadata["segments"])
-
             # Extract role from metadata if present
-            if "role" in metadata:
+            if "role" in metadata and metadata["role"]:
                 role = metadata["role"]
-                if role in ["admin", "moderator", "employee"]:
-                    segments.append(role)
-                context_data["role"] = role
-
-            # Add custom attributes with prefix to avoid conflicts
-            for key, value in metadata.items():
-                if key not in ["segments", "role"]:  # Skip processed fields
-                    context_data[f"custom_{key}"] = value
 
         except (JSONDecodeError, TypeError) as e:
             logger.debug(f"Failed to parse user metadata for context: {e}")
 
-    # Add account age segment for targeting new vs old users
+    # Set the role in custom attributes
+    custom["role"] = role
+
+    # Add account age in days if available
     if user.created_at:
         account_age_days = (datetime.now(user.created_at.tzinfo) - user.created_at).days
-        if account_age_days < 7:
-            segments.append("new_user")
-        elif account_age_days < 30:
-            segments.append("recent_user")
-        else:
-            segments.append("established_user")
+        custom["age"] = account_age_days
 
-        context_data["account_age_days"] = account_age_days
-
-    # Remove duplicates and sort for consistency
-    context_data["segments"] = sorted(list(set(segments)))
+    # Add the custom object to context
+    context_data["custom"] = custom  # type: ignore
 
     return context_data
 
@@ -246,7 +255,11 @@ async def is_feature_enabled(
             # Simple context with just user ID (for backward compatibility)
             attrs = additional_attributes or {}
             if user_role:
-                attrs = _add_role_to_attributes(attrs, user_role)
+                # Add role to custom attributes for consistency
+                if "custom" not in attrs:
+                    attrs["custom"] = {}
+                if isinstance(attrs["custom"], dict):
+                    attrs["custom"]["role"] = user_role
             context = create_context(str(user_id), attrs)
         else:
             # Full context with user segments and metadata from database
@@ -263,18 +276,24 @@ async def is_feature_enabled(
 
             # Merge additional attributes and role
             attrs = additional_attributes or {}
+
+            # If user_role is provided, add it to custom attributes
             if user_role:
-                attrs = _add_role_to_attributes(
-                    attrs, user_role, user_data.get("segments")
-                )
+                if "custom" not in user_data:
+                    user_data["custom"] = {}
+                user_data["custom"]["role"] = user_role
 
-            # Merge attributes with user data
+            # Merge additional attributes with user data
+            # Handle custom attributes specially
+            if "custom" in attrs and isinstance(attrs["custom"], dict):
+                if "custom" not in user_data:
+                    user_data["custom"] = {}
+                user_data["custom"].update(attrs["custom"])
+                # Remove custom from attrs to avoid duplication
+                attrs = {k: v for k, v in attrs.items() if k != "custom"}
+
+            # Merge remaining attributes
             final_attrs = {**user_data, **attrs}
-
-            # Handle segment merging if both have segments
-            if "segments" in user_data and "segments" in attrs:
-                combined = list(set(user_data["segments"] + attrs["segments"]))
-                final_attrs["segments"] = combined
 
             context = create_context(str(user_id), final_attrs)
 
