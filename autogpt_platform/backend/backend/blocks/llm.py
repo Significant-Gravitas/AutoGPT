@@ -655,8 +655,8 @@ async def llm_call(
             api_key=credentials.api_key.get_secret_value(),
             default_headers={
                 "X-Project": "AutoGPT",
-                'X-Title': 'AutoGPT',
-                'HTTP-Referer': 'https://github.com/Significant-Gravitas/AutoGPT'
+                "X-Title": "AutoGPT",
+                "HTTP-Referer": "https://github.com/Significant-Gravitas/AutoGPT",
             },
         )
 
