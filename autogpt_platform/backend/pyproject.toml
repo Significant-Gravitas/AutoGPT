@@ -47,7 +47,6 @@ prisma = "^0.15.0"
 prometheus-client = "^0.22.1"
 psutil = "^7.0.0"
 psycopg2-binary = "^2.9.10"
-py-spy = "^0.4.0"
 pydantic = { extras = ["email"], version = "^2.11.7" }
 pydantic-settings = "^2.10.1"
 pytest = "^8.4.1"
