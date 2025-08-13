@@ -279,21 +279,6 @@ async def get_flag_value(flag: Flag, user_id: str) -> Any:
     return await get_feature_flag_value(flag.value, user_id, default)
 
 
-async def get_boolean_flag(flag: Flag, user_id: str) -> bool:
-    """
-    Get a boolean feature flag value for a user.
-
-    Args:
-        flag: The feature flag to evaluate (must be a boolean flag)
-        user_id: The user ID to evaluate the flag for
-
-    Returns:
-        True if feature is enabled, False otherwise
-    """
-    default = DEFAULT_FLAG_VALUES.get(flag, False)
-    return await is_feature_enabled(flag.value, user_id, default)
-
-
 @contextlib.contextmanager
 def mock_flag_variation(flag_key: str, return_value: Any):
     """Context manager for testing feature flags."""

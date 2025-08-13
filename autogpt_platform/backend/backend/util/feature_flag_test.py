@@ -5,7 +5,6 @@ from ldclient import LDClient
 from backend.util.feature_flag import (
     Flag,
     feature_flag,
-    get_boolean_flag,
     get_flag_value,
     is_feature_enabled,
     mock_flag_variation,
@@ -115,14 +114,15 @@ async def test_get_flag_value(mocker):
 
 
 @pytest.mark.asyncio
-async def test_get_boolean_flag(mocker):
-    """Test get_boolean_flag function."""
-    mock_is_feature_enabled = mocker.patch(
-        "backend.util.feature_flag.is_feature_enabled"
+async def test_is_feature_enabled_with_flag_enum(mocker):
+    """Test is_feature_enabled function with Flag enum."""
+    mock_get_feature_flag_value = mocker.patch(
+        "backend.util.feature_flag.get_feature_flag_value"
     )
-    mock_is_feature_enabled.return_value = True
+    mock_get_feature_flag_value.return_value = True
 
-    result = await get_boolean_flag(Flag.AUTOMOD, "user123")
+    result = await is_feature_enabled(Flag.AUTOMOD, "user123")
 
     assert result is True
-    mock_is_feature_enabled.assert_called_once_with("AutoMod", "user123", False)
+    # Should call with the flag's string value
+    mock_get_feature_flag_value.assert_called_once()

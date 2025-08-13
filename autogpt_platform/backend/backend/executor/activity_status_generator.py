@@ -12,7 +12,7 @@ from backend.blocks.llm import LlmModel, llm_call
 from backend.data.block import get_block
 from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.data.model import APIKeyCredentials, GraphExecutionStats
-from backend.util.feature_flag import Flag, get_boolean_flag
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.retry import func_retry
 from backend.util.settings import Settings
 from backend.util.truncate import truncate
@@ -100,7 +100,7 @@ async def generate_activity_status_for_execution(
         AI-generated activity status string, or None if feature is disabled
     """
     # Check LaunchDarkly feature flag for AI activity status generation with full context support
-    if not await get_boolean_flag(Flag.AI_ACTIVITY_STATUS, user_id):
+    if not await is_feature_enabled(Flag.AI_ACTIVITY_STATUS, user_id):
         logger.debug("AI activity status generation is disabled via LaunchDarkly")
         return None
 

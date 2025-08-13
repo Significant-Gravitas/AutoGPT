@@ -15,7 +15,7 @@ from backend.server.v2.AutoMod.models import (
     ModerationConfig,
 )
 from backend.util.exceptions import ModerationError
-from backend.util.feature_flag import Flag, get_boolean_flag
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.request import Requests
 from backend.util.settings import Settings
 
@@ -51,7 +51,7 @@ class AutoModManager:
             return None
 
         # Check if AutoMod feature is enabled for this user
-        if not await get_boolean_flag(Flag.AUTOMOD, graph_exec.user_id):
+        if not await is_feature_enabled(Flag.AUTOMOD, graph_exec.user_id):
             logger.debug(f"AutoMod feature not enabled for user {graph_exec.user_id}")
             return None
 
@@ -141,7 +141,7 @@ class AutoModManager:
             return None
 
         # Check if AutoMod feature is enabled for this user
-        if not await get_boolean_flag(Flag.AUTOMOD, user_id):
+        if not await is_feature_enabled(Flag.AUTOMOD, user_id):
             logger.debug(f"AutoMod feature not enabled for user {user_id}")
             return None
 
