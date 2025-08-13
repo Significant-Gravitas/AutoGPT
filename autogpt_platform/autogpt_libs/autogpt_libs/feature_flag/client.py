@@ -14,8 +14,6 @@ from ldclient import Context, LDClient
 from ldclient.config import Config
 from typing_extensions import ParamSpec
 
-from autogpt_libs.utils.cache import async_ttl_cache
-
 from .config import SETTINGS
 
 logger = logging.getLogger(__name__)
@@ -86,70 +84,24 @@ def create_context(
     return builder.build()
 
 
-@async_ttl_cache(maxsize=1000, ttl_seconds=86400)  # 1000 entries, 24 hours TTL
 async def _fetch_user_context_data(user_id: str) -> dict[str, Any]:
     """
-    Fetch user data and build complete LaunchDarkly context.
-
-    First attempts to fetch role from Supabase auth system, then falls back
-    to database metadata if needed.
+    Fetch user data and build LaunchDarkly context.
 
     Args:
         user_id: The user ID to fetch data for
 
     Returns:
         Dictionary with user context data including role
-
-    Raises:
-        Exception: If database query fails (not cached)
     """
-    # Try to get auth data from Supabase first
-    supabase_auth_data = None
-    try:
-        from backend.data.supabase_auth import get_user_auth_data_from_supabase
+    # Use the unified database access approach
+    from backend.util.clients import get_database_manager_async_client
 
-        supabase_auth_data = await get_user_auth_data_from_supabase(user_id)
-        logger.debug(f"Fetched Supabase auth data for {user_id}: {supabase_auth_data}")
-    except ImportError:
-        logger.debug("Supabase auth module not available")
-    except Exception as e:
-        logger.warning(f"Failed to fetch Supabase auth data for {user_id}: {e}")
+    db_client = get_database_manager_async_client()
+    user = await db_client.get_user_by_id(user_id)
 
-    # Import here to avoid circular dependencies
-    from backend.data.db import prisma
-
-    # Check if we're in a context with direct database access
-    if prisma.is_connected():
-        # Direct database query using existing function
-        from backend.data.user import get_user_by_id
-
-        user = await get_user_by_id(user_id)
-    else:
-        # Use database manager client for RPC calls
-        from backend.util.clients import get_database_manager_async_client
-
-        db_client = get_database_manager_async_client()
-        user = await db_client.get_user_by_id(user_id)
-
-    # Build LaunchDarkly context with Supabase auth data if available
-    context_data = _build_launchdarkly_context(user)
-
-    # Override with Supabase auth data if available
-    if supabase_auth_data:
-        # Update role from Supabase if present
-        if "role" in supabase_auth_data:
-            if "custom" not in context_data:
-                context_data["custom"] = {}
-            context_data["custom"]["role"] = supabase_auth_data["role"]
-            logger.debug(
-                f"Using Supabase role for {user_id}: {supabase_auth_data['role']}"
-            )
-
-        # Update email if different
-        if "email" in supabase_auth_data and supabase_auth_data["email"]:
-            context_data["email"] = supabase_auth_data["email"]
-
-    return context_data
+    # Build LaunchDarkly context from user data
+    return _build_launchdarkly_context(user)
 
 
 def _build_launchdarkly_context(user: "User") -> dict[str, Any]:
@@ -160,10 +112,10 @@ def _build_launchdarkly_context(user: "User") -> dict[str, Any]:
     {
         "kind": "user",
         "key": "user-id",
-        "email": "user@example.com",
+        "email": "user@example.com",  # Optional
+        "anonymous": false,
         "custom": {
-            "role": "admin",
-            "age": 365
+            "role": "admin"  # Optional
         }
     }
 
@@ -173,29 +125,30 @@ def _build_launchdarkly_context(user: "User") -> dict[str, Any]:
     Returns:
         Dictionary with user context data
     """
-    from datetime import datetime
-
     from autogpt_libs.auth.models import DEFAULT_USER_ID
 
-    # Build basic context data with kind, key, and email at root level
-    context_data = {
+    # Build basic context - always include kind, key, and anonymous
+    context_data: dict[str, Any] = {
         "kind": "user",
         "key": user.id,
-        "email": user.email,
+        "anonymous": False,
     }
 
-    # Initialize custom attributes dictionary
-    custom = {}
+    # Add email if present
+    if user.email:
+        context_data["email"] = user.email
+
+    # Initialize custom attributes
+    custom: dict[str, Any] = {}
 
     # Determine user role from metadata
-    role = "authenticated"  # Default role for authenticated users
+    role = None
 
     # Check if user is default/system user
     if user.id == DEFAULT_USER_ID:
         role = "admin"  # Default user has admin privileges when auth is disabled
-
-    # Check for role in metadata to override default
-    if user.metadata:
+    elif user.metadata:
+        # Check for role in metadata
         try:
             # Handle both string (direct DB) and dict (RPC) formats
             if isinstance(user.metadata, str):
@@ -203,25 +156,22 @@ def _build_launchdarkly_context(user: "User") -> dict[str, Any]:
             elif isinstance(user.metadata, dict):
                 metadata = user.metadata
             else:
-                metadata = {}  # Fallback for unexpected types
+                metadata = {}
 
             # Extract role from metadata if present
-            if "role" in metadata and metadata["role"]:
+            if metadata.get("role"):
                 role = metadata["role"]
 
         except (JSONDecodeError, TypeError) as e:
             logger.debug(f"Failed to parse user metadata for context: {e}")
 
-    # Set the role in custom attributes
-    custom["role"] = role
+    # Add role to custom attributes if present
+    if role:
+        custom["role"] = role
 
-    # Add account age in days if available
-    if user.created_at:
-        account_age_days = (datetime.now(user.created_at.tzinfo) - user.created_at).days
-        custom["age"] = account_age_days
-
-    # Add the custom object to context
-    context_data["custom"] = custom  # type: ignore
+    # Only add custom object if it has content
+    if custom:
+        context_data["custom"] = custom
 
     return context_data
 
