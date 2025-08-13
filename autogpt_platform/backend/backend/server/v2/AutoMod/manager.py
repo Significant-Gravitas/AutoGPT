@@ -320,7 +320,7 @@ class AutoModManager:
         url = f"{self.config.api_url}/moderate"
         headers = {
             "Content-Type": "application/json",
-            "X-API-Key": self.config.api_key,
+            "X-API-Key": self.config.api_key.strip(),
         }
 
         # Create requests instance with timeout and retry configuration
