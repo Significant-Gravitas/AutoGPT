@@ -24,6 +24,24 @@ class StoreAgent(BaseModel):
     categories: list[str] = []
 
 
+class StoreAgentDict(BaseModel):
+    """Dictionary representation of a store agent."""
+
+    slug: str
+    name: str
+    description: str
+    creator: str
+    rating: float
+    runs: int
+
+
+class SearchAgentsResponse(BaseModel):
+    """Response from searching store agents."""
+
+    agents: list[StoreAgentDict]
+    total_count: int
+
+
 class StoreAgentDetails(BaseModel):
     """Detailed information about a store agent."""
 
@@ -68,12 +86,12 @@ class GetStoreAgentDetailsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="3712b8c2-4f5e-5e6f-ad9c-2b3c4d5e6f7a",
+            id="b604f0ec-6e0d-40a7-bf55-9fd09997cced",
             description="Get detailed information about an agent from the store",
             categories={BlockCategory.BASIC, BlockCategory.DATA},
             input_schema=GetStoreAgentDetailsBlock.Input,
             output_schema=GetStoreAgentDetailsBlock.Output,
-            test_input={"slug": "test-agent-slug", "version": None},
+            test_input={"creator": "test-creator", "slug": "test-agent-slug"},
             test_output=[
                 ("found", True),
                 ("store_listing_version_id", "test-listing-id"),
@@ -85,16 +103,16 @@ class GetStoreAgentDetailsBlock(Block):
                 ("rating", 4.5),
             ],
             test_mock={
-                "_get_agent_details": lambda *_, **__: {
-                    "found": True,
-                    "store_listing_version_id": "test-listing-id",
-                    "agent_name": "Test Agent",
-                    "description": "A test agent",
-                    "creator": "Test Creator",
-                    "categories": ["productivity", "automation"],
-                    "runs": 100,
-                    "rating": 4.5,
-                }
+                "_get_agent_details": lambda *_, **__: StoreAgentDetails(
+                    found=True,
+                    store_listing_version_id="test-listing-id",
+                    agent_name="Test Agent",
+                    description="A test agent",
+                    creator="Test Creator",
+                    categories=["productivity", "automation"],
+                    runs=100,
+                    rating=4.5,
+                )
             },
             static_output=True,
         )
@@ -192,10 +210,13 @@ class SearchStoreAgentsBlock(Block):
             default_factory=list,
         )
         agent: StoreAgent = SchemaField(description="Basic information of the agent")
+        total_count: int = SchemaField(
+            description="Total number of agents found", default=0
+        )
 
     def __init__(self):
         super().__init__(
-            id="4823c9d3-5f6e-6e7f-be9d-3c4d5e6f7a8b",
+            id="39524701-026c-4328-87cc-1b88c8e2cb4c",
             description="Search for agents in the store",
             categories={BlockCategory.BASIC, BlockCategory.DATA},
             input_schema=SearchStoreAgentsBlock.Input,
@@ -221,22 +242,32 @@ class SearchStoreAgentsBlock(Block):
                     ],
                 ),
                 ("total_count", 1),
+                (
+                    "agent",
+                    {
+                        "slug": "test-agent",
+                        "name": "Test Agent",
+                        "description": "A test agent",
+                        "creator": "Test Creator",
+                        "rating": 4.5,
+                        "runs": 100,
+                    },
+                ),
             ],
             test_mock={
-                "_search_agents": lambda *_, **__: {
-                    "agents": [
-                        {
-                            "slug": "test-agent",
-                            "name": "Test Agent",
-                            "description": "A test agent",
-                            "creator": "Test Creator",
-                            "rating": 4.5,
-                            "runs": 100,
-                            "store_listing_version_id": "test-version-id",
-                        }
+                "_search_agents": lambda *_, **__: SearchAgentsResponse(
+                    agents=[
+                        StoreAgentDict(
+                            slug="test-agent",
+                            name="Test Agent",
+                            description="A test agent",
+                            creator="Test Creator",
+                            rating=4.5,
+                            runs=100,
+                        )
                     ],
-                    "total_count": 1,
-                }
+                    total_count=1,
+                )
             },
         )
 
@@ -246,21 +277,29 @@ class SearchStoreAgentsBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            agents = await self._search_agents(
+            result = await self._search_agents(
                 query=input_data.query,
                 category=input_data.category,
                 sort_by=input_data.sort_by,
                 limit=input_data.limit,
             )
 
-            yield "agents", agents
+            agents = result.agents
+            total_count = result.total_count
 
-            for agent in agents:
-                yield "agent", agent
+            # Convert to dict for output
+            agents_as_dicts = [agent.model_dump() for agent in agents]
+
+            yield "agents", agents_as_dicts
+            yield "total_count", total_count
+
+            for agent_dict in agents_as_dicts:
+                yield "agent", agent_dict
 
         except Exception as e:
             logger.error(f"Failed to search store agents: {str(e)}")
-            yield "error", str(e)
+            yield "agents", []
+            yield "total_count", 0
 
     async def _search_agents(
         self,
@@ -268,7 +307,7 @@ class SearchStoreAgentsBlock(Block):
         category: Optional[str] = None,
         sort_by: str = "rating",
         limit: int = 10,
-    ) -> list[StoreAgent]:
+    ) -> SearchAgentsResponse:
         """
         Search for agents in the store using the existing store database function.
         """
@@ -290,10 +329,10 @@ class SearchStoreAgentsBlock(Block):
             page_size=limit,
         )
 
-        agents: list[StoreAgent] = []
+        agents: list[StoreAgentDict] = []
         for agent in result.agents:
             agents.append(
-                StoreAgent(
+                StoreAgentDict(
                     slug=agent.slug,
                     name=agent.agent_name,
                     description=agent.description,
@@ -303,4 +342,4 @@ class SearchStoreAgentsBlock(Block):
                 )
             )
 
-        return agents
+        return SearchAgentsResponse(agents=agents, total_count=len(agents))

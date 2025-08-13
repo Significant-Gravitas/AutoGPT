@@ -2,10 +2,16 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from backend.blocks.system.library_operations import AddToLibraryFromStoreBlock
+from backend.blocks.system.library_operations import (
+    AddToLibraryFromStoreBlock,
+    LibraryAgent,
+)
 from backend.blocks.system.store_operations import (
     GetStoreAgentDetailsBlock,
+    SearchAgentsResponse,
     SearchStoreAgentsBlock,
+    StoreAgentDetails,
+    StoreAgentDict,
 )
 from backend.server.v2.store import exceptions as store_exceptions
 
@@ -25,12 +31,12 @@ async def test_add_to_library_from_store_block_success(mocker):
     mocker.patch.object(
         block,
         "_add_to_library",
-        return_value={
-            "library_agent_id": "lib-agent-123",
-            "agent_id": "graph-456",
-            "agent_version": 1,
-            "agent_name": "Test Agent",
-        },
+        return_value=LibraryAgent(
+            library_agent_id="lib-agent-123",
+            agent_id="graph-456",
+            agent_version=1,
+            agent_name="Test Agent",
+        ),
     )
 
     input_data = block.Input(
@@ -82,16 +88,16 @@ async def test_get_store_agent_details_block_success(mocker):
     mocker.patch.object(
         block,
         "_get_agent_details",
-        return_value={
-            "found": True,
-            "store_listing_version_id": "version-123",
-            "agent_name": "Test Agent",
-            "description": "A test agent for testing",
-            "creator": "Test Creator",
-            "categories": ["productivity", "automation"],
-            "runs": 100,
-            "rating": 4.5,
-        },
+        return_value=StoreAgentDetails(
+            found=True,
+            store_listing_version_id="version-123",
+            agent_name="Test Agent",
+            description="A test agent for testing",
+            creator="Test Creator",
+            categories=["productivity", "automation"],
+            runs=100,
+            rating=4.5,
+        ),
     )
 
     input_data = block.Input(creator="Test Creator", slug="test-slug")
@@ -117,16 +123,16 @@ async def test_get_store_agent_details_block_not_found(mocker):
     mocker.patch.object(
         block,
         "_get_agent_details",
-        return_value={
-            "found": False,
-            "store_listing_version_id": "",
-            "agent_name": "",
-            "description": "",
-            "creator": "",
-            "categories": [],
-            "runs": 0,
-            "rating": 0.0,
-        },
+        return_value=StoreAgentDetails(
+            found=False,
+            store_listing_version_id="",
+            agent_name="",
+            description="",
+            creator="",
+            categories=[],
+            runs=0,
+            rating=0.0,
+        ),
     )
 
     input_data = block.Input(creator="Test Creator", slug="test-slug-noat-exist")
@@ -148,27 +154,27 @@ async def test_search_store_agents_block(mocker):
     mocker.patch.object(
         block,
         "_search_agents",
-        return_value={
-            "agents": [
-                {
-                    "slug": "creator1/agent1",
-                    "name": "Agent One",
-                    "description": "First test agent",
-                    "creator": "Creator 1",
-                    "rating": 4.8,
-                    "runs": 500,
-                },
-                {
-                    "slug": "creator2/agent2",
-                    "name": "Agent Two",
-                    "description": "Second test agent",
-                    "creator": "Creator 2",
-                    "rating": 4.2,
-                    "runs": 200,
-                },
+        return_value=SearchAgentsResponse(
+            agents=[
+                StoreAgentDict(
+                    slug="creator1/agent1",
+                    name="Agent One",
+                    description="First test agent",
+                    creator="Creator 1",
+                    rating=4.8,
+                    runs=500,
+                ),
+                StoreAgentDict(
+                    slug="creator2/agent2",
+                    name="Agent Two",
+                    description="Second test agent",
+                    creator="Creator 2",
+                    rating=4.2,
+                    runs=200,
+                ),
             ],
-            "total_count": 2,
-        },
+            total_count=2,
+        ),
     )
 
     input_data = block.Input(
@@ -191,7 +197,9 @@ async def test_search_store_agents_block_empty_results(mocker):
     block = SearchStoreAgentsBlock()
 
     mocker.patch.object(
-        block, "_search_agents", return_value={"agents": [], "total_count": 0}
+        block,
+        "_search_agents",
+        return_value=SearchAgentsResponse(agents=[], total_count=0),
     )
 
     input_data = block.Input(query="nonexistent", limit=10)
