@@ -525,6 +525,12 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     # AutoMod API credentials
     automod_api_key: str = Field(default="", description="AutoMod API key")
 
+    # LaunchDarkly feature flags
+    launch_darkly_sdk_key: str = Field(
+        default="",
+        description="The LaunchDarkly SDK key for feature flag management",
+    )
+
     ayrshare_api_key: str = Field(default="", description="Ayrshare API Key")
     ayrshare_jwt_key: str = Field(default="", description="Ayrshare private Key")
     # Add more secret fields as needed

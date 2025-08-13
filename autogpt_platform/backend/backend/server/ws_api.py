@@ -6,7 +6,6 @@ from typing import Protocol
 import pydantic
 import uvicorn
 from autogpt_libs.auth import parse_jwt_token
-from autogpt_libs.logging.utils import generate_uvicorn_config
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
 
@@ -309,7 +308,7 @@ class WebsocketServer(AppProcess):
             server_app,
             host=Config().websocket_server_host,
             port=Config().websocket_server_port,
-            log_config=generate_uvicorn_config(),
+            log_config=None,
         )
 
     def cleanup(self):
