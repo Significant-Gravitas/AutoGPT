@@ -9,7 +9,6 @@ import fastapi.responses
 import pydantic
 import starlette.middleware.cors
 import uvicorn
-from autogpt_libs.logging.utils import generate_uvicorn_config
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 
@@ -247,7 +246,7 @@ class AgentServer(backend.util.service.AppProcess):
             server_app,
             host=backend.util.settings.Config().agent_api_host,
             port=backend.util.settings.Config().agent_api_port,
-            log_config=generate_uvicorn_config(),
+            log_config=None,
         )
 
     def cleanup(self):

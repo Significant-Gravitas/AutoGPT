@@ -24,7 +24,6 @@ from typing import (
 
 import httpx
 import uvicorn
-from autogpt_libs.logging.utils import generate_uvicorn_config
 from fastapi import FastAPI, Request, responses
 from pydantic import BaseModel, TypeAdapter, create_model
 
@@ -266,7 +265,7 @@ class AppService(BaseAppService, ABC):
                 self.fastapi_app,
                 host=api_host,
                 port=self.get_port(),
-                log_config=generate_uvicorn_config(),
+                log_config=None,  # Explicitly None to avoid uvicorn replacing the logger.
                 log_level=self.log_level,
             )
         )
