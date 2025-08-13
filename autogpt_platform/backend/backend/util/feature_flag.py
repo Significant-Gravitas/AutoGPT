@@ -1,7 +1,8 @@
 import contextlib
 import logging
+from enum import Enum
 from functools import wraps
-from typing import Any, Awaitable, Callable, TypeVar
+from typing import Any, Awaitable, Callable, TypedDict, TypeVar
 
 import ldclient
 from autogpt_libs.utils.cache import async_ttl_cache
@@ -21,6 +22,44 @@ P = ParamSpec("P")
 T = TypeVar("T")
 
 _is_initialized = False
+
+
+class Flag(str, Enum):
+    """
+    Centralized enum for all LaunchDarkly feature flags.
+
+    Add new flags here to ensure consistency across the codebase.
+    """
+
+    AUTOMOD = "AutoMod"
+    AI_ACTIVITY_STATUS = "ai-agent-execution-summary"
+    BETA_BLOCKS = "beta-blocks"
+    AGENT_ACTIVITY = "agent-activity"
+
+
+class FlagValues(TypedDict, total=False):
+    """
+    Type definitions for feature flag return values.
+
+    This ensures type safety when accessing flag values.
+    """
+
+    # Boolean flags
+    AUTOMOD: bool
+    AI_ACTIVITY_STATUS: bool
+    AGENT_ACTIVITY: bool
+
+    # String array flags
+    BETA_BLOCKS: list[str]
+
+
+# Default values for flags when LaunchDarkly is unavailable
+DEFAULT_FLAG_VALUES: dict[Flag, Any] = {
+    Flag.AUTOMOD: False,
+    Flag.AI_ACTIVITY_STATUS: False,
+    Flag.BETA_BLOCKS: [],
+    Flag.AGENT_ACTIVITY: True,
+}
 
 
 def get_client() -> LDClient:
@@ -79,9 +118,10 @@ async def _fetch_user_context_data(user_id: str) -> Context:
         if response and response.user:
             user = response.user
             builder.anonymous(False)
-            # Set role under custom attributes as per LaunchDarkly best practices
             if user.role:
-                builder.set("role", user.role)  # TODO: Change to custom.role
+                builder.set("role", user.role)
+                # It's weird, I know, but it is what it is.
+                builder.set("custom", {"role": user.role})
             if user.email:
                 builder.set("email", user.email)
                 builder.set("email_domain", user.email.split("@")[-1])
@@ -222,6 +262,36 @@ def feature_flag(
         return async_wrapper
 
     return decorator
+
+
+async def get_flag_value(flag: Flag, user_id: str) -> Any:
+    """
+    Get the value of a feature flag for a user.
+
+    Args:
+        flag: The feature flag to evaluate
+        user_id: The user ID to evaluate the flag for
+
+    Returns:
+        The flag value from LaunchDarkly, or default if unavailable
+    """
+    default = DEFAULT_FLAG_VALUES.get(flag)
+    return await get_feature_flag_value(flag.value, user_id, default)
+
+
+async def get_boolean_flag(flag: Flag, user_id: str) -> bool:
+    """
+    Get a boolean feature flag value for a user.
+
+    Args:
+        flag: The feature flag to evaluate (must be a boolean flag)
+        user_id: The user ID to evaluate the flag for
+
+    Returns:
+        True if feature is enabled, False otherwise
+    """
+    default = DEFAULT_FLAG_VALUES.get(flag, False)
+    return await is_feature_enabled(flag.value, user_id, default)
 
 
 @contextlib.contextmanager

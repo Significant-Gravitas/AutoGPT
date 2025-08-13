@@ -12,13 +12,10 @@ from backend.blocks.llm import LlmModel, llm_call
 from backend.data.block import get_block
 from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.data.model import APIKeyCredentials, GraphExecutionStats
-from backend.util.feature_flag import is_feature_enabled
+from backend.util.feature_flag import Flag, get_boolean_flag
 from backend.util.retry import func_retry
 from backend.util.settings import Settings
 from backend.util.truncate import truncate
-
-# LaunchDarkly feature flag key for AI activity status generation
-AI_ACTIVITY_STATUS_FLAG_KEY = "ai-agent-execution-summary"
 
 if TYPE_CHECKING:
     from backend.executor import DatabaseManagerAsyncClient
@@ -103,9 +100,7 @@ async def generate_activity_status_for_execution(
         AI-generated activity status string, or None if feature is disabled
     """
     # Check LaunchDarkly feature flag for AI activity status generation with full context support
-    if not await is_feature_enabled(
-        AI_ACTIVITY_STATUS_FLAG_KEY, user_id, default=False
-    ):
+    if not await get_boolean_flag(Flag.AI_ACTIVITY_STATUS, user_id):
         logger.debug("AI activity status generation is disabled via LaunchDarkly")
         return None
 
