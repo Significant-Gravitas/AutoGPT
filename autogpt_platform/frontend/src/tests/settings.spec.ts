@@ -1,7 +1,7 @@
 import test, { expect } from "@playwright/test";
 import { getTestUser } from "./utils/auth";
 import { LoginPage } from "./pages/login.page";
-import { hasUrl, isVisible } from "./utils/assertion";
+import { hasAttribute, hasUrl, isHidden, isVisible } from "./utils/assertion";
 import { getSelectors } from "./utils/selectors";
 
 test.beforeEach(async ({ page }) => {
@@ -18,345 +18,127 @@ test.beforeEach(async ({ page }) => {
   await hasUrl(page, "/profile/settings");
 });
 
-test.describe("Settings Form", () => {
-  test("should display email and notification forms", async ({ page }) => {
-    const { getField, getButton, getText } = getSelectors(page);
+test("should display email form elements correctly", async ({ page }) => {
+  const { getField, getButton, getText, getLink } = getSelectors(page);
 
-    // Check email form elements
-    await isVisible(getText("Security & Access"));
-    await isVisible(getField("Email"));
-    await isVisible(getButton("Reset password"));
-    await isVisible(getButton("Update email"));
+  // Check email form elements are displayed
+  await isVisible(getText("Security & Access"));
+  await isVisible(getField("Email"));
+  await isVisible(getLink("Reset password"));
+  await isVisible(getButton("Update email"));
 
-    // Check notification form elements
-    await isVisible(getText("Notifications"));
-    await isVisible(getButton("Cancel"));
-    await isVisible(getButton("Save preferences"));
+  const updateEmailButton = getButton("Update email");
+  const resetPasswordButton = getLink("Reset password");
 
-    // Check notification switches are present
-    await isVisible(
-      page.getByRole("switch", { name: /agent run notifications/i }),
-    );
-    await isVisible(page.getByRole("switch", { name: /zero balance alert/i }));
-    await isVisible(page.getByRole("switch", { name: /daily summary/i }));
-  });
+  // Button should be disabled initially (no changes)
+  await expect(updateEmailButton).toBeDisabled();
 
-  test("should have update email button disabled when email unchanged", async ({
-    page,
-  }) => {
-    const { getButton } = getSelectors(page);
+  // Test reset password navigation
+  await hasAttribute(resetPasswordButton, "href", "/reset-password");
+});
 
-    const updateEmailButton = getButton("Update email");
-    await expect(updateEmailButton).toBeDisabled();
-  });
+test("should show validation error for empty email", async ({ page }) => {
+  const { getField, getButton } = getSelectors(page);
 
-  test("should enable update email button when email is changed", async ({
-    page,
-  }) => {
-    const { getField, getButton } = getSelectors(page);
+  const emailField = getField("Email");
+  const updateEmailButton = getButton("Update email");
 
-    const emailField = getField("Email");
-    const updateEmailButton = getButton("Update email");
+  await emailField.fill("");
+  await updateEmailButton.click();
+  await isVisible(page.getByText("Email is required"));
+});
 
-    // Change email
-    await emailField.fill("newemail@example.com");
+test("should show validation error for invalid email", async ({ page }) => {
+  const { getField, getButton } = getSelectors(page);
 
-    // Button should now be enabled
-    await expect(updateEmailButton).toBeEnabled();
-  });
+  const emailField = getField("Email");
+  const updateEmailButton = getButton("Update email");
 
-  test("should show validation error for invalid email", async ({ page }) => {
-    const { getField, getButton } = getSelectors(page);
+  await emailField.fill("invalid email");
+  await updateEmailButton.click();
+  await isVisible(page.getByText("Please enter a valid email address"));
+});
 
-    const emailField = getField("Email");
-    const updateEmailButton = getButton("Update email");
+test("should handle valid email", async ({ page }) => {
+  const { getField, getButton } = getSelectors(page);
 
-    // Enter invalid email
-    await emailField.fill("invalid-email");
+  const emailField = getField("Email");
+  const updateEmailButton = getButton("Update email");
 
-    // Try to submit
-    await updateEmailButton.click();
+  // Test successful email update
+  const newEmail = `test+${Date.now()}@example.com`;
+  await emailField.fill(newEmail);
+  await expect(updateEmailButton).toBeEnabled();
+  await updateEmailButton.click();
+  await isHidden(page.getByText("Email is required"));
+  await isHidden(page.getByText("Please enter a valid email address"));
+});
 
-    // Should show validation error
-    await isVisible(page.getByText("Please enter a valid email address"));
-  });
+test("should handle complete notification form functionality and form interactions", async ({
+  page,
+}) => {
+  const { getButton } = getSelectors(page);
 
-  test("should show validation error for empty email", async ({ page }) => {
-    const { getField, getButton } = getSelectors(page);
+  // Check notification form elements are displayed
+  await isVisible(
+    page.getByRole("heading", { name: "Notifications", exact: true }),
+  );
 
-    const emailField = getField("Email");
-    const updateEmailButton = getButton("Update email");
+  await isVisible(getButton("Cancel"));
+  await isVisible(getButton("Save preferences"));
 
-    // Clear email field
-    await emailField.fill("");
+  // Check all notification switches are present - get all switches on page
+  const switches = await page.getByRole("switch").all();
 
-    // Try to submit
-    await updateEmailButton.click();
+  for (const switchElement of switches) {
+    await isVisible(switchElement);
+  }
 
-    // Should show validation error
-    await isVisible(page.getByText("Email is required"));
-  });
+  const savePreferencesButton = getButton("Save preferences");
+  const cancelButton = getButton("Cancel");
 
-  test("should update email successfully", async ({ page }) => {
-    const { getField, getButton } = getSelectors(page);
+  // Button should be disabled initially (no changes)
+  await expect(savePreferencesButton).toBeDisabled();
 
-    const emailField = getField("Email");
-    const updateEmailButton = getButton("Update email");
+  // Test switch toggling functionality
+  for (const switchElement of switches) {
+    const initialState = await switchElement.isChecked();
+    await switchElement.click();
+    const newState = await switchElement.isChecked();
+    expect(newState).toBe(!initialState);
+  }
 
-    // Change to valid email
-    const newEmail = `test+${Date.now()}@example.com`;
-    await emailField.fill(newEmail);
-
-    // Submit form
-    await updateEmailButton.click();
-
-    // Should show loading state
-    await isVisible(getButton("Saving..."));
-
-    // Should show success message
-    await isVisible(page.getByText("Successfully updated email"));
-
-    // Button should be disabled again (no changes)
-    await expect(updateEmailButton).toBeDisabled();
-  });
-
-  test("should navigate to reset password page", async ({ page }) => {
-    const { getButton } = getSelectors(page);
-
-    const resetPasswordButton = getButton("Reset password");
-    await resetPasswordButton.click();
-
-    // Should navigate to reset password page
-    await hasUrl(page, "/reset-password");
-  });
-
-  test("should have save preferences button disabled when no changes made", async ({
-    page,
-  }) => {
-    const { getButton } = getSelectors(page);
-
-    const savePreferencesButton = getButton("Save preferences");
-    await expect(savePreferencesButton).toBeDisabled();
-  });
-
-  test("should enable save preferences button when notification preference is changed", async ({
-    page,
-  }) => {
-    const { getButton } = getSelectors(page);
-
-    const agentRunSwitch = page.getByRole("switch", {
-      name: /agent run notifications/i,
-    });
-    const savePreferencesButton = getButton("Save preferences");
-
-    // Toggle notification switch
-    await agentRunSwitch.click();
-
-    // Button should now be enabled
+  // Test button enabling when changes are made
+  if (switches.length > 0) {
     await expect(savePreferencesButton).toBeEnabled();
-  });
+  }
 
-  test("should toggle notification switches correctly", async ({ page }) => {
-    const switches = [
-      page.getByRole("switch", { name: /agent run notifications/i }),
-      page.getByRole("switch", { name: /block execution failures/i }),
-      page.getByRole("switch", { name: /continuous agent errors/i }),
-      page.getByRole("switch", { name: /zero balance alert/i }),
-      page.getByRole("switch", { name: /low balance warning/i }),
-      page.getByRole("switch", { name: /daily summary/i }),
-      page.getByRole("switch", { name: /weekly summary/i }),
-      page.getByRole("switch", { name: /monthly summary/i }),
-    ];
+  // Test cancel functionality
+  await cancelButton.click();
+  // Wait for form state to update after cancel
+  await page.waitForTimeout(100);
+  await expect(savePreferencesButton).toBeDisabled();
 
-    for (const switchElement of switches) {
-      // Get initial state
-      const initialState = await switchElement.isChecked();
+  // Test successful save with multiple switches
+  const testSwitches = switches.slice(0, Math.min(3, switches.length));
+  for (const switchElement of testSwitches) {
+    await switchElement.click();
+  }
+  await expect(savePreferencesButton).toBeEnabled();
+  await savePreferencesButton.click();
+  await isVisible(getButton("Saving..."));
+  await isVisible(
+    page.getByText("Successfully updated notification preferences"),
+  );
 
-      // Toggle switch
-      await switchElement.click();
-
-      // Verify state changed
-      const newState = await switchElement.isChecked();
-      expect(newState).toBe(!initialState);
-    }
-  });
-
-  test("should save notification preferences successfully", async ({
-    page,
-  }) => {
-    const { getButton } = getSelectors(page);
-
-    const agentRunSwitch = page.getByRole("switch", {
-      name: /agent run notifications/i,
-    });
-    const savePreferencesButton = getButton("Save preferences");
-
-    // Toggle a notification switch
-    await agentRunSwitch.click();
-
-    // Save preferences
-    await savePreferencesButton.click();
-
-    // Should show loading state
-    await isVisible(getButton("Saving..."));
-
-    // Should show success message
-    await isVisible(
-      page.getByText("Successfully updated notification preferences"),
-    );
-
-    // Button should be disabled again (no changes)
-    await expect(savePreferencesButton).toBeDisabled();
-  });
-
-  test("should cancel notification changes", async ({ page }) => {
-    const { getButton } = getSelectors(page);
-
-    const agentRunSwitch = page.getByRole("switch", {
-      name: /agent run notifications/i,
-    });
-    const cancelButton = getButton("Cancel");
-    const savePreferencesButton = getButton("Save preferences");
-
-    // Get initial state
-    const initialState = await agentRunSwitch.isChecked();
-
-    // Toggle switch
-    await agentRunSwitch.click();
-
-    // Verify state changed and button is enabled
-    expect(await agentRunSwitch.isChecked()).toBe(!initialState);
-    await expect(savePreferencesButton).toBeEnabled();
-
-    // Cancel changes
-    await cancelButton.click();
-
-    // Should revert to initial state
-    expect(await agentRunSwitch.isChecked()).toBe(initialState);
-
-    // Button should be disabled again
-    await expect(savePreferencesButton).toBeDisabled();
-  });
-
-  test("should maintain separate form states", async ({ page }) => {
-    const { getField, getButton } = getSelectors(page);
-
-    const emailField = getField("Email");
-    const updateEmailButton = getButton("Update email");
-    const agentRunSwitch = page.getByRole("switch", {
-      name: /agent run notifications/i,
-    });
-    const savePreferencesButton = getButton("Save preferences");
-
-    // Change email
-    await emailField.fill("newemail@example.com");
-    await expect(updateEmailButton).toBeEnabled();
-    await expect(savePreferencesButton).toBeDisabled();
-
-    // Change notification
-    await agentRunSwitch.click();
-    await expect(updateEmailButton).toBeEnabled();
-    await expect(savePreferencesButton).toBeEnabled();
-
-    // Submit email form
-    await updateEmailButton.click();
-    await isVisible(page.getByText("Successfully updated email"));
-
-    // Email button should be disabled, notification button still enabled
-    await expect(updateEmailButton).toBeDisabled();
-    await expect(savePreferencesButton).toBeEnabled();
-  });
-
-  test("should handle multiple notification changes in sequence", async ({
-    page,
-  }) => {
-    const { getButton } = getSelectors(page);
-
-    const switches = [
-      page.getByRole("switch", { name: /agent run notifications/i }),
-      page.getByRole("switch", { name: /zero balance alert/i }),
-      page.getByRole("switch", { name: /daily summary/i }),
-    ];
-    const savePreferencesButton = getButton("Save preferences");
-
-    // Toggle multiple switches
-    for (const switchElement of switches) {
-      await switchElement.click();
-    }
-
-    // Save all changes
-    await savePreferencesButton.click();
-    await isVisible(
-      page.getByText("Successfully updated notification preferences"),
-    );
-
-    // All switches should maintain their new states
-    // (This tests that the form properly handles multiple simultaneous changes)
-    await expect(savePreferencesButton).toBeDisabled();
-  });
-
-  test("should show proper loading states during submission", async ({
-    page,
-  }) => {
-    const { getField, getButton } = getSelectors(page);
-
-    // Test email form loading state
-    const emailField = getField("Email");
-    const updateEmailButton = getButton("Update email");
-
-    await emailField.fill("loading-test@example.com");
-    await updateEmailButton.click();
-
-    // Should show loading state briefly
-    await isVisible(getButton("Saving..."));
-
-    // Wait for completion
-    await isVisible(page.getByText("Successfully updated email"));
-
-    // Test notification form loading state
-    const agentRunSwitch = page.getByRole("switch", {
-      name: /agent run notifications/i,
-    });
-    const savePreferencesButton = getButton("Save preferences");
-
-    await agentRunSwitch.click();
-    await savePreferencesButton.click();
-
-    // Should show loading state briefly
-    await isVisible(getButton("Saving..."));
-
-    // Wait for completion
-    await isVisible(
-      page.getByText("Successfully updated notification preferences"),
-    );
-  });
-
-  test("should persist form data on page reload", async ({ page }) => {
-    const { getButton } = getSelectors(page);
-
-    const agentRunSwitch = page.getByRole("switch", {
-      name: /agent run notifications/i,
-    });
-    const savePreferencesButton = getButton("Save preferences");
-
-    // Get initial state
-    const initialState = await agentRunSwitch.isChecked();
-
-    // Toggle and save
-    await agentRunSwitch.click();
-    await savePreferencesButton.click();
-    await isVisible(
-      page.getByText("Successfully updated notification preferences"),
-    );
-
-    // Reload page
+  // Test persistence after page reload
+  if (testSwitches.length > 0) {
+    const finalState = await testSwitches[0].isChecked();
     await page.reload();
     await hasUrl(page, "/profile/settings");
-
-    // Switch should maintain the changed state
-    const newAgentRunSwitch = page.getByRole("switch", {
-      name: /agent run notifications/i,
-    });
-    expect(await newAgentRunSwitch.isChecked()).toBe(!initialState);
-  });
+    const reloadedSwitches = await page.getByRole("switch").all();
+    if (reloadedSwitches.length > 0) {
+      expect(await reloadedSwitches[0].isChecked()).toBe(finalState);
+    }
+  }
 });

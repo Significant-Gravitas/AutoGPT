@@ -40,11 +40,12 @@ async function updateUserEmailAPI(email: string) {
 export function useEmailForm({ user }: { user: User }) {
   const { toast } = useToast();
   const defaultValues = createEmailDefaultValues(user);
+  const currentEmail = user.email;
 
   const form = useForm<z.infer<typeof emailFormSchema>>({
     resolver: zodResolver(emailFormSchema),
     defaultValues,
-    mode: "onChange",
+    mode: "onSubmit",
   });
 
   const updateEmailMutation = usePostV1UpdateUserEmail({
@@ -86,5 +87,6 @@ export function useEmailForm({ user }: { user: User }) {
     form,
     onSubmit,
     isLoading: updateEmailMutation.isPending,
+    currentEmail,
   };
 }

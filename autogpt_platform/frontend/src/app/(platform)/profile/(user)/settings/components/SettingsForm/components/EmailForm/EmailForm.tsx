@@ -12,7 +12,10 @@ type EmailFormProps = {
 };
 
 export function EmailForm({ user }: EmailFormProps) {
-  const { form, onSubmit, isLoading } = useEmailForm({ user });
+  const { form, onSubmit, isLoading, currentEmail } = useEmailForm({ user });
+
+  const hasError = Object.keys(form.formState.errors).length > 0;
+  const isSameEmail = form.watch("email") === currentEmail;
 
   return (
     <div>
@@ -34,7 +37,7 @@ export function EmailForm({ user }: EmailFormProps) {
                     id={field.name}
                     label="Email"
                     placeholder="m@example.com"
-                    type="email"
+                    type="text"
                     autoComplete="off"
                     className="w-full"
                     error={fieldState.error?.message}
@@ -55,7 +58,7 @@ export function EmailForm({ user }: EmailFormProps) {
             </Button>
             <Button
               type="submit"
-              disabled={isLoading || !form.formState.isDirty}
+              disabled={hasError || isSameEmail}
               loading={isLoading}
               className="min-w-[10rem]"
             >
