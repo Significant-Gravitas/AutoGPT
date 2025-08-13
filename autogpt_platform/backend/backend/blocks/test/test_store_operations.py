@@ -1,5 +1,6 @@
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 
 from backend.blocks.system.store_operations import (
     AddToLibraryFromStoreBlock,
@@ -13,14 +14,14 @@ from backend.server.v2.store import exceptions as store_exceptions
 async def test_add_to_library_from_store_block_success(mocker):
     """Test successful addition of agent from store to library."""
     block = AddToLibraryFromStoreBlock()
-    
+
     # Mock the library agent response
     mock_library_agent = MagicMock()
     mock_library_agent.id = "lib-agent-123"
     mock_library_agent.graph_id = "graph-456"
     mock_library_agent.graph_version = 1
     mock_library_agent.name = "Test Agent"
-    
+
     mocker.patch.object(
         block,
         "_add_to_library",
@@ -28,19 +29,18 @@ async def test_add_to_library_from_store_block_success(mocker):
             "library_agent_id": "lib-agent-123",
             "agent_id": "graph-456",
             "agent_version": 1,
-            "agent_name": "Test Agent"
-        }
+            "agent_name": "Test Agent",
+        },
     )
-    
+
     input_data = block.Input(
-        store_listing_version_id="store-listing-v1",
-        agent_name="Custom Agent Name"
+        store_listing_version_id="store-listing-v1", agent_name="Custom Agent Name"
     )
-    
+
     outputs = {}
     async for name, value in block.run(input_data, user_id="test-user"):
         outputs[name] = value
-    
+
     assert outputs["success"] is True
     assert outputs["library_agent_id"] == "lib-agent-123"
     assert outputs["agent_id"] == "graph-456"
@@ -53,21 +53,19 @@ async def test_add_to_library_from_store_block_success(mocker):
 async def test_add_to_library_from_store_block_not_found(mocker):
     """Test handling when agent is not found in store."""
     block = AddToLibraryFromStoreBlock()
-    
+
     mocker.patch.object(
         block,
         "_add_to_library",
-        side_effect=store_exceptions.AgentNotFoundError("Agent not found")
+        side_effect=store_exceptions.AgentNotFoundError("Agent not found"),
     )
-    
-    input_data = block.Input(
-        store_listing_version_id="non-existent-listing"
-    )
-    
+
+    input_data = block.Input(store_listing_version_id="non-existent-listing")
+
     outputs = {}
     async for name, value in block.run(input_data, user_id="test-user"):
         outputs[name] = value
-    
+
     assert outputs["success"] is False
     assert outputs["library_agent_id"] == ""
     assert outputs["agent_id"] == ""
@@ -80,7 +78,7 @@ async def test_add_to_library_from_store_block_not_found(mocker):
 async def test_get_store_agent_details_block_success(mocker):
     """Test successful retrieval of store agent details."""
     block = GetStoreAgentDetailsBlock()
-    
+
     mocker.patch.object(
         block,
         "_get_agent_details",
@@ -92,18 +90,16 @@ async def test_get_store_agent_details_block_success(mocker):
             "creator": "Test Creator",
             "categories": ["productivity", "automation"],
             "runs": 100,
-            "rating": 4.5
-        }
+            "rating": 4.5,
+        },
     )
-    
-    input_data = block.Input(
-        slug="test-creator/test-agent"
-    )
-    
+
+    input_data = block.Input(slug="test-creator/test-agent")
+
     outputs = {}
     async for name, value in block.run(input_data):
         outputs[name] = value
-    
+
     assert outputs["found"] is True
     assert outputs["store_listing_version_id"] == "version-123"
     assert outputs["agent_name"] == "Test Agent"
@@ -118,7 +114,7 @@ async def test_get_store_agent_details_block_success(mocker):
 async def test_get_store_agent_details_block_not_found(mocker):
     """Test handling when agent details are not found."""
     block = GetStoreAgentDetailsBlock()
-    
+
     mocker.patch.object(
         block,
         "_get_agent_details",
@@ -130,18 +126,16 @@ async def test_get_store_agent_details_block_not_found(mocker):
             "creator": "",
             "categories": [],
             "runs": 0,
-            "rating": 0.0
-        }
+            "rating": 0.0,
+        },
     )
-    
-    input_data = block.Input(
-        slug="non-existent/agent"
-    )
-    
+
+    input_data = block.Input(slug="non-existent/agent")
+
     outputs = {}
     async for name, value in block.run(input_data):
         outputs[name] = value
-    
+
     assert outputs["found"] is False
     assert outputs["store_listing_version_id"] == ""
     assert outputs["agent_name"] == ""
@@ -151,7 +145,7 @@ async def test_get_store_agent_details_block_not_found(mocker):
 async def test_search_store_agents_block(mocker):
     """Test searching for store agents."""
     block = SearchStoreAgentsBlock()
-    
+
     mocker.patch.object(
         block,
         "_search_agents",
@@ -163,7 +157,7 @@ async def test_search_store_agents_block(mocker):
                     "description": "First test agent",
                     "creator": "Creator 1",
                     "rating": 4.8,
-                    "runs": 500
+                    "runs": 500,
                 },
                 {
                     "slug": "creator2/agent2",
@@ -171,24 +165,21 @@ async def test_search_store_agents_block(mocker):
                     "description": "Second test agent",
                     "creator": "Creator 2",
                     "rating": 4.2,
-                    "runs": 200
-                }
+                    "runs": 200,
+                },
             ],
-            "total_count": 2
-        }
+            "total_count": 2,
+        },
     )
-    
+
     input_data = block.Input(
-        query="test",
-        category="productivity",
-        sort_by="rating",
-        limit=10
+        query="test", category="productivity", sort_by="rating", limit=10
     )
-    
+
     outputs = {}
     async for name, value in block.run(input_data):
         outputs[name] = value
-    
+
     assert len(outputs["agents"]) == 2
     assert outputs["total_count"] == 2
     assert outputs["agents"][0]["name"] == "Agent One"
@@ -199,25 +190,17 @@ async def test_search_store_agents_block(mocker):
 async def test_search_store_agents_block_empty_results(mocker):
     """Test searching with no results."""
     block = SearchStoreAgentsBlock()
-    
+
     mocker.patch.object(
-        block,
-        "_search_agents",
-        return_value={
-            "agents": [],
-            "total_count": 0
-        }
+        block, "_search_agents", return_value={"agents": [], "total_count": 0}
     )
-    
-    input_data = block.Input(
-        query="nonexistent",
-        limit=10
-    )
-    
+
+    input_data = block.Input(query="nonexistent", limit=10)
+
     outputs = {}
     async for name, value in block.run(input_data):
         outputs[name] = value
-    
+
     assert outputs["agents"] == []
     assert outputs["total_count"] == 0
 
@@ -226,20 +209,16 @@ async def test_search_store_agents_block_empty_results(mocker):
 async def test_search_store_agents_block_error_handling(mocker):
     """Test error handling during search."""
     block = SearchStoreAgentsBlock()
-    
+
     mocker.patch.object(
-        block,
-        "_search_agents",
-        side_effect=Exception("Database error")
+        block, "_search_agents", side_effect=Exception("Database error")
     )
-    
-    input_data = block.Input(
-        query="test"
-    )
-    
+
+    input_data = block.Input(query="test")
+
     outputs = {}
     async for name, value in block.run(input_data):
         outputs[name] = value
-    
+
     assert outputs["agents"] == []
     assert outputs["total_count"] == 0

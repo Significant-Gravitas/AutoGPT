@@ -3,8 +3,9 @@ import re
 from collections import Counter
 from typing import TYPE_CHECKING, Any
 
-import backend.blocks.llm as llm
 from autogpt_platform.backend.backend.blocks.system.agent import AgentExecutorBlock
+
+import backend.blocks.llm as llm
 from backend.data.block import (
     Block,
     BlockCategory,

@@ -3,6 +3,7 @@ import uuid
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Literal, Optional, cast
 
+from autogpt_platform.backend.backend.blocks.system.agent import AgentExecutorBlock
 from prisma.enums import SubmissionStatus
 from prisma.models import AgentGraph, AgentNode, AgentNodeLink, StoreListingVersion
 from prisma.types import (
@@ -15,7 +16,6 @@ from prisma.types import (
 from pydantic import Field, JsonValue, create_model
 from pydantic.fields import computed_field
 
-from autogpt_platform.backend.backend.blocks.system.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LlmModel
 from backend.data.db import prisma as db
