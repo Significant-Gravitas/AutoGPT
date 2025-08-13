@@ -5,6 +5,12 @@ from backend.blocks.ai_shortform_video_block import AIShortformVideoCreatorBlock
 from backend.blocks.apollo.organization import SearchOrganizationsBlock
 from backend.blocks.apollo.people import SearchPeopleBlock
 from backend.blocks.apollo.person import GetPersonDetailBlock
+from backend.blocks.enrichlayer.linkedin import (
+    EnrichlayerLinkedinPersonLookupBlock,
+    EnrichlayerLinkedinProfileBlock,
+    EnrichlayerLinkedinProfilePictureBlock,
+    EnrichlayerLinkedinRoleLookupBlock,
+)
 from backend.blocks.flux_kontext import AIImageEditorBlock, FluxKontextModelName
 from backend.blocks.ideogram import IdeogramModelBlock
 from backend.blocks.jina.embeddings import JinaEmbeddingBlock
@@ -18,12 +24,6 @@ from backend.blocks.llm import (
     AITextSummarizerBlock,
     LlmModel,
 )
-from backend.blocks.proxycurl.linkedin import (
-    ProxycurlPersonLookupBlock,
-    ProxycurlProfileFetchBlock,
-    ProxycurlProfilePictureBlock,
-    ProxycurlRoleLookupBlock,
-)
 from backend.blocks.replicate.flux_advanced import ReplicateFluxAdvancedModelBlock
 from backend.blocks.replicate.replicate_block import ReplicateModelBlock
 from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
@@ -36,13 +36,13 @@ from backend.integrations.credentials_store import (
     anthropic_credentials,
     apollo_credentials,
     did_credentials,
+    enrichlayer_credentials,
     groq_credentials,
     ideogram_credentials,
     jina_credentials,
     llama_api_credentials,
     open_router_credentials,
     openai_credentials,
-    proxycurl_credentials,
     replicate_credentials,
     revid_credentials,
     unreal_credentials,
@@ -375,50 +375,50 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         )
     ],
-    ProxycurlProfileFetchBlock: [
+    EnrichlayerLinkedinProfileBlock: [
         BlockCost(
             cost_amount=1,
             cost_filter={
                 "credentials": {
-                    "id": proxycurl_credentials.id,
-                    "provider": proxycurl_credentials.provider,
-                    "type": proxycurl_credentials.type,
+                    "id": enrichlayer_credentials.id,
+                    "provider": enrichlayer_credentials.provider,
+                    "type": enrichlayer_credentials.type,
                 }
             },
         )
     ],
-    ProxycurlPersonLookupBlock: [
+    EnrichlayerLinkedinPersonLookupBlock: [
         BlockCost(
             cost_amount=2,
             cost_filter={
                 "credentials": {
-                    "id": proxycurl_credentials.id,
-                    "provider": proxycurl_credentials.provider,
-                    "type": proxycurl_credentials.type,
+                    "id": enrichlayer_credentials.id,
+                    "provider": enrichlayer_credentials.provider,
+                    "type": enrichlayer_credentials.type,
                 }
             },
         )
     ],
-    ProxycurlRoleLookupBlock: [
+    EnrichlayerLinkedinRoleLookupBlock: [
         BlockCost(
             cost_amount=3,
             cost_filter={
                 "credentials": {
-                    "id": proxycurl_credentials.id,
-                    "provider": proxycurl_credentials.provider,
-                    "type": proxycurl_credentials.type,
+                    "id": enrichlayer_credentials.id,
+                    "provider": enrichlayer_credentials.provider,
+                    "type": enrichlayer_credentials.type,
                 }
             },
         )
     ],
-    ProxycurlProfilePictureBlock: [
+    EnrichlayerLinkedinProfilePictureBlock: [
         BlockCost(
             cost_amount=3,
             cost_filter={
                 "credentials": {
-                    "id": proxycurl_credentials.id,
-                    "provider": proxycurl_credentials.provider,
-                    "type": proxycurl_credentials.type,
+                    "id": enrichlayer_credentials.id,
+                    "provider": enrichlayer_credentials.provider,
+                    "type": enrichlayer_credentials.type,
                 }
             },
         )

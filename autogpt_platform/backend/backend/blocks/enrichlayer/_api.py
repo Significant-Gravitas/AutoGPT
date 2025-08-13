@@ -1,7 +1,7 @@
 """
-API module for Proxycurl integration.
+API module for Enrichlayer integration.
 
-This module provides a client for interacting with the Proxycurl API,
+This module provides a client for interacting with the Enrichlayer API,
 which allows fetching LinkedIn profile data and related information.
 """
 
@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
-class ProxycurlAPIException(Exception):
-    """Exception raised for Proxycurl API errors."""
+class EnrichlayerAPIException(Exception):
+    """Exception raised for Enrichlayer API errors."""
 
     def __init__(self, message: str, status_code: int):
         super().__init__(message)
@@ -73,7 +73,7 @@ class Education(BaseModel):
 class PersonProfileResponse(BaseModel):
     """Response model for LinkedIn person profile.
 
-    This model represents the response from Proxycurl's LinkedIn profile API.
+    This model represents the response from Enrichlayer's LinkedIn profile API.
     The API returns comprehensive profile data including work experience,
     education, skills, and contact information (when available).
 
@@ -127,7 +127,7 @@ class SimilarProfile(BaseModel):
 class PersonLookupResponse(BaseModel):
     """Response model for LinkedIn person lookup.
 
-    This model represents the response from Proxycurl's person lookup API.
+    This model represents the response from Enrichlayer's person lookup API.
     The API returns a LinkedIn profile URL and similarity scores when
     searching for a person by name and company.
 
@@ -153,7 +153,7 @@ class PersonLookupResponse(BaseModel):
 class RoleLookupResponse(BaseModel):
     """Response model for LinkedIn role lookup.
 
-    This model represents the response from Proxycurl's role lookup API.
+    This model represents the response from Enrichlayer's role lookup API.
     The API returns LinkedIn profile data for a specific role at a company.
 
     Example API Response:
@@ -170,22 +170,29 @@ class RoleLookupResponse(BaseModel):
 class ProfilePictureResponse(BaseModel):
     """Response model for LinkedIn profile picture.
 
-    This model represents the response from Proxycurl's profile picture API.
+    This model represents the response from Enrichlayer's profile picture API.
     The API returns a URL to the person's LinkedIn profile picture.
 
     Example API Response:
     {
-        "profile_picture_url": "https://media.licdn.com/dms/image/..."
+        "tmp_profile_pic_url": "https://media.licdn.com/dms/image/..."
     }
     """
 
-    profile_picture_url: str = Field(..., description="URL of the profile picture")
+    tmp_profile_pic_url: str = Field(
+        ..., description="URL of the profile picture", alias="tmp_profile_pic_url"
+    )
+
+    @property
+    def profile_picture_url(self) -> str:
+        """Backward compatibility property for profile_picture_url."""
+        return self.tmp_profile_pic_url
 
 
-class ProxycurlClient:
-    """Client for interacting with the Proxycurl API."""
+class EnrichlayerClient:
+    """Client for interacting with the Enrichlayer API."""
 
-    API_BASE_URL = "https://nubela.co/proxycurl/api"
+    API_BASE_URL = "https://enrichlayer.com/api/v2"
 
     def __init__(
         self,
@@ -193,7 +200,7 @@ class ProxycurlClient:
         custom_requests: Optional[Requests] = None,
     ):
         """
-        Initialize the Proxycurl client.
+        Initialize the Enrichlayer client.
 
         Args:
             credentials: The credentials to use for authentication.
@@ -215,7 +222,7 @@ class ProxycurlClient:
                 raise_for_status=False,
             )
 
-    def _handle_response(self, response) -> Any:
+    async def _handle_response(self, response) -> Any:
         """
         Handle API response and check for errors.
 
@@ -226,7 +233,7 @@ class ProxycurlClient:
             The response data.
 
         Raises:
-            ProxycurlAPIException: If the API request fails.
+            EnrichlayerAPIException: If the API request fails.
         """
         if not response.ok:
             try:
@@ -235,14 +242,14 @@ class ProxycurlClient:
             except JSONDecodeError:
                 error_message = response.text
 
-            raise ProxycurlAPIException(
-                f"Proxycurl API request failed ({response.status_code}): {error_message}",
+            raise EnrichlayerAPIException(
+                f"Enrichlayer API request failed ({response.status_code}): {error_message}",
                 response.status_code,
             )
 
         return response.json()
 
-    def fetch_profile(
+    async def fetch_profile(
         self,
         linkedin_url: str,
         fallback_to_cache: FallbackToCache = FallbackToCache.ON_ERROR,
@@ -272,7 +279,7 @@ class ProxycurlClient:
             The LinkedIn profile data.
 
         Raises:
-            ProxycurlAPIException: If the API request fails.
+            EnrichlayerAPIException: If the API request fails.
         """
         params = {
             "url": linkedin_url,
@@ -295,10 +302,12 @@ class ProxycurlClient:
         if include_extra:
             params["extra"] = "include"
 
-        response = self._requests.get(f"{self.API_BASE_URL}/v2/linkedin", params=params)
-        return PersonProfileResponse(**self._handle_response(response))
+        response = await self._requests.get(
+            f"{self.API_BASE_URL}/profile", params=params
+        )
+        return PersonProfileResponse(**await self._handle_response(response))
 
-    def lookup_person(
+    async def lookup_person(
         self,
         first_name: str,
         company_domain: str,
@@ -324,7 +333,7 @@ class ProxycurlClient:
             The LinkedIn profile lookup result.
 
         Raises:
-            ProxycurlAPIException: If the API request fails.
+            EnrichlayerAPIException: If the API request fails.
         """
         params = {"first_name": first_name, "company_domain": company_domain}
 
@@ -339,12 +348,12 @@ class ProxycurlClient:
         if enrich_profile:
             params["enrich_profile"] = "enrich"
 
-        response = self._requests.get(
-            f"{self.API_BASE_URL}/linkedin/profile/resolve", params=params
+        response = await self._requests.get(
+            f"{self.API_BASE_URL}/profile/resolve", params=params
         )
-        return PersonLookupResponse(**self._handle_response(response))
+        return PersonLookupResponse(**await self._handle_response(response))
 
-    def lookup_role(
+    async def lookup_role(
         self, role: str, company_name: str, enrich_profile: bool = False
     ) -> RoleLookupResponse:
         """
@@ -359,7 +368,7 @@ class ProxycurlClient:
             The LinkedIn profile lookup result.
 
         Raises:
-            ProxycurlAPIException: If the API request fails.
+            EnrichlayerAPIException: If the API request fails.
         """
         params = {
             "role": role,
@@ -369,12 +378,14 @@ class ProxycurlClient:
         if enrich_profile:
             params["enrich_profile"] = "enrich"
 
-        response = self._requests.get(
-            f"{self.API_BASE_URL}/find/company/role/", params=params
+        response = await self._requests.get(
+            f"{self.API_BASE_URL}/find/company/role", params=params
         )
-        return RoleLookupResponse(**self._handle_response(response))
+        return RoleLookupResponse(**await self._handle_response(response))
 
-    def get_profile_picture(self, linkedin_profile_url: str) -> ProfilePictureResponse:
+    async def get_profile_picture(
+        self, linkedin_profile_url: str
+    ) -> ProfilePictureResponse:
         """
         Get a LinkedIn profile picture URL.
 
@@ -385,13 +396,13 @@ class ProxycurlClient:
             The profile picture URL.
 
         Raises:
-            ProxycurlAPIException: If the API request fails.
+            EnrichlayerAPIException: If the API request fails.
         """
         params = {
             "linkedin_person_profile_url": linkedin_profile_url,
         }
 
-        response = self._requests.get(
-            f"{self.API_BASE_URL}/linkedin/person/profile-picture", params=params
+        response = await self._requests.get(
+            f"{self.API_BASE_URL}/person/profile-picture", params=params
         )
-        return ProfilePictureResponse(**self._handle_response(response))
+        return ProfilePictureResponse(**await self._handle_response(response))

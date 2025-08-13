@@ -1,7 +1,7 @@
 """
-Authentication module for Proxycurl API integration.
+Authentication module for Enrichlayer API integration.
 
-This module provides credential types and test credentials for the Proxycurl API.
+This module provides credential types and test credentials for the Enrichlayer API.
 """
 
 from typing import Literal
@@ -11,17 +11,17 @@ from pydantic import SecretStr
 from backend.data.model import APIKeyCredentials, CredentialsMetaInput
 from backend.integrations.providers import ProviderName
 
-# Define the type of credentials input expected for Proxycurl API
-ProxycurlCredentialsInput = CredentialsMetaInput[
-    Literal[ProviderName.PROXYCURL], Literal["api_key"]
+# Define the type of credentials input expected for Enrichlayer API
+EnrichlayerCredentialsInput = CredentialsMetaInput[
+    Literal[ProviderName.ENRICHLAYER], Literal["api_key"]
 ]
 
-# Mock credentials for testing Proxycurl API integration
+# Mock credentials for testing Enrichlayer API integration
 TEST_CREDENTIALS = APIKeyCredentials(
     id="1234a567-89bc-4def-ab12-3456cdef7890",
-    provider="proxycurl",
-    api_key=SecretStr("mock-proxycurl-api-key"),
-    title="Mock Proxycurl API key",
+    provider="enrichlayer",
+    api_key=SecretStr("mock-enrichlayer-api-key"),
+    title="Mock Enrichlayer API key",
     expires_at=None,
 )
 

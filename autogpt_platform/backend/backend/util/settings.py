@@ -495,7 +495,7 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     apollo_api_key: str = Field(default="", description="Apollo API Key")
     smartlead_api_key: str = Field(default="", description="SmartLead API Key")
     zerobounce_api_key: str = Field(default="", description="ZeroBounce API Key")
-    proxycurl_api_key: str = Field(default="", description="Proxycurl API Key")
+    enrichlayer_api_key: str = Field(default="", description="Enrichlayer API Key")
 
     ayrshare_api_key: str = Field(default="", description="Ayrshare API Key")
     ayrshare_jwt_key: str = Field(default="", description="Ayrshare private Key")

@@ -1,7 +1,7 @@
 """
-Block definitions for Proxycurl API integration.
+Block definitions for Enrichlayer API integration.
 
-This module implements blocks for interacting with the Proxycurl API,
+This module implements blocks for interacting with the Enrichlayer API,
 which provides access to LinkedIn profile data and related information.
 """
 
@@ -13,24 +13,24 @@ from backend.data.model import APIKeyCredentials, CredentialsField, SchemaField
 from backend.util.type import MediaFileType
 
 from ._api import (
+    EnrichlayerClient,
     Experience,
     FallbackToCache,
     PersonLookupResponse,
     PersonProfileResponse,
-    ProxycurlClient,
     RoleLookupResponse,
     UseCache,
 )
-from ._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, ProxycurlCredentialsInput
+from ._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, EnrichlayerCredentialsInput
 
 logger = logging.getLogger(__name__)
 
 
-class ProxycurlProfileFetchBlock(Block):
-    """Block to fetch LinkedIn profile data using Proxycurl API."""
+class EnrichlayerLinkedinProfileBlock(Block):
+    """Block to fetch LinkedIn profile data using Enrichlayer API."""
 
     class Input(BlockSchema):
-        """Input schema for ProxycurlProfileFetchBlock."""
+        """Input schema for EnrichlayerLinkedinProfileBlock."""
 
         linkedin_url: str = SchemaField(
             description="LinkedIn profile URL to fetch data from",
@@ -76,12 +76,12 @@ class ProxycurlProfileFetchBlock(Block):
             default=False,
             advanced=True,
         )
-        credentials: ProxycurlCredentialsInput = CredentialsField(
-            description="Proxycurl API credentials"
+        credentials: EnrichlayerCredentialsInput = CredentialsField(
+            description="Enrichlayer API credentials"
         )
 
     class Output(BlockSchema):
-        """Output schema for ProxycurlProfileFetchBlock."""
+        """Output schema for EnrichlayerLinkedinProfileBlock."""
 
         profile: PersonProfileResponse = SchemaField(
             description="LinkedIn profile data"
@@ -89,13 +89,13 @@ class ProxycurlProfileFetchBlock(Block):
         error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
-        """Initialize ProxycurlProfileFetchBlock."""
+        """Initialize EnrichlayerLinkedinProfileBlock."""
         super().__init__(
             id="f6e0ac73-4f1d-4acb-b4b7-b67066c5984e",
-            description="Fetch LinkedIn profile data using Proxycurl",
+            description="Fetch LinkedIn profile data using Enrichlayer",
             categories={BlockCategory.SOCIAL},
-            input_schema=ProxycurlProfileFetchBlock.Input,
-            output_schema=ProxycurlProfileFetchBlock.Output,
+            input_schema=EnrichlayerLinkedinProfileBlock.Input,
+            output_schema=EnrichlayerLinkedinProfileBlock.Output,
             test_input={
                 "linkedin_url": "https://www.linkedin.com/in/williamhgates/",
                 "include_skills": True,
@@ -137,7 +137,7 @@ class ProxycurlProfileFetchBlock(Block):
         )
 
     @staticmethod
-    def _fetch_profile(
+    async def _fetch_profile(
         credentials: APIKeyCredentials,
         linkedin_url: str,
         fallback_to_cache: FallbackToCache = FallbackToCache.ON_ERROR,
@@ -149,8 +149,8 @@ class ProxycurlProfileFetchBlock(Block):
         include_social_media: bool = False,
         include_extra: bool = False,
     ):
-        client = ProxycurlClient(credentials)
-        profile = client.fetch_profile(
+        client = EnrichlayerClient(credentials)
+        profile = await client.fetch_profile(
             linkedin_url=linkedin_url,
             fallback_to_cache=fallback_to_cache,
             use_cache=use_cache,
@@ -171,14 +171,14 @@ class ProxycurlProfileFetchBlock(Block):
 
         Args:
             input_data: Input parameters for the block
-            credentials: API key credentials for Proxycurl
+            credentials: API key credentials for Enrichlayer
             **kwargs: Additional keyword arguments
 
         Yields:
             Tuples of (output_name, output_value)
         """
         try:
-            profile = self._fetch_profile(
+            profile = await self._fetch_profile(
                 credentials=credentials,
                 linkedin_url=input_data.linkedin_url,
                 fallback_to_cache=input_data.fallback_to_cache,
@@ -196,11 +196,11 @@ class ProxycurlProfileFetchBlock(Block):
             yield "error", str(e)
 
 
-class ProxycurlPersonLookupBlock(Block):
-    """Block to look up LinkedIn profiles by person's information using Proxycurl API."""
+class EnrichlayerLinkedinPersonLookupBlock(Block):
+    """Block to look up LinkedIn profiles by person's information using Enrichlayer API."""
 
     class Input(BlockSchema):
-        """Input schema for ProxycurlPersonLookupBlock."""
+        """Input schema for EnrichlayerLinkedinPersonLookupBlock."""
 
         first_name: str = SchemaField(
             description="Person's first name",
@@ -238,12 +238,12 @@ class ProxycurlPersonLookupBlock(Block):
             default=False,
             advanced=True,
         )
-        credentials: ProxycurlCredentialsInput = CredentialsField(
-            description="Proxycurl API credentials"
+        credentials: EnrichlayerCredentialsInput = CredentialsField(
+            description="Enrichlayer API credentials"
         )
 
     class Output(BlockSchema):
-        """Output schema for ProxycurlPersonLookupBlock."""
+        """Output schema for EnrichlayerLinkedinPersonLookupBlock."""
 
         lookup_result: PersonLookupResponse = SchemaField(
             description="LinkedIn profile lookup result"
@@ -251,13 +251,13 @@ class ProxycurlPersonLookupBlock(Block):
         error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
-        """Initialize ProxycurlPersonLookupBlock."""
+        """Initialize EnrichlayerLinkedinPersonLookupBlock."""
         super().__init__(
             id="d237a98a-5c4b-4a1c-b9e3-e6f9a6c81df7",
-            description="Look up LinkedIn profiles by person information using Proxycurl",
+            description="Look up LinkedIn profiles by person information using Enrichlayer",
             categories={BlockCategory.SOCIAL},
-            input_schema=ProxycurlPersonLookupBlock.Input,
-            output_schema=ProxycurlPersonLookupBlock.Output,
+            input_schema=EnrichlayerLinkedinPersonLookupBlock.Input,
+            output_schema=EnrichlayerLinkedinPersonLookupBlock.Output,
             test_input={
                 "first_name": "Bill",
                 "last_name": "Gates",
@@ -290,7 +290,7 @@ class ProxycurlPersonLookupBlock(Block):
         )
 
     @staticmethod
-    def _lookup_person(
+    async def _lookup_person(
         credentials: APIKeyCredentials,
         first_name: str,
         company_domain: str,
@@ -300,8 +300,8 @@ class ProxycurlPersonLookupBlock(Block):
         include_similarity_checks: bool = False,
         enrich_profile: bool = False,
     ):
-        client = ProxycurlClient(credentials=credentials)
-        lookup_result = client.lookup_person(
+        client = EnrichlayerClient(credentials=credentials)
+        lookup_result = await client.lookup_person(
             first_name=first_name,
             last_name=last_name,
             company_domain=company_domain,
@@ -320,14 +320,14 @@ class ProxycurlPersonLookupBlock(Block):
 
         Args:
             input_data: Input parameters for the block
-            credentials: API key credentials for Proxycurl
+            credentials: API key credentials for Enrichlayer
             **kwargs: Additional keyword arguments
 
         Yields:
             Tuples of (output_name, output_value)
         """
         try:
-            lookup_result = self._lookup_person(
+            lookup_result = await self._lookup_person(
                 credentials=credentials,
                 first_name=input_data.first_name,
                 last_name=input_data.last_name,
@@ -343,11 +343,11 @@ class ProxycurlPersonLookupBlock(Block):
             yield "error", str(e)
 
 
-class ProxycurlRoleLookupBlock(Block):
-    """Block to look up LinkedIn profiles by role in a company using Proxycurl API."""
+class EnrichlayerLinkedinRoleLookupBlock(Block):
+    """Block to look up LinkedIn profiles by role in a company using Enrichlayer API."""
 
     class Input(BlockSchema):
-        """Input schema for ProxycurlRoleLookupBlock."""
+        """Input schema for EnrichlayerLinkedinRoleLookupBlock."""
 
         role: str = SchemaField(
             description="Role title (e.g., CEO, CTO)",
@@ -362,12 +362,12 @@ class ProxycurlRoleLookupBlock(Block):
             default=False,
             advanced=True,
         )
-        credentials: ProxycurlCredentialsInput = CredentialsField(
-            description="Proxycurl API credentials"
+        credentials: EnrichlayerCredentialsInput = CredentialsField(
+            description="Enrichlayer API credentials"
         )
 
     class Output(BlockSchema):
-        """Output schema for ProxycurlRoleLookupBlock."""
+        """Output schema for EnrichlayerLinkedinRoleLookupBlock."""
 
         role_lookup_result: RoleLookupResponse = SchemaField(
             description="LinkedIn role lookup result"
@@ -375,13 +375,13 @@ class ProxycurlRoleLookupBlock(Block):
         error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
-        """Initialize ProxycurlRoleLookupBlock."""
+        """Initialize EnrichlayerLinkedinRoleLookupBlock."""
         super().__init__(
             id="3b9fc742-06d4-49c7-b5ce-7e302dd7c8a7",
-            description="Look up LinkedIn profiles by role in a company using Proxycurl",
+            description="Look up LinkedIn profiles by role in a company using Enrichlayer",
             categories={BlockCategory.SOCIAL},
-            input_schema=ProxycurlRoleLookupBlock.Input,
-            output_schema=ProxycurlRoleLookupBlock.Output,
+            input_schema=EnrichlayerLinkedinRoleLookupBlock.Input,
+            output_schema=EnrichlayerLinkedinRoleLookupBlock.Output,
             test_input={
                 "role": "Co-chair",
                 "company_name": "Gates Foundation",
@@ -405,14 +405,14 @@ class ProxycurlRoleLookupBlock(Block):
         )
 
     @staticmethod
-    def _lookup_role(
+    async def _lookup_role(
         credentials: APIKeyCredentials,
         role: str,
         company_name: str,
         enrich_profile: bool = False,
     ):
-        client = ProxycurlClient(credentials=credentials)
-        role_lookup_result = client.lookup_role(
+        client = EnrichlayerClient(credentials=credentials)
+        role_lookup_result = await client.lookup_role(
             role=role,
             company_name=company_name,
             enrich_profile=enrich_profile,
@@ -427,14 +427,14 @@ class ProxycurlRoleLookupBlock(Block):
 
         Args:
             input_data: Input parameters for the block
-            credentials: API key credentials for Proxycurl
+            credentials: API key credentials for Enrichlayer
             **kwargs: Additional keyword arguments
 
         Yields:
             Tuples of (output_name, output_value)
         """
         try:
-            role_lookup_result = self._lookup_role(
+            role_lookup_result = await self._lookup_role(
                 credentials=credentials,
                 role=input_data.role,
                 company_name=input_data.company_name,
@@ -446,22 +446,22 @@ class ProxycurlRoleLookupBlock(Block):
             yield "error", str(e)
 
 
-class ProxycurlProfilePictureBlock(Block):
-    """Block to get LinkedIn profile pictures using Proxycurl API."""
+class EnrichlayerLinkedinProfilePictureBlock(Block):
+    """Block to get LinkedIn profile pictures using Enrichlayer API."""
 
     class Input(BlockSchema):
-        """Input schema for ProxycurlProfilePictureBlock."""
+        """Input schema for EnrichlayerLinkedinProfilePictureBlock."""
 
         linkedin_profile_url: str = SchemaField(
             description="LinkedIn profile URL",
             placeholder="https://www.linkedin.com/in/username/",
         )
-        credentials: ProxycurlCredentialsInput = CredentialsField(
-            description="Proxycurl API credentials"
+        credentials: EnrichlayerCredentialsInput = CredentialsField(
+            description="Enrichlayer API credentials"
         )
 
     class Output(BlockSchema):
-        """Output schema for ProxycurlProfilePictureBlock."""
+        """Output schema for EnrichlayerLinkedinProfilePictureBlock."""
 
         profile_picture_url: MediaFileType = SchemaField(
             description="LinkedIn profile picture URL"
@@ -469,13 +469,13 @@ class ProxycurlProfilePictureBlock(Block):
         error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
-        """Initialize ProxycurlProfilePictureBlock."""
+        """Initialize EnrichlayerLinkedinProfilePictureBlock."""
         super().__init__(
             id="68d5a942-9b3f-4e9a-b7c1-d96ea4321f0d",
-            description="Get LinkedIn profile pictures using Proxycurl",
+            description="Get LinkedIn profile pictures using Enrichlayer",
             categories={BlockCategory.SOCIAL},
-            input_schema=ProxycurlProfilePictureBlock.Input,
-            output_schema=ProxycurlProfilePictureBlock.Output,
+            input_schema=EnrichlayerLinkedinProfilePictureBlock.Input,
+            output_schema=EnrichlayerLinkedinProfilePictureBlock.Output,
             test_input={
                 "linkedin_profile_url": "https://www.linkedin.com/in/williamhgates/",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -493,9 +493,11 @@ class ProxycurlProfilePictureBlock(Block):
         )
 
     @staticmethod
-    def _get_profile_picture(credentials: APIKeyCredentials, linkedin_profile_url: str):
-        client = ProxycurlClient(credentials=credentials)
-        profile_picture_response = client.get_profile_picture(
+    async def _get_profile_picture(
+        credentials: APIKeyCredentials, linkedin_profile_url: str
+    ):
+        client = EnrichlayerClient(credentials=credentials)
+        profile_picture_response = await client.get_profile_picture(
             linkedin_profile_url=linkedin_profile_url,
         )
         return profile_picture_response.profile_picture_url
@@ -508,14 +510,14 @@ class ProxycurlProfilePictureBlock(Block):
 
         Args:
             input_data: Input parameters for the block
-            credentials: API key credentials for Proxycurl
+            credentials: API key credentials for Enrichlayer
             **kwargs: Additional keyword arguments
 
         Yields:
             Tuples of (output_name, output_value)
         """
         try:
-            profile_picture = self._get_profile_picture(
+            profile_picture = await self._get_profile_picture(
                 credentials=credentials,
                 linkedin_profile_url=input_data.linkedin_profile_url,
             )
