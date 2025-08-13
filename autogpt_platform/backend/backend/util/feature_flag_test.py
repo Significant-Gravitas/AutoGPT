@@ -1,7 +1,8 @@
 import pytest
+from fastapi import HTTPException
 from ldclient import LDClient
 
-from autogpt_libs.feature_flag.client import (
+from backend.util.feature_flag import (
     feature_flag,
     is_feature_enabled,
     mock_flag_variation,
@@ -24,7 +25,7 @@ async def test_feature_flag_enabled(ld_client):
     async def test_function(user_id: str):
         return "success"
 
-    result = test_function(user_id="test-user")
+    result = await test_function(user_id="test-user")
     assert result == "success"
     ld_client.variation.assert_called_once()
 
@@ -37,24 +38,26 @@ async def test_feature_flag_unauthorized_response(ld_client):
     async def test_function(user_id: str):
         return "success"
 
-    result = test_function(user_id="test-user")
-    assert result == {"error": "disabled"}
+    with pytest.raises(HTTPException) as exc_info:
+        await test_function(user_id="test-user")
+    assert exc_info.value.status_code == 404
 
 
 def test_mock_flag_variation(ld_client):
     with mock_flag_variation("test-flag", True):
-        assert ld_client.variation("test-flag", None, False)
+        assert ld_client.variation("test-flag", None, False) is True
 
     with mock_flag_variation("test-flag", False):
-        assert ld_client.variation("test-flag", None, False)
+        assert ld_client.variation("test-flag", None, True) is False
 
 
-def test_is_feature_enabled(ld_client):
+@pytest.mark.asyncio
+async def test_is_feature_enabled(ld_client):
     """Test the is_feature_enabled helper function."""
     ld_client.is_initialized.return_value = True
     ld_client.variation.return_value = True
 
-    result = is_feature_enabled("test-flag", "user123", default=False)
+    result = await is_feature_enabled("test-flag", "user123", default=False)
     assert result is True
 
     ld_client.variation.assert_called_once()
@@ -63,22 +66,24 @@ def test_is_feature_enabled(ld_client):
     assert call_args[0][2] is False  # default value
 
 
-def test_is_feature_enabled_not_initialized(ld_client):
+@pytest.mark.asyncio
+async def test_is_feature_enabled_not_initialized(ld_client):
     """Test is_feature_enabled when LaunchDarkly is not initialized."""
     ld_client.is_initialized.return_value = False
 
-    result = is_feature_enabled("test-flag", "user123", default=True)
+    result = await is_feature_enabled("test-flag", "user123", default=True)
     assert result is True  # Should return default
 
     ld_client.variation.assert_not_called()
 
 
-def test_is_feature_enabled_exception(mocker):
+@pytest.mark.asyncio
+async def test_is_feature_enabled_exception(mocker):
     """Test is_feature_enabled when get_client() raises an exception."""
     mocker.patch(
-        "autogpt_libs.feature_flag.client.get_client",
+        "backend.util.feature_flag.get_client",
         side_effect=Exception("Client error"),
     )
 
-    result = is_feature_enabled("test-flag", "user123", default=True)
+    result = await is_feature_enabled("test-flag", "user123", default=True)
     assert result is True  # Should return default

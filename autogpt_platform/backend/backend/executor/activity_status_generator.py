@@ -6,13 +6,13 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
-from autogpt_libs.feature_flag.client import is_feature_enabled
 from pydantic import SecretStr
 
 from backend.blocks.llm import LlmModel, llm_call
 from backend.data.block import get_block
 from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.data.model import APIKeyCredentials, GraphExecutionStats
+from backend.util.feature_flag import is_feature_enabled
 from backend.util.retry import func_retry
 from backend.util.settings import Settings
 from backend.util.truncate import truncate

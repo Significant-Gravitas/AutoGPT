@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Any, Literal
 if TYPE_CHECKING:
     from backend.executor import DatabaseManagerAsyncClient
 
-from autogpt_libs.feature_flag.client import is_feature_enabled
 from pydantic import ValidationError
 
 from backend.data.execution import ExecutionStatus
@@ -16,6 +15,7 @@ from backend.server.v2.AutoMod.models import (
     ModerationConfig,
 )
 from backend.util.exceptions import ModerationError
+from backend.util.feature_flag import is_feature_enabled
 from backend.util.request import Requests
 from backend.util.settings import Settings
 
@@ -51,7 +51,7 @@ class AutoModManager:
             return None
 
         # Check if AutoMod feature is enabled for this user
-        if not is_feature_enabled("AutoMod", graph_exec.user_id, default=False):
+        if not await is_feature_enabled("AutoMod", graph_exec.user_id, default=False):
             logger.debug(f"AutoMod feature not enabled for user {graph_exec.user_id}")
             return None
 
@@ -141,7 +141,7 @@ class AutoModManager:
             return None
 
         # Check if AutoMod feature is enabled for this user
-        if not is_feature_enabled("AutoMod", user_id, default=False):
+        if not await is_feature_enabled("AutoMod", user_id, default=False):
             logger.debug(f"AutoMod feature not enabled for user {user_id}")
             return None
 
