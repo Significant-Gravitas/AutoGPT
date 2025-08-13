@@ -13,6 +13,7 @@ from backend.blocks.llm import LlmModel, llm_call
 from backend.data.block import get_block
 from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.data.model import APIKeyCredentials, GraphExecutionStats
+from backend.util.retry import func_retry
 from backend.util.settings import Settings
 from backend.util.truncate import truncate
 
@@ -101,8 +102,10 @@ async def generate_activity_status_for_execution(
     Returns:
         AI-generated activity status string, or None if feature is disabled
     """
-    # Check LaunchDarkly feature flag for AI activity status generation
-    if not is_feature_enabled(AI_ACTIVITY_STATUS_FLAG_KEY, user_id, default=False):
+    # Check LaunchDarkly feature flag for AI activity status generation with full context support
+    if not await is_feature_enabled(
+        AI_ACTIVITY_STATUS_FLAG_KEY, user_id, default=False
+    ):
         logger.debug("AI activity status generation is disabled via LaunchDarkly")
         return None
 
@@ -415,6 +418,7 @@ def _build_execution_summary(
     }
 
 
+@func_retry
 async def _call_llm_direct(
     credentials: APIKeyCredentials, prompt: list[dict[str, str]]
 ) -> str:

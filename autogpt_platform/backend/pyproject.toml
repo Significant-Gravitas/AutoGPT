@@ -10,6 +10,7 @@ packages = [{ include = "backend", format = "sdist" }]
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
 aio-pika = "^9.5.5"
+aiohttp = "^3.10.0"
 aiodns = "^3.5.0"
 anthropic = "^0.59.0"
 apscheduler = "^3.11.0"
@@ -75,6 +76,7 @@ setuptools = "^80.9.0"
 gcloud-aio-storage = "^9.5.0"
 pandas = "^2.3.1"
 firecrawl-py = "^2.16.3"
+exa-py = "^1.14.20"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"
@@ -101,6 +103,7 @@ rest = "backend.rest:main"
 db = "backend.db:main"
 ws = "backend.ws:main"
 scheduler = "backend.scheduler:main"
+notification = "backend.notification:main"
 executor = "backend.exec:main"
 cli = "backend.cli:main"
 format = "linter:format"

@@ -1,9 +1,8 @@
 import logging
 
 import pytest
-from prisma.models import User
 
-from backend.data.model import ProviderName
+from backend.data.model import ProviderName, User
 from backend.server.model import CreateGraph
 from backend.server.rest_api import AgentServer
 from backend.usecases.sample import create_test_graph, create_test_user
