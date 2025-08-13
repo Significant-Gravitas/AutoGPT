@@ -115,7 +115,9 @@ def configure_logging(force_cloud_logging: bool = False) -> None:
     if config.enable_cloud_logging or force_cloud_logging:
         import google.cloud.logging
         from google.cloud.logging.handlers import CloudLoggingHandler
-        from google.cloud.logging_v2.handlers.transports import BackgroundThreadTransport
+        from google.cloud.logging_v2.handlers.transports import (
+            BackgroundThreadTransport,
+        )
 
         client = google.cloud.logging.Client()
         # Use BackgroundThreadTransport to prevent blocking the main thread
