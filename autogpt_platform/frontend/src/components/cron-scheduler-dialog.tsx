@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import { Separator } from "@/components/ui/separator";
 import { CronScheduler } from "@/components/cron-scheduler";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";

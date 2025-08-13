@@ -3,6 +3,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import { User } from "@supabase/supabase-js";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   getCurrentUser,
   refreshSession,
@@ -12,18 +13,22 @@ import {
 } from "../actions";
 import {
   broadcastLogout,
+  clearWebSocketDisconnectIntent,
   getRedirectPath,
   isLogoutEvent,
+  setWebSocketDisconnectIntent,
   setupSessionEventListeners,
 } from "../helpers";
 
 export function useSupabase() {
   const router = useRouter();
   const pathname = usePathname();
+  const api = useBackendAPI();
   const [user, setUser] = useState<User | null>(null);
   const [isUserLoading, setIsUserLoading] = useState(true);
   const lastValidationRef = useRef<number>(0);
   const isValidatingRef = useRef(false);
+  const isLoggedIn = Boolean(user);
 
   const supabase = useMemo(() => {
     try {
@@ -44,13 +49,17 @@ export function useSupabase() {
   }, []);
 
   async function logOut(options: ServerLogoutOptions = {}) {
+    setWebSocketDisconnectIntent();
+    api.disconnectWebSocket();
     broadcastLogout();
 
     try {
       await serverLogout(options);
     } catch (error) {
       console.error("Error logging out:", error);
-      router.push("/login");
+    } finally {
+      setUser(null);
+      router.refresh();
     }
   }
 
@@ -87,6 +96,7 @@ export function useSupabase() {
           }
           return currentUser;
         });
+        clearWebSocketDisconnectIntent();
       }
 
       return true;
@@ -113,6 +123,7 @@ export function useSupabase() {
       }
 
       setUser(serverUser);
+      clearWebSocketDisconnectIntent();
       return serverUser;
     } catch (error) {
       console.error("Get user error:", error);
@@ -123,6 +134,9 @@ export function useSupabase() {
 
   function handleCrossTabLogout(e: StorageEvent) {
     if (!isLogoutEvent(e)) return;
+
+    setWebSocketDisconnectIntent();
+    api.disconnectWebSocket();
 
     // Clear local state immediately
     setUser(null);
@@ -162,9 +176,9 @@ export function useSupabase() {
   }, []);
 
   return {
-    supabase, // Available for non-auth operations like real-time subscriptions
     user,
-    isLoggedIn: !isUserLoading ? !!user : null,
+    supabase, // Available for non-auth operations like real-time subscriptions
+    isLoggedIn,
     isUserLoading,
     logOut,
     validateSession: validateSessionServer,

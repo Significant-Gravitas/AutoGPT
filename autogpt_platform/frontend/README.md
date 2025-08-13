@@ -207,6 +207,47 @@ The Orval configuration is located in `autogpt_platform/frontend/orval.config.ts
 
 For more details, see the [Orval documentation](https://orval.dev/) or check the configuration file.
 
+## 🚩 Feature Flags
+
+This project uses [LaunchDarkly](https://launchdarkly.com/) for feature flags, allowing us to control feature rollouts and A/B testing.
+
+### Using Feature Flags
+
+#### Check if a feature is enabled
+
+```typescript
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+
+function MyComponent() {
+  const isAgentActivityEnabled = useGetFlag(Flag.AGENT_ACTIVITY);
+
+  if (!isAgentActivityEnabled) {
+    return null; // Hide feature
+  }
+
+  return <div>Feature is enabled!</div>;
+}
+```
+
+#### Protect entire components
+
+```typescript
+import { withFeatureFlag } from "@/services/feature-flags/with-feature-flag";
+
+const MyFeaturePage = withFeatureFlag(MyPageComponent, "my-feature-flag");
+```
+
+### Testing with Feature Flags
+
+For local development or running Playwright tests locally, use mocked feature flags by setting `NEXT_PUBLIC_PW_TEST=true` in your `.env` file. This bypasses LaunchDarkly and uses the mock values defined in the code.
+
+### Adding New Flags
+
+1. Add the flag to the `Flag` enum in `use-get-flag.ts`
+2. Add the flag type to `FlagValues` type
+3. Add mock value to `mockFlags` for testing
+4. Configure the flag in LaunchDarkly dashboard
+
 ## 🚚 Deploy
 
 TODO

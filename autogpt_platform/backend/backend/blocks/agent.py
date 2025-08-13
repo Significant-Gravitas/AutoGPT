@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from typing import Any, Optional
 
@@ -14,8 +13,9 @@ from backend.data.block import (
     get_block,
 )
 from backend.data.execution import ExecutionStatus
-from backend.data.model import SchemaField
-from backend.util import json, retry
+from backend.data.model import NodeExecutionStats, SchemaField
+from backend.util.json import validate_with_jsonschema
+from backend.util.retry import func_retry
 
 _logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ class AgentExecutorBlock(Block):
 
         @classmethod
         def get_mismatch_error(cls, data: BlockInput) -> str | None:
-            return json.validate_with_jsonschema(cls.get_input_schema(data), data)
+            return validate_with_jsonschema(cls.get_input_schema(data), data)
 
     class Output(BlockSchema):
         pass
@@ -74,7 +74,6 @@ class AgentExecutorBlock(Block):
             user_id=input_data.user_id,
             inputs=input_data.inputs,
             nodes_input_masks=input_data.nodes_input_masks,
-            use_db_query=False,
         )
 
         logger = execution_utils.LogMetadata(
@@ -96,23 +95,14 @@ class AgentExecutorBlock(Block):
                 logger=logger,
             ):
                 yield name, data
-        except asyncio.CancelledError:
+        except BaseException as e:
             await self._stop(
                 graph_exec_id=graph_exec.id,
                 user_id=input_data.user_id,
                 logger=logger,
             )
             logger.warning(
-                f"Execution of graph {input_data.graph_id}v{input_data.graph_version} was cancelled."
-            )
-        except Exception as e:
-            await self._stop(
-                graph_exec_id=graph_exec.id,
-                user_id=input_data.user_id,
-                logger=logger,
-            )
-            logger.error(
-                f"Execution of graph {input_data.graph_id}v{input_data.graph_version} failed: {e}, execution is stopped."
+                f"Execution of graph {input_data.graph_id}v{input_data.graph_version} failed: {e.__class__.__name__} {str(e)}; execution is stopped."
             )
             raise
 
@@ -132,6 +122,7 @@ class AgentExecutorBlock(Block):
 
         log_id = f"Graph #{graph_id}-V{graph_version}, exec-id: {graph_exec_id}"
         logger.info(f"Starting execution of {log_id}")
+        yielded_node_exec_ids = set()
 
         async for event in event_bus.listen(
             user_id=user_id,
@@ -151,11 +142,25 @@ class AgentExecutorBlock(Block):
             if event.event_type == ExecutionEventType.GRAPH_EXEC_UPDATE:
                 # If the graph execution is COMPLETED, TERMINATED, or FAILED,
                 # we can stop listening for further events.
+                self.merge_stats(
+                    NodeExecutionStats(
+                        extra_cost=event.stats.cost if event.stats else 0,
+                        extra_steps=event.stats.node_exec_count if event.stats else 0,
+                    )
+                )
                 break
 
             logger.debug(
                 f"Execution {log_id} produced input {event.input_data} output {event.output_data}"
             )
+
+            if event.node_exec_id in yielded_node_exec_ids:
+                logger.warning(
+                    f"{log_id} received duplicate event for node execution {event.node_exec_id}"
+                )
+                continue
+            else:
+                yielded_node_exec_ids.add(event.node_exec_id)
 
             if not event.block_id:
                 logger.warning(f"{log_id} received event without block_id {event}")
@@ -176,7 +181,7 @@ class AgentExecutorBlock(Block):
                 )
                 yield output_name, output_data
 
-    @retry.func_retry
+    @func_retry
     async def _stop(
         self,
         graph_exec_id: str,
@@ -192,8 +197,8 @@ class AgentExecutorBlock(Block):
             await execution_utils.stop_graph_execution(
                 graph_exec_id=graph_exec_id,
                 user_id=user_id,
-                use_db_query=False,
+                wait_timeout=3600,
             )
             logger.info(f"Execution {log_id} stopped successfully.")
-        except Exception as e:
-            logger.error(f"Failed to stop execution {log_id}: {e}")
+        except TimeoutError as e:
+            logger.error(f"Execution {log_id} stop timed out: {e}")

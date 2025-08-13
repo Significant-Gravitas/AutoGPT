@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import logging
 from collections import defaultdict
 from datetime import datetime
@@ -7,9 +8,17 @@ from typing import Annotated, Any, Sequence
 import pydantic
 import stripe
 from autogpt_libs.auth.middleware import auth_middleware
-from autogpt_libs.feature_flag.client import feature_flag
-from autogpt_libs.utils.cache import thread_cached
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, Request, Response
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    File,
+    HTTPException,
+    Path,
+    Request,
+    Response,
+    UploadFile,
+)
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 from typing_extensions import Optional, TypedDict
 
@@ -40,7 +49,6 @@ from backend.data.credit import (
     get_user_credit_model,
     set_auto_top_up,
 )
-from backend.data.execution import AsyncRedisExecutionEventBus
 from backend.data.model import CredentialsMetaInput
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.onboarding import (
@@ -70,21 +78,23 @@ from backend.server.model import (
     RequestTopUp,
     SetGraphActiveVersion,
     UpdatePermissionsRequest,
+    UploadFileResponse,
 )
 from backend.server.utils import get_user_id
-from backend.util.exceptions import NotFoundError
-from backend.util.service import get_service_client
+from backend.util.clients import get_scheduler_client
+from backend.util.cloud_storage import get_cloud_storage_handler
+from backend.util.exceptions import GraphValidationError, NotFoundError
+from backend.util.feature_flag import feature_flag
 from backend.util.settings import Settings
+from backend.util.virus_scanner import scan_content_safe
 
 
-@thread_cached
-def execution_scheduler_client() -> scheduler.SchedulerClient:
-    return get_service_client(scheduler.SchedulerClient, health_check=False)
-
-
-@thread_cached
-def execution_event_bus() -> AsyncRedisExecutionEventBus:
-    return AsyncRedisExecutionEventBus()
+def _create_file_size_error(size_bytes: int, max_size_mb: int) -> HTTPException:
+    """Create standardized file size error response."""
+    return HTTPException(
+        status_code=400,
+        detail=f"File size ({size_bytes} bytes) exceeds the maximum allowed size of {max_size_mb}MB",
+    )
 
 
 settings = Settings()
@@ -249,6 +259,92 @@ async def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlock
     async for name, data in obj.execute(data):
         output[name].append(data)
     return output
+
+
+@v1_router.post(
+    path="/files/upload",
+    summary="Upload file to cloud storage",
+    tags=["files"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def upload_file(
+    user_id: Annotated[str, Depends(get_user_id)],
+    file: UploadFile = File(...),
+    provider: str = "gcs",
+    expiration_hours: int = 24,
+) -> UploadFileResponse:
+    """
+    Upload a file to cloud storage and return a storage key that can be used
+    with FileStoreBlock and AgentFileInputBlock.
+
+    Args:
+        file: The file to upload
+        user_id: The user ID
+        provider: Cloud storage provider ("gcs", "s3", "azure")
+        expiration_hours: Hours until file expires (1-48)
+
+    Returns:
+        Dict containing the cloud storage path and signed URL
+    """
+    if expiration_hours < 1 or expiration_hours > 48:
+        raise HTTPException(
+            status_code=400, detail="Expiration hours must be between 1 and 48"
+        )
+
+    # Check file size limit before reading content to avoid memory issues
+    max_size_mb = settings.config.upload_file_size_limit_mb
+    max_size_bytes = max_size_mb * 1024 * 1024
+
+    # Try to get file size from headers first
+    if hasattr(file, "size") and file.size is not None and file.size > max_size_bytes:
+        raise _create_file_size_error(file.size, max_size_mb)
+
+    # Read file content
+    content = await file.read()
+    content_size = len(content)
+
+    # Double-check file size after reading (in case header was missing/incorrect)
+    if content_size > max_size_bytes:
+        raise _create_file_size_error(content_size, max_size_mb)
+
+    # Extract common variables
+    file_name = file.filename or "uploaded_file"
+    content_type = file.content_type or "application/octet-stream"
+
+    # Virus scan the content
+    await scan_content_safe(content, filename=file_name)
+
+    # Check if cloud storage is configured
+    cloud_storage = await get_cloud_storage_handler()
+    if not cloud_storage.config.gcs_bucket_name:
+        # Fallback to base64 data URI when GCS is not configured
+        base64_content = base64.b64encode(content).decode("utf-8")
+        data_uri = f"data:{content_type};base64,{base64_content}"
+
+        return UploadFileResponse(
+            file_uri=data_uri,
+            file_name=file_name,
+            size=content_size,
+            content_type=content_type,
+            expires_in_hours=expiration_hours,
+        )
+
+    # Store in cloud storage
+    storage_path = await cloud_storage.store_file(
+        content=content,
+        filename=file_name,
+        provider=provider,
+        expiration_hours=expiration_hours,
+        user_id=user_id,
+    )
+
+    return UploadFileResponse(
+        file_uri=storage_path,
+        file_name=file_name,
+        size=content_size,
+        content_type=content_type,
+        expires_in_hours=expiration_hours,
+    )
 
 
 ########################################################
@@ -448,10 +544,10 @@ class DeleteGraphResponse(TypedDict):
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
-async def get_graphs(
+async def list_graphs(
     user_id: Annotated[str, Depends(get_user_id)],
-) -> Sequence[graph_db.GraphModel]:
-    return await graph_db.get_graphs(filter_by="active", user_id=user_id)
+) -> Sequence[graph_db.GraphMeta]:
+    return await graph_db.list_graphs(filter_by="active", user_id=user_id)
 
 
 @v1_router.get(
@@ -513,16 +609,11 @@ async def create_new_graph(
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
 
-    graph = await graph_db.create_graph(graph, user_id=user_id)
-
-    # Create a library agent for the new graph
-    library_agent = await library_db.create_library_agent(graph, user_id)
-    _ = asyncio.create_task(
-        library_db.add_generated_agent_image(graph, library_agent.id)
-    )
-
-    graph = await on_graph_activate(graph, user_id=user_id)
-    return graph
+    # The return value of the create graph & library function is intentionally not used here,
+    # as the graph already valid and no sub-graphs are returned back.
+    await graph_db.create_graph(graph, user_id=user_id)
+    await library_db.create_library_agent(graph, user_id=user_id)
+    return await on_graph_activate(graph, user_id=user_id)
 
 
 @v1_router.delete(
@@ -650,15 +741,27 @@ async def execute_graph(
             detail="Insufficient balance to execute the agent. Please top up your account.",
         )
 
-    graph_exec = await execution_utils.add_graph_execution(
-        graph_id=graph_id,
-        user_id=user_id,
-        inputs=inputs,
-        preset_id=preset_id,
-        graph_version=graph_version,
-        graph_credentials_inputs=credentials_inputs,
-    )
-    return ExecuteGraphResponse(graph_exec_id=graph_exec.id)
+    try:
+        graph_exec = await execution_utils.add_graph_execution(
+            graph_id=graph_id,
+            user_id=user_id,
+            inputs=inputs,
+            preset_id=preset_id,
+            graph_version=graph_version,
+            graph_credentials_inputs=credentials_inputs,
+        )
+        return ExecuteGraphResponse(graph_exec_id=graph_exec.id)
+    except GraphValidationError as e:
+        # Return structured validation errors that the frontend can parse
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "validation_error",
+                "message": e.message,
+                # TODO: only return node-specific errors if user has access to graph
+                "node_errors": e.node_errors,
+            },
+        )
 
 
 @v1_router.post(
@@ -669,34 +772,15 @@ async def execute_graph(
 )
 async def stop_graph_run(
     graph_id: str, graph_exec_id: str, user_id: Annotated[str, Depends(get_user_id)]
-) -> execution_db.GraphExecutionMeta:
+) -> execution_db.GraphExecutionMeta | None:
     res = await _stop_graph_run(
         user_id=user_id,
         graph_id=graph_id,
         graph_exec_id=graph_exec_id,
     )
     if not res:
-        raise HTTPException(
-            status_code=HTTP_404_NOT_FOUND,
-            detail=f"Graph execution #{graph_exec_id} not found.",
-        )
+        return None
     return res[0]
-
-
-@v1_router.post(
-    path="/executions",
-    summary="Stop graph executions",
-    tags=["graphs"],
-    dependencies=[Depends(auth_middleware)],
-)
-async def stop_graph_runs(
-    graph_id: str, graph_exec_id: str, user_id: Annotated[str, Depends(get_user_id)]
-) -> list[execution_db.GraphExecutionMeta]:
-    return await _stop_graph_run(
-        user_id=user_id,
-        graph_id=graph_id,
-        graph_exec_id=graph_exec_id,
-    )
 
 
 async def _stop_graph_run(
@@ -828,7 +912,7 @@ async def create_graph_execution_schedule(
             detail=f"Graph #{graph_id} v{schedule_params.graph_version} not found.",
         )
 
-    return await execution_scheduler_client().add_execution_schedule(
+    return await get_scheduler_client().add_execution_schedule(
         user_id=user_id,
         graph_id=graph_id,
         graph_version=graph.version,
@@ -849,7 +933,7 @@ async def list_graph_execution_schedules(
     user_id: Annotated[str, Depends(get_user_id)],
     graph_id: str = Path(),
 ) -> list[scheduler.GraphExecutionJobInfo]:
-    return await execution_scheduler_client().get_execution_schedules(
+    return await get_scheduler_client().get_execution_schedules(
         user_id=user_id,
         graph_id=graph_id,
     )
@@ -864,7 +948,7 @@ async def list_graph_execution_schedules(
 async def list_all_graphs_execution_schedules(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> list[scheduler.GraphExecutionJobInfo]:
-    return await execution_scheduler_client().get_execution_schedules(user_id=user_id)
+    return await get_scheduler_client().get_execution_schedules(user_id=user_id)
 
 
 @v1_router.delete(
@@ -878,7 +962,7 @@ async def delete_graph_execution_schedule(
     schedule_id: str = Path(..., description="ID of the schedule to delete"),
 ) -> dict[str, Any]:
     try:
-        await execution_scheduler_client().delete_schedule(schedule_id, user_id=user_id)
+        await get_scheduler_client().delete_schedule(schedule_id, user_id=user_id)
     except NotFoundError:
         raise HTTPException(
             status_code=HTTP_404_NOT_FOUND,

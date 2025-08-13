@@ -3,8 +3,6 @@ import re
 from collections import Counter
 from typing import TYPE_CHECKING, Any
 
-from autogpt_libs.utils.cache import thread_cached
-
 import backend.blocks.llm as llm
 from backend.blocks.agent import AgentExecutorBlock
 from backend.data.block import (
@@ -15,21 +13,14 @@ from backend.data.block import (
     BlockSchema,
     BlockType,
 )
-from backend.data.model import SchemaField
+from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util import json
+from backend.util.clients import get_database_manager_async_client
 
 if TYPE_CHECKING:
     from backend.data.graph import Link, Node
 
 logger = logging.getLogger(__name__)
-
-
-@thread_cached
-def get_database_manager_client():
-    from backend.executor import DatabaseManagerAsyncClient
-    from backend.util.service import get_service_client
-
-    return get_service_client(DatabaseManagerAsyncClient, health_check=False)
 
 
 def _get_tool_requests(entry: dict[str, Any]) -> list[str]:
@@ -300,9 +291,32 @@ class SmartDecisionMakerBlock(Block):
 
         for link in links:
             sink_name = SmartDecisionMakerBlock.cleanup(link.sink_name)
-            properties[sink_name] = sink_block_input_schema.get_field_schema(
-                link.sink_name
-            )
+
+            # Handle dynamic fields (e.g., values_#_*, items_$_*, etc.)
+            # These are fields that get merged by the executor into their base field
+            if (
+                "_#_" in link.sink_name
+                or "_$_" in link.sink_name
+                or "_@_" in link.sink_name
+            ):
+                # For dynamic fields, provide a generic string schema
+                # The executor will handle merging these into the appropriate structure
+                properties[sink_name] = {
+                    "type": "string",
+                    "description": f"Dynamic value for {link.sink_name}",
+                }
+            else:
+                # For regular fields, use the block's schema
+                try:
+                    properties[sink_name] = sink_block_input_schema.get_field_schema(
+                        link.sink_name
+                    )
+                except (KeyError, AttributeError):
+                    # If the field doesn't exist in the schema, provide a generic schema
+                    properties[sink_name] = {
+                        "type": "string",
+                        "description": f"Value for {link.sink_name}",
+                    }
 
         tool_function["parameters"] = {
             **block.input_schema.jsonschema(),
@@ -333,7 +347,7 @@ class SmartDecisionMakerBlock(Block):
         if not graph_id or not graph_version:
             raise ValueError("Graph ID or Graph Version not found in sink node.")
 
-        db_client = get_database_manager_client()
+        db_client = get_database_manager_async_client()
         sink_graph_meta = await db_client.get_graph_metadata(graph_id, graph_version)
         if not sink_graph_meta:
             raise ValueError(
@@ -393,7 +407,7 @@ class SmartDecisionMakerBlock(Block):
             ValueError: If no tool links are found for the specified node_id, or if a sink node
                         or its metadata cannot be found.
         """
-        db_client = get_database_manager_client()
+        db_client = get_database_manager_async_client()
         tools = [
             (link, node)
             for link, node in await db_client.get_connected_output_nodes(node_id)
@@ -487,10 +501,6 @@ class SmartDecisionMakerBlock(Block):
                 }
             )
             prompt.extend(tool_output)
-        if input_data.multiple_tool_calls:
-            input_data.sys_prompt += "\nYou can call a tool (different tools) multiple times in a single response."
-        else:
-            input_data.sys_prompt += "\nOnly provide EXACTLY one function call, multiple tool calls is strictly prohibited."
 
         values = input_data.prompt_values
         if values:
@@ -518,6 +528,15 @@ class SmartDecisionMakerBlock(Block):
             tools=tool_functions,
             ollama_host=input_data.ollama_host,
             parallel_tool_calls=input_data.multiple_tool_calls,
+        )
+
+        # Track LLM usage stats
+        self.merge_stats(
+            NodeExecutionStats(
+                input_token_count=response.prompt_tokens,
+                output_token_count=response.completion_tokens,
+                llm_call_count=1,
+            )
         )
 
         if not response.tool_calls:

@@ -1,9 +1,8 @@
 "use client";
-import React, { useCallback, useMemo } from "react";
 import { isEmpty } from "lodash";
 import moment from "moment";
+import React, { useCallback, useMemo } from "react";
 
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   Graph,
   GraphExecution,
@@ -11,14 +10,25 @@ import {
   GraphExecutionMeta,
   LibraryAgent,
 } from "@/lib/autogpt-server-api";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
+import ActionButtonGroup from "@/components/agptui/action-button-group";
 import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { IconRefresh, IconSquare } from "@/components/ui/icons";
-import { useToastOnFail } from "@/components/ui/use-toast";
-import ActionButtonGroup from "@/components/agptui/action-button-group";
-import LoadingBox from "@/components/ui/loading";
+import {
+  IconRefresh,
+  IconSquare,
+  IconCircleAlert,
+} from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
+import LoadingBox from "@/components/ui/loading";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
 
 import {
   AgentRunStatus,
@@ -169,7 +179,7 @@ export default function AgentRunDetailsView({
           ] satisfies ButtonAction[])
         : []),
       ...(["success", "failed", "stopped"].includes(runStatus) &&
-      !graph.has_webhook_trigger &&
+      !graph.has_external_trigger &&
       isEmpty(graph.credentials_input_schema.required) // TODO: enable re-run with credentials - https://linear.app/autogpt/issue/SECRT-1243
         ? [
             {
@@ -180,6 +190,7 @@ export default function AgentRunDetailsView({
                 </>
               ),
               callback: runAgain,
+              dataTestId: "run-again-button",
             },
           ]
         : []),
@@ -198,8 +209,8 @@ export default function AgentRunDetailsView({
       runAgain,
       stopRun,
       deleteRun,
-      graph.has_webhook_trigger,
-      graph.credentials_input_schema.properties,
+      graph.has_external_trigger,
+      graph.credentials_input_schema.required,
       agent.can_access_graph,
       run.graph_id,
       run.graph_version,
@@ -224,8 +235,48 @@ export default function AgentRunDetailsView({
                 </div>
               ))}
             </div>
+            {run.status === "FAILED" && (
+              <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
+                <p className="text-sm text-red-800 dark:text-red-200">
+                  <strong>Error:</strong>{" "}
+                  {run.stats?.error ||
+                    "The execution failed due to an internal error. You can re-run the agent to retry."}
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
+
+        {/* Smart Agent Execution Summary */}
+        {run.stats?.activity_status && (
+          <Card className="agpt-box">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 font-poppins text-lg">
+                Smart Agent Execution Summary
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <IconCircleAlert className="size-4 cursor-help text-neutral-500 hover:text-neutral-700" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs">
+                        This is an AI-generated summary and may not be
+                        completely accurate. It provides a conversational
+                        overview of what the agent accomplished during
+                        execution.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm leading-relaxed text-neutral-700">
+                {run.stats.activity_status}
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         {agentRunOutputs !== null && (
           <Card className="agpt-box">

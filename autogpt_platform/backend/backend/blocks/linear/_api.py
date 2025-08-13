@@ -1,16 +1,11 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
-from backend.blocks.linear._auth import LinearCredentials
-from backend.blocks.linear.models import (
-    CreateCommentResponse,
-    CreateIssueResponse,
-    Issue,
-    Project,
-)
-from backend.util.request import Requests
+from backend.sdk import APIKeyCredentials, OAuth2Credentials, Requests
+
+from .models import CreateCommentResponse, CreateIssueResponse, Issue, Project
 
 
 class LinearAPIException(Exception):
@@ -29,13 +24,12 @@ class LinearClient:
 
     def __init__(
         self,
-        credentials: LinearCredentials | None = None,
+        credentials: Union[OAuth2Credentials, APIKeyCredentials, None] = None,
         custom_requests: Optional[Requests] = None,
     ):
         if custom_requests:
             self._requests = custom_requests
         else:
-
             headers: Dict[str, str] = {
                 "Content-Type": "application/json",
             }

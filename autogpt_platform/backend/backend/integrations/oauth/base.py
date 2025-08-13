@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 class BaseOAuthHandler(ABC):
     # --8<-- [start:BaseOAuthHandler1]
-    PROVIDER_NAME: ClassVar[ProviderName]
+    PROVIDER_NAME: ClassVar[ProviderName | str]
     DEFAULT_SCOPES: ClassVar[list[str]] = []
     # --8<-- [end:BaseOAuthHandler1]
 
@@ -81,8 +81,6 @@ class BaseOAuthHandler(ABC):
         """Handles the default scopes for the provider"""
         # If scopes are empty, use the default scopes for the provider
         if not scopes:
-            logger.debug(
-                f"Using default scopes for provider {self.PROVIDER_NAME.value}"
-            )
+            logger.debug(f"Using default scopes for provider {str(self.PROVIDER_NAME)}")
             scopes = self.DEFAULT_SCOPES
         return scopes

@@ -5,6 +5,7 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import * as React from "react";
 import SettingsLoading from "./loading";
 import { redirect } from "next/navigation";
+import { Text } from "@/components/atoms/Text/Text";
 
 export default function SettingsPage() {
   const {
@@ -35,11 +36,11 @@ export default function SettingsPage() {
 
   return (
     <div className="container max-w-2xl space-y-6 py-10">
-      <div>
-        <h3 className="text-lg font-medium">My account</h3>
-        <p className="text-sm text-muted-foreground">
+      <div className="flex flex-col gap-2">
+        <Text variant="h3">My account</Text>
+        <Text variant="large">
           Manage your account settings and preferences.
-        </p>
+        </Text>
       </div>
       <SettingsForm preferences={preferences} user={user} />
     </div>

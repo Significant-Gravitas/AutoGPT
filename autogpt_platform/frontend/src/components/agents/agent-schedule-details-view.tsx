@@ -9,16 +9,16 @@ import {
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
+import { AgentRunStatus } from "@/components/agents/agent-run-status-chip";
+import ActionButtonGroup from "@/components/agptui/action-button-group";
 import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { humanizeCronExpression } from "@/lib/cron-expression-utils";
-import { AgentRunStatus } from "@/components/agents/agent-run-status-chip";
-import { useToastOnFail } from "@/components/ui/use-toast";
-import ActionButtonGroup from "@/components/agptui/action-button-group";
 import { IconCross } from "@/components/ui/icons";
-import { PlayIcon } from "lucide-react";
-import LoadingBox from "@/components/ui/loading";
 import { Input } from "@/components/ui/input";
+import LoadingBox from "@/components/ui/loading";
+import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
+import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+import { PlayIcon } from "lucide-react";
 
 export default function AgentScheduleDetailsView({
   graph,

@@ -1,35 +1,60 @@
+networks:
+  app-network:
+    name: app-network
+  shared-network:
+    name: shared-network
+
+volumes:
+  supabase-config:
+
+x-agpt-services:
+  &agpt-services
+  networks:
+    - app-network
+    - shared-network
+
+x-supabase-services:
+  &supabase-services
+  networks:
+    - app-network
+    - shared-network
+
+
+volumes:
+  clamav-data:
+
 services:
-  postgres-test:
-    image: ankane/pgvector:latest
-    environment:
-      - POSTGRES_USER=${DB_USER:-postgres}
-      - POSTGRES_PASSWORD=${DB_PASS:-postgres}
-      - POSTGRES_DB=${DB_NAME:-postgres}
-      - POSTGRES_PORT=${DB_PORT:-5432}
-    healthcheck:
-      test: pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB
-      interval: 10s
-      timeout: 5s
-      retries: 5
+   
+  db:
+    <<: *supabase-services
+    extends:
+      file: ../db/docker/docker-compose.yml
+      service: db
     ports:
-      - "${DB_PORT:-5432}:5432"
-    networks:
-      - app-network-test
-  redis-test:
+      - ${POSTGRES_PORT}:5432 # We don't use Supavisor locally, so we expose the db directly.
+
+  vector:
+    <<: *supabase-services
+    extends:
+      file: ../db/docker/docker-compose.yml
+      service: vector
+
+  redis:
+    <<: *agpt-services
     image: redis:latest
     command: redis-server --requirepass password
     ports:
       - "6379:6379"
-    networks:
-      - app-network-test
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
-  rabbitmq-test:
+
+  rabbitmq:
+    <<: *agpt-services
     image: rabbitmq:management
-    container_name: rabbitmq-test
+    container_name: rabbitmq
     healthcheck:
       test: rabbitmq-diagnostics -q ping
       interval: 30s
@@ -38,11 +63,28 @@ services:
       start_period: 10s
     environment:
       - RABBITMQ_DEFAULT_USER=rabbitmq_user_default
-      - RABBITMQ_DEFAULT_PASS=k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7 # CHANGE THIS TO A RANDOM PASSWORD IN PRODUCTION -- everywhere lol
+      - RABBITMQ_DEFAULT_PASS=k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7
     ports:
       - "5672:5672"
       - "15672:15672"
-
+  clamav:
+    image: clamav/clamav-debian:latest
+    ports:
+      - "3310:3310"
+    volumes:
+      - clamav-data:/var/lib/clamav
+    environment:
+      - CLAMAV_NO_FRESHCLAMD=false
+      - CLAMD_CONF_StreamMaxLength=50M
+      - CLAMD_CONF_MaxFileSize=100M
+      - CLAMD_CONF_MaxScanSize=100M
+      - CLAMD_CONF_MaxThreads=12
+      - CLAMD_CONF_ReadTimeout=300
+    healthcheck:
+      test: ["CMD-SHELL", "clamdscan --version || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 networks:
      app-network-test:
        driver: bridge

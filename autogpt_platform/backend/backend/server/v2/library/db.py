@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Literal, Optional
 
@@ -14,13 +15,14 @@ import backend.server.v2.store.exceptions as store_exceptions
 import backend.server.v2.store.image_gen as store_image_gen
 import backend.server.v2.store.media as store_media
 from backend.data.block import BlockInput
-from backend.data.db import locked_transaction, transaction
+from backend.data.db import transaction
 from backend.data.execution import get_graph_execution
 from backend.data.includes import library_agent_include
 from backend.data.model import CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import on_graph_activate
 from backend.util.exceptions import NotFoundError
+from backend.util.json import SafeJson
 from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
@@ -187,7 +189,7 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
 async def get_library_agent_by_store_version_id(
     store_listing_version_id: str,
     user_id: str,
-):
+) -> library_model.LibraryAgent | None:
     """
     Get the library agent metadata for a given store listing version ID and user ID.
     """
@@ -202,7 +204,7 @@ async def get_library_agent_by_store_version_id(
     )
     if not store_listing_version:
         logger.warning(f"Store listing version not found: {store_listing_version_id}")
-        raise store_exceptions.AgentNotFoundError(
+        raise NotFoundError(
             f"Store listing version {store_listing_version_id} not found or invalid"
         )
 
@@ -214,12 +216,9 @@ async def get_library_agent_by_store_version_id(
             "agentGraphVersion": store_listing_version.agentGraphVersion,
             "isDeleted": False,
         },
-        include={"AgentGraph": True},
+        include=library_agent_include(user_id),
     )
-    if agent:
-        return library_model.LibraryAgent.from_db(agent)
-    else:
-        return None
+    return library_model.LibraryAgent.from_db(agent) if agent else None
 
 
 async def get_library_agent_by_graph_id(
@@ -249,13 +248,13 @@ async def get_library_agent_by_graph_id(
 
 
 async def add_generated_agent_image(
-    graph: graph_db.GraphModel,
+    graph: graph_db.BaseGraph,
+    user_id: str,
     library_agent_id: str,
 ) -> Optional[prisma.models.LibraryAgent]:
     """
     Generates an image for the specified LibraryAgent and updates its record.
     """
-    user_id = graph.user_id
     graph_id = graph.id
 
     # Use .jpeg here since we are generating JPEG images
@@ -284,16 +283,19 @@ async def add_generated_agent_image(
 async def create_library_agent(
     graph: graph_db.GraphModel,
     user_id: str,
-) -> library_model.LibraryAgent:
+    create_library_agents_for_sub_graphs: bool = True,
+) -> list[library_model.LibraryAgent]:
     """
     Adds an agent to the user's library (LibraryAgent table).
 
     Args:
         agent: The agent/Graph to add to the library.
         user_id: The user to whom the agent will be added.
+        create_library_agents_for_sub_graphs: If True, creates LibraryAgent records for sub-graphs as well.
 
     Returns:
-        The newly created LibraryAgent record.
+        The newly created LibraryAgent records.
+        If the graph has sub-graphs, the parent graph will always be the first entry in the list.
 
     Raises:
         AgentNotFoundError: If the specified agent does not exist.
@@ -303,26 +305,39 @@ async def create_library_agent(
         f"Creating library agent for graph #{graph.id} v{graph.version}; "
         f"user #{user_id}"
     )
+    graph_entries = (
+        [graph, *graph.sub_graphs] if create_library_agents_for_sub_graphs else [graph]
+    )
 
-    try:
-        agent = await prisma.models.LibraryAgent.prisma().create(
-            data=prisma.types.LibraryAgentCreateInput(
-                isCreatedByUser=(user_id == graph.user_id),
-                useGraphIsActiveVersion=True,
-                User={"connect": {"id": user_id}},
-                # Creator={"connect": {"id": graph.user_id}},
-                AgentGraph={
-                    "connect": {
-                        "graphVersionId": {"id": graph.id, "version": graph.version}
-                    }
-                },
-            ),
-            include={"AgentGraph": True},
+    async with transaction() as tx:
+        library_agents = await asyncio.gather(
+            *(
+                prisma.models.LibraryAgent.prisma(tx).create(
+                    data=prisma.types.LibraryAgentCreateInput(
+                        isCreatedByUser=(user_id == user_id),
+                        useGraphIsActiveVersion=True,
+                        User={"connect": {"id": user_id}},
+                        # Creator={"connect": {"id": user_id}},
+                        AgentGraph={
+                            "connect": {
+                                "graphVersionId": {
+                                    "id": graph_entry.id,
+                                    "version": graph_entry.version,
+                                }
+                            }
+                        },
+                    ),
+                    include=library_agent_include(user_id),
+                )
+                for graph_entry in graph_entries
+            )
         )
-        return library_model.LibraryAgent.from_db(agent)
-    except prisma.errors.PrismaError as e:
-        logger.error(f"Database error creating agent in library: {e}")
-        raise store_exceptions.DatabaseError("Failed to create agent in library") from e
+
+    # Generate images for the main graph and sub-graphs
+    for agent, graph in zip(library_agents, graph_entries):
+        asyncio.create_task(add_generated_agent_image(graph, user_id, agent.id))
+
+    return [library_model.LibraryAgent.from_db(agent) for agent in library_agents]
 
 
 async def update_agent_version_in_library(
@@ -487,68 +502,64 @@ async def add_store_agent_to_library(
     )
 
     try:
-        async with locked_transaction(f"add_agent_trx_{user_id}"):
-            store_listing_version = (
-                await prisma.models.StoreListingVersion.prisma().find_unique(
-                    where={"id": store_listing_version_id}, include={"AgentGraph": True}
-                )
+        store_listing_version = (
+            await prisma.models.StoreListingVersion.prisma().find_unique(
+                where={"id": store_listing_version_id}, include={"AgentGraph": True}
             )
-            if not store_listing_version or not store_listing_version.AgentGraph:
-                logger.warning(
-                    f"Store listing version not found: {store_listing_version_id}"
-                )
-                raise store_exceptions.AgentNotFoundError(
-                    f"Store listing version {store_listing_version_id} not found or invalid"
-                )
-
-            graph = store_listing_version.AgentGraph
-
-            # Check if user already has this agent
-            existing_library_agent = (
-                await prisma.models.LibraryAgent.prisma().find_unique(
-                    where={
-                        "userId_agentGraphId_agentGraphVersion": {
-                            "userId": user_id,
-                            "agentGraphId": graph.id,
-                            "agentGraphVersion": graph.version,
-                        }
-                    },
-                    include={"AgentGraph": True},
-                )
+        )
+        if not store_listing_version or not store_listing_version.AgentGraph:
+            logger.warning(
+                f"Store listing version not found: {store_listing_version_id}"
             )
-            if existing_library_agent:
-                if existing_library_agent.isDeleted:
-                    # Even if agent exists it needs to be marked as not deleted
-                    await update_library_agent(
-                        existing_library_agent.id, user_id, is_deleted=False
-                    )
-                else:
-                    logger.debug(
-                        f"User #{user_id} already has graph #{graph.id} "
-                        f"v{graph.version} in their library"
-                    )
-                return library_model.LibraryAgent.from_db(existing_library_agent)
+            raise store_exceptions.AgentNotFoundError(
+                f"Store listing version {store_listing_version_id} not found or invalid"
+            )
 
-            # Create LibraryAgent entry
-            added_agent = await prisma.models.LibraryAgent.prisma().create(
-                data={
-                    "User": {"connect": {"id": user_id}},
-                    "AgentGraph": {
-                        "connect": {
-                            "graphVersionId": {"id": graph.id, "version": graph.version}
-                        }
-                    },
-                    "isCreatedByUser": False,
+        graph = store_listing_version.AgentGraph
+
+        # Check if user already has this agent
+        existing_library_agent = await prisma.models.LibraryAgent.prisma().find_unique(
+            where={
+                "userId_agentGraphId_agentGraphVersion": {
+                    "userId": user_id,
+                    "agentGraphId": graph.id,
+                    "agentGraphVersion": graph.version,
+                }
+            },
+            include={"AgentGraph": True},
+        )
+        if existing_library_agent:
+            if existing_library_agent.isDeleted:
+                # Even if agent exists it needs to be marked as not deleted
+                await update_library_agent(
+                    existing_library_agent.id, user_id, is_deleted=False
+                )
+            else:
+                logger.debug(
+                    f"User #{user_id} already has graph #{graph.id} "
+                    f"v{graph.version} in their library"
+                )
+            return library_model.LibraryAgent.from_db(existing_library_agent)
+
+        # Create LibraryAgent entry
+        added_agent = await prisma.models.LibraryAgent.prisma().create(
+            data={
+                "User": {"connect": {"id": user_id}},
+                "AgentGraph": {
+                    "connect": {
+                        "graphVersionId": {"id": graph.id, "version": graph.version}
+                    }
                 },
-                include=library_agent_include(user_id),
-            )
-            logger.debug(
-                f"Added graph #{graph.id} v{graph.version}"
-                f"for store listing version #{store_listing_version.id} "
-                f"to library for user #{user_id}"
-            )
-            return library_model.LibraryAgent.from_db(added_agent)
-
+                "isCreatedByUser": False,
+            },
+            include=library_agent_include(user_id),
+        )
+        logger.debug(
+            f"Added graph #{graph.id} v{graph.version}"
+            f"for store listing version #{store_listing_version.id} "
+            f"to library for user #{user_id}"
+        )
+        return library_model.LibraryAgent.from_db(added_agent)
     except store_exceptions.AgentNotFoundError:
         # Reraise for external handling.
         raise
@@ -690,7 +701,7 @@ async def create_preset(
                 InputPresets={
                     "create": [
                         prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
-                            name=name, data=prisma.fields.Json(data)
+                            name=name, data=SafeJson(data)
                         )
                         for name, data in {
                             **preset.inputs,
@@ -800,7 +811,7 @@ async def update_preset(
                 update_data["InputPresets"] = {
                     "create": [
                         prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
-                            name=name, data=prisma.fields.Json(data)
+                            name=name, data=SafeJson(data)
                         )
                         for name, data in {
                             **inputs,
@@ -875,7 +886,9 @@ async def delete_preset(user_id: str, preset_id: str) -> None:
         raise store_exceptions.DatabaseError("Failed to delete preset") from e
 
 
-async def fork_library_agent(library_agent_id: str, user_id: str):
+async def fork_library_agent(
+    library_agent_id: str, user_id: str
+) -> library_model.LibraryAgent:
     """
     Clones a library agent and its underyling graph and nodes (with new ids) for the given user.
 
@@ -884,33 +897,32 @@ async def fork_library_agent(library_agent_id: str, user_id: str):
         user_id: The ID of the user who owns the library agent.
 
     Returns:
-        The forked LibraryAgent.
+        The forked parent (if it has sub-graphs) LibraryAgent.
 
     Raises:
         DatabaseError: If there's an error during the forking process.
     """
     logger.debug(f"Forking library agent {library_agent_id} for user {user_id}")
     try:
-        async with locked_transaction(f"usr_trx_{user_id}-fork_agent"):
-            # Fetch the original agent
-            original_agent = await get_library_agent(library_agent_id, user_id)
+        # Fetch the original agent
+        original_agent = await get_library_agent(library_agent_id, user_id)
 
-            # Check if user owns the library agent
-            # TODO: once we have open/closed sourced agents this needs to be enabled ~kcze
-            # + update library/agents/[id]/page.tsx agent actions
-            # if not original_agent.can_access_graph:
-            #     raise store_exceptions.DatabaseError(
-            #         f"User {user_id} cannot access library agent graph {library_agent_id}"
-            #     )
+        # Check if user owns the library agent
+        # TODO: once we have open/closed sourced agents this needs to be enabled ~kcze
+        # + update library/agents/[id]/page.tsx agent actions
+        # if not original_agent.can_access_graph:
+        #     raise store_exceptions.DatabaseError(
+        #         f"User {user_id} cannot access library agent graph {library_agent_id}"
+        #     )
 
-            # Fork the underlying graph and nodes
-            new_graph = await graph_db.fork_graph(
-                original_agent.graph_id, original_agent.graph_version, user_id
-            )
-            new_graph = await on_graph_activate(new_graph, user_id=user_id)
+        # Fork the underlying graph and nodes
+        new_graph = await graph_db.fork_graph(
+            original_agent.graph_id, original_agent.graph_version, user_id
+        )
+        new_graph = await on_graph_activate(new_graph, user_id=user_id)
 
-            # Create a library agent for the new graph
-            return await create_library_agent(new_graph, user_id)
+        # Create a library agent for the new graph
+        return (await create_library_agent(new_graph, user_id))[0]
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error cloning library agent: {e}")
         raise store_exceptions.DatabaseError("Failed to fork library agent") from e
