@@ -3,45 +3,37 @@ setlocal enabledelayedexpansion
 
 REM Variables
 set SCRIPT_DIR=%~dp0
-set LOG_DIR=%SCRIPT_DIR%logs
 set REPO_DIR=%SCRIPT_DIR%..\..
 set CLONE_NEEDED=0
-set SENTRY_ENABLED=0
 set LOG_FILE=
 
-REM Helper: Check command existence
-:check_command
-if "%1"=="" (
-    echo ERROR: check_command called with no command argument!
-    pause
-    exit /b 1
-)
-where %1 >nul 2>nul
-if errorlevel 1 (
-    echo %2 is not installed. Please install it and try again.
-    pause
-    exit /b 1
-) else (
-    echo %2 is installed.
-)
-goto :eof
-
-:main
 echo =============================
 echo   AutoGPT Windows Setup
 echo =============================
 echo.
 
-REM Create logs folder immediately
-if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
-
+REM Check prerequisites
 echo Checking prerequisites...
-call :check_command git Git
-call :check_command docker Docker
+where git >nul 2>nul
+if errorlevel 1 (
+    echo Git is not installed. Please install it and try again.
+    pause
+    exit /b 1
+)
+echo Git is installed.
+
+where docker >nul 2>nul
+if errorlevel 1 (
+    echo Docker is not installed. Please install it and try again.
+    pause
+    exit /b 1
+)
+echo Docker is installed.
 echo.
 
 REM Detect repo
 if exist "%REPO_DIR%\.git" (
+    echo Using existing AutoGPT repository.
     set CLONE_NEEDED=0
 ) else (
     set REPO_DIR=%SCRIPT_DIR%AutoGPT
@@ -57,24 +49,11 @@ if %CLONE_NEEDED%==1 (
         pause
         exit /b 1
     )
-) else (
-    echo Using existing AutoGPT repository.
+    echo Repository cloned successfully.
 )
 echo.
 
-REM Prompt for Sentry enablement
-set SENTRY_ENABLED=0
-echo Enable debug info sharing to help fix issues? [Y/n]
-set /p sentry_answer="Enable Sentry? [Y/n]: "
-if /I "%sentry_answer%"=="" set SENTRY_ENABLED=1
-if /I "%sentry_answer%"=="y" set SENTRY_ENABLED=1
-if /I "%sentry_answer%"=="yes" set SENTRY_ENABLED=1
-if /I "%sentry_answer%"=="n" set SENTRY_ENABLED=0
-if /I "%sentry_answer%"=="no" set SENTRY_ENABLED=0
-echo.
-
 REM Navigate to autogpt_platform
-echo Setting up environment...
 cd /d "%REPO_DIR%\autogpt_platform"
 if errorlevel 1 (
     echo Failed to navigate to autogpt_platform directory.
@@ -82,56 +61,35 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM Copy main .env
-if exist .env.example copy /Y .env.example .env >nul
-if errorlevel 1 (
-    echo Failed to copy main .env file.
-    pause
-    exit /b 1
-)
-
-REM Configure backend Sentry
-cd backend
-if errorlevel 1 (
-    echo Failed to navigate to backend directory.
-    pause
-    exit /b 1
-)
-
-if exist .env.example copy /Y .env.example .env >nul
-if errorlevel 1 (
-    echo Failed to copy backend .env file.
-    pause
-    exit /b 1
-)
-
-set SENTRY_DSN=https://11d0640fef35640e0eb9f022eb7d7626@o4505260022104064.ingest.us.sentry.io/4507890252447744
-if %SENTRY_ENABLED%==1 (
-    powershell -Command "(Get-Content .env) -replace '^SENTRY_DSN=.*', 'SENTRY_DSN=%SENTRY_DSN%' | Set-Content .env"
-    echo Sentry enabled
-) else (
-    powershell -Command "(Get-Content .env) -replace '^SENTRY_DSN=.*', 'SENTRY_DSN=' | Set-Content .env"
-    echo Sentry disabled
-)
-
-cd ..
-echo.
+REM Create logs directory
+if not exist logs mkdir logs
 
 REM Run docker compose with logging
-echo Running docker compose up -d --build...
+echo Starting AutoGPT services with Docker Compose...
+echo This may take a few minutes on first run...
+echo.
 set LOG_FILE=%REPO_DIR%\autogpt_platform\logs\docker_setup.log
-docker compose up -d --build > "%LOG_FILE%" 2>&1
+docker compose up -d > "%LOG_FILE%" 2>&1
 if errorlevel 1 (
     echo Docker compose failed. Check log file for details: %LOG_FILE%
+    echo.
+    echo Common issues:
+    echo - Docker is not running
+    echo - Insufficient disk space  
+    echo - Port conflicts (check if ports 3000, 8000, etc. are in use)
     pause
     exit /b 1
 )
 
-echo Services started successfully.
+echo =============================
+echo      Setup Complete!
+echo =============================
 echo.
-echo Setup complete!
 echo Access AutoGPT at: http://localhost:3000
-echo To stop services, run "docker compose down" in %REPO_DIR%\autogpt_platform
+echo API available at: http://localhost:8000
+echo.
+echo To stop services: docker compose down
+echo To view logs: docker compose logs -f
 echo.
 echo Press any key to exit (services will keep running)...
 pause >nul
