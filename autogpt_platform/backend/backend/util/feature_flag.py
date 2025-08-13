@@ -2,7 +2,7 @@ import contextlib
 import logging
 from enum import Enum
 from functools import wraps
-from typing import Any, Awaitable, Callable, TypedDict, TypeVar
+from typing import Any, Awaitable, Callable, TypeVar
 
 import ldclient
 from autogpt_libs.utils.cache import async_ttl_cache
@@ -35,22 +35,6 @@ class Flag(str, Enum):
     AI_ACTIVITY_STATUS = "ai-agent-execution-summary"
     BETA_BLOCKS = "beta-blocks"
     AGENT_ACTIVITY = "agent-activity"
-
-
-class FlagValues(TypedDict, total=False):
-    """
-    Type definitions for feature flag return values.
-
-    This ensures type safety when accessing flag values.
-    """
-
-    # Boolean flags
-    AUTOMOD: bool
-    AI_ACTIVITY_STATUS: bool
-    AGENT_ACTIVITY: bool
-
-    # String array flags
-    BETA_BLOCKS: list[str]
 
 
 def get_client() -> LDClient:
