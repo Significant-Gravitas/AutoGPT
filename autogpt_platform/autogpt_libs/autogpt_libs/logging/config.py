@@ -79,6 +79,19 @@ def configure_logging(force_cloud_logging: bool = False) -> None:
     Note: This function is typically called at the start of the application
     to set up the logging infrastructure.
     """
+    
+    # Configure socket timeout and keepalive to prevent hanging network calls
+    # This prevents deadlocks when cloud logging connections get stuck
+    import socket
+    socket.setdefaulttimeout(30)  # 30-second socket timeout
+    
+    # Enable TCP keepalive to detect dead connections
+    import os
+    if hasattr(socket, 'SO_KEEPALIVE'):
+        # These settings will apply to new sockets
+        os.environ.setdefault('GRPC_KEEPALIVE_TIME_MS', '30000')  # 30 seconds
+        os.environ.setdefault('GRPC_KEEPALIVE_TIMEOUT_MS', '5000')  # 5 seconds
+        os.environ.setdefault('GRPC_KEEPALIVE_PERMIT_WITHOUT_CALLS', 'true')
 
     config = LoggingConfig()
     log_handlers: list[logging.Handler] = []
@@ -105,13 +118,15 @@ def configure_logging(force_cloud_logging: bool = False) -> None:
     if config.enable_cloud_logging or force_cloud_logging:
         import google.cloud.logging
         from google.cloud.logging.handlers import CloudLoggingHandler
-        from google.cloud.logging_v2.handlers.transports.sync import SyncTransport
+        from google.cloud.logging_v2.handlers.transports import BackgroundThreadTransport
 
         client = google.cloud.logging.Client()
+        # Use BackgroundThreadTransport to prevent blocking the main thread
+        # and deadlocks when gRPC calls to Google Cloud Logging hang
         cloud_handler = CloudLoggingHandler(
             client,
             name="autogpt_logs",
-            transport=SyncTransport,
+            transport=BackgroundThreadTransport,
         )
         cloud_handler.setLevel(config.level)
         log_handlers.append(cloud_handler)
