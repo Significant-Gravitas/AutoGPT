@@ -2,8 +2,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from backend.blocks.system.library_operations import AddToLibraryFromStoreBlock
 from backend.blocks.system.store_operations import (
-    AddToLibraryFromStoreBlock,
     GetStoreAgentDetailsBlock,
     SearchStoreAgentsBlock,
 )
@@ -94,8 +94,7 @@ async def test_get_store_agent_details_block_success(mocker):
         },
     )
 
-    input_data = block.Input(slug="test-creator/test-agent")
-
+    input_data = block.Input(creator="Test Creator", slug="test-slug")
     outputs = {}
     async for name, value in block.run(input_data):
         outputs[name] = value
@@ -130,7 +129,7 @@ async def test_get_store_agent_details_block_not_found(mocker):
         },
     )
 
-    input_data = block.Input(slug="non-existent/agent")
+    input_data = block.Input(creator="Test Creator", slug="test-slug-noat-exist")
 
     outputs = {}
     async for name, value in block.run(input_data):

@@ -1,11 +1,6 @@
-from .store_operations import (
-    AddToLibraryFromStoreBlock,
-    GetStoreAgentDetailsBlock,
-    SearchStoreAgentsBlock,
-)
+from .store_operations import GetStoreAgentDetailsBlock, SearchStoreAgentsBlock
 
 __all__ = [
-    "AddToLibraryFromStoreBlock",
     "GetStoreAgentDetailsBlock",
     "SearchStoreAgentsBlock",
 ]

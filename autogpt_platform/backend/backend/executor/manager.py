@@ -32,9 +32,9 @@ from backend.util.exceptions import InsufficientBalanceError, ModerationError
 if TYPE_CHECKING:
     from backend.executor import DatabaseManagerClient, DatabaseManagerAsyncClient
 
-from autogpt_platform.backend.backend.blocks.system.agent import AgentExecutorBlock
 from prometheus_client import Gauge, start_http_server
 
+from backend.blocks.agent import AgentExecutorBlock
 from backend.data import redis_client as redis
 from backend.data.block import (
     BlockData,
