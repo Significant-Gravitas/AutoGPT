@@ -17,7 +17,7 @@ from .formatters import AGPTFormatter
 socket.setdefaulttimeout(30)  # 30-second socket timeout
 
 # Enable gRPC keepalive to detect dead connections faster
-os.environ.setdefault("GRPC_KEEPALIVE_TIME_MS", "30000")  # 30 seconds  
+os.environ.setdefault("GRPC_KEEPALIVE_TIME_MS", "30000")  # 30 seconds
 os.environ.setdefault("GRPC_KEEPALIVE_TIMEOUT_MS", "5000")  # 5 seconds
 os.environ.setdefault("GRPC_KEEPALIVE_PERMIT_WITHOUT_CALLS", "true")
 
