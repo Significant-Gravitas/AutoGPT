@@ -308,7 +308,7 @@ class WebsocketServer(AppProcess):
             server_app,
             host=Config().websocket_server_host,
             port=Config().websocket_server_port,
-            log_config=None,  # Prevent logging reconfiguration deadlock
+            log_config=None,
         )
 
     def cleanup(self):

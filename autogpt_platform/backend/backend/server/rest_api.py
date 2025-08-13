@@ -246,7 +246,7 @@ class AgentServer(backend.util.service.AppProcess):
             server_app,
             host=backend.util.settings.Config().agent_api_host,
             port=backend.util.settings.Config().agent_api_port,
-            log_config=None,  # Prevent logging reconfiguration deadlock
+            log_config=None,
         )
 
     def cleanup(self):

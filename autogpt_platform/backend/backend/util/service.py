@@ -265,8 +265,7 @@ class AppService(BaseAppService, ABC):
                 self.fastapi_app,
                 host=api_host,
                 port=self.get_port(),
-                log_config=None,  # Explicitly None to prevent uvicorn from reconfiguring logging
-                # This avoids deadlock when dictConfig() calls shutdown() on BackgroundThreadTransport
+                log_config=None,  # Explicitly None to avoid uvicorn replacing the logger.
                 log_level=self.log_level,
             )
         )
