@@ -529,7 +529,6 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     launch_darkly_sdk_key: str = Field(
         default="",
         description="The LaunchDarkly SDK key for feature flag management",
-        validation_alias="LAUNCH_DARKLY_SDK_KEY",
     )
 
     ayrshare_api_key: str = Field(default="", description="Ayrshare API Key")
