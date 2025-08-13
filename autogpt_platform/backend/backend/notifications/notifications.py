@@ -435,12 +435,10 @@ class NotificationManager(AppService):
 
         try:
             # Get summary data from the database
-            summary_data = (
-                await get_database_manager_async_client().get_user_summary_data(
-                    user_id=user_id,
-                    start_time=params.start_date,
-                    end_time=params.end_date,
-                )
+            summary_data = await get_database_manager_async_client().get_user_execution_summary_data(
+                user_id=user_id,
+                start_time=params.start_date,
+                end_time=params.end_date,
             )
 
             # Extract data from summary

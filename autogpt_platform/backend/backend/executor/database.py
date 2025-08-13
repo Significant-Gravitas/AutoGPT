@@ -20,6 +20,7 @@ from backend.data.execution import (
     upsert_execution_input,
     upsert_execution_output,
 )
+from backend.data.generate_data import get_user_execution_summary_data
 from backend.data.graph import (
     get_connected_output_nodes,
     get_graph,
@@ -33,7 +34,6 @@ from backend.data.notifications import (
     get_user_notification_batch,
     get_user_notification_oldest_message_in_batch,
 )
-from backend.data.summary import get_user_summary_data
 from backend.data.user import (
     get_active_user_ids_in_timerange,
     get_user_email_by_id,
@@ -146,7 +146,7 @@ class DatabaseManager(AppService):
     )
 
     # Summary data - async
-    get_user_summary_data = _(get_user_summary_data)
+    get_user_execution_summary_data = _(get_user_execution_summary_data)
 
 
 class DatabaseManagerClient(AppServiceClient):
@@ -173,25 +173,8 @@ class DatabaseManagerClient(AppServiceClient):
     spend_credits = _(d.spend_credits)
     get_credits = _(d.get_credits)
 
-    # User Comms - async
-    get_active_user_ids_in_timerange = _(d.get_active_user_ids_in_timerange)
-    get_user_email_by_id = _(d.get_user_email_by_id)
-    get_user_email_verification = _(d.get_user_email_verification)
-    get_user_notification_preference = _(d.get_user_notification_preference)
-
-    # Notifications - async
-    create_or_add_to_user_notification_batch = _(
-        d.create_or_add_to_user_notification_batch
-    )
-    empty_user_notification_batch = _(d.empty_user_notification_batch)
-    get_all_batches_by_type = _(d.get_all_batches_by_type)
-    get_user_notification_batch = _(d.get_user_notification_batch)
-    get_user_notification_oldest_message_in_batch = _(
-        d.get_user_notification_oldest_message_in_batch
-    )
-
     # Summary data - async
-    get_user_summary_data = _(d.get_user_summary_data)
+    get_user_execution_summary_data = _(d.get_user_execution_summary_data)
 
     # Block error monitoring
     get_block_error_stats = _(d.get_block_error_stats)
@@ -241,4 +224,4 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     )
 
     # Summary data
-    get_user_summary_data = d.get_user_summary_data
+    get_user_execution_summary_data = d.get_user_execution_summary_data

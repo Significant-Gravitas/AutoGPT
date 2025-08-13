@@ -823,7 +823,7 @@ class GraphExecutionStats(BaseModel):
     )
 
 
-class UserSummaryStats(BaseModel):
+class UserExecutionSummaryStats(BaseModel):
     """Summary of user statistics for a specific user."""
 
     model_config = ConfigDict(

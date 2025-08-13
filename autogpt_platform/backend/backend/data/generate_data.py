@@ -6,16 +6,16 @@ from prisma.enums import AgentExecutionStatus
 
 from backend.data.execution import get_graph_executions
 from backend.data.graph import get_graph_metadata
-from backend.data.model import UserSummaryStats
+from backend.data.model import UserExecutionSummaryStats
 from backend.server.v2.store.exceptions import DatabaseError
 from backend.util.logging import TruncatedLogger
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[SummaryData]")
 
 
-async def get_user_summary_data(
+async def get_user_execution_summary_data(
     user_id: str, start_time: datetime, end_time: datetime
-) -> UserSummaryStats:
+) -> UserExecutionSummaryStats:
     """Gather all summary data for a user in a time range.
 
     This function fetches graph executions once and aggregates all required
@@ -93,7 +93,7 @@ async def get_user_summary_data(
             cost_breakdown[agent_name] = cost
 
         # Build the summary stats object (include terminated runs as failed)
-        return UserSummaryStats(
+        return UserExecutionSummaryStats(
             total_credits_used=total_credits_used,
             total_executions=total_executions,
             successful_runs=successful_runs,
