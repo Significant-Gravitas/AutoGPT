@@ -53,8 +53,6 @@ test.describe("Build", () => { //(1)!
     for (const block of blocksToAdd) {
       await buildPage.addBlock(block);
     }
-
-    await buildPage.saveAgent(`Saved blocks ${letter} test part ${part}`);
   }
 
   // Reason Ignore: admonishment is in the wrong place visually with correct prettier rules

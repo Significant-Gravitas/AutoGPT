@@ -1,24 +1,40 @@
 import contextlib
 import logging
+from enum import Enum
 from functools import wraps
 from typing import Any, Awaitable, Callable, TypeVar
 
 import ldclient
+from autogpt_libs.utils.cache import async_ttl_cache
 from fastapi import HTTPException
 from ldclient import Context, LDClient
 from ldclient.config import Config
 from typing_extensions import ParamSpec
 
-from autogpt_libs.utils.cache import async_ttl_cache
-
-from .config import SETTINGS
+from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
+
+# Load settings at module level
+settings = Settings()
 
 P = ParamSpec("P")
 T = TypeVar("T")
 
 _is_initialized = False
+
+
+class Flag(str, Enum):
+    """
+    Centralized enum for all LaunchDarkly feature flags.
+
+    Add new flags here to ensure consistency across the codebase.
+    """
+
+    AUTOMOD = "AutoMod"
+    AI_ACTIVITY_STATUS = "ai-agent-execution-summary"
+    BETA_BLOCKS = "beta-blocks"
+    AGENT_ACTIVITY = "agent-activity"
 
 
 def get_client() -> LDClient:
@@ -29,7 +45,7 @@ def get_client() -> LDClient:
 
 
 def initialize_launchdarkly() -> None:
-    sdk_key = SETTINGS.launch_darkly_sdk_key
+    sdk_key = settings.secrets.launch_darkly_sdk_key
     logger.debug(
         f"Initializing LaunchDarkly with SDK key: {'present' if sdk_key else 'missing'}"
     )
@@ -79,6 +95,8 @@ async def _fetch_user_context_data(user_id: str) -> Context:
             builder.anonymous(False)
             if user.role:
                 builder.set("role", user.role)
+                # It's weird, I know, but it is what it is.
+                builder.set("custom", {"role": user.role})
             if user.email:
                 builder.set("email", user.email)
                 builder.set("email_domain", user.email.split("@")[-1])
@@ -89,13 +107,16 @@ async def _fetch_user_context_data(user_id: str) -> Context:
     return builder.build()
 
 
-async def is_feature_enabled(
+async def get_feature_flag_value(
     flag_key: str,
     user_id: str,
-    default: bool = False,
-) -> bool:
+    default: Any = None,
+) -> Any:
     """
-    Check if a feature flag is enabled for a user.
+    Get the raw value of a feature flag for a user.
+
+    This is the generic function that returns the actual flag value,
+    which could be a boolean, string, number, or JSON object.
 
     Args:
         flag_key: The LaunchDarkly feature flag key
@@ -103,10 +124,17 @@ async def is_feature_enabled(
         default: Default value if LaunchDarkly is unavailable or flag evaluation fails
 
     Returns:
-        True if feature is enabled, False otherwise
+        The flag value from LaunchDarkly
     """
     try:
         client = get_client()
+
+        # Check if client is initialized
+        if not client.is_initialized():
+            logger.debug(
+                f"LaunchDarkly not initialized, using default={default} for {flag_key}"
+            )
+            return default
 
         # Get user context from Supabase
         context = await _fetch_user_context_data(user_id)
@@ -114,7 +142,9 @@ async def is_feature_enabled(
         # Evaluate flag
         result = client.variation(flag_key, context, default)
 
-        logger.debug(f"Feature flag {flag_key} for user {user_id}: {result}")
+        logger.debug(
+            f"Feature flag {flag_key} for user {user_id}: {result} (type: {type(result).__name__})"
+        )
         return result
 
     except Exception as e:
@@ -122,6 +152,39 @@ async def is_feature_enabled(
             f"LaunchDarkly flag evaluation failed for {flag_key}: {e}, using default={default}"
         )
         return default
+
+
+async def is_feature_enabled(
+    flag_key: Flag,
+    user_id: str,
+    default: bool = False,
+) -> bool:
+    """
+    Check if a feature flag is enabled for a user.
+
+    Args:
+        flag_key: The Flag enum value
+        user_id: The user ID to evaluate the flag for
+        default: Default value if LaunchDarkly is unavailable or flag evaluation fails
+
+    Returns:
+        True if feature is enabled, False otherwise
+    """
+    result = await get_feature_flag_value(flag_key.value, user_id, default)
+
+    # If the result is already a boolean, return it
+    if isinstance(result, bool):
+        return result
+
+    # Log a warning if the flag is not returning a boolean
+    logger.warning(
+        f"Feature flag {flag_key} returned non-boolean value: {result} (type: {type(result).__name__}). "
+        f"This flag should be configured as a boolean in LaunchDarkly. Using default={default}"
+    )
+
+    # Return the default if we get a non-boolean value
+    # This prevents objects from being incorrectly treated as True
+    return default
 
 
 def feature_flag(
@@ -153,10 +216,20 @@ def feature_flag(
                     )
                     is_enabled = default
                 else:
-                    # Use the simplified function
-                    is_enabled = await is_feature_enabled(
+                    # Use the internal function directly since we have a raw string flag_key
+                    flag_value = await get_feature_flag_value(
                         flag_key, str(user_id), default
                     )
+                    # Ensure we treat flag value as boolean
+                    if isinstance(flag_value, bool):
+                        is_enabled = flag_value
+                    else:
+                        # Log warning and use default for non-boolean values
+                        logger.warning(
+                            f"Feature flag {flag_key} returned non-boolean value: {flag_value} (type: {type(flag_value).__name__}). "
+                            f"Using default={default}"
+                        )
+                        is_enabled = default
 
                 if not is_enabled:
                     raise HTTPException(status_code=404, detail="Feature not available")
