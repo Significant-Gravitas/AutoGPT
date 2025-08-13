@@ -676,7 +676,11 @@ async def llm_call(
         client = openai.OpenAI(
             base_url="https://api.aimlapi.com/v2",
             api_key=credentials.api_key.get_secret_value(),
-            default_headers={"X-Project": "AutoGPT"},
+            default_headers={
+                "X-Project": "AutoGPT",
+                "X-Title": "AutoGPT",
+                "HTTP-Referer": "https://github.com/Significant-Gravitas/AutoGPT",
+            },
         )
 
         completion = client.chat.completions.create(
