@@ -53,7 +53,7 @@ async def execute_graph(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_graph_validation_with_tool_nodes_correct(server: SpinTestServer):
-    from backend.blocks.agent import AgentExecutorBlock
+    from autogpt_platform.backend.backend.blocks.system.agent import AgentExecutorBlock
     from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
     from backend.data import graph
 
@@ -106,7 +106,7 @@ async def test_graph_validation_with_tool_nodes_correct(server: SpinTestServer):
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_smart_decision_maker_function_signature(server: SpinTestServer):
-    from backend.blocks.agent import AgentExecutorBlock
+    from autogpt_platform.backend.backend.blocks.system.agent import AgentExecutorBlock
     from backend.blocks.basic import StoreValueBlock
     from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
     from backend.data import graph

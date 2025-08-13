@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
 from prometheus_client import Gauge, start_http_server
 
-from backend.blocks.agent import AgentExecutorBlock
+from autogpt_platform.backend.backend.blocks.system.agent import AgentExecutorBlock
 from backend.data import redis_client as redis
 from backend.data.block import (
     BlockData,

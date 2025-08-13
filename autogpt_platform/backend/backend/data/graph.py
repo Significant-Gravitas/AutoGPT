@@ -15,7 +15,7 @@ from prisma.types import (
 from pydantic import Field, JsonValue, create_model
 from pydantic.fields import computed_field
 
-from backend.blocks.agent import AgentExecutorBlock
+from autogpt_platform.backend.backend.blocks.system.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LlmModel
 from backend.data.db import prisma as db

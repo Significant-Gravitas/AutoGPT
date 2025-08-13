@@ -4,7 +4,7 @@ from collections import Counter
 from typing import TYPE_CHECKING, Any
 
 import backend.blocks.llm as llm
-from backend.blocks.agent import AgentExecutorBlock
+from autogpt_platform.backend.backend.blocks.system.agent import AgentExecutorBlock
 from backend.data.block import (
     Block,
     BlockCategory,
