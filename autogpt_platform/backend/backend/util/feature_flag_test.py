@@ -5,7 +5,6 @@ from ldclient import LDClient
 from backend.util.feature_flag import (
     Flag,
     feature_flag,
-    get_flag_value,
     is_feature_enabled,
     mock_flag_variation,
 )
@@ -59,12 +58,12 @@ async def test_is_feature_enabled(ld_client):
     ld_client.is_initialized.return_value = True
     ld_client.variation.return_value = True
 
-    result = await is_feature_enabled("test-flag", "user123", default=False)
+    result = await is_feature_enabled(Flag.AUTOMOD, "user123", default=False)
     assert result is True
 
     ld_client.variation.assert_called_once()
     call_args = ld_client.variation.call_args
-    assert call_args[0][0] == "test-flag"  # flag_key
+    assert call_args[0][0] == "AutoMod"  # flag_key
     assert call_args[0][2] is False  # default value
 
 
@@ -73,7 +72,7 @@ async def test_is_feature_enabled_not_initialized(ld_client):
     """Test is_feature_enabled when LaunchDarkly is not initialized."""
     ld_client.is_initialized.return_value = False
 
-    result = await is_feature_enabled("test-flag", "user123", default=True)
+    result = await is_feature_enabled(Flag.AGENT_ACTIVITY, "user123", default=True)
     assert result is True  # Should return default
 
     ld_client.variation.assert_not_called()
@@ -87,7 +86,7 @@ async def test_is_feature_enabled_exception(mocker):
         side_effect=Exception("Client error"),
     )
 
-    result = await is_feature_enabled("test-flag", "user123", default=True)
+    result = await is_feature_enabled(Flag.AGENT_ACTIVITY, "user123", default=True)
     assert result is True  # Should return default
 
 
@@ -97,20 +96,6 @@ def test_flag_enum_values():
     assert Flag.AI_ACTIVITY_STATUS == "ai-agent-execution-summary"
     assert Flag.BETA_BLOCKS == "beta-blocks"
     assert Flag.AGENT_ACTIVITY == "agent-activity"
-
-
-@pytest.mark.asyncio
-async def test_get_flag_value(mocker):
-    """Test get_flag_value function."""
-    mock_get_feature_flag_value = mocker.patch(
-        "backend.util.feature_flag.get_feature_flag_value"
-    )
-    mock_get_feature_flag_value.return_value = True
-
-    result = await get_flag_value(Flag.AUTOMOD, "user123")
-
-    assert result is True
-    mock_get_feature_flag_value.assert_called_once_with("AutoMod", "user123", False)
 
 
 @pytest.mark.asyncio

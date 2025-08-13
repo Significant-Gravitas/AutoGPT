@@ -53,15 +53,6 @@ class FlagValues(TypedDict, total=False):
     BETA_BLOCKS: list[str]
 
 
-# Default values for flags when LaunchDarkly is unavailable
-DEFAULT_FLAG_VALUES: dict[Flag, Any] = {
-    Flag.AUTOMOD: False,
-    Flag.AI_ACTIVITY_STATUS: False,
-    Flag.BETA_BLOCKS: [],
-    Flag.AGENT_ACTIVITY: True,
-}
-
-
 def get_client() -> LDClient:
     """Get the LaunchDarkly client singleton."""
     if not _is_initialized:
@@ -180,27 +171,22 @@ async def get_feature_flag_value(
 
 
 async def is_feature_enabled(
-    flag_key: str,
+    flag_key: Flag,
     user_id: str,
     default: bool = False,
 ) -> bool:
     """
-    Check if a boolean feature flag is enabled for a user.
-
-    This function is specifically for boolean flags. It will:
-    1. Get the flag value from LaunchDarkly
-    2. Ensure it's a boolean (log warning if not)
-    3. Return the boolean value
+    Check if a feature flag is enabled for a user.
 
     Args:
-        flag_key: The LaunchDarkly feature flag key (should be configured as boolean in LD)
+        flag_key: The Flag enum value
         user_id: The user ID to evaluate the flag for
         default: Default value if LaunchDarkly is unavailable or flag evaluation fails
 
     Returns:
         True if feature is enabled, False otherwise
     """
-    result = await get_feature_flag_value(flag_key, user_id, default)
+    result = await get_feature_flag_value(flag_key.value, user_id, default)
 
     # If the result is already a boolean, return it
     if isinstance(result, bool):
@@ -246,10 +232,20 @@ def feature_flag(
                     )
                     is_enabled = default
                 else:
-                    # Use the simplified function
-                    is_enabled = await is_feature_enabled(
+                    # Use the internal function directly since we have a raw string flag_key
+                    flag_value = await get_feature_flag_value(
                         flag_key, str(user_id), default
                     )
+                    # Ensure we treat flag value as boolean
+                    if isinstance(flag_value, bool):
+                        is_enabled = flag_value
+                    else:
+                        # Log warning and use default for non-boolean values
+                        logger.warning(
+                            f"Feature flag {flag_key} returned non-boolean value: {flag_value} (type: {type(flag_value).__name__}). "
+                            f"Using default={default}"
+                        )
+                        is_enabled = default
 
                 if not is_enabled:
                     raise HTTPException(status_code=404, detail="Feature not available")
@@ -262,21 +258,6 @@ def feature_flag(
         return async_wrapper
 
     return decorator
-
-
-async def get_flag_value(flag: Flag, user_id: str) -> Any:
-    """
-    Get the value of a feature flag for a user.
-
-    Args:
-        flag: The feature flag to evaluate
-        user_id: The user ID to evaluate the flag for
-
-    Returns:
-        The flag value from LaunchDarkly, or default if unavailable
-    """
-    default = DEFAULT_FLAG_VALUES.get(flag)
-    return await get_feature_flag_value(flag.value, user_id, default)
 
 
 @contextlib.contextmanager
