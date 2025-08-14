@@ -114,13 +114,31 @@ Key models (defined in `/backend/schema.prisma`):
 - `StoreListing`: Marketplace listings for sharing agents
 
 ### Environment Configuration
-- Backend: `.env` file in `/backend`
-- Frontend: `.env.local` file in `/frontend`
-- Both require Supabase credentials and API keys for various services
+
+#### Configuration Files
+
+- **Backend**: `/backend/.env.default` (defaults) → `/backend/.env` (user overrides)
+- **Frontend**: `/frontend/.env.default` (defaults) → `/frontend/.env` (user overrides)  
+- **Platform**: `/.env.default` (Supabase/shared defaults) → `/.env` (user overrides)
+
+#### Docker Environment Loading Order
+
+1. `.env.default` files provide base configuration (tracked in git)
+2. `.env` files provide user-specific overrides (gitignored)
+3. Docker Compose `environment:` sections provide service-specific overrides
+4. Shell environment variables have highest precedence
+
+#### Key Points
+
+- All services use hardcoded defaults in docker-compose files (no `${VARIABLE}` substitutions)
+- The `env_file` directive loads variables INTO containers at runtime
+- Backend/Frontend services use YAML anchors for consistent configuration
+- Supabase services (`db/docker/docker-compose.yml`) follow the same pattern
 
 ### Common Development Tasks
 
 **Adding a new block:**
+
 1. Create new file in `/backend/backend/blocks/`
 2. Inherit from `Block` base class
 3. Define input/output schemas

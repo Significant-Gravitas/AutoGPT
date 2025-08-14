@@ -5,6 +5,8 @@ classic/original_autogpt/*.json
 auto_gpt_workspace/*
 *.mpeg
 .env
+# Root .env files
+/.env
 azure.yaml
 .vscode
 .idea/*
@@ -121,7 +123,6 @@ celerybeat.pid
 
 # Environments
 .direnv/
-.env
 .venv
 env/
 venv*/

@@ -2,7 +2,7 @@ import { LoginPage } from "./pages/login.page";
 import test, { expect } from "@playwright/test";
 import { TEST_AGENT_DATA, TEST_CREDENTIALS } from "./credentials";
 import { getSelectors } from "./utils/selectors";
-import { hasUrl } from "./utils/assertion";
+import { hasUrl, isHidden } from "./utils/assertion";
 
 test.describe("Agent Dashboard", () => {
   test.beforeEach(async ({ page }) => {
@@ -89,6 +89,7 @@ test.describe("Agent Dashboard", () => {
     }
 
     const firstRow = rows.first();
+    const deletedAgentId = await firstRow.getAttribute("data-agent-id");
     await firstRow.scrollIntoViewIfNeeded();
 
     const delActionsButton = firstRow.getByTestId("agent-table-row-actions");
@@ -100,9 +101,7 @@ test.describe("Agent Dashboard", () => {
     await expect(deleteButton).toBeVisible();
     await deleteButton.click();
 
-    // Wait for row count to drop by 1
-    await expect
-      .poll(async () => await rows.count(), { timeout: 15000 })
-      .toBe(beforeCount - 1);
+    // Assert that the card with the deleted agent ID is not visible
+    await isHidden(page.locator(`[data-agent-id="${deletedAgentId}"]`));
   });
 });
