@@ -33,7 +33,7 @@ services:
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
-      target: server
+      target: migrate
     command: ["sh", "-c", "poetry run prisma migrate deploy"]
     develop:
       watch:
@@ -50,10 +50,11 @@ services:
       - app-network
     restart: on-failure
     healthcheck:
-      test: ["CMD", "poetry", "run", "prisma", "migrate", "status"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: ["CMD-SHELL", "poetry run prisma migrate status | grep -q 'No pending migrations' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
 
   redis:
     image: redis:latest
