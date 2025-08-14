@@ -22,6 +22,12 @@ export async function AdminUserGrantHistory({
   initialStatus?: CreditTransactionType;
   initialSearch?: string;
 }) {
+  console.log("AdminUserGrantHistory props:", {
+    initialPage,
+    initialStatus,
+    initialSearch,
+  });
+
   // Server-side data fetching
   const { history, pagination } = await getUsersTransactionHistory(
     initialPage,
