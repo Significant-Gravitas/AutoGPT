@@ -37,8 +37,29 @@ services:
     command: ["sh", "-c", "poetry run prisma migrate deploy"]
     develop:
       watch:
-        - path: ./
-          target: autogpt_platform/backend/migrations
+        - path: ./backend
+          target: /app/autogpt_platform/backend
+          action: sync+restart
+          ignore:
+            - __pycache__/
+            - .pytest_cache/
+            - .mypy_cache/
+        - path: ./autogpt_libs
+          target: /app/autogpt_platform/autogpt_libs
+          action: sync+restart
+          ignore:
+            - __pycache__/
+            - .pytest_cache/
+            - .mypy_cache/
+        - path: ./backend/pyproject.toml
+          action: rebuild
+        - path: ./backend/poetry.lock
+          action: rebuild
+        - path: ./backend/schema.prisma
+          action: rebuild
+        - path: ./autogpt_libs/pyproject.toml
+          action: rebuild
+        - path: ./autogpt_libs/poetry.lock
           action: rebuild
     depends_on:
       db:
@@ -92,8 +113,29 @@ services:
     command: ["python", "-m", "backend.rest"]
     develop:
       watch:
-        - path: ./
-          target: autogpt_platform/backend/
+        - path: ./backend
+          target: /app/autogpt_platform/backend
+          action: sync+restart
+          ignore:
+            - __pycache__/
+            - .pytest_cache/
+            - .mypy_cache/
+        - path: ./autogpt_libs
+          target: /app/autogpt_platform/autogpt_libs
+          action: sync+restart
+          ignore:
+            - __pycache__/
+            - .pytest_cache/
+            - .mypy_cache/
+        - path: ./backend/pyproject.toml
+          action: rebuild
+        - path: ./backend/poetry.lock
+          action: rebuild
+        - path: ./backend/schema.prisma
+          action: rebuild
+        - path: ./autogpt_libs/pyproject.toml
+          action: rebuild
+        - path: ./autogpt_libs/poetry.lock
           action: rebuild
     depends_on:
       redis:
@@ -123,8 +165,29 @@ services:
     command: ["python", "-m", "backend.exec"]
     develop:
       watch:
-        - path: ./
-          target: autogpt_platform/backend/
+        - path: ./backend
+          target: /app/autogpt_platform/backend
+          action: sync+restart
+          ignore:
+            - __pycache__/
+            - .pytest_cache/
+            - .mypy_cache/
+        - path: ./autogpt_libs
+          target: /app/autogpt_platform/autogpt_libs
+          action: sync+restart
+          ignore:
+            - __pycache__/
+            - .pytest_cache/
+            - .mypy_cache/
+        - path: ./backend/pyproject.toml
+          action: rebuild
+        - path: ./backend/poetry.lock
+          action: rebuild
+        - path: ./backend/schema.prisma
+          action: rebuild
+        - path: ./autogpt_libs/pyproject.toml
+          action: rebuild
+        - path: ./autogpt_libs/poetry.lock
           action: rebuild
     depends_on:
       redis:
@@ -156,8 +219,29 @@ services:
     command: ["python", "-m", "backend.ws"]
     develop:
       watch:
-        - path: ./
-          target: autogpt_platform/backend/
+        - path: ./backend
+          target: /app/autogpt_platform/backend
+          action: sync+restart
+          ignore:
+            - __pycache__/
+            - .pytest_cache/
+            - .mypy_cache/
+        - path: ./autogpt_libs
+          target: /app/autogpt_platform/autogpt_libs
+          action: sync+restart
+          ignore:
+            - __pycache__/
+            - .pytest_cache/
+            - .mypy_cache/
+        - path: ./backend/pyproject.toml
+          action: rebuild
+        - path: ./backend/poetry.lock
+          action: rebuild
+        - path: ./backend/schema.prisma
+          action: rebuild
+        - path: ./autogpt_libs/pyproject.toml
+          action: rebuild
+        - path: ./autogpt_libs/poetry.lock
           action: rebuild
     depends_on:
       db:
@@ -187,8 +271,29 @@ services:
     command: ["python", "-m", "backend.db"]
     develop:
       watch:
-        - path: ./
-          target: autogpt_platform/backend/
+        - path: ./backend
+          target: /app/autogpt_platform/backend
+          action: sync+restart
+          ignore:
+            - __pycache__/
+            - .pytest_cache/
+            - .mypy_cache/
+        - path: ./autogpt_libs
+          target: /app/autogpt_platform/autogpt_libs
+          action: sync+restart
+          ignore:
+            - __pycache__/
+            - .pytest_cache/
+            - .mypy_cache/
+        - path: ./backend/pyproject.toml
+          action: rebuild
+        - path: ./backend/poetry.lock
+          action: rebuild
+        - path: ./backend/schema.prisma
+          action: rebuild
+        - path: ./autogpt_libs/pyproject.toml
+          action: rebuild
+        - path: ./autogpt_libs/poetry.lock
           action: rebuild
     depends_on:
       db:
@@ -214,8 +319,29 @@ services:
     command: ["python", "-m", "backend.scheduler"]
     develop:
       watch:
-        - path: ./
-          target: autogpt_platform/backend/
+        - path: ./backend
+          target: /app/autogpt_platform/backend
+          action: sync+restart
+          ignore:
+            - __pycache__/
+            - .pytest_cache/
+            - .mypy_cache/
+        - path: ./autogpt_libs
+          target: /app/autogpt_platform/autogpt_libs
+          action: sync+restart
+          ignore:
+            - __pycache__/
+            - .pytest_cache/
+            - .mypy_cache/
+        - path: ./backend/pyproject.toml
+          action: rebuild
+        - path: ./backend/poetry.lock
+          action: rebuild
+        - path: ./backend/schema.prisma
+          action: rebuild
+        - path: ./autogpt_libs/pyproject.toml
+          action: rebuild
+        - path: ./autogpt_libs/poetry.lock
           action: rebuild
     depends_on:
       db:
@@ -260,8 +386,29 @@ services:
     command: ["python", "-m", "backend.notification"]
     develop:
       watch:
-        - path: ./
-          target: autogpt_platform/backend/
+        - path: ./backend
+          target: /app/autogpt_platform/backend
+          action: sync+restart
+          ignore:
+            - __pycache__/
+            - .pytest_cache/
+            - .mypy_cache/
+        - path: ./autogpt_libs
+          target: /app/autogpt_platform/autogpt_libs
+          action: sync+restart
+          ignore:
+            - __pycache__/
+            - .pytest_cache/
+            - .mypy_cache/
+        - path: ./backend/pyproject.toml
+          action: rebuild
+        - path: ./backend/poetry.lock
+          action: rebuild
+        - path: ./backend/schema.prisma
+          action: rebuild
+        - path: ./autogpt_libs/pyproject.toml
+          action: rebuild
+        - path: ./autogpt_libs/poetry.lock
           action: rebuild
     depends_on:
       db:
@@ -284,6 +431,20 @@ services:
       context: ../
       dockerfile: autogpt_platform/frontend/Dockerfile
       target: prod
+    develop:
+      watch:
+        - path: ./frontend
+          target: /app
+          action: sync
+          ignore:
+            - node_modules/
+            - .next/
+            - .turbo/
+            - dist/
+        - path: ./frontend/package.json
+          action: rebuild
+        - path: ./frontend/pnpm-lock.yaml
+          action: rebuild
     depends_on:
       db:
         condition: service_healthy
