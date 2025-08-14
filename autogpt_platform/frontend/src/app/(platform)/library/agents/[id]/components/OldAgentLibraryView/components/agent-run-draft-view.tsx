@@ -30,7 +30,7 @@ import {
   useToastOnFail,
 } from "@/components/molecules/Toast/use-toast";
 
-export default function AgentRunDraftView({
+export function AgentRunDraftView({
   graph,
   agentPreset,
   triggerSetupInfo,

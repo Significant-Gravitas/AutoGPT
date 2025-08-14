@@ -6,21 +6,13 @@ interface BreadcrumbItem {
   link: string;
 }
 
-interface BreadCrumbsProps {
+interface Props {
   items: BreadcrumbItem[];
 }
 
-export const BreadCrumbs: React.FC<BreadCrumbsProps> = ({ items }) => {
+export function Breadcrumbs({ items }: Props) {
   return (
     <div className="flex items-center gap-4">
-      {/*
-      Commented out for now, but keeping until we have approval to remove
-      <button className="flex h-12 w-12 items-center justify-center rounded-full border border-neutral-200 transition-colors hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800">
-        <IconLeftArrow className="h-5 w-5 text-neutral-900 dark:text-neutral-100" />
-      </button>
-      <button className="flex h-12 w-12 items-center justify-center rounded-full border border-neutral-200 transition-colors hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800">
-        <IconRightArrow className="h-5 w-5 text-neutral-900 dark:text-neutral-100" />
-      </button> */}
       <div className="flex h-auto flex-wrap items-center justify-start gap-4 rounded-[5rem] dark:bg-transparent">
         {items.map((item, index) => (
           <React.Fragment key={index}>
@@ -39,4 +31,4 @@ export const BreadCrumbs: React.FC<BreadCrumbsProps> = ({ items }) => {
       </div>
     </div>
   );
-};
+}
