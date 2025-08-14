@@ -47,6 +47,7 @@ class ProviderName(str, Enum):
     TWITTER = "twitter"
     TODOIST = "todoist"
     UNREAL_SPEECH = "unreal_speech"
+    V0 = "v0"
     ZEROBOUNCE = "zerobounce"
 
     @classmethod

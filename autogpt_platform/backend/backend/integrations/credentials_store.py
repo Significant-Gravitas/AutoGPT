@@ -190,6 +190,14 @@ llama_api_credentials = APIKeyCredentials(
     expires_at=None,
 )
 
+v0_credentials = APIKeyCredentials(
+    id="c4e6d1a0-3b5f-4789-a8e2-9b123456789f",
+    provider="v0",
+    api_key=SecretStr(settings.secrets.v0_api_key),
+    title="Use Credits for v0 by Vercel",
+    expires_at=None,
+)
+
 DEFAULT_CREDENTIALS = [
     ollama_credentials,
     revid_credentials,
@@ -213,6 +221,8 @@ DEFAULT_CREDENTIALS = [
     smartlead_credentials,
     zerobounce_credentials,
     google_maps_credentials,
+    llama_api_credentials,
+    v0_credentials,
 ]
 
 
