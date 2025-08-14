@@ -248,6 +248,6 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # Store
     get_store_agents = d.get_store_agents
     get_store_agent_details = d.get_store_agent_details
-    
+
     # Summary data
     get_user_execution_summary_data = d.get_user_execution_summary_data
