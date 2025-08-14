@@ -10,7 +10,19 @@ AutoGPT Platform is a monorepo containing:
 
 ## Essential Commands
 
-### Backend Development
+### Docker Development (Recommended)
+```bash
+# Start all services with automatic code reloading
+docker compose up --watch
+
+# This enables:
+# - Automatic restart on Python code changes
+# - Hot-reload for frontend Next.js changes  
+# - Container rebuild on dependency changes (pyproject.toml, package.json)
+# - Container rebuild on Prisma schema changes
+```
+
+### Backend Development (Local)
 ```bash
 # Install dependencies
 cd backend && poetry install
@@ -112,6 +124,26 @@ Key models (defined in `/backend/schema.prisma`):
 - `AgentGraphExecution`: Execution history and results
 - `AgentNode`: Individual nodes in a workflow
 - `StoreListing`: Marketplace listings for sharing agents
+
+### Docker Watch Configuration
+
+The platform includes comprehensive Docker Compose watch configuration for development:
+
+#### Watch Actions:
+- **sync+restart**: Used for backend Python code - copies files and restarts the container (Python services don't have hot-reload)
+- **sync**: Used for frontend code - Next.js dev server automatically picks up changes
+- **rebuild**: Used for dependency and schema changes - rebuilds the entire container
+
+#### Watched Paths:
+- `./backend` → `/app/autogpt_platform/backend` (sync+restart)
+- `./autogpt_libs` → `/app/autogpt_platform/autogpt_libs` (sync+restart)
+- `./frontend` → `/app` (sync)
+- Dependency files trigger rebuild: `pyproject.toml`, `poetry.lock`, `package.json`, `pnpm-lock.yaml`
+- Prisma schema changes trigger rebuild: `schema.prisma`
+
+#### Ignored Paths:
+- Python: `__pycache__/`, `.pytest_cache/`, `.mypy_cache/`
+- Frontend: `node_modules/`, `.next/`, `.turbo/`, `dist/`
 
 ### Environment Configuration
 

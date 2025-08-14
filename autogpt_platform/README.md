@@ -92,10 +92,16 @@ Here are some common scenarios where you might use multiple Docker Compose comma
 5. Developing with live updates:
 
    ```
+   docker compose up --watch
+   # or in a separate terminal after services are running:
    docker compose watch
    ```
 
-   This watches for changes in your code and automatically updates the relevant services.
+   This watches for changes in your code and automatically updates the relevant services:
+   - **Backend Python code changes**: Automatically syncs files and restarts the service
+   - **Frontend code changes**: Syncs files (Next.js dev server handles hot-reload)
+   - **Dependency changes**: Rebuilds containers when package files change
+   - **Prisma schema changes**: Rebuilds to regenerate the Prisma client
 
 6. Checking the status of services:
    ```
