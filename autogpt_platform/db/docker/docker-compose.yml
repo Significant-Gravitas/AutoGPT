@@ -117,9 +117,6 @@ services:
       timeout: 10s
       interval: 5s
       retries: 3
-    depends_on:
-      analytics:
-        condition: service_healthy
     <<: *supabase-env-files
     environment:
       <<: *supabase-env
@@ -155,9 +152,6 @@ services:
     volumes:
       # https://github.com/supabase/supabase/issues/12661
       - ./volumes/api/kong.yml:/home/kong/temp.yml:ro
-    depends_on:
-      analytics:
-        condition: service_healthy
     <<: *supabase-env-files
     environment:
       <<: *supabase-env
@@ -196,8 +190,6 @@ services:
     depends_on:
       db:
         # Disable this if you are using an external Postgres database
-        condition: service_healthy
-      analytics:
         condition: service_healthy
     <<: *supabase-env-files
     environment:
@@ -270,8 +262,6 @@ services:
       db:
         # Disable this if you are using an external Postgres database
         condition: service_healthy
-      analytics:
-        condition: service_healthy
     <<: *supabase-env-files
     environment:
       <<: *supabase-env
@@ -296,8 +286,6 @@ services:
     depends_on:
       db:
         # Disable this if you are using an external Postgres database
-        condition: service_healthy
-      analytics:
         condition: service_healthy
     healthcheck:
       test:
@@ -416,8 +404,6 @@ services:
       db:
         # Disable this if you are using an external Postgres database
         condition: service_healthy
-      analytics:
-        condition: service_healthy
     <<: *supabase-env-files
     environment:
       <<: *supabase-env
@@ -435,9 +421,6 @@ services:
     restart: unless-stopped
     volumes:
       - ./volumes/functions:/home/deno/functions:Z
-    depends_on:
-      analytics:
-        condition: service_healthy
     <<: *supabase-env-files
     environment:
       <<: *supabase-env
@@ -542,9 +525,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    depends_on:
-      vector:
-        condition: service_healthy
     <<: *supabase-env-files
     environment:
       <<: *supabase-env
