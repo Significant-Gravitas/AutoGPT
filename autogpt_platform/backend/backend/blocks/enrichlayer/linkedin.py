@@ -26,11 +26,11 @@ from ._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, EnrichlayerCredenti
 logger = logging.getLogger(__name__)
 
 
-class EnrichlayerLinkedinProfileBlock(Block):
+class GetLinkedinProfileBlock(Block):
     """Block to fetch LinkedIn profile data using Enrichlayer API."""
 
     class Input(BlockSchema):
-        """Input schema for EnrichlayerLinkedinProfileBlock."""
+        """Input schema for GetLinkedinProfileBlock."""
 
         linkedin_url: str = SchemaField(
             description="LinkedIn profile URL to fetch data from",
@@ -81,7 +81,7 @@ class EnrichlayerLinkedinProfileBlock(Block):
         )
 
     class Output(BlockSchema):
-        """Output schema for EnrichlayerLinkedinProfileBlock."""
+        """Output schema for GetLinkedinProfileBlock."""
 
         profile: PersonProfileResponse = SchemaField(
             description="LinkedIn profile data"
@@ -89,13 +89,13 @@ class EnrichlayerLinkedinProfileBlock(Block):
         error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
-        """Initialize EnrichlayerLinkedinProfileBlock."""
+        """Initialize GetLinkedinProfileBlock."""
         super().__init__(
             id="f6e0ac73-4f1d-4acb-b4b7-b67066c5984e",
             description="Fetch LinkedIn profile data using Enrichlayer",
             categories={BlockCategory.SOCIAL},
-            input_schema=EnrichlayerLinkedinProfileBlock.Input,
-            output_schema=EnrichlayerLinkedinProfileBlock.Output,
+            input_schema=GetLinkedinProfileBlock.Input,
+            output_schema=GetLinkedinProfileBlock.Output,
             test_input={
                 "linkedin_url": "https://www.linkedin.com/in/williamhgates/",
                 "include_skills": True,
@@ -196,11 +196,11 @@ class EnrichlayerLinkedinProfileBlock(Block):
             yield "error", str(e)
 
 
-class EnrichlayerLinkedinPersonLookupBlock(Block):
+class LinkedinPersonLookupBlock(Block):
     """Block to look up LinkedIn profiles by person's information using Enrichlayer API."""
 
     class Input(BlockSchema):
-        """Input schema for EnrichlayerLinkedinPersonLookupBlock."""
+        """Input schema for LinkedinPersonLookupBlock."""
 
         first_name: str = SchemaField(
             description="Person's first name",
@@ -243,7 +243,7 @@ class EnrichlayerLinkedinPersonLookupBlock(Block):
         )
 
     class Output(BlockSchema):
-        """Output schema for EnrichlayerLinkedinPersonLookupBlock."""
+        """Output schema for LinkedinPersonLookupBlock."""
 
         lookup_result: PersonLookupResponse = SchemaField(
             description="LinkedIn profile lookup result"
@@ -251,13 +251,13 @@ class EnrichlayerLinkedinPersonLookupBlock(Block):
         error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
-        """Initialize EnrichlayerLinkedinPersonLookupBlock."""
+        """Initialize LinkedinPersonLookupBlock."""
         super().__init__(
             id="d237a98a-5c4b-4a1c-b9e3-e6f9a6c81df7",
             description="Look up LinkedIn profiles by person information using Enrichlayer",
             categories={BlockCategory.SOCIAL},
-            input_schema=EnrichlayerLinkedinPersonLookupBlock.Input,
-            output_schema=EnrichlayerLinkedinPersonLookupBlock.Output,
+            input_schema=LinkedinPersonLookupBlock.Input,
+            output_schema=LinkedinPersonLookupBlock.Output,
             test_input={
                 "first_name": "Bill",
                 "last_name": "Gates",
@@ -343,11 +343,11 @@ class EnrichlayerLinkedinPersonLookupBlock(Block):
             yield "error", str(e)
 
 
-class EnrichlayerLinkedinRoleLookupBlock(Block):
+class LinkedinRoleLookupBlock(Block):
     """Block to look up LinkedIn profiles by role in a company using Enrichlayer API."""
 
     class Input(BlockSchema):
-        """Input schema for EnrichlayerLinkedinRoleLookupBlock."""
+        """Input schema for LinkedinRoleLookupBlock."""
 
         role: str = SchemaField(
             description="Role title (e.g., CEO, CTO)",
@@ -367,7 +367,7 @@ class EnrichlayerLinkedinRoleLookupBlock(Block):
         )
 
     class Output(BlockSchema):
-        """Output schema for EnrichlayerLinkedinRoleLookupBlock."""
+        """Output schema for LinkedinRoleLookupBlock."""
 
         role_lookup_result: RoleLookupResponse = SchemaField(
             description="LinkedIn role lookup result"
@@ -375,13 +375,13 @@ class EnrichlayerLinkedinRoleLookupBlock(Block):
         error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
-        """Initialize EnrichlayerLinkedinRoleLookupBlock."""
+        """Initialize LinkedinRoleLookupBlock."""
         super().__init__(
             id="3b9fc742-06d4-49c7-b5ce-7e302dd7c8a7",
             description="Look up LinkedIn profiles by role in a company using Enrichlayer",
             categories={BlockCategory.SOCIAL},
-            input_schema=EnrichlayerLinkedinRoleLookupBlock.Input,
-            output_schema=EnrichlayerLinkedinRoleLookupBlock.Output,
+            input_schema=LinkedinRoleLookupBlock.Input,
+            output_schema=LinkedinRoleLookupBlock.Output,
             test_input={
                 "role": "Co-chair",
                 "company_name": "Gates Foundation",
@@ -446,11 +446,11 @@ class EnrichlayerLinkedinRoleLookupBlock(Block):
             yield "error", str(e)
 
 
-class EnrichlayerLinkedinProfilePictureBlock(Block):
+class GetLinkedinProfilePictureBlock(Block):
     """Block to get LinkedIn profile pictures using Enrichlayer API."""
 
     class Input(BlockSchema):
-        """Input schema for EnrichlayerLinkedinProfilePictureBlock."""
+        """Input schema for GetLinkedinProfilePictureBlock."""
 
         linkedin_profile_url: str = SchemaField(
             description="LinkedIn profile URL",
@@ -461,7 +461,7 @@ class EnrichlayerLinkedinProfilePictureBlock(Block):
         )
 
     class Output(BlockSchema):
-        """Output schema for EnrichlayerLinkedinProfilePictureBlock."""
+        """Output schema for GetLinkedinProfilePictureBlock."""
 
         profile_picture_url: MediaFileType = SchemaField(
             description="LinkedIn profile picture URL"
@@ -469,13 +469,13 @@ class EnrichlayerLinkedinProfilePictureBlock(Block):
         error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
-        """Initialize EnrichlayerLinkedinProfilePictureBlock."""
+        """Initialize GetLinkedinProfilePictureBlock."""
         super().__init__(
             id="68d5a942-9b3f-4e9a-b7c1-d96ea4321f0d",
             description="Get LinkedIn profile pictures using Enrichlayer",
             categories={BlockCategory.SOCIAL},
-            input_schema=EnrichlayerLinkedinProfilePictureBlock.Input,
-            output_schema=EnrichlayerLinkedinProfilePictureBlock.Output,
+            input_schema=GetLinkedinProfilePictureBlock.Input,
+            output_schema=GetLinkedinProfilePictureBlock.Output,
             test_input={
                 "linkedin_profile_url": "https://www.linkedin.com/in/williamhgates/",
                 "credentials": TEST_CREDENTIALS_INPUT,

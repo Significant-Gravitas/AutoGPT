@@ -6,10 +6,10 @@ from backend.blocks.apollo.organization import SearchOrganizationsBlock
 from backend.blocks.apollo.people import SearchPeopleBlock
 from backend.blocks.apollo.person import GetPersonDetailBlock
 from backend.blocks.enrichlayer.linkedin import (
-    EnrichlayerLinkedinPersonLookupBlock,
-    EnrichlayerLinkedinProfileBlock,
-    EnrichlayerLinkedinProfilePictureBlock,
-    EnrichlayerLinkedinRoleLookupBlock,
+    GetLinkedinProfileBlock,
+    GetLinkedinProfilePictureBlock,
+    LinkedinPersonLookupBlock,
+    LinkedinRoleLookupBlock,
 )
 from backend.blocks.flux_kontext import AIImageEditorBlock, FluxKontextModelName
 from backend.blocks.ideogram import IdeogramModelBlock
@@ -383,7 +383,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         )
     ],
-    EnrichlayerLinkedinProfileBlock: [
+    GetLinkedinProfileBlock: [
         BlockCost(
             cost_amount=1,
             cost_filter={
@@ -395,7 +395,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         )
     ],
-    EnrichlayerLinkedinPersonLookupBlock: [
+    LinkedinPersonLookupBlock: [
         BlockCost(
             cost_amount=2,
             cost_filter={
@@ -407,7 +407,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         )
     ],
-    EnrichlayerLinkedinRoleLookupBlock: [
+    LinkedinRoleLookupBlock: [
         BlockCost(
             cost_amount=3,
             cost_filter={
@@ -419,7 +419,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         )
     ],
-    EnrichlayerLinkedinProfilePictureBlock: [
+    GetLinkedinProfilePictureBlock: [
         BlockCost(
             cost_amount=3,
             cost_filter={

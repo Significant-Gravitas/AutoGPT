@@ -9,7 +9,7 @@ import datetime
 import enum
 import logging
 from json import JSONDecodeError
-from typing import Any, Dict, List, Optional, TypeVar
+from typing import Any, Optional, TypeVar
 
 from pydantic import BaseModel, Field
 
@@ -54,8 +54,8 @@ class Experience(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     location: Optional[str] = None
-    starts_at: Optional[Dict[str, int]] = None
-    ends_at: Optional[Dict[str, int]] = None
+    starts_at: Optional[dict[str, int]] = None
+    ends_at: Optional[dict[str, int]] = None
     company_linkedin_profile_url: Optional[str] = None
 
 
@@ -65,8 +65,8 @@ class Education(BaseModel):
     school: Optional[str] = None
     degree_name: Optional[str] = None
     field_of_study: Optional[str] = None
-    starts_at: Optional[Dict[str, int]] = None
-    ends_at: Optional[Dict[str, int]] = None
+    starts_at: Optional[dict[str, int]] = None
+    ends_at: Optional[dict[str, int]] = None
     school_linkedin_profile_url: Optional[str] = None
 
 
@@ -106,15 +106,15 @@ class PersonProfileResponse(BaseModel):
     country_full_name: Optional[str] = None
     city: Optional[str] = None
     state: Optional[str] = None
-    experiences: Optional[List[Experience]] = None
-    education: Optional[List[Education]] = None
-    languages: Optional[List[str]] = None
-    skills: Optional[List[str]] = None
-    inferred_salary: Optional[Dict[str, Any]] = None
+    experiences: Optional[list[Experience]] = None
+    education: Optional[list[Education]] = None
+    languages: Optional[list[str]] = None
+    skills: Optional[list[str]] = None
+    inferred_salary: Optional[dict[str, Any]] = None
     personal_email: Optional[str] = None
     personal_contact_number: Optional[str] = None
     social_media_profiles: Optional[SocialMediaProfiles] = None
-    extra: Optional[Dict[str, Any]] = None
+    extra: Optional[dict[str, Any]] = None
 
 
 class SimilarProfile(BaseModel):
@@ -209,7 +209,7 @@ class EnrichlayerClient:
         if custom_requests:
             self._requests = custom_requests
         else:
-            headers: Dict[str, str] = {
+            headers: dict[str, str] = {
                 "Content-Type": "application/json",
             }
             if credentials:
