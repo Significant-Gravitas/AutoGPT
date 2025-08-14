@@ -284,7 +284,6 @@ services:
       context: ../
       dockerfile: autogpt_platform/frontend/Dockerfile
       target: prod
-      # No build args needed - Dockerfile will use the .env file directly
     depends_on:
       db:
         condition: service_healthy
@@ -297,7 +296,6 @@ services:
     # Load environment variables in order (later overrides earlier)
     env_file:
       - path: ./frontend/.env.default # Base defaults (always exists)
-        required: false
       - path: ./frontend/.env # User overrides (optional)
         required: false
     environment:

@@ -5,17 +5,21 @@
  * Server-side code uses Docker service names, client-side falls back to localhost.
  */
 
+import { isServerSide } from "./utils/is-server-side";
+
 /**
  * Gets the AGPT server URL with server-side priority
  * Server-side: Uses AGPT_SERVER_URL (http://rest_server:8006/api)
  * Client-side: Falls back to NEXT_PUBLIC_AGPT_SERVER_URL (http://localhost:8006/api)
  */
 export function getAgptServerApiUrl(): string {
-  return (
-    process.env.AGPT_SERVER_URL ||
-    process.env.NEXT_PUBLIC_AGPT_SERVER_URL ||
-    "http://localhost:8006/api"
-  );
+  // If server-side and server URL exists, use it
+  if (isServerSide() && process.env.AGPT_SERVER_URL) {
+    return process.env.AGPT_SERVER_URL;
+  }
+
+  // Otherwise use the public URL
+  return process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006/api";
 }
 
 export function getAgptServerBaseUrl(): string {
@@ -28,11 +32,13 @@ export function getAgptServerBaseUrl(): string {
  * Client-side: Falls back to NEXT_PUBLIC_AGPT_WS_SERVER_URL (ws://localhost:8001/ws)
  */
 export function getAgptWsServerUrl(): string {
-  return (
-    process.env.AGPT_WS_SERVER_URL ||
-    process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL ||
-    "ws://localhost:8001/ws"
-  );
+  // If server-side and server URL exists, use it
+  if (isServerSide() && process.env.AGPT_WS_SERVER_URL) {
+    return process.env.AGPT_WS_SERVER_URL;
+  }
+
+  // Otherwise use the public URL
+  return process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL || "ws://localhost:8001/ws";
 }
 
 /**
@@ -41,11 +47,13 @@ export function getAgptWsServerUrl(): string {
  * Client-side: Falls back to NEXT_PUBLIC_SUPABASE_URL (http://localhost:8000)
  */
 export function getSupabaseUrl(): string {
-  return (
-    process.env.SUPABASE_URL ||
-    process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    "http://localhost:8000"
-  );
+  // If server-side and server URL exists, use it
+  if (isServerSide() && process.env.SUPABASE_URL) {
+    return process.env.SUPABASE_URL;
+  }
+
+  // Otherwise use the public URL
+  return process.env.NEXT_PUBLIC_SUPABASE_URL || "http://localhost:8000";
 }
 
 /**
