@@ -194,7 +194,22 @@ class ListLibraryAgentsBlock(Block):
                 "page": 1,
             },
             test_output=[
-                ("agents", []),
+                (
+                    "agents",
+                    [
+                        LibraryAgent(
+                            library_agent_id="test-lib-id",
+                            agent_id="test-agent-id",
+                            agent_version=1,
+                            agent_name="Test Library Agent",
+                            description="A test agent in library",
+                            creator="Test User",
+                        ),
+                    ],
+                ),
+                ("total_count", 1),
+                ("page", 1),
+                ("total_pages", 1),
                 (
                     "agent",
                     LibraryAgent(
@@ -206,9 +221,6 @@ class ListLibraryAgentsBlock(Block):
                         creator="Test User",
                     ),
                 ),
-                ("total_count", 1),
-                ("page", 1),
-                ("total_pages", 1),
             ],
             test_mock={
                 "_list_library_agents": lambda *_, **__: {
@@ -227,7 +239,6 @@ class ListLibraryAgentsBlock(Block):
                     "total_pages": 1,
                 }
             },
-            static_output=False,  # Yields multiple agents
         )
 
     async def run(
