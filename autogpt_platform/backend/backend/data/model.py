@@ -821,3 +821,21 @@ class GraphExecutionStats(BaseModel):
     activity_status: Optional[str] = Field(
         default=None, description="AI-generated summary of what the agent did"
     )
+
+
+class UserExecutionSummaryStats(BaseModel):
+    """Summary of user statistics for a specific user."""
+
+    model_config = ConfigDict(
+        extra="allow",
+        arbitrary_types_allowed=True,
+    )
+
+    total_credits_used: float = Field(default=0)
+    total_executions: int = Field(default=0)
+    successful_runs: int = Field(default=0)
+    failed_runs: int = Field(default=0)
+    most_used_agent: str = Field(default="")
+    total_execution_time: float = Field(default=0)
+    average_execution_time: float = Field(default=0)
+    cost_breakdown: dict[str, float] = Field(default_factory=dict)

@@ -1,3 +1,4 @@
+.env
 database.db
 database.db-journal
 dev.db

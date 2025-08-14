@@ -20,6 +20,7 @@ from backend.data.execution import (
     upsert_execution_input,
     upsert_execution_output,
 )
+from backend.data.generate_data import get_user_execution_summary_data
 from backend.data.graph import (
     get_connected_output_nodes,
     get_graph,
@@ -154,6 +155,9 @@ class DatabaseManager(AppService):
     get_store_agents = _(get_store_agents)
     get_store_agent_details = _(get_store_agent_details)
 
+    # Summary data - async
+    get_user_execution_summary_data = _(get_user_execution_summary_data)
+
 
 class DatabaseManagerClient(AppServiceClient):
     d = DatabaseManager
@@ -178,6 +182,9 @@ class DatabaseManagerClient(AppServiceClient):
     # Credits
     spend_credits = _(d.spend_credits)
     get_credits = _(d.get_credits)
+
+    # Summary data - async
+    get_user_execution_summary_data = _(d.get_user_execution_summary_data)
 
     # Block error monitoring
     get_block_error_stats = _(d.get_block_error_stats)
@@ -241,3 +248,6 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # Store
     get_store_agents = d.get_store_agents
     get_store_agent_details = d.get_store_agent_details
+    
+    # Summary data
+    get_user_execution_summary_data = d.get_user_execution_summary_data

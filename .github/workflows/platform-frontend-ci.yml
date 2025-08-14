@@ -176,11 +176,7 @@ jobs:
 
       - name: Copy default supabase .env
         run: |
-          cp ../.env.example ../.env
-
-      - name: Copy backend .env
-        run: |
-          cp ../backend/.env.example ../backend/.env
+          cp ../.env.default ../.env
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -251,15 +247,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      - name: Setup .env
-        run: cp .env.example .env
-
-      - name: Build frontend
-        run: pnpm build --turbo
-        # uses Turbopack, much faster and safe enough for a test pipeline
-        env:
-          NEXT_PUBLIC_PW_TEST: true
 
       - name: Install Browser 'chromium'
         run: pnpm playwright install --with-deps chromium
