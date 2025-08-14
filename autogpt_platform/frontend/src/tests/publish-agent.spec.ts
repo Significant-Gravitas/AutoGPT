@@ -35,7 +35,11 @@ test("user can publish an agent through the complete flow", async ({
   const agentToSelect = publishAgentModal.getByTestId("agent-card").first();
   await agentToSelect.click();
 
-  const nextButton = publishAgentModal.getByRole("button", { name: "Next" });
+  const nextButton = publishAgentModal.getByRole("button", {
+    name: "Next",
+    exact: true,
+  });
+
   await isEnabled(nextButton);
   await nextButton.click();
 
@@ -101,7 +105,10 @@ test("should validate all form fields in publish agent form", async ({
   const agentToSelect = publishAgentModal.getByTestId("agent-card").first();
   await agentToSelect.click();
 
-  const nextButton = publishAgentModal.getByRole("button", { name: "Next" });
+  const nextButton = publishAgentModal.getByRole("button", {
+    name: "Next",
+    exact: true,
+  });
   await nextButton.click();
 
   await isVisible(getText("Write a bit of details about your agent"));

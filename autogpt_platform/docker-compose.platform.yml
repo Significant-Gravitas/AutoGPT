@@ -1,9 +1,39 @@
+# Environment Variable Loading Order (first → last, later overrides earlier):
+# 1. backend/.env.default - Default values for all settings
+# 2. backend/.env - User's custom configuration (if exists)
+# 3. environment key - Docker-specific overrides defined below
+# 4. Shell environment - Variables exported before running docker compose
+# 5. CLI arguments - docker compose run -e VAR=value
+
+# Common backend environment - Docker service names
+x-backend-env:
+  &backend-env # Docker internal service hostnames (override localhost defaults)
+  PYRO_HOST: "0.0.0.0"
+  AGENTSERVER_HOST: rest_server
+  SCHEDULER_HOST: scheduler_server
+  DATABASEMANAGER_HOST: database_manager
+  EXECUTIONMANAGER_HOST: executor
+  NOTIFICATIONMANAGER_HOST: notification_server
+  CLAMAV_SERVICE_HOST: clamav
+  DB_HOST: db
+  REDIS_HOST: redis
+  RABBITMQ_HOST: rabbitmq
+  # Override Supabase URL for Docker network
+  SUPABASE_URL: http://kong:8000
+
+# Common env_file configuration for backend services
+x-backend-env-files: &backend-env-files
+  env_file:
+    - backend/.env.default # Base defaults (always exists)
+    - path: backend/.env # User overrides (optional)
+      required: false
+
 services:
   migrate:
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
-      target: server
+      target: migrate
     command: ["sh", "-c", "poetry run prisma migrate deploy"]
     develop:
       watch:
@@ -20,10 +50,11 @@ services:
       - app-network
     restart: on-failure
     healthcheck:
-      test: ["CMD", "poetry", "run", "prisma", "migrate", "status"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: ["CMD-SHELL", "poetry run prisma migrate status | grep -q 'No pending migrations' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
 
   redis:
     image: redis:latest
@@ -73,29 +104,12 @@ services:
         condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
+    <<: *backend-env-files
     environment:
-      - SUPABASE_URL=http://kong:8000
-      - SUPABASE_JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters-long
-      - SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJzZXJ2aWNlX3JvbGUiLAogICAgImlzcyI6ICJzdXBhYmFzZS1kZW1vIiwKICAgICJpYXQiOiAxNjQxNzY5MjAwLAogICAgImV4cCI6IDE3OTk1MzU2MDAKfQ.DaYlNEoUrrEn2Ig7tqibS-PHK5vgusbcbo7X36XVt4Q
-      - DATABASE_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
-      - DIRECT_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - RABBITMQ_HOST=rabbitmq
-      - RABBITMQ_PORT=5672
-      - RABBITMQ_DEFAULT_USER=rabbitmq_user_default
-      - RABBITMQ_DEFAULT_PASS=k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7
-      - REDIS_PASSWORD=password
-      - ENABLE_AUTH=true
-      - PYRO_HOST=0.0.0.0
-      - SCHEDULER_HOST=scheduler_server
-      - EXECUTIONMANAGER_HOST=executor
-      - NOTIFICATIONMANAGER_HOST=notification_server
-      - CLAMAV_SERVICE_HOST=clamav
-      - NEXT_PUBLIC_FRONTEND_BASE_URL=http://localhost:3000
-      - BACKEND_CORS_ALLOW_ORIGINS=["http://localhost:3000"]
-      - ENCRYPTION_KEY=dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw= # DO NOT USE IN PRODUCTION!!
-      - UNSUBSCRIBE_SECRET_KEY=HlP8ivStJjmbf6NKi78m_3FnOogut0t5ckzjsIqeaio= # DO NOT USE IN PRODUCTION!!
+      <<: *backend-env
+      # Service-specific overrides
+      DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+      DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
     ports:
       - "8006:8006"
     networks:
@@ -123,26 +137,12 @@ services:
         condition: service_completed_successfully
       database_manager:
         condition: service_started
+    <<: *backend-env-files
     environment:
-      - DATABASEMANAGER_HOST=database_manager
-      - SUPABASE_URL=http://kong:8000
-      - SUPABASE_JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters-long
-      - SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJzZXJ2aWNlX3JvbGUiLAogICAgImlzcyI6ICJzdXBhYmFzZS1kZW1vIiwKICAgICJpYXQiOiAxNjQxNzY5MjAwLAogICAgImV4cCI6IDE3OTk1MzU2MDAKfQ.DaYlNEoUrrEn2Ig7tqibS-PHK5vgusbcbo7X36XVt4Q
-      - DATABASE_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
-      - DIRECT_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=password
-      - RABBITMQ_HOST=rabbitmq
-      - RABBITMQ_PORT=5672
-      - RABBITMQ_DEFAULT_USER=rabbitmq_user_default
-      - RABBITMQ_DEFAULT_PASS=k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7
-      - ENABLE_AUTH=true
-      - PYRO_HOST=0.0.0.0
-      - AGENTSERVER_HOST=rest_server
-      - NOTIFICATIONMANAGER_HOST=notification_server
-      - CLAMAV_SERVICE_HOST=clamav
-      - ENCRYPTION_KEY=dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw= # DO NOT USE IN PRODUCTION!!
+      <<: *backend-env
+      # Service-specific overrides
+      DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+      DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
     ports:
       - "8002:8002"
     networks:
@@ -168,22 +168,12 @@ services:
         condition: service_completed_successfully
       database_manager:
         condition: service_started
+    <<: *backend-env-files
     environment:
-      - DATABASEMANAGER_HOST=database_manager
-      - SUPABASE_JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters-long
-      - DATABASE_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
-      - DIRECT_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=password
-      # - RABBITMQ_HOST=rabbitmq
-      # - RABBITMQ_PORT=5672
-      # - RABBITMQ_DEFAULT_USER=rabbitmq_user_default
-      # - RABBITMQ_DEFAULT_PASS=k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7
-      - ENABLE_AUTH=true
-      - PYRO_HOST=0.0.0.0
-      - BACKEND_CORS_ALLOW_ORIGINS=["http://localhost:3000"]
-
+      <<: *backend-env
+      # Service-specific overrides
+      DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+      DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
     ports:
       - "8001:8001"
     networks:
@@ -205,11 +195,12 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+    <<: *backend-env-files
     environment:
-      - DATABASE_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
-      - DIRECT_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
-      - PYRO_HOST=0.0.0.0
-      - ENCRYPTION_KEY=dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw= # DO NOT USE IN PRODUCTION!!
+      <<: *backend-env
+      # Service-specific overrides
+      DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+      DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
     ports:
       - "8005:8005"
     networks:
@@ -250,23 +241,12 @@ services:
     #   interval: 10s
     #   timeout: 10s
     #   retries: 5
+    <<: *backend-env-files
     environment:
-      - DATABASEMANAGER_HOST=database_manager
-      - NOTIFICATIONMANAGER_HOST=notification_server
-      - SUPABASE_JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters-long
-      - DATABASE_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
-      - DIRECT_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=password
-      - RABBITMQ_HOST=rabbitmq
-      - RABBITMQ_PORT=5672
-      - RABBITMQ_DEFAULT_USER=rabbitmq_user_default
-      - RABBITMQ_DEFAULT_PASS=k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7
-      - ENABLE_AUTH=true
-      - PYRO_HOST=0.0.0.0
-      - BACKEND_CORS_ALLOW_ORIGINS=["http://localhost:3000"]
-
+      <<: *backend-env
+      # Service-specific overrides
+      DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+      DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
     ports:
       - "8003:8003"
     networks:
@@ -292,52 +272,39 @@ services:
         condition: service_completed_successfully
       database_manager:
         condition: service_started
+    <<: *backend-env-files
     environment:
-      - DATABASEMANAGER_HOST=database_manager
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=password
-      - RABBITMQ_HOST=rabbitmq
-      - RABBITMQ_PORT=5672
-      - RABBITMQ_DEFAULT_USER=rabbitmq_user_default
-      - RABBITMQ_DEFAULT_PASS=k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7
-      - ENABLE_AUTH=true
-      - PYRO_HOST=0.0.0.0
-      - BACKEND_CORS_ALLOW_ORIGINS=["http://localhost:3000"]
-
+      <<: *backend-env
     ports:
       - "8007:8007"
     networks:
       - app-network
-
-#  frontend:
-#    build:
-#      context: ../
-#      dockerfile: autogpt_platform/frontend/Dockerfile
-#      target: dev
-#    depends_on:
-#      db:
-#        condition: service_healthy
-#      rest_server:
-#        condition: service_started
-#      websocket_server:
-#        condition: service_started
-#      migrate:
-#        condition: service_completed_successfully
-#    environment:
-#      - NEXT_PUBLIC_SUPABASE_URL=http://kong:8000
-#      - NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE
-#      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/postgres?connect_timeout=60&schema=platform
-#      - DIRECT_URL=postgresql://agpt_user:pass123@postgres:5432/postgres?connect_timeout=60&schema=platform
-#      - NEXT_PUBLIC_AGPT_SERVER_URL=http://localhost:8006/api
-#      - NEXT_PUBLIC_AGPT_WS_SERVER_URL=ws://localhost:8001/ws
-#      - NEXT_PUBLIC_AGPT_MARKETPLACE_URL=http://localhost:8015/api/v1/market
-#      - NEXT_PUBLIC_BEHAVE_AS=LOCAL
-#    ports:
-#      - "3000:3000"
-#    networks:
-#      - app-network
-
+  frontend:
+    build:
+      context: ../
+      dockerfile: autogpt_platform/frontend/Dockerfile
+      target: prod
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "3000:3000"
+    networks:
+      - app-network
+    # Load environment variables in order (later overrides earlier)
+    env_file:
+      - path: ./frontend/.env.default # Base defaults (always exists)
+      - path: ./frontend/.env # User overrides (optional)
+        required: false
+    environment:
+      # Server-side environment variables (Docker service names)
+      # These override the localhost URLs from env files when running in Docker
+      AUTH_CALLBACK_URL: http://rest_server:8006/auth/callback
+      SUPABASE_URL: http://kong:8000
+      AGPT_SERVER_URL: http://rest_server:8006/api
+      AGPT_WS_SERVER_URL: ws://websocket_server:8001/ws
 networks:
   app-network:
     driver: bridge
