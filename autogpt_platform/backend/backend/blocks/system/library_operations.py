@@ -73,12 +73,12 @@ class AddToLibraryFromStoreBlock(Block):
                 ("message", "Agent successfully added to library"),
             ],
             test_mock={
-                "_add_to_library": lambda *_, **__: {
-                    "library_agent_id": "test-library-id",
-                    "agent_id": "test-agent-id",
-                    "agent_version": 1,
-                    "agent_name": "Test Agent",
-                }
+                "_add_to_library": lambda *_, **__: LibraryAgent(
+                    library_agent_id="test-library-id",
+                    agent_id="test-agent-id",
+                    agent_version=1,
+                    agent_name="Test Agent",
+                )
             },
         )
 
@@ -204,7 +204,7 @@ class ListLibraryAgentsBlock(Block):
                         agent_name="Test Library Agent",
                         description="A test agent in library",
                         creator="Test User",
-                    ).model_dump(),
+                    ),
                 ),
                 ("total_count", 1),
                 ("page", 1),
@@ -248,8 +248,7 @@ class ListLibraryAgentsBlock(Block):
 
             agents = result["agents"]
 
-            # Yield the full list for backward compatibility
-            yield "agents", [agent.model_dump() for agent in agents]
+            yield "agents", agents
             yield "total_count", result["total"]
             yield "page", result["page"]
             yield "total_pages", result["total_pages"]
