@@ -40,6 +40,7 @@ def sanitize_query(query: str | None) -> str | None:
 
 @router.get(
     "/suggestions",
+    summary="Get Builder suggestions",
     dependencies=[fastapi.Depends(auth_middleware)],
 )
 async def get_suggestions(
@@ -73,6 +74,7 @@ async def get_suggestions(
 
 @router.get(
     "/categories",
+    summary="Get Builder block categories",
     dependencies=[fastapi.Depends(auth_middleware)],
 )
 async def get_block_categories(
@@ -86,6 +88,7 @@ async def get_block_categories(
 
 @router.get(
     "/blocks",
+    summary="Get Builder blocks",
     dependencies=[fastapi.Depends(auth_middleware)],
 )
 async def get_blocks(
@@ -109,6 +112,7 @@ async def get_blocks(
 
 @router.get(
     "/providers",
+    summary="Get Builder integration providers",
     dependencies=[fastapi.Depends(auth_middleware)],
 )
 async def get_providers(
@@ -126,6 +130,7 @@ async def get_providers(
 
 @router.post(
     "/search",
+    summary="Builder search",
     tags=["store", "private"],
     dependencies=[fastapi.Depends(auth_middleware)],
 )
@@ -216,6 +221,7 @@ async def search(
 
 @router.get(
     "/counts",
+    summary="Get Builder item counts",
     dependencies=[fastapi.Depends(auth_middleware)],
 )
 async def get_counts(
