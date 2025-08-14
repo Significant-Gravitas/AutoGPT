@@ -20,6 +20,7 @@ x-supabase-services:
     - app-network
     - shared-network
 
+
 services:
   # AGPT services
   migrate:
@@ -96,11 +97,11 @@ services:
       timeout: 10s
       retries: 3
 
-  #  frontend:
-  #    <<: *agpt-services
-  #    extends:
-  #      file: ./docker-compose.platform.yml
-  #      service: frontend
+  frontend:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: frontend
 
   # Supabase services
   studio:
@@ -171,7 +172,7 @@ services:
       file: ./db/docker/docker-compose.yml
       service: db
     ports:
-      - ${POSTGRES_PORT}:5432 # We don't use Supavisor locally, so we expose the db directly.
+      - 5432:5432 # We don't use Supavisor locally, so we expose the db directly.
 
   vector:
     <<: *supabase-services
@@ -196,3 +197,17 @@ services:
       - redis
       - rabbitmq
       - clamav
+      - migrate
+
+  deps_backend:
+    <<: *agpt-services
+    profiles:
+      - local
+    image: busybox
+    command: /bin/true
+    depends_on:
+      - deps
+      - rest_server
+      - executor
+      - websocket_server
+      - database_manager

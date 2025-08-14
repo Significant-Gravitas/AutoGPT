@@ -360,7 +360,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum message size limit for communication with the message bus",
     )
 
-    backend_cors_allow_origins: List[str] = Field(default_factory=list)
+    backend_cors_allow_origins: List[str] = Field(default=["http://localhost:3000"])
 
     @field_validator("backend_cors_allow_origins")
     @classmethod

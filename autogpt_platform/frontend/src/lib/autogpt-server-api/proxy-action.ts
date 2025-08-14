@@ -6,8 +6,7 @@ import {
   makeAuthenticatedFileUpload,
   makeAuthenticatedRequest,
 } from "./helpers";
-
-const DEFAULT_BASE_URL = "http://localhost:8006/api";
+import { getAgptServerApiUrl } from "@/lib/env-config";
 
 export interface ProxyRequestOptions {
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -21,7 +20,7 @@ export async function proxyApiRequest({
   method,
   path,
   payload,
-  baseUrl = process.env.NEXT_PUBLIC_AGPT_SERVER_URL || DEFAULT_BASE_URL,
+  baseUrl = getAgptServerApiUrl(),
   contentType = "application/json",
 }: ProxyRequestOptions) {
   return await Sentry.withServerActionInstrumentation(
@@ -37,8 +36,7 @@ export async function proxyApiRequest({
 export async function proxyFileUpload(
   path: string,
   formData: FormData,
-  baseUrl = process.env.NEXT_PUBLIC_AGPT_SERVER_URL ||
-    "http://localhost:8006/api",
+  baseUrl = getAgptServerApiUrl(),
 ): Promise<string> {
   return await Sentry.withServerActionInstrumentation(
     "proxyFileUpload",

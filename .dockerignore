@@ -15,6 +15,7 @@
 !autogpt_platform/backend/pyproject.toml
 !autogpt_platform/backend/poetry.lock
 !autogpt_platform/backend/README.md
+!autogpt_platform/backend/.env
 
 # Platform - Market
 !autogpt_platform/market/market/
@@ -34,6 +35,7 @@
 ## config
 !autogpt_platform/frontend/*.config.*
 !autogpt_platform/frontend/.env.*
+!autogpt_platform/frontend/.env
 
 # Classic - AutoGPT
 !classic/original_autogpt/autogpt/
