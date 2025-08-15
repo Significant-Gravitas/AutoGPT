@@ -97,11 +97,11 @@ class BaseAppService(AppProcess, ABC):
     @classmethod
     def get_host(cls) -> str:
         source_host = os.environ.get(f"{get_service_name().upper()}_HOST", api_host)
-        target_host = os.environ.get(f"{cls.service_name.upper()}_HOST", api_host)
+        target_host = os.environ.get(f"{cls.__name__.upper()}_HOST", api_host)
 
         if source_host == target_host and source_host != api_host:
             logger.warning(
-                f"Service {cls.service_name} is the same host as the source service."
+                f"Service {cls.__name__} is the same host as the source service."
                 f"Use the localhost of {api_host} instead."
             )
             return api_host

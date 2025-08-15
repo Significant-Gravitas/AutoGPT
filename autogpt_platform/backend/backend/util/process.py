@@ -48,10 +48,9 @@ class AppProcess(ABC):
         """
         pass
 
-    @classmethod
     @property
-    def service_name(cls) -> str:
-        return cls.__name__
+    def service_name(self) -> str:
+        return self.__class__.__name__
 
     @abstractmethod
     def cleanup(self):
