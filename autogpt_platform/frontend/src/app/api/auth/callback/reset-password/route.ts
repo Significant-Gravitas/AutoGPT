@@ -1,6 +1,7 @@
 import { exchangePasswordResetCode } from "@/lib/supabase/helpers";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { NextRequest, NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.redirect(`${origin}/reset-password`);
   } catch (error) {
-    console.error("Password reset callback error:", error);
+    Sentry.captureException(error);
     return NextResponse.redirect(
       `${origin}/reset-password?error=Password reset failed`,
     );

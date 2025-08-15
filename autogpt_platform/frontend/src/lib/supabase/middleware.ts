@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getCookieSettings, isAdminPage, isProtectedPage } from "./helpers";
 import { getSupabaseUrl, getSupabaseAnonKey } from "../env-config";
+import * as Sentry from "@sentry/nextjs";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -81,7 +82,7 @@ export async function updateSession(request: NextRequest) {
     // If this is not done, you may be causing the browser and server to go out
     // of sync and terminate the user's session prematurely!
   } catch (error) {
-    console.error("Failed to run Supabase middleware", error);
+    Sentry.captureException(error);
   }
 
   return supabaseResponse;

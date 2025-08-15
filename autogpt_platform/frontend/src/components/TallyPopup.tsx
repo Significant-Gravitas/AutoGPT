@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { QuestionMarkCircledIcon } from "@radix-ui/react-icons";
 import { useRouter, usePathname } from "next/navigation";
+import * as Sentry from "@sentry/nextjs";
 
 const TallyPopupSimple = () => {
   const [isFormVisible, setIsFormVisible] = useState(false);
@@ -34,7 +35,7 @@ const TallyPopupSimple = () => {
             setIsFormVisible(false);
           }
         } catch (error) {
-          console.error("Error parsing Tally message:", error);
+          Sentry.captureException(error);
         }
       }
     };

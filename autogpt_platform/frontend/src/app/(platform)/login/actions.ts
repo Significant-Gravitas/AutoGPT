@@ -80,7 +80,6 @@ export async function providerLogin(provider: LoginProvider) {
           return "not_allowed";
         }
 
-        console.error("Error logging in", error);
         return error.message;
       }
 

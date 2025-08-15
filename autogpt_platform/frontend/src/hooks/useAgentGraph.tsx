@@ -105,11 +105,13 @@ export default function useAgentGraph(
             api
               .subscribeToGraphExecution(flowExecutionID)
               .then(() =>
+                // eslint-disable-next-line no-console
                 console.debug(
                   `Subscribed to updates for execution #${flowExecutionID}`,
                 ),
               )
               .catch((error) =>
+                // eslint-disable-next-line no-console
                 console.error(
                   `Failed to subscribe to updates for execution #${flowExecutionID}:`,
                   error,
@@ -335,9 +337,6 @@ export default function useAgentGraph(
   const addExecutionDataToNode = useCallback(
     (node: CustomNode, executionData: NodeExecutionResult) => {
       if (!executionData.output_data) {
-        console.warn(
-          `Execution data for node ${executionData.node_id} is empty, skipping update`,
-        );
         return node;
       }
 
@@ -392,11 +391,6 @@ export default function useAgentGraph(
           (node) => node.data.backend_id === executionData.node_id,
         )?.id;
         if (!nodeId) {
-          console.error(
-            "Node not found for execution data:",
-            executionData,
-            "This shouldn't happen and means that the frontend and backend are out of sync.",
-          );
           return nodes;
         }
         return nodes.map((node) =>
@@ -415,10 +409,7 @@ export default function useAgentGraph(
     if (savedAgent?.id === flowID && savedAgent.version === flowVersion) return;
 
     api.getGraph(flowID, flowVersion).then((graph) => {
-      console.debug("Fetching graph", flowID, "version", flowVersion);
       if (graph.version === savedAgent?.version) return; // in case flowVersion is not set
-
-      console.debug("Loading graph", graph.id, "version", graph.version);
       _loadGraph(graph);
     });
   }, [flowID, flowVersion, availableBlocks, api]);
@@ -556,7 +547,6 @@ export default function useAgentGraph(
       )?.inputSchema;
 
       if (!blockSchema) {
-        console.error(`Schema not found for block ID: ${node.data.block_id}`);
         return {};
       }
 
@@ -623,23 +613,14 @@ export default function useAgentGraph(
     // Differences in IDs are ignored.
     let newSavedAgent: Graph;
     if (savedAgent && graphsEquivalent(savedAgent, payload)) {
-      console.warn("No need to save: Graph is the same as version on server");
       newSavedAgent = savedAgent;
     } else {
-      console.debug(
-        "Saving new Graph version; old vs new:",
-        savedAgent,
-        payload,
-      );
-
       newSavedAgent = savedAgent
         ? await api.updateGraph(savedAgent.id, {
             ...payload,
             id: savedAgent.id,
           })
         : await api.createGraph(payload);
-
-      console.debug("Response from the API:", newSavedAgent);
     }
 
     // Update the URL
@@ -715,7 +696,6 @@ export default function useAgentGraph(
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      console.error("Error saving agent", error);
       toast({
         variant: "destructive",
         title: "Error saving agent",
@@ -890,8 +870,7 @@ export default function useAgentGraph(
         if (searchParams.get("open_scheduling") === "true") {
           router.push("/monitoring");
         }
-      } catch (error) {
-        console.error(error);
+      } catch {
         toast({
           variant: "destructive",
           title: "Error scheduling agent",

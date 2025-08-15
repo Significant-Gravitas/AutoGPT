@@ -9,6 +9,7 @@ import { SearchFilterChips } from "@/components/agptui/SearchFilterChips";
 import { SortDropdown } from "@/components/agptui/SortDropdown";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { Creator, StoreAgent } from "@/lib/autogpt-server-api";
+import * as Sentry from "@sentry/nextjs";
 
 type MarketplaceSearchPageSearchParams = { searchTerm?: string; sort?: string };
 
@@ -57,7 +58,7 @@ function SearchResults({
         setAgents(agentsRes.agents || []);
         setCreators(creatorsRes.creators || []);
       } catch (error) {
-        console.error("Error fetching data:", error);
+        Sentry.captureException(error);
       } finally {
         setIsLoading(false);
       }

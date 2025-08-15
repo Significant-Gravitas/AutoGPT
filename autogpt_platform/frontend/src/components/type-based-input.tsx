@@ -439,7 +439,6 @@ const FileInput: FC<FileInputProps> = ({ value, onChange, className }) => {
       // Set the file URI as the value
       onChange(result.file_uri);
     } catch (error) {
-      console.error("Upload failed:", error);
       setUploadError(error instanceof Error ? error.message : "Upload failed");
     } finally {
       setIsUploading(false);

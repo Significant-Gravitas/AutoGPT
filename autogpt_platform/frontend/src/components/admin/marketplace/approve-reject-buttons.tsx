@@ -19,6 +19,7 @@ import {
   approveAgent,
   rejectAgent,
 } from "@/app/(platform)/admin/marketplace/actions";
+import * as Sentry from "@sentry/nextjs";
 
 export function ApproveRejectButtons({
   version,
@@ -35,7 +36,7 @@ export function ApproveRejectButtons({
       await approveAgent(formData);
       router.refresh(); // Refresh the current route
     } catch (error) {
-      console.error("Error approving agent:", error);
+      Sentry.captureException(error);
     }
   };
 
@@ -45,7 +46,7 @@ export function ApproveRejectButtons({
       await rejectAgent(formData);
       router.refresh(); // Refresh the current route
     } catch (error) {
-      console.error("Error rejecting agent:", error);
+      Sentry.captureException(error);
     }
   };
 

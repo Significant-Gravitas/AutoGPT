@@ -22,7 +22,6 @@ export async function getServerUser() {
     const role = user.role || null;
     return { user, role, error: null };
   } catch (error) {
-    console.error("Unexpected error in getServerUser:", error);
     return {
       user: null,
       role: null,

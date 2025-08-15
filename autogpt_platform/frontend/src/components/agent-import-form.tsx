@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
 import { useForm } from "react-hook-form";
@@ -120,7 +121,7 @@ export const AgentImportForm: React.FC<
                           form.setValue("agentName", graph.name);
                           form.setValue("agentDescription", graph.description);
                         } catch (error) {
-                          console.error("Error loading agent file:", error);
+                          Sentry.captureException(error);
                         }
                       };
                       // Load file

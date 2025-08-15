@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { ProfileDetails } from "@/lib/autogpt-server-api/types";
 import { Button } from "./Button";
+import * as Sentry from "@sentry/nextjs";
 
 export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -32,7 +33,7 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
         setProfileData(returnedProfile);
       }
     } catch (error) {
-      console.error("Error updating profile:", error);
+      Sentry.captureException(error);
     } finally {
       setIsSubmitting(false);
     }
@@ -50,7 +51,7 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
       const returnedProfile = await api.updateStoreProfile(updatedProfile);
       setProfileData(returnedProfile);
     } catch (error) {
-      console.error("Error uploading image:", error);
+      Sentry.captureException(error);
     }
   }
 

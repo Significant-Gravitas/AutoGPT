@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import React, {
   useState,
   useEffect,
@@ -467,7 +468,6 @@ export const CustomNode = React.memo(
 
     const handleInputClick = useCallback(
       (key: string) => {
-        console.debug(`Opening modal for key: ${key}`);
         setActiveKey(key);
         const value = getValue(key, data.hardcodedValues);
         setInputModalValue(
@@ -506,8 +506,6 @@ export const CustomNode = React.memo(
     };
 
     const deleteNode = useCallback(() => {
-      console.debug("Deleting node:", id);
-
       // Remove the node
       deleteElements({ nodes: [{ id }] });
     }, [id, deleteElements]);
@@ -517,7 +515,9 @@ export const CustomNode = React.memo(
       const currentNode = getNode(id);
 
       if (!currentNode) {
-        console.error("Cannot copy node: current node not found");
+        Sentry.captureException(
+          new Error("Cannot copy node: current node not found"),
+        );
         return;
       }
 
@@ -564,19 +564,19 @@ export const CustomNode = React.memo(
             hasNonNullNonObjectValue(value),
           ),
         );
-        console.error(
-          "Block configuration errors for",
-          data.title,
-          ":",
-          filteredErrors,
+        Sentry.captureException(
+          new Error(
+            `Block configuration errors for ${data.title}: ${JSON.stringify(
+              filteredErrors,
+            )}`,
+          ),
         );
       }
       if (hasOutputError) {
-        console.error(
-          "Block output contains error for",
-          data.title,
-          ":",
-          outputData.error,
+        Sentry.captureException(
+          new Error(
+            `Block output contains error for ${data.title}: ${outputData.error}`,
+          ),
         );
       }
     }, [hasConfigErrors, hasOutputError, data.errors, outputData, data.title]);

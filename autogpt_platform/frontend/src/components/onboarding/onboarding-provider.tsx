@@ -13,6 +13,7 @@ import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import * as Sentry from "@sentry/nextjs";
 import {
   createContext,
   ReactNode,
@@ -104,7 +105,7 @@ export default function OnboardingProvider({
           }
         }
       } catch (error) {
-        console.error("Failed to fetch onboarding data:", error);
+        Sentry.captureException(error);
         // Don't update state on error to prevent null access issues
       }
     };
@@ -140,7 +141,7 @@ export default function OnboardingProvider({
       // Make the API call asynchronously to not block render
       setTimeout(() => {
         api.updateUserOnboarding(newState).catch((error) => {
-          console.error("Failed to update user onboarding:", error);
+          Sentry.captureException(error);
         });
       }, 0);
     },

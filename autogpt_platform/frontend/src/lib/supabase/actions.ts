@@ -48,8 +48,7 @@ export async function validateSession(
           user,
           isValid: true,
         };
-      } catch (error) {
-        console.error("Session validation error:", error);
+      } catch {
         const redirectPath = getRedirectPath(currentPath);
         return {
           user: null,
@@ -93,7 +92,6 @@ export async function getCurrentUser(): Promise<{
 
         return { user };
       } catch (error) {
-        console.error("Get current user error:", error);
         return {
           user: null,
           error: error instanceof Error ? error.message : "Unknown error",
@@ -135,7 +133,6 @@ export async function getWebSocketToken(): Promise<{
 
         return { token: session?.access_token || null };
       } catch (error) {
-        console.error("Get WebSocket token error:", error);
         return {
           token: null,
           error: error instanceof Error ? error.message : "Unknown error",
@@ -158,7 +155,6 @@ export async function serverLogout(options: ServerLogoutOptions = {}) {
 
       if (!supabase) {
         redirect("/login");
-        return;
       }
 
       try {
@@ -169,10 +165,10 @@ export async function serverLogout(options: ServerLogoutOptions = {}) {
         revalidatePath("/");
 
         if (error) {
-          console.error("Error logging out:", error);
+          Sentry.captureException(error);
         }
       } catch (error) {
-        console.error("Logout error:", error);
+        Sentry.captureException(error);
       }
 
       // Clear all cached data and redirect
@@ -214,7 +210,6 @@ export async function refreshSession() {
 
         return { user };
       } catch (error) {
-        console.error("Refresh session error:", error);
         return {
           user: null,
           error: error instanceof Error ? error.message : "Unknown error",

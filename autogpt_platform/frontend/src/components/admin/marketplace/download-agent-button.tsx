@@ -4,6 +4,7 @@ import { downloadAsAdmin } from "@/app/(platform)/admin/marketplace/actions";
 import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";
 import { useState } from "react";
+import * as Sentry from "@sentry/nextjs";
 
 export function DownloadAgentAdminButton({
   storeListingVersionId,
@@ -38,7 +39,7 @@ export function DownloadAgentAdminButton({
       // Revoke the temporary URL
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      console.error("Download failed:", error);
+      Sentry.captureException(error);
     } finally {
       setIsLoading(false);
     }

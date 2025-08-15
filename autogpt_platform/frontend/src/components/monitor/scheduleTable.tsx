@@ -116,14 +116,11 @@ export const SchedulesTable = ({
     }
     setIsLoading(true);
     const agent = agents.find((a) => a.id == selectedAgent)!;
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      router.push(
-        `/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}&open_scheduling=true`,
-      );
-    } catch (error) {
-      console.error("Navigation error:", error);
-    }
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    router.push(
+      `/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}&open_scheduling=true`,
+    );
   };
 
   return (

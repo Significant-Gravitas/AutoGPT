@@ -112,8 +112,7 @@ export default function OttoChatWidget({
           { type: "assistant", content: data.answer },
         ]);
       }
-    } catch (error) {
-      console.error("Unexpected error in chat widget:", error);
+    } catch {
       setMessages((prev) => [
         ...prev.slice(0, -1),
         {

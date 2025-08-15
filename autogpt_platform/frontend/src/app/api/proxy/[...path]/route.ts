@@ -5,6 +5,7 @@ import {
 } from "@/lib/autogpt-server-api/helpers";
 import { getAgptServerBaseUrl } from "@/lib/env-config";
 import { NextRequest, NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 
 function buildBackendUrl(path: string[], queryString: string): string {
   const backendPath = path.join("/");
@@ -22,7 +23,7 @@ async function handleJsonRequest(
     payload = await req.json();
   } catch (error) {
     // Handle cases where request body is empty, invalid JSON, or already consumed
-    console.warn("Failed to parse JSON from request body:", error);
+    Sentry.captureException(error);
     payload = null;
   }
 
@@ -99,7 +100,7 @@ function createResponse(
 }
 
 function createErrorResponse(error: unknown): NextResponse {
-  console.error("API proxy error:", error);
+  Sentry.captureException(error);
 
   // If it's our custom ApiError, preserve the original status and response
   if (error instanceof ApiError) {

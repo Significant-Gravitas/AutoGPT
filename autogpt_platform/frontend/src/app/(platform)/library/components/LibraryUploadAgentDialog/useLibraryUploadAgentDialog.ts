@@ -8,6 +8,7 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useState } from "react";
 import { Graph } from "@/app/api/__generated__/models/graph";
 import { sanitizeImportedGraph } from "@/lib/autogpt-server-api";
+import * as Sentry from "@sentry/nextjs";
 
 export const useLibraryUploadAgentDialog = () => {
   const [isDroped, setisDroped] = useState(false);
@@ -95,7 +96,7 @@ export const useLibraryUploadAgentDialog = () => {
           form.setValue("agentDescription", agent.description);
         }
       } catch (error) {
-        console.error("Error loading agent file:", error);
+        Sentry.captureException(error);
       }
     };
     reader.readAsText(file);

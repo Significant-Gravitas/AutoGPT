@@ -1,4 +1,5 @@
 "use client";
+import * as Sentry from "@sentry/nextjs";
 import React, {
   createContext,
   useState,
@@ -135,10 +136,7 @@ const FlowEditor: React.FC<{
       .getLibraryAgentByGraphID(flowID, flowVersion)
       .then((libraryAgent) => setLibraryAgent(libraryAgent))
       .catch((error) => {
-        console.warn(
-          `Failed to fetch LibraryAgent for graph #${flowID} v${flowVersion}`,
-          error,
-        );
+        Sentry.captureException(error);
       });
   }, [api, flowID, flowVersion]);
 
@@ -318,7 +316,6 @@ const FlowEditor: React.FC<{
       );
 
       if (existingConnection) {
-        console.warn("This exact connection already exists.");
         return;
       }
 
@@ -419,6 +416,7 @@ const FlowEditor: React.FC<{
 
       if (replaceEdges.length > 0) {
         // Reset node connections for all edges
+        // eslint-disable-next-line no-console
         console.warn(
           "useReactFlow().setRootEdges was used to overwrite all edges. " +
             "Use addEdges, deleteElements, or reconnectEdge for incremental changes.",
@@ -485,7 +483,6 @@ const FlowEditor: React.FC<{
     (blockId: string, nodeType: string, hardcodedValues: any = {}) => {
       const nodeSchema = availableBlocks.find((node) => node.id === blockId);
       if (!nodeSchema) {
-        console.error(`Schema not found for block ID: ${blockId}`);
         return;
       }
 
