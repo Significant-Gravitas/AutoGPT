@@ -29,6 +29,7 @@ function SpendingDashboard({
         </div>
 
         <Suspense
+          key={`${page}-${status}-${search}`}
           fallback={
             <div className="py-10 text-center">Loading submissions...</div>
           }

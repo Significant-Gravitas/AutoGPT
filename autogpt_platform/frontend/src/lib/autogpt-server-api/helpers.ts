@@ -228,7 +228,13 @@ export async function makeAuthenticatedRequest(
   const payloadAsQuery = ["GET", "DELETE"].includes(method);
   const hasRequestBody = !payloadAsQuery && payload !== undefined;
 
-  const response = await fetch(url, {
+  // Add query parameters for GET/DELETE requests
+  let requestUrl = url;
+  if (payloadAsQuery && payload) {
+    requestUrl = buildUrlWithQuery(url, payload);
+  }
+
+  const response = await fetch(requestUrl, {
     method,
     headers: createRequestHeaders(token, hasRequestBody, contentType),
     body: hasRequestBody
