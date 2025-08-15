@@ -22,26 +22,26 @@ export function getHttpErrorMessage(
   const status = httpError.status || 0;
 
   if (status >= 500) {
-    return "Our servers are having a bit of a moment 🤖 Please try again in a few minutes.";
+    return "An internal server error has occurred. Please try again in a few minutes.";
   }
 
   if (status === 404) {
-    return "We couldn't find what you're looking for. It might have wandered off somewhere! 🔍";
+    return "The requested resource could not be found. Please verify the URL and try again.";
   }
 
   if (status === 403) {
-    return "You don't have permission to access this. Maybe you need to sign in again? 🔐";
+    return "Access to this resource is forbidden. Please check your permissions or sign in again.";
   }
 
   if (status === 429) {
-    return "Whoa there, speed racer! You're making requests too quickly. Take a breather and try again. ⏱️";
+    return "Too many requests have been made. Please wait a moment before trying again.";
   }
 
   if (status >= 400) {
-    return "Something's not quite right with your request. Double-check and try again! ✨";
+    return "The request could not be processed. Please review your input and try again.";
   }
 
-  return "Something unexpected happened on our end. We're on it! 🛠️";
+  return "An unexpected error has occurred. Our team has been notified and is working to resolve the issue.";
 }
 
 export function shouldShowError(
@@ -86,7 +86,6 @@ export function handleReportError(
         `ErrorCard: ${context ? `${context} ` : ""}${errorMessage}`,
       );
 
-      // Add extra context to Sentry
       Sentry.withScope((scope) => {
         scope.setTag("component", "ErrorCard");
         scope.setTag("errorType", httpError ? "http" : "response");
@@ -100,11 +99,10 @@ export function handleReportError(
           scope.setTag("httpStatus", httpError.status.toString());
         }
 
-        // Capture the exception
         Sentry.captureException(error);
       });
 
-      // Show success toast notification
+      // Show success toast notification after pressing the report error button
       import("sonner").then(({ toast }) => {
         toast.success("Error reported successfully", {
           description:

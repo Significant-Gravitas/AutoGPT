@@ -30,13 +30,12 @@ export function ErrorCard({
   onRetry,
   className = "",
 }: ErrorCardProps) {
-  // Don't show anything if successful and no errors
   if (isSuccess && !responseError && !httpError) {
     return null;
   }
 
-  // Determine if this is an HTTP error or response error
   const isHttp = isHttpError(httpError);
+
   const errorMessage = isHttp
     ? getHttpErrorMessage(httpError)
     : getErrorMessage(responseError);
