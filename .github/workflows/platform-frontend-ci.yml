@@ -154,12 +154,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Setup .env
-        run: cp .env.example .env
-
-      - name: Generate API queries
-        run: pnpm generate:api-all
-
       - name: Run Typescript checks
         run: pnpm type-check
 
