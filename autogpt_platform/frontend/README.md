@@ -18,39 +18,55 @@ Make sure you have Node.js 16.10+ installed. Corepack is included with Node.js b
 >
 > Then follow the setup steps below.
 
-### Setup
+## Setup
 
-1. **Enable corepack** (run this once on your system):
+### 1. **Enable corepack** (run this once on your system):
 
-   ```bash
-   corepack enable
-   ```
+```bash
+corepack enable
+```
 
-   This enables corepack to automatically manage pnpm based on the `packageManager` field in `package.json`.
+This enables corepack to automatically manage pnpm based on the `packageManager` field in `package.json`.
 
-2. **Install dependencies**:
+### 2. **Install dependencies**:
 
-   ```bash
-   pnpm i
-   ```
+```bash
+pnpm i
+```
 
-3. **Start the development server**:
-   ```bash
-   pnpm dev
-   ```
-   > Note that you will need to have the Back-end running for the Front-end to successfully get data.
-   > For so, run the following command in the `autogpt_platform` folder:
-   >
-   > ```bash
-   > docker compose --profile local up deps_backend -d
-   > ```
-   >
-   > This will run only the Back-end in docker. If you run `docker compose up -d` it will run the Front-end
-   > in Docker too, which might not be what you want given you won't have easy access to the dev server.
+### 3. **Start the development server**:
+
+#### Running the Front-end & Back-end separately
+
+We recommend this approach if you are doing active development on the project. First spin up the Back-end:
+
+```bash
+# On `autogpt_platform`
+docker compose --profile local up deps_backend -d
+```
+
+Then start the Front-end:
+
+```bash
+# on `autogpt_platform/frontend`
+pnpm dev
+```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+
+#### Running both the Front-end and Back-end via Docker
+
+If you run:
+
+```bash
+# on `autogpt_platform`
+docker compose up -d
+```
+
+It will spin up the Back-end and Front-end via Docker. The Front-end will start on port `3000`. This might not be
+what you want when actively contributing to the Front-end as you won't have direct/easy access to the Next.js dev server.
 
 ### Subsequent Runs
 
