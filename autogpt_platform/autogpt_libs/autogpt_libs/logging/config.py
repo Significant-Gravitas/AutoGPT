@@ -1,6 +1,8 @@
 """Logging module for Auto-GPT."""
 
 import logging
+import os
+import socket
 import sys
 from pathlib import Path
 
@@ -9,6 +11,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .filters import BelowLevelFilter
 from .formatters import AGPTFormatter
+
+# Configure global socket timeout and gRPC keepalive to prevent deadlocks
+# This must be done at import time before any gRPC connections are established
+socket.setdefaulttimeout(30)  # 30-second socket timeout
+
+# Enable gRPC keepalive to detect dead connections faster
+os.environ.setdefault("GRPC_KEEPALIVE_TIME_MS", "30000")  # 30 seconds
+os.environ.setdefault("GRPC_KEEPALIVE_TIMEOUT_MS", "5000")  # 5 seconds
+os.environ.setdefault("GRPC_KEEPALIVE_PERMIT_WITHOUT_CALLS", "true")
 
 LOG_DIR = Path(__file__).parent.parent.parent.parent / "logs"
 LOG_FILE = "activity.log"
@@ -79,7 +90,6 @@ def configure_logging(force_cloud_logging: bool = False) -> None:
     Note: This function is typically called at the start of the application
     to set up the logging infrastructure.
     """
-
     config = LoggingConfig()
     log_handlers: list[logging.Handler] = []
 
@@ -105,13 +115,17 @@ def configure_logging(force_cloud_logging: bool = False) -> None:
     if config.enable_cloud_logging or force_cloud_logging:
         import google.cloud.logging
         from google.cloud.logging.handlers import CloudLoggingHandler
-        from google.cloud.logging_v2.handlers.transports.sync import SyncTransport
+        from google.cloud.logging_v2.handlers.transports import (
+            BackgroundThreadTransport,
+        )
 
         client = google.cloud.logging.Client()
+        # Use BackgroundThreadTransport to prevent blocking the main thread
+        # and deadlocks when gRPC calls to Google Cloud Logging hang
         cloud_handler = CloudLoggingHandler(
             client,
             name="autogpt_logs",
-            transport=SyncTransport,
+            transport=BackgroundThreadTransport,
         )
         cloud_handler.setLevel(config.level)
         log_handlers.append(cloud_handler)
