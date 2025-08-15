@@ -41,8 +41,10 @@ pnpm i
 We recommend this approach if you are doing active development on the project. First spin up the Back-end:
 
 ```bash
-# On `autogpt_platform`
+# on `autogpt_platform`
 docker compose --profile local up deps_backend -d
+# on `autogpt_platform/backend`
+poetry run app
 ```
 
 Then start the Front-end:
@@ -52,7 +54,7 @@ Then start the Front-end:
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result. If the server starts on `http://localhost:3001` it means the Front-end is already running via Docker. You have to kill the container then.
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result. If the server starts on `http://localhost:3001` it means the Front-end is already running via Docker. You have to kill the container then or do `docker compose down`.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
