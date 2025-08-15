@@ -180,6 +180,11 @@ ex: do the inputs and outputs tie well together?
 - Fill out the .github/PULL_REQUEST_TEMPLATE.md template as the PR description/
 - Run the github pre-commit hooks to ensure code quality.
 
+### Reviewing/Revising Pull Requests
+- When the user runs /pr-comments or tries to fetch them, also run gh api /repos/Significant-Gravitas/AutoGPT/pulls/[issuenum]/reviews to get the reviews
+- Use gh api /repos/Significant-Gravitas/AutoGPT/pulls/[issuenum]/reviews/[review_id]/comments to get the review contents
+- Use gh api /repos/Significant-Gravitas/AutoGPT/issues/9924/comments to get the pr specific comments
+
 ### Conventional Commits
 
 Use this format for commit messages and Pull Request titles:
