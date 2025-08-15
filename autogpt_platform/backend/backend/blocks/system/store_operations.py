@@ -10,14 +10,14 @@ from backend.util.clients import get_database_manager_async_client
 logger = logging.getLogger(__name__)
 
 
-# Pydantic models for store data
+# Duplicate pydantic models for store data so we don't accidently change the data shape in the blocks unintentionally when editing the backend
 class StoreAgent(BaseModel):
     """Model representing a store agent."""
 
-    slug: str
-    name: str
-    description: str
-    creator: str
+    slug: str = ""
+    name: str = ""
+    description: str = ""
+    creator: str = ""
     rating: float = 0.0
     runs: int = 0
     categories: list[str] = []

@@ -10,13 +10,14 @@ from backend.util.clients import get_database_manager_async_client
 logger = logging.getLogger(__name__)
 
 
+# Duplicate pydantic models for store data so we don't accidently change the data shape in the blocks unintentionally when editing the backend
 class LibraryAgent(BaseModel):
     """Model representing an agent in the user's library."""
 
-    library_agent_id: str
-    agent_id: str
-    agent_version: int
-    agent_name: str
+    library_agent_id: str = ""
+    agent_id: str = ""
+    agent_version: int = 0
+    agent_name: str = ""
     description: str = ""
     creator: str = ""
     is_archived: bool = False
