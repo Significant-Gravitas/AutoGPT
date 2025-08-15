@@ -1,5 +1,5 @@
 import BackendAPI from "@/lib/autogpt-server-api";
-import { BreadCrumbs } from "@/components/agptui/BreadCrumbs";
+import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { AgentInfo } from "@/components/agptui/AgentInfo";
 import { AgentImages } from "@/components/agptui/AgentImages";
 import { AgentsSection } from "@/components/agptui/composite/AgentsSection";
@@ -73,7 +73,7 @@ export default async function MarketplaceAgentPage({
   return (
     <div className="mx-auto w-screen max-w-[1360px]">
       <main className="mt-5 px-4">
-        <BreadCrumbs items={breadcrumbs} />
+        <Breadcrumbs items={breadcrumbs} />
 
         <div className="mt-4 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 md:mt-8 md:flex-row md:gap-8">
           <div className="w-full md:w-auto md:shrink-0">

@@ -36,7 +36,7 @@ import {
 } from "@/components/agents/agent-run-status-chip";
 import useCredits from "@/hooks/useCredits";
 
-export default function AgentRunDetailsView({
+export function AgentRunDetailsView({
   agent,
   graph,
   run,
