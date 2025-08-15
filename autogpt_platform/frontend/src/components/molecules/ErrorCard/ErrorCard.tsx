@@ -4,7 +4,6 @@ import { CardWrapper } from "./components/CardWrapper";
 import { ErrorHeader } from "./components/ErrorHeader";
 import { ErrorMessage } from "./components/ErrorMessage";
 import { ActionButtons } from "./components/ActionButtons";
-import { LoadingState } from "./components/LoadingState";
 
 export interface ErrorCardProps {
   isSuccess?: boolean;
@@ -28,19 +27,9 @@ export function ErrorCard({
   responseError,
   httpError,
   context = "data",
-  loadingSlot,
   onRetry,
   className = "",
 }: ErrorCardProps) {
-  // Show loading state if provided or if not successful and no errors yet
-  if (loadingSlot || (!isSuccess && !responseError && !httpError)) {
-    return (
-      <CardWrapper className={className}>
-        <LoadingState loadingSlot={loadingSlot} />
-      </CardWrapper>
-    );
-  }
-
   // Don't show anything if successful and no errors
   if (isSuccess && !responseError && !httpError) {
     return null;

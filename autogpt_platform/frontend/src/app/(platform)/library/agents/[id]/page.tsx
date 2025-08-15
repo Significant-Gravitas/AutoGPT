@@ -6,8 +6,11 @@ import { OldAgentLibraryView } from "./components/OldAgentLibraryView/OldAgentLi
 import { AgentRunsView } from "./components/AgentRunsView/AgentRunsView";
 
 export default function AgentLibraryPage() {
-  // const isNewAgentRunsEnabled = useGetFlag(Flag.NEW_AGENT_RUNS);
+  const isNewAgentRunsEnabled = useGetFlag(Flag.NEW_AGENT_RUNS);
 
-  return <AgentRunsView />;
-  // return <OldAgentLibraryView />;
+  if (isNewAgentRunsEnabled) {
+    return <AgentRunsView />;
+  }
+
+  return <OldAgentLibraryView />;
 }

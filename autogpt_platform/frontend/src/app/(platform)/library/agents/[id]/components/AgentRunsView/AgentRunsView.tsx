@@ -4,13 +4,15 @@ import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useAgentRunsView } from "./useAgentRunsView";
 import { AgentRunsLoading } from "./components/AgentRunsLoading";
+import { Button } from "@/components/atoms/Button/Button";
+import { Plus } from "@phosphor-icons/react";
 
 export function AgentRunsView() {
   const { response, ready, error, agentId } = useAgentRunsView();
 
   // Handle loading state
   if (!ready) {
-    return <ErrorCard loadingSlot={<AgentRunsLoading />} />;
+    return <AgentRunsLoading />;
   }
 
   // Handle errors - check for query error first, then response errors
@@ -48,13 +50,25 @@ export function AgentRunsView() {
   const agent = response.data;
 
   return (
-    <div className="flex flex-col gap-4">
-      <Breadcrumbs
-        items={[
-          { name: "My Library", link: "/library" },
-          { name: agent.name, link: `/library/agents/${agentId}` },
-        ]}
-      />
+    <div className="grid h-screen grid-cols-[25%_85%] gap-4 pt-8">
+      {/* Left Sidebar - 30% */}
+      <div className="bg-gray-50 p-4">
+        <Button variant="primary" size="large" className="w-full">
+          <Plus size={20} /> New Run
+        </Button>
+      </div>
+
+      {/* Main Content - 70% */}
+      <div className="p-4">
+        <Breadcrumbs
+          items={[
+            { name: "My Library", link: "/library" },
+            { name: agent.name, link: `/library/agents/${agentId}` },
+          ]}
+        />
+        {/* Main content will go here */}
+        <div className="mt-4 text-gray-600">Main content area</div>
+      </div>
     </div>
   );
 }
