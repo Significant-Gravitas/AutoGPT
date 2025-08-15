@@ -22,7 +22,7 @@ const statusConfig: Record<
     darkBgColor: "dark:bg-blue-900",
     darkDotColor: "dark:bg-blue-300",
   },
-  [SubmissionStatus.PENDING] : {
+  [SubmissionStatus.PENDING]: {
     bgColor: "bg-amber-50",
     dotColor: "bg-amber-500",
     text: "Awaiting review",

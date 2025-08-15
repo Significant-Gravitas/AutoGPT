@@ -6,7 +6,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { getGetV2ListMySubmissionsQueryKey, putV2EditStoreSubmission } from "@/app/api/__generated__/endpoints/store/store";
+import {
+  getGetV2ListMySubmissionsQueryKey,
+  putV2EditStoreSubmission,
+} from "@/app/api/__generated__/endpoints/store/store";
 import * as Sentry from "@sentry/nextjs";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
@@ -58,8 +61,14 @@ interface EditAgentFormProps {
   onSuccess: (submission: StoreSubmission) => void;
 }
 
-export function EditAgentForm({ submission, onClose, onSuccess }: EditAgentFormProps) {
-  const [images, setImages] = React.useState<string[]>(submission.image_urls || []);
+export function EditAgentForm({
+  submission,
+  onClose,
+  onSuccess,
+}: EditAgentFormProps) {
+  const [images, setImages] = React.useState<string[]>(
+    submission.image_urls || [],
+  );
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   const queryClient = useQueryClient();
@@ -121,7 +130,7 @@ export function EditAgentForm({ submission, onClose, onSuccess }: EditAgentFormP
           agent_id: submission.agent_id,
           categories: filteredCategories,
           changes_summary: "Updated submission",
-        }
+        },
       );
 
       await queryClient.invalidateQueries({
@@ -138,7 +147,8 @@ export function EditAgentForm({ submission, onClose, onSuccess }: EditAgentFormP
       Sentry.captureException(error);
       toast({
         title: "Edit Agent Error",
-        description: "An error occurred while editing the agent. Please try again.",
+        description:
+          "An error occurred while editing the agent. Please try again.",
         duration: 3000,
         variant: "destructive",
       });
@@ -155,7 +165,10 @@ export function EditAgentForm({ submission, onClose, onSuccess }: EditAgentFormP
       </div>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(handleFormSubmit)} className="flex-grow overflow-y-auto p-6">
+        <form
+          onSubmit={form.handleSubmit(handleFormSubmit)}
+          className="flex-grow overflow-y-auto p-6"
+        >
           <FormField
             control={form.control}
             name="title"
@@ -267,4 +280,4 @@ export function EditAgentForm({ submission, onClose, onSuccess }: EditAgentFormP
       </Form>
     </div>
   );
-} 
+}

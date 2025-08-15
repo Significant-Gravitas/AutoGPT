@@ -99,7 +99,8 @@ export const MainDashboardPage = () => {
               video_url: submission.video_url || undefined,
               categories: submission.categories,
               slug: submission.slug,
-              store_listing_version_id: submission.store_listing_version_id || undefined,
+              store_listing_version_id:
+                submission.store_listing_version_id || undefined,
             }))}
             onViewSubmission={onViewSubmission}
             onDeleteSubmission={onDeleteSubmission}

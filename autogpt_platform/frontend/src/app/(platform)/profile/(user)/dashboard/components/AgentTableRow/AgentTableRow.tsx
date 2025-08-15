@@ -81,7 +81,8 @@ export const AgentTableRow = ({
   });
 
   // Determine if we should show Edit or View button
-  const canEdit = status === SubmissionStatus.APPROVED || status === SubmissionStatus.PENDING;
+  const canEdit =
+    status === SubmissionStatus.APPROVED || status === SubmissionStatus.PENDING;
 
   return (
     <div

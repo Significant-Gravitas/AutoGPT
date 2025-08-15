@@ -108,7 +108,7 @@ export const useMainDashboardPage = () => {
           changes_summary: submission.changes_summary,
         },
       });
-      
+
       setEditState({
         isOpen: false,
         submission: null,

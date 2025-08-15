@@ -42,4 +42,4 @@ export function EditAgentModal({
       </Dialog.Content>
     </Dialog>
   );
-} 
+}

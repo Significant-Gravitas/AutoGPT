@@ -4,7 +4,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { getGetV2ListMySubmissionsQueryKey, putV2EditStoreSubmission } from "@/app/api/__generated__/endpoints/store/store";
+import {
+  getGetV2ListMySubmissionsQueryKey,
+  putV2EditStoreSubmission,
+} from "@/app/api/__generated__/endpoints/store/store";
 import * as Sentry from "@sentry/nextjs";
 import {
   PublishAgentFormData,
@@ -63,7 +66,7 @@ export function useAgentInfoStep({
 
       // Only reset form if the values are actually different
       const currentValues = form.getValues();
-      const hasChanges = 
+      const hasChanges =
         currentValues.title !== initialData.title ||
         currentValues.subheader !== initialData.subheader ||
         currentValues.slug !== initialData.slug.toLocaleLowerCase().trim() ||
@@ -105,23 +108,20 @@ export function useAgentInfoStep({
 
     try {
       let response;
-      
+
       if (isEditing && store_listing_version_id) {
         // Use edit endpoint for editing mode
-        response = await putV2EditStoreSubmission(
-          store_listing_version_id,
-          {
-            name: data.title,
-            sub_heading: data.subheader,
-            description: data.description,
-            image_urls: images,
-            video_url: data.youtubeLink || "",
-            agent_id: selectedAgentId || "",
-            agent_version: selectedAgentVersion || 0,
-            categories: filteredCategories,
-            changes_summary: "Updated submission",
-          }
-        );
+        response = await putV2EditStoreSubmission(store_listing_version_id, {
+          name: data.title,
+          sub_heading: data.subheader,
+          description: data.description,
+          image_urls: images,
+          video_url: data.youtubeLink || "",
+          agent_id: selectedAgentId || "",
+          agent_version: selectedAgentVersion || 0,
+          categories: filteredCategories,
+          changes_summary: "Updated submission",
+        });
       } else {
         // Use create endpoint for new submissions
         response = await api.createStoreSubmission({
@@ -146,8 +146,7 @@ export function useAgentInfoStep({
       Sentry.captureException(error);
       toast({
         title: isEditing ? "Edit Agent Error" : "Submit Agent Error",
-        description:
-          `An error occurred while ${isEditing ? "editing" : "submitting"} the agent. Please try again.`,
+        description: `An error occurred while ${isEditing ? "editing" : "submitting"} the agent. Please try again.`,
         duration: 3000,
         variant: "destructive",
       });
