@@ -31,7 +31,7 @@ export function LibraryPageStateProvider({
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [librarySort, setLibrarySort] = useState<LibraryAgentSort>(
-    LibraryAgentSort.updatedAt,
+    LibraryAgentSort.lastExecuted,
   );
 
   return (
