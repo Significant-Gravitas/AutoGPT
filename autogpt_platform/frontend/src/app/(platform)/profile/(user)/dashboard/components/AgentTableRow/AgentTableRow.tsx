@@ -81,7 +81,7 @@ export const AgentTableRow = ({
   });
 
   // Determine if we should show Edit or View button
-  const canEdit = status === SubmissionStatus.APPROVED || status === SubmissionStatus.PENDING.valueOf();
+  const canEdit = status === SubmissionStatus.APPROVED || status === SubmissionStatus.PENDING;
 
   return (
     <div
@@ -113,7 +113,7 @@ export const AgentTableRow = ({
               className="line-clamp-1 text-ellipsis text-neutral-800 dark:text-neutral-200"
               size="large-medium"
             >
-              {agentName} - {status}
+              {agentName}
             </Text>
             <Text
               variant="body"

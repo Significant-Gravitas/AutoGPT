@@ -779,8 +779,7 @@ async def edit_store_submission(
             )
 
         # For APPROVED submissions, we need to create a new version
-        if current_version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED:
-            
+        if current_version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED:    
             # Create a new version for the existing listing
             return await create_store_version(
                 user_id=user_id,
@@ -811,6 +810,7 @@ async def edit_store_submission(
                     categories=categories,
                     subHeading=sub_heading,
                     changesSummary=changes_summary,
+                    submissionStatus=prisma.enums.SubmissionStatus.PENDING,
                 )
             )
 
@@ -823,6 +823,7 @@ async def edit_store_submission(
                 agent_version=current_version.agentGraphVersion,
                 name=name,
                 sub_heading=sub_heading,
+                slug=current_version.StoreListing.slug,
                 description=description,
                 image_urls=image_urls,
                 date_submitted=updated_version.submittedAt or updated_version.createdAt,
@@ -831,6 +832,8 @@ async def edit_store_submission(
                 rating=0.0,
                 store_listing_version_id=updated_version.id,
                 changes_summary=changes_summary,
+                video_url=video_url,
+                categories=categories,
                 version=updated_version.version,
             )
 

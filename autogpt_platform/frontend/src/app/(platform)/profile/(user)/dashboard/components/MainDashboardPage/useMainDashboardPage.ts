@@ -103,7 +103,9 @@ export const useMainDashboardPage = () => {
           image_urls: submission.image_urls,
           agent_id: submission.agent_id,
           agent_version: submission.agent_version,
-          changes_summary: "Updated submission",
+          video_url: submission.video_url,
+          categories: submission.categories,
+          changes_summary: submission.changes_summary,
         },
       });
       

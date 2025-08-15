@@ -13,7 +13,7 @@ interface useAgentTableRowProps {
   description: string;
   imageSrc: string[];
   dateSubmitted: string;
-  status: string;
+  status: SubmissionStatus;
   runs: number;
   rating: number;
   video_url?: string;
@@ -51,8 +51,7 @@ export const useAgentTableRow = ({
       description,
       image_urls: imageSrc,
       date_submitted: dateSubmitted,
-      // SafeCast: status is a string from the API...
-      status: status.toUpperCase() as SubmissionStatus,
+      status: status,
       runs,
       rating,
       video_url,
@@ -71,8 +70,7 @@ export const useAgentTableRow = ({
       description,
       image_urls: imageSrc,
       date_submitted: dateSubmitted,
-      // SafeCast: status is a string from the API...
-      status: status.toUpperCase() as SubmissionStatus,
+      status: status,
       runs,
       rating,
       video_url,
