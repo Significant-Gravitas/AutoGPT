@@ -16,6 +16,7 @@ import {
   PencilSimple,
 } from "@phosphor-icons/react/dist/ssr";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
+import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 
 export interface AgentTableRowProps {
   agent_id: string;
@@ -36,7 +37,12 @@ export interface AgentTableRowProps {
   store_listing_version_id?: string;
   onViewSubmission: (submission: StoreSubmission) => void;
   onDeleteSubmission: (submission_id: string) => void;
-  onEditSubmission: (submission: StoreSubmission) => void;
+  onEditSubmission: (
+    submission: StoreSubmissionEditRequest & {
+      store_listing_version_id: string | undefined;
+      agent_id: string;
+    },
+  ) => void;
 }
 
 export const AgentTableRow = ({

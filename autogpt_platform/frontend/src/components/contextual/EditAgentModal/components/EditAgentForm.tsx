@@ -7,7 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import {
   getGetV2ListMySubmissionsQueryKey,
-  putV2EditStoreSubmission,
+  usePutV2EditStoreSubmission,
 } from "@/app/api/__generated__/endpoints/store/store";
 import * as Sentry from "@sentry/nextjs";
 import { Button } from "@/components/atoms/Button/Button";
@@ -17,6 +17,7 @@ import { Form, FormField } from "@/components/ui/form";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { ThumbnailImages } from "../../PublishAgentModal/components/AgentInfoStep/components/ThumbnailImages";
 import { z } from "zod";
+import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 
 const editAgentSchema = z.object({
   title: z
@@ -55,7 +56,10 @@ const editAgentSchema = z.object({
 type EditAgentFormData = z.infer<typeof editAgentSchema>;
 
 interface EditAgentFormProps {
-  submission: StoreSubmission;
+  submission: StoreSubmissionEditRequest & {
+    store_listing_version_id: string | undefined;
+    agent_id: string;
+  };
   onClose: () => void;
   onSuccess: (submission: StoreSubmission) => void;
 }
@@ -69,6 +73,16 @@ export function EditAgentForm({
     submission.image_urls || [],
   );
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+  const { mutateAsync: editSubmission } = usePutV2EditStoreSubmission({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: getGetV2ListMySubmissionsQueryKey(),
+        });
+      },
+    },
+  });
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -113,27 +127,20 @@ export function EditAgentForm({
 
     const categories = data.category ? [data.category] : [];
     const filteredCategories = categories.filter(Boolean);
-
     setIsSubmitting(true);
 
     try {
-      const response = await putV2EditStoreSubmission(
-        submission.store_listing_version_id!,
-        {
+      const response = await editSubmission({
+        storeListingVersionId: submission.store_listing_version_id!,
+        data: {
           name: data.title,
           sub_heading: data.subheader,
           description: data.description,
           image_urls: images,
           video_url: data.youtubeLink || "",
-          agent_id: submission.agent_id,
           categories: filteredCategories,
           changes_summary: "Updated submission",
-          agent_version: submission.agent_version,
         },
-      );
-
-      await queryClient.invalidateQueries({
-        queryKey: getGetV2ListMySubmissionsQueryKey(),
       });
 
       // Extract the StoreSubmission from the response

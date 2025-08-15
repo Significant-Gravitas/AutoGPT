@@ -802,7 +802,6 @@ async def edit_store_submission(
                 raise backend.server.v2.store.exceptions.DatabaseError(
                     "Failed to update store listing version"
                 )
-
             return backend.server.v2.store.model.StoreSubmission(
                 agent_id=current_version.agentGraphId,
                 agent_version=current_version.agentGraphVersion,

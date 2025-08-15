@@ -65,6 +65,21 @@ test.describe("Agent Dashboard", () => {
     await actionsButton.scrollIntoViewIfNeeded();
     await actionsButton.click();
 
+    // Edit button testing
+    const editButton = page.getByRole("menuitem", { name: "Edit" });
+    await expect(editButton).toBeVisible();
+    await editButton.click();
+
+    const editModal = page.getByTestId("edit-agent-modal");
+    await expect(editModal).toBeVisible();
+    const editAgentName = page.getByTestId("view-agent-name");
+    await expect(editAgentName).toBeVisible();
+    await expect(editAgentName).toHaveText(TEST_AGENT_DATA.name);
+
+    await page.getByRole("button", { name: "Done" }).click();
+    await expect(editModal).not.toBeVisible();
+    await actionsButton.click();
+
     // View button testing
     const viewButton = page.getByRole("menuitem", { name: "View" });
     await expect(viewButton).toBeVisible();
@@ -72,7 +87,7 @@ test.describe("Agent Dashboard", () => {
 
     const modal = page.getByTestId("publish-agent-modal");
     await expect(modal).toBeVisible();
-    const viewAgentName = page.getByTestId("view-agent-name");
+    const viewAgentName = modal.getByRole("textbox", { name: "Title" });
     await expect(viewAgentName).toBeVisible();
     await expect(viewAgentName).toHaveText(TEST_AGENT_DATA.name);
 
@@ -104,4 +119,6 @@ test.describe("Agent Dashboard", () => {
     // Assert that the card with the deleted agent ID is not visible
     await isHidden(page.locator(`[data-agent-id="${deletedAgentId}"]`));
   });
+
+  // We need to create a test for the edit agent flow
 });

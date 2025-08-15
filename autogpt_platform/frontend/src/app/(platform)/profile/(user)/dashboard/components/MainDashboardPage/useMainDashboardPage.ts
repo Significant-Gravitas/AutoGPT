@@ -2,9 +2,9 @@ import {
   getGetV2ListMySubmissionsQueryKey,
   useDeleteV2DeleteStoreSubmission,
   useGetV2ListMySubmissions,
-  usePutV2EditStoreSubmission,
 } from "@/app/api/__generated__/endpoints/store/store";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
+import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 import { StoreSubmissionsResponse } from "@/app/api/__generated__/models/storeSubmissionsResponse";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
@@ -20,7 +20,12 @@ type PublishState = {
 
 type EditState = {
   isOpen: boolean;
-  submission: StoreSubmission | null;
+  submission:
+    | (StoreSubmissionEditRequest & {
+        store_listing_version_id: string | undefined;
+        agent_id: string;
+      })
+    | null;
 };
 
 export const useMainDashboardPage = () => {
@@ -40,16 +45,6 @@ export const useMainDashboardPage = () => {
   });
 
   const { mutateAsync: deleteSubmission } = useDeleteV2DeleteStoreSubmission({
-    mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: getGetV2ListMySubmissionsQueryKey(),
-        });
-      },
-    },
-  });
-
-  const { mutateAsync: editSubmission } = usePutV2EditStoreSubmission({
     mutation: {
       onSuccess: () => {
         queryClient.invalidateQueries({
@@ -80,7 +75,12 @@ export const useMainDashboardPage = () => {
     });
   };
 
-  const onEditSubmission = (submission: StoreSubmission) => {
+  const onEditSubmission = (
+    submission: StoreSubmissionEditRequest & {
+      store_listing_version_id: string | undefined;
+      agent_id: string;
+    },
+  ) => {
     setEditState({
       isOpen: true,
       submission,
@@ -93,21 +93,6 @@ export const useMainDashboardPage = () => {
         console.error("No store listing version ID found for submission");
         return;
       }
-
-      await editSubmission({
-        storeListingVersionId: submission.store_listing_version_id,
-        data: {
-          name: submission.name,
-          sub_heading: submission.sub_heading,
-          description: submission.description,
-          image_urls: submission.image_urls,
-          agent_id: submission.agent_id,
-          agent_version: submission.agent_version,
-          video_url: submission.video_url,
-          categories: submission.categories,
-          changes_summary: submission.changes_summary,
-        },
-      });
 
       setEditState({
         isOpen: false,
