@@ -1,5 +1,6 @@
 import * as React from "react";
 import { useGetV2GetMyAgents } from "@/app/api/__generated__/endpoints/store/store";
+import { MyAgentsResponse } from "@/app/api/__generated__/models/myAgentsResponse";
 
 export interface Agent {
   name: string;
@@ -30,10 +31,16 @@ export function useAgentSelectStep({
     number | null
   >(null);
 
-  const { data: myAgents, isLoading, error } = useGetV2GetMyAgents();
+  const { data: myAgents, isLoading, error } = useGetV2GetMyAgents({},{
+    query: {
+      select: (x) => {
+        return x.data as MyAgentsResponse;
+      },
+    },
+  });
 
   const agents: Agent[] =
-    myAgents?.data?.agents
+    myAgents?.agents
       ?.map((agent) => ({
         name: agent.agent_name,
         id: agent.agent_id,
