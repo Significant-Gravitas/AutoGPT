@@ -38,6 +38,15 @@ Make sure you have Node.js 16.10+ installed. Corepack is included with Node.js b
    ```bash
    pnpm dev
    ```
+   > Note that you will need to have the Back-end running for the Front-end to successfully get data.
+   > For so, run the following command in the `autogpt_platform` folder:
+   >
+   > ```bash
+   > docker compose --profile local up deps_backend -d
+   > ```
+   >
+   > This will run only the Back-end in docker. If you run `docker compose up -d` it will run the Front-end
+   > in Docker too, which might not be what you want given you won't have easy access to the dev server.
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
