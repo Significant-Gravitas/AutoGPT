@@ -3,6 +3,12 @@ import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Key, storage } from "@/services/storage/local-storage";
+import {
+  getAgptServerApiUrl,
+  getAgptWsServerUrl,
+  getSupabaseUrl,
+  getSupabaseAnonKey,
+} from "@/lib/env-config";
 import * as Sentry from "@sentry/nextjs";
 import type {
   AddUserCreditsResponse,
@@ -66,8 +72,9 @@ import type {
   UserPasswordCredentials,
   UsersBalanceHistoryResponse,
 } from "./types";
+import { isServerSide } from "../utils/is-server-side";
 
-const isClient = typeof window !== "undefined";
+const isClient = !isServerSide();
 
 export default class BackendAPI {
   private baseUrl: string;
@@ -85,10 +92,8 @@ export default class BackendAPI {
   heartbeatTimeoutID: number | null = null;
 
   constructor(
-    baseUrl: string = process.env.NEXT_PUBLIC_AGPT_SERVER_URL ||
-      "http://localhost:8006/api",
-    wsUrl: string = process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL ||
-      "ws://localhost:8001/ws",
+    baseUrl: string = getAgptServerApiUrl(),
+    wsUrl: string = getAgptWsServerUrl(),
   ) {
     this.baseUrl = baseUrl;
     this.wsUrl = wsUrl;
@@ -96,11 +101,9 @@ export default class BackendAPI {
 
   private async getSupabaseClient(): Promise<SupabaseClient | null> {
     return isClient
-      ? createBrowserClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-          { isSingleton: true },
-        )
+      ? createBrowserClient(getSupabaseUrl(), getSupabaseAnonKey(), {
+          isSingleton: true,
+        })
       : await getServerSupabase();
   }
 
@@ -875,8 +878,7 @@ export default class BackendAPI {
     // Dynamic import is required even for client-only functions because helpers.ts
     // has server-only imports (like getServerSupabase) at the top level. Static imports
     // would bundle server-only code into the client bundle, causing runtime errors.
-    const { buildClientUrl, parseErrorResponse, handleFetchError } =
-      await import("./helpers");
+    const { buildClientUrl, handleFetchError } = await import("./helpers");
 
     const uploadUrl = buildClientUrl(path);
 
@@ -887,8 +889,7 @@ export default class BackendAPI {
     });
 
     if (!response.ok) {
-      const errorData = await parseErrorResponse(response);
-      throw handleFetchError(response, errorData);
+      throw await handleFetchError(response);
     }
 
     return await response.json();
@@ -993,12 +994,8 @@ export default class BackendAPI {
     // Dynamic import is required even for client-only functions because helpers.ts
     // has server-only imports (like getServerSupabase) at the top level. Static imports
     // would bundle server-only code into the client bundle, causing runtime errors.
-    const {
-      buildClientUrl,
-      buildUrlWithQuery,
-      parseErrorResponse,
-      handleFetchError,
-    } = await import("./helpers");
+    const { buildClientUrl, buildUrlWithQuery, handleFetchError } =
+      await import("./helpers");
 
     const payloadAsQuery = ["GET", "DELETE"].includes(method);
     let url = buildClientUrl(path);
@@ -1017,8 +1014,7 @@ export default class BackendAPI {
     });
 
     if (!response.ok) {
-      const errorData = await parseErrorResponse(response);
-      throw handleFetchError(response, errorData);
+      throw await handleFetchError(response);
     }
 
     return await response.json();

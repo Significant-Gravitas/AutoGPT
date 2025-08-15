@@ -46,6 +46,20 @@ class CloudStorageHandler:
             self._async_gcs_client = async_gcs_storage.Storage()
         return self._async_gcs_client
 
+    async def close(self):
+        """Close all client connections properly."""
+        if self._async_gcs_client is not None:
+            await self._async_gcs_client.close()
+            self._async_gcs_client = None
+
+    async def __aenter__(self):
+        """Async context manager entry."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit."""
+        await self.close()
+
     def _get_sync_gcs_client(self):
         """Lazy initialization of sync GCS client (only for signed URLs)."""
         if self._sync_gcs_client is None:
@@ -505,6 +519,17 @@ async def get_cloud_storage_handler() -> CloudStorageHandler:
                 _cloud_storage_handler = CloudStorageHandler(config)
 
     return _cloud_storage_handler
+
+
+async def shutdown_cloud_storage_handler():
+    """Properly shutdown the global cloud storage handler."""
+    global _cloud_storage_handler
+
+    if _cloud_storage_handler is not None:
+        async with _handler_lock:
+            if _cloud_storage_handler is not None:
+                await _cloud_storage_handler.close()
+                _cloud_storage_handler = None
 
 
 async def cleanup_expired_files_async() -> int:

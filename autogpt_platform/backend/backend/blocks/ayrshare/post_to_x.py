@@ -6,10 +6,9 @@ from backend.sdk import (
     BlockSchema,
     BlockType,
     SchemaField,
-    SecretStr,
 )
 
-from ._util import BaseAyrshareInput, create_ayrshare_client
+from ._util import BaseAyrshareInput, create_ayrshare_client, get_profile_key
 
 
 class PostToXBlock(Block):
@@ -116,10 +115,11 @@ class PostToXBlock(Block):
         self,
         input_data: "PostToXBlock.Input",
         *,
-        profile_key: SecretStr,
+        user_id: str,
         **kwargs,
     ) -> BlockOutput:
         """Post to X / Twitter with enhanced X-specific options."""
+        profile_key = await get_profile_key(user_id)
         if not profile_key:
             yield "error", "Please link a social account via Ayrshare"
             return

@@ -4,10 +4,11 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from backend.data.execution import ExecutionStatus
-from backend.executor import utils as execution_utils
-from backend.notifications.notifications import NotificationManagerClient
+from backend.util.clients import (
+    get_database_manager_client,
+    get_notification_manager_client,
+)
 from backend.util.metrics import sentry_capture_error
-from backend.util.service import get_service_client
 from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
@@ -25,13 +26,13 @@ class LateExecutionMonitor:
 
     def __init__(self):
         self.config = config
-        self.notification_client = get_service_client(NotificationManagerClient)
+        self.notification_client = get_notification_manager_client()
 
     def check_late_executions(self) -> str:
         """Check for late executions and send alerts if found."""
 
         # Check for QUEUED executions
-        queued_late_executions = execution_utils.get_db_client().get_graph_executions(
+        queued_late_executions = get_database_manager_client().get_graph_executions(
             statuses=[ExecutionStatus.QUEUED],
             created_time_gte=datetime.now(timezone.utc)
             - timedelta(
@@ -43,7 +44,7 @@ class LateExecutionMonitor:
         )
 
         # Check for RUNNING executions stuck for more than 24 hours
-        running_late_executions = execution_utils.get_db_client().get_graph_executions(
+        running_late_executions = get_database_manager_client().get_graph_executions(
             statuses=[ExecutionStatus.RUNNING],
             created_time_gte=datetime.now(timezone.utc)
             - timedelta(hours=24)

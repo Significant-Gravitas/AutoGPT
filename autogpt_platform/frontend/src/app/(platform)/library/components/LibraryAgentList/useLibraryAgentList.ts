@@ -1,7 +1,5 @@
 import { useGetV2ListLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
 import { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgentResponse";
-import { useScrollThreshold } from "@/hooks/useScrollThreshold";
-import { useCallback } from "react";
 import { useLibraryPageContext } from "../state-provider";
 
 export const useLibraryAgentList = () => {
@@ -12,7 +10,6 @@ export const useLibraryAgentList = () => {
     hasNextPage,
     isFetchingNextPage,
     isLoading: agentLoading,
-    isFetching,
   } = useGetV2ListLibraryAgentsInfinite(
     {
       page: 1,
@@ -34,38 +31,22 @@ export const useLibraryAgentList = () => {
     },
   );
 
-  const handleInfiniteScroll = useCallback(
-    (scrollY: number) => {
-      if (!hasNextPage || isFetchingNextPage) return;
-
-      const { scrollHeight, clientHeight } = document.documentElement;
-      const SCROLL_THRESHOLD = 20;
-
-      if (scrollY + clientHeight >= scrollHeight - SCROLL_THRESHOLD) {
-        fetchNextPage();
-      }
-    },
-    [hasNextPage, isFetchingNextPage, fetchNextPage],
-  );
-
-  useScrollThreshold(handleInfiniteScroll, 50);
-
   const allAgents =
-    agents?.pages.flatMap((page) => {
-      const data = page.data as LibraryAgentResponse;
-      return data.agents;
+    agents?.pages?.flatMap((page) => {
+      const response = page.data as LibraryAgentResponse;
+      return response.agents;
     }) ?? [];
 
-  const agentCount = agents?.pages[0]
+  const agentCount = agents?.pages?.[0]
     ? (agents.pages[0].data as LibraryAgentResponse).pagination.total_items
     : 0;
 
   return {
     allAgents,
     agentLoading,
-    isFetchingNextPage,
     hasNextPage,
     agentCount,
-    isSearching: isFetching && !isFetchingNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
   };
 };

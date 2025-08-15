@@ -357,15 +357,15 @@ class UserCreditBase(ABC):
                 amount = min(-user_balance, 0)
 
             # Create the transaction
-            transaction_data = CreditTransactionCreateInput(
-                userId=user_id,
-                amount=amount,
-                runningBalance=user_balance + amount,
-                type=transaction_type,
-                metadata=metadata,
-                isActive=is_active,
-                createdAt=self.time_now(),
-            )
+            transaction_data: CreditTransactionCreateInput = {
+                "userId": user_id,
+                "amount": amount,
+                "runningBalance": user_balance + amount,
+                "type": transaction_type,
+                "metadata": metadata,
+                "isActive": is_active,
+                "createdAt": self.time_now(),
+            }
             if transaction_key:
                 transaction_data["transactionKey"] = transaction_key
             tx = await CreditTransaction.prisma().create(data=transaction_data)
@@ -998,8 +998,8 @@ def get_block_costs() -> dict[str, list[BlockCost]]:
 async def get_stripe_customer_id(user_id: str) -> str:
     user = await get_user_by_id(user_id)
 
-    if user.stripeCustomerId:
-        return user.stripeCustomerId
+    if user.stripe_customer_id:
+        return user.stripe_customer_id
 
     customer = stripe.Customer.create(
         name=user.name or "",
@@ -1022,10 +1022,10 @@ async def set_auto_top_up(user_id: str, config: AutoTopUpConfig):
 async def get_auto_top_up(user_id: str) -> AutoTopUpConfig:
     user = await get_user_by_id(user_id)
 
-    if not user.topUpConfig:
+    if not user.top_up_config:
         return AutoTopUpConfig(threshold=0, amount=0)
 
-    return AutoTopUpConfig.model_validate(user.topUpConfig)
+    return AutoTopUpConfig.model_validate(user.top_up_config)
 
 
 async def admin_get_user_history(
