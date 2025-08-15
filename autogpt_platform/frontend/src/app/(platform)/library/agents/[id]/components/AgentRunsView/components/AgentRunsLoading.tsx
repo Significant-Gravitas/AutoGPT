@@ -1,7 +1,6 @@
-import React from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export function AgentRunsViewLoading() {
+export function AgentRunsLoading() {
   return (
     <div className="flex h-screen w-full gap-4">
       {/* Left Sidebar */}

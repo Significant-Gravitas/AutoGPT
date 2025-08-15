@@ -3,14 +3,14 @@
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useAgentRunsView } from "./useAgentRunsView";
-import { AgentRunViewLoading } from "./components/AgentRunViewLoading";
+import { AgentRunsLoading } from "./components/AgentRunsLoading";
 
 export function AgentRunsView() {
   const { response, ready, error, agentId } = useAgentRunsView();
 
   // Handle loading state
   if (!ready) {
-    return <ErrorCard loadingSlot={<AgentRunViewLoading />} />;
+    return <ErrorCard loadingSlot={<AgentRunsLoading />} />;
   }
 
   // Handle errors - check for query error first, then response errors
