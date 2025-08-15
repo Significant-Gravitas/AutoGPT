@@ -5,7 +5,6 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   getGetV2ListMySubmissionsQueryKey,
   putV2EditStoreSubmission,
@@ -73,7 +72,6 @@ export function EditAgentForm({
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const api = useBackendAPI();
 
   const form = useForm<EditAgentFormData>({
     resolver: zodResolver(editAgentSchema),
@@ -130,6 +128,7 @@ export function EditAgentForm({
           agent_id: submission.agent_id,
           categories: filteredCategories,
           changes_summary: "Updated submission",
+          agent_version: submission.agent_version,
         },
       );
 
