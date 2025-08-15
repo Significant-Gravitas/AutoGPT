@@ -18,46 +18,63 @@ Make sure you have Node.js 16.10+ installed. Corepack is included with Node.js b
 >
 > Then follow the setup steps below.
 
-### Setup
+## Setup
 
-1. **Enable corepack** (run this once on your system):
+### 1. **Enable corepack** (run this once on your system):
 
-   ```bash
-   corepack enable
-   ```
+```bash
+corepack enable
+```
 
-   This enables corepack to automatically manage pnpm based on the `packageManager` field in `package.json`.
+This enables corepack to automatically manage pnpm based on the `packageManager` field in `package.json`.
 
-2. **Install dependencies**:
+### 2. **Install dependencies**:
 
-   ```bash
-   pnpm i
-   ```
+```bash
+pnpm i
+```
 
-3. **Start the backend** (required for API query generation):
+### 3. **Start the development server**:
 
-   ```bash
-   cd .. && docker compose up -d
-   ```
+#### Running the Front-end & Back-end separately
 
-4. **Start the development server**:
+We recommend this approach if you are doing active development on the project. First spin up the Back-end:
 
-   ```bash
-   pnpm dev
-   ```
+```bash
+# on `autogpt_platform`
+docker compose --profile local up deps_backend -d
+# on `autogpt_platform/backend`
+poetry run app
+```
 
-   The `dev` command automatically fetches the latest OpenAPI spec from the backend and generates the API client before starting the Next.js development server. This ensures the frontend queries are always in sync with the backend API.
+Then start the Front-end:
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+```bash
+# on `autogpt_platform/frontend`
+pnpm dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result. If the server starts on `http://localhost:3001` it means the Front-end is already running via Docker. You have to kill the container then or do `docker compose down`.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-### Subsequent Runs
+#### Running both the Front-end and Back-end via Docker
 
-For subsequent development sessions, you need to ensure the backend is running and then start the frontend:
+If you run:
 
 ```bash
-cd autogpt_platform && docker compose up -d # Only if the Back-end is not running via Docker
+# on `autogpt_platform`
+docker compose up -d
+```
+
+It will spin up the Back-end and Front-end via Docker. The Front-end will start on port `3000`. This might not be
+what you want when actively contributing to the Front-end as you won't have direct/easy access to the Next.js dev server.
+
+### Subsequent Runs
+
+For subsequent development sessions, you only need to run:
+
+```bash
 pnpm dev
 ```
 
@@ -65,7 +82,7 @@ Every time a new Front-end dependency is added by you or others, you will need t
 
 ### Available Scripts
 
-- `pnpm dev` - Start development server with automatic API client generation
+- `pnpm dev` - Start development server
 - `pnpm build` - Build for production
 - `pnpm start` - Start production server
 - `pnpm lint` - Run ESLint and Prettier checks
@@ -82,7 +99,7 @@ This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-opti
 ## 🔄 Data Fetching Strategy
 
 > [!NOTE]
-> The API client is automatically generated when you run `pnpm dev` (requires backend to be running). You only need to run the manual OpenAPI commands below if you want to generate the client separately or if you're working with a modified backend API that isn't running locally.
+> You don't need to run the OpenAPI commands below to run the Front-end. You will only need to run them when adding or modifying endpoints on the Backend API and wanting to use those on the Frontend.
 
 This project uses an auto-generated API client powered by [**Orval**](https://orval.dev/), which creates type-safe API clients from OpenAPI specifications.
 
@@ -95,6 +112,17 @@ This project uses an auto-generated API client powered by [**Orval**](https://or
 5. **Client Generation**: Auto-generated client includes TypeScript types, API endpoints, and Zod schemas, organized by tags
 
 ### API Client Commands
+
+```bash
+# Fetch OpenAPI spec from backend and generate client
+pnpm generate:api-all
+
+# Only fetch the OpenAPI spec
+pnpm fetch:openapi
+
+# Only generate the client (after spec is fetched)
+pnpm generate:api-client
+```
 
 ### Using the Generated Client
 
