@@ -6373,8 +6373,6 @@
       },
       "StoreSubmissionEditRequest": {
         "properties": {
-          "agent_id": { "type": "string", "title": "Agent Id" },
-          "agent_version": { "type": "integer", "title": "Agent Version" },
           "name": { "type": "string", "title": "Name" },
           "sub_heading": { "type": "string", "title": "Sub Heading" },
           "video_url": {
@@ -6404,7 +6402,7 @@
           }
         },
         "type": "object",
-        "required": ["agent_id", "agent_version", "name", "sub_heading"],
+        "required": ["name", "sub_heading"],
         "title": "StoreSubmissionEditRequest"
       },
       "StoreSubmissionRequest": {

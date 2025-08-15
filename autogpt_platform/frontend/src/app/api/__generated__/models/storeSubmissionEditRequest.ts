@@ -9,8 +9,6 @@ import type { StoreSubmissionEditRequestVideoUrl } from "./storeSubmissionEditRe
 import type { StoreSubmissionEditRequestChangesSummary } from "./storeSubmissionEditRequestChangesSummary";
 
 export interface StoreSubmissionEditRequest {
-  agent_id: string;
-  agent_version: number;
   name: string;
   sub_heading: string;
   video_url?: StoreSubmissionEditRequestVideoUrl;
