@@ -17,9 +17,9 @@ from backend.blocks.io import AgentOutputBlock
 from backend.data.model import GraphExecutionStats, NodeExecutionStats
 from backend.data.notifications import (
     AgentRunData,
-    LowBalanceData,
     NotificationEventModel,
     NotificationType,
+    ZeroBalanceData,
 )
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.executor.activity_status_generator import (
@@ -74,6 +74,7 @@ from backend.util.clients import (
     get_database_manager_async_client,
     get_database_manager_client,
     get_execution_event_bus,
+    get_notification_manager_client,
 )
 from backend.util.decorator import (
     async_error_logged,
@@ -825,7 +826,7 @@ class ExecutionProcessor:
                         status=ExecutionStatus.FAILED,
                     )
 
-                    self._handle_low_balance_notif(
+                    self._handle_insufficient_funds_notif(
                         db_client,
                         graph_exec.user_id,
                         graph_exec.graph_id,
@@ -1101,7 +1102,7 @@ class ExecutionProcessor:
             )
         )
 
-    def _handle_low_balance_notif(
+    def _handle_insufficient_funds_notif(
         self,
         db_client: "DatabaseManagerClient",
         user_id: str,
@@ -1114,11 +1115,13 @@ class ExecutionProcessor:
         base_url = (
             settings.config.frontend_base_url or settings.config.platform_base_url
         )
+
+        # Queue notification for the user
         queue_notification(
             NotificationEventModel(
                 user_id=user_id,
-                type=NotificationType.LOW_BALANCE,
-                data=LowBalanceData(
+                type=NotificationType.ZERO_BALANCE,
+                data=ZeroBalanceData(
                     current_balance=exec_stats.cost,
                     billing_page_link=f"{base_url}/profile/credits",
                     shortfall=shortfall,
@@ -1126,6 +1129,27 @@ class ExecutionProcessor:
                 ),
             )
         )
+
+        # Send Discord alert to admins
+        try:
+            # user
+            user_email = db_client.get_user_email_by_id(user_id)
+            # Get user email for the alert
+            alert_message = (
+                f"❌ **Insufficient Funds Alert**\n"
+                f"User: {user_email or user_id}\n"
+                f"Agent: {metadata.name if metadata else 'Unknown Agent'}\n"
+                f"Current balance: ${e.balance/100:.2f}\n"
+                f"Attempted cost: ${abs(e.amount)/100:.2f}\n"
+                f"Shortfall: ${abs(shortfall)/100:.2f}"
+            )
+
+            # Send alert asynchronously
+            get_notification_manager_client().discord_system_alert(alert_message)
+        except Exception as alert_error:
+            logger.error(
+                f"Failed to send insufficient funds Discord alert: {alert_error}"
+            )
 
 
 class ExecutionManager(AppProcess):

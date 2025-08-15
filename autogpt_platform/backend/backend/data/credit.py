@@ -36,6 +36,7 @@ from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications.notifications import queue_notification_async
 from backend.server.model import Pagination
 from backend.server.v2.admin.model import UserHistoryResponse
+from backend.util.clients import get_notification_manager_client
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.json import SafeJson
 from backend.util.retry import func_retry
@@ -387,6 +388,55 @@ class UserCredit(UserCreditBase):
             )
         )
 
+    async def _handle_low_balance(
+        self,
+        user_id: str,
+        current_balance: int,
+        transaction_cost: int,
+    ):
+        """Check and handle low balance scenarios after a transaction"""
+        LOW_BALANCE_THRESHOLD = 1000  # $10 in credits (100 = $1)
+
+        # Get balance before the transaction
+        balance_before = current_balance + transaction_cost
+
+        # Check if we crossed the threshold
+        if (
+            current_balance < LOW_BALANCE_THRESHOLD
+            and balance_before >= LOW_BALANCE_THRESHOLD
+        ):
+            # Queue notification for the user
+            from backend.data.notifications import (
+                LowBalanceData,
+                NotificationEventModel,
+            )
+
+            await queue_notification_async(
+                NotificationEventModel(
+                    user_id=user_id,
+                    type=NotificationType.LOW_BALANCE,
+                    data=LowBalanceData(
+                        current_balance=current_balance,
+                        billing_page_link=f"{base_url}/profile/credits",
+                    ),
+                )
+            )
+
+            # Send Discord alert to admins
+            try:
+
+                user_email = await get_user_email_by_id(user_id)
+                alert_message = (
+                    f"⚠️ **Low Balance Alert**\n"
+                    f"User: {user_email or user_id}\n"
+                    f"Balance dropped below ${LOW_BALANCE_THRESHOLD/100:.2f}\n"
+                    f"Current balance: ${current_balance/100:.2f}\n"
+                    f"Transaction cost: ${transaction_cost/100:.2f}"
+                )
+                get_notification_manager_client().discord_system_alert(alert_message)
+            except Exception as e:
+                logger.error(f"Failed to send low balance Discord alert: {e}")
+
     async def spend_credits(
         self,
         user_id: str,
@@ -420,6 +470,8 @@ class UserCredit(UserCreditBase):
                 logger.error(
                     f"Auto top-up failed for user {user_id}, balance: {balance}, amount: {auto_top_up.amount}, error: {e}"
                 )
+        # Check if we crossed the low balance threshold
+        await self._handle_low_balance(user_id, balance, cost)
 
         return balance
 
