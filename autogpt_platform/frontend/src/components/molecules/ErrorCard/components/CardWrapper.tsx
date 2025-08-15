@@ -13,7 +13,7 @@ export function CardWrapper({ children, className = "" }: CardWrapperProps) {
       <div
         className="absolute inset-0 rounded-xl p-[1px]"
         style={{
-          background: `linear-gradient(135deg, ${colors.purple[500]}, ${colors.purple[200]}, ${colors.purple[50]})`,
+          background: `linear-gradient(135deg, ${colors.zinc[500]}, ${colors.zinc[200]}, ${colors.zinc[100]})`,
         }}
       >
         <div className="h-full w-full rounded-xl bg-white" />

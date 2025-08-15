@@ -23,8 +23,8 @@ export function ErrorMessage({
           <Text variant="body" className="text-zinc-700">
             We had the following error when retrieving {context ?? "your data"}:
           </Text>
-          <div className="rounded-lg border border-purple-100 bg-purple-50 p-3">
-            <Text variant="body" className="font-mono text-sm text-purple-800">
+          <div className="rounded-lg border border-zinc-100 bg-zinc-50 p-3">
+            <Text variant="body" className="!text-red-700">
               {errorMessage}
             </Text>
           </div>
