@@ -1053,9 +1053,6 @@ export function determineDataType(schema: BlockIOSubSchema): DataType {
     // $ref has sibling schema properties (which isn't technically allowed),
     // so there will only be one item in allOf[].
     // this should NEVER happen though, as $refs are resolved server-side.
-    console.warn(
-      `Detected 'allOf' wrapper: ${schema}. Normalizing use ${schema.allOf[0]} instead.`,
-    );
     schema = schema.allOf[0];
   }
 

@@ -57,10 +57,6 @@ export default function useCredentials(
       );
     }
     if (!discriminatedProvider) {
-      console.warn(
-        `Missing discriminator value from '${credsInputSchema.discriminator}': ` +
-          "hiding credentials input until it is set.",
-      );
       return null;
     }
     providerName = discriminatedProvider;

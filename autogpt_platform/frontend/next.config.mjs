@@ -8,7 +8,6 @@ const nextConfig = {
       "ddz4ak4pa3d19.cloudfront.net",
       "upload.wikimedia.org",
       "storage.googleapis.com",
-
       "ideogram.ai", // for generated images
       "picsum.photos", // for placeholder images
     ],

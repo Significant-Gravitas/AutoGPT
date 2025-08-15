@@ -84,7 +84,6 @@ test.describe("Agent Dashboard", () => {
     const beforeCount = await rows.count();
 
     if (beforeCount === 0) {
-      console.log("No agents available; skipping delete flow.");
       return;
     }
 

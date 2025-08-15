@@ -32,7 +32,6 @@ export const SearchFilterChips: React.FC<SearchFilterChipsProps> = ({
   const handleFilterClick = (value: string) => {
     setSelected(value);
     onFilterChange?.(value);
-    console.log(`Filter selected: ${value}`);
   };
 
   return (

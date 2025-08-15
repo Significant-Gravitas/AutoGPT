@@ -410,7 +410,6 @@ export default function AgentRunsPage(): React.ReactElement {
         router.push(`/library/agents/${newAgent.id}`);
       })
       .catch((error) => {
-        console.error("Error copying agent:", error);
         toast({
           title: "Error copying agent",
           description: `An error occurred while copying the agent: ${error.message}`,

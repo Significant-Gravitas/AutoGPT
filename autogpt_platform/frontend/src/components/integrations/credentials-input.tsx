@@ -203,40 +203,33 @@ export const CredentialsInput: FC<{
     const controller = new AbortController();
     setOAuthPopupController(controller);
     controller.signal.onabort = () => {
-      console.debug("OAuth flow aborted");
       setOAuth2FlowInProgress(false);
       popup.close();
     };
 
     const handleMessage = async (e: MessageEvent<OAuthPopupResultMessage>) => {
-      console.debug("Message received:", e.data);
       if (
         typeof e.data != "object" ||
         !("message_type" in e.data) ||
         e.data.message_type !== "oauth_popup_result"
       ) {
-        console.debug("Ignoring irrelevant message");
         return;
       }
 
       if (!e.data.success) {
-        console.error("OAuth flow failed:", e.data.message);
         setOAuthError(`OAuth flow failed: ${e.data.message}`);
         setOAuth2FlowInProgress(false);
         return;
       }
 
       if (e.data.state !== state_token) {
-        console.error("Invalid state token received");
         setOAuthError("Invalid state token received");
         setOAuth2FlowInProgress(false);
         return;
       }
 
       try {
-        console.debug("Processing OAuth callback");
         const credentials = await oAuthCallback(e.data.code, e.data.state);
-        console.debug("OAuth callback processed successfully");
         onSelectCredentials({
           id: credentials.id,
           type: "oauth2",
@@ -244,7 +237,6 @@ export const CredentialsInput: FC<{
           provider,
         });
       } catch (error) {
-        console.error("Error in OAuth callback:", error);
         setOAuthError(
           // type of error is unkown so we need to use String(error)
           `Error in OAuth callback: ${
@@ -252,20 +244,17 @@ export const CredentialsInput: FC<{
           }`,
         );
       } finally {
-        console.debug("Finalizing OAuth flow");
         setOAuth2FlowInProgress(false);
         controller.abort("success");
       }
     };
 
-    console.debug("Adding message event listener");
     window.addEventListener("message", handleMessage, {
       signal: controller.signal,
     });
 
     setTimeout(
       () => {
-        console.debug("OAuth flow timed out");
         controller.abort("timeout");
         setOAuth2FlowInProgress(false);
         setOAuthError("OAuth flow timed out");

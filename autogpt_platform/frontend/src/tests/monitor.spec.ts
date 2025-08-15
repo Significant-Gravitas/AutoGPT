@@ -49,7 +49,6 @@ test.beforeEach(async ({ page }, testInfo: TestInfo) => {
 test.afterAll(async () => {
   // clear out the downloads folder
   const downloadsFolder = process.cwd() + "/downloads";
-  console.log(`clearing out the downloads folder ${downloadsFolder}/monitor`);
 
   await fs.rm(`${downloadsFolder}/monitor`, {
     recursive: true,
@@ -88,8 +87,6 @@ test.skip("user can export and import agents", async ({
     `${monitorPage.downloadsFolder}/monitor/${download.suggestedFilename()}`,
   );
 
-  console.log(`downloaded file to ${download.suggestedFilename()}`);
-
   expect(download.suggestedFilename()).toBeDefined();
   expect(download.suggestedFilename()).toContain("test-agent-");
   expect(download.suggestedFilename()).toContain("v1.json");
@@ -121,8 +118,6 @@ test.skip("user can export and import agents", async ({
   const postImportAgents = await monitorPage.listAgents();
 
   expect(postImportAgents.length).toBeGreaterThan(preImportAgents.length);
-
-  console.log(`postImportAgents: ${JSON.stringify(postImportAgents)}`);
 
   const importedAgent = postImportAgents.find(
     (a: any) => a.name === `${baseName}-imported`,

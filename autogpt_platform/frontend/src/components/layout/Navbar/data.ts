@@ -15,8 +15,8 @@ export async function getNavbarAccountData() {
   }
   try {
     await prefetchGetV2GetUserProfileQuery(queryClient);
-  } catch (error) {
-    console.error("Error fetching profile:", error);
+  } catch {
+    // ignore for unauthenticated users
   }
 
   return {

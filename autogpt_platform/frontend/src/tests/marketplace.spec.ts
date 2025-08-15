@@ -13,10 +13,6 @@ test.describe("Marketplace – Basic Functionality", () => {
 
     const marketplaceTitle = await marketplacePage.getMarketplaceTitle(page);
     await isVisible(marketplaceTitle);
-
-    console.log(
-      "User can access marketplace page when logged out test passed ✅",
-    );
   });
 
   test("User can access marketplace page when logged in", async ({ page }) => {
@@ -32,10 +28,6 @@ test.describe("Marketplace – Basic Functionality", () => {
 
     const marketplaceTitle = await marketplacePage.getMarketplaceTitle(page);
     await isVisible(marketplaceTitle);
-
-    console.log(
-      "User can access marketplace page when logged in test passed ✅",
-    );
   });
 
   test("Featured agents, top agents, and featured creators are visible", async ({
@@ -61,10 +53,6 @@ test.describe("Marketplace – Basic Functionality", () => {
     await isVisible(featuredCreatorsSection);
     const creatorProfiles = await marketplacePage.getCreatorProfiles(page);
     await hasMinCount(creatorProfiles, 1);
-
-    console.log(
-      "Featured agents, top agents, and featured creators are visible test passed ✅",
-    );
   });
 
   test("Can navigate and interact with marketplace elements", async ({
@@ -92,10 +80,6 @@ test.describe("Marketplace – Basic Functionality", () => {
     await firstCreatorProfile.click();
     await page.waitForURL("**/marketplace/creator/**");
     await matchesUrl(page, /\/marketplace\/creator\/.+/);
-
-    console.log(
-      "Can navigate and interact with marketplace elements test passed ✅",
-    );
   });
 
   test("Complete search flow works correctly", async ({ page }) => {
@@ -118,8 +102,6 @@ test.describe("Marketplace – Basic Functionality", () => {
 
     const results = await marketplacePage.getSearchResultsCount(page);
     expect(results).toBeGreaterThan(0);
-
-    console.log("Complete search flow works correctly test passed ✅");
   });
 
   // We need to add a test search with filters, but the current business logic for filters doesn't work as expected. We'll add it once we modify that.
@@ -144,7 +126,5 @@ test.describe("Marketplace – Edge Cases", () => {
 
     const results = await marketplacePage.getSearchResultsCount(page);
     expect(results).toBe(0);
-
-    console.log("Search for non-existent item shows no results test passed ✅");
   });
 });

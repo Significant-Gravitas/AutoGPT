@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
 import { addDollars } from "@/app/(platform)/admin/spending/actions";
+import * as Sentry from "@sentry/nextjs";
 
 export function AdminAddMoneyButton({
   userId,
@@ -41,7 +42,7 @@ export function AdminAddMoneyButton({
       await addDollars(formData);
       router.refresh(); // Refresh the current route
     } catch (error) {
-      console.error("Error adding dollars:", error);
+      Sentry.captureException(error);
     }
   };
 

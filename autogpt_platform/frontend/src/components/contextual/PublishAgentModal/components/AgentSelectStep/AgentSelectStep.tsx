@@ -6,6 +6,7 @@ import { Button } from "../../../../atoms/Button/Button";
 import { StepHeader } from "../StepHeader";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAgentSelectStep } from "./useAgentSelectStep";
+import Image from "next/image";
 
 interface Props {
   onSelect: (agentId: string, agentVersion: number) => void;
@@ -142,7 +143,7 @@ export function AgentSelectStep({
                       aria-pressed={selectedAgentId === agent.id}
                     >
                       <div className="relative h-32 bg-zinc-400 sm:h-40">
-                        <img
+                        <Image
                           src={agent.imageSrc}
                           alt={agent.name}
                           className="h-full w-full object-cover"

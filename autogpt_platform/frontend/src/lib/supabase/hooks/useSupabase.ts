@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { getSupabaseUrl, getSupabaseAnonKey } from "@/lib/env-config";
+import * as Sentry from "@sentry/nextjs";
 import {
   getCurrentUser,
   refreshSession,
@@ -40,7 +41,7 @@ export function useSupabase() {
         },
       });
     } catch (error) {
-      console.error("Error creating Supabase client", error);
+      Sentry.captureException(error);
       return null;
     }
   }, []);
@@ -53,7 +54,7 @@ export function useSupabase() {
     try {
       await serverLogout(options);
     } catch (error) {
-      console.error("Error logging out:", error);
+      Sentry.captureException(error);
     } finally {
       setUser(null);
       router.refresh();
@@ -97,8 +98,7 @@ export function useSupabase() {
       }
 
       return true;
-    } catch (error) {
-      console.error("Session validation error:", error);
+    } catch {
       setUser(null);
       const redirectPath = getRedirectPath(pathname);
       if (redirectPath) {
@@ -122,8 +122,7 @@ export function useSupabase() {
       setUser(serverUser);
       clearWebSocketDisconnectIntent();
       return serverUser;
-    } catch (error) {
-      console.error("Get user error:", error);
+    } catch {
       setUser(null);
       return null;
     }

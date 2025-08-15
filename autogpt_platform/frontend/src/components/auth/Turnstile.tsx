@@ -2,6 +2,7 @@
 import { cn } from "@/lib/utils";
 import { isServerSide } from "@/lib/utils/is-server-side";
 import { useEffect, useRef, useState } from "react";
+import * as Sentry from "@sentry/nextjs";
 
 export interface TurnstileProps {
   siteKey: string;
@@ -74,7 +75,7 @@ export function Turnstile({
       try {
         window.turnstile.reset(widgetIdRef.current);
       } catch (err) {
-        console.warn("Failed to reset existing Turnstile widget:", err);
+        Sentry.captureException(err);
       }
     }
 
@@ -103,7 +104,7 @@ export function Turnstile({
         try {
           window.turnstile.remove(widgetIdRef.current);
         } catch (err) {
-          console.warn("Failed to remove Turnstile widget:", err);
+          Sentry.captureException(err);
         }
         setWidgetId?.(null);
         widgetIdRef.current = null;

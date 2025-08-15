@@ -1,21 +1,15 @@
 "use client";
 
-import { useEffect } from "react";
 import { IconCircleAlert } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 
 export default function Error({
-  error,
   reset,
 }: {
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  useEffect(() => {
-    console.error(error);
-  }, [error]);
-
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-background">
       <div className="w-full max-w-md px-4 text-center sm:px-6">

@@ -99,8 +99,7 @@ export default function Page() {
         agentRuns: (state?.agentRuns || 0) + 1,
       });
       router.push("/onboarding/6-congrats");
-    } catch (error) {
-      console.error("Error running agent:", error);
+    } catch {
       toast({
         title: "Error running agent",
         description:

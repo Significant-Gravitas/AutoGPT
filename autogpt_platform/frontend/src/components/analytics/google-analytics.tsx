@@ -55,7 +55,6 @@ export function GoogleAnalytics(props: GAParams) {
 
 export function sendGAEvent(...args: any[]) {
   if (currDataLayerName === undefined) {
-    console.warn(`Custom GA: GA has not been initialized`);
     return;
   }
 
@@ -63,6 +62,6 @@ export function sendGAEvent(...args: any[]) {
   if (dataLayer) {
     dataLayer.push(...args);
   } else {
-    console.warn(`Custom GA: dataLayer ${currDataLayerName} does not exist`);
+    // ignore
   }
 }

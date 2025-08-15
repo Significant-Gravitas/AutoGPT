@@ -161,11 +161,13 @@ test("multi-tab logout with WebSocket cleanup", async ({ context }) => {
   // Verify the profile menu is no longer visible (user is logged out)
   await isHidden(getId2("profile-popout-menu-trigger"));
 
-  // Verify no WebSocket connection errors occurred during logout
-  test.expect(consoleErrors).toHaveLength(0);
   if (consoleErrors.length > 0) {
+    // eslint-disable-next-line no-console
     console.log("WebSocket errors during logout:", consoleErrors);
   }
+
+  // Verify no WebSocket connection errors occurred during logout
+  test.expect(consoleErrors).toHaveLength(0);
 
   // Clean up
   await page1.close();

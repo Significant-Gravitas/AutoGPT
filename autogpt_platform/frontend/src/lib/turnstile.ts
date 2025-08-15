@@ -32,14 +32,12 @@ export async function verifyTurnstileToken(
     });
 
     if (!response.ok) {
-      console.error("Turnstile verification failed:", await response.text());
       return false;
     }
 
     const data = await response.json();
     return data.success === true;
-  } catch (error) {
-    console.error("Error verifying Turnstile token:", error);
+  } catch {
     return false;
   }
 }

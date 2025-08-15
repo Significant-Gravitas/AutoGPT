@@ -448,8 +448,7 @@ export default class BackendAPI {
     try {
       const result = this._get("/store/profile");
       return result;
-    } catch (error) {
-      console.error("Error fetching store profile:", error);
+    } catch {
       return Promise.resolve(null);
     }
   }
@@ -975,10 +974,6 @@ export default class BackendAPI {
     path: string,
     payload?: Record<string, any>,
   ) {
-    if (method !== "GET") {
-      console.debug(`${method} ${path} payload:`, payload);
-    }
-
     if (isClient) {
       return this._makeClientRequest(method, path, payload);
     } else {
@@ -1124,10 +1119,8 @@ export default class BackendAPI {
           if (serverToken && !error) {
             token = serverToken;
           } else if (error) {
-            console.warn("Failed to get WebSocket token from server:", error);
           }
-        } catch (error) {
-          console.warn("Failed to get token for WebSocket connection:", error);
+        } catch {
           // Continue with empty token, connection might still work
         }
 
@@ -1137,7 +1130,6 @@ export default class BackendAPI {
 
         this.webSocket.onopen = () => {
           this.webSocket!.state = "connected";
-          console.info("[BackendAPI] WebSocket connected to", this.wsUrl);
           this._startWSHeartbeat(); // Start heartbeat when connection opens
           this._clearDisconnectIntent(); // Clear disconnect intent when connected
           this.wsOnConnectHandlers.forEach((handler) => handler());
@@ -1146,11 +1138,13 @@ export default class BackendAPI {
 
         this.webSocket.onclose = (event) => {
           if (this.webSocket?.state == "connecting") {
+            // eslint-disable-next-line no-console
             console.error(
               `[BackendAPI] WebSocket failed to connect: ${event.reason}`,
               event,
             );
           } else if (this.webSocket?.state == "connected") {
+            // eslint-disable-next-line no-console
             console.warn(
               `[BackendAPI] WebSocket connection closed: ${event.reason}`,
               event,
@@ -1172,11 +1166,13 @@ export default class BackendAPI {
 
         this.webSocket.onerror = (error) => {
           if (this.webSocket?.state == "connected") {
+            // eslint-disable-next-line no-console
             console.error("[BackendAPI] WebSocket error:", error);
           }
         };
         this.webSocket.onmessage = (event) => this._handleWSMessage(event);
       } catch (error) {
+        // eslint-disable-next-line no-console
         console.error("[BackendAPI] Error connecting to WebSocket:", error);
         reject(error);
       }
@@ -1245,6 +1241,7 @@ export default class BackendAPI {
         );
 
         this.heartbeatTimeoutID = window.setTimeout(() => {
+          // eslint-disable-next-line no-console
           console.warn("Heartbeat timeout - reconnecting");
           this.webSocket?.close();
           this.connectWebSocket();

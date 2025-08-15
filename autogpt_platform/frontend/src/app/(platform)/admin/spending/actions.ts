@@ -14,12 +14,7 @@ export async function addDollars(formData: FormData) {
     comments: formData.get("comments") as string,
   };
   const api = new BackendApi();
-  const resp = await api.addUserCredits(
-    data.user_id,
-    data.amount,
-    data.comments,
-  );
-  console.log(resp);
+  await api.addUserCredits(data.user_id, data.amount, data.comments);
   revalidatePath("/admin/spending");
 }
 

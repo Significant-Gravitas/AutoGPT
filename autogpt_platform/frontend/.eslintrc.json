@@ -21,6 +21,8 @@
         "varsIgnorePattern": "^_",
         "caughtErrorsIgnorePattern": "^_"
       }
-    ]
+    ],
+    // Prevent console statements in production code
+    "no-console": "error"
   }
 }

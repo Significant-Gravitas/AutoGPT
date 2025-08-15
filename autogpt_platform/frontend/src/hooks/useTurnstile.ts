@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { BehaveAs, getBehaveAs } from "@/lib/utils";
 import { isServerSide } from "@/lib/utils/is-server-side";
+import * as Sentry from "@sentry/nextjs";
 
 interface UseTurnstileOptions {
   action?: string;
@@ -84,7 +85,7 @@ export function useTurnstile({
       try {
         window.turnstile.reset(widgetId);
       } catch (err) {
-        console.warn("Failed to reset Turnstile widget:", err);
+        Sentry.captureException(err);
       }
     }
   }, [shouldRender, widgetId]);

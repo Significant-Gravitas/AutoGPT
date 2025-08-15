@@ -70,8 +70,7 @@ export const AgentInfo: FC<AgentInfoProps> = ({
         description: "Redirecting to your library...",
         duration: 2000,
       });
-    } catch (error) {
-      console.error("Failed to add agent to library:", error);
+    } catch {
       toast({
         title: "Error",
         description: "Failed to add agent to library. Please try again.",
@@ -111,8 +110,7 @@ export const AgentInfo: FC<AgentInfoProps> = ({
           title: "Download Complete",
           description: "Your agent has been successfully downloaded.",
         });
-      } catch (error) {
-        console.error(`Error downloading agent:`, error);
+      } catch {
         toast({
           title: "Error",
           description: "Failed to download agent. Please try again.",

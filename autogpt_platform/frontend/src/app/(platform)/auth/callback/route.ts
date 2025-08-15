@@ -52,6 +52,7 @@ export async function GET(request: Request) {
           revalidatePath("/", "layout");
         }
       } catch (createUserError) {
+        // eslint-disable-next-line no-console
         console.error("Error creating user:", createUserError);
         // Continue with redirect even if createUser fails
       }

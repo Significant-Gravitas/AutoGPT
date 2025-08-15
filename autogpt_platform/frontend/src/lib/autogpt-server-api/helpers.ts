@@ -97,8 +97,7 @@ export async function getServerAuthToken(): Promise<string> {
     }
 
     return session.access_token;
-  } catch (error) {
-    console.error("Failed to get auth token:", error);
+  } catch {
     return "no-token-found";
   }
 }
@@ -251,16 +250,11 @@ export async function makeAuthenticatedRequest(
     if (isAuthenticationError(response, errorDetail)) {
       if (isLogoutInProgress()) {
         // Silently return null during logout to prevent error noise
-        console.debug(
-          "Authentication request failed during logout, ignoring:",
-          errorDetail,
-        );
         return null;
       }
 
       // For authentication errors outside logout, log but don't throw
       // This prevents crashes when session expires naturally
-      console.warn("Authentication failed:", errorDetail);
       return null;
     }
 
@@ -305,13 +299,6 @@ export async function makeAuthenticatedFileUpload(
     }
 
     if (response.status === 401 || response.status === 403) {
-      if (isLogoutInProgress()) {
-        console.debug(
-          "File upload authentication failed during logout, ignoring",
-        );
-        return "";
-      }
-      console.warn("File upload authentication failed:", errorMessage);
       return "";
     }
 

@@ -33,7 +33,7 @@ export async function signup(
       const { data, error } = await supabase.auth.signUp(values);
 
       if (error) {
-        console.error("Error signing up", error);
+        Sentry.captureException(error);
         // FIXME: supabase doesn't return the correct error message for this case
         if (error.message.includes("P0001")) {
           return "not_allowed";
