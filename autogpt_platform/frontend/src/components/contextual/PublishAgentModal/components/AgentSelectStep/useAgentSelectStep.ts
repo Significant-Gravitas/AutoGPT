@@ -31,13 +31,20 @@ export function useAgentSelectStep({
     number | null
   >(null);
 
-  const { data: myAgents, isLoading, error } = useGetV2GetMyAgents({},{
-    query: {
-      select: (x) => {
-        return x.data as MyAgentsResponse;
+  const {
+    data: myAgents,
+    isLoading,
+    error,
+  } = useGetV2GetMyAgents(
+    {},
+    {
+      query: {
+        select: (x) => {
+          return x.data as MyAgentsResponse;
+        },
       },
     },
-  });
+  );
 
   const agents: Agent[] =
     myAgents?.agents

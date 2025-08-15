@@ -563,6 +563,7 @@ async def create_submission(
             content={"detail": "An error occurred while creating the store submission"},
         )
 
+
 @router.put(
     "/submissions/{store_listing_version_id}",
     summary="Edit store submission",
@@ -595,15 +596,13 @@ async def edit_submission(
         return await backend.server.v2.store.db.edit_store_submission(
             user_id=user_id,
             store_listing_version_id=store_listing_version_id,
-            agent_id=submission_request.agent_id,
-            agent_version=submission_request.agent_version or 0, 
             name=submission_request.name,
             video_url=submission_request.video_url,
             image_urls=submission_request.image_urls,
             description=submission_request.description,
             sub_heading=submission_request.sub_heading,
             categories=submission_request.categories,
-            changes_summary=submission_request.changes_summary,
+            changes_summary=submission_request.changes_summary or "Update Submission",
         )
     except Exception:
         logger.exception("Exception occurred whilst editing store submission")
@@ -611,6 +610,7 @@ async def edit_submission(
             status_code=500,
             content={"detail": "An error occurred while editing the store submission"},
         )
+
 
 @router.post(
     "/submissions/media",

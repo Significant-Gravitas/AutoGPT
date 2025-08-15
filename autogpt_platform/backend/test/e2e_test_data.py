@@ -81,14 +81,14 @@ def get_category():
     categories = [
         "productivity",
         "writing",
-        "development", 
+        "development",
         "data",
         "marketing",
         "research",
         "creative",
         "business",
         "personal",
-        "other"
+        "other",
     ]
     return random.choice(categories)
 
@@ -634,7 +634,9 @@ class TestDataCreator:
                         video_url=get_video_url() if random.random() < 0.3 else None,
                         image_urls=[get_image() for _ in range(3)],
                         description=faker.text(),
-                        categories=[get_category()],  # Single category from predefined list
+                        categories=[
+                            get_category()
+                        ],  # Single category from predefined list
                         changes_summary="Initial E2E test submission",
                     )
                     submissions.append(submission.model_dump())
