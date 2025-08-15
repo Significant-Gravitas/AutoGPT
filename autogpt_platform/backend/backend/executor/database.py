@@ -179,6 +179,9 @@ class DatabaseManagerClient(AppServiceClient):
     # Block error monitoring
     get_block_error_stats = _(d.get_block_error_stats)
 
+    # User Emails
+    get_user_email_by_id = _(d.get_user_email_by_id)
+
 
 class DatabaseManagerAsyncClient(AppServiceClient):
     d = DatabaseManager
