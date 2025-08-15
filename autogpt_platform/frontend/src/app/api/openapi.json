@@ -6053,6 +6053,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error",
             "description": "Error message if any"
+          },
+          "activity_status": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Activity Status",
+            "description": "AI-generated summary of what the agent did"
           }
         },
         "additionalProperties": true,
