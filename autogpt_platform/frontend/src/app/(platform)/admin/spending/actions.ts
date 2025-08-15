@@ -19,7 +19,6 @@ export async function addDollars(formData: FormData) {
     data.amount,
     data.comments,
   );
-  console.log(resp);
   revalidatePath("/admin/spending");
 }
 
@@ -29,13 +28,6 @@ export async function getUsersTransactionHistory(
   search?: string,
   transactionType?: CreditTransactionType,
 ): Promise<UsersBalanceHistoryResponse> {
-  console.log("getUsersTransactionHistory called with:", {
-    page,
-    pageSize,
-    search,
-    transactionType,
-  });
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data: Record<string, any> = {
     page,
@@ -47,9 +39,6 @@ export async function getUsersTransactionHistory(
   if (transactionType) {
     data.transaction_filter = transactionType;
   }
-
-  console.log("Sending to API:", data);
-
   const api = new BackendApi();
   const history = await api.getUsersHistory(data);
   return history;

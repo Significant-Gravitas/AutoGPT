@@ -18,8 +18,6 @@ function SpendingDashboard({
   const search = searchParams.search;
   const status = searchParams.status as CreditTransactionType | undefined;
 
-  console.log("SpendingDashboard params:", { page, search, status });
-
   return (
     <div className="mx-auto p-6">
       <div className="flex flex-col gap-4">
