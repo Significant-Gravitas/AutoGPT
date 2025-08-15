@@ -435,7 +435,7 @@ services:
       watch:
         - path: ./frontend
           target: /app
-          action: sync
+          action: rebuild
           ignore:
             - node_modules/
             - .next/

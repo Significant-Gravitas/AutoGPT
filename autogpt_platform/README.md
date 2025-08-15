@@ -99,7 +99,7 @@ Here are some common scenarios where you might use multiple Docker Compose comma
 
    This watches for changes in your code and automatically updates the relevant services:
    - **Backend Python code changes**: Automatically syncs files and restarts the service
-   - **Frontend code changes**: Syncs files (Next.js dev server handles hot-reload)
+   - **Frontend code changes**: Automatically rebuilds the container
    - **Dependency changes**: Rebuilds containers when package files change
    - **Prisma schema changes**: Rebuilds to regenerate the Prisma client
 

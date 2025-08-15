@@ -17,7 +17,7 @@ docker compose up --watch
 
 # This enables:
 # - Automatic restart on Python code changes
-# - Hot-reload for frontend Next.js changes  
+# - Automatic rebuild on frontend code changes
 # - Container rebuild on dependency changes (pyproject.toml, package.json)
 # - Container rebuild on Prisma schema changes
 ```
@@ -131,13 +131,12 @@ The platform includes comprehensive Docker Compose watch configuration for devel
 
 #### Watch Actions:
 - **sync+restart**: Used for backend Python code - copies files and restarts the container (Python services don't have hot-reload)
-- **sync**: Used for frontend code - Next.js dev server automatically picks up changes
-- **rebuild**: Used for dependency and schema changes - rebuilds the entire container
+- **rebuild**: Used for frontend code and dependency/schema changes - rebuilds the entire container
 
 #### Watched Paths:
 - `./backend` → `/app/autogpt_platform/backend` (sync+restart)
 - `./autogpt_libs` → `/app/autogpt_platform/autogpt_libs` (sync+restart)
-- `./frontend` → `/app` (sync)
+- `./frontend` → `/app` (rebuild)
 - Dependency files trigger rebuild: `pyproject.toml`, `poetry.lock`, `package.json`, `pnpm-lock.yaml`
 - Prisma schema changes trigger rebuild: `schema.prisma`
 
@@ -241,3 +240,20 @@ Use this format for commit messages and Pull Request titles:
 - `infra/prod`
 
 Use these scopes and subscopes for clarity and consistency in commit messages.
+
+### Finding PR Review Comments
+
+To find inline code review comments on pull requests (not just general PR comments):
+
+```bash
+# Find all inline review comments on a PR
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{PR_NUMBER}/comments
+
+# Search for specific text in review comments
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{PR_NUMBER}/comments --jq '.[] | select(.body | contains("search_text")) | {user: .user.login, body: .body, path: .path, line: .line}'
+
+# Example: Find comments about "hot reload" in PR 10642
+gh api repos/Significant-Gravitas/AutoGPT/pulls/10642/comments --jq '.[] | select(.body | contains("hot reload")) | {user: .user.login, body: .body, path: .path, line: .line}'
+```
+
+Note: Regular PR comments (not on specific lines) can be found with `gh pr view {PR_NUMBER} --comments`, but inline code review comments require the API endpoint above.
