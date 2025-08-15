@@ -9,8 +9,6 @@ export async function GET(request: Request) {
   const code = searchParams.get("code");
   const state = searchParams.get("state");
 
-  console.debug("OAuth callback received:", { code, state });
-
   const message: OAuthPopupResultMessage =
     code && state
       ? { message_type: "oauth_popup_result", success: true, code, state }
@@ -19,8 +17,6 @@ export async function GET(request: Request) {
           success: false,
           message: `Incomplete query: ${searchParams.toString()}`,
         };
-
-  console.debug("Sending message to opener:", message);
 
   // Return a response with the message as JSON and a script to close the window
   return new NextResponse(

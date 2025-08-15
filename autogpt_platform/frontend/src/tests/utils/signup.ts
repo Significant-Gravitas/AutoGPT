@@ -45,10 +45,8 @@ export async function signupTestUser(
         page.waitForURL(/\/marketplace/, { timeout: 15000 }),
       ]);
     } catch (error) {
-      console.error(
-        "❌ Timeout waiting for redirect, current URL:",
-        page.url(),
-      );
+      // eslint-disable-next-line no-console
+      console.error("Timeout waiting for redirect, current URL:", page.url());
       throw error;
     }
 
@@ -95,7 +93,6 @@ export async function signupTestUser(
 
     return testUser;
   } catch (error) {
-    console.error(`❌ Error creating test user ${userEmail}:`, error);
     throw error;
   }
 }
@@ -105,47 +102,34 @@ export async function signupAndNavigateToMarketplace(
   email?: string,
   password?: string,
 ): Promise<TestUser> {
-  console.log("🧪 Creating user and navigating to marketplace...");
-
   // Create the user via signup and automatically navigate to marketplace
   const testUser = await signupTestUser(page, email, password, true);
 
-  console.log("✅ User successfully created and authenticated in marketplace");
   return testUser;
 }
 
 export async function validateSignupForm(page: any): Promise<void> {
-  console.log("🧪 Validating signup form...");
-
   await page.goto("http://localhost:3000/signup");
 
   // Test empty form submission
-  console.log("❌ Testing empty form submission...");
   const signupButton = page.getByRole("button", { name: "Sign up" });
   await signupButton.click();
 
   // Should still be on signup page
   const currentUrl = page.url();
   if (currentUrl.includes("/signup")) {
-    console.log("✅ Empty form correctly blocked");
   } else {
-    console.log("⚠️ Empty form was not blocked as expected");
   }
 
   // Test invalid email
-  console.log("❌ Testing invalid email...");
   await page.getByLabel("Email").fill("invalid-email");
   await signupButton.click();
 
   // Should still be on signup page
   const currentUrl2 = page.url();
   if (currentUrl2.includes("/signup")) {
-    console.log("✅ Invalid email correctly blocked");
   } else {
-    console.log("⚠️ Invalid email was not blocked as expected");
   }
-
-  console.log("✅ Signup form validation completed");
 }
 
 export function generateTestEmail(): string {

@@ -25,7 +25,6 @@ export async function askOtto(
     const response = await api.askOtto(ottoQuery);
     return response;
   } catch (error) {
-    console.error("Error in askOtto server action:", error);
     return {
       answer: error instanceof Error ? error.message : "Unknown error occurred",
       documents: [],

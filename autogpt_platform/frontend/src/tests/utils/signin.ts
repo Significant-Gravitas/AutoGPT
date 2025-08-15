@@ -20,8 +20,6 @@ export class SigninUtils {
    * Perform login and verify success
    */
   async loginAndVerify(testUser: TestUser): Promise<void> {
-    console.log(`🔐 Logging in as: ${testUser.email}`);
-
     await this.page.goto("/login");
     await this.loginPage.login(testUser.email, testUser.password);
 
@@ -33,16 +31,12 @@ export class SigninUtils {
       state: "visible",
       timeout: 5000,
     });
-
-    console.log("✅ Login successful");
   }
 
   /**
    * Perform logout and verify success
    */
   async logoutAndVerify(): Promise<void> {
-    console.log("🚪 Logging out...");
-
     // Open profile menu
     await this.page.getByTestId("profile-popout-menu-trigger").click();
 
@@ -57,16 +51,12 @@ export class SigninUtils {
 
     // Verify we're back on login page
     await this.page.waitForURL("/login");
-
-    console.log("✅ Logout successful");
   }
 
   /**
    * Complete authentication cycle: login -> logout -> login
    */
   async fullAuthenticationCycle(testUser: TestUser): Promise<void> {
-    console.log("🔄 Starting full authentication cycle...");
-
     // First login
     await this.loginAndVerify(testUser);
 
@@ -75,8 +65,6 @@ export class SigninUtils {
 
     // Login again
     await this.loginAndVerify(testUser);
-
-    console.log("✅ Full authentication cycle completed");
   }
 
   /**

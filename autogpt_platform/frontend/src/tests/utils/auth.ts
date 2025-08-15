@@ -45,14 +45,11 @@ export async function createTestUser(
       await browser.close();
     }
   } catch (error) {
-    console.error(`❌ Error creating test user ${userEmail}:`, error);
     throw error;
   }
 }
 
 export async function createTestUsers(count: number): Promise<TestUser[]> {
-  console.log(`👥 Creating ${count} test users...`);
-
   const users: TestUser[] = [];
   let consecutiveFailures = 0;
 
@@ -61,21 +58,16 @@ export async function createTestUsers(count: number): Promise<TestUser[]> {
       const user = await createTestUser();
       users.push(user);
       consecutiveFailures = 0; // Reset failure counter on success
-      console.log(`✅ Created user ${i + 1}/${count}: ${user.email}`);
 
       // Small delay to prevent overwhelming the system
       if (i < count - 1) {
         await new Promise((resolve) => setTimeout(resolve, 500));
       }
-    } catch (error) {
+    } catch {
       consecutiveFailures++;
-      console.error(`❌ Failed to create user ${i + 1}/${count}:`, error);
 
       // If we have too many consecutive failures, stop trying
       if (consecutiveFailures >= 3) {
-        console.error(
-          `⚠️ Stopping after ${consecutiveFailures} consecutive failures`,
-        );
         break;
       }
 
@@ -84,7 +76,6 @@ export async function createTestUsers(count: number): Promise<TestUser[]> {
     }
   }
 
-  console.log(`🎉 Successfully created ${users.length}/${count} test users`);
   return users;
 }
 
@@ -109,9 +100,7 @@ export async function saveUserPool(
 
   try {
     fs.writeFileSync(finalPath, JSON.stringify(userPool, null, 2));
-    console.log(`✅ Successfully saved user pool to: ${finalPath}`);
   } catch (error) {
-    console.error(`❌ Failed to save user pool to ${finalPath}:`, error);
     throw error;
   }
 }
@@ -122,26 +111,16 @@ export async function loadUserPool(
   const defaultPath = path.resolve(process.cwd(), ".auth", "user-pool.json");
   const finalPath = filePath || defaultPath;
 
-  console.log(`📖 Loading user pool from: ${finalPath}`);
-
   try {
     if (!fs.existsSync(finalPath)) {
-      console.log(`⚠️ User pool file not found: ${finalPath}`);
       return null;
     }
 
     const fileContent = fs.readFileSync(finalPath, "utf-8");
     const userPool: UserPool = JSON.parse(fileContent);
 
-    console.log(
-      `✅ Successfully loaded ${userPool.users.length} users from: ${finalPath}`,
-    );
-    console.log(`📅 User pool created at: ${userPool.createdAt}`);
-    console.log(`🔖 User pool version: ${userPool.version}`);
-
     return userPool;
-  } catch (error) {
-    console.error(`❌ Failed to load user pool from ${finalPath}:`, error);
+  } catch {
     return null;
   }
 }

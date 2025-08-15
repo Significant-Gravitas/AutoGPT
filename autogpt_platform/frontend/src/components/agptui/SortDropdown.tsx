@@ -28,7 +28,6 @@ export const SortDropdown: React.FC<{
   const handleSelect = (option: SortOption) => {
     setSelected(option);
     onSort(option.value);
-    console.log(`Sorting by: ${option.label} (${option.value})`);
   };
 
   return (

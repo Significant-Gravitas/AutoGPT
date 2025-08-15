@@ -8,11 +8,6 @@ export class LoginPage {
   }
 
   async login(email: string, password: string) {
-    console.log(`ℹ️ Attempting login on ${this.page.url()} with`, {
-      email,
-      password,
-    });
-
     // Wait for the form to be ready
     await this.page.waitForSelector("form", { state: "visible" });
 
@@ -34,7 +29,10 @@ export class LoginPage {
     await loginButton.waitFor({ state: "visible" });
 
     // Attach navigation logger for debug purposes
-    this.page.on("load", (page) => console.log(`ℹ️ Now at URL: ${page.url()}`));
+    this.page.on("load", (page) => {
+      // eslint-disable-next-line no-console
+      console.log(`ℹ️ Now at URL: ${page.url()}`);
+    });
 
     // Start waiting for navigation before clicking
     const leaveLoginPage = this.page
@@ -43,6 +41,7 @@ export class LoginPage {
         { timeout: 10_000 },
       )
       .catch((reason) => {
+        // eslint-disable-next-line no-console
         console.error(
           `🚨 Navigation away from /login timed out (current URL: ${this.page.url()}):`,
           reason,
@@ -50,18 +49,13 @@ export class LoginPage {
         throw reason;
       });
 
-    console.log(`🖱️ Clicking login button...`);
     await loginButton.click();
 
-    console.log("⏳ Waiting for navigation away from /login ...");
     await leaveLoginPage;
-    console.log(`⌛ Post-login redirected to ${this.page.url()}`);
 
     await new Promise((resolve) => setTimeout(resolve, 200)); // allow time for client-side redirect
     await this.page.waitForLoadState("load", { timeout: 10_000 });
 
-    console.log("➡️ Navigating to /marketplace ...");
     await this.page.goto("/marketplace", { timeout: 10_000 });
-    console.log("✅ Login process complete");
   }
 }

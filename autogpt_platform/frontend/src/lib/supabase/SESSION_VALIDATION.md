@@ -42,14 +42,12 @@ function MyComponent() {
   // Regular API calls use secure server-side authentication
   const handleGetGraphs = async () => {
     const graphs = await api.listGraphs();
-    console.log(graphs);
   };
 
   // File uploads also work with secure authentication
   const handleFileUpload = async (file: File) => {
     try {
       const mediaUrl = await api.uploadStoreSubmissionMedia(file);
-      console.log("Uploaded:", mediaUrl);
     } catch (error) {
       console.error("Upload failed:", error);
     }

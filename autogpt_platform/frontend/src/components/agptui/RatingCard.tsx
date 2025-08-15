@@ -27,7 +27,6 @@ export const RatingCard: React.FC<RatingCardProps> = ({
 
   const handleSubmit = async (rating: number) => {
     if (rating > 0) {
-      console.log(`Rating submitted for ${agentName}:`, rating);
       await api.reviewAgent("--", agentName, {
         store_listing_version_id: storeListingVersionId,
         score: rating,

@@ -47,8 +47,6 @@ test.describe("Build", () => { //(1)!
     const blocksToAdd = allBlocks.filter((_, index) => 
       index % totalParts === (part - 1)
     );
-
-    console.log(`Adding ${blocksToAdd.length} blocks starting with "${letter}" (part ${part}/${totalParts})`);
     
     for (const block of blocksToAdd) {
       await buildPage.addBlock(block);

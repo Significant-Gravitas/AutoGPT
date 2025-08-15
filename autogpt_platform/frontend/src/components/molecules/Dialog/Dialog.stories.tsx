@@ -156,7 +156,7 @@ function renderControlledDialog() {
           isOpen,
           set: setIsOpen,
         }}
-        onClose={() => console.log("Dialog closed")}
+        onClose={() => window.alert("Dialog closed")}
       >
         <Dialog.Content>
           <div className="flex flex-col gap-4">

@@ -17,21 +17,14 @@ export class LibraryPage extends BasePage {
   }
 
   async isLoaded(): Promise<boolean> {
-    console.log(`checking if library page is loaded`);
-    try {
-      await this.page.waitForLoadState("domcontentloaded", { timeout: 10_000 });
+    await this.page.waitForLoadState("domcontentloaded", { timeout: 10_000 });
 
-      await this.page.waitForSelector('[data-testid="library-textbox"]', {
-        state: "visible",
-        timeout: 10_000,
-      });
+    await this.page.waitForSelector('[data-testid="library-textbox"]', {
+      state: "visible",
+      timeout: 10_000,
+    });
 
-      console.log("Library page is loaded successfully");
-      return true;
-    } catch (error) {
-      console.log("Library page failed to load:", error);
-      return false;
-    }
+    return true;
   }
 
   async navigateToLibrary(): Promise<void> {
@@ -53,7 +46,6 @@ export class LibraryPage extends BasePage {
   }
 
   async searchAgents(searchTerm: string): Promise<void> {
-    console.log(`searching for agents with term: ${searchTerm}`);
     const { getRole } = getSelectors(this.page);
     const searchInput = getRole("textbox", "Search agents");
     await searchInput.fill(searchTerm);
@@ -62,7 +54,6 @@ export class LibraryPage extends BasePage {
   }
 
   async clearSearch(): Promise<void> {
-    console.log(`clearing search`);
     try {
       // Look for the clear button (X icon)
       const clearButton = this.page.locator(".lucide.lucide-x");
@@ -79,6 +70,7 @@ export class LibraryPage extends BasePage {
       // Wait for results to update
       await this.page.waitForTimeout(500);
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error("Error clearing search:", error);
     }
   }
@@ -96,19 +88,18 @@ export class LibraryPage extends BasePage {
   }
 
   async getCurrentSortOption(): Promise<string> {
-    console.log(`getting current sort option`);
     try {
       const sortCombobox = this.page.getByRole("combobox");
       const currentOption = await sortCombobox.textContent();
       return currentOption?.trim() || "";
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error("Error getting current sort option:", error);
       return "";
     }
   }
 
   async openUploadDialog(): Promise<void> {
-    console.log(`opening upload dialog`);
     await this.page.getByRole("button", { name: "Upload an agent" }).click();
 
     // Wait for dialog to appear
@@ -128,7 +119,6 @@ export class LibraryPage extends BasePage {
   }
 
   async isUploadDialogVisible(): Promise<boolean> {
-    console.log(`checking if upload dialog is visible`);
     try {
       const dialog = this.page.getByRole("dialog", { name: "Upload Agent" });
       return await dialog.isVisible();
@@ -138,10 +128,6 @@ export class LibraryPage extends BasePage {
   }
 
   async fillUploadForm(agentName: string, description: string): Promise<void> {
-    console.log(
-      `filling upload form with name: ${agentName}, description: ${description}`,
-    );
-
     // Fill agent name
     await this.page
       .getByRole("textbox", { name: "Agent name" })
@@ -154,7 +140,6 @@ export class LibraryPage extends BasePage {
   }
 
   async isUploadButtonEnabled(): Promise<boolean> {
-    console.log(`checking if upload button is enabled`);
     try {
       const uploadButton = this.page.getByRole("button", {
         name: "Upload Agent",
@@ -199,7 +184,6 @@ export class LibraryPage extends BasePage {
       }
     }
 
-    console.log(`found ${agents.length} agents`);
     return agents;
   }
 
@@ -210,16 +194,12 @@ export class LibraryPage extends BasePage {
   }
 
   async clickSeeRuns(agent: Agent): Promise<void> {
-    console.log(`clicking see runs for agent: ${agent.name}`);
-
     // Find the "See runs" link for this specific agent
     const agentCard = this.page.locator(`[href="${agent.seeRunsUrl}"]`).first();
     await agentCard.click();
   }
 
   async clickOpenInBuilder(agent: Agent): Promise<void> {
-    console.log(`clicking open in builder for agent: ${agent.name}`);
-
     // Find the "Open in builder" link for this specific agent
     const builderLink = this.page
       .locator(`[href="${agent.openInBuilderUrl}"]`)
@@ -238,12 +218,10 @@ export class LibraryPage extends BasePage {
   }
 
   async clickMonitoringLink(): Promise<void> {
-    console.log(`clicking monitoring link in alert`);
     await this.page.getByRole("link", { name: "here" }).click();
   }
 
   async isMonitoringAlertVisible(): Promise<boolean> {
-    console.log(`checking if monitoring alert is visible`);
     try {
       const alertText = this.page.locator("text=/Prefer the old experience/");
       return await alertText.isVisible();
@@ -253,7 +231,6 @@ export class LibraryPage extends BasePage {
   }
 
   async getSearchValue(): Promise<string> {
-    console.log(`getting search input value`);
     try {
       const searchInput = this.page.getByRole("textbox", {
         name: "Search agents",
@@ -271,33 +248,21 @@ export class LibraryPage extends BasePage {
   }
 
   async scrollToBottom(): Promise<void> {
-    console.log(`scrolling to bottom to trigger pagination`);
     await this.page.keyboard.press("End");
     await this.page.waitForTimeout(1000);
   }
 
   async scrollDown(): Promise<void> {
-    console.log(`scrolling down to trigger pagination`);
     await this.page.keyboard.press("PageDown");
     await this.page.waitForTimeout(1000);
   }
 
   async scrollToLoadMore(): Promise<void> {
-    console.log(`scrolling to load more agents`);
-
-    // Get initial agent count
-    const initialCount = await this.getAgentCount();
-    console.log(`Initial agent count: ${initialCount}`);
-
     // Scroll down to trigger pagination
     await this.scrollToBottom();
 
     // Wait for potential new agents to load
     await this.page.waitForTimeout(2000);
-
-    // Check if more agents loaded
-    const newCount = await this.getAgentCount();
-    console.log(`New agent count after scroll: ${newCount}`);
 
     return;
   }
@@ -320,8 +285,6 @@ export class LibraryPage extends BasePage {
   }
 
   async getAgentsWithPagination(): Promise<Agent[]> {
-    console.log(`getting all agents with pagination`);
-
     let allAgents: Agent[] = [];
     let previousCount = 0;
     let currentCount = 0;
@@ -336,21 +299,16 @@ export class LibraryPage extends BasePage {
       allAgents = currentAgents;
       currentCount = currentAgents.length;
 
-      console.log(`Attempt ${attempts + 1}: Found ${currentCount} agents`);
-
       // Try to load more by scrolling
       await this.scrollToLoadMore();
 
       attempts++;
     } while (currentCount > previousCount && attempts < maxAttempts);
 
-    console.log(`Total agents found with pagination: ${allAgents.length}`);
     return allAgents;
   }
 
   async waitForPaginationLoad(): Promise<void> {
-    console.log(`waiting for pagination to load`);
-
     // Wait for any loading states to complete
     await this.page.waitForTimeout(1000);
 
@@ -372,8 +330,6 @@ export class LibraryPage extends BasePage {
       previousCount = currentCount;
       await this.page.waitForTimeout(500);
     }
-
-    console.log(`Pagination load stabilized with ${currentCount} agents`);
   }
 
   async scrollAndWaitForNewAgents(): Promise<number> {
@@ -385,10 +341,6 @@ export class LibraryPage extends BasePage {
 
     const finalCount = await this.getAgentCountByListLength();
     const newAgentsLoaded = finalCount - initialCount;
-
-    console.log(
-      `Loaded ${newAgentsLoaded} new agents (${initialCount} -> ${finalCount})`,
-    );
 
     return newAgentsLoaded;
   }
