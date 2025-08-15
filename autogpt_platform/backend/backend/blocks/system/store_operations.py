@@ -5,7 +5,6 @@ from pydantic import BaseModel
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from backend.server.v2.store import exceptions as store_exceptions
 from backend.util.clients import get_database_manager_async_client
 
 logger = logging.getLogger(__name__)
@@ -122,67 +121,41 @@ class GetStoreAgentDetailsBlock(Block):
         input_data: Input,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            details = await self._get_agent_details(
-                creator=input_data.creator, slug=input_data.slug
-            )
-            yield "found", details.found
-            yield "store_listing_version_id", details.store_listing_version_id
-            yield "agent_name", details.agent_name
-            yield "description", details.description
-            yield "creator", details.creator
-            yield "categories", details.categories
-            yield "runs", details.runs
-            yield "rating", details.rating
-
-        except Exception as e:
-            logger.error(f"Failed to get agent details: {str(e)}")
-            yield "found", False
-            yield "store_listing_version_id", ""
-            yield "agent_name", ""
-            yield "description", ""
-            yield "creator", ""
-            yield "categories", []
-            yield "runs", 0
-            yield "rating", 0.0
+        details = await self._get_agent_details(
+            creator=input_data.creator, slug=input_data.slug
+        )
+        yield "found", details.found
+        yield "store_listing_version_id", details.store_listing_version_id
+        yield "agent_name", details.agent_name
+        yield "description", details.description
+        yield "creator", details.creator
+        yield "categories", details.categories
+        yield "runs", details.runs
+        yield "rating", details.rating
 
     async def _get_agent_details(self, creator: str, slug: str) -> StoreAgentDetails:
         """
         Retrieve detailed information about a store agent.
         """
-        try:
-            # Get by specific version ID
-            agent_details = (
-                await get_database_manager_async_client().get_store_agent_details(
-                    username=creator, agent_name=slug
-                )
+        # Get by specific version ID
+        agent_details = (
+            await get_database_manager_async_client().get_store_agent_details(
+                username=creator, agent_name=slug
             )
+        )
 
-            return StoreAgentDetails(
-                found=True,
-                store_listing_version_id=agent_details.store_listing_version_id,
-                agent_name=agent_details.agent_name,
-                description=agent_details.description,
-                creator=agent_details.creator,
-                categories=(
-                    agent_details.categories
-                    if hasattr(agent_details, "categories")
-                    else []
-                ),
-                runs=agent_details.runs,
-                rating=agent_details.rating,
-            )
-        except store_exceptions.AgentNotFoundError:
-            return StoreAgentDetails(
-                found=False,
-                store_listing_version_id="",
-                agent_name="",
-                description="",
-                creator="",
-                categories=[],
-                runs=0,
-                rating=0.0,
-            )
+        return StoreAgentDetails(
+            found=True,
+            store_listing_version_id=agent_details.store_listing_version_id,
+            agent_name=agent_details.agent_name,
+            description=agent_details.description,
+            creator=agent_details.creator,
+            categories=(
+                agent_details.categories if hasattr(agent_details, "categories") else []
+            ),
+            runs=agent_details.runs,
+            rating=agent_details.rating,
+        )
 
 
 class SearchStoreAgentsBlock(Block):
@@ -276,30 +249,24 @@ class SearchStoreAgentsBlock(Block):
         input_data: Input,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            result = await self._search_agents(
-                query=input_data.query,
-                category=input_data.category,
-                sort_by=input_data.sort_by,
-                limit=input_data.limit,
-            )
+        result = await self._search_agents(
+            query=input_data.query,
+            category=input_data.category,
+            sort_by=input_data.sort_by,
+            limit=input_data.limit,
+        )
 
-            agents = result.agents
-            total_count = result.total_count
+        agents = result.agents
+        total_count = result.total_count
 
-            # Convert to dict for output
-            agents_as_dicts = [agent.model_dump() for agent in agents]
+        # Convert to dict for output
+        agents_as_dicts = [agent.model_dump() for agent in agents]
 
-            yield "agents", agents_as_dicts
-            yield "total_count", total_count
+        yield "agents", agents_as_dicts
+        yield "total_count", total_count
 
-            for agent_dict in agents_as_dicts:
-                yield "agent", agent_dict
-
-        except Exception as e:
-            logger.error(f"Failed to search store agents: {str(e)}")
-            yield "agents", []
-            yield "total_count", 0
+        for agent_dict in agents_as_dicts:
+            yield "agent", agent_dict
 
     async def _search_agents(
         self,
@@ -329,17 +296,16 @@ class SearchStoreAgentsBlock(Block):
             page_size=limit,
         )
 
-        agents: list[StoreAgentDict] = []
-        for agent in result.agents:
-            agents.append(
-                StoreAgentDict(
-                    slug=agent.slug,
-                    name=agent.agent_name,
-                    description=agent.description,
-                    creator=agent.creator,
-                    rating=agent.rating,
-                    runs=agent.runs,
-                )
+        agents = [
+            StoreAgentDict(
+                slug=agent.slug,
+                name=agent.agent_name,
+                description=agent.description,
+                creator=agent.creator,
+                rating=agent.rating,
+                runs=agent.runs,
             )
+            for agent in result.agents
+        ]
 
         return SearchAgentsResponse(agents=agents, total_count=len(agents))

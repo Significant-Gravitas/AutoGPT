@@ -5,7 +5,6 @@ from pydantic import BaseModel
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from backend.server.v2.store import exceptions as store_exceptions
 from backend.util.clients import get_database_manager_async_client
 
 logger = logging.getLogger(__name__)
@@ -89,36 +88,18 @@ class AddToLibraryFromStoreBlock(Block):
         user_id: str,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            library_agent = await self._add_to_library(
-                user_id=user_id,
-                store_listing_version_id=input_data.store_listing_version_id,
-                custom_name=input_data.agent_name,
-            )
+        library_agent = await self._add_to_library(
+            user_id=user_id,
+            store_listing_version_id=input_data.store_listing_version_id,
+            custom_name=input_data.agent_name,
+        )
 
-            yield "success", True
-            yield "library_agent_id", library_agent.library_agent_id
-            yield "agent_id", library_agent.agent_id
-            yield "agent_version", library_agent.agent_version
-            yield "agent_name", library_agent.agent_name
-            yield "message", "Agent successfully added to library"
-
-        except store_exceptions.AgentNotFoundError as e:
-            logger.warning(f"Agent not found: {str(e)}")
-            yield "success", False
-            yield "library_agent_id", ""
-            yield "agent_id", ""
-            yield "agent_version", 0
-            yield "agent_name", ""
-            yield "message", f"Agent not found: {str(e)}"
-        except Exception as e:
-            logger.error(f"Failed to add agent to library: {str(e)}")
-            yield "success", False
-            yield "library_agent_id", ""
-            yield "agent_id", ""
-            yield "agent_version", 0
-            yield "agent_name", ""
-            yield "message", f"Failed to add agent to library: {str(e)}"
+        yield "success", True
+        yield "library_agent_id", library_agent.library_agent_id
+        yield "agent_id", library_agent.agent_id
+        yield "agent_version", library_agent.agent_version
+        yield "agent_name", library_agent.agent_name
+        yield "message", "Agent successfully added to library"
 
     async def _add_to_library(
         self,
@@ -156,9 +137,6 @@ class ListLibraryAgentsBlock(Block):
         search_query: Optional[str] = SchemaField(
             description="Optional search query to filter agents", default=None
         )
-        include_archived: bool = SchemaField(
-            description="Whether to include archived agents", default=False
-        )
         limit: int = SchemaField(
             description="Maximum number of agents to return", default=50, ge=1, le=100
         )
@@ -189,7 +167,6 @@ class ListLibraryAgentsBlock(Block):
             output_schema=ListLibraryAgentsBlock.Output,
             test_input={
                 "search_query": None,
-                "include_archived": False,
                 "limit": 10,
                 "page": 1,
             },
@@ -248,38 +225,28 @@ class ListLibraryAgentsBlock(Block):
         user_id: str,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            result = await self._list_library_agents(
-                user_id=user_id,
-                search_query=input_data.search_query,
-                include_archived=input_data.include_archived,
-                limit=input_data.limit,
-                page=input_data.page,
-            )
+        result = await self._list_library_agents(
+            user_id=user_id,
+            search_query=input_data.search_query,
+            limit=input_data.limit,
+            page=input_data.page,
+        )
 
-            agents = result["agents"]
+        agents = result["agents"]
 
-            yield "agents", agents
-            yield "total_count", result["total"]
-            yield "page", result["page"]
-            yield "total_pages", result["total_pages"]
+        yield "agents", agents
+        yield "total_count", result["total"]
+        yield "page", result["page"]
+        yield "total_pages", result["total_pages"]
 
-            # Yield each agent individually for better graph connectivity
-            for agent in agents:
-                yield "agent", agent
-
-        except Exception as e:
-            logger.error(f"Failed to list library agents: {str(e)}")
-            yield "agents", []
-            yield "total_count", 0
-            yield "page", 1
-            yield "total_pages", 1
+        # Yield each agent individually for better graph connectivity
+        for agent in agents:
+            yield "agent", agent
 
     async def _list_library_agents(
         self,
         user_id: str,
         search_query: Optional[str] = None,
-        include_archived: bool = False,
         limit: int = 50,
         page: int = 1,
     ) -> dict[str, Any]:
@@ -293,20 +260,19 @@ class ListLibraryAgentsBlock(Block):
             page_size=limit,
         )
 
-        agents: list[LibraryAgent] = []
-        for agent in result.agents:
-            agents.append(
-                LibraryAgent(
-                    library_agent_id=agent.id,
-                    agent_id=agent.graph_id,
-                    agent_version=agent.graph_version,
-                    agent_name=agent.name,
-                    description=getattr(agent, "description", ""),
-                    creator=getattr(agent, "creator", ""),
-                    is_archived=getattr(agent, "is_archived", False),
-                    categories=getattr(agent, "categories", []),
-                )
+        agents = [
+            LibraryAgent(
+                library_agent_id=agent.id,
+                agent_id=agent.graph_id,
+                agent_version=agent.graph_version,
+                agent_name=agent.name,
+                description=getattr(agent, "description", ""),
+                creator=getattr(agent, "creator", ""),
+                is_archived=getattr(agent, "is_archived", False),
+                categories=getattr(agent, "categories", []),
             )
+            for agent in result.agents
+        ]
 
         return {
             "agents": agents,
