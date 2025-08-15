@@ -162,7 +162,7 @@ async def get_agents(
     try:
         agents = await backend.server.v2.store.db.get_store_agents(
             featured=featured,
-            creator=creator,
+            creators=[creator] if creator else None,
             sorted_by=sorted_by,
             search_query=search_query,
             category=category,

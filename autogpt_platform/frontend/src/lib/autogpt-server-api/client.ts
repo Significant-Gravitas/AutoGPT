@@ -18,6 +18,11 @@ import type {
   APIKeyCredentials,
   APIKeyPermission,
   Block,
+  BlockCategoryResponse,
+  BlockRequest,
+  BlockResponse,
+  BlockSearchResponse,
+  CountResponse,
   CreateAPIKeyResponse,
   CreatorDetails,
   CreatorsResponse,
@@ -26,6 +31,7 @@ import type {
   CredentialsDeleteResponse,
   CredentialsMetaInput,
   CredentialsMetaResponse,
+  CredentialsProviderName,
   Graph,
   GraphCreatable,
   GraphExecution,
@@ -52,6 +58,8 @@ import type {
   OttoQuery,
   OttoResponse,
   ProfileDetails,
+  Provider,
+  ProviderResponse,
   RefundRequest,
   ReviewSubmissionRequest,
   Schedule,
@@ -66,6 +74,7 @@ import type {
   StoreSubmissionRequest,
   StoreSubmissionsResponse,
   SubmissionStatus,
+  SuggestionsResponse,
   TransactionHistory,
   User,
   UserOnboarding,
@@ -212,6 +221,44 @@ export default class BackendAPI {
   /** Check if onboarding is enabled not if user finished it or not. */
   isOnboardingEnabled(): Promise<boolean> {
     return this._get("/onboarding/enabled");
+  }
+
+  ////////////////////////////////////////
+  //////////////// BUILDER ///////////////
+  ////////////////////////////////////////
+
+  getSuggestions(): Promise<SuggestionsResponse> {
+    return this._get("/builder/suggestions");
+  }
+
+  getBlockCategories(): Promise<BlockCategoryResponse[]> {
+    return this._get("/builder/categories");
+  }
+
+  getBuilderBlocks(request?: BlockRequest): Promise<BlockResponse> {
+    return this._get("/builder/blocks", request);
+  }
+
+  getProviders(request?: {
+    page?: number;
+    page_size?: number;
+  }): Promise<ProviderResponse> {
+    return this._get("/builder/providers", request);
+  }
+
+  searchBlocks(options: {
+    search_query?: string;
+    filter?: ("blocks" | "integrations" | "marketplace_agents" | "my_agents")[];
+    by_creator?: string[];
+    search_id?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<BlockSearchResponse> {
+    return this._request("POST", "/builder/search", options);
+  }
+
+  getBlockCounts(): Promise<CountResponse> {
+    return this._get("/builder/counts");
   }
 
   ////////////////////////////////////////

@@ -74,6 +74,15 @@ class Pagination(pydantic.BaseModel):
         description="Number of items per page.", examples=[25]
     )
 
+    @staticmethod
+    def empty() -> "Pagination":
+        return Pagination(
+            total_items=0,
+            total_pages=0,
+            current_page=0,
+            page_size=0,
+        )
+
 
 class RequestTopUp(pydantic.BaseModel):
     credit_amount: int
