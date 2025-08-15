@@ -30,10 +30,10 @@ from backend.data.graph import Graph, Link, Node, create_graph
 
 # Import API functions from the backend
 from backend.data.user import get_or_create_user
-from backend.server.integrations.utils import get_supabase
 from backend.server.v2.library.db import create_library_agent, create_preset
 from backend.server.v2.library.model import LibraryAgentPresetCreatable
 from backend.server.v2.store.db import create_store_submission, review_store_submission
+from backend.util.clients import get_supabase
 
 faker = Faker()
 

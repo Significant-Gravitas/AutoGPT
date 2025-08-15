@@ -24,7 +24,8 @@
 </details>
 
 #### For configuration changes:
-- [ ] `.env.example` is updated or already compatible with my changes
+
+- [ ] `.env.default` is updated or already compatible with my changes
 - [ ] `docker-compose.yml` is updated or already compatible with my changes
 - [ ] I have included a list of my configuration changes in the PR description (under **Changes**)
 

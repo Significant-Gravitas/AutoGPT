@@ -360,7 +360,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum message size limit for communication with the message bus",
     )
 
-    backend_cors_allow_origins: List[str] = Field(default_factory=list)
+    backend_cors_allow_origins: List[str] = Field(default=["http://localhost:3000"])
 
     @field_validator("backend_cors_allow_origins")
     @classmethod
@@ -524,6 +524,12 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
 
     # AutoMod API credentials
     automod_api_key: str = Field(default="", description="AutoMod API key")
+
+    # LaunchDarkly feature flags
+    launch_darkly_sdk_key: str = Field(
+        default="",
+        description="The LaunchDarkly SDK key for feature flag management",
+    )
 
     ayrshare_api_key: str = Field(default="", description="Ayrshare API Key")
     ayrshare_jwt_key: str = Field(default="", description="Ayrshare private Key")
