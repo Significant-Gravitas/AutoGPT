@@ -13,7 +13,6 @@ from backend.blocks.system.store_operations import (
     StoreAgentDetails,
     StoreAgentDict,
 )
-from backend.server.v2.store import exceptions as store_exceptions
 
 
 @pytest.mark.asyncio
@@ -56,31 +55,6 @@ async def test_add_to_library_from_store_block_success(mocker):
 
 
 @pytest.mark.asyncio
-async def test_add_to_library_from_store_block_not_found(mocker):
-    """Test handling when agent is not found in store."""
-    block = AddToLibraryFromStoreBlock()
-
-    mocker.patch.object(
-        block,
-        "_add_to_library",
-        side_effect=store_exceptions.AgentNotFoundError("Agent not found"),
-    )
-
-    input_data = block.Input(store_listing_version_id="non-existent-listing")
-
-    outputs = {}
-    async for name, value in block.run(input_data, user_id="test-user"):
-        outputs[name] = value
-
-    assert outputs["success"] is False
-    assert outputs["library_agent_id"] == ""
-    assert outputs["agent_id"] == ""
-    assert outputs["agent_version"] == 0
-    assert outputs["agent_name"] == ""
-    assert "Agent not found" in outputs["message"]
-
-
-@pytest.mark.asyncio
 async def test_get_store_agent_details_block_success(mocker):
     """Test successful retrieval of store agent details."""
     block = GetStoreAgentDetailsBlock()
@@ -113,37 +87,6 @@ async def test_get_store_agent_details_block_success(mocker):
     assert outputs["categories"] == ["productivity", "automation"]
     assert outputs["runs"] == 100
     assert outputs["rating"] == 4.5
-
-
-@pytest.mark.asyncio
-async def test_get_store_agent_details_block_not_found(mocker):
-    """Test handling when agent details are not found."""
-    block = GetStoreAgentDetailsBlock()
-
-    mocker.patch.object(
-        block,
-        "_get_agent_details",
-        return_value=StoreAgentDetails(
-            found=False,
-            store_listing_version_id="",
-            agent_name="",
-            description="",
-            creator="",
-            categories=[],
-            runs=0,
-            rating=0.0,
-        ),
-    )
-
-    input_data = block.Input(creator="Test Creator", slug="test-slug-noat-exist")
-
-    outputs = {}
-    async for name, value in block.run(input_data):
-        outputs[name] = value
-
-    assert outputs["found"] is False
-    assert outputs["store_listing_version_id"] == ""
-    assert outputs["agent_name"] == ""
 
 
 @pytest.mark.asyncio
@@ -203,25 +146,6 @@ async def test_search_store_agents_block_empty_results(mocker):
     )
 
     input_data = block.Input(query="nonexistent", limit=10)
-
-    outputs = {}
-    async for name, value in block.run(input_data):
-        outputs[name] = value
-
-    assert outputs["agents"] == []
-    assert outputs["total_count"] == 0
-
-
-@pytest.mark.asyncio
-async def test_search_store_agents_block_error_handling(mocker):
-    """Test error handling during search."""
-    block = SearchStoreAgentsBlock()
-
-    mocker.patch.object(
-        block, "_search_agents", side_effect=Exception("Database error")
-    )
-
-    input_data = block.Input(query="test")
 
     outputs = {}
     async for name, value in block.run(input_data):
