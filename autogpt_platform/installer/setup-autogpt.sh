@@ -190,8 +190,12 @@ clone_repository() {
 # Prompt for Sentry enablement and set global flag
 prompt_sentry_enablement() {
     print_color "YELLOW" "Would you like to enable debug information to be shared so we can fix your issues? [Y/n]"
-    read -r sentry_answer
-    case "${sentry_answer,,}" in
+    IFS= read -r sentry_answer
+
+    # portable lowercase
+    sentry_answer_lc=$(printf '%s' "$sentry_answer" | tr '[:upper:]' '[:lower:]')
+
+    case "$sentry_answer_lc" in
         ""|y|yes)
             SENTRY_ENABLED=1
             ;;
