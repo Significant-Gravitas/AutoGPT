@@ -18,6 +18,7 @@ import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission"
 import { ThumbnailImages } from "../../PublishAgentModal/components/AgentInfoStep/components/ThumbnailImages";
 import { z } from "zod";
 import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
+import { StepHeader } from "../../PublishAgentModal/components/StepHeader";
 
 const editAgentSchema = z.object({
   title: z
@@ -165,10 +166,10 @@ export function EditAgentForm({
 
   return (
     <div className="mx-auto flex w-full flex-col rounded-3xl">
-      <div className="mb-6">
-        <h2 className="text-2xl font-semibold text-gray-900">Edit Agent</h2>
-        <p className="text-gray-600">Update your agent details</p>
-      </div>
+      <StepHeader
+        title="Edit Agent"
+        description="Update your agent details"
+      />
 
       <Form {...form}>
         <form

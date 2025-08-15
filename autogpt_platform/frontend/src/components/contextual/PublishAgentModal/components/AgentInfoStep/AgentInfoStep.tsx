@@ -15,8 +15,6 @@ export function AgentInfoStep({
   selectedAgentId,
   selectedAgentVersion,
   initialData,
-  isEditing = false,
-  store_listing_version_id,
 }: Props) {
   const {
     form,
@@ -32,8 +30,6 @@ export function AgentInfoStep({
     selectedAgentId,
     selectedAgentVersion,
     initialData,
-    isEditing,
-    store_listing_version_id,
   });
 
   const categoryOptions = [
@@ -52,12 +48,8 @@ export function AgentInfoStep({
   return (
     <div className="mx-auto flex w-full flex-col rounded-3xl">
       <StepHeader
-        title={isEditing ? "Edit Agent" : "Publish Agent"}
-        description={
-          isEditing
-            ? "Update your agent details"
-            : "Write a bit of details about your agent"
-        }
+        title="Publish Agent"
+        description="Write a bit of details about your agent"
       />
 
       <Form {...form}>
@@ -92,23 +84,20 @@ export function AgentInfoStep({
             )}
           />
 
-          {!isEditing && (
-            <FormField
-              control={form.control}
-              name="slug"
-              render={({ field }) => (
-                <Input
-                  id={field.name}
-                  label="Slug"
-                  type="text"
-                  placeholder="URL-friendly name for your agent"
-                  error={form.formState.errors.slug?.message}
-                  disabled={isEditing}
-                  {...field}
-                />
-              )}
-            />
-          )}
+          <FormField
+            control={form.control}
+            name="slug"
+            render={({ field }) => (
+              <Input
+                id={field.name}
+                label="Slug"
+                type="text"
+                placeholder="URL-friendly name for your agent"
+                error={form.formState.errors.slug?.message}
+                {...field}
+              />
+            )}
+          />
 
           <ThumbnailImages
             agentId={agentId}
@@ -181,7 +170,7 @@ export function AgentInfoStep({
               }
               loading={isSubmitting}
             >
-              {isEditing ? "Update submission" : "Submit for review"}
+              Submit for review
             </Button>
           </div>
         </form>

@@ -4,10 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import {
-  getGetV2ListMySubmissionsQueryKey,
-  putV2EditStoreSubmission,
-} from "@/app/api/__generated__/endpoints/store/store";
+import { getGetV2ListMySubmissionsQueryKey } from "@/app/api/__generated__/endpoints/store/store";
 import * as Sentry from "@sentry/nextjs";
 import {
   PublishAgentFormData,
@@ -21,8 +18,6 @@ export interface Props {
   selectedAgentId: string | null;
   selectedAgentVersion: number | null;
   initialData?: PublishAgentInfoInitialData;
-  isEditing?: boolean;
-  store_listing_version_id?: string;
 }
 
 export function useAgentInfoStep({
@@ -31,8 +26,6 @@ export function useAgentInfoStep({
   selectedAgentId,
   selectedAgentVersion,
   initialData,
-  isEditing = false,
-  store_listing_version_id,
 }: Props) {
   const [agentId, setAgentId] = useState<string | null>(null);
   const [images, setImages] = useState<string[]>([]);
@@ -56,7 +49,6 @@ export function useAgentInfoStep({
 
   useEffect(() => {
     if (initialData) {
-      console.log("initialData", initialData);
       setAgentId(initialData.agent_id);
       const initialImages = [
         ...(initialData?.thumbnailSrc ? [initialData.thumbnailSrc] : []),
@@ -64,28 +56,17 @@ export function useAgentInfoStep({
       ];
       setImages(initialImages);
 
-      // Only reset form if the values are actually different
-      const currentValues = form.getValues();
-      const hasChanges =
-        currentValues.title !== initialData.title ||
-        currentValues.subheader !== initialData.subheader ||
-        currentValues.slug !== initialData.slug.toLocaleLowerCase().trim() ||
-        currentValues.youtubeLink !== initialData.youtubeLink ||
-        currentValues.category !== initialData.category ||
-        currentValues.description !== initialData.description;
-
-      if (hasChanges) {
-        form.reset({
-          title: initialData.title,
-          subheader: initialData.subheader,
-          slug: initialData.slug.toLocaleLowerCase().trim(),
-          youtubeLink: initialData.youtubeLink,
-          category: initialData.category,
-          description: initialData.description,
-        });
-      }
+      // Update form with initial data
+      form.reset({
+        title: initialData.title,
+        subheader: initialData.subheader,
+        slug: initialData.slug.toLocaleLowerCase().trim(),
+        youtubeLink: initialData.youtubeLink,
+        category: initialData.category,
+        description: initialData.description,
+      });
     }
-  }, [initialData]);
+  }, [initialData, form]);
 
   const handleImagesChange = useCallback((newImages: string[]) => {
     setImages(newImages);
@@ -107,35 +88,17 @@ export function useAgentInfoStep({
     setIsSubmitting(true);
 
     try {
-      let response;
-
-      if (isEditing && store_listing_version_id) {
-        // Use edit endpoint for editing mode
-        response = await putV2EditStoreSubmission(store_listing_version_id, {
-          name: data.title,
-          sub_heading: data.subheader,
-          description: data.description,
-          image_urls: images,
-          video_url: data.youtubeLink || "",
-          agent_id: selectedAgentId || "",
-          agent_version: selectedAgentVersion || 0,
-          categories: filteredCategories,
-          changes_summary: "Updated submission",
-        });
-      } else {
-        // Use create endpoint for new submissions
-        response = await api.createStoreSubmission({
-          name: data.title,
-          sub_heading: data.subheader,
-          description: data.description,
-          image_urls: images,
-          video_url: data.youtubeLink || "",
-          agent_id: selectedAgentId || "",
-          agent_version: selectedAgentVersion || 0,
-          slug: data.slug.replace(/\s+/g, "-"),
-          categories: filteredCategories,
-        });
-      }
+      const response = await api.createStoreSubmission({
+        name: data.title,
+        sub_heading: data.subheader,
+        description: data.description,
+        image_urls: images,
+        video_url: data.youtubeLink || "",
+        agent_id: selectedAgentId || "",
+        agent_version: selectedAgentVersion || 0,
+        slug: data.slug.replace(/\s+/g, "-"),
+        categories: filteredCategories,
+      });
 
       await queryClient.invalidateQueries({
         queryKey: getGetV2ListMySubmissionsQueryKey(),
@@ -145,8 +108,9 @@ export function useAgentInfoStep({
     } catch (error) {
       Sentry.captureException(error);
       toast({
-        title: isEditing ? "Edit Agent Error" : "Submit Agent Error",
-        description: `An error occurred while ${isEditing ? "editing" : "submitting"} the agent. Please try again.`,
+        title: "Submit Agent Error",
+        description:
+          "An error occurred while submitting the agent. Please try again.",
         duration: 3000,
         variant: "destructive",
       });
