@@ -1,5 +1,6 @@
 import functools
 import logging
+from datetime import datetime, timedelta, timezone
 
 import prisma
 
@@ -114,7 +115,7 @@ def get_blocks(
         blocks=[{**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks],
         pagination=server_model.Pagination(
             total_items=total,
-            total_pages=total // page_size + (1 if total % page_size > 0 else 0),
+            total_pages=(total + page_size - 1) // page_size,
             current_page=page,
             page_size=page_size,
         ),
@@ -180,7 +181,7 @@ def search_blocks(
             blocks=[{**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks],
             pagination=server_model.Pagination(
                 total_items=total,
-                total_pages=total // page_size + (1 if total % page_size > 0 else 0),
+                total_pages=(total + page_size - 1) // page_size,
                 current_page=page,
                 page_size=page_size,
             ),
@@ -222,7 +223,7 @@ def get_providers(
         providers=providers,
         pagination=server_model.Pagination(
             total_items=total,
-            total_pages=total // page_size + (1 if total % page_size > 0 else 0),
+            total_pages=(total + page_size - 1) // page_size,
             current_page=page,
             page_size=page_size,
         ),
@@ -331,6 +332,9 @@ async def get_suggested_blocks(count: int = 5) -> list[BlockData]:
     _suggested_blocks = []
     # Sum the number of executions for each block type
     # Prisma cannot group by nested relations, so we do a raw query
+    # Calculate the cutoff timestamp
+    timestamp_threshold = datetime.now(timezone.utc) - timedelta(days=30)
+
     results = await prisma.get_client().query_raw(
         """
         SELECT
@@ -338,9 +342,11 @@ async def get_suggested_blocks(count: int = 5) -> list[BlockData]:
             COUNT(execution.id) AS execution_count
         FROM "AgentNodeExecution" execution
         JOIN "AgentNode" agent_node ON execution."agentNodeId" = agent_node.id
+        WHERE execution."endedTime" >= $1::timestamp
         GROUP BY agent_node."agentBlockId"
         ORDER BY execution_count DESC;
-        """
+        """,
+        timestamp_threshold,
     )
 
     # Get the top blocks based on execution count

@@ -78,12 +78,12 @@ async def get_suggestions(
     dependencies=[fastapi.Depends(auth_middleware)],
 )
 async def get_block_categories(
-    category_blocks: Annotated[int, fastapi.Query()] = 3,
+    blocks_per_category: Annotated[int, fastapi.Query()] = 3,
 ) -> Sequence[builder_model.BlockCategoryResponse]:
     """
     Get all block categories with a specified number of blocks per category.
     """
-    return builder_db.get_block_categories(category_blocks)
+    return builder_db.get_block_categories(blocks_per_category)
 
 
 @router.get(
