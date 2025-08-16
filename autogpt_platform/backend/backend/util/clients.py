@@ -2,11 +2,18 @@
 Centralized service client helpers with thread caching.
 """
 
+from functools import cache
 from typing import TYPE_CHECKING
 
-from autogpt_libs.utils.cache import thread_cached
+from autogpt_libs.utils.cache import async_cache, thread_cached
+
+from backend.util.settings import Settings
+
+settings = Settings()
 
 if TYPE_CHECKING:
+    from supabase import AClient, Client
+
     from backend.data.execution import (
         AsyncRedisExecutionEventBus,
         RedisExecutionEventBus,
@@ -107,6 +114,29 @@ def get_integration_credentials_store() -> "IntegrationCredentialsStore":
     from backend.integrations.credentials_store import IntegrationCredentialsStore
 
     return IntegrationCredentialsStore()
+
+
+# ============ Supabase Clients ============ #
+
+
+@cache
+def get_supabase() -> "Client":
+    """Get a process-cached synchronous Supabase client instance."""
+    from supabase import create_client
+
+    return create_client(
+        settings.secrets.supabase_url, settings.secrets.supabase_service_role_key
+    )
+
+
+@async_cache
+async def get_async_supabase() -> "AClient":
+    """Get a process-cached asynchronous Supabase client instance."""
+    from supabase import create_async_client
+
+    return await create_async_client(
+        settings.secrets.supabase_url, settings.secrets.supabase_service_role_key
+    )
 
 
 # ============ Notification Queue Helpers ============ #

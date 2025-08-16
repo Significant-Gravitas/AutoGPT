@@ -9,11 +9,6 @@ import fastapi.responses
 import pydantic
 import starlette.middleware.cors
 import uvicorn
-from autogpt_libs.feature_flag.client import (
-    initialize_launchdarkly,
-    shutdown_launchdarkly,
-)
-from autogpt_libs.logging.utils import generate_uvicorn_config
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 
@@ -43,6 +38,7 @@ from backend.server.external.api import external_app
 from backend.server.middleware.security import SecurityHeadersMiddleware
 from backend.util import json
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
+from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
 from backend.util.service import UnhealthyServiceError
 
 settings = backend.util.settings.Settings()
@@ -255,7 +251,7 @@ class AgentServer(backend.util.service.AppProcess):
             server_app,
             host=backend.util.settings.Config().agent_api_host,
             port=backend.util.settings.Config().agent_api_port,
-            log_config=generate_uvicorn_config(),
+            log_config=None,
         )
 
     def cleanup(self):

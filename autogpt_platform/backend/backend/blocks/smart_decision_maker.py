@@ -291,9 +291,32 @@ class SmartDecisionMakerBlock(Block):
 
         for link in links:
             sink_name = SmartDecisionMakerBlock.cleanup(link.sink_name)
-            properties[sink_name] = sink_block_input_schema.get_field_schema(
-                link.sink_name
-            )
+
+            # Handle dynamic fields (e.g., values_#_*, items_$_*, etc.)
+            # These are fields that get merged by the executor into their base field
+            if (
+                "_#_" in link.sink_name
+                or "_$_" in link.sink_name
+                or "_@_" in link.sink_name
+            ):
+                # For dynamic fields, provide a generic string schema
+                # The executor will handle merging these into the appropriate structure
+                properties[sink_name] = {
+                    "type": "string",
+                    "description": f"Dynamic value for {link.sink_name}",
+                }
+            else:
+                # For regular fields, use the block's schema
+                try:
+                    properties[sink_name] = sink_block_input_schema.get_field_schema(
+                        link.sink_name
+                    )
+                except (KeyError, AttributeError):
+                    # If the field doesn't exist in the schema, provide a generic schema
+                    properties[sink_name] = {
+                        "type": "string",
+                        "description": f"Value for {link.sink_name}",
+                    }
 
         tool_function["parameters"] = {
             **block.input_schema.jsonschema(),
@@ -478,10 +501,6 @@ class SmartDecisionMakerBlock(Block):
                 }
             )
             prompt.extend(tool_output)
-        if input_data.multiple_tool_calls:
-            input_data.sys_prompt += "\nYou can call a tool (different tools) multiple times in a single response."
-        else:
-            input_data.sys_prompt += "\nOnly provide EXACTLY one function call, multiple tool calls is strictly prohibited."
 
         values = input_data.prompt_values
         if values:
