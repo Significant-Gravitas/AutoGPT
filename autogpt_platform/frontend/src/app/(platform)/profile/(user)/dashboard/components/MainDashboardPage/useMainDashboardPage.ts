@@ -4,6 +4,7 @@ import {
   useGetV2ListMySubmissions,
 } from "@/app/api/__generated__/endpoints/store/store";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
+import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 import { StoreSubmissionsResponse } from "@/app/api/__generated__/models/storeSubmissionsResponse";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
@@ -17,6 +18,16 @@ type PublishState = {
   submissionData: StoreSubmission | null;
 };
 
+type EditState = {
+  isOpen: boolean;
+  submission:
+    | (StoreSubmissionEditRequest & {
+        store_listing_version_id: string | undefined;
+        agent_id: string;
+      })
+    | null;
+};
+
 export const useMainDashboardPage = () => {
   const queryClient = getQueryClient();
 
@@ -26,6 +37,11 @@ export const useMainDashboardPage = () => {
     isOpen: false,
     step: "select",
     submissionData: null,
+  });
+
+  const [editState, setEditState] = useState<EditState>({
+    isOpen: false,
+    submission: null,
   });
 
   const { mutateAsync: deleteSubmission } = useDeleteV2DeleteStoreSubmission({
@@ -59,6 +75,41 @@ export const useMainDashboardPage = () => {
     });
   };
 
+  const onEditSubmission = (
+    submission: StoreSubmissionEditRequest & {
+      store_listing_version_id: string | undefined;
+      agent_id: string;
+    },
+  ) => {
+    setEditState({
+      isOpen: true,
+      submission,
+    });
+  };
+
+  const onEditSuccess = async (submission: StoreSubmission) => {
+    try {
+      if (!submission.store_listing_version_id) {
+        console.error("No store listing version ID found for submission");
+        return;
+      }
+
+      setEditState({
+        isOpen: false,
+        submission: null,
+      });
+    } catch (error) {
+      console.error("Failed to edit submission:", error);
+    }
+  };
+
+  const onEditClose = () => {
+    setEditState({
+      isOpen: false,
+      submission: null,
+    });
+  };
+
   const onDeleteSubmission = async (submission_id: string) => {
     await deleteSubmission({
       submissionId: submission_id,
@@ -83,7 +134,11 @@ export const useMainDashboardPage = () => {
     onPublishStateChange,
     onDeleteSubmission,
     onViewSubmission,
+    onEditSubmission,
+    onEditSuccess,
+    onEditClose,
     publishState,
+    editState,
     // API data
     submissions,
     isLoading: !isSuccess,

@@ -94,3 +94,15 @@ class SubmissionNotFoundError(StoreError):
     """Raised when a submission is not found"""
 
     pass
+
+
+class InvalidOperationError(StoreError):
+    """Raised when an operation is not valid for the current state"""
+
+    pass
+
+
+class UnauthorizedError(StoreError):
+    """Raised when a user is not authorized to perform an action"""
+
+    pass

@@ -1,8 +1,8 @@
 import { useMainDashboardPage } from "./useMainDashboardPage";
 import { Separator } from "@/components/ui/separator";
 import { AgentTable } from "../AgentTable/AgentTable";
-import { StatusType } from "@/components/agptui/Status";
 import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
+import { EditAgentModal } from "@/components/contextual/EditAgentModal/EditAgentModal";
 import { Button } from "@/components/atoms/Button/Button";
 import { EmptySubmissions } from "./components/EmptySubmissions";
 import { SubmissionLoadError } from "./components/SumbmissionLoadError";
@@ -13,9 +13,13 @@ export const MainDashboardPage = () => {
   const {
     onDeleteSubmission,
     onViewSubmission,
+    onEditSubmission,
+    onEditSuccess,
+    onEditClose,
     onOpenSubmitModal,
     onPublishStateChange,
     publishState,
+    editState,
     // API data
     submissions,
     isLoading,
@@ -89,17 +93,30 @@ export const MainDashboardPage = () => {
               dateSubmitted: new Date(
                 submission.date_submitted,
               ).toLocaleDateString(),
-              status: submission.status.toLowerCase() as StatusType,
+              status: submission.status,
               runs: submission.runs,
               rating: submission.rating,
+              video_url: submission.video_url || undefined,
+              categories: submission.categories,
+              slug: submission.slug,
+              store_listing_version_id:
+                submission.store_listing_version_id || undefined,
             }))}
             onViewSubmission={onViewSubmission}
             onDeleteSubmission={onDeleteSubmission}
+            onEditSubmission={onEditSubmission}
           />
         ) : (
           <EmptySubmissions />
         )}
       </div>
+
+      <EditAgentModal
+        isOpen={editState.isOpen}
+        onClose={onEditClose}
+        submission={editState.submission}
+        onSuccess={onEditSuccess}
+      />
     </main>
   );
 };

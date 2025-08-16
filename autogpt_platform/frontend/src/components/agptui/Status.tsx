@@ -1,13 +1,12 @@
+import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import * as React from "react";
 
-export type StatusType = "draft" | "awaiting_review" | "approved" | "rejected";
-
 interface StatusProps {
-  status: StatusType;
+  status: SubmissionStatus;
 }
 
 const statusConfig: Record<
-  StatusType,
+  SubmissionStatus,
   {
     bgColor: string;
     dotColor: string;
@@ -16,28 +15,28 @@ const statusConfig: Record<
     darkDotColor: string;
   }
 > = {
-  draft: {
+  [SubmissionStatus.DRAFT]: {
     bgColor: "bg-blue-50",
     dotColor: "bg-blue-500",
     text: "Draft",
     darkBgColor: "dark:bg-blue-900",
     darkDotColor: "dark:bg-blue-300",
   },
-  awaiting_review: {
+  [SubmissionStatus.PENDING]: {
     bgColor: "bg-amber-50",
     dotColor: "bg-amber-500",
     text: "Awaiting review",
     darkBgColor: "dark:bg-amber-900",
     darkDotColor: "dark:bg-amber-300",
   },
-  approved: {
+  [SubmissionStatus.APPROVED]: {
     bgColor: "bg-green-50",
     dotColor: "bg-green-500",
     text: "Approved",
     darkBgColor: "dark:bg-green-900",
     darkDotColor: "dark:bg-green-300",
   },
-  rejected: {
+  [SubmissionStatus.REJECTED]: {
     bgColor: "bg-red-50",
     dotColor: "bg-red-500",
     text: "Rejected",
@@ -53,9 +52,9 @@ export const Status: React.FC<StatusProps> = ({ status }) => {
    *                 Valid values: 'draft', 'awaiting_review', 'approved', 'rejected'
    */
   if (!status) {
-    return <Status status="awaiting_review" />;
+    return <Status status={SubmissionStatus.PENDING} />;
   } else if (!statusConfig[status]) {
-    return <Status status="awaiting_review" />;
+    return <Status status={SubmissionStatus.PENDING} />;
   }
 
   const config = statusConfig[status];

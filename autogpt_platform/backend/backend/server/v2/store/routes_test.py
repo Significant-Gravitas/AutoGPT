@@ -551,6 +551,8 @@ def test_get_submissions_success(
                 agent_version=1,
                 sub_heading="Test agent subheading",
                 slug="test-agent",
+                video_url="test.mp4",
+                categories=["test-category"],
             )
         ],
         pagination=backend.server.v2.store.model.Pagination(
