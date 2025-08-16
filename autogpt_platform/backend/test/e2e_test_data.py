@@ -584,7 +584,7 @@ class TestDataCreator:
                             store_listing_version_id=test_submission.store_listing_version_id,
                             is_approved=True,
                             external_comments="Test submission approved",
-                            internal_comments="Auto-approved test submission", 
+                            internal_comments="Auto-approved test submission",
                             reviewer_id=test_user["id"],
                         )
                         approved_submissions.append(approved_submission.model_dump())
@@ -597,11 +597,11 @@ class TestDataCreator:
                         )
                         print("🌟 Marked test agent as FEATURED")
                     elif random_value < 0.7:  # 30% chance to reject (40% to 70%)
-                        rejected_submission = await review_store_submission(
+                        await review_store_submission(
                             store_listing_version_id=test_submission.store_listing_version_id,
                             is_approved=False,
                             external_comments="Test submission rejected - needs improvements",
-                            internal_comments="Auto-rejected test submission for E2E testing", 
+                            internal_comments="Auto-rejected test submission for E2E testing",
                             reviewer_id=test_user["id"],
                         )
                         print("❌ Rejected test store submission")
@@ -673,7 +673,9 @@ class TestDataCreator:
                                 approved_submissions.append(
                                     approved_submission.model_dump()
                                 )
-                                print(f"✅ Approved store submission: {submission.name}")
+                                print(
+                                    f"✅ Approved store submission: {submission.name}"
+                                )
 
                                 # Mark some agents as featured during creation (30% chance)
                                 # More likely for creators and first submissions
@@ -709,20 +711,24 @@ class TestDataCreator:
                                 # Pick a random user as the reviewer (admin)
                                 reviewer_id = random.choice(self.users)["id"]
 
-                                rejected_submission = await review_store_submission(
+                                await review_store_submission(
                                     store_listing_version_id=submission.store_listing_version_id,
                                     is_approved=False,
                                     external_comments="Submission rejected - needs improvements",
                                     internal_comments="Automatically rejected by E2E test data script",
                                     reviewer_id=reviewer_id,
                                 )
-                                print(f"❌ Rejected store submission: {submission.name}")
+                                print(
+                                    f"❌ Rejected store submission: {submission.name}"
+                                )
                             except Exception as e:
                                 print(
                                     f"Warning: Could not reject submission {submission.name}: {e}"
                                 )
                         else:  # 20% chance to leave pending (80% to 100%)
-                            print(f"⏳ Left submission pending for review: {submission.name}")
+                            print(
+                                f"⏳ Left submission pending for review: {submission.name}"
+                            )
 
                 except Exception as e:
                     print(

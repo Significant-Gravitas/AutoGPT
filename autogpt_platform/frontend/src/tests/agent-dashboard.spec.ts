@@ -49,7 +49,9 @@ test.describe("Agent Dashboard", () => {
     await expect(getText(TEST_AGENT_DATA.description).first()).toBeVisible();
   });
 
-  test("agent table view action works correctly for rejected agents", async ({ page }) => {
+  test("agent table view action works correctly for rejected agents", async ({
+    page,
+  }) => {
     await page.goto("/profile/dashboard");
 
     const agentTable = page.getByTestId("agent-table");
@@ -85,7 +87,9 @@ test.describe("Agent Dashboard", () => {
     await expect(modal).not.toBeVisible();
   });
 
-  test("agent table edit action works correctly for pending/approved agents", async ({ page }) => {
+  test("agent table edit action works correctly for pending/approved agents", async ({
+    page,
+  }) => {
     await page.goto("/profile/dashboard");
 
     const agentTable = page.getByTestId("agent-table");
@@ -94,9 +98,13 @@ test.describe("Agent Dashboard", () => {
     const rows = agentTable.getByTestId("agent-table-row");
 
     // Find a row with pending or approved status
-    const editableRow = rows.filter({ hasText: /Awaiting review|Approved/ }).first();
+    const editableRow = rows
+      .filter({ hasText: /Awaiting review|Approved/ })
+      .first();
     if (!(await editableRow.count())) {
-      console.log("No pending or approved agents available; skipping edit test.");
+      console.log(
+        "No pending or approved agents available; skipping edit test.",
+      );
       return;
     }
 
@@ -138,7 +146,8 @@ test.describe("Agent Dashboard", () => {
     }
 
     const firstRow = rows.first();
-    const deletedSubmissionId = await firstRow.getAttribute("data-submission-id");
+    const deletedSubmissionId =
+      await firstRow.getAttribute("data-submission-id");
     await firstRow.scrollIntoViewIfNeeded();
 
     const delActionsButton = firstRow.getByTestId("agent-table-row-actions");
@@ -151,6 +160,8 @@ test.describe("Agent Dashboard", () => {
     await deleteButton.click();
 
     // Assert that the card with the deleted agent ID is not visible
-    await isHidden(page.locator(`[data-submission-id="${deletedSubmissionId}"]`));
+    await isHidden(
+      page.locator(`[data-submission-id="${deletedSubmissionId}"]`),
+    );
   });
 });
