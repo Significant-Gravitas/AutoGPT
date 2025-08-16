@@ -533,50 +533,50 @@ def test_get_creator_details(
     mock_db_call.assert_called_once_with(username="creator1")
 
 
-# def test_get_submissions_success(
-#     mocker: pytest_mock.MockFixture,
-#     snapshot: Snapshot,
-# ) -> None:
-#     mocked_value = backend.server.v2.store.model.StoreSubmissionsResponse(
-#         submissions=[
-#             backend.server.v2.store.model.StoreSubmission(
-#                 name="Test Agent",
-#                 description="Test agent description",
-#                 image_urls=["test.jpg"],
-#                 date_submitted=FIXED_NOW,
-#                 status=prisma.enums.SubmissionStatus.APPROVED,
-#                 runs=50,
-#                 rating=4.2,
-#                 agent_id="test-agent-id",
-#                 agent_version=1,
-#                 sub_heading="Test agent subheading",
-#                 slug="test-agent",
-#                 video_url="test.mp4",
-#                 categories=["test-category"],
-#             )
-#         ],
-#         pagination=backend.server.v2.store.model.Pagination(
-#             current_page=1,
-#             total_items=1,
-#             total_pages=1,
-#             page_size=20,
-#         ),
-#     )
-#     mock_db_call = mocker.patch("backend.server.v2.store.db.get_store_submissions")
-#     mock_db_call.return_value = mocked_value
+def test_get_submissions_success(
+    mocker: pytest_mock.MockFixture,
+    snapshot: Snapshot,
+) -> None:
+    mocked_value = backend.server.v2.store.model.StoreSubmissionsResponse(
+        submissions=[
+            backend.server.v2.store.model.StoreSubmission(
+                name="Test Agent",
+                description="Test agent description",
+                image_urls=["test.jpg"],
+                date_submitted=FIXED_NOW,
+                status=prisma.enums.SubmissionStatus.APPROVED,
+                runs=50,
+                rating=4.2,
+                agent_id="test-agent-id",
+                agent_version=1,
+                sub_heading="Test agent subheading",
+                slug="test-agent",
+                video_url="test.mp4",
+                categories=["test-category"],
+            )
+        ],
+        pagination=backend.server.v2.store.model.Pagination(
+            current_page=1,
+            total_items=1,
+            total_pages=1,
+            page_size=20,
+        ),
+    )
+    mock_db_call = mocker.patch("backend.server.v2.store.db.get_store_submissions")
+    mock_db_call.return_value = mocked_value
 
-#     response = client.get("/submissions")
-#     assert response.status_code == 200
+    response = client.get("/submissions")
+    assert response.status_code == 200
 
-#     data = backend.server.v2.store.model.StoreSubmissionsResponse.model_validate(
-#         response.json()
-#     )
-#     assert len(data.submissions) == 1
-#     assert data.submissions[0].name == "Test Agent"
-#     assert data.pagination.current_page == 1
-#     snapshot.snapshot_dir = "snapshots"
-#     snapshot.assert_match(json.dumps(response.json(), indent=2), "sub_success")
-#     mock_db_call.assert_called_once_with(user_id="test-user-id", page=1, page_size=20)
+    data = backend.server.v2.store.model.StoreSubmissionsResponse.model_validate(
+        response.json()
+    )
+    assert len(data.submissions) == 1
+    assert data.submissions[0].name == "Test Agent"
+    assert data.pagination.current_page == 1
+    snapshot.snapshot_dir = "snapshots"
+    snapshot.assert_match(json.dumps(response.json(), indent=2), "sub_success")
+    mock_db_call.assert_called_once_with(user_id="test-user-id", page=1, page_size=20)
 
 
 def test_get_submissions_pagination(
