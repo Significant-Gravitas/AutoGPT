@@ -166,10 +166,7 @@ export function EditAgentForm({
 
   return (
     <div className="mx-auto flex w-full flex-col rounded-3xl">
-      <StepHeader
-        title="Edit Agent"
-        description="Update your agent details"
-      />
+      <StepHeader title="Edit Agent" description="Update your agent details" />
 
       <Form {...form}>
         <form
