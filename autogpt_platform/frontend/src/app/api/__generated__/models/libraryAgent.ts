@@ -8,6 +8,7 @@
 import type { LibraryAgentImageUrl } from "./libraryAgentImageUrl";
 import type { LibraryAgentStatus } from "./libraryAgentStatus";
 import type { LibraryAgentInputSchema } from "./libraryAgentInputSchema";
+import type { LibraryAgentOutputSchema } from "./libraryAgentOutputSchema";
 import type { LibraryAgentCredentialsInputSchema } from "./libraryAgentCredentialsInputSchema";
 import type { LibraryAgentTriggerSetupInfo } from "./libraryAgentTriggerSetupInfo";
 
@@ -27,6 +28,7 @@ export interface LibraryAgent {
   name: string;
   description: string;
   input_schema: LibraryAgentInputSchema;
+  output_schema: LibraryAgentOutputSchema;
   /** Input schema for credentials required by the agent */
   credentials_input_schema: LibraryAgentCredentialsInputSchema;
   /** Whether the agent has an external trigger (e.g. webhook) node */

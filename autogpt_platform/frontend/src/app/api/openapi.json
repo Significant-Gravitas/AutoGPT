@@ -2721,6 +2721,239 @@
         }
       }
     },
+    "/api/builder/suggestions": {
+      "get": {
+        "tags": ["v2"],
+        "summary": "Get Builder suggestions",
+        "description": "Get all suggestions for the Blocks Menu.",
+        "operationId": "getV2Get builder suggestions",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SuggestionsResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/builder/categories": {
+      "get": {
+        "tags": ["v2"],
+        "summary": "Get Builder block categories",
+        "description": "Get all block categories with a specified number of blocks per category.",
+        "operationId": "getV2Get builder block categories",
+        "parameters": [
+          {
+            "name": "blocks_per_category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 3,
+              "title": "Blocks Per Category"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BlockCategoryResponse"
+                  },
+                  "title": "Response Getv2Get Builder Block Categories"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/builder/blocks": {
+      "get": {
+        "tags": ["v2"],
+        "summary": "Get Builder blocks",
+        "description": "Get blocks based on either category, type, or provider.",
+        "operationId": "getV2Get builder blocks",
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Category"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": ["all", "input", "action", "output"],
+                  "type": "string"
+                },
+                { "type": "null" }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "description": "Provider name for integrations. Can be any string value, including custom provider names."
+                },
+                { "type": "null" }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 1, "title": "Page" }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 50, "title": "Page Size" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BlockResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/builder/providers": {
+      "get": {
+        "tags": ["v2"],
+        "summary": "Get Builder integration providers",
+        "description": "Get all integration providers with their block counts.",
+        "operationId": "getV2Get builder integration providers",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 1, "title": "Page" }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 50, "title": "Page Size" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProviderResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/builder/search": {
+      "post": {
+        "tags": ["v2", "store", "private"],
+        "summary": "Builder search",
+        "description": "Search for blocks (including integrations), marketplace agents, and user library agents.",
+        "operationId": "postV2Builder search",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SearchRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SearchResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/builder/counts": {
+      "get": {
+        "tags": ["v2"],
+        "summary": "Get Builder item counts",
+        "description": "Get item counts for the menu categories in the Blocks Menu.",
+        "operationId": "getV2Get builder item counts",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CountResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/admin/listings": {
       "get": {
         "tags": ["v2", "admin", "store", "admin"],
@@ -4011,6 +4244,33 @@
         ],
         "title": "BaseGraph"
       },
+      "BlockCategoryResponse": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "total_blocks": { "type": "integer", "title": "Total Blocks" },
+          "blocks": {
+            "items": { "additionalProperties": true, "type": "object" },
+            "type": "array",
+            "title": "Blocks"
+          }
+        },
+        "type": "object",
+        "required": ["name", "total_blocks", "blocks"],
+        "title": "BlockCategoryResponse"
+      },
+      "BlockResponse": {
+        "properties": {
+          "blocks": {
+            "items": { "additionalProperties": true, "type": "object" },
+            "type": "array",
+            "title": "Blocks"
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        },
+        "type": "object",
+        "required": ["blocks", "pagination"],
+        "title": "BlockResponse"
+      },
       "Body_postV1Callback": {
         "properties": {
           "code": {
@@ -4130,6 +4390,31 @@
         "type": "object",
         "required": ["query", "conversation_history", "message_id"],
         "title": "ChatRequest"
+      },
+      "CountResponse": {
+        "properties": {
+          "all_blocks": { "type": "integer", "title": "All Blocks" },
+          "input_blocks": { "type": "integer", "title": "Input Blocks" },
+          "action_blocks": { "type": "integer", "title": "Action Blocks" },
+          "output_blocks": { "type": "integer", "title": "Output Blocks" },
+          "integrations": { "type": "integer", "title": "Integrations" },
+          "marketplace_agents": {
+            "type": "integer",
+            "title": "Marketplace Agents"
+          },
+          "my_agents": { "type": "integer", "title": "My Agents" }
+        },
+        "type": "object",
+        "required": [
+          "all_blocks",
+          "input_blocks",
+          "action_blocks",
+          "output_blocks",
+          "integrations",
+          "marketplace_agents",
+          "my_agents"
+        ],
+        "title": "CountResponse"
       },
       "CreateAPIKeyRequest": {
         "properties": {
@@ -4823,6 +5108,11 @@
             "type": "object",
             "title": "Input Schema"
           },
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Output Schema"
+          },
           "credentials_input_schema": {
             "anyOf": [
               { "additionalProperties": true, "type": "object" },
@@ -4865,6 +5155,7 @@
           "name",
           "description",
           "input_schema",
+          "output_schema",
           "credentials_input_schema",
           "has_external_trigger",
           "new_output",
@@ -5869,6 +6160,23 @@
         "required": ["name", "username", "description", "links"],
         "title": "ProfileDetails"
       },
+      "Provider": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Provider name for integrations. Can be any string value, including custom provider names."
+          },
+          "description": { "type": "string", "title": "Description" },
+          "integration_count": {
+            "type": "integer",
+            "title": "Integration Count"
+          }
+        },
+        "type": "object",
+        "required": ["name", "description", "integration_count"],
+        "title": "Provider"
+      },
       "ProviderConstants": {
         "properties": {
           "PROVIDER_NAMES": {
@@ -5907,6 +6215,19 @@
         "type": "object",
         "title": "ProviderNamesResponse",
         "description": "Response containing list of all provider names."
+      },
+      "ProviderResponse": {
+        "properties": {
+          "providers": {
+            "items": { "$ref": "#/components/schemas/Provider" },
+            "type": "array",
+            "title": "Providers"
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        },
+        "type": "object",
+        "required": ["providers", "pagination"],
+        "title": "ProviderResponse"
       },
       "RefundRequest": {
         "properties": {
@@ -5993,6 +6314,86 @@
         "type": "object",
         "required": ["name", "cron", "inputs"],
         "title": "ScheduleCreationRequest"
+      },
+      "SearchRequest": {
+        "properties": {
+          "search_query": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Search Query"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "blocks",
+                    "integrations",
+                    "marketplace_agents",
+                    "my_agents"
+                  ]
+                },
+                "type": "array"
+              },
+              { "type": "null" }
+            ],
+            "title": "Filter"
+          },
+          "by_creator": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "By Creator"
+          },
+          "search_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Search Id"
+          },
+          "page": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Page"
+          },
+          "page_size": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "title": "SearchRequest"
+      },
+      "SearchResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "anyOf": [
+                { "additionalProperties": true, "type": "object" },
+                { "$ref": "#/components/schemas/LibraryAgent" },
+                { "$ref": "#/components/schemas/StoreAgent" }
+              ]
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total_items": {
+            "additionalProperties": { "type": "integer" },
+            "propertyNames": {
+              "enum": [
+                "blocks",
+                "integrations",
+                "marketplace_agents",
+                "my_agents"
+              ]
+            },
+            "type": "object",
+            "title": "Total Items"
+          },
+          "page": { "type": "integer", "title": "Page" },
+          "more_pages": { "type": "boolean", "title": "More Pages" }
+        },
+        "type": "object",
+        "required": ["items", "total_items", "page", "more_pages"],
+        "title": "SearchResponse"
       },
       "SetGraphActiveVersion": {
         "properties": {
@@ -6377,6 +6778,41 @@
         "type": "string",
         "enum": ["DRAFT", "PENDING", "APPROVED", "REJECTED"],
         "title": "SubmissionStatus"
+      },
+      "SuggestionsResponse": {
+        "properties": {
+          "otto_suggestions": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Otto Suggestions"
+          },
+          "recent_searches": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Recent Searches"
+          },
+          "providers": {
+            "items": {
+              "type": "string",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
+            },
+            "type": "array",
+            "title": "Providers"
+          },
+          "top_blocks": {
+            "items": { "additionalProperties": true, "type": "object" },
+            "type": "array",
+            "title": "Top Blocks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "otto_suggestions",
+          "recent_searches",
+          "providers",
+          "top_blocks"
+        ],
+        "title": "SuggestionsResponse"
       },
       "TransactionHistory": {
         "properties": {

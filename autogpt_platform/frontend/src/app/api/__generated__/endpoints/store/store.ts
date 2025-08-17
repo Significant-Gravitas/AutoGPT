@@ -45,6 +45,10 @@ import type { Profile } from "../../models/profile";
 
 import type { ProfileDetails } from "../../models/profileDetails";
 
+import type { SearchRequest } from "../../models/searchRequest";
+
+import type { SearchResponse } from "../../models/searchResponse";
+
 import type { StoreAgentDetails } from "../../models/storeAgentDetails";
 
 import type { StoreAgentsResponse } from "../../models/storeAgentsResponse";
@@ -3160,4 +3164,118 @@ export const prefetchGetV2DownloadAgentFileQuery = async <
   await queryClient.prefetchQuery(queryOptions);
 
   return queryClient;
+};
+
+/**
+ * Search for blocks (including integrations), marketplace agents, and user library agents.
+ * @summary Builder search
+ */
+export type postV2BuilderSearchResponse200 = {
+  data: SearchResponse;
+  status: 200;
+};
+
+export type postV2BuilderSearchResponse422 = {
+  data: HTTPValidationError;
+  status: 422;
+};
+
+export type postV2BuilderSearchResponseComposite =
+  | postV2BuilderSearchResponse200
+  | postV2BuilderSearchResponse422;
+
+export type postV2BuilderSearchResponse =
+  postV2BuilderSearchResponseComposite & {
+    headers: Headers;
+  };
+
+export const getPostV2BuilderSearchUrl = () => {
+  return `/api/builder/search`;
+};
+
+export const postV2BuilderSearch = async (
+  searchRequest: SearchRequest,
+  options?: RequestInit,
+): Promise<postV2BuilderSearchResponse> => {
+  return customMutator<postV2BuilderSearchResponse>(
+    getPostV2BuilderSearchUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(searchRequest),
+    },
+  );
+};
+
+export const getPostV2BuilderSearchMutationOptions = <
+  TError = HTTPValidationError,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof postV2BuilderSearch>>,
+    TError,
+    { data: SearchRequest },
+    TContext
+  >;
+  request?: SecondParameter<typeof customMutator>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof postV2BuilderSearch>>,
+  TError,
+  { data: SearchRequest },
+  TContext
+> => {
+  const mutationKey = ["postV2BuilderSearch"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof postV2BuilderSearch>>,
+    { data: SearchRequest }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return postV2BuilderSearch(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PostV2BuilderSearchMutationResult = NonNullable<
+  Awaited<ReturnType<typeof postV2BuilderSearch>>
+>;
+export type PostV2BuilderSearchMutationBody = SearchRequest;
+export type PostV2BuilderSearchMutationError = HTTPValidationError;
+
+/**
+ * @summary Builder search
+ */
+export const usePostV2BuilderSearch = <
+  TError = HTTPValidationError,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof postV2BuilderSearch>>,
+      TError,
+      { data: SearchRequest },
+      TContext
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof postV2BuilderSearch>>,
+  TError,
+  { data: SearchRequest },
+  TContext
+> => {
+  const mutationOptions = getPostV2BuilderSearchMutationOptions(options);
+
+  return useMutation(mutationOptions, queryClient);
 };
