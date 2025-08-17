@@ -42,6 +42,7 @@ def sanitize_query(query: str | None) -> str | None:
     "/suggestions",
     summary="Get Builder suggestions",
     dependencies=[fastapi.Depends(auth_middleware)],
+    response_model=builder_model.SuggestionsResponse,
 )
 async def get_suggestions(
     user_id: Annotated[str, fastapi.Depends(get_user_id)],
@@ -76,6 +77,7 @@ async def get_suggestions(
     "/categories",
     summary="Get Builder block categories",
     dependencies=[fastapi.Depends(auth_middleware)],
+    response_model=Sequence[builder_model.BlockCategoryResponse],
 )
 async def get_block_categories(
     blocks_per_category: Annotated[int, fastapi.Query()] = 3,
@@ -90,6 +92,7 @@ async def get_block_categories(
     "/blocks",
     summary="Get Builder blocks",
     dependencies=[fastapi.Depends(auth_middleware)],
+    response_model=Sequence[builder_model.BlockResponse],
 )
 async def get_blocks(
     category: Annotated[str | None, fastapi.Query()] = None,
@@ -114,6 +117,7 @@ async def get_blocks(
     "/providers",
     summary="Get Builder integration providers",
     dependencies=[fastapi.Depends(auth_middleware)],
+    response_model=builder_model.ProviderResponse,
 )
 async def get_providers(
     page: Annotated[int, fastapi.Query()] = 1,
@@ -133,6 +137,7 @@ async def get_providers(
     summary="Builder search",
     tags=["store", "private"],
     dependencies=[fastapi.Depends(auth_middleware)],
+    response_model=builder_model.SearchResponse,
 )
 async def search(
     options: builder_model.SearchRequest,
@@ -223,6 +228,7 @@ async def search(
     "/counts",
     summary="Get Builder item counts",
     dependencies=[fastapi.Depends(auth_middleware)],
+    response_model=builder_model.CountResponse,
 )
 async def get_counts(
     user_id: Annotated[str, fastapi.Depends(get_user_id)],
