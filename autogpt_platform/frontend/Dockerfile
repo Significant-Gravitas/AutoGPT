@@ -15,8 +15,6 @@ RUN if [ -f .env ]; then \
     else \
       cp .env.default .env; \
     fi
-ENV AGPT_SERVER_URL=http://rest_server:8006/api
-RUN pnpm run generate:api
 RUN pnpm build
 
 # Prod stage - based on NextJS reference Dockerfile https://github.com/vercel/next.js/blob/64271354533ed16da51be5dce85f0dbd15f17517/examples/with-docker/Dockerfile
