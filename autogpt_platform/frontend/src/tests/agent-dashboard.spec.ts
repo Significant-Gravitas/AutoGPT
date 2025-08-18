@@ -165,7 +165,6 @@ test.describe("Agent Dashboard", () => {
     );
   });
 
-  // Need to create 3 tests, to check, if editing is working perfectly in Pending, Approved and Rejected agents
   test("edit action is unavailable for rejected agents (view only)", async ({
     page,
   }) => {
