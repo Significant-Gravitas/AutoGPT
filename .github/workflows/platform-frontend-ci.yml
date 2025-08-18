@@ -123,7 +123,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           exitOnceUploaded: true
 
-  type-check:
+  types:
     runs-on: ubuntu-latest
     needs: setup
     strategy:
@@ -155,7 +155,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run Typescript checks
-        run: pnpm type-check
+        run: pnpm types
 
   test:
     runs-on: big-boi

@@ -16,13 +16,14 @@ CMD ["pnpm", "run", "dev", "--hostname", "0.0.0.0"]
 # Build stage for prod
 FROM base AS build
 COPY autogpt_platform/frontend/ .
-ENV SKIP_STORYBOOK_TESTS=true
+ENV NEXT_PUBLIC_AGPT_SERVER_URL=http://rest_server:8006/api
 RUN if [ -f .env ]; then \
       cat .env.default .env > .env.merged && mv .env.merged .env; \
     else \
       cp .env.default .env; \
     fi
-RUN pnpm build --turbo
+RUN pnpm run generate:api
+RUN pnpm build
 
 # Prod stage - based on NextJS reference Dockerfile https://github.com/vercel/next.js/blob/64271354533ed16da51be5dce85f0dbd15f17517/examples/with-docker/Dockerfile
 FROM node:21-alpine AS prod
