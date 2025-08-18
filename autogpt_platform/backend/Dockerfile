@@ -24,13 +24,11 @@ RUN apt-get update --allow-releaseinfo-change --fix-missing \
 
 ENV POETRY_HOME=/opt/poetry
 ENV POETRY_NO_INTERACTION=1
-ENV POETRY_VIRTUALENVS_CREATE=false
+ENV POETRY_VIRTUALENVS_CREATE=true
+ENV POETRY_VIRTUALENVS_IN_PROJECT=true
 ENV PATH=/opt/poetry/bin:$PATH
 
-# Upgrade pip and setuptools to fix security vulnerabilities
-RUN python3 -m pip install --upgrade pip setuptools --break-system-packages
-
-RUN python3 -m pip install poetry
+RUN pip3 install poetry --break-system-packages
 
 # Copy and install dependencies
 COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
@@ -48,15 +46,15 @@ WORKDIR /app
 
 ENV POETRY_HOME=/opt/poetry \
     POETRY_NO_INTERACTION=1 \
-    POETRY_VIRTUALENVS_CREATE=false \
+    POETRY_VIRTUALENVS_CREATE=true \
+    POETRY_VIRTUALENVS_IN_PROJECT=true \
     DEBIAN_FRONTEND=noninteractive
 ENV PATH=/opt/poetry/bin:$PATH
 
-# Install Python and upgrade pip
+# Install Python without upgrading system-managed packages
 RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip \
-    && python3 -m pip install --upgrade pip setuptools --break-system-packages
+    python3.13 \
+    python3-pip
 
 # Copy only necessary files from builder
 COPY --from=builder /app /app
@@ -65,8 +63,7 @@ COPY --from=builder /usr/local/bin/poetry /usr/local/bin/poetry
 # Copy Prisma binaries
 COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-python/binaries
 
-
-ENV PATH="/app/.venv/bin:$PATH"
+ENV PATH="/app/autogpt_platform/backend/.venv/bin:$PATH"
 
 RUN mkdir -p /app/autogpt_platform/autogpt_libs
 RUN mkdir -p /app/autogpt_platform/backend
