@@ -639,12 +639,12 @@ const FlowEditor: React.FC<{
     () => [
       {
         label: "Undo",
-        icon: <IconUndo2 className="h-5 w-5" strokeWidth={2} />,
+        icon: <IconUndo2 />,
         onClick: history.undo,
       },
       {
         label: "Redo",
-        icon: <IconRedo2 className="h-5 w-5" strokeWidth={2} />,
+        icon: <IconRedo2 />,
         onClick: history.redo,
       },
     ],
