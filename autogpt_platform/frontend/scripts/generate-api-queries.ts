@@ -3,8 +3,12 @@
 import { getAgptServerBaseUrl } from "@/lib/env-config";
 import { execSync } from "child_process";
 import * as path from "path";
+import * as fs from "fs";
 
 function fetchOpenApiSpec(): void {
+  const args = process.argv.slice(2);
+  const forceFlag = args.includes("--force");
+
   const baseUrl = getAgptServerBaseUrl();
   const openApiUrl = `${baseUrl}/openapi.json`;
   const outputPath = path.join(
@@ -16,10 +20,27 @@ function fetchOpenApiSpec(): void {
     "openapi.json",
   );
 
-  console.log(`Fetching OpenAPI spec from: ${openApiUrl}`);
   console.log(`Output path: ${outputPath}`);
-  console.log(`Current working directory: ${process.cwd()}`);
-  console.log(`Script directory (__dirname): ${__dirname}`);
+  console.log(`Force flag: ${forceFlag}`);
+
+  // Check if local file exists
+  const localFileExists = fs.existsSync(outputPath);
+
+  if (!forceFlag && localFileExists) {
+    console.log("✅ Using existing local OpenAPI spec file");
+    console.log("💡 Use --force flag to fetch from server");
+    return;
+  }
+
+  if (!localFileExists) {
+    console.log("📄 No local OpenAPI spec found, fetching from server...");
+  } else {
+    console.log(
+      "🔄 Force flag detected, fetching fresh OpenAPI spec from server...",
+    );
+  }
+
+  console.log(`Fetching OpenAPI spec from: ${openApiUrl}`);
 
   try {
     // Fetch the OpenAPI spec

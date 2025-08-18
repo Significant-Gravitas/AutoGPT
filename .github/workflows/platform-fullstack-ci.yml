@@ -105,7 +105,7 @@ jobs:
           timeout 60 sh -c 'until docker compose -f ../docker-compose.yml exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done' || echo "Database ready check timeout, continuing..."
 
       - name: Generate API queries
-        run: pnpm generate:api
+        run: pnpm generate:api:force
 
       - name: Check for API schema changes
         run: |
