@@ -6,4 +6,7 @@
  * OpenAPI spec version: 0.1
  */
 
-export type StoreSubmissionReviewComments = string | null;
+/**
+ * AI-generated summary of what the agent did
+ */
+export type StatsActivityStatus = string | null;
