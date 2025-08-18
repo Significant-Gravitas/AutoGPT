@@ -602,7 +602,7 @@ async def edit_submission(
             description=submission_request.description,
             sub_heading=submission_request.sub_heading,
             categories=submission_request.categories,
-            changes_summary=submission_request.changes_summary or "Update Submission",
+            changes_summary=submission_request.changes_summary,
         )
     except Exception:
         logger.exception("Exception occurred whilst editing store submission")

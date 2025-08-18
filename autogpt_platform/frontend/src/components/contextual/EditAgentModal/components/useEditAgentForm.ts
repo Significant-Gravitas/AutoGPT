@@ -56,6 +56,10 @@ export const useEditAgentForm = ({
       .string()
       .min(1, "Description is required")
       .max(1000, "Description must be less than 1000 characters"),
+    changes_summary: z
+      .string()
+      .min(1, "Changes summary is required")
+      .max(200, "Changes summary must be less than 200 characters"),
   });
 
   type EditAgentFormData = z.infer<typeof editAgentSchema>;
@@ -86,6 +90,7 @@ export const useEditAgentForm = ({
       youtubeLink: submission.video_url || "",
       category: submission.categories?.[0] || "",
       description: submission.description,
+      changes_summary: submission.changes_summary || "",
     },
   });
 
@@ -130,7 +135,7 @@ export const useEditAgentForm = ({
           image_urls: images,
           video_url: data.youtubeLink || "",
           categories: filteredCategories,
-          changes_summary: "Updated submission",
+          changes_summary: data.changes_summary,
         },
       });
 

@@ -129,6 +129,21 @@ export function EditAgentForm({
             )}
           />
 
+          <FormField
+            control={form.control}
+            name="changes_summary"
+            render={({ field }) => (
+              <Input
+                id={field.name}
+                label="Changes Summary"
+                type="text"
+                placeholder="Briefly describe what you changed"
+                error={form.formState.errors.changes_summary?.message}
+                {...field}
+              />
+            )}
+          />
+
           <div className="flex justify-between gap-4 pt-6">
             <Button
               type="button"
