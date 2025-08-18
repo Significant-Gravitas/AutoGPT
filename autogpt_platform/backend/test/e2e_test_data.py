@@ -658,7 +658,7 @@ class TestDataCreator:
                     # Randomly approve, reject, or leave pending the submission
                     if submission.store_listing_version_id:
                         random_value = random.random()
-                        if random_value < 0.6:  # 60% chance to approve
+                        if random_value < 0.4:  # 40% chance to approve
                             try:
                                 # Pick a random user as the reviewer (admin)
                                 reviewer_id = random.choice(self.users)["id"]
@@ -706,7 +706,7 @@ class TestDataCreator:
                                 print(
                                     f"Warning: Could not approve submission {submission.name}: {e}"
                                 )
-                        elif random_value < 0.8:  # 20% chance to reject (60% to 80%)
+                        elif random_value < 0.7:  # 30% chance to reject (40% to 70%)
                             try:
                                 # Pick a random user as the reviewer (admin)
                                 reviewer_id = random.choice(self.users)["id"]
@@ -725,7 +725,7 @@ class TestDataCreator:
                                 print(
                                     f"Warning: Could not reject submission {submission.name}: {e}"
                                 )
-                        else:  # 20% chance to leave pending (80% to 100%)
+                        else:  # 30% chance to leave pending (70% to 100%)
                             print(
                                 f"⏳ Left submission pending for review: {submission.name}"
                             )
