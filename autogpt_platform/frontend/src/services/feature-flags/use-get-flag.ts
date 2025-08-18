@@ -22,7 +22,7 @@ const mockFlags = {
   [Flag.BETA_BLOCKS]: [],
   [Flag.AGENT_ACTIVITY]: true,
   [Flag.NEW_BLOCK_MENU]: false,
-  [Flag.NEW_AGENT_RUNS]: true,
+  [Flag.NEW_AGENT_RUNS]: false,
 };
 
 export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] | null {
