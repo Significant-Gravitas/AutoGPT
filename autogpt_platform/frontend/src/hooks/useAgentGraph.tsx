@@ -931,10 +931,10 @@ export default function useAgentGraph(
 
 function graphsEquivalent(saved: Graph, current: GraphCreatable): boolean {
   const sortNodes = (nodes: NodeCreatable[]) =>
-    nodes.sort((a, b) => a.id.localeCompare(b.id));
+    nodes.toSorted((a, b) => a.id.localeCompare(b.id));
 
   const sortLinks = (links: LinkCreatable[]) =>
-    links.sort(
+    links.toSorted(
       (a, b) =>
         2 * a.source_name.localeCompare(b.source_name) +
         a.sink_name.localeCompare(b.sink_name),
