@@ -3,6 +3,7 @@ FROM node:21-alpine AS base
 WORKDIR /app
 RUN corepack enable
 COPY autogpt_platform/frontend/package.json autogpt_platform/frontend/pnpm-lock.yaml ./
+COPY autogpt_platform/frontend/scripts/generate-api-queries.ts ./scripts/generate-api-queries.ts
 RUN --mount=type=cache,target=/root/.local/share/pnpm pnpm install --frozen-lockfile
 
 # Dev stage
