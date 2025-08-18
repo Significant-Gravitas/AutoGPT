@@ -4,6 +4,7 @@ from typing import List
 import prisma.enums
 import pydantic
 
+
 class Pagination(pydantic.BaseModel):
     total_items: int = pydantic.Field(
         description="Total number of items.", examples=[42]
