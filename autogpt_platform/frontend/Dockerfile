@@ -2,16 +2,20 @@
 FROM node:21-alpine AS base
 WORKDIR /app
 RUN corepack enable
-COPY autogpt_platform/frontend/ .
+COPY autogpt_platform/frontend/package.json autogpt_platform/frontend/pnpm-lock.yaml ./
 RUN --mount=type=cache,target=/root/.local/share/pnpm pnpm install --frozen-lockfile
 
 # Build stage for prod
 FROM base AS build
+# Install curl for generate:api script
+RUN apk add --no-cache curl
+COPY autogpt_platform/frontend/ .
 RUN if [ -f .env ]; then \
       cat .env.default .env > .env.merged && mv .env.merged .env; \
     else \
       cp .env.default .env; \
     fi
+ENV AGPT_SERVER_URL=http://rest_server:8006/api
 RUN pnpm run generate:api
 RUN pnpm build
 
