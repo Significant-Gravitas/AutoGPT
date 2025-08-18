@@ -24,7 +24,6 @@ interface useAgentTableRowProps {
   rating: number;
   video_url?: string;
   categories?: string[];
-  slug: string;
   store_listing_version_id?: string;
 }
 
@@ -44,14 +43,13 @@ export const useAgentTableRow = ({
   rating,
   video_url,
   categories,
-  slug,
   store_listing_version_id,
 }: useAgentTableRowProps) => {
   const handleView = () => {
     onViewSubmission({
       agent_id,
       agent_version,
-      slug,
+      slug: "",
       name: agentName,
       sub_heading,
       description,

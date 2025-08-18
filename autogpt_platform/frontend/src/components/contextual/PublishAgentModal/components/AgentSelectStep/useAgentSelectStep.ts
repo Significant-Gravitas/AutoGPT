@@ -1,6 +1,5 @@
 import * as React from "react";
 import { useGetV2GetMyAgents } from "@/app/api/__generated__/endpoints/store/store";
-import { MyAgentsResponse } from "@/app/api/__generated__/models/myAgentsResponse";
 
 export interface Agent {
   name: string;

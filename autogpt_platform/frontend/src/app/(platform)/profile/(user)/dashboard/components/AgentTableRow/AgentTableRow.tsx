@@ -33,7 +33,6 @@ export interface AgentTableRowProps {
   id: number;
   video_url?: string;
   categories?: string[];
-  slug: string;
   store_listing_version_id?: string;
   onViewSubmission: (submission: StoreSubmission) => void;
   onDeleteSubmission: (submission_id: string) => void;
@@ -59,7 +58,6 @@ export const AgentTableRow = ({
   id,
   video_url,
   categories,
-  slug,
   store_listing_version_id,
   onViewSubmission,
   onDeleteSubmission,
@@ -82,7 +80,6 @@ export const AgentTableRow = ({
     rating,
     video_url,
     categories,
-    slug,
     store_listing_version_id,
   });
 
