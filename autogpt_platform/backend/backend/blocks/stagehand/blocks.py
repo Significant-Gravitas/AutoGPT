@@ -10,16 +10,6 @@ from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaFie
 logger = logging.getLogger(__name__)
 
 
-StagehandCredentials = CredentialsMetaInput[Literal["stagehand"], Literal["api_key"]]  # type: ignore
-
-
-def StagehandCredentialsField() -> StagehandCredentials:
-    return CredentialsField(
-        description="Stagehand API credentials",
-        provider="stagehand",
-    )
-
-
 class StagehandLlmModel(str, Enum):
     """Subset of LlmModel that Stagehand supports (OpenAI and Anthropic)."""
 
@@ -135,7 +125,11 @@ class StagehandInitBlock(Block):
             model_api_key: Optional[str] = None
             try:
                 # type: ignore[attr-defined]
-                model_api_key = kwargs.get("credentials").api_key.get_secret_value() if False else None  # noqa: F401
+                model_api_key = (
+                    kwargs.get("credentials").api_key.get_secret_value()
+                    if False
+                    else None
+                )  # noqa: F401
             except Exception:
                 # We don't use block-level credentials; pull from input credentials
                 pass
@@ -156,13 +150,17 @@ class StagehandInitBlock(Block):
                     # At runtime the engine injects the selected credential secret; mirror by honoring env var for compatibility
                     # Since meta input does not carry secret, we rely on env being pre-configured via SDK defaults
                     # If AutoRegistry provided a default credential, it should be in env already; still prefer explicit field
-                    browser_api_key = browser_api_key or os.getenv("BROWSERBASE_API_KEY")
+                    browser_api_key = browser_api_key or os.getenv(
+                        "BROWSERBASE_API_KEY"
+                    )
 
                 # Set env vars to match docs
                 if browser_api_key:
                     os.environ["BROWSERBASE_API_KEY"] = browser_api_key
                 if input_data.browserbase_project_id:
-                    os.environ["BROWSERBASE_PROJECT_ID"] = input_data.browserbase_project_id
+                    os.environ["BROWSERBASE_PROJECT_ID"] = (
+                        input_data.browserbase_project_id
+                    )
 
                 config = StagehandConfig(  # type: ignore
                     env="BROWSERBASE",
@@ -195,11 +193,17 @@ class StagehandInitBlock(Block):
                 provider_env_var = "AIML_API_KEY"
 
             # Best-effort: rely on env var already configured by SDK; Stagehand also accepts explicit model_api_key
-            explicit_model_key = os.getenv(provider_env_var) if provider_env_var else None
+            # Priority: provider-specific env → generic STAGEHAND_MODEL_API_KEY → empty (Stagehand may fallback to env)
+            explicit_model_key = (
+                os.getenv(provider_env_var) if provider_env_var else None
+            )
+            if not explicit_model_key:
+                explicit_model_key = os.getenv("STAGEHAND_MODEL_API_KEY")
 
             stagehand = Stagehand(
                 config=config,
-                model_api_key=explicit_model_key or "",  # empty if not set; Stagehand may fallback to env
+                model_api_key=explicit_model_key
+                or "",  # empty if not set; Stagehand may fallback to env
                 use_rich_logging=False,  # Disable rich logging in backend
             )
 
