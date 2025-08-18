@@ -57,8 +57,6 @@ import PrimaryActionBar from "@/components/PrimaryActionButton";
 import OttoChatWidget from "@/components/OttoChatWidget";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useCopyPaste } from "../hooks/useCopyPaste";
-import { BlockMenu } from "@/app/(platform)/build/components/NewBlockMenu/BlockMenu/BlockMenu";
-import { NewSaveControl } from "@/app/(platform)/build/components/NewBlockMenu/SaveControl/NewSaveControl";
 import NewControlPanel from "@/app/(platform)/build/components/NewBlockMenu/NewControlPanel/NewControlPanel";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
