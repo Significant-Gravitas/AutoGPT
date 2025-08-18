@@ -81,7 +81,7 @@ jobs:
 
       - name: Run docker compose
         run: |
-          docker compose -f ../docker-compose.yml up -d
+          docker compose -f ../docker-compose.yml --profile local --profile deps_backend up -d
 
       - name: Restore dependencies cache
         uses: actions/cache@v4
