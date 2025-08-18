@@ -696,7 +696,7 @@ async def edit_store_submission(
     description: str = "",
     sub_heading: str = "",
     categories: list[str] = [],
-    changes_summary: str = "Update Submission",
+    changes_summary: str | None = "Update submission",
 ) -> backend.server.v2.store.model.StoreSubmission:
     """
     Edit an existing store listing submission.
@@ -852,7 +852,7 @@ async def create_store_version(
     description: str = "",
     sub_heading: str = "",
     categories: list[str] = [],
-    changes_summary: str = "Update Submission",
+    changes_summary: str | None = "Initial submission",
 ) -> backend.server.v2.store.model.StoreSubmission:
     """
     Create a new version for an existing store listing
