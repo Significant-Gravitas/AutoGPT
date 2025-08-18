@@ -17,7 +17,7 @@ const isTest = process.env.NEXT_PUBLIC_PW_TEST === "true";
 const mockFlags = {
   [Flag.BETA_BLOCKS]: [],
   [Flag.AGENT_ACTIVITY]: true,
-  [Flag.NEW_BLOCK_MENU]: true, // TODO: change to true when new block menu is ready
+  [Flag.NEW_BLOCK_MENU]: false, // TODO: change to true when new block menu is ready
 };
 
 export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] | null {
