@@ -8,7 +8,7 @@
     "start": "next start",
     "start:standalone": "cd .next/standalone && node server.js",
     "lint": "next lint && prettier --check .",
-    "format": "prettier --write .",
+    "format": "next lint --fix; prettier --write .",
     "type-check": "tsc --noEmit",
     "test": "next build --turbo && playwright test",
     "test-ui": "next build --turbo && playwright test --ui",

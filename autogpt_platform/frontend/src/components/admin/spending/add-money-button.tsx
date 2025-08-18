@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
 import { addDollars } from "@/app/(platform)/admin/spending/actions";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 
 export function AdminAddMoneyButton({
   userId,
@@ -30,18 +31,32 @@ export function AdminAddMoneyButton({
   defaultComments?: string;
 }) {
   const router = useRouter();
+  const { toast } = useToast();
   const [isAddMoneyDialogOpen, setIsAddMoneyDialogOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [dollarAmount, setDollarAmount] = useState(
     defaultAmount ? Math.abs(defaultAmount / 100).toFixed(2) : "1.00",
   );
 
   const handleApproveSubmit = async (formData: FormData) => {
-    setIsAddMoneyDialogOpen(false);
+    setIsSubmitting(true);
     try {
       await addDollars(formData);
+      setIsAddMoneyDialogOpen(false);
+      toast({
+        title: "Success",
+        description: `Added $${dollarAmount} to ${userEmail}'s balance`,
+      });
       router.refresh(); // Refresh the current route
     } catch (error) {
       console.error("Error adding dollars:", error);
+      toast({
+        title: "Error",
+        description: "Failed to add dollars. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -122,10 +137,13 @@ export function AdminAddMoneyButton({
                 type="button"
                 variant="outline"
                 onClick={() => setIsAddMoneyDialogOpen(false)}
+                disabled={isSubmitting}
               >
                 Cancel
               </Button>
-              <Button type="submit">Add Dollars</Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? "Adding..." : "Add Dollars"}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
