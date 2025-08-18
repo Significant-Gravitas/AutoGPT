@@ -936,6 +936,8 @@ function graphsEquivalent(saved: Graph, current: GraphCreatable): boolean {
   const sortLinks = (links: LinkCreatable[]) =>
     links.toSorted(
       (a, b) =>
+        8 * a.source_id.localeCompare(b.source_id) +
+        4 * a.sink_id.localeCompare(b.sink_id) +
         2 * a.source_name.localeCompare(b.source_name) +
         a.sink_name.localeCompare(b.sink_name),
     );
