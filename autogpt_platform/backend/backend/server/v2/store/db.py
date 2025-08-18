@@ -548,7 +548,7 @@ async def create_store_submission(
     description: str = "",
     sub_heading: str = "",
     categories: list[str] = [],
-    changes_summary: str = "Initial Submission",
+    changes_summary: str | None = "Initial Submission",
 ) -> backend.server.v2.store.model.StoreSubmission:
     """
     Create the first (and only) store listing and thus submission as a normal user

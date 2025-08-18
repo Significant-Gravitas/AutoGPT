@@ -166,4 +166,133 @@ test.describe("Agent Dashboard", () => {
   });
 
   // Need to create 3 tests, to check, if editing is working perfectly in Pending, Approved and Rejected agents
+  test("edit action is unavailable for rejected agents (view only)", async ({
+    page,
+  }) => {
+    await page.goto("/profile/dashboard");
+
+    const agentTable = page.getByTestId("agent-table");
+    await expect(agentTable).toBeVisible();
+
+    const rows = agentTable.getByTestId("agent-table-row");
+
+    const rejectedRow = rows.filter({ hasText: "Rejected" }).first();
+    if (!(await rejectedRow.count())) {
+      console.log("No rejected agents available; skipping rejected edit test.");
+      return;
+    }
+
+    await rejectedRow.scrollIntoViewIfNeeded();
+
+    const actionsButton = rejectedRow.getByTestId("agent-table-row-actions");
+    await actionsButton.waitFor({ state: "visible", timeout: 10000 });
+    await actionsButton.scrollIntoViewIfNeeded();
+    await actionsButton.click();
+
+    // Rejected should not show Edit, only View
+    await expect(page.getByRole("menuitem", { name: "View" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Edit" })).toHaveCount(0);
+  });
+
+  test("editing an approved agent creates a new pending submission", async ({
+    page,
+  }) => {
+    await page.goto("/profile/dashboard");
+
+    const agentTable = page.getByTestId("agent-table");
+    await expect(agentTable).toBeVisible();
+
+    const rows = agentTable.getByTestId("agent-table-row");
+
+    const approvedRow = rows.filter({ hasText: "Approved" }).first();
+    if (!(await approvedRow.count())) {
+      console.log("No approved agents available; skipping approved edit test.");
+      return;
+    }
+
+    const beforeCount = await rows.count();
+
+    await approvedRow.scrollIntoViewIfNeeded();
+    const actionsButton = approvedRow.getByTestId("agent-table-row-actions");
+    await actionsButton.waitFor({ state: "visible", timeout: 10000 });
+    await actionsButton.scrollIntoViewIfNeeded();
+    await actionsButton.click();
+
+    const editButton = page.getByRole("menuitem", { name: "Edit" });
+    await expect(editButton).toBeVisible();
+    await editButton.click();
+
+    const editModal = page.getByTestId("edit-agent-modal");
+    await expect(editModal).toBeVisible();
+
+    const newTitle = `E2E Edit Approved ${Date.now()}`;
+    await page.getByRole("textbox", { name: "Title" }).fill(newTitle);
+    await page
+      .getByRole("textbox", { name: "Changes Summary" })
+      .fill("E2E change - approved -> new pending submission");
+
+    await page.getByRole("button", { name: "Update submission" }).click();
+    await expect(editModal).not.toBeVisible();
+
+    // A new submission should appear with pending state
+    await expect(async () => {
+      const afterCount = await rows.count();
+      expect(afterCount).toBeGreaterThan(beforeCount);
+    }).toPass();
+
+    const newRow = rows.filter({ hasText: newTitle }).first();
+    await expect(newRow).toBeVisible();
+    await expect(newRow).toContainText(/Awaiting review/);
+  });
+
+  test("editing a pending agent updates the same submission in place", async ({
+    page,
+  }) => {
+    await page.goto("/profile/dashboard");
+
+    const agentTable = page.getByTestId("agent-table");
+    await expect(agentTable).toBeVisible();
+
+    const rows = agentTable.getByTestId("agent-table-row");
+
+    const pendingRow = rows.filter({ hasText: /Awaiting review/ }).first();
+    if (!(await pendingRow.count())) {
+      console.log("No pending agents available; skipping pending edit test.");
+      return;
+    }
+
+    const beforeCount = await rows.count();
+
+    await pendingRow.scrollIntoViewIfNeeded();
+    const actionsButton = pendingRow.getByTestId("agent-table-row-actions");
+    await actionsButton.waitFor({ state: "visible", timeout: 10000 });
+    await actionsButton.scrollIntoViewIfNeeded();
+    await actionsButton.click();
+
+    const editButton = page.getByRole("menuitem", { name: "Edit" });
+    await expect(editButton).toBeVisible();
+    await editButton.click();
+
+    const editModal = page.getByTestId("edit-agent-modal");
+    await expect(editModal).toBeVisible();
+
+    const newTitle = `E2E Edit Pending ${Date.now()}`;
+    await page.getByRole("textbox", { name: "Title" }).fill(newTitle);
+    await page
+      .getByRole("textbox", { name: "Changes Summary" })
+      .fill("E2E change - pending -> same submission");
+
+    await page.getByRole("button", { name: "Update submission" }).click();
+    await expect(editModal).not.toBeVisible();
+
+    // Count should remain the same
+    await expect(async () => {
+      const afterCount = await rows.count();
+      expect(afterCount).toBe(beforeCount);
+    }).toPass();
+
+    const updatedRow = rows.filter({ hasText: newTitle }).first();
+    await expect(updatedRow).toBeVisible();
+    await expect(updatedRow).toContainText(/Awaiting review/);
+  });
 });
