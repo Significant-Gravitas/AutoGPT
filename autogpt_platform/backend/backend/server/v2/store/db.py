@@ -1096,6 +1096,13 @@ async def review_store_submission(
                 detail=f"Store listing version {store_listing_version_id} not found",
             )
 
+        # Check if we're rejecting an already approved agent
+        is_rejecting_approved = (
+            not is_approved
+            and store_listing_version.submissionStatus
+            == prisma.enums.SubmissionStatus.APPROVED
+        )
+
         # If approving, update the listing to indicate it has an approved version
         if is_approved and store_listing_version.AgentGraph:
             heading = f"Sub-graph of {store_listing_version.name}v{store_listing_version.agentGraphVersion}"
@@ -1125,6 +1132,37 @@ async def review_store_submission(
                     "Versions": {"create": sub_store_listing_versions},
                 },
             )
+
+        # If rejecting an approved agent, update the StoreListing accordingly
+        if is_rejecting_approved:
+            # Check if there are other approved versions
+            other_approved = (
+                await prisma.models.StoreListingVersion.prisma().find_first(
+                    where={
+                        "storeListingId": store_listing_version.StoreListing.id,
+                        "id": {"not": store_listing_version_id},
+                        "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+                    }
+                )
+            )
+
+            if not other_approved:
+                # No other approved versions, update hasApprovedVersion to False
+                await prisma.models.StoreListing.prisma().update(
+                    where={"id": store_listing_version.StoreListing.id},
+                    data={
+                        "hasApprovedVersion": False,
+                        "ActiveVersion": {"disconnect": True},
+                    },
+                )
+            else:
+                # Set the most recent other approved version as active
+                await prisma.models.StoreListing.prisma().update(
+                    where={"id": store_listing_version.StoreListing.id},
+                    data={
+                        "ActiveVersion": {"connect": {"id": other_approved.id}},
+                    },
+                )
 
         submission_status = (
             prisma.enums.SubmissionStatus.APPROVED
