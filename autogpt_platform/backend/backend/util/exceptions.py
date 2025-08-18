@@ -72,5 +72,9 @@ class GraphValidationError(ValueError):
 
     def __str__(self):
         return self.message + "".join(
-            [f"\n  {node_id}: {errors}" for node_id, errors in self.node_errors.items()]
+            [
+                f"\n  {node_id}:"
+                + "".join([f"\n    {k}: {e}" for k, e in errors.items()])
+                for node_id, errors in self.node_errors.items()
+            ]
         )
