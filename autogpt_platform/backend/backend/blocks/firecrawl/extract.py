@@ -31,7 +31,7 @@ class FirecrawlExtractBlock(Block):
         )
         output_schema: dict | None = SchemaField(
             description="A Json Schema describing the output structure if more rigid structure is desired.",
-            default_factory=dict,
+            default=None,
         )
         enable_web_search: bool = SchemaField(
             description="When true, extraction can follow links outside the specified domain.",
