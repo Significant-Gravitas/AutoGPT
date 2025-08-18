@@ -19,6 +19,7 @@ export const ControlPanelButton: React.FC<Props> = ({
   return (
     // Using div instead of button, because it's only for design purposes. We are using this to give design to PopoverTrigger.
     <div
+      role="button"
       className={cn(
         "flex h-[4.25rem] w-[4.25rem] items-center justify-center whitespace-normal bg-white p-[1.38rem] text-zinc-800 shadow-none hover:cursor-pointer hover:bg-zinc-100 hover:text-zinc-950 focus:ring-0",
         selected &&

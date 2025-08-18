@@ -20,16 +20,18 @@ interface ControlPanelProps {
   className?: string;
   flowExecutionID: GraphExecutionID | undefined;
   visualizeBeads: "no" | "static" | "animate";
+  pinSavePopover: boolean;
+  pinBlocksPopover: boolean;
 }
 
 export const NewControlPanel = ({
   flowExecutionID,
   visualizeBeads,
+  pinSavePopover,
+  pinBlocksPopover,
   className,
 }: ControlPanelProps) => {
   const {
-    pinSavePopover,
-    pinBlocksPopover,
     blockMenuSelected,
     setBlockMenuSelected,
     agentDescription,

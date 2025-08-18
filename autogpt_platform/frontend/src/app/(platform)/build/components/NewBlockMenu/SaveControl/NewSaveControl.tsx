@@ -51,8 +51,8 @@ export const NewSaveControl = ({
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key === "s") {
-        event.preventDefault(); // Stop the browser default action
-        handleSave(); // Call your save function
+        event.preventDefault(); 
+        handleSave(); 
         toast({
           duration: 2000,
           title: "All changes saved successfully!",

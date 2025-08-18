@@ -101,6 +101,11 @@ const FlowEditor: React.FC<{
   const [flowExecutionID, setFlowExecutionID] = useState<
     GraphExecutionID | undefined
   >();
+  // State to control if blocks menu should be pinned open
+  const [pinBlocksPopover, setPinBlocksPopover] = useState(false);
+  // State to control if save popover should be pinned open
+  const [pinSavePopover, setPinSavePopover] = useState(false);
+
   const {
     agentName,
     setAgentName,
@@ -123,10 +128,6 @@ const FlowEditor: React.FC<{
     setNodes,
     edges,
     setEdges,
-    pinBlocksPopover,
-    setPinBlocksPopover,
-    pinSavePopover,
-    setPinSavePopover,
   } = useAgentGraph(
     flowID,
     flowVersion,
@@ -705,6 +706,8 @@ const FlowEditor: React.FC<{
             <NewControlPanel
               flowExecutionID={flowExecutionID}
               visualizeBeads={visualizeBeads}
+              pinSavePopover={pinSavePopover}
+              pinBlocksPopover={pinBlocksPopover}
             />
           ) : (
             <ControlPanel
