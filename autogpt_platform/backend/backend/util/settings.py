@@ -360,7 +360,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum message size limit for communication with the message bus",
     )
 
-    backend_cors_allow_origins: List[str] = Field(default_factory=list)
+    backend_cors_allow_origins: List[str] = Field(default=["http://localhost:3000"])
 
     @field_validator("backend_cors_allow_origins")
     @classmethod
@@ -472,6 +472,7 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     groq_api_key: str = Field(default="", description="Groq API key")
     open_router_api_key: str = Field(default="", description="Open Router API Key")
     llama_api_key: str = Field(default="", description="Llama API Key")
+    v0_api_key: str = Field(default="", description="v0 by Vercel API key")
 
     reddit_client_id: str = Field(default="", description="Reddit client ID")
     reddit_client_secret: str = Field(default="", description="Reddit client secret")
@@ -521,6 +522,7 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     apollo_api_key: str = Field(default="", description="Apollo API Key")
     smartlead_api_key: str = Field(default="", description="SmartLead API Key")
     zerobounce_api_key: str = Field(default="", description="ZeroBounce API Key")
+    enrichlayer_api_key: str = Field(default="", description="Enrichlayer API Key")
 
     # AutoMod API credentials
     automod_api_key: str = Field(default="", description="AutoMod API key")
@@ -534,7 +536,6 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     ayrshare_api_key: str = Field(default="", description="Ayrshare API Key")
     ayrshare_jwt_key: str = Field(default="", description="Ayrshare private Key")
     # Add more secret fields as needed
-
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

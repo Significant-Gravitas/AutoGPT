@@ -269,7 +269,9 @@ class Scheduler(AppService):
 
         self.scheduler = BackgroundScheduler(
             executors={
-                "default": ThreadPoolExecutor(max_workers=10),  # Max 10 concurrent jobs
+                "default": ThreadPoolExecutor(
+                    max_workers=self.db_pool_size()
+                ),  # Match DB pool size to prevent resource contention
             },
             job_defaults={
                 "coalesce": True,  # Skip redundant missed jobs - just run the latest
@@ -305,9 +307,10 @@ class Scheduler(AppService):
 
         if self.register_system_tasks:
             # Notification PROCESS WEEKLY SUMMARY
+            # Runs every Monday at 9 AM UTC
             self.scheduler.add_job(
                 process_weekly_summary,
-                CronTrigger.from_crontab("0 * * * *"),
+                CronTrigger.from_crontab("0 9 * * 1"),
                 id="process_weekly_summary",
                 kwargs={},
                 replace_existing=True,

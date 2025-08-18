@@ -17,7 +17,12 @@ CMD ["pnpm", "run", "dev", "--hostname", "0.0.0.0"]
 FROM base AS build
 COPY autogpt_platform/frontend/ .
 ENV SKIP_STORYBOOK_TESTS=true
-RUN pnpm build
+RUN if [ -f .env ]; then \
+      cat .env.default .env > .env.merged && mv .env.merged .env; \
+    else \
+      cp .env.default .env; \
+    fi
+RUN pnpm build --turbo
 
 # Prod stage - based on NextJS reference Dockerfile https://github.com/vercel/next.js/blob/64271354533ed16da51be5dce85f0dbd15f17517/examples/with-docker/Dockerfile
 FROM node:21-alpine AS prod
