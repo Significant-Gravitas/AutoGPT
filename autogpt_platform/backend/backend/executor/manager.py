@@ -84,6 +84,7 @@ from backend.util.decorator import (
 )
 from backend.util.file import clean_exec_files
 from backend.util.logging import TruncatedLogger, configure_logging
+from backend.util.metrics import DiscordChannel
 from backend.util.process import AppProcess, set_service_name
 from backend.util.retry import continuous_retry, func_retry
 from backend.util.settings import Settings
@@ -1110,7 +1111,7 @@ class ExecutionProcessor:
         exec_stats: GraphExecutionStats,
         e: InsufficientBalanceError,
     ):
-        shortfall = e.balance - e.amount
+        shortfall = abs(e.amount) - e.balance
         metadata = db_client.get_graph_metadata(graph_id)
         base_url = (
             settings.config.frontend_base_url or settings.config.platform_base_url
@@ -1145,7 +1146,9 @@ class ExecutionProcessor:
             )
 
             # Send alert asynchronously
-            get_notification_manager_client().discord_system_alert(alert_message)
+            get_notification_manager_client().discord_system_alert(
+                alert_message, DiscordChannel.PRODUCT
+            )
         except Exception as alert_error:
             logger.error(
                 f"Failed to send insufficient funds Discord alert: {alert_error}"

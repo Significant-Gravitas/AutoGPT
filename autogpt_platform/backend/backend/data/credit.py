@@ -39,6 +39,7 @@ from backend.server.v2.admin.model import UserHistoryResponse
 from backend.util.clients import get_notification_manager_client
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.json import SafeJson
+from backend.util.metrics import DiscordChannel
 from backend.util.retry import func_retry
 from backend.util.settings import Settings
 
@@ -395,7 +396,7 @@ class UserCredit(UserCreditBase):
         transaction_cost: int,
     ):
         """Check and handle low balance scenarios after a transaction"""
-        LOW_BALANCE_THRESHOLD = 1000  # $10 in credits (100 = $1)
+        LOW_BALANCE_THRESHOLD = settings.config.low_balance_threshold
 
         # Get balance before the transaction
         balance_before = current_balance + transaction_cost
@@ -433,7 +434,9 @@ class UserCredit(UserCreditBase):
                     f"Current balance: ${current_balance/100:.2f}\n"
                     f"Transaction cost: ${transaction_cost/100:.2f}"
                 )
-                get_notification_manager_client().discord_system_alert(alert_message)
+                get_notification_manager_client().discord_system_alert(
+                    alert_message, DiscordChannel.PRODUCT
+                )
             except Exception as e:
                 logger.error(f"Failed to send low balance Discord alert: {e}")
 
