@@ -15,7 +15,7 @@ RUN apt-get update --allow-releaseinfo-change --fix-missing \
     python3.13 \
     python3.13-dev \
     python3.13-venv \
-    python3.13-pip \
+    python3-pip \
     build-essential \
     libpq5 \
     libz-dev \
