@@ -637,6 +637,7 @@ export default class BackendAPI {
     search?: string;
     page?: number;
     page_size?: number;
+    transaction_filter?: string;
   }): Promise<UsersBalanceHistoryResponse> {
     return this._get("/credits/admin/users_history", params);
   }
