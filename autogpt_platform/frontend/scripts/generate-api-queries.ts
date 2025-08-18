@@ -1,16 +1,11 @@
 #!/usr/bin/env node
 
+import { getAgptServerBaseUrl } from "@/lib/env-config";
 import { execSync } from "child_process";
 import * as path from "path";
 
-function getServerUrl(): string {
-  const serverUrl =
-    process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006/api";
-  return serverUrl.replace("/api", "");
-}
-
 function fetchOpenApiSpec(): void {
-  const baseUrl = getServerUrl();
+  const baseUrl = getAgptServerBaseUrl();
   const openApiUrl = `${baseUrl}/openapi.json`;
   const outputPath = path.join(
     __dirname,
