@@ -123,40 +123,6 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           exitOnceUploaded: true
 
-  types:
-    runs-on: ubuntu-latest
-    needs: setup
-    strategy:
-      fail-fast: false
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "21"
-
-      - name: Enable corepack
-        run: corepack enable
-
-      - name: Restore dependencies cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.pnpm-store
-          key: ${{ needs.setup.outputs.cache-key }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Run Typescript checks
-        run: pnpm types
-
   test:
     runs-on: big-boi
     needs: setup

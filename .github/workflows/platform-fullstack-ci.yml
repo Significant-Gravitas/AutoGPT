@@ -73,11 +73,11 @@ jobs:
 
       - name: Copy default supabase .env
         run: |
-          cp ../.env.example ../.env
+          cp ../.env.default ../.env
 
       - name: Copy backend .env
         run: |
-          cp ../backend/.env.example ../backend/.env
+          cp ../backend/.env.default ../backend/.env
 
       - name: Run docker compose
         run: |
@@ -95,7 +95,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Setup .env
-        run: cp .env.example .env
+        run: cp .env.default .env
 
       - name: Wait for services to be ready
         run: |
