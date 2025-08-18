@@ -57,6 +57,10 @@ import PrimaryActionBar from "@/components/PrimaryActionButton";
 import OttoChatWidget from "@/components/OttoChatWidget";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useCopyPaste } from "../hooks/useCopyPaste";
+import { BlockMenu } from "@/app/(platform)/build/components/NewBlockMenu/BlockMenu/BlockMenu";
+import { NewSaveControl } from "@/app/(platform)/build/components/NewBlockMenu/SaveControl/NewSaveControl";
+import NewControlPanel from "@/app/(platform)/build/components/NewBlockMenu/NewControlPanel/NewControlPanel";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -121,6 +125,10 @@ const FlowEditor: React.FC<{
     setNodes,
     edges,
     setEdges,
+    pinBlocksPopover,
+    setPinBlocksPopover,
+    pinSavePopover,
+    setPinSavePopover,
   } = useAgentGraph(
     flowID,
     flowVersion,
@@ -149,11 +157,6 @@ const FlowEditor: React.FC<{
     [key: string]: { x: number; y: number };
   }>({});
   const isDragging = useRef(false);
-
-  // State to control if blocks menu should be pinned open
-  const [pinBlocksPopover, setPinBlocksPopover] = useState(false);
-  // State to control if save popover should be pinned open
-  const [pinSavePopover, setPinSavePopover] = useState(false);
 
   const runnerUIRef = useRef<RunnerUIWrapperRef>(null);
 
@@ -638,12 +641,12 @@ const FlowEditor: React.FC<{
     () => [
       {
         label: "Undo",
-        icon: <IconUndo2 />,
+        icon: <IconUndo2 className="h-5 w-5" strokeWidth={2} />,
         onClick: history.undo,
       },
       {
         label: "Redo",
-        icon: <IconRedo2 />,
+        icon: <IconRedo2 className="h-5 w-5" strokeWidth={2} />,
         onClick: history.redo,
       },
     ],
@@ -674,6 +677,8 @@ const FlowEditor: React.FC<{
     runnerUIRef.current?.openRunInputDialog();
   }, [isScheduling, savedAgent, toast, saveAgent]);
 
+  const isNewBlockEnabled = useGetFlag(Flag.NEW_BLOCK_MENU);
+
   return (
     <FlowContext.Provider
       value={{ visualizeBeads, setIsAnyModalOpen, getNextNodeId }}
@@ -698,31 +703,39 @@ const FlowEditor: React.FC<{
         >
           <Controls />
           <Background className="dark:bg-slate-800" />
-          <ControlPanel
-            className="absolute z-20"
-            controls={editorControls}
-            topChildren={
-              <BlocksControl
-                pinBlocksPopover={pinBlocksPopover} // Pass the state to BlocksControl
-                blocks={availableBlocks}
-                addBlock={addNode}
-                flows={availableFlows}
-                nodes={nodes}
-              />
-            }
-            botChildren={
-              <SaveControl
-                agentMeta={savedAgent}
-                canSave={!isSaving && !isRunning && !isStopping}
-                onSave={saveAgent}
-                agentDescription={agentDescription}
-                onDescriptionChange={setAgentDescription}
-                agentName={agentName}
-                onNameChange={setAgentName}
-                pinSavePopover={pinSavePopover}
-              />
-            }
-          />
+          {isNewBlockEnabled ? (
+            <NewControlPanel
+              flowExecutionID={flowExecutionID}
+              visualizeBeads={visualizeBeads}
+            />
+          ) : (
+            <ControlPanel
+              className="absolute z-20"
+              controls={editorControls}
+              topChildren={
+                <BlocksControl
+                  pinBlocksPopover={pinBlocksPopover} // Pass the state to BlocksControl
+                  blocks={availableBlocks}
+                  addBlock={addNode}
+                  flows={availableFlows}
+                  nodes={nodes}
+                />
+              }
+              botChildren={
+                <SaveControl
+                  agentMeta={savedAgent}
+                  canSave={!isSaving && !isRunning && !isStopping}
+                  onSave={saveAgent}
+                  agentDescription={agentDescription}
+                  onDescriptionChange={setAgentDescription}
+                  agentName={agentName}
+                  onNameChange={setAgentName}
+                  pinSavePopover={pinSavePopover}
+                />
+              }
+            />
+          )}
+
           {!graphHasWebhookNodes ? (
             <PrimaryActionBar
               className="absolute bottom-0 left-1/2 z-20 -translate-x-1/2"

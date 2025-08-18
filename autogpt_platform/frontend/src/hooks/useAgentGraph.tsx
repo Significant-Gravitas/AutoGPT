@@ -64,6 +64,11 @@ export default function useAgentGraph(
   const { state, completeStep, incrementRuns } = useOnboarding();
   const betaBlocks = useGetFlag(Flag.BETA_BLOCKS);
 
+  // State to control if blocks menu should be pinned open
+  const [pinBlocksPopover, setPinBlocksPopover] = useState(false);
+  // State to control if save popover should be pinned open
+  const [pinSavePopover, setPinSavePopover] = useState(false);
+
   // Filter blocks based on beta flags
   const availableBlocks = useMemo(() => {
     return allBlocks.filter(
@@ -926,6 +931,10 @@ export default function useAgentGraph(
     setNodes: setXYNodes,
     edges: xyEdges,
     setEdges: setXYEdges,
+    pinBlocksPopover,
+    setPinBlocksPopover,
+    pinSavePopover,
+    setPinSavePopover,
   };
 }
 

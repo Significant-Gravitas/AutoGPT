@@ -35,6 +35,7 @@ class Flag(str, Enum):
     AI_ACTIVITY_STATUS = "ai-agent-execution-summary"
     BETA_BLOCKS = "beta-blocks"
     AGENT_ACTIVITY = "agent-activity"
+    NEW_BLOCK_MENU = "new-block-menu"
 
 
 def get_client() -> LDClient:
