@@ -7,7 +7,6 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm pnpm install --frozen-lock
 
 # Build stage for prod
 FROM base AS build
-COPY autogpt_platform/frontend/ .
 RUN if [ -f .env ]; then \
       cat .env.default .env > .env.merged && mv .env.merged .env; \
     else \
