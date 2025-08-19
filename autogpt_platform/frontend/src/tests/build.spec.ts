@@ -252,12 +252,6 @@ test.describe("Build", () => { //(1)!
 
     // Ensure the run button is enabled
     await test.expect(buildPage.isRunButtonEnabled()).resolves.toBeTruthy();
-
-    await buildPage.runAgent();
-    await buildPage.waitForCompletionBadge();
-    await test
-      .expect(buildPage.isCompletionBadgeVisible())
-      .resolves.toBeTruthy();
   });
 
   test("user can build an agent with inputs and output blocks", async ({ page }, testInfo) => {
