@@ -3,13 +3,13 @@
   "version": "0.3.4",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbo",
-    "build": "cross-env pnpm run generate:api-client && SKIP_STORYBOOK_TESTS=true next build",
+    "dev": "pnpm run generate:api:force && next dev --turbo",
+    "build": "next build",
     "start": "next start",
     "start:standalone": "cd .next/standalone && node server.js",
     "lint": "next lint && prettier --check .",
     "format": "next lint --fix; prettier --write .",
-    "type-check": "tsc --noEmit",
+    "types": "tsc --noEmit",
     "test": "next build --turbo && playwright test",
     "test-ui": "next build --turbo && playwright test --ui",
     "test:no-build": "playwright test",
@@ -18,9 +18,8 @@
     "build-storybook": "storybook build",
     "test-storybook": "test-storybook",
     "test-storybook:ci": "concurrently -k -s first -n \"SB,TEST\" -c \"magenta,blue\" \"pnpm run build-storybook -- --quiet && npx http-server storybook-static --port 6006 --silent\" \"wait-on tcp:6006 && pnpm run test-storybook\"",
-    "fetch:openapi": "curl http://localhost:8006/openapi.json > ./src/app/api/openapi.json && prettier --write ./src/app/api/openapi.json",
-    "generate:api-client": "orval --config ./orval.config.ts",
-    "generate:api-all": "pnpm run fetch:openapi && pnpm run generate:api-client"
+    "generate:api": "npx --yes tsx ./scripts/generate-api-queries.ts && orval --config ./orval.config.ts",
+    "generate:api:force": "npx --yes tsx ./scripts/generate-api-queries.ts --force && orval --config ./orval.config.ts"
   },
   "browserslist": [
     "defaults"
