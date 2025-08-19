@@ -139,6 +139,8 @@ Now that both Ollama and the AutoGPT platform are running, we can use Ollama wit
 
    ![Ollama Remote Host](../imgs/ollama/Ollama-Remote-Host.png)
 
+   > **Important**: Since AutoGPT runs in Docker containers, you must use your host machine's IP address instead of `localhost` or `127.0.0.1`. Docker containers cannot reach `localhost` on the host machine.
+
 5. Add prompts to your AI block, save the graph, and run it:
    ![Add Prompt](../imgs/ollama/Ollama-Add-Prompts.png)
 
@@ -231,6 +233,13 @@ If you encounter any issues, verify that:
 - If running Ollama outside Docker, ensure it's set to `0.0.0.0:11434` for network access
 
 ### Common Issues
+
+#### Connection Refused / Cannot Connect to Ollama
+- **Most common cause**: Using `localhost` or `127.0.0.1` in the Ollama Host field
+- **Solution**: Use your host machine's IP address (e.g., `192.168.0.39:11434`)
+- **Why**: AutoGPT runs in Docker containers and cannot reach `localhost` on the host
+- **Find your IP**: Use `ipconfig` (Windows) or `ifconfig` (Linux/macOS)
+- **Test Ollama is running**: `curl http://localhost:11434/api/tags` should work from your host machine
 
 #### Model Not Found
 - Pull the model manually:
