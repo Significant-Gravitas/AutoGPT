@@ -83,8 +83,7 @@ export function ExpandableRow({
               />
             )}
 
-            {(latestVersion?.status === SubmissionStatus.PENDING ||
-              latestVersion?.status === SubmissionStatus.APPROVED) && (
+            {latestVersion?.status === SubmissionStatus.PENDING && (
               <ApproveRejectButtons version={latestVersion} />
             )}
           </div>
@@ -189,8 +188,7 @@ export function ExpandableRow({
                                 }
                               />
                             )}
-                            {(version.status === SubmissionStatus.PENDING ||
-                              version.status === SubmissionStatus.APPROVED) && (
+                            {version.status === SubmissionStatus.PENDING && (
                               <ApproveRejectButtons version={version} />
                             )}
                           </div>
