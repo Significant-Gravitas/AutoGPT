@@ -1071,7 +1071,6 @@ async def get_api_key(
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
-@feature_flag("api-keys-enabled", default=True)
 async def delete_api_key(
     key_id: str, user_id: Annotated[str, Depends(get_user_id)]
 ) -> Optional[APIKeyWithoutHash]:
