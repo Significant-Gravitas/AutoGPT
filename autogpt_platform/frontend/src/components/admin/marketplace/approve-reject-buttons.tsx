@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import type { StoreSubmission, SubmissionStatus } from "@/lib/autogpt-server-api/types";
+import type { StoreSubmission } from "@/lib/autogpt-server-api/types";
 import { useRouter } from "next/navigation";
 import {
   approveAgent,
@@ -28,7 +28,7 @@ export function ApproveRejectButtons({
   const router = useRouter();
   const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
-  
+
   const isApproved = version.status === "APPROVED";
 
   const handleApproveSubmit = async (formData: FormData) => {
@@ -128,9 +128,11 @@ export function ApproveRejectButtons({
       <Dialog open={isRejectDialogOpen} onOpenChange={setIsRejectDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{isApproved ? "Revoke Approved Agent" : "Reject Agent"}</DialogTitle>
+            <DialogTitle>
+              {isApproved ? "Revoke Approved Agent" : "Reject Agent"}
+            </DialogTitle>
             <DialogDescription>
-              {isApproved 
+              {isApproved
                 ? "Are you sure you want to revoke approval for this agent? This will remove it from the marketplace."
                 : "Please provide feedback on why this agent is being rejected."}
             </DialogDescription>
