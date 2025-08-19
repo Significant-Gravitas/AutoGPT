@@ -76,7 +76,11 @@ export function APIKeysSection() {
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button data-testid="api-key-actions" variant="ghost" size="sm">
+                        <Button
+                          data-testid="api-key-actions"
+                          variant="ghost"
+                          size="sm"
+                        >
                           <MoreVertical className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>

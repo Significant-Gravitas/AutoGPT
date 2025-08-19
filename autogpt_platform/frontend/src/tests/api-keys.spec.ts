@@ -12,7 +12,9 @@ test.describe("API Keys Page", () => {
     await hasUrl(page, "/marketplace");
   });
 
-  test("should redirect to login page when user is not authenticated", async ({browser}) => {
+  test("should redirect to login page when user is not authenticated", async ({
+    browser,
+  }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
 
@@ -24,19 +26,21 @@ test.describe("API Keys Page", () => {
       await context.close();
     }
   });
- 
+
   test("should create a new API key successfully", async ({ page }) => {
-      const { getButton, getField} = getSelectors(page);
-      await page.goto("/profile/api_keys");
-      await getButton("Create Key").click();
+    const { getButton, getField } = getSelectors(page);
+    await page.goto("/profile/api_keys");
+    await getButton("Create Key").click();
 
-      await getField("Name").fill("Test Key");
-      await getButton("Create").click();
+    await getField("Name").fill("Test Key");
+    await getButton("Create").click();
 
-      await expect(page.getByText("AutoGPT Platform API Key Created")).toBeVisible();
-      await getButton("Close").first().click();
+    await expect(
+      page.getByText("AutoGPT Platform API Key Created"),
+    ).toBeVisible();
+    await getButton("Close").first().click();
 
-      await expect(page.getByText("Test Key").first()).toBeVisible();
+    await expect(page.getByText("Test Key").first()).toBeVisible();
   });
 
   test("should revoke an existing API key", async ({ page }) => {
@@ -44,6 +48,8 @@ test.describe("API Keys Page", () => {
     await page.goto("/profile/api_keys");
     await getId("api-key-actions").first().click();
     await getRole("menuitem", "Revoke").first().click();
-    await expect(page.getByText("AutoGPT Platform API key revoked successfully")).toBeVisible();
+    await expect(
+      page.getByText("AutoGPT Platform API key revoked successfully"),
+    ).toBeVisible();
   });
 });
