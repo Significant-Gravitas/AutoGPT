@@ -1,10 +1,9 @@
 import pytest
 
 from backend.data import db
-from backend.executor.scheduler import SchedulerClient
 from backend.server.model import CreateGraph
 from backend.usecases.sample import create_test_graph, create_test_user
-from backend.util.service import get_service_client
+from backend.util.clients import get_scheduler_client
 from backend.util.test import SpinTestServer
 
 
@@ -17,7 +16,7 @@ async def test_agent_schedule(server: SpinTestServer):
         user_id=test_user.id,
     )
 
-    scheduler = get_service_client(SchedulerClient)
+    scheduler = get_scheduler_client()
     schedules = await scheduler.get_execution_schedules(test_graph.id, test_user.id)
     assert len(schedules) == 0
 

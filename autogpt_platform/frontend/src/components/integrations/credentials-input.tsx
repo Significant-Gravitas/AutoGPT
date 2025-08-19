@@ -64,6 +64,7 @@ export const providerIcons: Partial<
   open_router: fallbackIcon,
   llama_api: fallbackIcon,
   pinecone: fallbackIcon,
+  enrichlayer: fallbackIcon,
   slant3d: fallbackIcon,
   screenshotone: fallbackIcon,
   smtp: fallbackIcon,

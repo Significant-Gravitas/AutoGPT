@@ -79,7 +79,6 @@ export default function SignupPage() {
               control={form.control}
               name="password"
               render={({ field }) => {
-                console.log(field);
                 return (
                   <Input
                     id={field.name}
@@ -163,7 +162,7 @@ export default function SignupPage() {
             />
 
             {/* Turnstile CAPTCHA Component */}
-            {!turnstile.verified ? (
+            {isCloudEnv && !turnstile.verified ? (
               <Turnstile
                 key={captchaKey}
                 siteKey={turnstile.siteKey}

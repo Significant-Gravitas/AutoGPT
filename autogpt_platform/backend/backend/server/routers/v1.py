@@ -8,8 +8,6 @@ from typing import Annotated, Any, Sequence
 import pydantic
 import stripe
 from autogpt_libs.auth.middleware import auth_middleware
-from autogpt_libs.feature_flag.client import feature_flag
-from autogpt_libs.utils.cache import thread_cached
 from fastapi import (
     APIRouter,
     Body,
@@ -51,7 +49,6 @@ from backend.data.credit import (
     get_user_credit_model,
     set_auto_top_up,
 )
-from backend.data.execution import AsyncRedisExecutionEventBus
 from backend.data.model import CredentialsMetaInput
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.onboarding import (
@@ -84,16 +81,12 @@ from backend.server.model import (
     UploadFileResponse,
 )
 from backend.server.utils import get_user_id
+from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
-from backend.util.exceptions import NotFoundError
-from backend.util.service import get_service_client
+from backend.util.exceptions import GraphValidationError, NotFoundError
+from backend.util.feature_flag import feature_flag
 from backend.util.settings import Settings
 from backend.util.virus_scanner import scan_content_safe
-
-
-@thread_cached
-def execution_scheduler_client() -> scheduler.SchedulerClient:
-    return get_service_client(scheduler.SchedulerClient, health_check=False)
 
 
 def _create_file_size_error(size_bytes: int, max_size_mb: int) -> HTTPException:
@@ -102,11 +95,6 @@ def _create_file_size_error(size_bytes: int, max_size_mb: int) -> HTTPException:
         status_code=400,
         detail=f"File size ({size_bytes} bytes) exceeds the maximum allowed size of {max_size_mb}MB",
     )
-
-
-@thread_cached
-def execution_event_bus() -> AsyncRedisExecutionEventBus:
-    return AsyncRedisExecutionEventBus()
 
 
 settings = Settings()
@@ -470,12 +458,16 @@ async def stripe_webhook(request: Request):
         event = stripe.Webhook.construct_event(
             payload, sig_header, settings.secrets.stripe_webhook_secret
         )
-    except ValueError:
+    except ValueError as e:
         # Invalid payload
-        raise HTTPException(status_code=400)
-    except stripe.SignatureVerificationError:
+        raise HTTPException(
+            status_code=400, detail=f"Invalid payload: {str(e) or type(e).__name__}"
+        )
+    except stripe.SignatureVerificationError as e:
         # Invalid signature
-        raise HTTPException(status_code=400)
+        raise HTTPException(
+            status_code=400, detail=f"Invalid signature: {str(e) or type(e).__name__}"
+        )
 
     if (
         event["type"] == "checkout.session.completed"
@@ -688,7 +680,15 @@ async def update_graph(
             # Handle deactivation of the previously active version
             await on_graph_deactivate(current_active_version, user_id=user_id)
 
-    return new_graph_version
+    # Fetch new graph version *with sub-graphs* (needed for credentials input schema)
+    new_graph_version_with_subgraphs = await graph_db.get_graph(
+        graph_id,
+        new_graph_version.version,
+        user_id=user_id,
+        include_subgraphs=True,
+    )
+    assert new_graph_version_with_subgraphs  # make type checker happy
+    return new_graph_version_with_subgraphs
 
 
 @v1_router.put(
@@ -753,15 +753,27 @@ async def execute_graph(
             detail="Insufficient balance to execute the agent. Please top up your account.",
         )
 
-    graph_exec = await execution_utils.add_graph_execution(
-        graph_id=graph_id,
-        user_id=user_id,
-        inputs=inputs,
-        preset_id=preset_id,
-        graph_version=graph_version,
-        graph_credentials_inputs=credentials_inputs,
-    )
-    return ExecuteGraphResponse(graph_exec_id=graph_exec.id)
+    try:
+        graph_exec = await execution_utils.add_graph_execution(
+            graph_id=graph_id,
+            user_id=user_id,
+            inputs=inputs,
+            preset_id=preset_id,
+            graph_version=graph_version,
+            graph_credentials_inputs=credentials_inputs,
+        )
+        return ExecuteGraphResponse(graph_exec_id=graph_exec.id)
+    except GraphValidationError as e:
+        # Return structured validation errors that the frontend can parse
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "validation_error",
+                "message": e.message,
+                # TODO: only return node-specific errors if user has access to graph
+                "node_errors": e.node_errors,
+            },
+        )
 
 
 @v1_router.post(
@@ -912,7 +924,7 @@ async def create_graph_execution_schedule(
             detail=f"Graph #{graph_id} v{schedule_params.graph_version} not found.",
         )
 
-    return await execution_scheduler_client().add_execution_schedule(
+    return await get_scheduler_client().add_execution_schedule(
         user_id=user_id,
         graph_id=graph_id,
         graph_version=graph.version,
@@ -933,7 +945,7 @@ async def list_graph_execution_schedules(
     user_id: Annotated[str, Depends(get_user_id)],
     graph_id: str = Path(),
 ) -> list[scheduler.GraphExecutionJobInfo]:
-    return await execution_scheduler_client().get_execution_schedules(
+    return await get_scheduler_client().get_execution_schedules(
         user_id=user_id,
         graph_id=graph_id,
     )
@@ -948,7 +960,7 @@ async def list_graph_execution_schedules(
 async def list_all_graphs_execution_schedules(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> list[scheduler.GraphExecutionJobInfo]:
-    return await execution_scheduler_client().get_execution_schedules(user_id=user_id)
+    return await get_scheduler_client().get_execution_schedules(user_id=user_id)
 
 
 @v1_router.delete(
@@ -962,7 +974,7 @@ async def delete_graph_execution_schedule(
     schedule_id: str = Path(..., description="ID of the schedule to delete"),
 ) -> dict[str, Any]:
     try:
-        await execution_scheduler_client().delete_schedule(schedule_id, user_id=user_id)
+        await get_scheduler_client().delete_schedule(schedule_id, user_id=user_id)
     except NotFoundError:
         raise HTTPException(
             status_code=HTTP_404_NOT_FOUND,
@@ -1059,7 +1071,6 @@ async def get_api_key(
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
-@feature_flag("api-keys-enabled")
 async def delete_api_key(
     key_id: str, user_id: Annotated[str, Depends(get_user_id)]
 ) -> Optional[APIKeyWithoutHash]:

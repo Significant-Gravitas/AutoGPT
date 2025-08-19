@@ -49,7 +49,11 @@ export default function LibraryUploadAgentDialog(): React.ReactNode {
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant="primary" className="w-fit sm:w-[177px]">
+        <Button
+          data-testid="upload-agent-button"
+          variant="primary"
+          className="w-fit sm:w-[177px]"
+        >
           <Upload className="h-5 w-5 sm:mr-2" />
           <span className="hidden items-center sm:inline-flex">
             Upload an agent

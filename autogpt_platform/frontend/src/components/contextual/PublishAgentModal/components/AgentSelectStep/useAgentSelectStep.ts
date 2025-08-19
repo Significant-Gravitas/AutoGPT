@@ -33,19 +33,21 @@ export function useAgentSelectStep({
   const { data: myAgents, isLoading, error } = useGetV2GetMyAgents();
 
   const agents: Agent[] =
-    myAgents?.data?.agents
-      ?.map((agent) => ({
-        name: agent.agent_name,
-        id: agent.agent_id,
-        version: agent.agent_version,
-        lastEdited: agent.last_edited,
-        imageSrc: agent.agent_image || "https://picsum.photos/300/200",
-        description: agent.description || "",
-      }))
-      .sort(
-        (a, b) =>
-          new Date(b.lastEdited).getTime() - new Date(a.lastEdited).getTime(),
-      ) || [];
+    (myAgents?.status === 200 &&
+      myAgents?.data?.agents
+        ?.map((agent: any) => ({
+          name: agent.agent_name,
+          id: agent.agent_id,
+          version: agent.agent_version,
+          lastEdited: agent.last_edited,
+          imageSrc: agent.agent_image || "https://picsum.photos/300/200",
+          description: agent.description || "",
+        }))
+        .sort(
+          (a: Agent, b: Agent) =>
+            new Date(b.lastEdited).getTime() - new Date(a.lastEdited).getTime(),
+        )) ||
+    [];
 
   const handleAgentClick = (
     _: string,

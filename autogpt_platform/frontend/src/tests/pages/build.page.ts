@@ -350,6 +350,8 @@ export class BuildPage extends BasePage {
     console.log(`clicking run button`);
     const runButton = this.page.getByTestId("primary-action-run-agent");
     await runButton.click();
+    await this.page.waitForTimeout(1000);
+    await runButton.click();
   }
 
   async fillRunDialog(inputs: Record<string, string>): Promise<void> {
@@ -399,6 +401,15 @@ export class BuildPage extends BasePage {
       id: "dummy-id-1",
       name: "Add to Dictionary",
       description: "Add to Dictionary",
+      type: "Standard",
+    };
+  }
+
+  async getCalculatorBlockDetails(): Promise<Block> {
+    return {
+      id: "dummy-id-2",
+      name: "Calculator",
+      description: "Calculator",
       type: "Standard",
     };
   }

@@ -7,7 +7,6 @@ from backend.data.execution import (
     create_graph_execution,
     get_block_error_stats,
     get_execution_kv_data,
-    get_graph_execution,
     get_graph_execution_meta,
     get_graph_executions,
     get_latest_node_execution,
@@ -21,6 +20,7 @@ from backend.data.execution import (
     upsert_execution_input,
     upsert_execution_output,
 )
+from backend.data.generate_data import get_user_execution_summary_data
 from backend.data.graph import (
     get_connected_output_nodes,
     get_graph,
@@ -39,12 +39,16 @@ from backend.data.user import (
     get_user_email_by_id,
     get_user_email_verification,
     get_user_integrations,
-    get_user_metadata,
     get_user_notification_preference,
     update_user_integrations,
-    update_user_metadata,
 )
-from backend.util.service import AppService, AppServiceClient, endpoint_to_sync, expose
+from backend.util.service import (
+    AppService,
+    AppServiceClient,
+    UnhealthyServiceError,
+    endpoint_to_sync,
+    expose,
+)
 from backend.util.settings import Config
 
 config = Config()
@@ -76,10 +80,10 @@ class DatabaseManager(AppService):
         logger.info(f"[{self.service_name}] ⏳ Disconnecting Database...")
         self.run_and_wait(db.disconnect())
 
-    def health_check(self) -> str:
+    async def health_check(self) -> str:
         if not db.is_connected():
-            raise RuntimeError("Database is not connected")
-        return super().health_check()
+            raise UnhealthyServiceError("Database is not connected")
+        return await super().health_check()
 
     @classmethod
     def get_port(cls) -> int:
@@ -94,7 +98,6 @@ class DatabaseManager(AppService):
         return cast(Callable[Concatenate[object, P], R], expose(f))
 
     # Executions
-    get_graph_execution = _(get_graph_execution)
     get_graph_executions = _(get_graph_executions)
     get_graph_execution_meta = _(get_graph_execution_meta)
     create_graph_execution = _(create_graph_execution)
@@ -122,8 +125,6 @@ class DatabaseManager(AppService):
     get_credits = _(_get_credits, name="get_credits")
 
     # User + User Metadata + User Integrations
-    get_user_metadata = _(get_user_metadata)
-    update_user_metadata = _(update_user_metadata)
     get_user_integrations = _(get_user_integrations)
     update_user_integrations = _(update_user_integrations)
 
@@ -144,6 +145,9 @@ class DatabaseManager(AppService):
         get_user_notification_oldest_message_in_batch
     )
 
+    # Summary data - async
+    get_user_execution_summary_data = _(get_user_execution_summary_data)
+
 
 class DatabaseManagerClient(AppServiceClient):
     d = DatabaseManager
@@ -154,54 +158,23 @@ class DatabaseManagerClient(AppServiceClient):
         return DatabaseManager
 
     # Executions
-    get_graph_execution = _(d.get_graph_execution)
     get_graph_executions = _(d.get_graph_executions)
     get_graph_execution_meta = _(d.get_graph_execution_meta)
-    create_graph_execution = _(d.create_graph_execution)
-    get_node_execution = _(d.get_node_execution)
     get_node_executions = _(d.get_node_executions)
-    get_latest_node_execution = _(d.get_latest_node_execution)
     update_node_execution_status = _(d.update_node_execution_status)
-    update_node_execution_status_batch = _(d.update_node_execution_status_batch)
     update_graph_execution_start_time = _(d.update_graph_execution_start_time)
     update_graph_execution_stats = _(d.update_graph_execution_stats)
-    upsert_execution_input = _(d.upsert_execution_input)
     upsert_execution_output = _(d.upsert_execution_output)
-    get_execution_kv_data = _(d.get_execution_kv_data)
-    set_execution_kv_data = _(d.set_execution_kv_data)
 
     # Graphs
-    get_node = _(d.get_node)
-    get_graph = _(d.get_graph)
-    get_connected_output_nodes = _(d.get_connected_output_nodes)
     get_graph_metadata = _(d.get_graph_metadata)
 
     # Credits
     spend_credits = _(d.spend_credits)
     get_credits = _(d.get_credits)
 
-    # User + User Metadata + User Integrations
-    get_user_metadata = _(d.get_user_metadata)
-    update_user_metadata = _(d.update_user_metadata)
-    get_user_integrations = _(d.get_user_integrations)
-    update_user_integrations = _(d.update_user_integrations)
-
-    # User Comms - async
-    get_active_user_ids_in_timerange = _(d.get_active_user_ids_in_timerange)
-    get_user_email_by_id = _(d.get_user_email_by_id)
-    get_user_email_verification = _(d.get_user_email_verification)
-    get_user_notification_preference = _(d.get_user_notification_preference)
-
-    # Notifications - async
-    create_or_add_to_user_notification_batch = _(
-        d.create_or_add_to_user_notification_batch
-    )
-    empty_user_notification_batch = _(d.empty_user_notification_batch)
-    get_all_batches_by_type = _(d.get_all_batches_by_type)
-    get_user_notification_batch = _(d.get_user_notification_batch)
-    get_user_notification_oldest_message_in_batch = _(
-        d.get_user_notification_oldest_message_in_batch
-    )
+    # Summary data - async
+    get_user_execution_summary_data = _(d.get_user_execution_summary_data)
 
     # Block error monitoring
     get_block_error_stats = _(d.get_block_error_stats)
@@ -232,4 +205,23 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_user_integrations = d.update_user_integrations
     get_execution_kv_data = d.get_execution_kv_data
     set_execution_kv_data = d.set_execution_kv_data
-    get_block_error_stats = d.get_block_error_stats
+
+    # User Comms
+    get_active_user_ids_in_timerange = d.get_active_user_ids_in_timerange
+    get_user_email_by_id = d.get_user_email_by_id
+    get_user_email_verification = d.get_user_email_verification
+    get_user_notification_preference = d.get_user_notification_preference
+
+    # Notifications
+    create_or_add_to_user_notification_batch = (
+        d.create_or_add_to_user_notification_batch
+    )
+    empty_user_notification_batch = d.empty_user_notification_batch
+    get_all_batches_by_type = d.get_all_batches_by_type
+    get_user_notification_batch = d.get_user_notification_batch
+    get_user_notification_oldest_message_in_batch = (
+        d.get_user_notification_oldest_message_in_batch
+    )
+
+    # Summary data
+    get_user_execution_summary_data = d.get_user_execution_summary_data

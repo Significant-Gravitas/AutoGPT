@@ -187,7 +187,19 @@ export const CustomNode = React.memo(
 
     useEffect(() => {
       isInitialSetup.current = false;
-      setHardcodedValues(fillDefaults(data.hardcodedValues, data.inputSchema));
+      if (data.uiType === BlockUIType.AGENT) {
+        setHardcodedValues({
+          ...data.hardcodedValues,
+          inputs: fillDefaults(
+            data.hardcodedValues.inputs ?? {},
+            data.inputSchema,
+          ),
+        });
+      } else {
+        setHardcodedValues(
+          fillDefaults(data.hardcodedValues, data.inputSchema),
+        );
+      }
     }, []);
 
     const setErrors = useCallback(

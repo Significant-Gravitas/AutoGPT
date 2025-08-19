@@ -286,11 +286,17 @@ class UserCreditBase(ABC):
         transaction = await CreditTransaction.prisma().find_first_or_raise(
             where={"transactionKey": transaction_key, "userId": user_id}
         )
-
         if transaction.isActive:
             return
 
         async with db.locked_transaction(f"usr_trx_{user_id}"):
+
+            transaction = await CreditTransaction.prisma().find_first_or_raise(
+                where={"transactionKey": transaction_key, "userId": user_id}
+            )
+            if transaction.isActive:
+                return
+
             user_balance, _ = await self._get_credits(user_id)
             await CreditTransaction.prisma().update(
                 where={
@@ -998,8 +1004,8 @@ def get_block_costs() -> dict[str, list[BlockCost]]:
 async def get_stripe_customer_id(user_id: str) -> str:
     user = await get_user_by_id(user_id)
 
-    if user.stripeCustomerId:
-        return user.stripeCustomerId
+    if user.stripe_customer_id:
+        return user.stripe_customer_id
 
     customer = stripe.Customer.create(
         name=user.name or "",
@@ -1022,10 +1028,10 @@ async def set_auto_top_up(user_id: str, config: AutoTopUpConfig):
 async def get_auto_top_up(user_id: str) -> AutoTopUpConfig:
     user = await get_user_by_id(user_id)
 
-    if not user.topUpConfig:
+    if not user.top_up_config:
         return AutoTopUpConfig(threshold=0, amount=0)
 
-    return AutoTopUpConfig.model_validate(user.topUpConfig)
+    return AutoTopUpConfig.model_validate(user.top_up_config)
 
 
 async def admin_get_user_history(

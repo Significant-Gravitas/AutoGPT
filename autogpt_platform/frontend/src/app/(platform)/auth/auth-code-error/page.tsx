@@ -1,5 +1,6 @@
 "use client";
 
+import { isServerSide } from "@/lib/utils/is-server-side";
 import { useEffect, useState } from "react";
 
 export default function AuthErrorPage() {
@@ -9,7 +10,7 @@ export default function AuthErrorPage() {
 
   useEffect(() => {
     // This code only runs on the client side
-    if (typeof window !== "undefined") {
+    if (!isServerSide()) {
       const hash = window.location.hash.substring(1); // Remove the leading '#'
       const params = new URLSearchParams(hash);
 

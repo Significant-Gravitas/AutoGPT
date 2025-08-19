@@ -46,6 +46,7 @@ export function AgentReviewStep({
             <Text
               variant="lead"
               className="line-clamp-1 text-ellipsis text-center font-semibold"
+              data-testid="view-agent-name"
             >
               {agentName}
             </Text>
