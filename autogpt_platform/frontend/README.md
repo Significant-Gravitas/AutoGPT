@@ -87,12 +87,12 @@ Every time a new Front-end dependency is added by you or others, you will need t
 - `pnpm start` - Start production server
 - `pnpm lint` - Run ESLint and Prettier checks
 - `pnpm format` - Format code with Prettier
-- `pnpm type-check` - Run TypeScript type checking
+- `pnpm types` - Run TypeScript type checking
 - `pnpm test` - Run Playwright tests
 - `pnpm test-ui` - Run Playwright tests with UI
 - `pnpm fetch:openapi` - Fetch OpenAPI spec from backend
 - `pnpm generate:api-client` - Generate API client from OpenAPI spec
-- `pnpm generate:api-all` - Fetch OpenAPI spec and generate API client
+- `pnpm generate:api` - Fetch OpenAPI spec and generate API client
 
 This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) to automatically optimize and load Inter, a custom Google Font.
 
@@ -115,7 +115,7 @@ This project uses an auto-generated API client powered by [**Orval**](https://or
 
 ```bash
 # Fetch OpenAPI spec from backend and generate client
-pnpm generate:api-all
+pnpm generate:api
 
 # Only fetch the OpenAPI spec
 pnpm fetch:openapi
