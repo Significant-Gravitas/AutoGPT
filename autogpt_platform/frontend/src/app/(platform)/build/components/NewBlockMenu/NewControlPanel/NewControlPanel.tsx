@@ -6,7 +6,7 @@ import { useNewControlPanel } from "./useNewControlPanel";
 import { NewSaveControl } from "../SaveControl/NewSaveControl";
 import { GraphExecutionID } from "@/lib/autogpt-server-api";
 import { history } from "@/components/history";
-import { ControlPanelButton } from "../ControlButton/ControlPanelButton";
+import { ControlPanelButton } from "../ControlPanelButton";
 import { ArrowUUpLeftIcon, ArrowUUpRightIcon } from "@phosphor-icons/react";
 
 export type Control = {
