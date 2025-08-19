@@ -185,7 +185,7 @@ function ResetPasswordContent() {
 
   return (
     <div className="flex h-full min-h-[85vh] w-full flex-col items-center justify-center">
-      <AuthCard title="Reset Password">
+      <AuthCard title="AutoGPT Reset Password">
         {user ? (
           <form
             onSubmit={changePasswordForm.handleSubmit(onChangePassword)}
