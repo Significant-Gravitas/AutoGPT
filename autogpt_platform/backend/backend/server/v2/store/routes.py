@@ -592,24 +592,17 @@ async def edit_submission(
     Raises:
         HTTPException: If there is an error editing the submission
     """
-    try:
-        return await backend.server.v2.store.db.edit_store_submission(
-            user_id=user_id,
-            store_listing_version_id=store_listing_version_id,
-            name=submission_request.name,
-            video_url=submission_request.video_url,
-            image_urls=submission_request.image_urls,
-            description=submission_request.description,
-            sub_heading=submission_request.sub_heading,
-            categories=submission_request.categories,
-            changes_summary=submission_request.changes_summary,
-        )
-    except Exception:
-        logger.exception("Exception occurred whilst editing store submission")
-        return fastapi.responses.JSONResponse(
-            status_code=500,
-            content={"detail": "An error occurred while editing the store submission"},
-        )
+    return await backend.server.v2.store.db.edit_store_submission(
+        user_id=user_id,
+        store_listing_version_id=store_listing_version_id,
+        name=submission_request.name,
+        video_url=submission_request.video_url,
+        image_urls=submission_request.image_urls,
+        description=submission_request.description,
+        sub_heading=submission_request.sub_heading,
+        categories=submission_request.categories,
+        changes_summary=submission_request.changes_summary,
+    )
 
 
 @router.post(

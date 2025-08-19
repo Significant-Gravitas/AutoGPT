@@ -5,8 +5,8 @@
  * This server is used to execute agents that are created by the AutoGPT system.
  * OpenAPI spec version: 0.1
  */
-import type { StoreSubmissionEditRequestVideoUrl } from "./storeSubmissionEditRequestVideoUrl";
-import type { StoreSubmissionEditRequestChangesSummary } from "./storeSubmissionEditRequestChangesSummary";
+import type { StoreSubmissionEditRequestVideoUrl } from './storeSubmissionEditRequestVideoUrl';
+import type { StoreSubmissionEditRequestChangesSummary } from './storeSubmissionEditRequestChangesSummary';
 
 export interface StoreSubmissionEditRequest {
   name: string;

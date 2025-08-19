@@ -9,6 +9,7 @@ import { StoreSubmissionsResponse } from "@/app/api/__generated__/models/storeSu
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useState } from "react";
+import * as Sentry from "@sentry/nextjs";
 
 type PublishStep = "select" | "info" | "review";
 
@@ -90,7 +91,9 @@ export const useMainDashboardPage = () => {
   const onEditSuccess = async (submission: StoreSubmission) => {
     try {
       if (!submission.store_listing_version_id) {
-        console.error("No store listing version ID found for submission");
+        Sentry.captureException(
+          new Error("No store listing version ID found for submission"),
+        );
         return;
       }
 
@@ -99,7 +102,7 @@ export const useMainDashboardPage = () => {
         submission: null,
       });
     } catch (error) {
-      console.error("Failed to edit submission:", error);
+      Sentry.captureException(error);
     }
   };
 
