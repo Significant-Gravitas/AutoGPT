@@ -11,7 +11,7 @@ import { GraphMeta } from "@/lib/autogpt-server-api";
 import { Label } from "@/components/ui/label";
 import { IconSave } from "@/components/ui/icons";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { ControlPanelButton } from "../ControlButton/ControlPanelButton";
+import { ControlPanelButton } from "../ControlPanelButton";
 
 interface SaveControlProps {
   agentMeta: GraphMeta | null;
