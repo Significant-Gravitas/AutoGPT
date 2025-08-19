@@ -55,3 +55,6 @@ storybook-static
 *.ign.*
 !.npmrc
 .cursorrules
+
+# Generated API files
+src/app/api/__generated__/
