@@ -167,10 +167,12 @@ test("agent table view action works correctly for rejected agents", async ({
   }) => {
     await page.goto("/profile/dashboard");
 
-    const agentTable = page.getByTestId("agent-table");
-    await expect(agentTable).toBeVisible();
+  await rejectedRow.scrollIntoViewIfNeeded();
 
-    const rows = agentTable.getByTestId("agent-table-row");
+  const actionsButton = rejectedRow.getByTestId("agent-table-row-actions");
+  await actionsButton.waitFor({ state: "visible", timeout: 10000 });
+  await actionsButton.scrollIntoViewIfNeeded();
+  await actionsButton.click();
 
     const rejectedRow = rows.filter({ hasText: "Rejected" }).first();
     if (!(await rejectedRow.count())) {
