@@ -1,6 +1,6 @@
 import BackendAPI from "@/lib/autogpt-server-api";
 import { AgentsSection } from "@/components/agptui/composite/AgentsSection";
-import { BreadCrumbs } from "@/components/agptui/BreadCrumbs";
+import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { Metadata } from "next";
 import { CreatorInfoCard } from "@/components/agptui/CreatorInfoCard";
 import { CreatorLinks } from "@/components/agptui/CreatorLinks";
@@ -49,7 +49,7 @@ export default async function Page({
     return (
       <div className="mx-auto w-screen max-w-[1360px]">
         <main className="mt-5 px-4">
-          <BreadCrumbs
+          <Breadcrumbs
             items={[
               { name: "Store", link: "/marketplace" },
               { name: creator.name, link: "#" },
