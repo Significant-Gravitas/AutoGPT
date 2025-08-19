@@ -19,7 +19,7 @@ import { Separator } from "@/components/ui/separator";
 
 import { agentRunStatusMap } from "@/components/agents/agent-run-status-chip";
 import AgentRunSummaryCard from "@/components/agents/agent-run-summary-card";
-import { Button } from "../atoms/Button/Button";
+import { Button } from "../../../../../../../../components/atoms/Button/Button";
 
 interface AgentRunsSelectorListProps {
   agent: LibraryAgent;
@@ -38,7 +38,7 @@ interface AgentRunsSelectorListProps {
   className?: string;
 }
 
-export default function AgentRunsSelectorList({
+export function AgentRunsSelectorList({
   agent,
   agentRuns,
   agentPresets,
