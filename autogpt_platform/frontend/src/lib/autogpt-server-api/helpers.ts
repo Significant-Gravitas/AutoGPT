@@ -1,5 +1,6 @@
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { Key, storage } from "@/services/storage/local-storage";
+import { getAgptServerApiUrl } from "@/lib/env-config";
 import { isServerSide } from "../utils/is-server-side";
 
 import { GraphValidationErrorResponse } from "./types";
@@ -56,9 +57,7 @@ export function buildClientUrl(path: string): string {
 }
 
 export function buildServerUrl(path: string): string {
-  const baseUrl =
-    process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006/api";
-  return `${baseUrl}${path}`;
+  return `${getAgptServerApiUrl()}${path}`;
 }
 
 export function buildUrlWithQuery(
@@ -229,7 +228,13 @@ export async function makeAuthenticatedRequest(
   const payloadAsQuery = ["GET", "DELETE"].includes(method);
   const hasRequestBody = !payloadAsQuery && payload !== undefined;
 
-  const response = await fetch(url, {
+  // Add query parameters for GET/DELETE requests
+  let requestUrl = url;
+  if (payloadAsQuery && payload) {
+    requestUrl = buildUrlWithQuery(url, payload);
+  }
+
+  const response = await fetch(requestUrl, {
     method,
     headers: createRequestHeaders(token, hasRequestBody, contentType),
     body: hasRequestBody

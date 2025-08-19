@@ -20,6 +20,7 @@ from backend.data.execution import (
     upsert_execution_input,
     upsert_execution_output,
 )
+from backend.data.generate_data import get_user_execution_summary_data
 from backend.data.graph import (
     get_connected_output_nodes,
     get_graph,
@@ -79,10 +80,10 @@ class DatabaseManager(AppService):
         logger.info(f"[{self.service_name}] ⏳ Disconnecting Database...")
         self.run_and_wait(db.disconnect())
 
-    def health_check(self) -> str:
+    async def health_check(self) -> str:
         if not db.is_connected():
             raise UnhealthyServiceError("Database is not connected")
-        return super().health_check()
+        return await super().health_check()
 
     @classmethod
     def get_port(cls) -> int:
@@ -144,6 +145,9 @@ class DatabaseManager(AppService):
         get_user_notification_oldest_message_in_batch
     )
 
+    # Summary data - async
+    get_user_execution_summary_data = _(get_user_execution_summary_data)
+
 
 class DatabaseManagerClient(AppServiceClient):
     d = DatabaseManager
@@ -168,6 +172,9 @@ class DatabaseManagerClient(AppServiceClient):
     # Credits
     spend_credits = _(d.spend_credits)
     get_credits = _(d.get_credits)
+
+    # Summary data - async
+    get_user_execution_summary_data = _(d.get_user_execution_summary_data)
 
     # Block error monitoring
     get_block_error_stats = _(d.get_block_error_stats)
@@ -215,3 +222,6 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_notification_oldest_message_in_batch = (
         d.get_user_notification_oldest_message_in_batch
     )
+
+    # Summary data
+    get_user_execution_summary_data = d.get_user_execution_summary_data

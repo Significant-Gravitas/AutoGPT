@@ -11,7 +11,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import AgentRunDraftView from "@/components/agents/agent-run-draft-view";
+import { AgentRunDraftView } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/components/agent-run-draft-view";
 
 interface RunInputDialogProps {
   isOpen: boolean;

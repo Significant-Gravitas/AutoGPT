@@ -3,7 +3,6 @@ import logging
 import autogpt_libs.auth.models
 import fastapi.responses
 import pytest
-from prisma.models import User
 
 import backend.server.v2.library.model
 import backend.server.v2.store.model
@@ -12,6 +11,7 @@ from backend.blocks.data_manipulation import FindInDictionaryBlock
 from backend.blocks.io import AgentInputBlock
 from backend.blocks.maths import CalculatorBlock, Operation
 from backend.data import execution, graph
+from backend.data.model import User
 from backend.server.model import CreateGraph
 from backend.server.rest_api import AgentServer
 from backend.usecases.sample import create_test_graph, create_test_user

@@ -8,7 +8,6 @@ Welcome to the AutoGPT Platform - a powerful system for creating and running AI 
 
 - Docker
 - Docker Compose V2 (comes with Docker Desktop, or can be installed separately)
-- Node.js & NPM (for running the frontend application)
 
 ### Running the System
 
@@ -24,10 +23,10 @@ To run the AutoGPT Platform, follow these steps:
 2. Run the following command:
 
    ```
-   cp .env.example .env
+   cp .env.default .env
    ```
 
-   This command will copy the `.env.example` file to `.env`. You can modify the `.env` file to add your own environment variables.
+   This command will copy the `.env.default` file to `.env`. You can modify the `.env` file to add your own environment variables.
 
 3. Run the following command:
 
@@ -37,44 +36,7 @@ To run the AutoGPT Platform, follow these steps:
 
    This command will start all the necessary backend services defined in the `docker-compose.yml` file in detached mode.
 
-4. Navigate to `frontend` within the `autogpt_platform` directory:
-
-   ```
-   cd frontend
-   ```
-
-   You will need to run your frontend application separately on your local machine.
-
-5. Run the following command:
-
-   ```
-   cp .env.example .env.local
-   ```
-
-   This command will copy the `.env.example` file to `.env.local` in the `frontend` directory. You can modify the `.env.local` within this folder to add your own environment variables for the frontend application.
-
-6. Run the following command:
-
-   Enable corepack and install dependencies by running:
-
-   ```
-   corepack enable
-   pnpm i
-   ```
-
-   Generate the API client (this step is required before running the frontend):
-
-   ```
-   pnpm generate:api-client
-   ```
-
-   Then start the frontend application in development mode:
-
-   ```
-   pnpm dev
-   ```
-
-7. Open your browser and navigate to `http://localhost:3000` to access the AutoGPT Platform frontend.
+4. After all the services are in ready state, open your browser and navigate to `http://localhost:3000` to access the AutoGPT Platform frontend.
 
 ### Docker Compose Commands
 
@@ -177,20 +139,21 @@ The platform includes scripts for generating and managing the API client:
 
 - `pnpm fetch:openapi`: Fetches the OpenAPI specification from the backend service (requires backend to be running on port 8006)
 - `pnpm generate:api-client`: Generates the TypeScript API client from the OpenAPI specification using Orval
-- `pnpm generate:api-all`: Runs both fetch and generate commands in sequence
+- `pnpm generate:api`: Runs both fetch and generate commands in sequence
 
 #### Manual API Client Updates
 
 If you need to update the API client after making changes to the backend API:
 
 1. Ensure the backend services are running:
+
    ```
    docker compose up -d
    ```
 
 2. Generate the updated API client:
    ```
-   pnpm generate:api-all
+   pnpm generate:api
    ```
 
 This will fetch the latest OpenAPI specification and regenerate the TypeScript client code.

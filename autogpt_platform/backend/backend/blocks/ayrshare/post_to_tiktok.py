@@ -1,3 +1,5 @@
+from enum import Enum
+
 from backend.integrations.ayrshare import PostIds, PostResponse, SocialPlatform
 from backend.sdk import (
     Block,
@@ -11,6 +13,12 @@ from backend.sdk import (
 from ._util import BaseAyrshareInput, create_ayrshare_client, get_profile_key
 
 
+class TikTokVisibility(str, Enum):
+    PUBLIC = "public"
+    PRIVATE = "private"
+    FOLLOWERS = "followers"
+
+
 class PostToTikTokBlock(Block):
     """Block for posting to TikTok with TikTok-specific options."""
 
@@ -20,7 +28,6 @@ class PostToTikTokBlock(Block):
         # Override post field to include TikTok-specific information
         post: str = SchemaField(
             description="The post text (max 2,200 chars, empty string allowed). Use @handle to mention users. Line breaks will be ignored.",
-            default="",
             advanced=False,
         )
 
@@ -33,7 +40,7 @@ class PostToTikTokBlock(Block):
 
         # TikTok-specific options
         auto_add_music: bool = SchemaField(
-            description="Automatically add recommended music to image posts",
+            description="Whether to automatically add recommended music to the post. If you set this field to true, you can change the music later in the TikTok app.",
             default=False,
             advanced=True,
         )
@@ -53,17 +60,17 @@ class PostToTikTokBlock(Block):
             advanced=True,
         )
         is_ai_generated: bool = SchemaField(
-            description="Label content as AI-generated (video only)",
+            description="If you enable the toggle, your video will be labeled as “Creator labeled as AI-generated” once posted and can’t be changed. The “Creator labeled as AI-generated” label indicates that the content was completely AI-generated or significantly edited with AI.",
             default=False,
             advanced=True,
         )
         is_branded_content: bool = SchemaField(
-            description="Label as branded content (paid partnership)",
+            description="Whether to enable the Branded Content toggle. If this field is set to true, the video will be labeled as Branded Content, indicating you are in a paid partnership with a brand. A “Paid partnership” label will be attached to the video.",
             default=False,
             advanced=True,
         )
         is_brand_organic: bool = SchemaField(
-            description="Label as brand organic content (promotional)",
+            description="Whether to enable the Brand Organic Content toggle. If this field is set to true, the video will be labeled as Brand Organic Content, indicating you are promoting yourself or your own business. A “Promotional content” label will be attached to the video.",
             default=False,
             advanced=True,
         )
@@ -80,9 +87,9 @@ class PostToTikTokBlock(Block):
             default=0,
             advanced=True,
         )
-        visibility: str = SchemaField(
+        visibility: TikTokVisibility = SchemaField(
             description="Post visibility: 'public', 'private', 'followers', or 'friends'",
-            default="public",
+            default=TikTokVisibility.PUBLIC,
             advanced=True,
         )
         draft: bool = SchemaField(
@@ -97,7 +104,6 @@ class PostToTikTokBlock(Block):
 
     def __init__(self):
         super().__init__(
-            disabled=True,
             id="7faf4b27-96b0-4f05-bf64-e0de54ae74e1",
             description="Post to TikTok using Ayrshare",
             categories={BlockCategory.SOCIAL},
@@ -160,12 +166,6 @@ class PostToTikTokBlock(Block):
             yield "error", f"Image cover index {input_data.image_cover_index} is out of range (max: {len(input_data.media_urls) - 1})"
             return
 
-        # Validate visibility option
-        valid_visibility = ["public", "private", "followers", "friends"]
-        if input_data.visibility not in valid_visibility:
-            yield "error", f"TikTok visibility must be one of: {', '.join(valid_visibility)}"
-            return
-
         # Check for PNG files (not supported)
         has_png = any(url.lower().endswith(".png") for url in input_data.media_urls)
         if has_png:
@@ -218,8 +218,8 @@ class PostToTikTokBlock(Block):
             if input_data.title:
                 tiktok_options["title"] = input_data.title
 
-            if input_data.visibility != "public":
-                tiktok_options["visibility"] = input_data.visibility
+            if input_data.visibility != TikTokVisibility.PUBLIC:
+                tiktok_options["visibility"] = input_data.visibility.value
 
         response = await client.create_post(
             post=input_data.post,
