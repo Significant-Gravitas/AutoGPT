@@ -21,7 +21,7 @@ export function Badge({ variant, children, className }: BadgeProps) {
         // Base styles from Figma
         "inline-flex items-center gap-2 rounded-[45px] px-[9px] py-[3px]",
         // Text styles
-        "font-sans text-xs font-medium leading-5",
+        "font-sans text-[0.6785rem] font-medium uppercase leading-5 tracking-wider",
         // Text overflow handling
         "overflow-hidden text-ellipsis",
         // Variant styles

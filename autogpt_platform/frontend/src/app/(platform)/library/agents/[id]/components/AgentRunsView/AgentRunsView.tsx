@@ -6,7 +6,7 @@ import { useAgentRunsView } from "./useAgentRunsView";
 import { AgentRunsLoading } from "./components/AgentRunsLoading";
 import { Button } from "@/components/atoms/Button/Button";
 import { Plus } from "@phosphor-icons/react";
-import { RunAgentModal } from "@/components/contextual/RunAgentModal/RunAgentModal";
+import { RunAgentModal } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/RunAgentModal/RunAgentModal";
 
 export function AgentRunsView() {
   const { response, ready, error, agentId } = useAgentRunsView();
@@ -60,6 +60,8 @@ export function AgentRunsView() {
               <Plus size={20} /> New Run
             </Button>
           }
+          agent={agent}
+          agentId={agent.id.toString()}
         />
       </div>
 
