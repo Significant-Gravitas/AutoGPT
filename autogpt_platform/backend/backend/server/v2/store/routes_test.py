@@ -66,7 +66,7 @@ def test_get_agents_defaults(
     snapshot.assert_match(json.dumps(response.json(), indent=2), "def_agts")
     mock_db_call.assert_called_once_with(
         featured=False,
-        creator=None,
+        creators=None,
         sorted_by=None,
         search_query=None,
         category=None,
@@ -113,7 +113,7 @@ def test_get_agents_featured(
     snapshot.assert_match(json.dumps(response.json(), indent=2), "feat_agts")
     mock_db_call.assert_called_once_with(
         featured=True,
-        creator=None,
+        creators=None,
         sorted_by=None,
         search_query=None,
         category=None,
@@ -160,7 +160,7 @@ def test_get_agents_by_creator(
     snapshot.assert_match(json.dumps(response.json(), indent=2), "agts_by_creator")
     mock_db_call.assert_called_once_with(
         featured=False,
-        creator="specific-creator",
+        creators=["specific-creator"],
         sorted_by=None,
         search_query=None,
         category=None,
@@ -207,7 +207,7 @@ def test_get_agents_sorted(
     snapshot.assert_match(json.dumps(response.json(), indent=2), "agts_sorted")
     mock_db_call.assert_called_once_with(
         featured=False,
-        creator=None,
+        creators=None,
         sorted_by="runs",
         search_query=None,
         category=None,
@@ -254,7 +254,7 @@ def test_get_agents_search(
     snapshot.assert_match(json.dumps(response.json(), indent=2), "agts_search")
     mock_db_call.assert_called_once_with(
         featured=False,
-        creator=None,
+        creators=None,
         sorted_by=None,
         search_query="specific",
         category=None,
@@ -300,7 +300,7 @@ def test_get_agents_category(
     snapshot.assert_match(json.dumps(response.json(), indent=2), "agts_category")
     mock_db_call.assert_called_once_with(
         featured=False,
-        creator=None,
+        creators=None,
         sorted_by=None,
         search_query=None,
         category="test-category",
@@ -349,7 +349,7 @@ def test_get_agents_pagination(
     snapshot.assert_match(json.dumps(response.json(), indent=2), "agts_pagination")
     mock_db_call.assert_called_once_with(
         featured=False,
-        creator=None,
+        creators=None,
         sorted_by=None,
         search_query=None,
         category=None,

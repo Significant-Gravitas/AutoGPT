@@ -53,7 +53,7 @@ async def get_store_agents(
     Get PUBLIC store agents from the StoreAgent view
     """
     logger.debug(
-        f"Getting store agents. featured={featured}, creator={creators}, sorted_by={sorted_by}, search={search_query}, category={category}, page={page}"
+        f"Getting store agents. featured={featured}, creators={creators}, sorted_by={sorted_by}, search={search_query}, category={category}, page={page}"
     )
     sanitized_query = sanitize_query(search_query)
 

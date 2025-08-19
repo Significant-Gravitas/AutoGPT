@@ -134,6 +134,7 @@ def test_add_agent_to_library_success(mocker: pytest_mock.MockFixture):
         creator_name="Test Creator",
         creator_image_url="",
         input_schema={"type": "object", "properties": {}},
+        output_schema={"type": "object", "properties": {}},
         credentials_input_schema={"type": "object", "properties": {}},
         has_external_trigger=False,
         status=library_model.LibraryAgentStatus.COMPLETED,
