@@ -1,5 +1,5 @@
 import logging
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -164,10 +164,10 @@ class SearchStoreAgentsBlock(Block):
     """
 
     class Input(BlockSchema):
-        query: Optional[str] = SchemaField(
+        query: str | None = SchemaField(
             description="Search query to find agents", default=None
         )
-        category: Optional[str] = SchemaField(
+        category: str | None = SchemaField(
             description="Filter by category", default=None
         )
         sort_by: Literal["rating", "runs", "name", "recent"] = SchemaField(
@@ -270,8 +270,8 @@ class SearchStoreAgentsBlock(Block):
 
     async def _search_agents(
         self,
-        query: Optional[str] = None,
-        category: Optional[str] = None,
+        query: str | None = None,
+        category: str | None = None,
         sort_by: str = "rating",
         limit: int = 10,
     ) -> SearchAgentsResponse:

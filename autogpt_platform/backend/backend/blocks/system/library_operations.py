@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -34,7 +34,7 @@ class AddToLibraryFromStoreBlock(Block):
         store_listing_version_id: str = SchemaField(
             description="The ID of the store listing version to add to library"
         )
-        agent_name: Optional[str] = SchemaField(
+        agent_name: str | None = SchemaField(
             description="Optional custom name for the agent in your library",
             default=None,
         )
@@ -106,7 +106,7 @@ class AddToLibraryFromStoreBlock(Block):
         self,
         user_id: str,
         store_listing_version_id: str,
-        custom_name: Optional[str] = None,
+        custom_name: str | None = None,
     ) -> LibraryAgent:
         """
         Add a store agent to the user's library using the existing library database function.
@@ -135,7 +135,7 @@ class ListLibraryAgentsBlock(Block):
     """
 
     class Input(BlockSchema):
-        search_query: Optional[str] = SchemaField(
+        search_query: str | None = SchemaField(
             description="Optional search query to filter agents", default=None
         )
         limit: int = SchemaField(
@@ -247,7 +247,7 @@ class ListLibraryAgentsBlock(Block):
     async def _list_library_agents(
         self,
         user_id: str,
-        search_query: Optional[str] = None,
+        search_query: str | None = None,
         limit: int = 50,
         page: int = 1,
     ) -> dict[str, Any]:
