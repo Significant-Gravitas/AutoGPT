@@ -4,8 +4,8 @@ import { cn } from "@/lib/utils";
 import { Plus } from "lucide-react";
 import Image from "next/image";
 import React, { ButtonHTMLAttributes } from "react";
-import TimeAgo from "react-timeago";
 import { highlightText } from "./helpers";
+import { formatTimeAgo } from "@/lib/utils/time";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
@@ -22,7 +22,7 @@ interface UGCAgentBlockComponent extends React.FC<Props> {
 export const UGCAgentBlock: UGCAgentBlockComponent = ({
   title,
   image_url,
-  edited_time,
+  edited_time = new Date(),
   version,
   className,
   highlightedText,
@@ -65,7 +65,7 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
                 "line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
               )}
             >
-              Edited {<TimeAgo date={edited_time} />}
+              Edited {formatTimeAgo(edited_time.toISOString())}
             </span>
           )}
 
