@@ -831,7 +831,6 @@ class ExecutionProcessor:
                         db_client,
                         graph_exec.user_id,
                         graph_exec.graph_id,
-                        execution_stats,
                         error,
                     )
                     # Gracefully stop the execution loop
@@ -1108,7 +1107,6 @@ class ExecutionProcessor:
         db_client: "DatabaseManagerClient",
         user_id: str,
         graph_id: str,
-        exec_stats: GraphExecutionStats,
         e: InsufficientBalanceError,
     ):
         shortfall = abs(e.amount) - e.balance
@@ -1123,7 +1121,7 @@ class ExecutionProcessor:
                 user_id=user_id,
                 type=NotificationType.ZERO_BALANCE,
                 data=ZeroBalanceData(
-                    current_balance=exec_stats.cost,
+                    current_balance=e.balance,
                     billing_page_link=f"{base_url}/profile/credits",
                     shortfall=shortfall,
                     agent_name=metadata.name if metadata else "Unknown Agent",

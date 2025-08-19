@@ -96,8 +96,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum number of credits above the balance to be auto-approved.",
     )
     low_balance_threshold: int = Field(
-        default=1000,
-        description="Credit threshold for low balance notifications (100 = $1, default 1000 = $10)",
+        default=500,
+        description="Credit threshold for low balance notifications (100 = $1, default 500 = $5)",
     )
     refund_notification_email: str = Field(
         default="refund@agpt.co",

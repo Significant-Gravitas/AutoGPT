@@ -19,15 +19,18 @@ async def test_low_balance_threshold_notification(server: SpinTestServer):
     user_credit = BetaUserCredit(2000)  # $20 starting balance
     user_id = DEFAULT_USER_ID
 
-    # Mock the notification queue and Discord client
+    # Mock the notification queue, Discord client, and user email lookup
     with patch(
-        "backend.notifications.notifications.queue_notification_async"
+        "backend.data.credit.queue_notification_async"
     ) as mock_queue_notif, patch(
         "backend.util.clients.get_notification_manager_client"
-    ) as mock_discord:
+    ) as mock_discord, patch(
+        "backend.data.credit.get_user_email_by_id"
+    ) as mock_get_email:
 
         mock_discord_client = MagicMock()
         mock_discord.return_value = mock_discord_client
+        mock_get_email.return_value = "test@example.com"
 
         # Start with balance above threshold ($20)
         await user_credit._add_transaction(
@@ -57,8 +60,9 @@ async def test_low_balance_threshold_notification(server: SpinTestServer):
         # Verify Discord alert was sent
         mock_discord_client.discord_system_alert.assert_called_once()
         discord_message = mock_discord_client.discord_system_alert.call_args[0][0]
-        assert "LOW BALANCE" in discord_message
-        assert user_id in discord_message
+        assert "Low Balance Alert" in discord_message
+        # User ID or email should be in message
+        assert user_id in discord_message or "test@example.com" in discord_message
         assert "$9.00" in discord_message
 
 
@@ -71,12 +75,17 @@ async def test_low_balance_no_duplicate_notification():
     user_id = DEFAULT_USER_ID
 
     # Mock the notification queue
-    with patch("backend.data.credit.queue_notification") as mock_queue_notif, patch(
-        "backend.data.credit.get_notification_manager_client"
-    ) as mock_discord:
+    with patch(
+        "backend.data.credit.queue_notification_async"
+    ) as mock_queue_notif, patch(
+        "backend.util.clients.get_notification_manager_client"
+    ) as mock_discord, patch(
+        "backend.data.credit.get_user_email_by_id"
+    ) as mock_get_email:
 
         mock_discord_client = MagicMock()
         mock_discord.return_value = mock_discord_client
+        mock_get_email.return_value = "test@example.com"
 
         # Start with balance above threshold
         await user_credit._add_transaction(
