@@ -44,9 +44,9 @@ export function APIKeysSection() {
             </TableHeader>
             <TableBody>
               {apiKeys.map((key) => (
-                <TableRow key={key.id}>
+                <TableRow key={key.id} data-testid="api-key-row">
                   <TableCell>{key.name}</TableCell>
-                  <TableCell>
+                  <TableCell data-testid="api-key-id">
                     <div className="rounded-md border p-1 px-2 text-xs">
                       {`${key.prefix}******************${key.postfix}`}
                     </div>

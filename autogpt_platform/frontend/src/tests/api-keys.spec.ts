@@ -46,10 +46,17 @@ test.describe("API Keys Page", () => {
   test("should revoke an existing API key", async ({ page }) => {
     const { getRole, getId } = getSelectors(page);
     await page.goto("/profile/api_keys");
-    await getId("api-key-actions").first().click();
-    await getRole("menuitem", "Revoke").first().click();
+
+    const apiKeyRow = getId("api-key-row").first();
+    const apiKeyContent = await apiKeyRow.getByTestId("api-key-id").first().textContent();
+    const apiKeyActions = apiKeyRow.getByTestId("api-key-actions").first();
+
+    await apiKeyActions.click();
+    await getRole("menuitem", "Revoke").click();
     await expect(
       page.getByText("AutoGPT Platform API key revoked successfully"),
     ).toBeVisible();
+    
+    await expect(page.getByText(apiKeyContent!)).not.toBeVisible();
   });
 });
