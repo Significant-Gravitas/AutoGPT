@@ -350,6 +350,8 @@ export class BuildPage extends BasePage {
     console.log(`clicking run button`);
     const runButton = this.page.getByTestId("primary-action-run-agent");
     await runButton.click();
+    await this.page.waitForTimeout(1000);
+    await runButton.click();
   }
 
   async fillRunDialog(inputs: Record<string, string>): Promise<void> {
