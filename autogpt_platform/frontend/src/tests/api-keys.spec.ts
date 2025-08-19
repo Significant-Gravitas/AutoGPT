@@ -48,7 +48,10 @@ test.describe("API Keys Page", () => {
     await page.goto("/profile/api_keys");
 
     const apiKeyRow = getId("api-key-row").first();
-    const apiKeyContent = await apiKeyRow.getByTestId("api-key-id").first().textContent();
+    const apiKeyContent = await apiKeyRow
+      .getByTestId("api-key-id")
+      .first()
+      .textContent();
     const apiKeyActions = apiKeyRow.getByTestId("api-key-actions").first();
 
     await apiKeyActions.click();
@@ -56,7 +59,7 @@ test.describe("API Keys Page", () => {
     await expect(
       page.getByText("AutoGPT Platform API key revoked successfully"),
     ).toBeVisible();
-    
+
     await expect(page.getByText(apiKeyContent!)).not.toBeVisible();
   });
 });
