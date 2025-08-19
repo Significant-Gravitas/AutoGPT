@@ -13,20 +13,6 @@ const MILLISECONDS_PER_72_HOURS = 72 * MILLISECONDS_PER_HOUR;
 const SHORT_DURATION_THRESHOLD_SECONDS = 5;
 const MAX_EXECUTIONS_CAP = 1000;
 
-export function formatTimeAgo(dateStr: string): string {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / MILLISECONDS_PER_MINUTE);
-
-  if (diffMins < 1) return "just now";
-  if (diffMins < SECONDS_PER_MINUTE) return `${diffMins}m ago`;
-  const diffHours = Math.floor(diffMins / MINUTES_PER_HOUR);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}d ago`;
-}
-
 export function getExecutionDuration(
   execution: GeneratedGraphExecutionMeta,
 ): string {
