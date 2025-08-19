@@ -29,8 +29,8 @@ class FirecrawlExtractBlock(Block):
         prompt: str | None = SchemaField(
             description="The prompt to use for the crawl", default=None, advanced=False
         )
-        output_schema: str | None = SchemaField(
-            description="A more rigid structure if you already know the JSON layout.",
+        output_schema: dict | None = SchemaField(
+            description="A Json Schema describing the output structure if more rigid structure is desired.",
             default=None,
         )
         enable_web_search: bool = SchemaField(
@@ -56,7 +56,6 @@ class FirecrawlExtractBlock(Block):
 
         app = FirecrawlApp(api_key=credentials.api_key.get_secret_value())
 
-        # Sync call
         extract_result = app.extract(
             urls=input_data.urls,
             prompt=input_data.prompt,
