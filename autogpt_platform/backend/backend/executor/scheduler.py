@@ -269,9 +269,7 @@ class Scheduler(AppService):
 
         self.scheduler = BackgroundScheduler(
             executors={
-                "default": ThreadPoolExecutor(
-                    max_workers=self.db_pool_size()
-                ),  # Match DB pool size to prevent resource contention
+                "default": ThreadPoolExecutor(max_workers=10),  # Max 10 concurrent jobs
             },
             job_defaults={
                 "coalesce": True,  # Skip redundant missed jobs - just run the latest

@@ -1208,9 +1208,6 @@ class ExecutionManager(AppProcess):
             )
             return
 
-        # Check if channel is closed and force reconnection if needed
-        if not self.cancel_client.is_ready:
-            self.cancel_client.disconnect()
         self.cancel_client.connect()
         cancel_channel = self.cancel_client.get_channel()
         cancel_channel.basic_consume(
@@ -1240,9 +1237,6 @@ class ExecutionManager(AppProcess):
             )
             return
 
-        # Check if channel is closed and force reconnection if needed
-        if not self.run_client.is_ready:
-            self.run_client.disconnect()
         self.run_client.connect()
         run_channel = self.run_client.get_channel()
         run_channel.basic_qos(prefetch_count=self.pool_size)

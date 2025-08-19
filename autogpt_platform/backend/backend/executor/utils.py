@@ -548,7 +548,7 @@ async def validate_graph_with_credentials(
     return node_input_errors
 
 
-async def _construct_starting_node_execution_input(
+async def _construct_node_execution_input(
     graph: GraphModel,
     user_id: str,
     graph_inputs: BlockInput,
@@ -622,7 +622,7 @@ async def validate_and_construct_node_execution_input(
     graph_version: Optional[int] = None,
     graph_credentials_inputs: Optional[dict[str, CredentialsMetaInput]] = None,
     nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
-) -> tuple[GraphModel, list[tuple[str, BlockInput]], dict[str, dict[str, JsonValue]]]:
+) -> tuple[GraphModel, list[tuple[str, BlockInput]]]:
     """
     Public wrapper that handles graph fetching, credential mapping, and validation+construction.
     This centralizes the logic used by both scheduler validation and actual execution.
@@ -666,14 +666,14 @@ async def validate_and_construct_node_execution_input(
         nodes_input_masks or {},
     )
 
-    starting_nodes_input = await _construct_starting_node_execution_input(
+    starting_nodes_input = await _construct_node_execution_input(
         graph=graph,
         user_id=user_id,
         graph_inputs=graph_inputs,
         nodes_input_masks=nodes_input_masks,
     )
 
-    return graph, starting_nodes_input, nodes_input_masks
+    return graph, starting_nodes_input
 
 
 def _merge_nodes_input_masks(
@@ -856,15 +856,13 @@ async def add_graph_execution(
     else:
         edb = get_database_manager_async_client()
 
-    graph, starting_nodes_input, nodes_input_masks = (
-        await validate_and_construct_node_execution_input(
-            graph_id=graph_id,
-            user_id=user_id,
-            graph_inputs=inputs or {},
-            graph_version=graph_version,
-            graph_credentials_inputs=graph_credentials_inputs,
-            nodes_input_masks=nodes_input_masks,
-        )
+    graph, starting_nodes_input = await validate_and_construct_node_execution_input(
+        graph_id=graph_id,
+        user_id=user_id,
+        graph_inputs=inputs or {},
+        graph_version=graph_version,
+        graph_credentials_inputs=graph_credentials_inputs,
+        nodes_input_masks=nodes_input_masks,
     )
     graph_exec = None
 
