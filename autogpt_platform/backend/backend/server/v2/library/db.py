@@ -241,11 +241,7 @@ async def get_library_agent_by_graph_id(
         )
         if not agent:
             return None
-
-        assert agent.AgentGraph  # make type checker happy
-        # Include sub-graphs so we can make a full credentials input schema
-        sub_graphs = await graph_db.get_sub_graphs(agent.AgentGraph)
-        return library_model.LibraryAgent.from_db(agent, sub_graphs=sub_graphs)
+        return library_model.LibraryAgent.from_db(agent)
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error fetching library agent by graph ID: {e}")
         raise store_exceptions.DatabaseError("Failed to fetch library agent") from e

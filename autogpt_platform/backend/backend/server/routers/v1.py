@@ -676,15 +676,7 @@ async def update_graph(
             # Handle deactivation of the previously active version
             await on_graph_deactivate(current_active_version, user_id=user_id)
 
-    # Fetch new graph version *with sub-graphs* (needed for credentials input schema)
-    new_graph_version_with_subgraphs = await graph_db.get_graph(
-        graph_id,
-        new_graph_version.version,
-        user_id=user_id,
-        include_subgraphs=True,
-    )
-    assert new_graph_version_with_subgraphs  # make type checker happy
-    return new_graph_version_with_subgraphs
+    return new_graph_version
 
 
 @v1_router.put(
