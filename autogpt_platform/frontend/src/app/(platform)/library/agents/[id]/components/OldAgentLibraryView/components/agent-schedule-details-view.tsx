@@ -20,7 +20,7 @@ import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { PlayIcon } from "lucide-react";
 
-export default function AgentScheduleDetailsView({
+export function AgentScheduleDetailsView({
   graph,
   schedule,
   agentActions,
