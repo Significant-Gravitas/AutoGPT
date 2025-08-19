@@ -288,11 +288,17 @@ class UserCreditBase(ABC):
         transaction = await CreditTransaction.prisma().find_first_or_raise(
             where={"transactionKey": transaction_key, "userId": user_id}
         )
-
         if transaction.isActive:
             return
 
         async with db.locked_transaction(f"usr_trx_{user_id}"):
+
+            transaction = await CreditTransaction.prisma().find_first_or_raise(
+                where={"transactionKey": transaction_key, "userId": user_id}
+            )
+            if transaction.isActive:
+                return
+
             user_balance, _ = await self._get_credits(user_id)
             await CreditTransaction.prisma().update(
                 where={
