@@ -6,6 +6,7 @@ import { useAgentRunsView } from "./useAgentRunsView";
 import { AgentRunsLoading } from "./components/AgentRunsLoading";
 import { Button } from "@/components/atoms/Button/Button";
 import { Plus } from "@phosphor-icons/react";
+import { RunAgentModal } from "@/components/contextual/RunAgentModal/RunAgentModal";
 
 export function AgentRunsView() {
   const { response, ready, error, agentId } = useAgentRunsView();
@@ -53,9 +54,13 @@ export function AgentRunsView() {
     <div className="grid h-screen grid-cols-[25%_85%] gap-4 pt-8">
       {/* Left Sidebar - 30% */}
       <div className="bg-gray-50 p-4">
-        <Button variant="primary" size="large" className="w-full">
-          <Plus size={20} /> New Run
-        </Button>
+        <RunAgentModal
+          triggerSlot={
+            <Button variant="primary" size="large" className="w-full">
+              <Plus size={20} /> New Run
+            </Button>
+          }
+        />
       </div>
 
       {/* Main Content - 70% */}

@@ -1,23 +1,17 @@
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 
 interface Props {
-  open: boolean;
-  onClose: () => void;
   triggerSlot: React.ReactNode;
 }
 
-export function RunAgentModal({ open, onClose, triggerSlot }: Props) {
+export function RunAgentModal({ triggerSlot }: Props) {
   return (
-    <Dialog
-      controlled={{
-        isOpen: open,
-        set: (open) => {
-          if (!open) onClose();
-        },
-      }}
-    >
+    <Dialog>
       <Dialog.Trigger>{triggerSlot}</Dialog.Trigger>
-      <Dialog.Content>Run Agent</Dialog.Content>
+      <Dialog.Content>
+        <Badge variant="info">New run</Badge>
+      </Dialog.Content>
     </Dialog>
   );
 }
