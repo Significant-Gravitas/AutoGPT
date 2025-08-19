@@ -204,9 +204,7 @@ test.describe("Build", () => { //(1)!
     await test.expect(buildPage.isLoaded()).resolves.toBeTruthy();
   });
 
-  test("user can add two blocks and connect them", async ({ page }, testInfo) => {
-    test.setTimeout(testInfo.timeout * 10);
-
+  test("user can add two blocks and connect them", async ({ page }) => {
     await buildPage.openBlocksPanel();
 
     // Define the blocks to add
