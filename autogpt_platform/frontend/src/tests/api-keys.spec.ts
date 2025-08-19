@@ -50,7 +50,6 @@ test.describe("API Keys Page", () => {
     const apiKeyRow = getId("api-key-row").first();
     const apiKeyContent = await apiKeyRow
       .getByTestId("api-key-id")
-      .first()
       .textContent();
     const apiKeyActions = apiKeyRow.getByTestId("api-key-actions").first();
 
