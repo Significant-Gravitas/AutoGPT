@@ -85,6 +85,7 @@
     "react-markdown": "9.0.3",
     "react-modal": "3.16.3",
     "react-shepherd": "6.1.9",
+    "react-timeago": "8.3.0",
     "react-window": "1.8.11",
     "recharts": "2.15.3",
     "shepherd.js": "14.5.1",
