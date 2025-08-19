@@ -81,16 +81,16 @@ exa-py = "^1.14.20"
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"
 black = "^24.10.0"
-faker = "^37.4.2"
+faker = "^37.5.3"
 httpx = "^0.28.1"
 isort = "^5.13.2"
-poethepoet = "^0.36.0"
-pre-commit = "^4.2.0"
+poethepoet = "^0.37.0"
+pre-commit = "^4.3.0"
 pyright = "^1.1.403"
 pytest-mock = "^3.14.0"
 pytest-watcher = "^0.4.2"
 requests = "^2.32.4"
-ruff = "^0.12.3"
+ruff = "^0.12.9"
 # NOTE: please insert new dependencies in their alphabetical location
 
 [build-system]
