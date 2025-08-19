@@ -1099,7 +1099,6 @@ async def delete_api_key(
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
-@feature_flag("api-keys-enabled")
 async def suspend_key(
     key_id: str, user_id: Annotated[str, Depends(get_user_id)]
 ) -> Optional[APIKeyWithoutHash]:
@@ -1125,7 +1124,6 @@ async def suspend_key(
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
-@feature_flag("api-keys-enabled")
 async def update_permissions(
     key_id: str,
     request: UpdatePermissionsRequest,
