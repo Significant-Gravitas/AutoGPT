@@ -171,6 +171,61 @@ Agents are built using a visual block-based system where each block performs a s
 - Migrations in `backend/migrations/`
 - Always run `prisma migrate dev` and `prisma generate` after schema changes
 
+## Environment Configuration
+
+### Configuration Files Priority Order
+1. **Backend**: `/backend/.env.default` → `/backend/.env` (user overrides)
+2. **Frontend**: `/frontend/.env.default` → `/frontend/.env` (user overrides)  
+3. **Platform**: `/.env.default` (Supabase/shared) → `/.env` (user overrides)
+4. Docker Compose `environment:` sections override file-based config
+5. Shell environment variables have highest precedence
+
+### Docker Environment Setup
+- All services use hardcoded defaults (no `${VARIABLE}` substitutions)
+- The `env_file` directive loads variables INTO containers at runtime
+- Backend/Frontend services use YAML anchors for consistent configuration
+- Copy `.env.default` files to `.env` for local development customization
+
+## Advanced Development Patterns
+
+### Adding New Blocks
+1. Create file in `/backend/backend/blocks/`
+2. Inherit from `Block` base class with input/output schemas
+3. Implement `run` method with proper error handling
+4. Generate block UUID using `uuid.uuid4()`
+5. Register in block registry
+6. Write tests alongside block implementation
+7. Consider how inputs/outputs connect with other blocks in graph editor
+
+### API Development
+1. Update routes in `/backend/backend/server/routers/`
+2. Add/update Pydantic models in same directory
+3. Write tests alongside route files
+4. For `data/*.py` changes, validate user ID checks
+5. Run `poetry run test` to verify changes
+
+### Frontend Development
+1. Components in `/frontend/src/components/`
+2. Use existing UI components from `/frontend/src/components/ui/`
+3. Add Storybook stories for component development
+4. Test user-facing features with Playwright E2E tests
+5. Update protected routes in middleware when needed
+
+### Security Guidelines
+**Cache Protection Middleware** (`/backend/backend/server/middleware/security.py`):
+- Default: Disables caching for ALL endpoints with `Cache-Control: no-store, no-cache, must-revalidate, private`
+- Uses allow list approach for cacheable paths (static assets, health checks, public pages)
+- Prevents sensitive data caching in browsers/proxies
+- Add new cacheable endpoints to `CACHEABLE_PATHS`
+
+### CI/CD Alignment
+The repository has comprehensive CI workflows that test:
+- **Backend**: Python 3.11-3.13, services (Redis/RabbitMQ/ClamAV), Prisma migrations, Poetry lock validation
+- **Frontend**: Node.js 21, pnpm, Playwright with Docker Compose stack, API schema validation
+- **Integration**: Full-stack type checking and E2E testing
+
+Match these patterns when developing locally - the copilot setup environment mirrors these CI configurations.
+
 ## Trust These Instructions
 
 These instructions are comprehensive and tested. Only perform additional searches if:
