@@ -2,10 +2,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-import backend.server.model as server_model
 import backend.server.v2.library.model as library_model
 import backend.server.v2.store.model as store_model
 from backend.integrations.providers import ProviderName
+from backend.util.models import Pagination
 
 FilterType = Literal[
     "blocks",
@@ -39,7 +39,7 @@ class BlockCategoryResponse(BaseModel):
 # Input/Action/Output and see all for block categories
 class BlockResponse(BaseModel):
     blocks: list[BlockData]
-    pagination: server_model.Pagination
+    pagination: Pagination
 
 
 # Providers
@@ -51,7 +51,7 @@ class Provider(BaseModel):
 
 class ProviderResponse(BaseModel):
     providers: list[Provider]
-    pagination: server_model.Pagination
+    pagination: Pagination
 
 
 # Search

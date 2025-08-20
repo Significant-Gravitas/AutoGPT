@@ -7,6 +7,7 @@ import {
   AgentTableRow,
   AgentTableRowProps,
 } from "../AgentTableRow/AgentTableRow";
+import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 
 export interface AgentTableProps {
   agents: Omit<
@@ -15,15 +16,23 @@ export interface AgentTableProps {
     | "selectedAgents"
     | "onViewSubmission"
     | "onDeleteSubmission"
+    | "onEditSubmission"
   >[];
   onViewSubmission: (submission: StoreSubmission) => void;
   onDeleteSubmission: (submission_id: string) => void;
+  onEditSubmission: (
+    submission: StoreSubmissionEditRequest & {
+      store_listing_version_id: string | undefined;
+      agent_id: string;
+    },
+  ) => void;
 }
 
 export const AgentTable: React.FC<AgentTableProps> = ({
   agents,
   onViewSubmission,
   onDeleteSubmission,
+  onEditSubmission,
 }) => {
   return (
     <div className="w-full" data-testid="agent-table">
@@ -62,6 +71,7 @@ export const AgentTable: React.FC<AgentTableProps> = ({
                 {...agent}
                 onViewSubmission={onViewSubmission}
                 onDeleteSubmission={onDeleteSubmission}
+                onEditSubmission={onEditSubmission}
               />
               <div className="block md:hidden">
                 <AgentTableCard

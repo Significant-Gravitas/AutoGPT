@@ -4,7 +4,6 @@ from typing import Annotated, Sequence
 import fastapi
 from autogpt_libs.auth.depends import auth_middleware, get_user_id
 
-import backend.server.model as server_model
 import backend.server.v2.builder.db as builder_db
 import backend.server.v2.builder.model as builder_model
 import backend.server.v2.library.db as library_db
@@ -12,6 +11,7 @@ import backend.server.v2.library.model as library_model
 import backend.server.v2.store.db as store_db
 import backend.server.v2.store.model as store_model
 from backend.integrations.providers import ProviderName
+from backend.util.models import Pagination
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +162,7 @@ async def search(
     blocks = builder_model.SearchBlocksResponse(
         blocks=builder_model.BlockResponse(
             blocks=[],
-            pagination=server_model.Pagination.empty(),
+            pagination=Pagination.empty(),
         ),
         total_block_count=0,
         total_integration_count=0,
@@ -179,7 +179,7 @@ async def search(
     # Library Agents
     my_agents = library_model.LibraryAgentResponse(
         agents=[],
-        pagination=server_model.Pagination.empty(),
+        pagination=Pagination.empty(),
     )
     if "my_agents" in options.filter:
         my_agents = await library_db.list_library_agents(
@@ -192,7 +192,7 @@ async def search(
     # Marketplace Agents
     marketplace_agents = store_model.StoreAgentsResponse(
         agents=[],
-        pagination=server_model.Pagination.empty(),
+        pagination=Pagination.empty(),
     )
     if "marketplace_agents" in options.filter:
         marketplace_agents = await store_db.get_store_agents(

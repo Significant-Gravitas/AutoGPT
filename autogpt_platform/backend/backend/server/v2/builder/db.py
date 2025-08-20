@@ -5,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 import prisma
 
 import backend.data.block
-import backend.server.model as server_model
 from backend.blocks import load_all_blocks
 from backend.blocks.llm import LlmModel
 from backend.data.block import Block, BlockCategory, BlockSchema
@@ -21,6 +20,7 @@ from backend.server.v2.builder.model import (
     ProviderResponse,
     SearchBlocksResponse,
 )
+from backend.util.models import Pagination
 
 logger = logging.getLogger(__name__)
 llm_models = [name.name.lower().replace("_", " ") for name in LlmModel]
@@ -113,7 +113,7 @@ def get_blocks(
 
     return BlockResponse(
         blocks=[{**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks],
-        pagination=server_model.Pagination(
+        pagination=Pagination(
             total_items=total,
             total_pages=(total + page_size - 1) // page_size,
             current_page=page,
@@ -179,7 +179,7 @@ def search_blocks(
     return SearchBlocksResponse(
         blocks=BlockResponse(
             blocks=[{**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks],
-            pagination=server_model.Pagination(
+            pagination=Pagination(
                 total_items=total,
                 total_pages=(total + page_size - 1) // page_size,
                 current_page=page,
@@ -221,7 +221,7 @@ def get_providers(
 
     return ProviderResponse(
         providers=providers,
-        pagination=server_model.Pagination(
+        pagination=Pagination(
             total_items=total,
             total_pages=(total + page_size - 1) // page_size,
             current_page=page,

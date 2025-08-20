@@ -84,7 +84,6 @@ from backend.server.utils import get_user_id
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.exceptions import GraphValidationError, NotFoundError
-from backend.util.feature_flag import feature_flag
 from backend.util.settings import Settings
 from backend.util.virus_scanner import scan_content_safe
 
