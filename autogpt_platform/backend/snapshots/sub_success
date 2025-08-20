@@ -20,7 +20,11 @@
       "review_comments": null,
       "internal_comments": null,
       "reviewed_at": null,
-      "changes_summary": null
+      "changes_summary": null,
+      "video_url": "test.mp4",
+      "categories": [
+        "test-category"
+      ]
     }
   ],
   "pagination": {

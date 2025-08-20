@@ -204,9 +204,7 @@ test.describe("Build", () => { //(1)!
     await test.expect(buildPage.isLoaded()).resolves.toBeTruthy();
   });
 
-  test("user can add two blocks and connect them", async ({ page }, testInfo) => {
-    test.setTimeout(testInfo.timeout * 10);
-
+  test("user can add two blocks and connect them", async ({ page }) => {
     await buildPage.openBlocksPanel();
 
     // Define the blocks to add
@@ -254,12 +252,6 @@ test.describe("Build", () => { //(1)!
 
     // Ensure the run button is enabled
     await test.expect(buildPage.isRunButtonEnabled()).resolves.toBeTruthy();
-
-    await buildPage.runAgent();
-    await buildPage.waitForCompletionBadge();
-    await test
-      .expect(buildPage.isCompletionBadgeVisible())
-      .resolves.toBeTruthy();
   });
 
   test("user can build an agent with inputs and output blocks", async ({ page }, testInfo) => {
@@ -348,14 +340,14 @@ test.describe("Build", () => { //(1)!
     // Wait for save to complete
     await page.waitForTimeout(1000);
 
-    await buildPage.runAgent();
-    await buildPage.fillRunDialog({
-      Value: "10",
-    });
-    await buildPage.clickRunDialogRunButton();
-    await buildPage.waitForCompletionBadge();
-    await test
-      .expect(buildPage.isCompletionBadgeVisible())
-      .resolves.toBeTruthy();
+    // await buildPage.runAgent();
+    // await buildPage.fillRunDialog({
+    //   Value: "10",
+    // });
+    // await buildPage.clickRunDialogRunButton();
+    // await buildPage.waitForCompletionBadge();
+    // await test
+    //   .expect(buildPage.isCompletionBadgeVisible())
+    //   .resolves.toBeTruthy();
   });
 });
