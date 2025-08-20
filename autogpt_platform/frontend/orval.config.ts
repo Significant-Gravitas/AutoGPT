@@ -27,6 +27,7 @@ export default defineConfig({
           usePrefetch: true,
           // Will add more as their use cases arise
         },
+        useDates: true,
         operations: {
           "getV2List library agents": {
             query: {

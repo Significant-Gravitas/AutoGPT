@@ -250,7 +250,7 @@ export type GraphExecutionMeta = {
   user_id: UserID;
   graph_id: GraphID;
   graph_version: number;
-  preset_id?: LibraryAgentPresetID;
+  preset_id: LibraryAgentPresetID | null;
   status:
     | "QUEUED"
     | "RUNNING"
@@ -260,16 +260,17 @@ export type GraphExecutionMeta = {
     | "INCOMPLETE";
   started_at: Date;
   ended_at: Date;
-  stats?: {
-    error?: string;
+  stats: {
+    error: string | null;
     cost: number;
     duration: number;
     duration_cpu_only: number;
     node_exec_time: number;
     node_exec_time_cpu_only: number;
     node_exec_count: number;
-    activity_status?: string;
-  };
+    activity_status: string | null;
+    [key: string]: any;
+  } | null;
 };
 
 export type GraphExecutionID = Brand<string, "GraphExecutionID">;
