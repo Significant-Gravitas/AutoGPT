@@ -1,0 +1,197 @@
+# GitHub Copilot Agent Configuration for AutoGPT Platform
+# This configuration maximizes Copilot's capabilities for the AutoGPT platform
+# Reference: https://docs.github.com/en/copilot/how-tos/use-copilot-agents/coding-agent/customize-the-agent-environment
+
+# Agent behavior configuration
+agent:
+  name: "AutoGPT Platform Assistant"
+  description: "AI-powered coding assistant optimized for AutoGPT platform development"
+  
+# Context and project understanding
+context:
+  project_type: "ai_platform"
+  description: |
+    AutoGPT Platform is a sophisticated AI agent platform built with:
+    - Backend: Python 3.10+ with FastAPI, Prisma ORM, PostgreSQL
+    - Frontend: Next.js 14+ with TypeScript, TailwindCSS, React Query
+    - Architecture: Microservices with agent executors, schedulers, and integrations
+    - AI Integration: Multiple LLM providers (OpenAI, Anthropic, Groq, etc.)
+    - Agent System: Block-based visual agent builder with marketplace
+  
+  key_concepts:
+    - "Agents": AI-powered workflows built from reusable blocks
+    - "Blocks": Individual components with inputs/outputs for agent building
+    - "Integrations": OAuth-based connections to external services
+    - "Executors": Runtime environment for executing agent workflows
+    - "Marketplace": Sharing platform for agents and blocks
+
+# Language-specific configurations
+languages:
+  python:
+    version: "3.10+"
+    framework: "fastapi"
+    patterns:
+      - "Use Pydantic v2 models for data validation and serialization"
+      - "Follow async/await patterns for all I/O operations"
+      - "Use dependency injection with FastAPI's Depends()"
+      - "Implement proper error handling with custom exception classes"
+      - "Use typing annotations extensively for better code clarity"
+      - "Follow the repository pattern for database operations"
+      - "Use Prisma for database operations with proper transaction handling"
+    
+    conventions:
+      - "File naming: snake_case for modules and files"
+      - "Class naming: PascalCase for classes"
+      - "Function naming: snake_case for functions and methods"
+      - "Constants: UPPER_SNAKE_CASE"
+      - "Private methods: prefix with single underscore"
+      - "Import order: standard library, third-party, local imports"
+    
+    testing:
+      framework: "pytest"
+      patterns:
+        - "Use fixtures for common test setup"
+        - "Test files end with _test.py"
+        - "Use descriptive test names that explain the scenario"
+        - "Mock external dependencies and API calls"
+
+  typescript:
+    version: "5.0+"
+    framework: "next.js"
+    patterns:
+      - "Use React hooks and functional components"
+      - "Implement proper TypeScript types for all props and state"
+      - "Use React Query for server state management"
+      - "Follow Next.js app router patterns"
+      - "Use TailwindCSS for styling with consistent design system"
+      - "Implement proper error boundaries and loading states"
+      - "Use Zustand or React Context for client state management"
+    
+    conventions:
+      - "File naming: kebab-case for components and pages"
+      - "Component naming: PascalCase for React components"
+      - "Hook naming: camelCase starting with 'use'"
+      - "Type naming: PascalCase with descriptive names"
+      - "Interface naming: PascalCase starting with 'I' when needed"
+      - "Enum naming: PascalCase with descriptive values"
+    
+    testing:
+      framework: "playwright"
+      patterns:
+        - "E2E tests for critical user flows"
+        - "Component testing for complex UI logic"
+        - "Use proper data-testid attributes for reliable selectors"
+
+# File patterns and preferences
+files:
+  # Primary development files
+  focus_patterns:
+    - "autogpt_platform/backend/**/*.py"
+    - "autogpt_platform/frontend/**/*.{ts,tsx}"
+    - "autogpt_platform/autogpt_libs/**/*.py"
+    - "autogpt_platform/backend/backend/blocks/**/*.py"
+    - "autogpt_platform/backend/backend/integrations/**/*.py"
+    - "autogpt_platform/frontend/src/**/*.{ts,tsx}"
+    - "docs/**/*.md"
+
+  # Files to exclude from suggestions
+  exclude_patterns:
+    - "**/__pycache__/**"
+    - "**/node_modules/**"
+    - "**/dist/**"
+    - "**/build/**"
+    - "**/.next/**"
+    - "**/coverage/**"
+    - "**/*.pyc"
+    - "**/migrations/**"
+    - "**/snapshots/**"
+    - "**/.env*"
+    - "**/pnpm-lock.yaml"
+    - "**/poetry.lock"
+
+# Coding standards and best practices
+standards:
+  code_quality:
+    - "Follow PEP 8 for Python code formatting"
+    - "Use ESLint and Prettier for TypeScript/JavaScript formatting"
+    - "Write comprehensive docstrings for public APIs"
+    - "Include type hints for all function parameters and returns"
+    - "Handle errors gracefully with proper exception handling"
+    - "Use meaningful variable and function names"
+    - "Keep functions focused and single-purpose"
+    - "Write self-documenting code with clear logic flow"
+
+  security:
+    - "Never hardcode API keys or sensitive credentials"
+    - "Use environment variables for configuration"
+    - "Validate all user inputs and API parameters"
+    - "Implement proper authentication and authorization"
+    - "Follow OWASP security best practices"
+    - "Use secure random generators for tokens and IDs"
+
+  performance:
+    - "Use async/await for I/O bound operations"
+    - "Implement proper database connection pooling"
+    - "Use caching strategies for expensive operations"
+    - "Optimize database queries to avoid N+1 problems"
+    - "Implement proper pagination for large datasets"
+    - "Use React.memo and useMemo for expensive computations"
+
+# Domain-specific guidance
+domain_knowledge:
+  ai_agents:
+    - "Agents are composed of blocks connected in a directed graph"
+    - "Each block has defined inputs, outputs, and execution logic"
+    - "Agent execution is handled by the scheduler and executor services"
+    - "Blocks can be synchronous or asynchronous operations"
+    - "Agent state is persisted between block executions"
+
+  integrations:
+    - "OAuth 2.0 flow for external service authentication"
+    - "Webhook handling for real-time event processing"
+    - "Rate limiting and retry logic for API calls"
+    - "Credential management with encryption at rest"
+
+  platform_architecture:
+    - "Microservices communicate via HTTP and message queues"
+    - "Database operations use Prisma ORM with PostgreSQL"
+    - "Frontend communicates with backend via REST APIs"
+    - "Real-time updates use WebSocket connections"
+    - "File storage uses Google Cloud Storage"
+
+# Development workflow integration
+workflow:
+  git:
+    - "Use conventional commit messages (feat:, fix:, etc.)"
+    - "Create feature branches from master"
+    - "Write descriptive pull request descriptions"
+    - "Include tests for new functionality"
+
+  deployment:
+    - "Use Docker for containerization"
+    - "Environment variables for configuration"
+    - "Database migrations for schema changes"
+    - "CI/CD pipeline validation before merge"
+
+# Prompt customization for better assistance
+prompts:
+  code_generation:
+    - "When creating new blocks, include proper input/output schemas"
+    - "For API endpoints, include proper error handling and validation"
+    - "For React components, include proper TypeScript types"
+    - "Always consider error states and loading states in UI components"
+    - "Include proper logging for debugging and monitoring"
+
+  code_review:
+    - "Check for proper error handling and edge cases"
+    - "Verify type safety and proper TypeScript usage"
+    - "Ensure consistent code style and formatting"
+    - "Review for security vulnerabilities and best practices"
+    - "Validate test coverage for new functionality"
+
+# AI model preferences for different tasks
+model_preferences:
+  code_completion: "prioritize_accuracy"
+  documentation: "prioritize_clarity" 
+  refactoring: "prioritize_safety"
+  testing: "prioritize_coverage"

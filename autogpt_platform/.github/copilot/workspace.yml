@@ -1,0 +1,240 @@
+# Workspace Configuration for GitHub Copilot
+# This file defines workspace-specific settings and preferences
+
+workspace:
+  name: "AutoGPT Platform"
+  type: "fullstack_ai_platform"
+  
+  # Development environment setup
+  environment:
+    python:
+      version: "3.10+"
+      package_manager: "poetry"
+      virtual_env: ".venv"
+      main_paths:
+        - "autogpt_platform/backend"
+        - "autogpt_platform/autogpt_libs"
+      
+    node:
+      version: "18+"
+      package_manager: "pnpm"
+      main_paths:
+        - "autogpt_platform/frontend"
+      
+    databases:
+      - type: "postgresql"
+        default_schema: "platform"
+        orm: "prisma"
+      - type: "redis"
+        usage: "caching_sessions"
+
+  # Project structure awareness
+  structure:
+    backend:
+      root: "autogpt_platform/backend"
+      app_module: "backend"
+      key_directories:
+        - "backend/blocks"          # Block implementations
+        - "backend/integrations"    # External service integrations
+        - "backend/data"           # Data models and schemas
+        - "backend/executor"       # Agent execution engine
+        - "backend/util"           # Utility functions
+        - "backend/server"         # API server setup
+      
+    frontend:
+      root: "autogpt_platform/frontend"
+      app_directory: "src/app"
+      key_directories:
+        - "src/components"         # Reusable UI components
+        - "src/lib"               # Utility libraries
+        - "src/types"             # TypeScript type definitions
+        - "src/hooks"             # Custom React hooks
+        - "src/store"             # State management
+      
+    shared:
+      root: "autogpt_platform/autogpt_libs"
+      key_directories:
+        - "autogpt_libs/auth"     # Authentication utilities
+        - "autogpt_libs/metrics"  # Monitoring and metrics
+
+  # Code quality tools integration
+  quality_tools:
+    python:
+      formatter: "black"
+      linter: "flake8"
+      type_checker: "mypy"
+      test_runner: "pytest"
+      import_sorter: "isort"
+      
+    typescript:
+      formatter: "prettier"
+      linter: "eslint"
+      type_checker: "tsc"
+      test_runner: "playwright"
+
+  # Common file associations and purposes
+  file_purposes:
+    "*.py":
+      - blocks: "Implement agent execution blocks"
+      - integrations: "External service connectors"
+      - data: "Database models and schemas"
+      - util: "Helper functions and utilities"
+      - test: "Test implementations"
+    
+    "*.ts":
+      - components: "React UI components"
+      - hooks: "Custom React hooks"
+      - lib: "Utility libraries"
+      - types: "TypeScript definitions"
+    
+    "*.tsx":
+      - pages: "Next.js page components"
+      - components: "React components with JSX"
+      - layouts: "Page layout components"
+
+  # Common imports and dependencies
+  common_imports:
+    python:
+      fastapi:
+        - "from fastapi import APIRouter, Depends, HTTPException"
+        - "from fastapi.responses import JSONResponse"
+      pydantic:
+        - "from pydantic import BaseModel, Field, validator"
+      typing:
+        - "from typing import Any, Dict, List, Optional, Union"
+      blocks:
+        - "from backend.data.block import Block, BlockCategory, BlockOutput"
+        - "from backend.data.model import SchemaField"
+      
+    typescript:
+      react:
+        - "import React, { useState, useEffect, useCallback } from 'react'"
+        - "import { useQuery, useMutation } from '@tanstack/react-query'"
+      nextjs:
+        - "import { useRouter } from 'next/navigation'"
+        - "import Link from 'next/link'"
+      ui:
+        - "import { Button } from '@/components/ui/button'"
+        - "import { Card, CardContent, CardHeader } from '@/components/ui/card'"
+
+  # Naming conventions
+  naming_conventions:
+    files:
+      python: "snake_case"
+      typescript: "kebab-case"
+      components: "PascalCase"
+    
+    classes:
+      python: "PascalCase"
+      typescript: "PascalCase"
+    
+    functions:
+      python: "snake_case"
+      typescript: "camelCase"
+    
+    variables:
+      python: "snake_case"
+      typescript: "camelCase"
+    
+    constants:
+      python: "UPPER_SNAKE_CASE"
+      typescript: "UPPER_SNAKE_CASE"
+
+  # Development workflow patterns
+  workflows:
+    feature_development:
+      - "Create feature branch from master"
+      - "Implement backend changes first"
+      - "Add corresponding frontend changes"
+      - "Write tests for new functionality"
+      - "Update documentation if needed"
+      - "Submit PR with descriptive title and description"
+    
+    block_creation:
+      - "Define input/output schemas with Pydantic models"
+      - "Implement block class extending base Block"
+      - "Add proper error handling and validation"
+      - "Write comprehensive tests"
+      - "Add block to category registry"
+      - "Update documentation with usage examples"
+    
+    integration_development:
+      - "Implement OAuth handler if needed"
+      - "Create API client with proper error handling"
+      - "Add webhook handlers for real-time events"
+      - "Implement rate limiting and retry logic"
+      - "Add integration tests with mocked responses"
+      - "Document API requirements and setup"
+
+  # Testing strategies
+  testing:
+    backend:
+      unit_tests:
+        - "Test individual block functionality"
+        - "Mock external API dependencies"
+        - "Test error handling and edge cases"
+        - "Validate input/output schemas"
+      
+      integration_tests:
+        - "Test API endpoints end-to-end"
+        - "Test database operations"
+        - "Test OAuth flows"
+        - "Test webhook processing"
+    
+    frontend:
+      component_tests:
+        - "Test component rendering"
+        - "Test user interactions"
+        - "Test error states and loading states"
+        - "Test API integration"
+      
+      e2e_tests:
+        - "Test complete user workflows"
+        - "Test agent creation and execution"
+        - "Test marketplace interactions"
+        - "Test authentication flows"
+
+  # Performance considerations
+  performance:
+    backend:
+      - "Use async/await for I/O operations"
+      - "Implement proper connection pooling"
+      - "Cache expensive computations"
+      - "Use pagination for large datasets"
+      - "Monitor and log performance metrics"
+    
+    frontend:
+      - "Use React.memo for expensive components"
+      - "Implement proper loading states"
+      - "Use React Query for efficient data fetching"
+      - "Optimize bundle size with lazy loading"
+      - "Implement proper error boundaries"
+
+  # Security guidelines
+  security:
+    authentication:
+      - "Use OAuth 2.0 for external services"
+      - "Implement proper JWT token validation"
+      - "Use secure session management"
+      - "Validate user permissions for resources"
+    
+    data_handling:
+      - "Encrypt sensitive data at rest"
+      - "Use environment variables for secrets"
+      - "Validate and sanitize all inputs"
+      - "Implement proper CORS policies"
+      - "Use HTTPS in production"
+
+  # Deployment considerations
+  deployment:
+    containerization:
+      - "Use multi-stage Docker builds"
+      - "Keep container images minimal"
+      - "Set proper resource limits"
+      - "Use health checks for containers"
+    
+    environment_management:
+      - "Use separate configs for dev/staging/prod"
+      - "Manage secrets with proper tools"
+      - "Implement proper logging and monitoring"
+      - "Use infrastructure as code"
