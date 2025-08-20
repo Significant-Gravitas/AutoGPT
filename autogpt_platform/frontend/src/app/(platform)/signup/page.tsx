@@ -79,7 +79,6 @@ export default function SignupPage() {
               control={form.control}
               name="password"
               render={({ field }) => {
-                console.log(field);
                 return (
                   <Input
                     id={field.name}

@@ -8,14 +8,14 @@ WORKDIR /app
 
 RUN echo 'Acquire::http::Pipeline-Depth 0;\nAcquire::http::No-Cache true;\nAcquire::BrokenProxy true;\n' > /etc/apt/apt.conf.d/99fixbadproxy
 
-RUN apt-get update --allow-releaseinfo-change --fix-missing
-
-# Install build dependencies
-RUN apt-get install -y build-essential 
-RUN apt-get install -y libpq5
-RUN apt-get install -y libz-dev
-RUN apt-get install -y libssl-dev
-RUN apt-get install -y postgresql-client
+# Update package list and install build dependencies in a single layer
+RUN apt-get update --allow-releaseinfo-change --fix-missing \
+    && apt-get install -y \
+    build-essential \
+    libpq5 \
+    libz-dev \
+    libssl-dev \
+    postgresql-client
 
 ENV POETRY_HOME=/opt/poetry
 ENV POETRY_NO_INTERACTION=1
@@ -67,6 +67,12 @@ COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
 COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.toml /app/autogpt_platform/backend/
 
 WORKDIR /app/autogpt_platform/backend
+
+FROM server_dependencies AS migrate
+
+# Migration stage only needs schema and migrations - much lighter than full backend
+COPY autogpt_platform/backend/schema.prisma /app/autogpt_platform/backend/
+COPY autogpt_platform/backend/migrations /app/autogpt_platform/backend/migrations
 
 FROM server_dependencies AS server
 
