@@ -1,0 +1,124 @@
+name: "Copilot Setup Steps"
+
+# Automatically run the setup steps when they are changed to allow for easy validation, and
+# allow manual testing through the repository's "Actions" tab
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  # The job MUST be called `copilot-setup-steps` or it will not be picked up by Copilot.
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+
+    # Set the permissions to the lowest permissions possible needed for your steps.
+    # Copilot will be given its own token for its operations.
+    permissions:
+      # If you want to clone the repository as part of your setup steps, for example to install dependencies, you'll need the `contents: read` permission. If you don't clone the repository in your setup steps, Copilot will do this for you automatically after the steps complete.
+      contents: read
+
+    # You can define any steps you want, and they will run before the agent starts.
+    # If you do not check out your code, Copilot will do this for you.
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      # Backend Python/Poetry setup
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
+
+      - name: Install Poetry
+        run: |
+          # Extract Poetry version from backend/poetry.lock
+          cd autogpt_platform/backend
+          HEAD_POETRY_VERSION=$(python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)
+          echo "Found Poetry version ${HEAD_POETRY_VERSION} in backend/poetry.lock"
+          
+          # Install Poetry
+          curl -sSL https://install.python-poetry.org | POETRY_VERSION=$HEAD_POETRY_VERSION python3 -
+          
+          # Add Poetry to PATH
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install Python dependencies
+        working-directory: autogpt_platform/backend
+        run: |
+          poetry lock --check
+          poetry install
+
+      - name: Generate Prisma Client
+        working-directory: autogpt_platform/backend
+        run: poetry run prisma generate
+
+      # Frontend Node.js/pnpm setup
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "21"
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Cache frontend dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
+            ${{ runner.os }}-pnpm-
+
+      - name: Install JavaScript dependencies
+        working-directory: autogpt_platform/frontend
+        run: pnpm install --frozen-lockfile
+
+      # Setup additional development tools
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 1.178.1
+
+      # Install Playwright browsers for frontend testing
+      - name: Install Playwright browsers
+        working-directory: autogpt_platform/frontend
+        run: pnpm playwright install --with-deps chromium
+
+      # Verify installations
+      - name: Verify setup
+        run: |
+          echo "=== Python Setup ==="
+          python --version
+          poetry --version
+          
+          echo "=== Node.js Setup ==="
+          node --version
+          pnpm --version
+          
+          echo "=== Additional Tools ==="
+          supabase --version
+          
+          echo "=== Backend Dependencies ==="
+          cd autogpt_platform/backend
+          poetry show --outdated || true
+          
+          echo "=== Frontend Dependencies ==="
+          cd ../frontend
+          pnpm list --depth=0 || true
+          
+          echo "✅ AutoGPT Platform environment setup complete!"
