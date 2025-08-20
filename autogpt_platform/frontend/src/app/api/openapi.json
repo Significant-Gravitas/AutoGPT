@@ -2847,7 +2847,11 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/BlockResponse" }
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/BlockResponse" },
+                  "title": "Response Getv2Get Builder Blocks"
+                }
               }
             }
           },
