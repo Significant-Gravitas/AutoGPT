@@ -182,11 +182,28 @@ zerobounce_credentials = APIKeyCredentials(
     expires_at=None,
 )
 
+enrichlayer_credentials = APIKeyCredentials(
+    id="d9fce73a-6c1d-4e8b-ba2e-12a456789def",
+    provider="enrichlayer",
+    api_key=SecretStr(settings.secrets.enrichlayer_api_key),
+    title="Use Credits for Enrichlayer",
+    expires_at=None,
+)
+
+
 llama_api_credentials = APIKeyCredentials(
     id="d44045af-1c33-4833-9e19-752313214de2",
     provider="llama_api",
     api_key=SecretStr(settings.secrets.llama_api_key),
     title="Use Credits for Llama API",
+    expires_at=None,
+)
+
+v0_credentials = APIKeyCredentials(
+    id="c4e6d1a0-3b5f-4789-a8e2-9b123456789f",
+    provider="v0",
+    api_key=SecretStr(settings.secrets.v0_api_key),
+    title="Use Credits for v0 by Vercel",
     expires_at=None,
 )
 
@@ -203,6 +220,7 @@ DEFAULT_CREDENTIALS = [
     jina_credentials,
     unreal_credentials,
     open_router_credentials,
+    enrichlayer_credentials,
     fal_credentials,
     exa_credentials,
     e2b_credentials,
@@ -213,6 +231,8 @@ DEFAULT_CREDENTIALS = [
     smartlead_credentials,
     zerobounce_credentials,
     google_maps_credentials,
+    llama_api_credentials,
+    v0_credentials,
 ]
 
 
@@ -279,6 +299,8 @@ class IntegrationCredentialsStore:
             all_credentials.append(unreal_credentials)
         if settings.secrets.open_router_api_key:
             all_credentials.append(open_router_credentials)
+        if settings.secrets.enrichlayer_api_key:
+            all_credentials.append(enrichlayer_credentials)
         if settings.secrets.fal_api_key:
             all_credentials.append(fal_credentials)
         if settings.secrets.exa_api_key:

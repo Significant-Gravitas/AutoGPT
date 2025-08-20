@@ -34,11 +34,11 @@ else
   echo "No .env file found. Skipping .env removal step..."
 fi
 
-if [ -f ".env.example" ]; then
-  echo "Copying .env.example to .env..."
-  cp .env.example .env
+if [ -f ".env.default" ]; then
+  echo "Copying .env.default to .env..."
+  cp .env.default .env
 else
-  echo ".env.example file not found. Skipping .env reset step..."
+  echo ".env.default file not found. Skipping .env reset step..."
 fi
 
 echo "Cleanup complete!"
