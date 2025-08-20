@@ -4,7 +4,7 @@ from typing import List
 import prisma.enums
 import pydantic
 
-from backend.server.model import Pagination
+from backend.util.models import Pagination
 
 
 class MyAgent(pydantic.BaseModel):
@@ -115,11 +115,9 @@ class StoreSubmission(pydantic.BaseModel):
     reviewed_at: datetime.datetime | None = None
     changes_summary: str | None = None
 
-    reviewer_id: str | None = None
-    review_comments: str | None = None  # External comments visible to creator
-    internal_comments: str | None = None  # Private notes for admin use only
-    reviewed_at: datetime.datetime | None = None
-    changes_summary: str | None = None
+    # Additional fields for editing
+    video_url: str | None = None
+    categories: list[str] = []
 
 
 class StoreSubmissionsResponse(pydantic.BaseModel):
@@ -152,6 +150,16 @@ class StoreSubmissionRequest(pydantic.BaseModel):
     agent_id: str
     agent_version: int
     slug: str
+    name: str
+    sub_heading: str
+    video_url: str | None = None
+    image_urls: list[str] = []
+    description: str = ""
+    categories: list[str] = []
+    changes_summary: str | None = None
+
+
+class StoreSubmissionEditRequest(pydantic.BaseModel):
     name: str
     sub_heading: str
     video_url: str | None = None
