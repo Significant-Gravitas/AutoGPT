@@ -92,7 +92,7 @@ async def get_block_categories(
     "/blocks",
     summary="Get Builder blocks",
     dependencies=[fastapi.Depends(auth_middleware)],
-    response_model=Sequence[builder_model.BlockResponse],
+    response_model=builder_model.BlockResponse,
 )
 async def get_blocks(
     category: Annotated[str | None, fastapi.Query()] = None,
