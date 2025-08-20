@@ -186,10 +186,16 @@ const FlowEditor: React.FC<{
       storage.clean(Key.SHEPHERD_TOUR);
       router.push(pathname);
     } else if (!storage.get(Key.SHEPHERD_TOUR)) {
-      const emptyNodes = (forceRemove: boolean = false) =>
-        forceRemove ? (setNodes([]), setEdges([]), true) : nodes.length === 0;
-      startTutorial(emptyNodes, setPinBlocksPopover, setPinSavePopover);
-      storage.set(Key.SHEPHERD_TOUR, "yes");
+      // Add a small delay to ensure the component state is fully initialized
+      // This is especially important when resetTutorial=true caused a redirect
+      const timer = setTimeout(() => {
+        const emptyNodes = (forceRemove: boolean = false) =>
+          forceRemove ? (setNodes([]), setEdges([]), true) : nodes.length === 0;
+        startTutorial(emptyNodes, setPinBlocksPopover, setPinSavePopover);
+        storage.set(Key.SHEPHERD_TOUR, "yes");
+      }, 100);
+      
+      return () => clearTimeout(timer);
     }
   }, [router, pathname, params, setEdges, setNodes, nodes.length]);
 

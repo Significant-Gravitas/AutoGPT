@@ -202,7 +202,11 @@ export const startTutorial = (
       event: "click",
     },
     when: {
-      show: () => setPinBlocksPopover(true),
+      show: () => {
+        setPinBlocksPopover(true);
+        // Additional safeguard - ensure the popover stays pinned for this step
+        setTimeout(() => setPinBlocksPopover(true), 50);
+      },
       hide: enableAllBlocks,
     },
   });
