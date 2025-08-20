@@ -115,10 +115,15 @@ class GetCurrentTimeBlock(Block):
             ],
         )
 
-    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(
+        self, input_data: Input, user_timezone: str | None = None, **kwargs
+    ) -> BlockOutput:
         if isinstance(input_data.format_type, TimeISO8601Format):
-            # ISO 8601 format for time only (extract time portion from full ISO datetime)
-            tz = ZoneInfo(input_data.format_type.timezone)
+            # Use user timezone if available and timezone is still default UTC
+            if user_timezone and input_data.format_type.timezone == "UTC":
+                tz = ZoneInfo(user_timezone)
+            else:
+                tz = ZoneInfo(input_data.format_type.timezone)
             dt = datetime.now(tz=tz)
 
             # Get the full ISO format and extract just the time portion with timezone
@@ -131,7 +136,11 @@ class GetCurrentTimeBlock(Block):
             current_time = full_iso.split("T")[1] if "T" in full_iso else full_iso
             current_time = f"T{current_time}"  # Add T prefix for ISO 8601 time format
         else:  # TimeStrftimeFormat
-            tz = ZoneInfo(input_data.format_type.timezone)
+            # Use user timezone if available and timezone is still default UTC
+            if user_timezone and input_data.format_type.timezone == "UTC":
+                tz = ZoneInfo(user_timezone)
+            else:
+                tz = ZoneInfo(input_data.format_type.timezone)
             dt = datetime.now(tz=tz)
             current_time = dt.strftime(input_data.format_type.format)
         yield "time", current_time
@@ -216,7 +225,9 @@ class GetCurrentDateBlock(Block):
             ],
         )
 
-    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(
+        self, input_data: Input, user_timezone: str | None = None, **kwargs
+    ) -> BlockOutput:
         try:
             offset = int(input_data.offset)
         except ValueError:
@@ -224,12 +235,20 @@ class GetCurrentDateBlock(Block):
 
         if isinstance(input_data.format_type, DateISO8601Format):
             # ISO 8601 format for date only (YYYY-MM-DD)
-            tz = ZoneInfo(input_data.format_type.timezone)
+            # Use user timezone if available and timezone is still default UTC
+            if user_timezone and input_data.format_type.timezone == "UTC":
+                tz = ZoneInfo(user_timezone)
+            else:
+                tz = ZoneInfo(input_data.format_type.timezone)
             current_date = datetime.now(tz=tz) - timedelta(days=offset)
             # ISO 8601 date format is YYYY-MM-DD
             date_str = current_date.date().isoformat()
         else:  # DateStrftimeFormat
-            tz = ZoneInfo(input_data.format_type.timezone)
+            # Use user timezone if available and timezone is still default UTC
+            if user_timezone and input_data.format_type.timezone == "UTC":
+                tz = ZoneInfo(user_timezone)
+            else:
+                tz = ZoneInfo(input_data.format_type.timezone)
             current_date = datetime.now(tz=tz) - timedelta(days=offset)
             date_str = current_date.strftime(input_data.format_type.format)
 
@@ -315,10 +334,16 @@ class GetCurrentDateAndTimeBlock(Block):
             ],
         )
 
-    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(
+        self, input_data: Input, user_timezone: str | None = None, **kwargs
+    ) -> BlockOutput:
         if isinstance(input_data.format_type, ISO8601Format):
             # ISO 8601 format with specified timezone (also RFC3339-compliant)
-            tz = ZoneInfo(input_data.format_type.timezone)
+            # Use user timezone if available and timezone is still default UTC
+            if user_timezone and input_data.format_type.timezone == "UTC":
+                tz = ZoneInfo(user_timezone)
+            else:
+                tz = ZoneInfo(input_data.format_type.timezone)
             dt = datetime.now(tz=tz)
 
             # Format with or without microseconds
@@ -327,7 +352,11 @@ class GetCurrentDateAndTimeBlock(Block):
             else:
                 current_date_time = dt.isoformat(timespec="seconds")
         else:  # StrftimeFormat
-            tz = ZoneInfo(input_data.format_type.timezone)
+            # Use user timezone if available and timezone is still default UTC
+            if user_timezone and input_data.format_type.timezone == "UTC":
+                tz = ZoneInfo(user_timezone)
+            else:
+                tz = ZoneInfo(input_data.format_type.timezone)
             dt = datetime.now(tz=tz)
             current_date_time = dt.strftime(input_data.format_type.format)
         yield "date_time", current_date_time

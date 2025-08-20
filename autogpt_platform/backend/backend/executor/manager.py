@@ -190,6 +190,19 @@ async def execute_node(
         "user_id": user_id,
     }
 
+    # Fetch and add user's timezone
+    try:
+        from backend.data.user import get_user_by_id
+
+        user = await get_user_by_id(user_id)
+        user_timezone = user.timezone
+        # Only add timezone if it's set (not "not-set")
+        if user_timezone and user_timezone != "not-set":
+            extra_exec_kwargs["user_timezone"] = user_timezone
+    except Exception as e:
+        log_metadata.debug(f"Could not fetch user timezone: {e}")
+        # Continue without timezone - blocks will use their defaults
+
     # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
     # changes during execution. ⚠️ This means a set of credentials can only be used by
     # one (running) block at a time; simultaneous execution of blocks using same
