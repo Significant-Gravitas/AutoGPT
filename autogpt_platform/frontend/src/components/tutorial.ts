@@ -190,7 +190,12 @@ export const startTutorial = (
       element: '[data-id="blocks-control-popover-content"]',
       on: "right",
     },
-    buttons: [],
+    buttons: [
+      {
+        text: "Back",
+        action: tour.back,
+      },
+    ],
     beforeShowPromise: () =>
       waitForElement('[data-id="blocks-control-popover-content"]').then(() => {
         disableOtherBlocks(
