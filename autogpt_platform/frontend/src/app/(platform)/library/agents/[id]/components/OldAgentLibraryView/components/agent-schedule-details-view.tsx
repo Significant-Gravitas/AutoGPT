@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import LoadingBox from "@/components/ui/loading";
 import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+import { formatScheduleTime } from "@/lib/timezone-utils";
 import { PlayIcon } from "lucide-react";
 
 export function AgentScheduleDetailsView({
@@ -53,7 +54,10 @@ export function AgentScheduleDetailsView({
       },
       {
         label: "Next run",
-        value: schedule.next_run_time.toLocaleString(),
+        value: formatScheduleTime(
+          schedule.next_run_time,
+          schedule.timezone || "UTC",
+        ),
       },
     ];
   }, [schedule, selectedRunStatus]);

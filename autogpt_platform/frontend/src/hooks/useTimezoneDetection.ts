@@ -35,7 +35,9 @@ export const useTimezoneDetection = (currentTimezone?: string) => {
         }
 
         // Update the timezone in the backend
-        await updateTimezone.mutateAsync({ data: browserTimezone });
+        await updateTimezone.mutateAsync({
+          data: { timezone: browserTimezone } as any,
+        });
 
         // Invalidate queries to refresh the data
         await queryClient.invalidateQueries({

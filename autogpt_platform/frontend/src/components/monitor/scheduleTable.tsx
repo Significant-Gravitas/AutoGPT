@@ -15,6 +15,10 @@ import { ClockIcon, Loader2 } from "lucide-react";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import {
+  formatScheduleTime,
+  getTimezoneAbbreviation,
+} from "@/lib/timezone-utils";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -218,7 +222,7 @@ export const SchedulesTable = ({
               >
                 Schedule
               </TableHead>
-
+              <TableHead>Timezone</TableHead>
               <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -226,7 +230,7 @@ export const SchedulesTable = ({
             {filteredAndSortedSchedules.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={4}
+                  colSpan={6}
                   className="py-8 text-center text-lg text-gray-400"
                 >
                   No schedules are available
@@ -241,14 +245,21 @@ export const SchedulesTable = ({
                   </TableCell>
                   <TableCell>{schedule.graph_version}</TableCell>
                   <TableCell>
-                    {schedule.next_run_time.toLocaleString()}
+                    {formatScheduleTime(
+                      schedule.next_run_time,
+                      schedule.timezone || "UTC",
+                    )}
                   </TableCell>
                   <TableCell>
                     <Badge variant="secondary">
                       {humanizeCronExpression(schedule.cron)}
                     </Badge>
                   </TableCell>
-
+                  <TableCell>
+                    <span className="text-sm text-muted-foreground">
+                      {getTimezoneAbbreviation(schedule.timezone || "UTC")}
+                    </span>
+                  </TableCell>
                   <TableCell>
                     <div className="flex space-x-2">
                       <Button

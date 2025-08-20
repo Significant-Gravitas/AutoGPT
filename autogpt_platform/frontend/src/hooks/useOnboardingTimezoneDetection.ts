@@ -31,7 +31,9 @@ export const useOnboardingTimezoneDetection = () => {
         }
 
         // Silently update the timezone in the backend
-        await updateTimezone.mutateAsync({ data: browserTimezone });
+        await updateTimezone.mutateAsync({
+          data: { timezone: browserTimezone } as any,
+        });
 
         console.log(
           `Timezone automatically set to ${browserTimezone} during onboarding`,

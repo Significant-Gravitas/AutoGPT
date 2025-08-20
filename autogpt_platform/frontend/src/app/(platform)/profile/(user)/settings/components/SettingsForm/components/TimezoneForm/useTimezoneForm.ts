@@ -40,7 +40,9 @@ export const useTimezoneForm = ({ currentTimezone }: UseTimezoneFormProps) => {
   const onSubmit = async (data: FormData) => {
     setIsLoading(true);
     try {
-      await updateTimezone.mutateAsync({ data: data.timezone });
+      await updateTimezone.mutateAsync({
+        data: { timezone: data.timezone } as any,
+      });
 
       // Invalidate the timezone query to refetch the updated value
       await queryClient.invalidateQueries({
