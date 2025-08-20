@@ -651,6 +651,64 @@
         }
       }
     },
+    "/api/auth/user/timezone": {
+      "get": {
+        "tags": ["v1", "auth"],
+        "summary": "Get user timezone",
+        "description": "Get user timezone setting.",
+        "operationId": "getV1Get user timezone",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": { "type": "string" },
+                  "type": "object",
+                  "title": "Response Getv1Get User Timezone"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v1", "auth"],
+        "summary": "Update user timezone",
+        "description": "Update user timezone. The timezone should be a valid IANA timezone identifier.",
+        "operationId": "postV1Update user timezone",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "type": "string", "title": "Timezone" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": { "type": "string" },
+                  "type": "object",
+                  "title": "Response Postv1Update User Timezone"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/auth/user/preferences": {
       "get": {
         "tags": ["v1", "auth"],
