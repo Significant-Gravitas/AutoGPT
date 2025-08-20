@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 from datetime import datetime, timedelta
 from typing import Any, Literal, Union
@@ -51,16 +52,42 @@ TimezoneLiteral = Literal[
     "Etc/GMT+12",  # UTC-12:00
 ]
 
+logger = logging.getLogger(__name__)
+
+
+# BACKWARDS COMPATIBILITY NOTE:
+# The timezone field is kept at the format level (not block level) for backwards compatibility.
+# Existing graphs have timezone saved within format_type, moving it would break them.
+#
+# The use_user_timezone flag was added to allow using the user's profile timezone.
+# Default is False to maintain backwards compatibility - existing graphs will continue
+# using their specified timezone.
+#
+# KNOWN ISSUE: If a user switches between format types (strftime <-> iso8601),
+# the timezone setting doesn't carry over. This is a UX issue but fixing it would
+# require either:
+#   1. Moving timezone to block level (breaking change, needs migration)
+#   2. Complex state management to sync timezone across format types
+#
+# Future migration path: When we do a major version bump, consider moving timezone
+# to the block Input level for better UX.
+
 
 class TimeStrftimeFormat(BaseModel):
     discriminator: Literal["strftime"]
     format: str = "%H:%M:%S"
     timezone: TimezoneLiteral = "UTC"
+    use_user_timezone: bool = (
+        False  # When True, overrides timezone with user's profile timezone
+    )
 
 
 class TimeISO8601Format(BaseModel):
     discriminator: Literal["iso8601"]
     timezone: TimezoneLiteral = "UTC"
+    use_user_timezone: bool = (
+        False  # When True, overrides timezone with user's profile timezone
+    )
     include_microseconds: bool = False
 
 
@@ -118,12 +145,20 @@ class GetCurrentTimeBlock(Block):
     async def run(
         self, input_data: Input, user_timezone: str | None = None, **kwargs
     ) -> BlockOutput:
+        logger.info(f"Current Timezone for user: {user_timezone}")
+        logger.info(f"All kwargs received: {kwargs}")
+
         if isinstance(input_data.format_type, TimeISO8601Format):
-            # Use user timezone if available and timezone is still default UTC
-            if user_timezone and input_data.format_type.timezone == "UTC":
+            # Determine which timezone to use
+            if input_data.format_type.use_user_timezone and user_timezone:
                 tz = ZoneInfo(user_timezone)
+                logger.debug(f"Using user timezone: {user_timezone}")
             else:
                 tz = ZoneInfo(input_data.format_type.timezone)
+                logger.debug(
+                    f"Using specified timezone: {input_data.format_type.timezone}"
+                )
+
             dt = datetime.now(tz=tz)
 
             # Get the full ISO format and extract just the time portion with timezone
@@ -136,11 +171,16 @@ class GetCurrentTimeBlock(Block):
             current_time = full_iso.split("T")[1] if "T" in full_iso else full_iso
             current_time = f"T{current_time}"  # Add T prefix for ISO 8601 time format
         else:  # TimeStrftimeFormat
-            # Use user timezone if available and timezone is still default UTC
-            if user_timezone and input_data.format_type.timezone == "UTC":
+            # Determine which timezone to use
+            if input_data.format_type.use_user_timezone and user_timezone:
                 tz = ZoneInfo(user_timezone)
+                logger.debug(f"Using user timezone: {user_timezone}")
             else:
                 tz = ZoneInfo(input_data.format_type.timezone)
+                logger.debug(
+                    f"Using specified timezone: {input_data.format_type.timezone}"
+                )
+
             dt = datetime.now(tz=tz)
             current_time = dt.strftime(input_data.format_type.format)
         yield "time", current_time
@@ -150,11 +190,17 @@ class DateStrftimeFormat(BaseModel):
     discriminator: Literal["strftime"]
     format: str = "%Y-%m-%d"
     timezone: TimezoneLiteral = "UTC"
+    use_user_timezone: bool = (
+        False  # When True, overrides timezone with user's profile timezone
+    )
 
 
 class DateISO8601Format(BaseModel):
     discriminator: Literal["iso8601"]
     timezone: TimezoneLiteral = "UTC"
+    use_user_timezone: bool = (
+        False  # When True, overrides timezone with user's profile timezone
+    )
 
 
 class GetCurrentDateBlock(Block):
@@ -228,6 +274,9 @@ class GetCurrentDateBlock(Block):
     async def run(
         self, input_data: Input, user_timezone: str | None = None, **kwargs
     ) -> BlockOutput:
+
+        logger.info(f"Current Timezone for user: {user_timezone}")
+
         try:
             offset = int(input_data.offset)
         except ValueError:
@@ -235,20 +284,28 @@ class GetCurrentDateBlock(Block):
 
         if isinstance(input_data.format_type, DateISO8601Format):
             # ISO 8601 format for date only (YYYY-MM-DD)
-            # Use user timezone if available and timezone is still default UTC
-            if user_timezone and input_data.format_type.timezone == "UTC":
+            # Determine which timezone to use
+            if input_data.format_type.use_user_timezone and user_timezone:
                 tz = ZoneInfo(user_timezone)
+                logger.debug(f"Using user timezone: {user_timezone}")
             else:
                 tz = ZoneInfo(input_data.format_type.timezone)
+                logger.debug(
+                    f"Using specified timezone: {input_data.format_type.timezone}"
+                )
             current_date = datetime.now(tz=tz) - timedelta(days=offset)
             # ISO 8601 date format is YYYY-MM-DD
             date_str = current_date.date().isoformat()
         else:  # DateStrftimeFormat
-            # Use user timezone if available and timezone is still default UTC
-            if user_timezone and input_data.format_type.timezone == "UTC":
+            # Determine which timezone to use
+            if input_data.format_type.use_user_timezone and user_timezone:
                 tz = ZoneInfo(user_timezone)
+                logger.debug(f"Using user timezone: {user_timezone}")
             else:
                 tz = ZoneInfo(input_data.format_type.timezone)
+                logger.debug(
+                    f"Using specified timezone: {input_data.format_type.timezone}"
+                )
             current_date = datetime.now(tz=tz) - timedelta(days=offset)
             date_str = current_date.strftime(input_data.format_type.format)
 
@@ -259,11 +316,17 @@ class StrftimeFormat(BaseModel):
     discriminator: Literal["strftime"]
     format: str = "%Y-%m-%d %H:%M:%S"
     timezone: TimezoneLiteral = "UTC"
+    use_user_timezone: bool = (
+        False  # When True, overrides timezone with user's profile timezone
+    )
 
 
 class ISO8601Format(BaseModel):
     discriminator: Literal["iso8601"]
     timezone: TimezoneLiteral = "UTC"
+    use_user_timezone: bool = (
+        False  # When True, overrides timezone with user's profile timezone
+    )
     include_microseconds: bool = False
 
 
@@ -337,13 +400,18 @@ class GetCurrentDateAndTimeBlock(Block):
     async def run(
         self, input_data: Input, user_timezone: str | None = None, **kwargs
     ) -> BlockOutput:
+        logger.info(f"User timezone: {user_timezone}")
         if isinstance(input_data.format_type, ISO8601Format):
             # ISO 8601 format with specified timezone (also RFC3339-compliant)
-            # Use user timezone if available and timezone is still default UTC
-            if user_timezone and input_data.format_type.timezone == "UTC":
+            # Determine which timezone to use
+            if input_data.format_type.use_user_timezone and user_timezone:
                 tz = ZoneInfo(user_timezone)
+                logger.debug(f"Using user timezone: {user_timezone}")
             else:
                 tz = ZoneInfo(input_data.format_type.timezone)
+                logger.debug(
+                    f"Using specified timezone: {input_data.format_type.timezone}"
+                )
             dt = datetime.now(tz=tz)
 
             # Format with or without microseconds
@@ -352,11 +420,15 @@ class GetCurrentDateAndTimeBlock(Block):
             else:
                 current_date_time = dt.isoformat(timespec="seconds")
         else:  # StrftimeFormat
-            # Use user timezone if available and timezone is still default UTC
-            if user_timezone and input_data.format_type.timezone == "UTC":
+            # Determine which timezone to use
+            if input_data.format_type.use_user_timezone and user_timezone:
                 tz = ZoneInfo(user_timezone)
+                logger.debug(f"Using user timezone: {user_timezone}")
             else:
                 tz = ZoneInfo(input_data.format_type.timezone)
+                logger.debug(
+                    f"Using specified timezone: {input_data.format_type.timezone}"
+                )
             dt = datetime.now(tz=tz)
             current_date_time = dt.strftime(input_data.format_type.format)
         yield "date_time", current_date_time

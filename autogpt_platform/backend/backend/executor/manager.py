@@ -190,18 +190,10 @@ async def execute_node(
         "user_id": user_id,
     }
 
-    # Fetch and add user's timezone
-    try:
-        from backend.data.user import get_user_by_id
-
-        user = await get_user_by_id(user_id)
-        user_timezone = user.timezone
-        # Only add timezone if it's set (not "not-set")
-        if user_timezone and user_timezone != "not-set":
-            extra_exec_kwargs["user_timezone"] = user_timezone
-    except Exception as e:
-        log_metadata.debug(f"Could not fetch user timezone: {e}")
-        # Continue without timezone - blocks will use their defaults
+    # Add user's timezone from NodeExecutionEntry
+    if data.user_timezone and data.user_timezone != "not-set":
+        extra_exec_kwargs["user_timezone"] = data.user_timezone
+        log_metadata.debug(f"Using user timezone: {data.user_timezone}")
 
     # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
     # changes during execution. ⚠️ This means a set of credentials can only be used by
@@ -249,6 +241,7 @@ async def _enqueue_next_nodes(
     graph_id: str,
     log_metadata: LogMetadata,
     nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]],
+    user_timezone: Optional[str] = None,
 ) -> list[NodeExecutionEntry]:
     async def add_enqueued_execution(
         node_exec_id: str, node_id: str, block_id: str, data: BlockInput
@@ -267,6 +260,7 @@ async def _enqueue_next_nodes(
             node_id=node_id,
             block_id=block_id,
             inputs=data,
+            user_timezone=user_timezone,
         )
 
     async def register_next_executions(node_link: Link) -> list[NodeExecutionEntry]:
@@ -800,7 +794,9 @@ class ExecutionProcessor:
                     ExecutionStatus.TERMINATED,
                 ],
             ):
-                execution_queue.add(node_exec.to_node_execution_entry())
+                node_entry = node_exec.to_node_execution_entry()
+                node_entry.user_timezone = graph_exec.user_timezone
+                execution_queue.add(node_entry)
 
             # ------------------------------------------------------------
             # Main dispatch / polling loop -----------------------------
@@ -1074,6 +1070,7 @@ class ExecutionProcessor:
             graph_id=graph_exec.graph_id,
             log_metadata=log_metadata,
             nodes_input_masks=nodes_input_masks,
+            user_timezone=graph_exec.user_timezone,
         ):
             execution_queue.add(next_execution)
 

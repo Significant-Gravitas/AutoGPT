@@ -20,6 +20,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.util import ZoneInfo
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
+from pydantic_extra_types.timezone_name import TimeZoneName
 from sqlalchemy import MetaData, create_engine
 
 from backend.data.block import BlockInput
@@ -191,7 +192,9 @@ class GraphExecutionJobInfo(GraphExecutionJobArgs):
     id: str
     name: str
     next_run_time: str
-    timezone: str = Field(default="UTC", description="Timezone used for scheduling")
+    timezone: TimeZoneName | str = Field(
+        default="UTC", description="Timezone used for scheduling"
+    )
 
     @staticmethod
     def from_db(
@@ -402,6 +405,7 @@ class Scheduler(AppService):
         input_data: BlockInput,
         input_credentials: dict[str, CredentialsMetaInput],
         name: Optional[str] = None,
+        user_timezone: Optional[str] = None,
     ) -> GraphExecutionJobInfo:
         # Validate the graph before scheduling to prevent runtime failures
         # We don't need the return value, just want the validation to run
@@ -415,15 +419,16 @@ class Scheduler(AppService):
             )
         )
 
-        # Fetch user's timezone for scheduling
-        from backend.data.user import get_user_by_id
-
-        user = run_async(get_user_by_id(user_id))
-
-        # Use user's timezone if set, otherwise default to UTC
-        # Note: We can't auto-detect timezone server-side, it must be set by the client
-        if user.timezone and user.timezone != "not-set":
-            user_timezone = user.timezone
+        # Use the provided timezone or default to UTC
+        if user_timezone and user_timezone != "not-set":
+            # Validate the timezone is valid
+            try:
+                ZoneInfo(user_timezone)
+            except Exception as e:
+                logger.error(
+                    f"Invalid timezone '{user_timezone}' for user {user_id}: {e}"
+                )
+                user_timezone = "UTC"
         else:
             user_timezone = "UTC"
             logger.warning(

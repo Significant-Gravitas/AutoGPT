@@ -78,14 +78,15 @@ from backend.server.model import (
     ExecuteGraphResponse,
     RequestTopUp,
     SetGraphActiveVersion,
+    TimezoneResponse,
     UpdatePermissionsRequest,
+    UpdateTimezoneRequest,
     UploadFileResponse,
 )
 from backend.server.utils import get_user_id
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.exceptions import GraphValidationError, NotFoundError
-from backend.util.feature_flag import feature_flag
 from backend.util.settings import Settings
 from backend.util.virus_scanner import scan_content_safe
 
@@ -158,10 +159,10 @@ async def update_user_email_route(
 )
 async def get_user_timezone_route(
     user_data: dict = Depends(auth_middleware),
-) -> dict[str, str]:
+) -> TimezoneResponse:
     """Get user timezone setting."""
     user = await get_or_create_user(user_data)
-    return {"timezone": user.timezone}
+    return TimezoneResponse(timezone=user.timezone)
 
 
 @v1_router.post(
@@ -169,13 +170,14 @@ async def get_user_timezone_route(
     summary="Update user timezone",
     tags=["auth"],
     dependencies=[Depends(auth_middleware)],
+    response_model=TimezoneResponse,
 )
 async def update_user_timezone_route(
-    user_id: Annotated[str, Depends(get_user_id)], timezone: str = Body(...)
-) -> dict[str, str]:
+    user_id: Annotated[str, Depends(get_user_id)], request: UpdateTimezoneRequest
+) -> TimezoneResponse:
     """Update user timezone. The timezone should be a valid IANA timezone identifier."""
-    user = await update_user_timezone(user_id, timezone)
-    return {"timezone": user.timezone}
+    user = await update_user_timezone(user_id, str(request.timezone))
+    return TimezoneResponse(timezone=user.timezone)
 
 
 @v1_router.get(
@@ -953,6 +955,12 @@ async def create_graph_execution_schedule(
             detail=f"Graph #{graph_id} v{schedule_params.graph_version} not found.",
         )
 
+    # Fetch user's timezone for scheduling
+    from backend.data.user import get_user_by_id
+
+    user = await get_user_by_id(user_id)
+    user_timezone = user.timezone if user and user.timezone else None
+
     return await get_scheduler_client().add_execution_schedule(
         user_id=user_id,
         graph_id=graph_id,
@@ -961,6 +969,7 @@ async def create_graph_execution_schedule(
         cron=schedule_params.cron,
         input_data=schedule_params.inputs,
         input_credentials=schedule_params.credentials,
+        user_timezone=user_timezone,
     )
 
 

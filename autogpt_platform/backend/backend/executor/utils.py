@@ -22,6 +22,7 @@ from backend.data.execution import (
 from backend.data.graph import GraphModel, Node
 from backend.data.model import CredentialsMetaInput
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
+from backend.data.user import get_user_by_id
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_async_execution_queue,
@@ -877,10 +878,22 @@ async def add_graph_execution(
             preset_id=preset_id,
         )
 
+        # Fetch user timezone for the graph execution
+        user_timezone = None
+        try:
+            user = await get_user_by_id(user_id)
+            if user and user.timezone and user.timezone != "not-set":
+                user_timezone = user.timezone
+                logger.debug(f"User timezone for graph execution: {user_timezone}")
+        except Exception as e:
+            logger.warning(f"Could not fetch user timezone: {e}")
+            # Continue without timezone - blocks will use their defaults
+
         queue = await get_async_execution_queue()
         graph_exec_entry = graph_exec.to_graph_execution_entry()
         if nodes_input_masks:
             graph_exec_entry.nodes_input_masks = nodes_input_masks
+        graph_exec_entry.user_timezone = user_timezone
 
         logger.info(
             f"Created graph execution #{graph_exec.id} for graph "

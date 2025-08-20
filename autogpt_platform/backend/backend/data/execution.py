@@ -823,6 +823,7 @@ class GraphExecutionEntry(BaseModel):
     graph_id: str
     graph_version: int
     nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None
+    user_timezone: Optional[str] = None
 
 
 class NodeExecutionEntry(BaseModel):
@@ -833,6 +834,7 @@ class NodeExecutionEntry(BaseModel):
     node_id: str
     block_id: str
     inputs: BlockInput
+    user_timezone: Optional[str] = None
 
 
 class ExecutionQueue(Generic[T]):
