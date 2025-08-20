@@ -5,6 +5,12 @@ from backend.blocks.ai_shortform_video_block import AIShortformVideoCreatorBlock
 from backend.blocks.apollo.organization import SearchOrganizationsBlock
 from backend.blocks.apollo.people import SearchPeopleBlock
 from backend.blocks.apollo.person import GetPersonDetailBlock
+from backend.blocks.enrichlayer.linkedin import (
+    GetLinkedinProfileBlock,
+    GetLinkedinProfilePictureBlock,
+    LinkedinPersonLookupBlock,
+    LinkedinRoleLookupBlock,
+)
 from backend.blocks.flux_kontext import AIImageEditorBlock, FluxKontextModelName
 from backend.blocks.ideogram import IdeogramModelBlock
 from backend.blocks.jina.embeddings import JinaEmbeddingBlock
@@ -30,6 +36,7 @@ from backend.integrations.credentials_store import (
     anthropic_credentials,
     apollo_credentials,
     did_credentials,
+    enrichlayer_credentials,
     groq_credentials,
     ideogram_credentials,
     jina_credentials,
@@ -39,6 +46,7 @@ from backend.integrations.credentials_store import (
     replicate_credentials,
     revid_credentials,
     unreal_credentials,
+    v0_credentials,
 )
 
 # =============== Configure the cost for each LLM Model call =============== #
@@ -115,6 +123,10 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.GEMINI_2_5_FLASH_LITE_PREVIEW: 1,
     LlmModel.GEMINI_2_0_FLASH_LITE: 1,
     LlmModel.DEEPSEEK_R1_0528: 1,
+    # v0 by Vercel models
+    LlmModel.V0_1_5_MD: 1,
+    LlmModel.V0_1_5_LG: 2,
+    LlmModel.V0_1_0_MD: 1,
 }
 
 for model in LlmModel:
@@ -203,6 +215,23 @@ LLM_COST = (
         )
         for model, cost in MODEL_COST.items()
         if MODEL_METADATA[model].provider == "llama_api"
+    ]
+    # v0 by Vercel Models
+    + [
+        BlockCost(
+            cost_type=BlockCostType.RUN,
+            cost_filter={
+                "model": model,
+                "credentials": {
+                    "id": v0_credentials.id,
+                    "provider": v0_credentials.provider,
+                    "type": v0_credentials.type,
+                },
+            },
+            cost_amount=cost,
+        )
+        for model, cost in MODEL_COST.items()
+        if MODEL_METADATA[model].provider == "v0"
     ]
     # AI/ML Api Models
     + [
@@ -372,6 +401,54 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                     "id": unreal_credentials.id,
                     "provider": unreal_credentials.provider,
                     "type": unreal_credentials.type,
+                }
+            },
+        )
+    ],
+    GetLinkedinProfileBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "credentials": {
+                    "id": enrichlayer_credentials.id,
+                    "provider": enrichlayer_credentials.provider,
+                    "type": enrichlayer_credentials.type,
+                }
+            },
+        )
+    ],
+    LinkedinPersonLookupBlock: [
+        BlockCost(
+            cost_amount=2,
+            cost_filter={
+                "credentials": {
+                    "id": enrichlayer_credentials.id,
+                    "provider": enrichlayer_credentials.provider,
+                    "type": enrichlayer_credentials.type,
+                }
+            },
+        )
+    ],
+    LinkedinRoleLookupBlock: [
+        BlockCost(
+            cost_amount=3,
+            cost_filter={
+                "credentials": {
+                    "id": enrichlayer_credentials.id,
+                    "provider": enrichlayer_credentials.provider,
+                    "type": enrichlayer_credentials.type,
+                }
+            },
+        )
+    ],
+    GetLinkedinProfilePictureBlock: [
+        BlockCost(
+            cost_amount=3,
+            cost_filter={
+                "credentials": {
+                    "id": enrichlayer_credentials.id,
+                    "provider": enrichlayer_credentials.provider,
+                    "type": enrichlayer_credentials.type,
                 }
             },
         )

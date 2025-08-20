@@ -145,7 +145,7 @@ The platform includes scripts for generating and managing the API client:
 
 - `pnpm fetch:openapi`: Fetches the OpenAPI specification from the backend service (requires backend to be running on port 8006)
 - `pnpm generate:api-client`: Generates the TypeScript API client from the OpenAPI specification using Orval
-- `pnpm generate:api-all`: Runs both fetch and generate commands in sequence
+- `pnpm generate:api`: Runs both fetch and generate commands in sequence
 
 #### Manual API Client Updates
 
@@ -159,7 +159,7 @@ If you need to update the API client after making changes to the backend API:
 
 2. Generate the updated API client:
    ```
-   pnpm generate:api-all
+   pnpm generate:api
    ```
 
 This will fetch the latest OpenAPI specification and regenerate the TypeScript client code.

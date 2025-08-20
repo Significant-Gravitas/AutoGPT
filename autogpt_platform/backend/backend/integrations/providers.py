@@ -25,6 +25,7 @@ class ProviderName(str, Enum):
     GROQ = "groq"
     HTTP = "http"
     HUBSPOT = "hubspot"
+    ENRICHLAYER = "enrichlayer"
     IDEOGRAM = "ideogram"
     JINA = "jina"
     LLAMA_API = "llama_api"
@@ -47,6 +48,7 @@ class ProviderName(str, Enum):
     TWITTER = "twitter"
     TODOIST = "todoist"
     UNREAL_SPEECH = "unreal_speech"
+    V0 = "v0"
     ZEROBOUNCE = "zerobounce"
 
     @classmethod

@@ -2467,12 +2467,44 @@
         "tags": ["v2", "store", "private"],
         "summary": "Get my agents",
         "operationId": "getV2Get my agents",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/MyAgentsResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
           }
@@ -2568,6 +2600,50 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/StoreSubmissionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StoreSubmission" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/submissions/{store_listing_version_id}": {
+      "put": {
+        "tags": ["v2", "store", "private"],
+        "summary": "Edit store submission",
+        "description": "Edit an existing store listing submission.\n\nArgs:\n    store_listing_version_id (str): ID of the store listing version to edit\n    submission_request (StoreSubmissionRequest): The updated submission details\n    user_id (str): ID of the authenticated user editing the listing\n\nReturns:\n    StoreSubmission: The updated store submission\n\nRaises:\n    HTTPException: If there is an error editing the submission",
+        "operationId": "putV2Edit store submission",
+        "parameters": [
+          {
+            "name": "store_listing_version_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Store Listing Version Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreSubmissionEditRequest"
               }
             }
           }
@@ -6021,6 +6097,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error",
             "description": "Error message if any"
+          },
+          "activity_status": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Activity Status",
+            "description": "AI-generated summary of what the agent did"
           }
         },
         "additionalProperties": true,
@@ -6262,6 +6343,16 @@
           "changes_summary": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Changes Summary"
+          },
+          "video_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Video Url"
+          },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories",
+            "default": []
           }
         },
         "type": "object",
@@ -6279,6 +6370,40 @@
           "rating"
         ],
         "title": "StoreSubmission"
+      },
+      "StoreSubmissionEditRequest": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "sub_heading": { "type": "string", "title": "Sub Heading" },
+          "video_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Video Url"
+          },
+          "image_urls": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Image Urls",
+            "default": []
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories",
+            "default": []
+          },
+          "changes_summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Changes Summary"
+          }
+        },
+        "type": "object",
+        "required": ["name", "sub_heading"],
+        "title": "StoreSubmissionEditRequest"
       },
       "StoreSubmissionRequest": {
         "properties": {

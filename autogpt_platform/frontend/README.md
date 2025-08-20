@@ -18,30 +18,57 @@ Make sure you have Node.js 16.10+ installed. Corepack is included with Node.js b
 >
 > Then follow the setup steps below.
 
-### Setup
+## Setup
 
-1. **Enable corepack** (run this once on your system):
+### 1. **Enable corepack** (run this once on your system):
 
-   ```bash
-   corepack enable
-   ```
+```bash
+corepack enable
+```
 
-   This enables corepack to automatically manage pnpm based on the `packageManager` field in `package.json`.
+This enables corepack to automatically manage pnpm based on the `packageManager` field in `package.json`.
 
-2. **Install dependencies**:
+### 2. **Install dependencies**:
 
-   ```bash
-   pnpm i
-   ```
+```bash
+pnpm i
+```
 
-3. **Start the development server**:
-   ```bash
-   pnpm dev
-   ```
+### 3. **Start the development server**:
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+#### Running the Front-end & Back-end separately
+
+We recommend this approach if you are doing active development on the project. First spin up the Back-end:
+
+```bash
+# on `autogpt_platform`
+docker compose --profile local up deps_backend -d
+# on `autogpt_platform/backend`
+poetry run app
+```
+
+Then start the Front-end:
+
+```bash
+# on `autogpt_platform/frontend`
+pnpm dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result. If the server starts on `http://localhost:3001` it means the Front-end is already running via Docker. You have to kill the container then or do `docker compose down`.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+
+#### Running both the Front-end and Back-end via Docker
+
+If you run:
+
+```bash
+# on `autogpt_platform`
+docker compose up -d
+```
+
+It will spin up the Back-end and Front-end via Docker. The Front-end will start on port `3000`. This might not be
+what you want when actively contributing to the Front-end as you won't have direct/easy access to the Next.js dev server.
 
 ### Subsequent Runs
 
@@ -60,12 +87,12 @@ Every time a new Front-end dependency is added by you or others, you will need t
 - `pnpm start` - Start production server
 - `pnpm lint` - Run ESLint and Prettier checks
 - `pnpm format` - Format code with Prettier
-- `pnpm type-check` - Run TypeScript type checking
+- `pnpm types` - Run TypeScript type checking
 - `pnpm test` - Run Playwright tests
 - `pnpm test-ui` - Run Playwright tests with UI
 - `pnpm fetch:openapi` - Fetch OpenAPI spec from backend
 - `pnpm generate:api-client` - Generate API client from OpenAPI spec
-- `pnpm generate:api-all` - Fetch OpenAPI spec and generate API client
+- `pnpm generate:api` - Fetch OpenAPI spec and generate API client
 
 This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) to automatically optimize and load Inter, a custom Google Font.
 
@@ -88,7 +115,7 @@ This project uses an auto-generated API client powered by [**Orval**](https://or
 
 ```bash
 # Fetch OpenAPI spec from backend and generate client
-pnpm generate:api-all
+pnpm generate:api
 
 # Only fetch the OpenAPI spec
 pnpm fetch:openapi
