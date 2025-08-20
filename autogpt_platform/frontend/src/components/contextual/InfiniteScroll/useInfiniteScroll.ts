@@ -9,6 +9,7 @@ interface useInfiniteScrollProps {
   isFetchingNextPage: boolean;
   fetchNextPage: () => void;
   hasNextPage: boolean;
+  direction?: "vertical" | "horizontal";
 }
 
 export const useInfiniteScroll = ({
@@ -18,6 +19,7 @@ export const useInfiniteScroll = ({
   isFetchingNextPage,
   fetchNextPage,
   scrollThreshold,
+  direction = "vertical",
 }: useInfiniteScrollProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -27,12 +29,23 @@ export const useInfiniteScroll = ({
   const handleScroll = useCallback(() => {
     if (containerRef.current && !isServerSide()) {
       const container = containerRef.current;
-      const { bottom } = container.getBoundingClientRect();
-      const { innerHeight } = window;
-      const isVisible = bottom <= innerHeight + scrollThreshold;
+      const containerRect = container.getBoundingClientRect();
+
+      let isVisible: boolean;
+
+      if (direction === "horizontal") {
+        const { right } = containerRect;
+        const { innerWidth } = window;
+        isVisible = right <= innerWidth + scrollThreshold;
+      } else {
+        const { bottom } = containerRect;
+        const { innerHeight } = window;
+        isVisible = bottom <= innerHeight + scrollThreshold;
+      }
+
       setIsInView(isVisible);
     }
-  }, [scrollThreshold]);
+  }, [scrollThreshold, direction]);
 
   const handleLoadMore = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) {

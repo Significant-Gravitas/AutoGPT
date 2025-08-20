@@ -4,23 +4,31 @@ import React from "react";
 import { cn } from "@/lib/utils";
 import { useInfiniteScroll } from "./useInfiniteScroll";
 
-interface InfiniteScrollProps {
+type InfiniteScrollProps = {
   children: React.ReactNode;
-  dataLength: number;
   hasNextPage: boolean;
   loader?: React.ReactNode;
-  endMessage?: React.ReactNode;
   scrollThreshold?: number;
   className?: string;
   scrollableTarget?: string;
   onLoadMore?: () => void;
   isFetchingNextPage: boolean;
   fetchNextPage: () => void;
-}
+  direction?: "vertical" | "horizontal";
+} & (
+  | {
+      loadedItemsCount: number;
+      endMessage: React.ReactNode;
+    }
+  | {
+      loadedItemsCount?: never;
+      endMessage?: never;
+    }
+);
 
 export const InfiniteScroll: React.FC<InfiniteScrollProps> = ({
   children,
-  dataLength,
+  loadedItemsCount,
   hasNextPage,
   loader,
   endMessage,
@@ -30,6 +38,7 @@ export const InfiniteScroll: React.FC<InfiniteScrollProps> = ({
   onLoadMore,
   isFetchingNextPage,
   fetchNextPage,
+  direction = "vertical",
 }) => {
   const { containerRef, bottomRef } = useInfiniteScroll({
     isFetchingNextPage,
@@ -38,6 +47,7 @@ export const InfiniteScroll: React.FC<InfiniteScrollProps> = ({
     scrollableTarget,
     onLoadMore,
     hasNextPage,
+    direction,
   });
 
   const defaultLoader = (
@@ -47,17 +57,20 @@ export const InfiniteScroll: React.FC<InfiniteScrollProps> = ({
   );
 
   return (
-    <div ref={containerRef} className={cn("w-full", className)}>
+    <div
+      ref={containerRef}
+      className={cn(direction === "vertical" ? "w-full" : "h-full", className)}
+    >
       {children}
       {hasNextPage ? (
         <div
           ref={bottomRef}
-          className="flex w-full items-center justify-center py-8"
+          className={`flex items-center justify-center ${direction === "vertical" ? "w-full py-8" : "h-full px-8"}`}
         >
           {loader || defaultLoader}
         </div>
       ) : (
-        dataLength > 0 && endMessage
+        loadedItemsCount && loadedItemsCount > 0 && endMessage
       )}
     </div>
   );
