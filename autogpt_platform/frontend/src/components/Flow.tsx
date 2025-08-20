@@ -194,7 +194,7 @@ const FlowEditor: React.FC<{
         startTutorial(emptyNodes, setPinBlocksPopover, setPinSavePopover);
         storage.set(Key.SHEPHERD_TOUR, "yes");
       }, 100);
-      
+
       return () => clearTimeout(timer);
     }
   }, [router, pathname, params, setEdges, setNodes, nodes.length]);
