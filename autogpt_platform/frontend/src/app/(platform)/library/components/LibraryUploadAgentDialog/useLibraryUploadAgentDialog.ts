@@ -103,15 +103,15 @@ export const useLibraryUploadAgentDialog = () => {
   };
 
   const clearAgentFile = () => {
-    const currentName = form.getValues("agentName")
-    const currentDescription = form.getValues("agentDescription")
-    const prevAgent = agentObject
+    const currentName = form.getValues("agentName");
+    const currentDescription = form.getValues("agentDescription");
+    const prevAgent = agentObject;
 
     form.setValue("agentFile", undefined as any);
-    if(prevAgent && currentName === prevAgent.name) {
+    if (prevAgent && currentName === prevAgent.name) {
       form.setValue("agentName", "");
     }
-    if(prevAgent && currentDescription === prevAgent.description) {
+    if (prevAgent && currentDescription === prevAgent.description) {
       form.setValue("agentDescription", "");
     }
 
