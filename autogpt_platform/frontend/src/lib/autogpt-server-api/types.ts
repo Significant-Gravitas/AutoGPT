@@ -323,8 +323,9 @@ export type CredentialsInputSchema = {
 
 /* Mirror of backend/data/graph.py:Graph */
 export type Graph = GraphMeta & {
-  nodes: Array<Node>;
-  links: Array<Link>;
+  nodes: Node[];
+  links: Link[];
+  sub_graphs: Omit<Graph, "sub_graphs">[]; // Flattened sub-graphs
 };
 
 export type GraphUpdateable = Omit<
@@ -334,6 +335,7 @@ export type GraphUpdateable = Omit<
   | "is_active"
   | "nodes"
   | "links"
+  | "sub_graphs"
   | "input_schema"
   | "output_schema"
   | "credentials_input_schema"
@@ -341,13 +343,16 @@ export type GraphUpdateable = Omit<
 > & {
   version?: number;
   is_active?: boolean;
-  nodes: Array<NodeCreatable>;
-  links: Array<LinkCreatable>;
+  nodes: NodeCreatable[];
+  links: LinkCreatable[];
   input_schema?: GraphIOSchema;
   output_schema?: GraphIOSchema;
 };
 
-export type GraphCreatable = Omit<GraphUpdateable, "id"> & { id?: string };
+export type GraphCreatable = _GraphCreatableInner & {
+  sub_graphs?: _GraphCreatableInner[]; // Flattened sub-graphs
+};
+type _GraphCreatableInner = Omit<GraphUpdateable, "id"> & { id?: string };
 
 /* Mirror of backend/data/execution.py:NodeExecutionResult */
 export type NodeExecutionResult = {
