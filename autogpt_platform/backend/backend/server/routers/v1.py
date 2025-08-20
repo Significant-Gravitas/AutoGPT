@@ -63,6 +63,7 @@ from backend.data.user import (
     get_user_notification_preference,
     update_user_email,
     update_user_notification_preference,
+    update_user_timezone,
 )
 from backend.executor import scheduler
 from backend.executor import utils as execution_utils
@@ -147,6 +148,34 @@ async def update_user_email_route(
     await update_user_email(user_id, email)
 
     return {"email": email}
+
+
+@v1_router.get(
+    "/auth/user/timezone",
+    summary="Get user timezone",
+    tags=["auth"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def get_user_timezone_route(
+    user_data: dict = Depends(auth_middleware),
+) -> dict[str, str]:
+    """Get user timezone setting."""
+    user = await get_or_create_user(user_data)
+    return {"timezone": user.timezone}
+
+
+@v1_router.post(
+    "/auth/user/timezone",
+    summary="Update user timezone",
+    tags=["auth"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def update_user_timezone_route(
+    user_id: Annotated[str, Depends(get_user_id)], timezone: str = Body(...)
+) -> dict[str, str]:
+    """Update user timezone. The timezone should be a valid IANA timezone identifier."""
+    user = await update_user_timezone(user_id, timezone)
+    return {"timezone": user.timezone}
 
 
 @v1_router.get(

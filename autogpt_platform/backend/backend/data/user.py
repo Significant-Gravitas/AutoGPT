@@ -384,3 +384,17 @@ async def unsubscribe_user_by_token(token: str) -> None:
         )
     except Exception as e:
         raise DatabaseError(f"Failed to unsubscribe user by token {token}: {e}") from e
+
+
+async def update_user_timezone(user_id: str, timezone: str) -> User:
+    """Update a user's timezone setting."""
+    try:
+        user = await PrismaUser.prisma().update(
+            where={"id": user_id},
+            data={"timezone": timezone},
+        )
+        if not user:
+            raise ValueError(f"User not found with ID: {user_id}")
+        return User.from_db(user)
+    except Exception as e:
+        raise DatabaseError(f"Failed to update timezone for user {user_id}: {e}") from e
