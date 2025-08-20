@@ -7,9 +7,9 @@ import pytest
 import pytest_mock
 from pytest_snapshot.plugin import Snapshot
 
-import backend.server.model as server_model
 import backend.server.v2.library.model as library_model
 from backend.server.v2.library.routes import router as library_router
+from backend.util.models import Pagination
 
 app = fastapi.FastAPI()
 app.include_router(library_router)
@@ -77,7 +77,7 @@ async def test_get_library_agents_success(
                 updated_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
             ),
         ],
-        pagination=server_model.Pagination(
+        pagination=Pagination(
             total_items=2, total_pages=1, current_page=1, page_size=50
         ),
     )
