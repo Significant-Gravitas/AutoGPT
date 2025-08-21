@@ -141,8 +141,9 @@ jobs:
         with:
           path: ~/docker-cache
           # Use a versioned key for cache invalidation when image list changes
-          key: docker-images-v1-${{ runner.os }}-${{ hashFiles('.github/workflows/copilot-setup-steps.yml') }}
+          key: docker-images-v2-${{ runner.os }}-${{ hashFiles('.github/workflows/copilot-setup-steps.yml') }}
           restore-keys: |
+            docker-images-v2-${{ runner.os }}-
             docker-images-v1-${{ runner.os }}-
 
       - name: Load or pull Docker images
@@ -163,8 +164,9 @@ jobs:
             "supabase/studio:20250224-d10db0f"
           )
           
-          if [ "${{ steps.docker-cache.outputs.cache-hit }}" == "true" ]; then
-            echo "Loading Docker images from cache in parallel..."
+          # Check if any cached tar files exist (more reliable than cache-hit)
+          if ls ~/docker-cache/*.tar 1> /dev/null 2>&1; then
+            echo "Docker cache found, loading images in parallel..."
             for image in "${IMAGES[@]}"; do
               # Convert image name to filename (replace : and / with -)
               filename=$(echo "$image" | tr ':/' '--')
@@ -174,28 +176,29 @@ jobs:
               fi
             done
             wait
-            echo "All images loaded from cache"
+            echo "All cached images loaded"
           else
-            echo "Cache miss - pulling Docker images in parallel..."
+            echo "No Docker cache found, pulling images in parallel..."
             # Pull all images in parallel
             for image in "${IMAGES[@]}"; do
               docker pull "$image" &
             done
             wait
             
-            # Start saving Docker images to cache in background
-            echo "Starting background save of Docker images to cache..."
-            (
+            # Only save cache on main branches (not PRs) to avoid cache pollution
+            if [[ "${{ github.ref }}" == "refs/heads/master" ]] || [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
+              echo "Saving Docker images to cache in parallel..."
               for image in "${IMAGES[@]}"; do
                 # Convert image name to filename (replace : and / with -)
                 filename=$(echo "$image" | tr ':/' '--')
-                echo "Saving $image to cache..."
-                docker save -o ~/docker-cache/${filename}.tar "$image" || echo "Warning: Failed to save $image"
+                echo "Saving $image..."
+                docker save -o ~/docker-cache/${filename}.tar "$image" || echo "Warning: Failed to save $image" &
               done
-              echo "Docker image cache save completed"
-            ) &
-            DOCKER_SAVE_PID=$!
-            echo "DOCKER_SAVE_PID=$DOCKER_SAVE_PID" >> $GITHUB_ENV
+              wait
+              echo "Docker image cache saved"
+            else
+              echo "Skipping cache save for PR/feature branch"
+            fi
           fi
           
           echo "Docker images ready for use"
@@ -265,13 +268,3 @@ jobs:
           echo "🚀 Ready for development with Docker services running"
           echo "📝 Backend server: poetry run serve (port 8000)"
           echo "🌐 Frontend server: pnpm dev (port 3000)"
-
-      # Ensure background Docker save completes before workflow ends
-      - name: Wait for Docker cache save to complete
-        if: env.DOCKER_SAVE_PID != ''
-        run: |
-          if [ -n "$DOCKER_SAVE_PID" ]; then
-            echo "Waiting for Docker image cache save to complete (PID: $DOCKER_SAVE_PID)..."
-            wait $DOCKER_SAVE_PID || echo "Docker cache save process already completed"
-            echo "Docker cache save finished"
-          fi
