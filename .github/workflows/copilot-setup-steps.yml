@@ -209,11 +209,37 @@ jobs:
           # Start essential services (migrate image already built with correct tag)
           docker compose --profile local up deps --no-build --detach
           echo "Waiting for services to be ready..."
-          # Wait for database to be ready (reduced timeout)
-          timeout 30 sh -c 'until docker compose exec -T db pg_isready -U postgres 2>/dev/null; do sleep 1; done' || echo "Database ready check timeout, continuing..."
-          # Wait for migrate service to complete (reduced timeout)
-          timeout 30 sh -c 'until docker compose ps migrate | grep -q "Exit 0"; do sleep 1; done' || echo "Migration check timeout, continuing..."
-          # Reduced wait for other services
+          
+          # Wait for database to be ready
+          echo "Checking database readiness..."
+          timeout 30 sh -c 'until docker compose exec -T db pg_isready -U postgres 2>/dev/null; do 
+            echo "  Waiting for database..."
+            sleep 2
+          done' && echo "✅ Database is ready" || echo "⚠️ Database ready check timeout after 30s, continuing..."
+          
+          # Check migrate service status
+          echo "Checking migration status..."
+          docker compose ps migrate || echo "  Migrate service not found in ps output"
+          
+          # Wait for migrate service to complete
+          timeout 30 sh -c 'while true; do
+            STATUS=$(docker compose ps migrate --format json 2>/dev/null | jq -r ".[0].State" 2>/dev/null || echo "unknown")
+            EXIT_CODE=$(docker compose ps migrate --format json 2>/dev/null | jq -r ".[0].ExitCode" 2>/dev/null || echo "unknown")
+            echo "  Migrate status: $STATUS, exit code: $EXIT_CODE"
+            
+            if [[ "$STATUS" == "exited" ]] && [[ "$EXIT_CODE" == "0" ]]; then
+              echo "✅ Migrations completed successfully"
+              break
+            elif [[ "$STATUS" == "exited" ]] && [[ "$EXIT_CODE" != "0" ]]; then
+              echo "❌ Migrations failed with exit code: $EXIT_CODE"
+              docker compose logs migrate --tail=20
+              break
+            fi
+            sleep 2
+          done' || echo "⚠️ Migration check timeout after 30s, continuing..."
+          
+          # Brief wait for other services to stabilize
+          echo "Waiting 5 seconds for other services to stabilize..."
           sleep 5
 
       # Verify installations and provide environment info
