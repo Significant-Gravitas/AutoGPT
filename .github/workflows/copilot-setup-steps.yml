@@ -148,25 +148,23 @@ jobs:
 
       # Phase 2: Build migrate service with GitHub Actions cache
       - name: Build migrate Docker image with cache
-        uses: docker/bake-action@v5
-        with:
-          workdir: autogpt_platform
-          files: |
-            docker-compose.yml
-            docker-compose.platform.yml
-          targets: |
-            migrate
-          load: true
-          set: |
-            *.cache-from=type=gha
-            *.cache-to=type=gha,mode=max
+        working-directory: autogpt_platform
+        run: |
+          # Build the migrate image with buildx for GHA caching
+          docker buildx build \
+            --cache-from type=gha \
+            --cache-to type=gha,mode=max \
+            --target migrate \
+            --tag autogpt_platform-migrate:latest \
+            --load \
+            -f backend/Dockerfile \
+            ..
 
       # Start services using pre-built images
       - name: Start Docker services for development
         working-directory: autogpt_platform
         run: |
-          # Start essential services (migrate is already built by bake)
-          # The 'deps' profile includes the migrate service which runs automatically
+          # Start essential services (migrate image already built with correct tag)
           docker compose --profile local up deps --no-build --detach
           echo "Waiting for services to be ready..."
           # Wait for database to be ready (reduced timeout)
