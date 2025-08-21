@@ -134,24 +134,63 @@ jobs:
           cp backend/.env.default backend/.env
           cp frontend/.env.default frontend/.env
 
-      # Phase 1: Pull all Docker images in parallel for faster setup
-      - name: Pull Docker images in parallel
+      # Phase 1: Cache and load Docker images for faster setup
+      - name: Set up Docker image cache
+        id: docker-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/docker-cache
+          # Use a versioned key for cache invalidation when image list changes
+          key: docker-images-v1-${{ runner.os }}-${{ hashFiles('.github/workflows/copilot-setup-steps.yml') }}
+          restore-keys: |
+            docker-images-v1-${{ runner.os }}-
+
+      - name: Load or pull Docker images
         working-directory: autogpt_platform
         run: |
-          echo "Pulling all Docker images in parallel..."
-          # External service images
-          docker pull redis:latest &
-          docker pull rabbitmq:management &
-          docker pull clamav/clamav-debian:latest &
-          docker pull busybox:latest &
-          # Supabase images
-          docker pull kong:2.8.1 &
-          docker pull supabase/gotrue:v2.170.0 &
-          docker pull supabase/postgres:15.8.1.049 &
-          docker pull supabase/postgres-meta:v0.86.1 &
-          docker pull supabase/studio:20250224-d10db0f &
-          wait
-          echo "All images pulled successfully"
+          mkdir -p ~/docker-cache
+          
+          # Define image list for easy maintenance
+          IMAGES=(
+            "redis:latest"
+            "rabbitmq:management"
+            "clamav/clamav-debian:latest"
+            "busybox:latest"
+            "kong:2.8.1"
+            "supabase/gotrue:v2.170.0"
+            "supabase/postgres:15.8.1.049"
+            "supabase/postgres-meta:v0.86.1"
+            "supabase/studio:20250224-d10db0f"
+          )
+          
+          if [ "${{ steps.docker-cache.outputs.cache-hit }}" == "true" ]; then
+            echo "Loading Docker images from cache..."
+            for image in "${IMAGES[@]}"; do
+              # Convert image name to filename (replace : and / with -)
+              filename=$(echo "$image" | tr ':/' '--')
+              if [ -f ~/docker-cache/${filename}.tar ]; then
+                echo "Loading $image..."
+                docker load -i ~/docker-cache/${filename}.tar || echo "Warning: Failed to load $image from cache"
+              fi
+            done
+          else
+            echo "Cache miss - pulling Docker images in parallel..."
+            # Pull all images in parallel
+            for image in "${IMAGES[@]}"; do
+              docker pull "$image" &
+            done
+            wait
+            
+            echo "Saving Docker images to cache..."
+            for image in "${IMAGES[@]}"; do
+              # Convert image name to filename (replace : and / with -)
+              filename=$(echo "$image" | tr ':/' '--')
+              echo "Saving $image..."
+              docker save -o ~/docker-cache/${filename}.tar "$image" || echo "Warning: Failed to save $image"
+            done
+          fi
+          
+          echo "Docker images ready"
 
       # Phase 2: Build migrate service with GitHub Actions cache
       - name: Build migrate Docker image with cache
