@@ -34,10 +34,10 @@ from backend.data.model import (
 from backend.data.notifications import NotificationEventModel, RefundRequestData
 from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications.notifications import queue_notification_async
-from backend.server.model import Pagination
 from backend.server.v2.admin.model import UserHistoryResponse
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.json import SafeJson
+from backend.util.models import Pagination
 from backend.util.retry import func_retry
 from backend.util.settings import Settings
 
@@ -286,11 +286,17 @@ class UserCreditBase(ABC):
         transaction = await CreditTransaction.prisma().find_first_or_raise(
             where={"transactionKey": transaction_key, "userId": user_id}
         )
-
         if transaction.isActive:
             return
 
         async with db.locked_transaction(f"usr_trx_{user_id}"):
+
+            transaction = await CreditTransaction.prisma().find_first_or_raise(
+                where={"transactionKey": transaction_key, "userId": user_id}
+            )
+            if transaction.isActive:
+                return
+
             user_balance, _ = await self._get_credits(user_id)
             await CreditTransaction.prisma().update(
                 where={

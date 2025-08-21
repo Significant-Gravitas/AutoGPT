@@ -8,7 +8,6 @@ from typing import Annotated, Any, Sequence
 import pydantic
 import stripe
 from autogpt_libs.auth.middleware import auth_middleware
-from autogpt_libs.feature_flag.client import feature_flag
 from fastapi import (
     APIRouter,
     Body,
@@ -85,6 +84,7 @@ from backend.server.utils import get_user_id
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.exceptions import GraphValidationError, NotFoundError
+from backend.util.feature_flag import feature_flag
 from backend.util.settings import Settings
 from backend.util.virus_scanner import scan_content_safe
 
@@ -458,12 +458,16 @@ async def stripe_webhook(request: Request):
         event = stripe.Webhook.construct_event(
             payload, sig_header, settings.secrets.stripe_webhook_secret
         )
-    except ValueError:
+    except ValueError as e:
         # Invalid payload
-        raise HTTPException(status_code=400)
-    except stripe.SignatureVerificationError:
+        raise HTTPException(
+            status_code=400, detail=f"Invalid payload: {str(e) or type(e).__name__}"
+        )
+    except stripe.SignatureVerificationError as e:
         # Invalid signature
-        raise HTTPException(status_code=400)
+        raise HTTPException(
+            status_code=400, detail=f"Invalid signature: {str(e) or type(e).__name__}"
+        )
 
     if (
         event["type"] == "checkout.session.completed"
@@ -676,7 +680,15 @@ async def update_graph(
             # Handle deactivation of the previously active version
             await on_graph_deactivate(current_active_version, user_id=user_id)
 
-    return new_graph_version
+    # Fetch new graph version *with sub-graphs* (needed for credentials input schema)
+    new_graph_version_with_subgraphs = await graph_db.get_graph(
+        graph_id,
+        new_graph_version.version,
+        user_id=user_id,
+        include_subgraphs=True,
+    )
+    assert new_graph_version_with_subgraphs  # make type checker happy
+    return new_graph_version_with_subgraphs
 
 
 @v1_router.put(
@@ -1059,7 +1071,6 @@ async def get_api_key(
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
-@feature_flag("api-keys-enabled")
 async def delete_api_key(
     key_id: str, user_id: Annotated[str, Depends(get_user_id)]
 ) -> Optional[APIKeyWithoutHash]:
@@ -1088,7 +1099,6 @@ async def delete_api_key(
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
-@feature_flag("api-keys-enabled")
 async def suspend_key(
     key_id: str, user_id: Annotated[str, Depends(get_user_id)]
 ) -> Optional[APIKeyWithoutHash]:
@@ -1114,7 +1124,6 @@ async def suspend_key(
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
-@feature_flag("api-keys-enabled")
 async def update_permissions(
     key_id: str,
     request: UpdatePermissionsRequest,

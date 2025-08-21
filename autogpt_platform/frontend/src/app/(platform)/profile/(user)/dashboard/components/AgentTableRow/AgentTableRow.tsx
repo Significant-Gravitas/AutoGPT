@@ -4,7 +4,7 @@ import Image from "next/image";
 import { Text } from "@/components/atoms/Text/Text";
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Status, StatusType } from "@/components/agptui/Status";
+import { Status } from "@/components/agptui/Status";
 import { useAgentTableRow } from "./useAgentTableRow";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import {
@@ -13,7 +13,10 @@ import {
   ImageBroken,
   Star,
   Trash,
+  PencilSimple,
 } from "@phosphor-icons/react/dist/ssr";
+import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
+import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 
 export interface AgentTableRowProps {
   agent_id: string;
@@ -23,13 +26,22 @@ export interface AgentTableRowProps {
   description: string;
   imageSrc: string[];
   date_submitted: string;
-  status: StatusType;
+  status: SubmissionStatus;
   runs: number;
   rating: number;
   dateSubmitted: string;
   id: number;
+  video_url?: string;
+  categories?: string[];
+  store_listing_version_id?: string;
   onViewSubmission: (submission: StoreSubmission) => void;
   onDeleteSubmission: (submission_id: string) => void;
+  onEditSubmission: (
+    submission: StoreSubmissionEditRequest & {
+      store_listing_version_id: string | undefined;
+      agent_id: string;
+    },
+  ) => void;
 }
 
 export const AgentTableRow = ({
@@ -44,13 +56,18 @@ export const AgentTableRow = ({
   runs,
   rating,
   id,
+  video_url,
+  categories,
+  store_listing_version_id,
   onViewSubmission,
   onDeleteSubmission,
+  onEditSubmission,
 }: AgentTableRowProps) => {
-  const { handleView, handleDelete } = useAgentTableRow({
+  const { handleView, handleDelete, handleEdit } = useAgentTableRow({
     id,
     onViewSubmission,
     onDeleteSubmission,
+    onEditSubmission,
     agent_id,
     agent_version,
     agentName,
@@ -58,15 +75,23 @@ export const AgentTableRow = ({
     description,
     imageSrc,
     dateSubmitted,
-    status: status.toUpperCase(),
+    status,
     runs,
     rating,
+    video_url,
+    categories,
+    store_listing_version_id,
   });
+
+  // Determine if we should show Edit or View button
+  const canEdit =
+    status === SubmissionStatus.APPROVED || status === SubmissionStatus.PENDING;
 
   return (
     <div
       data-testid="agent-table-row"
-      data-agent-name={agentName}
+      data-agent-id={agent_id}
+      data-submission-id={store_listing_version_id}
       className="hidden items-center border-b border-neutral-300 px-4 py-4 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800 md:flex"
     >
       <div className="grid w-full grid-cols-[minmax(400px,1fr),180px,140px,100px,100px,40px] items-center gap-4">
@@ -139,13 +164,23 @@ export const AgentTableRow = ({
               <DotsThreeVerticalIcon className="h-5 w-5 text-neutral-800" />
             </DropdownMenu.Trigger>
             <DropdownMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md dark:bg-gray-800">
-              <DropdownMenu.Item
-                onSelect={handleView}
-                className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
-              >
-                <Eye className="mr-2 h-4 w-4 dark:text-gray-100" />
-                <span className="dark:text-gray-100">View</span>
-              </DropdownMenu.Item>
+              {canEdit ? (
+                <DropdownMenu.Item
+                  onSelect={handleEdit}
+                  className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <PencilSimple className="mr-2 h-4 w-4 dark:text-gray-100" />
+                  <span className="dark:text-gray-100">Edit</span>
+                </DropdownMenu.Item>
+              ) : (
+                <DropdownMenu.Item
+                  onSelect={handleView}
+                  className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <Eye className="mr-2 h-4 w-4 dark:text-gray-100" />
+                  <span className="dark:text-gray-100">View</span>
+                </DropdownMenu.Item>
+              )}
               <DropdownMenu.Separator className="my-1 h-px bg-gray-300 dark:bg-gray-600" />
               <DropdownMenu.Item
                 onSelect={handleDelete}

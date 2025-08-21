@@ -11,8 +11,9 @@ import {
   CircleDashed,
 } from "@phosphor-icons/react";
 import type { AgentExecutionWithInfo } from "../helpers";
-import { formatTimeAgo, getExecutionDuration } from "../helpers";
+import { getExecutionDuration } from "../helpers";
 import Link from "next/link";
+import { formatTimeAgo } from "@/lib/utils/time";
 
 interface Props {
   execution: AgentExecutionWithInfo;
