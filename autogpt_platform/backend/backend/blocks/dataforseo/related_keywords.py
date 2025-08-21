@@ -109,7 +109,10 @@ class DataForSeoRelatedKeywordsBlock(Block):
             },
             test_credentials=dataforseo.get_test_credentials(),
             test_output=[
-                ("related_keyword", lambda x: hasattr(x, 'keyword') and x.keyword == "content strategy"),
+                (
+                    "related_keyword",
+                    lambda x: hasattr(x, "keyword") and x.keyword == "content strategy",
+                ),
                 ("related_keywords", lambda x: isinstance(x, list) and len(x) == 1),
                 ("total_count", 1),
                 ("seed_keyword", "content marketing"),
@@ -176,18 +179,22 @@ class DataForSeoRelatedKeywordsBlock(Block):
             for item in items:
                 # Extract keyword_data from the item
                 keyword_data = item.get("keyword_data", {})
-                
+
                 # Create the RelatedKeyword object
                 keyword = RelatedKeyword(
                     keyword=keyword_data.get("keyword", ""),
-                    search_volume=keyword_data.get("keyword_info", {}).get("search_volume"),
+                    search_volume=keyword_data.get("keyword_info", {}).get(
+                        "search_volume"
+                    ),
                     competition=keyword_data.get("keyword_info", {}).get("competition"),
                     cpc=keyword_data.get("keyword_info", {}).get("cpc"),
                     keyword_difficulty=keyword_data.get("keyword_properties", {}).get(
                         "keyword_difficulty"
                     ),
                     serp_info=(
-                        keyword_data.get("serp_info") if input_data.include_serp_info else None
+                        keyword_data.get("serp_info")
+                        if input_data.include_serp_info
+                        else None
                     ),
                     clickstream_data=(
                         keyword_data.get("clickstream_keyword_info")
