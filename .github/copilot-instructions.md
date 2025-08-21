@@ -28,7 +28,7 @@ This file provides comprehensive onboarding information for GitHub Copilot codin
    git clone <repo> && cd AutoGPT
    
    # Start all services (database, redis, rabbitmq, clamav)
-   cd autogpt_platform && docker compose up -d
+   cd autogpt_platform && docker compose --profile local up deps --build --detach
    ```
 
 2. **Backend Setup** (always run before backend development):
@@ -49,7 +49,7 @@ This file provides comprehensive onboarding information for GitHub Copilot codin
 
 **Critical:** Always ensure Docker services are running before starting development:
 ```bash
-cd autogpt_platform && docker compose up -d
+cd autogpt_platform && docker compose --profile local up deps --build --detach
 ```
 
 **Python Version:** Use Python 3.11 (required; managed by Poetry via pyproject.toml)
@@ -86,7 +86,7 @@ pnpm storybook                      # Start component development server
 - **Snapshot Tests**: Use `--snapshot-update` when output changes, always review with `git diff`
 
 **Frontend Tests:**
-- **E2E Tests**: Always run `pnpm build` before `pnpm test` (Playwright requires build)
+- **E2E Tests**: Always run `pnpm dev` before `pnpm test` (Playwright requires running instance)
 - **Component Tests**: Use Storybook for isolated component development
 
 ### Critical Validation Steps
