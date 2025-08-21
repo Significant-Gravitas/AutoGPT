@@ -49,9 +49,7 @@ class DataForSeoKeywordSuggestionsBlock(Block):
         credentials: CredentialsMetaInput = dataforseo.credentials_field(
             description="DataForSEO credentials (username and password)"
         )
-        keywords: List[str] = SchemaField(
-            description="Seed keywords to get suggestions for (up to 200)"
-        )
+        keyword: str = SchemaField(description="Seed keyword to get suggestions for")
         location_code: Optional[int] = SchemaField(
             description="Location code for targeting (e.g., 2840 for USA)",
             default=2840,  # USA
@@ -83,11 +81,14 @@ class DataForSeoKeywordSuggestionsBlock(Block):
         suggestions: List[KeywordSuggestion] = SchemaField(
             description="List of keyword suggestions with metrics"
         )
+        suggestion: KeywordSuggestion = SchemaField(
+            description="A single keyword suggestion with metrics"
+        )
         total_count: int = SchemaField(
             description="Total number of suggestions returned"
         )
-        seed_keywords: List[str] = SchemaField(
-            description="The seed keywords used for the query"
+        seed_keyword: str = SchemaField(
+            description="The seed keyword used for the query"
         )
 
     def __init__(self):
@@ -99,33 +100,33 @@ class DataForSeoKeywordSuggestionsBlock(Block):
             output_schema=self.Output,
             test_input={
                 "credentials": dataforseo.get_test_credentials().model_dump(),
-                "keywords": ["digital marketing"],
+                "keyword": "digital marketing",
                 "location_code": 2840,
                 "language_code": "en",
-                "limit": 10,
+                "limit": 1,
             },
             test_credentials=dataforseo.get_test_credentials(),
             test_output=[
-                ("suggestions", lambda x: isinstance(x, list) and len(x) == 10),
-                ("total_count", 10),
-                ("seed_keywords", ["digital marketing"]),
+                ("suggestion", lambda x: hasattr(x, 'keyword') and x.keyword == "digital marketing strategy"),
+                ("suggestions", lambda x: isinstance(x, list) and len(x) == 1),
+                ("total_count", 1),
+                ("seed_keyword", "digital marketing"),
             ],
             test_mock={
                 "_fetch_keyword_suggestions": lambda *args, **kwargs: [
                     {
                         "items": [
                             {
-                                "keyword": f"digital marketing {i}",
+                                "keyword": "digital marketing strategy",
                                 "keyword_info": {
-                                    "search_volume": 1000 * (10 - i),
-                                    "competition": 0.5 + (i * 0.05),
-                                    "cpc": 2.5 + (i * 0.1),
+                                    "search_volume": 10000,
+                                    "competition": 0.5,
+                                    "cpc": 2.5,
                                 },
                                 "keyword_properties": {
-                                    "keyword_difficulty": 50 + i,
+                                    "keyword_difficulty": 50,
                                 },
                             }
-                            for i in range(10)
                         ]
                     }
                 ]
@@ -139,7 +140,7 @@ class DataForSeoKeywordSuggestionsBlock(Block):
     ) -> Any:
         """Private method to fetch keyword suggestions - can be mocked for testing."""
         return await client.keyword_suggestions(
-            keywords=input_data.keywords,
+            keyword=input_data.keyword,
             location_code=input_data.location_code,
             language_code=input_data.language_code,
             include_seed_keyword=input_data.include_seed_keyword,
@@ -187,8 +188,82 @@ class DataForSeoKeywordSuggestionsBlock(Block):
                         else None
                     ),
                 )
+                yield "suggestion", suggestion
                 suggestions.append(suggestion)
 
         yield "suggestions", suggestions
         yield "total_count", len(suggestions)
-        yield "seed_keywords", input_data.keywords
+        yield "seed_keyword", input_data.keyword
+
+
+class KeywordSuggestionExtractorBlock(Block):
+    """Extracts individual fields from a KeywordSuggestion object."""
+
+    class Input(BlockSchema):
+        suggestion: KeywordSuggestion = SchemaField(
+            description="The keyword suggestion object to extract fields from"
+        )
+
+    class Output(BlockSchema):
+        keyword: str = SchemaField(description="The keyword suggestion")
+        search_volume: Optional[int] = SchemaField(
+            description="Monthly search volume", default=None
+        )
+        competition: Optional[float] = SchemaField(
+            description="Competition level (0-1)", default=None
+        )
+        cpc: Optional[float] = SchemaField(
+            description="Cost per click in USD", default=None
+        )
+        keyword_difficulty: Optional[int] = SchemaField(
+            description="Keyword difficulty score", default=None
+        )
+        serp_info: Optional[Dict[str, Any]] = SchemaField(
+            description="data from SERP for each keyword", default=None
+        )
+        clickstream_data: Optional[Dict[str, Any]] = SchemaField(
+            description="Clickstream data metrics", default=None
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="4193cb94-677c-48b0-9eec-6ac72fffd0f2",
+            description="Extract individual fields from a KeywordSuggestion object",
+            categories={BlockCategory.DATA},
+            input_schema=self.Input,
+            output_schema=self.Output,
+            test_input={
+                "suggestion": KeywordSuggestion(
+                    keyword="test keyword",
+                    search_volume=1000,
+                    competition=0.5,
+                    cpc=2.5,
+                    keyword_difficulty=60,
+                ).model_dump()
+            },
+            test_output=[
+                ("keyword", "test keyword"),
+                ("search_volume", 1000),
+                ("competition", 0.5),
+                ("cpc", 2.5),
+                ("keyword_difficulty", 60),
+                ("serp_info", None),
+                ("clickstream_data", None),
+            ],
+        )
+
+    async def run(
+        self,
+        input_data: Input,
+        **kwargs,
+    ) -> BlockOutput:
+        """Extract fields from the KeywordSuggestion object."""
+        suggestion = input_data.suggestion
+
+        yield "keyword", suggestion.keyword
+        yield "search_volume", suggestion.search_volume
+        yield "competition", suggestion.competition
+        yield "cpc", suggestion.cpc
+        yield "keyword_difficulty", suggestion.keyword_difficulty
+        yield "serp_info", suggestion.serp_info
+        yield "clickstream_data", suggestion.clickstream_data

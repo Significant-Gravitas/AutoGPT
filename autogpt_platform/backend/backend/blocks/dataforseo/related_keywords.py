@@ -49,8 +49,8 @@ class DataForSeoRelatedKeywordsBlock(Block):
         credentials: CredentialsMetaInput = dataforseo.credentials_field(
             description="DataForSEO credentials (username and password)"
         )
-        keywords: List[str] = SchemaField(
-            description="Seed keywords to find related keywords for (up to 200)"
+        keyword: str = SchemaField(
+            description="Seed keyword to find related keywords for"
         )
         location_code: Optional[int] = SchemaField(
             description="Location code for targeting (e.g., 2840 for USA)",
@@ -83,11 +83,14 @@ class DataForSeoRelatedKeywordsBlock(Block):
         related_keywords: List[RelatedKeyword] = SchemaField(
             description="List of related keywords with metrics"
         )
+        related_keyword: RelatedKeyword = SchemaField(
+            description="A related keyword with metrics"
+        )
         total_count: int = SchemaField(
             description="Total number of related keywords returned"
         )
-        seed_keywords: List[str] = SchemaField(
-            description="The seed keywords used for the query"
+        seed_keyword: str = SchemaField(
+            description="The seed keyword used for the query"
         )
 
     def __init__(self):
@@ -99,33 +102,35 @@ class DataForSeoRelatedKeywordsBlock(Block):
             output_schema=self.Output,
             test_input={
                 "credentials": dataforseo.get_test_credentials().model_dump(),
-                "keywords": ["content marketing"],
+                "keyword": "content marketing",
                 "location_code": 2840,
                 "language_code": "en",
-                "limit": 10,
+                "limit": 1,
             },
             test_credentials=dataforseo.get_test_credentials(),
             test_output=[
-                ("related_keywords", lambda x: isinstance(x, list) and len(x) == 10),
-                ("total_count", 10),
-                ("seed_keywords", ["content marketing"]),
+                ("related_keyword", lambda x: hasattr(x, 'keyword') and x.keyword == "content strategy"),
+                ("related_keywords", lambda x: isinstance(x, list) and len(x) == 1),
+                ("total_count", 1),
+                ("seed_keyword", "content marketing"),
             ],
             test_mock={
                 "_fetch_related_keywords": lambda *args, **kwargs: [
                     {
                         "items": [
                             {
-                                "keyword": f"content strategy {i}",
-                                "keyword_info": {
-                                    "search_volume": 800 * (10 - i),
-                                    "competition": 0.4 + (i * 0.06),
-                                    "cpc": 3.0 + (i * 0.15),
-                                },
-                                "keyword_properties": {
-                                    "keyword_difficulty": 45 + i,
-                                },
+                                "keyword_data": {
+                                    "keyword": "content strategy",
+                                    "keyword_info": {
+                                        "search_volume": 8000,
+                                        "competition": 0.4,
+                                        "cpc": 3.0,
+                                    },
+                                    "keyword_properties": {
+                                        "keyword_difficulty": 45,
+                                    },
+                                }
                             }
-                            for i in range(10)
                         ]
                     }
                 ]
@@ -139,7 +144,7 @@ class DataForSeoRelatedKeywordsBlock(Block):
     ) -> Any:
         """Private method to fetch related keywords - can be mocked for testing."""
         return await client.related_keywords(
-            keywords=input_data.keywords,
+            keyword=input_data.keyword,
             location_code=input_data.location_code,
             language_code=input_data.language_code,
             include_seed_keyword=input_data.include_seed_keyword,
@@ -169,26 +174,103 @@ class DataForSeoRelatedKeywordsBlock(Block):
                 first_result.get("items", []) if isinstance(first_result, dict) else []
             )
             for item in items:
+                # Extract keyword_data from the item
+                keyword_data = item.get("keyword_data", {})
+                
                 # Create the RelatedKeyword object
                 keyword = RelatedKeyword(
-                    keyword=item.get("keyword", ""),
-                    search_volume=item.get("keyword_info", {}).get("search_volume"),
-                    competition=item.get("keyword_info", {}).get("competition"),
-                    cpc=item.get("keyword_info", {}).get("cpc"),
-                    keyword_difficulty=item.get("keyword_properties", {}).get(
+                    keyword=keyword_data.get("keyword", ""),
+                    search_volume=keyword_data.get("keyword_info", {}).get("search_volume"),
+                    competition=keyword_data.get("keyword_info", {}).get("competition"),
+                    cpc=keyword_data.get("keyword_info", {}).get("cpc"),
+                    keyword_difficulty=keyword_data.get("keyword_properties", {}).get(
                         "keyword_difficulty"
                     ),
                     serp_info=(
-                        item.get("serp_info") if input_data.include_serp_info else None
+                        keyword_data.get("serp_info") if input_data.include_serp_info else None
                     ),
                     clickstream_data=(
-                        item.get("clickstream_keyword_info")
+                        keyword_data.get("clickstream_keyword_info")
                         if input_data.include_clickstream_data
                         else None
                     ),
                 )
+                yield "related_keyword", keyword
                 related_keywords.append(keyword)
 
         yield "related_keywords", related_keywords
         yield "total_count", len(related_keywords)
-        yield "seed_keywords", input_data.keywords
+        yield "seed_keyword", input_data.keyword
+
+
+class RelatedKeywordExtractorBlock(Block):
+    """Extracts individual fields from a RelatedKeyword object."""
+
+    class Input(BlockSchema):
+        related_keyword: RelatedKeyword = SchemaField(
+            description="The related keyword object to extract fields from"
+        )
+
+    class Output(BlockSchema):
+        keyword: str = SchemaField(description="The related keyword")
+        search_volume: Optional[int] = SchemaField(
+            description="Monthly search volume", default=None
+        )
+        competition: Optional[float] = SchemaField(
+            description="Competition level (0-1)", default=None
+        )
+        cpc: Optional[float] = SchemaField(
+            description="Cost per click in USD", default=None
+        )
+        keyword_difficulty: Optional[int] = SchemaField(
+            description="Keyword difficulty score", default=None
+        )
+        serp_info: Optional[Dict[str, Any]] = SchemaField(
+            description="SERP data for the keyword", default=None
+        )
+        clickstream_data: Optional[Dict[str, Any]] = SchemaField(
+            description="Clickstream data metrics", default=None
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="98342061-09d2-4952-bf77-0761fc8cc9a8",
+            description="Extract individual fields from a RelatedKeyword object",
+            categories={BlockCategory.DATA},
+            input_schema=self.Input,
+            output_schema=self.Output,
+            test_input={
+                "related_keyword": RelatedKeyword(
+                    keyword="test related keyword",
+                    search_volume=800,
+                    competition=0.4,
+                    cpc=3.0,
+                    keyword_difficulty=55,
+                ).model_dump()
+            },
+            test_output=[
+                ("keyword", "test related keyword"),
+                ("search_volume", 800),
+                ("competition", 0.4),
+                ("cpc", 3.0),
+                ("keyword_difficulty", 55),
+                ("serp_info", None),
+                ("clickstream_data", None),
+            ],
+        )
+
+    async def run(
+        self,
+        input_data: Input,
+        **kwargs,
+    ) -> BlockOutput:
+        """Extract fields from the RelatedKeyword object."""
+        related_keyword = input_data.related_keyword
+
+        yield "keyword", related_keyword.keyword
+        yield "search_volume", related_keyword.search_volume
+        yield "competition", related_keyword.competition
+        yield "cpc", related_keyword.cpc
+        yield "keyword_difficulty", related_keyword.keyword_difficulty
+        yield "serp_info", related_keyword.serp_info
+        yield "clickstream_data", related_keyword.clickstream_data

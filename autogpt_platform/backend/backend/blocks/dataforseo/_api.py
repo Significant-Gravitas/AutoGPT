@@ -33,7 +33,7 @@ class DataForSeoClient:
 
     async def keyword_suggestions(
         self,
-        keywords: List[str],
+        keyword: str,
         location_code: Optional[int] = None,
         language_code: Optional[str] = None,
         include_seed_keyword: bool = True,
@@ -45,7 +45,7 @@ class DataForSeoClient:
         Get keyword suggestions from DataForSEO Labs.
 
         Args:
-            keywords: Seed keywords (up to 200)
+            keyword: Seed keyword
             location_code: Location code for targeting
             language_code: Language code (e.g., "en")
             include_seed_keyword: Include seed keyword in results
@@ -58,17 +58,25 @@ class DataForSeoClient:
         """
         endpoint = f"{self.API_URL}/v3/dataforseo_labs/google/keyword_suggestions/live"
 
-        payload = [
-            {
-                "keywords": keywords,
-                "location_code": location_code,
-                "language_code": language_code,
-                "include_seed_keyword": include_seed_keyword,
-                "include_serp_info": include_serp_info,
-                "include_clickstream_data": include_clickstream_data,
-                "limit": limit,
-            }
-        ]
+        # Build payload only with non-None values to avoid sending null fields
+        task_data: dict[str, Any] = {
+            "keyword": keyword,
+        }
+
+        if location_code is not None:
+            task_data["location_code"] = location_code
+        if language_code is not None:
+            task_data["language_code"] = language_code
+        if include_seed_keyword is not None:
+            task_data["include_seed_keyword"] = include_seed_keyword
+        if include_serp_info is not None:
+            task_data["include_serp_info"] = include_serp_info
+        if include_clickstream_data is not None:
+            task_data["include_clickstream_data"] = include_clickstream_data
+        if limit is not None:
+            task_data["limit"] = limit
+
+        payload = [task_data]
 
         response = await self.requests.post(
             endpoint,
@@ -98,7 +106,7 @@ class DataForSeoClient:
 
     async def related_keywords(
         self,
-        keywords: List[str],
+        keyword: str,
         location_code: Optional[int] = None,
         language_code: Optional[str] = None,
         include_seed_keyword: bool = True,
@@ -110,7 +118,7 @@ class DataForSeoClient:
         Get related keywords from DataForSEO Labs.
 
         Args:
-            keywords: Seed keywords (up to 200)
+            keyword: Seed keyword
             location_code: Location code for targeting
             language_code: Language code (e.g., "en")
             include_seed_keyword: Include seed keyword in results
@@ -123,17 +131,25 @@ class DataForSeoClient:
         """
         endpoint = f"{self.API_URL}/v3/dataforseo_labs/google/related_keywords/live"
 
-        payload = [
-            {
-                "keywords": keywords,
-                "location_code": location_code,
-                "language_code": language_code,
-                "include_seed_keyword": include_seed_keyword,
-                "include_serp_info": include_serp_info,
-                "include_clickstream_data": include_clickstream_data,
-                "limit": limit,
-            }
-        ]
+        # Build payload only with non-None values to avoid sending null fields
+        task_data: dict[str, Any] = {
+            "keyword": keyword,
+        }
+
+        if location_code is not None:
+            task_data["location_code"] = location_code
+        if language_code is not None:
+            task_data["language_code"] = language_code
+        if include_seed_keyword is not None:
+            task_data["include_seed_keyword"] = include_seed_keyword
+        if include_serp_info is not None:
+            task_data["include_serp_info"] = include_serp_info
+        if include_clickstream_data is not None:
+            task_data["include_clickstream_data"] = include_clickstream_data
+        if limit is not None:
+            task_data["limit"] = limit
+
+        payload = [task_data]
 
         response = await self.requests.post(
             endpoint,
