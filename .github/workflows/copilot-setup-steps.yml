@@ -183,16 +183,22 @@ jobs:
             done
             wait
             
-            echo "Saving Docker images to cache..."
-            for image in "${IMAGES[@]}"; do
-              # Convert image name to filename (replace : and / with -)
-              filename=$(echo "$image" | tr ':/' '--')
-              echo "Saving $image..."
-              docker save -o ~/docker-cache/${filename}.tar "$image" || echo "Warning: Failed to save $image"
-            done
+            # Start saving Docker images to cache in background
+            echo "Starting background save of Docker images to cache..."
+            (
+              for image in "${IMAGES[@]}"; do
+                # Convert image name to filename (replace : and / with -)
+                filename=$(echo "$image" | tr ':/' '--')
+                echo "Saving $image to cache..."
+                docker save -o ~/docker-cache/${filename}.tar "$image" || echo "Warning: Failed to save $image"
+              done
+              echo "Docker image cache save completed"
+            ) &
+            DOCKER_SAVE_PID=$!
+            echo "DOCKER_SAVE_PID=$DOCKER_SAVE_PID" >> $GITHUB_ENV
           fi
           
-          echo "Docker images ready"
+          echo "Docker images ready for use"
 
       # Phase 2: Build migrate service with GitHub Actions cache
       - name: Build migrate Docker image with cache
@@ -259,3 +265,13 @@ jobs:
           echo "🚀 Ready for development with Docker services running"
           echo "📝 Backend server: poetry run serve (port 8000)"
           echo "🌐 Frontend server: pnpm dev (port 3000)"
+
+      # Ensure background Docker save completes before workflow ends
+      - name: Wait for Docker cache save to complete
+        if: env.DOCKER_SAVE_PID != ''
+        run: |
+          if [ -n "$DOCKER_SAVE_PID" ]; then
+            echo "Waiting for Docker image cache save to complete (PID: $DOCKER_SAVE_PID)..."
+            wait $DOCKER_SAVE_PID || echo "Docker cache save process already completed"
+            echo "Docker cache save finished"
+          fi
