@@ -36,7 +36,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"  # Use stable version for setup
+          python-version: "3.11"  # Use standard version matching CI
 
       - name: Set up Python dependency cache
         uses: actions/cache@v4
@@ -48,7 +48,7 @@ jobs:
         run: |
           # Extract Poetry version from backend/poetry.lock (matches CI)
           cd autogpt_platform/backend
-          HEAD_POETRY_VERSION=$(python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)
+          HEAD_POETRY_VERSION=$(grep -A 1 '\[package\]' poetry.lock | grep -A 1 'name = "poetry"' | grep 'version =' | head -n 1 | sed 's/.*"\(.*\)".*/\1/')
           echo "Found Poetry version ${HEAD_POETRY_VERSION} in backend/poetry.lock"
           
           # Install Poetry
@@ -102,6 +102,15 @@ jobs:
         with:
           version: 1.178.1
 
+      - name: Setup GitHub CLI
+        run: |
+          type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+          sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+          sudo apt update
+          sudo apt install gh -y
+
       # Install Playwright browsers for frontend testing
       - name: Install Playwright browsers
         working-directory: autogpt_platform/frontend
@@ -123,7 +132,7 @@ jobs:
         working-directory: autogpt_platform
         run: |
           # Start essential services needed for development
-          docker compose up -d db redis rabbitmq clamav
+          docker compose --profile local up deps --build --detach
           echo "Waiting for services to be ready..."
           # Wait for database
           timeout 60 sh -c 'until docker compose exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done' || echo "Database ready check timeout, continuing..."

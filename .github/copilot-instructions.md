@@ -70,8 +70,8 @@ poetry run lint                      # Lint code (ruff) - run after format
 **Frontend Development:**
 ```bash
 cd autogpt_platform/frontend
-pnpm dev                            # Start development server (port 3000)
-pnpm build                          # Build for production
+pnpm dev                            # Start development server (port 3000) - use for active development
+pnpm build                          # Build for production (only needed for E2E tests or deployment)
 pnpm test                           # Run Playwright E2E tests (requires build first)
 pnpm test-ui                        # Run tests with UI
 pnpm format                         # Format and lint code
