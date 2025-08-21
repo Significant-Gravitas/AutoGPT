@@ -129,14 +129,34 @@ jobs:
           cp backend/.env.default backend/.env
           cp frontend/.env.default frontend/.env
 
-      # Use Docker Bake with GitHub Actions cache for fast builds
-      - name: Build Docker images with cache
+      # Phase 1: Pull external images in parallel for faster setup
+      - name: Pull external Docker images
+        working-directory: autogpt_platform
+        run: |
+          echo "Pulling external images in parallel..."
+          docker pull redis:latest &
+          docker pull rabbitmq:management &
+          docker pull clamav/clamav-debian:latest &
+          docker pull busybox:latest &
+          wait
+          echo "External images pulled successfully"
+
+      # Phase 2: Build only backend services with GitHub Actions cache
+      - name: Build backend Docker images with cache
         uses: docker/bake-action@v5
         with:
           workdir: autogpt_platform
           files: |
             docker-compose.yml
             docker-compose.platform.yml
+          targets: |
+            migrate
+            rest_server
+            executor
+            websocket_server
+            database_manager
+            scheduler_server
+            notification_server
           load: true
           set: |
             *.cache-from=type=gha
@@ -146,7 +166,7 @@ jobs:
       - name: Start Docker services for development
         working-directory: autogpt_platform
         run: |
-          # Start essential services (images already built by bake)
+          # Start essential services (all images already pulled/built)
           # The 'deps' profile includes the migrate service which runs automatically
           docker compose --profile local up deps --no-build --detach
           echo "Waiting for services to be ready..."
