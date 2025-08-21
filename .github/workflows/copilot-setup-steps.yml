@@ -134,17 +134,24 @@ jobs:
           cp backend/.env.default backend/.env
           cp frontend/.env.default frontend/.env
 
-      # Phase 1: Pull external images in parallel for faster setup
-      - name: Pull external Docker images
+      # Phase 1: Pull all Docker images in parallel for faster setup
+      - name: Pull Docker images in parallel
         working-directory: autogpt_platform
         run: |
-          echo "Pulling external images in parallel..."
+          echo "Pulling all Docker images in parallel..."
+          # External service images
           docker pull redis:latest &
           docker pull rabbitmq:management &
           docker pull clamav/clamav-debian:latest &
           docker pull busybox:latest &
+          # Supabase images
+          docker pull kong:2.8.1 &
+          docker pull supabase/gotrue:v2.170.0 &
+          docker pull supabase/postgres:15.8.1.049 &
+          docker pull supabase/postgres-meta:v0.86.1 &
+          docker pull supabase/studio:20250224-d10db0f &
           wait
-          echo "External images pulled successfully"
+          echo "All images pulled successfully"
 
       # Phase 2: Build migrate service with GitHub Actions cache
       - name: Build migrate Docker image with cache
