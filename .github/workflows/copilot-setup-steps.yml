@@ -132,22 +132,15 @@ jobs:
         working-directory: autogpt_platform
         run: |
           # Start essential services needed for development
+          # The 'deps' profile includes the migrate service which runs automatically
           docker compose --profile local up deps --build --detach
           echo "Waiting for services to be ready..."
-          # Wait for database
+          # Wait for database and migrations to complete
           timeout 60 sh -c 'until docker compose exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done' || echo "Database ready check timeout, continuing..."
-          # Brief wait for other services
+          # Wait for migrate service to complete
+          timeout 60 sh -c 'until docker compose ps migrate | grep -q "Exit 0"; do sleep 2; done' || echo "Migration check timeout, continuing..."
+          # Brief wait for other services to stabilize
           sleep 10
-
-      # Run database migrations (essential for development)
-      - name: Run Database Migrations
-        working-directory: autogpt_platform/backend
-        run: |
-          # Run migrations with the Docker database
-          poetry run prisma migrate dev --name setup
-        env:
-          DATABASE_URL: postgresql://postgres:password@localhost:5432/postgres
-          DIRECT_URL: postgresql://postgres:password@localhost:5432/postgres
 
       # Verify installations and provide environment info
       - name: Verify setup and show environment info
