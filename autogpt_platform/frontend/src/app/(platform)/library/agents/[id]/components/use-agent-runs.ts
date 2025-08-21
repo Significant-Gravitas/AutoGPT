@@ -58,7 +58,6 @@ export const useAgentRunsInfinite = (graphID?: GraphID) => {
   const agentRuns =
     queryResults?.pages.flatMap((page) => {
       const response = page.data as GraphExecutionsPaginated;
-      // FIXME: add reviver function to parse dates coming out of API
       return response.executions;
     }) ?? [];
 
