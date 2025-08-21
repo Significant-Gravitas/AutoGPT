@@ -12,7 +12,7 @@ This file provides comprehensive onboarding information for GitHub Copilot codin
 - **Infrastructure** - Docker configurations, CI/CD, and development tools
 
 **Primary Languages & Frameworks:**
-- **Backend**: Python 3.10-3.12, FastAPI, Prisma ORM, PostgreSQL, RabbitMQ
+- **Backend**: Python 3.10-3.13, FastAPI, Prisma ORM, PostgreSQL, RabbitMQ
 - **Frontend**: TypeScript, Next.js 15, React, Tailwind CSS, Radix UI
 - **Development**: Docker, Poetry, pnpm, Playwright, Storybook
 
