@@ -282,6 +282,11 @@ export type GraphExecution = GraphExecutionMeta & {
   node_executions?: NodeExecutionResult[];
 };
 
+export type GraphExecutionsResponse = {
+  executions: GraphExecutionMeta[];
+  pagination: Pagination;
+};
+
 /* Mirror of backend/data/graph.py:GraphMeta */
 export type GraphMeta = {
   id: GraphID;
@@ -434,12 +439,7 @@ export enum AgentStatus {
 
 export type LibraryAgentResponse = {
   agents: LibraryAgent[];
-  pagination: {
-    current_page: number;
-    page_size: number;
-    total_items: number;
-    total_pages: number;
-  };
+  pagination: Pagination;
 };
 
 export type LibraryAgentPreset = {
@@ -459,11 +459,7 @@ export type LibraryAgentPresetID = Brand<string, "LibraryAgentPresetID">;
 
 export type LibraryAgentPresetResponse = {
   presets: LibraryAgentPreset[];
-  pagination: {
-    total: number;
-    page: number;
-    size: number;
-  };
+  pagination: Pagination;
 };
 
 export type LibraryAgentPresetCreatable = Omit<
