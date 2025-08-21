@@ -7,27 +7,11 @@ import type { GraphExecution } from "@/lib/autogpt-server-api/types";
 const MILLISECONDS_PER_SECOND = 1000;
 const SECONDS_PER_MINUTE = 60;
 const MINUTES_PER_HOUR = 60;
-const HOURS_PER_DAY = 24;
-const DAYS_PER_WEEK = 7;
 const MILLISECONDS_PER_MINUTE = SECONDS_PER_MINUTE * MILLISECONDS_PER_SECOND;
 const MILLISECONDS_PER_HOUR = MINUTES_PER_HOUR * MILLISECONDS_PER_MINUTE;
-const MILLISECONDS_PER_DAY = HOURS_PER_DAY * MILLISECONDS_PER_HOUR;
-const MILLISECONDS_PER_WEEK = DAYS_PER_WEEK * MILLISECONDS_PER_DAY;
+const MILLISECONDS_PER_72_HOURS = 72 * MILLISECONDS_PER_HOUR;
 const SHORT_DURATION_THRESHOLD_SECONDS = 5;
-
-export function formatTimeAgo(dateStr: string): string {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / MILLISECONDS_PER_MINUTE);
-
-  if (diffMins < 1) return "just now";
-  if (diffMins < SECONDS_PER_MINUTE) return `${diffMins}m ago`;
-  const diffHours = Math.floor(diffMins / MINUTES_PER_HOUR);
-  if (diffHours < HOURS_PER_DAY) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / HOURS_PER_DAY);
-  return `${diffDays}d ago`;
-}
+const MAX_EXECUTIONS_CAP = 1000;
 
 export function getExecutionDuration(
   execution: GeneratedGraphExecutionMeta,
@@ -159,34 +143,34 @@ export function isActiveExecution(
 
 export function isRecentCompletion(
   execution: GeneratedGraphExecutionMeta,
-  oneWeekAgo: Date,
+  cutoffDate: Date,
 ): boolean {
   const status = execution.status;
   return (
     status === AgentExecutionStatus.COMPLETED &&
     !!execution.ended_at &&
-    new Date(execution.ended_at) > oneWeekAgo
+    new Date(execution.ended_at) > cutoffDate
   );
 }
 
 export function isRecentFailure(
   execution: GeneratedGraphExecutionMeta,
-  oneWeekAgo: Date,
+  cutoffDate: Date,
 ): boolean {
   const status = execution.status;
   return (
     (status === AgentExecutionStatus.FAILED ||
       status === AgentExecutionStatus.TERMINATED) &&
     !!execution.ended_at &&
-    new Date(execution.ended_at) > oneWeekAgo
+    new Date(execution.ended_at) > cutoffDate
   );
 }
 
 export function isRecentNotification(
   execution: AgentExecutionWithInfo,
-  oneWeekAgo: Date,
+  cutoffDate: Date,
 ): boolean {
-  return execution.ended_at ? new Date(execution.ended_at) > oneWeekAgo : false;
+  return execution.ended_at ? new Date(execution.ended_at) > cutoffDate : false;
 }
 
 export function categorizeExecutions(
@@ -196,21 +180,34 @@ export function categorizeExecutions(
     { name: string; description: string; library_agent_id?: string }
   >,
 ): NotificationState {
-  const oneWeekAgo = new Date(Date.now() - MILLISECONDS_PER_WEEK);
+  const seventyTwoHoursAgo = new Date(Date.now() - MILLISECONDS_PER_72_HOURS);
 
-  const enrichedExecutions = executions.map((execution) =>
+  // First filter by 72-hour window, then apply cap
+  const recentExecutions = executions
+    .filter((execution) => {
+      // Always include active executions regardless of time
+      if (isActiveExecution(execution)) return true;
+
+      // For completed/failed executions, check if they're within 72 hours
+      return (
+        execution.ended_at && new Date(execution.ended_at) > seventyTwoHoursAgo
+      );
+    })
+    .slice(0, MAX_EXECUTIONS_CAP); // Apply 800 execution cap
+
+  const enrichedExecutions = recentExecutions.map((execution) =>
     enrichExecutionWithAgentInfo(execution, agentInfoMap),
   );
 
-  // Filter and limit each category to prevent unbounded state growth
+  // Categorize the capped executions
   const activeExecutions = enrichedExecutions.filter(isActiveExecution);
 
   const recentCompletions = enrichedExecutions.filter((execution) =>
-    isRecentCompletion(execution, oneWeekAgo),
+    isRecentCompletion(execution, seventyTwoHoursAgo),
   );
 
   const recentFailures = enrichedExecutions.filter((execution) =>
-    isRecentFailure(execution, oneWeekAgo),
+    isRecentFailure(execution, seventyTwoHoursAgo),
   );
 
   return {
@@ -250,14 +247,14 @@ export function addExecutionToCategory(
   state: NotificationState,
   execution: AgentExecutionWithInfo,
 ): NotificationState {
-  const oneWeekAgo = new Date(Date.now() - MILLISECONDS_PER_WEEK);
+  const seventyTwoHoursAgo = new Date(Date.now() - MILLISECONDS_PER_72_HOURS);
   const newState = { ...state };
 
   if (isActiveExecution(execution)) {
     newState.activeExecutions = [execution, ...newState.activeExecutions];
-  } else if (isRecentCompletion(execution, oneWeekAgo)) {
+  } else if (isRecentCompletion(execution, seventyTwoHoursAgo)) {
     newState.recentCompletions = [execution, ...newState.recentCompletions];
-  } else if (isRecentFailure(execution, oneWeekAgo)) {
+  } else if (isRecentFailure(execution, seventyTwoHoursAgo)) {
     newState.recentFailures = [execution, ...newState.recentFailures];
   }
 
@@ -267,13 +264,13 @@ export function addExecutionToCategory(
 export function cleanupOldNotifications(
   state: NotificationState,
 ): NotificationState {
-  const oneWeekAgo = new Date(Date.now() - MILLISECONDS_PER_WEEK);
+  const seventyTwoHoursAgo = new Date(Date.now() - MILLISECONDS_PER_72_HOURS);
 
   const filteredRecentCompletions = state.recentCompletions.filter((e) =>
-    isRecentNotification(e, oneWeekAgo),
+    isRecentNotification(e, seventyTwoHoursAgo),
   );
   const filteredRecentFailures = state.recentFailures.filter((e) =>
-    isRecentNotification(e, oneWeekAgo),
+    isRecentNotification(e, seventyTwoHoursAgo),
   );
 
   return {

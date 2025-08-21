@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 
 from backend.data.model import UserTransaction
-from backend.server.model import Pagination
+from backend.util.models import Pagination
 
 
 class UserHistoryResponse(BaseModel):

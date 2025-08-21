@@ -39,20 +39,20 @@ faker = Faker()
 
 
 # Constants for data generation limits (reduced for E2E tests)
-NUM_USERS = 10
-NUM_AGENT_BLOCKS = 20
-MIN_GRAPHS_PER_USER = 10
-MAX_GRAPHS_PER_USER = 10
-MIN_NODES_PER_GRAPH = 2
-MAX_NODES_PER_GRAPH = 4
-MIN_PRESETS_PER_USER = 1
-MAX_PRESETS_PER_USER = 2
-MIN_AGENTS_PER_USER = 10
-MAX_AGENTS_PER_USER = 10
-MIN_EXECUTIONS_PER_GRAPH = 1
-MAX_EXECUTIONS_PER_GRAPH = 5
-MIN_REVIEWS_PER_VERSION = 1
-MAX_REVIEWS_PER_VERSION = 3
+NUM_USERS = 15
+NUM_AGENT_BLOCKS = 30
+MIN_GRAPHS_PER_USER = 15
+MAX_GRAPHS_PER_USER = 15
+MIN_NODES_PER_GRAPH = 3
+MAX_NODES_PER_GRAPH = 6
+MIN_PRESETS_PER_USER = 2
+MAX_PRESETS_PER_USER = 3
+MIN_AGENTS_PER_USER = 15
+MAX_AGENTS_PER_USER = 15
+MIN_EXECUTIONS_PER_GRAPH = 2
+MAX_EXECUTIONS_PER_GRAPH = 8
+MIN_REVIEWS_PER_VERSION = 2
+MAX_REVIEWS_PER_VERSION = 5
 
 
 def get_image():
@@ -74,6 +74,23 @@ def get_video_url():
     ]
     video_id = random.choice(video_ids)
     return f"https://www.youtube.com/watch?v={video_id}"
+
+
+def get_category():
+    """Generate a random category from the predefined list."""
+    categories = [
+        "productivity",
+        "writing",
+        "development",
+        "data",
+        "marketing",
+        "research",
+        "creative",
+        "business",
+        "personal",
+        "other",
+    ]
+    return random.choice(categories)
 
 
 class TestDataCreator:
@@ -559,24 +576,37 @@ class TestDataCreator:
                 submissions.append(test_submission.model_dump())
                 print("✅ Created special test store submission for test123@gmail.com")
 
-                # Auto-approve the test submission
+                # Randomly approve, reject, or leave pending the test submission
                 if test_submission.store_listing_version_id:
-                    approved_submission = await review_store_submission(
-                        store_listing_version_id=test_submission.store_listing_version_id,
-                        is_approved=True,
-                        external_comments="Test submission approved",
-                        internal_comments="Auto-approved test submission",
-                        reviewer_id=test_user["id"],
-                    )
-                    approved_submissions.append(approved_submission.model_dump())
-                    print("✅ Approved test store submission")
+                    random_value = random.random()
+                    if random_value < 0.4:  # 40% chance to approve
+                        approved_submission = await review_store_submission(
+                            store_listing_version_id=test_submission.store_listing_version_id,
+                            is_approved=True,
+                            external_comments="Test submission approved",
+                            internal_comments="Auto-approved test submission",
+                            reviewer_id=test_user["id"],
+                        )
+                        approved_submissions.append(approved_submission.model_dump())
+                        print("✅ Approved test store submission")
 
-                    # Mark test submission as featured
-                    await prisma.storelistingversion.update(
-                        where={"id": test_submission.store_listing_version_id},
-                        data={"isFeatured": True},
-                    )
-                    print("🌟 Marked test agent as FEATURED")
+                        # Mark approved submission as featured
+                        await prisma.storelistingversion.update(
+                            where={"id": test_submission.store_listing_version_id},
+                            data={"isFeatured": True},
+                        )
+                        print("🌟 Marked test agent as FEATURED")
+                    elif random_value < 0.7:  # 30% chance to reject (40% to 70%)
+                        await review_store_submission(
+                            store_listing_version_id=test_submission.store_listing_version_id,
+                            is_approved=False,
+                            external_comments="Test submission rejected - needs improvements",
+                            internal_comments="Auto-rejected test submission for E2E testing",
+                            reviewer_id=test_user["id"],
+                        )
+                        print("❌ Rejected test store submission")
+                    else:  # 30% chance to leave pending (70% to 100%)
+                        print("⏳ Left test submission pending for review")
 
             except Exception as e:
                 print(f"Error creating test store submission: {e}")
@@ -617,58 +647,87 @@ class TestDataCreator:
                         video_url=get_video_url() if random.random() < 0.3 else None,
                         image_urls=[get_image() for _ in range(3)],
                         description=faker.text(),
-                        categories=[faker.word() for _ in range(3)],
+                        categories=[
+                            get_category()
+                        ],  # Single category from predefined list
                         changes_summary="Initial E2E test submission",
                     )
                     submissions.append(submission.model_dump())
                     print(f"✅ Created store submission: {submission.name}")
 
-                    # Approve the submission so it appears in the store
+                    # Randomly approve, reject, or leave pending the submission
                     if submission.store_listing_version_id:
-                        try:
-                            # Pick a random user as the reviewer (admin)
-                            reviewer_id = random.choice(self.users)["id"]
+                        random_value = random.random()
+                        if random_value < 0.4:  # 40% chance to approve
+                            try:
+                                # Pick a random user as the reviewer (admin)
+                                reviewer_id = random.choice(self.users)["id"]
 
-                            approved_submission = await review_store_submission(
-                                store_listing_version_id=submission.store_listing_version_id,
-                                is_approved=True,
-                                external_comments="Auto-approved for E2E testing",
-                                internal_comments="Automatically approved by E2E test data script",
-                                reviewer_id=reviewer_id,
-                            )
-                            approved_submissions.append(
-                                approved_submission.model_dump()
-                            )
-                            print(f"✅ Approved store submission: {submission.name}")
+                                approved_submission = await review_store_submission(
+                                    store_listing_version_id=submission.store_listing_version_id,
+                                    is_approved=True,
+                                    external_comments="Auto-approved for E2E testing",
+                                    internal_comments="Automatically approved by E2E test data script",
+                                    reviewer_id=reviewer_id,
+                                )
+                                approved_submissions.append(
+                                    approved_submission.model_dump()
+                                )
+                                print(
+                                    f"✅ Approved store submission: {submission.name}"
+                                )
 
-                            # Mark some agents as featured during creation (30% chance)
-                            # More likely for creators and first submissions
-                            is_creator = user["id"] in [
-                                p.get("userId") for p in self.profiles
-                            ]
-                            feature_chance = (
-                                0.5 if is_creator else 0.2
-                            )  # 50% for creators, 20% for others
+                                # Mark some agents as featured during creation (30% chance)
+                                # More likely for creators and first submissions
+                                is_creator = user["id"] in [
+                                    p.get("userId") for p in self.profiles
+                                ]
+                                feature_chance = (
+                                    0.5 if is_creator else 0.2
+                                )  # 50% for creators, 20% for others
 
-                            if random.random() < feature_chance:
-                                try:
-                                    await prisma.storelistingversion.update(
-                                        where={
-                                            "id": submission.store_listing_version_id
-                                        },
-                                        data={"isFeatured": True},
-                                    )
-                                    print(
-                                        f"🌟 Marked agent as FEATURED: {submission.name}"
-                                    )
-                                except Exception as e:
-                                    print(
-                                        f"Warning: Could not mark submission as featured: {e}"
-                                    )
+                                if random.random() < feature_chance:
+                                    try:
+                                        await prisma.storelistingversion.update(
+                                            where={
+                                                "id": submission.store_listing_version_id
+                                            },
+                                            data={"isFeatured": True},
+                                        )
+                                        print(
+                                            f"🌟 Marked agent as FEATURED: {submission.name}"
+                                        )
+                                    except Exception as e:
+                                        print(
+                                            f"Warning: Could not mark submission as featured: {e}"
+                                        )
 
-                        except Exception as e:
+                            except Exception as e:
+                                print(
+                                    f"Warning: Could not approve submission {submission.name}: {e}"
+                                )
+                        elif random_value < 0.7:  # 30% chance to reject (40% to 70%)
+                            try:
+                                # Pick a random user as the reviewer (admin)
+                                reviewer_id = random.choice(self.users)["id"]
+
+                                await review_store_submission(
+                                    store_listing_version_id=submission.store_listing_version_id,
+                                    is_approved=False,
+                                    external_comments="Submission rejected - needs improvements",
+                                    internal_comments="Automatically rejected by E2E test data script",
+                                    reviewer_id=reviewer_id,
+                                )
+                                print(
+                                    f"❌ Rejected store submission: {submission.name}"
+                                )
+                            except Exception as e:
+                                print(
+                                    f"Warning: Could not reject submission {submission.name}: {e}"
+                                )
+                        else:  # 30% chance to leave pending (70% to 100%)
                             print(
-                                f"Warning: Could not approve submission {submission.name}: {e}"
+                                f"⏳ Left submission pending for review: {submission.name}"
                             )
 
                 except Exception as e:
