@@ -146,7 +146,7 @@ jobs:
           wait
           echo "External images pulled successfully"
 
-      # Phase 2: Build only the migrate service (all we need for tests)
+      # Phase 2: Build migrate service with GitHub Actions cache
       - name: Build migrate Docker image with cache
         uses: docker/bake-action@v5
         with:
@@ -165,7 +165,7 @@ jobs:
       - name: Start Docker services for development
         working-directory: autogpt_platform
         run: |
-          # Start essential services (all images already pulled/built)
+          # Start essential services (migrate is already built by bake)
           # The 'deps' profile includes the migrate service which runs automatically
           docker compose --profile local up deps --no-build --detach
           echo "Waiting for services to be ready..."
