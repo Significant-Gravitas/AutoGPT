@@ -164,15 +164,17 @@ jobs:
           )
           
           if [ "${{ steps.docker-cache.outputs.cache-hit }}" == "true" ]; then
-            echo "Loading Docker images from cache..."
+            echo "Loading Docker images from cache in parallel..."
             for image in "${IMAGES[@]}"; do
               # Convert image name to filename (replace : and / with -)
               filename=$(echo "$image" | tr ':/' '--')
               if [ -f ~/docker-cache/${filename}.tar ]; then
                 echo "Loading $image..."
-                docker load -i ~/docker-cache/${filename}.tar || echo "Warning: Failed to load $image from cache"
+                docker load -i ~/docker-cache/${filename}.tar || echo "Warning: Failed to load $image from cache" &
               fi
             done
+            wait
+            echo "All images loaded from cache"
           else
             echo "Cache miss - pulling Docker images in parallel..."
             # Pull all images in parallel
