@@ -475,7 +475,7 @@ export function OldAgentLibraryView() {
       {/* Sidebar w/ list of runs */}
       {/* TODO: render this below header in sm and md layouts */}
       <AgentRunsSelectorList
-        className="agpt-div w-full border-b lg:w-auto lg:border-b-0 lg:border-r"
+        className="agpt-div w-full border-b pb-2 lg:w-auto lg:border-b-0 lg:border-r lg:pb-0"
         agent={agent}
         agentRunsQuery={agentRunsQuery}
         agentPresets={agentPresets}

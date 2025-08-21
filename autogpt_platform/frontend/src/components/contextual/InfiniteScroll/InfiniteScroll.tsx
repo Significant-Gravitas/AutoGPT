@@ -3,6 +3,7 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 import { useInfiniteScroll } from "./useInfiniteScroll";
+import LoadingBox from "@/components/ui/loading";
 
 type InfiniteScrollProps = {
   children: React.ReactNode;
@@ -10,7 +11,6 @@ type InfiniteScrollProps = {
   loader?: React.ReactNode;
   scrollThreshold?: number;
   className?: string;
-  scrollableTarget?: string;
   onLoadMore?: () => void;
   isFetchingNextPage: boolean;
   fetchNextPage: () => void;
@@ -34,38 +34,34 @@ export const InfiniteScroll: React.FC<InfiniteScrollProps> = ({
   endMessage,
   className,
   scrollThreshold = 20,
-  scrollableTarget,
   onLoadMore,
   isFetchingNextPage,
   fetchNextPage,
   direction = "vertical",
 }) => {
-  const { containerRef, bottomRef } = useInfiniteScroll({
+  const { containerRef, endOfListRef } = useInfiniteScroll({
     isFetchingNextPage,
     fetchNextPage,
     scrollThreshold,
-    scrollableTarget,
     onLoadMore,
     hasNextPage,
-    direction,
   });
 
-  const defaultLoader = (
-    <div className="flex w-full items-center justify-center py-4">
-      <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-t-2 border-neutral-800" />
-    </div>
-  );
+  const defaultLoader = <LoadingBox className="w-full py-4" spinnerSize={12} />;
 
   return (
     <div
       ref={containerRef}
-      className={cn(direction === "vertical" ? "w-full" : "h-full", className)}
+      className={cn(
+        direction === "vertical" ? "w-full" : "flex h-full items-center",
+        className,
+      )}
     >
       {children}
       {hasNextPage ? (
         <div
-          ref={bottomRef}
-          className={`flex items-center justify-center ${direction === "vertical" ? "w-full py-8" : "h-full px-8"}`}
+          ref={endOfListRef}
+          className={`flex items-center justify-center ${direction === "vertical" ? "w-full py-8" : "h-full flex-shrink-0 px-8"}`}
         >
           {loader || defaultLoader}
         </div>
