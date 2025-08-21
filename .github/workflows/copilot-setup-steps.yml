@@ -83,6 +83,11 @@ jobs:
       - name: Enable corepack
         run: corepack enable
 
+      - name: Set pnpm store directory
+        run: |
+          pnpm config set store-dir ~/.pnpm-store
+          echo "PNPM_HOME=$HOME/.pnpm-store" >> $GITHUB_ENV
+
       - name: Cache frontend dependencies
         uses: actions/cache@v4
         with:
