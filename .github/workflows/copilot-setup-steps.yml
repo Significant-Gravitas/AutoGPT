@@ -141,8 +141,8 @@ jobs:
           wait
           echo "External images pulled successfully"
 
-      # Phase 2: Build only backend services with GitHub Actions cache
-      - name: Build backend Docker images with cache
+      # Phase 2: Build only the migrate service (all we need for tests)
+      - name: Build migrate Docker image with cache
         uses: docker/bake-action@v5
         with:
           workdir: autogpt_platform
@@ -151,12 +151,6 @@ jobs:
             docker-compose.platform.yml
           targets: |
             migrate
-            rest_server
-            executor
-            websocket_server
-            database_manager
-            scheduler_server
-            notification_server
           load: true
           set: |
             *.cache-from=type=gha
