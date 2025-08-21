@@ -102,11 +102,6 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # Setup additional development tools
-      - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v1
-        with:
-          version: 1.178.1
-
       - name: Setup GitHub CLI
         run: |
           type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
@@ -243,9 +238,9 @@ jobs:
           pnpm --version
           
           echo "=== Additional Tools ==="
-          supabase --version
           docker --version
           docker compose version
+          gh --version || true
           
           echo "=== Services Status ==="
           cd autogpt_platform
