@@ -219,39 +219,45 @@ jobs:
           
           # Check migrate service status
           echo "Checking migration status..."
-          docker compose ps migrate || echo "  Migrate service not found in ps output"
+          docker compose ps migrate || echo "  Migrate service not visible in ps output"
           
-          # Wait for migrate service to complete (using POSIX-compatible syntax)
-          timeout 30 bash -c 'while true; do
-            # Get the status line for migrate service
-            MIGRATE_LINE=$(docker compose ps migrate 2>/dev/null | grep "autogpt_platform-migrate" || echo "")
-            
-            if [ -z "$MIGRATE_LINE" ]; then
-              echo "  Migrate service not found"
-              sleep 2
-              continue
-            fi
-            
-            # Check if the service has exited
-            if echo "$MIGRATE_LINE" | grep -q "Exited"; then
-              # Extract exit code from status (e.g., "Exited (0)" or "Exited (1)")
-              EXIT_CODE=$(echo "$MIGRATE_LINE" | grep -oE "Exited \([0-9]+\)" | grep -oE "[0-9]+" || echo "unknown")
+          # Wait for migrate service to complete
+          echo "Waiting for migrations to complete..."
+          timeout 30 bash -c '
+            ATTEMPTS=0
+            while [ $ATTEMPTS -lt 15 ]; do
+              ATTEMPTS=$((ATTEMPTS + 1))
               
-              if [ "$EXIT_CODE" = "0" ]; then
-                echo "✅ Migrations completed successfully (exit code: 0)"
-                break
-              else
+              # Check using docker directly (more reliable than docker compose ps)
+              CONTAINER_STATUS=$(docker ps -a --filter "label=com.docker.compose.service=migrate" --format "{{.Status}}" | head -1)
+              
+              if [ -z "$CONTAINER_STATUS" ]; then
+                echo "  Attempt $ATTEMPTS: Migrate container not found yet..."
+              elif echo "$CONTAINER_STATUS" | grep -q "Exited (0)"; then
+                echo "✅ Migrations completed successfully"
+                docker compose logs migrate --tail=5 2>/dev/null || true
+                exit 0
+              elif echo "$CONTAINER_STATUS" | grep -q "Exited ([1-9]"; then
+                EXIT_CODE=$(echo "$CONTAINER_STATUS" | grep -oE "Exited \([0-9]+\)" | grep -oE "[0-9]+")
                 echo "❌ Migrations failed with exit code: $EXIT_CODE"
-                docker compose logs migrate --tail=20
-                break
+                echo "Migration logs:"
+                docker compose logs migrate --tail=20 2>/dev/null || true
+                exit 1
+              elif echo "$CONTAINER_STATUS" | grep -q "Up"; then
+                echo "  Attempt $ATTEMPTS: Migrate container is running... ($CONTAINER_STATUS)"
+              else
+                echo "  Attempt $ATTEMPTS: Migrate container status: $CONTAINER_STATUS"
               fi
-            else
-              # Service is still running
-              echo "  Migrate service is running..."
-            fi
+              
+              sleep 2
+            done
             
-            sleep 2
-          done' || echo "⚠️ Migration check timeout after 30s, continuing..."
+            echo "⚠️ Timeout: Could not determine migration status after 30 seconds"
+            echo "Final container check:"
+            docker ps -a --filter "label=com.docker.compose.service=migrate" || true
+            echo "Migration logs (if available):"
+            docker compose logs migrate --tail=10 2>/dev/null || echo "  No logs available"
+          ' || echo "⚠️ Migration check completed with warnings, continuing..."
           
           # Brief wait for other services to stabilize
           echo "Waiting 5 seconds for other services to stabilize..."
