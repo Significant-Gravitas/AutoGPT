@@ -87,41 +87,25 @@ export function convertUTCToUserTimezone(
 /**
  * Format time for schedule display with timezone context
  * @param nextRunTime - The next run time (UTC)
- * @param scheduleTimezone - The timezone the schedule was created in
- * @param userTimezone - The current user's timezone (optional)
- * @returns Formatted string with appropriate timezone context
+ * @param displayTimezone - The timezone to display the time in (typically user's timezone)
+ * @returns Formatted string in the specified timezone
  */
 export function formatScheduleTime(
   nextRunTime: string | Date,
-  scheduleTimezone: string,
-  userTimezone?: string,
+  displayTimezone: string,
 ): string {
   const date =
     typeof nextRunTime === "string" ? new Date(nextRunTime) : nextRunTime;
 
-  // Use schedule timezone for display
-  const displayTimezone = scheduleTimezone || "UTC";
-  const formatted = formatInTimezone(date, displayTimezone, {
+  // Use provided timezone for display, fallback to UTC
+  const timezone = displayTimezone || "UTC";
+  const formatted = formatInTimezone(date, timezone, {
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
     timeZoneName: "short",
   });
-
-  // Add context if user timezone differs from schedule timezone
-  if (
-    userTimezone &&
-    userTimezone !== scheduleTimezone &&
-    userTimezone !== "not-set"
-  ) {
-    const userFormatted = formatInTimezone(date, userTimezone, {
-      hour: "2-digit",
-      minute: "2-digit",
-      timeZoneName: "short",
-    });
-    return `${formatted} (${userFormatted} your time)`;
-  }
 
   return formatted;
 }

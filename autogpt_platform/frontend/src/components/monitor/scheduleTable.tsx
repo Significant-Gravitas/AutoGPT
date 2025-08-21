@@ -18,6 +18,7 @@ import {
   formatScheduleTime,
   getTimezoneAbbreviation,
 } from "@/lib/timezone-utils";
+import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 import {
   Select,
   SelectContent,
@@ -62,6 +63,10 @@ export const SchedulesTable = ({
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState<string>(""); // Graph ID
+
+  // Get user's timezone for displaying schedule times
+  const { data: timezoneData } = useGetV1GetUserTimezone();
+  const userTimezone = timezoneData?.data?.timezone || "UTC";
 
   const filteredAndSortedSchedules = [...schedules]
     .filter(
@@ -245,10 +250,7 @@ export const SchedulesTable = ({
                   </TableCell>
                   <TableCell>{schedule.graph_version}</TableCell>
                   <TableCell>
-                    {formatScheduleTime(
-                      schedule.next_run_time,
-                      schedule.timezone || "UTC",
-                    )}
+                    {formatScheduleTime(schedule.next_run_time, userTimezone)}
                   </TableCell>
                   <TableCell>
                     <Badge variant="secondary">
@@ -257,7 +259,7 @@ export const SchedulesTable = ({
                   </TableCell>
                   <TableCell>
                     <span className="text-sm text-muted-foreground">
-                      {getTimezoneAbbreviation(schedule.timezone || "UTC")}
+                      {getTimezoneAbbreviation(userTimezone)}
                     </span>
                   </TableCell>
                   <TableCell>
