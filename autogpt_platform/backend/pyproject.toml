@@ -77,7 +77,7 @@ gcloud-aio-storage = "^9.5.0"
 pandas = "^2.3.1"
 firecrawl-py = "^2.16.3"
 exa-py = "^1.14.20"
-pydantic-extra-types = {extras = ["all"], version = "^2.10.5"}
+croniter = "^6.0.0"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"

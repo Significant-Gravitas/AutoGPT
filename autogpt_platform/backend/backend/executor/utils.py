@@ -18,6 +18,7 @@ from backend.data.execution import (
     ExecutionStatus,
     GraphExecutionStats,
     GraphExecutionWithNodes,
+    UserContext,
 )
 from backend.data.graph import GraphModel, Node
 from backend.data.model import CredentialsMetaInput
@@ -34,6 +35,27 @@ from backend.util.logging import TruncatedLogger
 from backend.util.mock import MockObject
 from backend.util.settings import Config
 from backend.util.type import convert
+
+
+async def get_user_context(user_id: str) -> UserContext:
+    """
+    Get UserContext for a user, always returns a valid context with timezone.
+    Defaults to UTC if user has no timezone set.
+    """
+    user_context = UserContext(timezone="UTC")  # Default to UTC
+    try:
+        user = await get_user_by_id(user_id)
+        if user and user.timezone and user.timezone != "not-set":
+            user_context.timezone = user.timezone
+            logger.debug(f"Retrieved user context: timezone={user.timezone}")
+        else:
+            logger.debug("User has no timezone set, using UTC")
+    except Exception as e:
+        logger.warning(f"Could not fetch user timezone: {e}")
+        # Continue with UTC as default
+
+    return user_context
+
 
 config = Config()
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[GraphExecutorUtil]")
@@ -878,22 +900,13 @@ async def add_graph_execution(
             preset_id=preset_id,
         )
 
-        # Fetch user timezone for the graph execution
-        user_timezone = None
-        try:
-            user = await get_user_by_id(user_id)
-            if user and user.timezone and user.timezone != "not-set":
-                user_timezone = user.timezone
-                logger.debug(f"User timezone for graph execution: {user_timezone}")
-        except Exception as e:
-            logger.warning(f"Could not fetch user timezone: {e}")
-            # Continue without timezone - blocks will use their defaults
+        # Fetch user context for the graph execution
+        user_context = await get_user_context(user_id)
 
         queue = await get_async_execution_queue()
-        graph_exec_entry = graph_exec.to_graph_execution_entry()
+        graph_exec_entry = graph_exec.to_graph_execution_entry(user_context)
         if nodes_input_masks:
             graph_exec_entry.nodes_input_masks = nodes_input_masks
-        graph_exec_entry.user_timezone = user_timezone
 
         logger.info(
             f"Created graph execution #{graph_exec.id} for graph "

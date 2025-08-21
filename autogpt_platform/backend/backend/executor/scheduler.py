@@ -45,7 +45,6 @@ from backend.util.service import (
     expose,
 )
 from backend.util.settings import Config
-from backend.util.timezone_name import TimeZoneName
 
 
 def _extract_schema_from_url(database_url) -> tuple[str, str]:
@@ -192,24 +191,15 @@ class GraphExecutionJobInfo(GraphExecutionJobArgs):
     id: str
     name: str
     next_run_time: str
-    timezone: TimeZoneName | str = Field(
-        default="UTC", description="Timezone used for scheduling"
-    )
 
     @staticmethod
     def from_db(
         job_args: GraphExecutionJobArgs, job_obj: JobObj
     ) -> "GraphExecutionJobInfo":
-        # Extract timezone from the trigger if it's a CronTrigger
-        timezone_str = "UTC"
-        if hasattr(job_obj.trigger, "timezone"):
-            timezone_str = str(job_obj.trigger.timezone)
-
         return GraphExecutionJobInfo(
             id=job_obj.id,
             name=job_obj.name,
             next_run_time=job_obj.next_run_time.isoformat(),
-            timezone=timezone_str,
             **job_args.model_dump(),
         )
 
@@ -405,7 +395,6 @@ class Scheduler(AppService):
         input_data: BlockInput,
         input_credentials: dict[str, CredentialsMetaInput],
         name: Optional[str] = None,
-        user_timezone: Optional[str] = None,
     ) -> GraphExecutionJobInfo:
         # Validate the graph before scheduling to prevent runtime failures
         # We don't need the return value, just want the validation to run
@@ -419,26 +408,7 @@ class Scheduler(AppService):
             )
         )
 
-        # Use the provided timezone or default to UTC
-        if user_timezone and user_timezone != "not-set":
-            # Validate the timezone is valid
-            try:
-                ZoneInfo(user_timezone)
-            except Exception as e:
-                logger.error(
-                    f"Invalid timezone '{user_timezone}' for user {user_id}: {e}"
-                )
-                user_timezone = "UTC"
-        else:
-            user_timezone = "UTC"
-            logger.warning(
-                f"User {user_id} has no timezone set, using UTC for scheduling. "
-                f"User should set their timezone in settings for correct scheduling."
-            )
-
-        logger.info(
-            f"Scheduling job for user {user_id} with timezone {user_timezone} (cron: {cron})"
-        )
+        logger.info(f"Scheduling job for user {user_id} in UTC (cron: {cron})")
 
         job_args = GraphExecutionJobArgs(
             user_id=user_id,
@@ -452,12 +422,12 @@ class Scheduler(AppService):
             execute_graph,
             kwargs=job_args.model_dump(),
             name=name,
-            trigger=CronTrigger.from_crontab(cron, timezone=user_timezone),
+            trigger=CronTrigger.from_crontab(cron, timezone="UTC"),
             jobstore=Jobstores.EXECUTION.value,
             replace_existing=True,
         )
         logger.info(
-            f"Added job {job.id} with cron schedule '{cron}' in timezone {user_timezone}, input data: {input_data}"
+            f"Added job {job.id} with cron schedule '{cron}' in UTC, input data: {input_data}"
         )
         return GraphExecutionJobInfo.from_db(job_args, job)
 

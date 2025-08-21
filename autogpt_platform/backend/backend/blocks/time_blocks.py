@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.execution import UserContext
 from backend.data.model import SchemaField
 
 # Shared timezone literal type for all time/date blocks
@@ -143,13 +144,16 @@ class GetCurrentTimeBlock(Block):
         )
 
     async def run(
-        self, input_data: Input, user_timezone: str | None = None, **kwargs
+        self, input_data: Input, *, user_context: UserContext, **kwargs
     ) -> BlockOutput:
+        # Extract timezone from user_context (always present)
+        effective_timezone = user_context.timezone
+
         if isinstance(input_data.format_type, TimeISO8601Format):
             # Determine which timezone to use
-            if input_data.format_type.use_user_timezone and user_timezone:
-                tz = ZoneInfo(user_timezone)
-                logger.debug(f"Using user timezone: {user_timezone}")
+            if input_data.format_type.use_user_timezone and effective_timezone:
+                tz = ZoneInfo(effective_timezone)
+                logger.debug(f"Using user timezone: {effective_timezone}")
             else:
                 tz = ZoneInfo(input_data.format_type.timezone)
                 logger.debug(
@@ -169,9 +173,9 @@ class GetCurrentTimeBlock(Block):
             current_time = f"T{current_time}"  # Add T prefix for ISO 8601 time format
         else:  # TimeStrftimeFormat
             # Determine which timezone to use
-            if input_data.format_type.use_user_timezone and user_timezone:
-                tz = ZoneInfo(user_timezone)
-                logger.debug(f"Using user timezone: {user_timezone}")
+            if input_data.format_type.use_user_timezone and effective_timezone:
+                tz = ZoneInfo(effective_timezone)
+                logger.debug(f"Using user timezone: {effective_timezone}")
             else:
                 tz = ZoneInfo(input_data.format_type.timezone)
                 logger.debug(
@@ -268,9 +272,11 @@ class GetCurrentDateBlock(Block):
             ],
         )
 
-    async def run(
-        self, input_data: Input, user_timezone: str | None = None, **kwargs
-    ) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        # Extract timezone from user_context (required keyword argument)
+        user_context: UserContext = kwargs["user_context"]
+        effective_timezone = user_context.timezone
+
         try:
             offset = int(input_data.offset)
         except ValueError:
@@ -279,9 +285,9 @@ class GetCurrentDateBlock(Block):
         if isinstance(input_data.format_type, DateISO8601Format):
             # ISO 8601 format for date only (YYYY-MM-DD)
             # Determine which timezone to use
-            if input_data.format_type.use_user_timezone and user_timezone:
-                tz = ZoneInfo(user_timezone)
-                logger.debug(f"Using user timezone: {user_timezone}")
+            if input_data.format_type.use_user_timezone and effective_timezone:
+                tz = ZoneInfo(effective_timezone)
+                logger.debug(f"Using user timezone: {effective_timezone}")
             else:
                 tz = ZoneInfo(input_data.format_type.timezone)
                 logger.debug(
@@ -292,9 +298,9 @@ class GetCurrentDateBlock(Block):
             date_str = current_date.date().isoformat()
         else:  # DateStrftimeFormat
             # Determine which timezone to use
-            if input_data.format_type.use_user_timezone and user_timezone:
-                tz = ZoneInfo(user_timezone)
-                logger.debug(f"Using user timezone: {user_timezone}")
+            if input_data.format_type.use_user_timezone and effective_timezone:
+                tz = ZoneInfo(effective_timezone)
+                logger.debug(f"Using user timezone: {effective_timezone}")
             else:
                 tz = ZoneInfo(input_data.format_type.timezone)
                 logger.debug(
@@ -391,15 +397,17 @@ class GetCurrentDateAndTimeBlock(Block):
             ],
         )
 
-    async def run(
-        self, input_data: Input, user_timezone: str | None = None, **kwargs
-    ) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        # Extract timezone from user_context (required keyword argument)
+        user_context: UserContext = kwargs["user_context"]
+        effective_timezone = user_context.timezone
+
         if isinstance(input_data.format_type, ISO8601Format):
             # ISO 8601 format with specified timezone (also RFC3339-compliant)
             # Determine which timezone to use
-            if input_data.format_type.use_user_timezone and user_timezone:
-                tz = ZoneInfo(user_timezone)
-                logger.debug(f"Using user timezone: {user_timezone}")
+            if input_data.format_type.use_user_timezone and effective_timezone:
+                tz = ZoneInfo(effective_timezone)
+                logger.debug(f"Using user timezone: {effective_timezone}")
             else:
                 tz = ZoneInfo(input_data.format_type.timezone)
                 logger.debug(
@@ -414,9 +422,9 @@ class GetCurrentDateAndTimeBlock(Block):
                 current_date_time = dt.isoformat(timespec="seconds")
         else:  # StrftimeFormat
             # Determine which timezone to use
-            if input_data.format_type.use_user_timezone and user_timezone:
-                tz = ZoneInfo(user_timezone)
-                logger.debug(f"Using user timezone: {user_timezone}")
+            if input_data.format_type.use_user_timezone and effective_timezone:
+                tz = ZoneInfo(effective_timezone)
+                logger.debug(f"Using user timezone: {effective_timezone}")
             else:
                 tz = ZoneInfo(input_data.format_type.timezone)
                 logger.debug(
