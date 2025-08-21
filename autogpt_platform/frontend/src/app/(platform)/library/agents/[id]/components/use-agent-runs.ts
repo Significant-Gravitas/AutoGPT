@@ -1,4 +1,7 @@
-import { useGetV1ListGraphExecutionsInfinite } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
+  getV1ListGraphExecutionsResponse,
+  useGetV1ListGraphExecutionsInfinite,
+} from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { GraphExecutionsPaginated } from "@/app/api/__generated__/models/graphExecutionsPaginated";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import {
@@ -40,7 +43,6 @@ export const useAgentRunsInfinite = (graphID?: GraphID) => {
     { page: 1, page_size: 20 },
     {
       query: {
-        enabled: !!graphID,
         getNextPageParam: (lastPage) => {
           const pagination = (lastPage.data as GraphExecutionsPaginated)
             .pagination;
@@ -50,6 +52,28 @@ export const useAgentRunsInfinite = (graphID?: GraphID) => {
 
           return hasMore ? pagination.current_page + 1 : undefined;
         },
+
+        // Prevent query from running if graphID is not available (yet)
+        ...(!graphID
+          ? {
+              enabled: false,
+              queryFn: () =>
+                // Fake empty response if graphID is not available (yet)
+                Promise.resolve({
+                  status: 200,
+                  data: {
+                    executions: [],
+                    pagination: {
+                      current_page: 1,
+                      page_size: 20,
+                      total_items: 0,
+                      total_pages: 0,
+                    },
+                  },
+                  headers: new Headers(),
+                } satisfies getV1ListGraphExecutionsResponse),
+            }
+          : {}),
       },
     },
     queryClient,
