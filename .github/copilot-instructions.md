@@ -52,7 +52,7 @@ This file provides comprehensive onboarding information for GitHub Copilot codin
 cd autogpt_platform && docker compose up -d
 ```
 
-**Python Version:** Use Python 3.10-3.12 (Poetry manages this via pyproject.toml)
+**Python Version:** Use Python 3.11 (required; managed by Poetry via pyproject.toml)
 **Node.js Version:** Use Node.js 21+ with pnpm package manager
 
 ### Development Commands
