@@ -19,25 +19,19 @@ export const useInfiniteScroll = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const endOfListRef = useRef<HTMLDivElement>(null);
   const [isInView, setIsInView] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-
-  const handleLoadMore = useCallback(() => {
-    if (hasNextPage && !isFetchingNextPage) {
-      fetchNextPage();
-    }
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+  const isLoadingRef = useRef(false);
 
   const loadMore = useCallback(async () => {
-    if (hasNextPage && !isLoading) {
-      setIsLoading(true);
+    if (hasNextPage && !isFetchingNextPage && !isLoadingRef.current) {
+      isLoadingRef.current = true;
       try {
-        handleLoadMore();
+        fetchNextPage();
         onLoadMore?.();
       } finally {
-        setIsLoading(false);
+        isLoadingRef.current = false;
       }
     }
-  }, [hasNextPage, isLoading, handleLoadMore, onLoadMore]);
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage, onLoadMore]);
 
   useEffect(() => {
     if (!hasNextPage || !endOfListRef.current || isServerSide()) return;
@@ -60,10 +54,10 @@ export const useInfiniteScroll = ({
   }, [hasNextPage, scrollThreshold]);
 
   useEffect(() => {
-    if (isInView && hasNextPage && !isLoading) {
+    if (isInView && hasNextPage && !isLoadingRef.current) {
       loadMore();
     }
-  }, [isInView, hasNextPage, isLoading, loadMore]);
+  }, [isInView, hasNextPage]);
 
   return {
     containerRef,
