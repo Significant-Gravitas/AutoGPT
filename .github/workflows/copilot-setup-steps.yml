@@ -221,20 +221,35 @@ jobs:
           echo "Checking migration status..."
           docker compose ps migrate || echo "  Migrate service not found in ps output"
           
-          # Wait for migrate service to complete
-          timeout 30 sh -c 'while true; do
-            STATUS=$(docker compose ps migrate --format json 2>/dev/null | jq -r ".[0].State" 2>/dev/null || echo "unknown")
-            EXIT_CODE=$(docker compose ps migrate --format json 2>/dev/null | jq -r ".[0].ExitCode" 2>/dev/null || echo "unknown")
-            echo "  Migrate status: $STATUS, exit code: $EXIT_CODE"
+          # Wait for migrate service to complete (using POSIX-compatible syntax)
+          timeout 30 bash -c 'while true; do
+            # Get the status line for migrate service
+            MIGRATE_LINE=$(docker compose ps migrate 2>/dev/null | grep "autogpt_platform-migrate" || echo "")
             
-            if [[ "$STATUS" == "exited" ]] && [[ "$EXIT_CODE" == "0" ]]; then
-              echo "✅ Migrations completed successfully"
-              break
-            elif [[ "$STATUS" == "exited" ]] && [[ "$EXIT_CODE" != "0" ]]; then
-              echo "❌ Migrations failed with exit code: $EXIT_CODE"
-              docker compose logs migrate --tail=20
-              break
+            if [ -z "$MIGRATE_LINE" ]; then
+              echo "  Migrate service not found"
+              sleep 2
+              continue
             fi
+            
+            # Check if the service has exited
+            if echo "$MIGRATE_LINE" | grep -q "Exited"; then
+              # Extract exit code from status (e.g., "Exited (0)" or "Exited (1)")
+              EXIT_CODE=$(echo "$MIGRATE_LINE" | grep -oE "Exited \([0-9]+\)" | grep -oE "[0-9]+" || echo "unknown")
+              
+              if [ "$EXIT_CODE" = "0" ]; then
+                echo "✅ Migrations completed successfully (exit code: 0)"
+                break
+              else
+                echo "❌ Migrations failed with exit code: $EXIT_CODE"
+                docker compose logs migrate --tail=20
+                break
+              fi
+            else
+              # Service is still running
+              echo "  Migrate service is running..."
+            fi
+            
             sleep 2
           done' || echo "⚠️ Migration check timeout after 30s, continuing..."
           
