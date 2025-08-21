@@ -20,7 +20,6 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.util import ZoneInfo
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
-from pydantic_extra_types.timezone_name import TimeZoneName
 from sqlalchemy import MetaData, create_engine
 
 from backend.data.block import BlockInput
@@ -46,6 +45,7 @@ from backend.util.service import (
     expose,
 )
 from backend.util.settings import Config
+from backend.util.timezone_name import TimeZoneName
 
 
 def _extract_schema_from_url(database_url) -> tuple[str, str]:

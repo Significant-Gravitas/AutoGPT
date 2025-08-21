@@ -2,10 +2,10 @@ import enum
 from typing import Any, Optional
 
 import pydantic
-from pydantic_extra_types.timezone_name import TimeZoneName
 
 from backend.data.api_key import APIKeyPermission, APIKeyWithoutHash
 from backend.data.graph import Graph
+from backend.util.timezone_name import TimeZoneName
 
 
 class WSMethod(enum.Enum):
