@@ -100,7 +100,7 @@ pnpm storybook                      # Start component development server
 **Common Issues & Workarounds:**
 - **Prisma issues**: Run `poetry run prisma generate` after schema changes
 - **Permission errors**: Ensure Docker has proper permissions
-- **Port conflicts**: Check ports 3000 (frontend), 3310 (clamav), 4000 (analytics), 5432 (postgres), 5672 (rabbitmq), 6379 (redis), 6543 (supavisor), 8000 (kong/supabase), 8001 (websocket), 8002 (executor), 8003 (scheduler), 8005 (database_manager), 8006 (rest_server), 8007 (notification), 8443 (kong HTTPS), 15672 (rabbitmq management)
+- **Port conflicts**: Check the `docker-compose.yml` file for the current list of exposed ports. You can list all mapped ports with:
 - **Test timeouts**: Backend tests can take 5+ minutes, use `-x` flag to stop on first failure
 
 ## Project Layout & Architecture
