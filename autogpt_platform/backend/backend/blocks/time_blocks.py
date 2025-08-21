@@ -145,9 +145,6 @@ class GetCurrentTimeBlock(Block):
     async def run(
         self, input_data: Input, user_timezone: str | None = None, **kwargs
     ) -> BlockOutput:
-        logger.info(f"Current Timezone for user: {user_timezone}")
-        logger.info(f"All kwargs received: {kwargs}")
-
         if isinstance(input_data.format_type, TimeISO8601Format):
             # Determine which timezone to use
             if input_data.format_type.use_user_timezone and user_timezone:
@@ -274,9 +271,6 @@ class GetCurrentDateBlock(Block):
     async def run(
         self, input_data: Input, user_timezone: str | None = None, **kwargs
     ) -> BlockOutput:
-
-        logger.info(f"Current Timezone for user: {user_timezone}")
-
         try:
             offset = int(input_data.offset)
         except ValueError:
@@ -400,7 +394,6 @@ class GetCurrentDateAndTimeBlock(Block):
     async def run(
         self, input_data: Input, user_timezone: str | None = None, **kwargs
     ) -> BlockOutput:
-        logger.info(f"User timezone: {user_timezone}")
         if isinstance(input_data.format_type, ISO8601Format):
             # ISO 8601 format with specified timezone (also RFC3339-compliant)
             # Determine which timezone to use

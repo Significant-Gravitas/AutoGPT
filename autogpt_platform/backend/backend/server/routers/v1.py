@@ -60,6 +60,7 @@ from backend.data.onboarding import (
 )
 from backend.data.user import (
     get_or_create_user,
+    get_user_by_id,
     get_user_notification_preference,
     update_user_email,
     update_user_notification_preference,
@@ -954,9 +955,6 @@ async def create_graph_execution_schedule(
             status_code=404,
             detail=f"Graph #{graph_id} v{schedule_params.graph_version} not found.",
         )
-
-    # Fetch user's timezone for scheduling
-    from backend.data.user import get_user_by_id
 
     user = await get_user_by_id(user_id)
     user_timezone = user.timezone if user and user.timezone else None
