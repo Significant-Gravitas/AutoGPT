@@ -226,6 +226,14 @@ The repository has comprehensive CI workflows that test:
 
 Match these patterns when developing locally - the copilot setup environment mirrors these CI configurations.
 
+## Collaboration with Other AI Assistants
+
+This repository is actively developed with assistance from Claude (via CLAUDE.md files). When working on this codebase:
+- Check for existing CLAUDE.md files that provide additional context
+- Follow established patterns and conventions already in the codebase
+- Maintain consistency with existing code style and architecture
+- Consider that changes may be reviewed and extended by both human developers and AI assistants
+
 ## Trust These Instructions
 
 These instructions are comprehensive and tested. Only perform additional searches if:
