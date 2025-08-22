@@ -873,11 +873,11 @@ export default function useAgentGraph(
       if (!savedAgent || isScheduling) return;
 
       // Validate cron expression
-      if (!cronExpression || cronExpression.trim() === '') {
+      if (!cronExpression || cronExpression.trim() === "") {
         toast({
           variant: "destructive",
           title: "Invalid schedule",
-          description: "Please enter a valid cron expression"
+          description: "Please enter a valid cron expression",
         });
         return;
       }
