@@ -394,6 +394,16 @@ class Scheduler(AppService):
         input_credentials: dict[str, CredentialsMetaInput],
         name: Optional[str] = None,
     ) -> GraphExecutionJobInfo:
+        # Validate cron string before attempting to parse it
+        if not cron or not cron.strip():
+            raise ValueError("Cron expression cannot be empty")
+        
+        # Attempt to validate cron format before creating the job
+        try:
+            CronTrigger.from_crontab(cron)
+        except ValueError as e:
+            raise ValueError(f"Invalid cron expression: {str(e)}")
+        
         # Validate the graph before scheduling to prevent runtime failures
         # We don't need the return value, just want the validation to run
         run_async(

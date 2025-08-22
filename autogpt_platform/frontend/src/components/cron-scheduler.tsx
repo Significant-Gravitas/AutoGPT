@@ -214,6 +214,11 @@ export function CronScheduler({
               </Button>
             ))}
           </div>
+          {selectedWeekDays.length === 0 && (
+            <p className="text-sm text-red-500">
+              Please select at least one day of the week
+            </p>
+          )}
         </div>
       )}
       {frequency === "monthly" && (
@@ -275,6 +280,11 @@ export function CronScheduler({
               ))}
             </div>
           )}
+          {selectedMonthDays.length === 0 && (
+            <p className="text-sm text-red-500">
+              Please select at least one day of the month
+            </p>
+          )}
         </div>
       )}
       {frequency === "yearly" && (
@@ -320,6 +330,11 @@ export function CronScheduler({
               );
             })}
           </div>
+          {selectedMonths.length === 0 && (
+            <p className="text-sm text-red-500">
+              Please select at least one month
+            </p>
+          )}
         </div>
       )}
 
