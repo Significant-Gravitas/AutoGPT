@@ -64,27 +64,6 @@ export function getTimezoneAbbreviation(timezone: string): string {
 }
 
 /**
- * Convert a UTC date to the user's timezone
- * @param utcDate - The UTC date (as string or Date)
- * @param userTimezone - The user's IANA timezone identifier
- * @returns Date object in user's timezone (for display purposes)
- */
-export function convertUTCToUserTimezone(
-  utcDate: string | Date,
-  userTimezone: string,
-): Date {
-  const dateObj = typeof utcDate === "string" ? new Date(utcDate) : utcDate;
-
-  if (userTimezone === "not-set" || !userTimezone) {
-    return dateObj; // Return as-is if no timezone set
-  }
-
-  // Note: JavaScript Date objects are always UTC internally
-  // This is mainly for display formatting
-  return dateObj;
-}
-
-/**
  * Format time for schedule display with timezone context
  * @param nextRunTime - The next run time (UTC)
  * @param displayTimezone - The timezone to display the time in (typically user's timezone)
