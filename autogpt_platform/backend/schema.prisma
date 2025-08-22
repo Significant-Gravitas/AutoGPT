@@ -187,6 +187,8 @@ enum NotificationType {
   MONTHLY_SUMMARY
   REFUND_REQUEST
   REFUND_PROCESSED
+  AGENT_APPROVED
+  AGENT_REJECTED
 }
 
 model NotificationEvent {
