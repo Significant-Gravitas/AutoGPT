@@ -18,7 +18,7 @@ interface useAgentTableRowProps {
   sub_heading: string;
   description: string;
   imageSrc: string[];
-  dateSubmitted: string;
+  dateSubmitted: Date;
   status: SubmissionStatus;
   runs: number;
   rating: number;
