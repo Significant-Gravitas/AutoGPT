@@ -172,207 +172,34 @@ class MeetingBaasAPI:
         )
         return response.status == 200
 
-    # Calendar Management Endpoints
-
-    async def create_calendar(
+    async def list_bots_with_metadata(
         self,
-        oauth_client_id: str,
-        oauth_client_secret: str,
-        oauth_refresh_token: str,
-        platform: str,
-        raw_calendar_id: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+        sort_by: Optional[str] = None,
+        sort_order: Optional[str] = None,
+        filter_by: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
-        Connect a new calendar integration.
+        List bots with metadata including IDs, names, and meeting details.
 
-        POST /calendars
-        """
-        body = {
-            "oauth_client_id": oauth_client_id,
-            "oauth_client_secret": oauth_client_secret,
-            "oauth_refresh_token": oauth_refresh_token,
-            "platform": platform,
-        }
-
-        if raw_calendar_id is not None:
-            body["raw_calendar_id"] = raw_calendar_id
-
-        response = await self.requests.post(
-            f"{self.BASE_URL}/calendars",
-            headers=self.headers,
-            json=body,
-        )
-        return response.json()
-
-    async def list_calendars(self) -> List[Dict[str, Any]]:
-        """
-        List all integrated calendars.
-
-        GET /calendars
-        """
-        response = await self.requests.get(
-            f"{self.BASE_URL}/calendars",
-            headers=self.headers,
-        )
-        result = response.json()
-        # Ensure we return a list
-        if isinstance(result, list):
-            return result
-        return []
-
-    async def update_calendar(
-        self,
-        calendar_id: str,
-        oauth_client_id: str,
-        oauth_client_secret: str,
-        oauth_refresh_token: str,
-        platform: str,
-    ) -> Dict[str, Any]:
-        """
-        Update calendar credentials or platform.
-
-        PATCH /calendars/{uuid}
-        """
-        body = {
-            "oauth_client_id": oauth_client_id,
-            "oauth_client_secret": oauth_client_secret,
-            "oauth_refresh_token": oauth_refresh_token,
-            "platform": platform,
-        }
-
-        response = await self.requests.patch(
-            f"{self.BASE_URL}/calendars/{calendar_id}",
-            headers=self.headers,
-            json=body,
-        )
-        return response.json()
-
-    async def delete_calendar(self, calendar_id: str) -> bool:
-        """
-        Remove a calendar integration.
-
-        DELETE /calendars/{uuid}
-        """
-        response = await self.requests.delete(
-            f"{self.BASE_URL}/calendars/{calendar_id}",
-            headers=self.headers,
-        )
-        return response.status in [200, 204]
-
-    # Calendar Events Endpoints (not in official API docs but used in current implementation)
-    # These endpoints might be undocumented or from a different API version
-
-    async def list_calendar_events(
-        self,
-        calendar_id: str,
-        start_date_gte: Optional[str] = None,
-        start_date_lte: Optional[str] = None,
-        cursor: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        List events for a specific calendar.
-
-        GET /calendar_events (possibly undocumented)
-        """
-        params = {"calendar_id": calendar_id}
-
-        if start_date_gte:
-            params["start_date_gte"] = start_date_gte
-        if start_date_lte:
-            params["start_date_lte"] = start_date_lte
-        if cursor:
-            params["cursor"] = cursor
-
-        response = await self.requests.get(
-            f"{self.BASE_URL}/calendar_events",
-            headers=self.headers,
-            params=params,
-        )
-        return response.json()
-
-    async def get_calendar_event(self, event_id: str) -> Dict[str, Any]:
-        """
-        Get details for a specific calendar event.
-
-        GET /calendar_events/{event_id} (possibly undocumented)
-        """
-        response = await self.requests.get(
-            f"{self.BASE_URL}/calendar_events/{event_id}",
-            headers=self.headers,
-        )
-        return response.json()
-
-    async def schedule_bot_for_event(
-        self,
-        event_id: str,
-        bot_config: Dict[str, Any],
-        all_occurrences: bool = False,
-    ) -> Dict[str, Any]:
-        """
-        Schedule a bot for a calendar event.
-
-        POST /calendar_events/{event_id}/bot (possibly undocumented)
-        """
-        params = {"all_occurrences": str(all_occurrences).lower()}
-
-        response = await self.requests.post(
-            f"{self.BASE_URL}/calendar_events/{event_id}/bot",
-            headers=self.headers,
-            params=params,
-            json=bot_config,
-        )
-        return response.json()
-
-    async def unschedule_bot_from_event(
-        self, event_id: str, all_occurrences: bool = False
-    ) -> Dict[str, Any]:
-        """
-        Remove a scheduled bot from an event.
-
-        DELETE /calendar_events/{event_id}/bot (possibly undocumented)
-        """
-        params = {"all_occurrences": str(all_occurrences).lower()}
-
-        response = await self.requests.delete(
-            f"{self.BASE_URL}/calendar_events/{event_id}/bot",
-            headers=self.headers,
-            params=params,
-        )
-        return response.json()
-
-    async def patch_bot_for_event(
-        self,
-        event_id: str,
-        bot_patch: Dict[str, Any],
-        all_occurrences: Optional[bool] = None,
-    ) -> Dict[str, Any]:
-        """
-        Update bot configuration for an event.
-
-        PATCH /calendar_events/{event_id}/bot (possibly undocumented)
+        GET /bots/bots_with_metadata
         """
         params = {}
-        if all_occurrences is not None:
-            params["all_occurrences"] = str(all_occurrences).lower()
+        if limit is not None:
+            params["limit"] = limit
+        if offset is not None:
+            params["offset"] = offset
+        if sort_by is not None:
+            params["sort_by"] = sort_by
+        if sort_order is not None:
+            params["sort_order"] = sort_order
+        if filter_by is not None:
+            params.update(filter_by)
 
-        response = await self.requests.patch(
-            f"{self.BASE_URL}/calendar_events/{event_id}/bot",
+        response = await self.requests.get(
+            f"{self.BASE_URL}/bots/bots_with_metadata",
             headers=self.headers,
             params=params,
-            json=bot_patch,
-        )
-        return response.json()
-
-    # Internal/Maintenance Endpoints (possibly undocumented)
-
-    async def resync_all_calendars(self) -> Dict[str, Any]:
-        """
-        Force re-sync of all calendars.
-
-        POST /internal/calendar/resync_all (possibly internal endpoint)
-        """
-        response = await self.requests.post(
-            f"{self.BASE_URL}/internal/calendar/resync_all",
-            headers=self.headers,
         )
         return response.json()

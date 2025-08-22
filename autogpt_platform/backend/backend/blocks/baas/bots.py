@@ -47,11 +47,8 @@ class BaasBotJoinMeetingBlock(Block):
         start_time: Optional[int] = SchemaField(
             description="Unix timestamp (ms) when bot should join", default=None
         )
-        speech_to_text: dict = SchemaField(
-            description="Speech-to-text configuration", default={"provider": "Gladia"}
-        )
-        webhook_url: str = SchemaField(
-            description="URL to receive webhook events for this bot", default=""
+        webhook_url: str | None = SchemaField(
+            description="URL to receive webhook events for this bot", default=None
         )
         timeouts: dict = SchemaField(
             description="Automatic leave timeouts configuration", default={}
@@ -91,7 +88,7 @@ class BaasBotJoinMeetingBlock(Block):
                 input_data.entry_message if input_data.entry_message else None
             ),
             start_time=input_data.start_time,
-            speech_to_text=input_data.speech_to_text,
+            speech_to_text={"provider": "Default"},
             webhook_url=input_data.webhook_url if input_data.webhook_url else None,
             automatic_leave=input_data.timeouts if input_data.timeouts else None,
             extra=input_data.extra if input_data.extra else None,
@@ -183,45 +180,6 @@ class BaasBotFetchMeetingDataBlock(Block):
         yield "metadata", data.get("bot_data", {}).get("bot", {})
 
 
-class BaasBotFetchScreenshotsBlock(Block):
-    """
-    List screenshots captured during the call.
-    """
-
-    class Input(BlockSchema):
-        credentials: CredentialsMetaInput = baas.credentials_field(
-            description="Meeting BaaS API credentials"
-        )
-        bot_id: str = SchemaField(
-            description="UUID of the bot whose screenshots to fetch"
-        )
-
-    class Output(BlockSchema):
-        screenshots: list[dict] = SchemaField(
-            description="Array of screenshot objects with date and url"
-        )
-
-    def __init__(self):
-        super().__init__(
-            id="87cfee2a-7e17-4a03-83ec-ba4a3eb3bb74",
-            description="Retrieve screenshots captured during a meeting",
-            categories={BlockCategory.DATA},
-            input_schema=self.Input,
-            output_schema=self.Output,
-        )
-
-    async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
-    ) -> BlockOutput:
-        api_key = credentials.api_key.get_secret_value()
-        api = MeetingBaasAPI(api_key)
-
-        # Fetch screenshots
-        screenshots = await api.get_screenshots(input_data.bot_id)
-
-        yield "screenshots", screenshots
-
-
 class BaasBotDeleteRecordingBlock(Block):
     """
     Purge MP4 + transcript data for privacy or storage management.
@@ -257,68 +215,3 @@ class BaasBotDeleteRecordingBlock(Block):
         deleted = await api.delete_data(input_data.bot_id)
 
         yield "deleted", deleted
-
-
-class BaasBotRetranscribeBlock(Block):
-    """
-    Re-run STT on past audio with a different provider or settings.
-    """
-
-    class Input(BlockSchema):
-        credentials: CredentialsMetaInput = baas.credentials_field(
-            description="Meeting BaaS API credentials"
-        )
-        bot_id: str = SchemaField(
-            description="UUID of the bot whose audio to retranscribe"
-        )
-        provider: str = SchemaField(
-            description="Speech-to-text provider to use (e.g., Gladia, Deepgram)"
-        )
-        webhook_url: str = SchemaField(
-            description="URL to receive transcription complete event", default=""
-        )
-        custom_options: dict = SchemaField(
-            description="Provider-specific options", default={}
-        )
-
-    class Output(BlockSchema):
-        job_id: Optional[str] = SchemaField(
-            description="Transcription job ID if available"
-        )
-        accepted: bool = SchemaField(
-            description="Whether the retranscription request was accepted"
-        )
-
-    def __init__(self):
-        super().__init__(
-            id="ad5ada2b-73f3-49a4-8a43-9fecdc07d888",
-            description="Re-run transcription on a meeting's audio",
-            categories={BlockCategory.AI},
-            input_schema=self.Input,
-            output_schema=self.Output,
-        )
-
-    async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
-    ) -> BlockOutput:
-        api_key = credentials.api_key.get_secret_value()
-        api = MeetingBaasAPI(api_key)
-
-        # Build speech_to_text config from provider and custom options
-        speech_to_text = {"provider": input_data.provider}
-        if input_data.custom_options:
-            speech_to_text.update(input_data.custom_options)
-
-        # Start retranscription
-        result = await api.retranscribe(
-            bot_uuid=input_data.bot_id,
-            speech_to_text=speech_to_text,
-            webhook_url=input_data.webhook_url if input_data.webhook_url else None,
-        )
-
-        # Check if accepted
-        accepted = result.get("accepted", False) or "job_id" in result
-        job_id = result.get("job_id")
-
-        yield "job_id", job_id
-        yield "accepted", accepted
