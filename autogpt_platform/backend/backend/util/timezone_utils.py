@@ -17,6 +17,10 @@ def convert_cron_to_utc(cron_expr: str, user_timezone: str) -> str:
     """
     Convert a cron expression from user timezone to UTC.
 
+    NOTE: This is a simplified conversion that only adjusts minute and hour fields.
+    Complex cron expressions with specific day/month/weekday patterns may not
+    convert accurately due to timezone offset variations throughout the year.
+
     Args:
         cron_expr: Cron expression in user timezone
         user_timezone: User's IANA timezone identifier
@@ -31,30 +35,30 @@ def convert_cron_to_utc(cron_expr: str, user_timezone: str) -> str:
         user_tz = ZoneInfo(user_timezone)
         utc_tz = ZoneInfo("UTC")
 
+        # Split the cron expression into its five fields
+        cron_fields = cron_expr.strip().split()
+        if len(cron_fields) != 5:
+            raise ValueError(
+                "Cron expression must have 5 fields (minute hour day month weekday)"
+            )
+
         # Get the current time in the user's timezone
         now_user = datetime.now(user_tz)
 
-        # Create croniter with user timezone
+        # Get the next scheduled time in user timezone
         cron = croniter(cron_expr, now_user)
-
-        # Get the next few scheduled times in user timezone
-        user_times = [cron.get_next(datetime) for _ in range(5)]
+        next_user_time = cron.get_next(datetime)
 
         # Convert to UTC
-        utc_times = [dt.astimezone(utc_tz) for dt in user_times]
+        next_utc_time = next_user_time.astimezone(utc_tz)
 
-        # Find the pattern in UTC
-        # For simplicity, we'll use the first UTC time to create a new cron expression
-        first_utc = utc_times[0]
-
-        # Create a new cron expression based on the UTC time
-        # This is a simplified approach - for complex expressions, more sophisticated conversion is needed
+        # Adjust minute and hour fields for UTC, keep day/month/weekday as in original
         utc_cron_parts = [
-            str(first_utc.minute),
-            str(first_utc.hour),
-            "*",  # day of month - keep flexible
-            "*",  # month - keep flexible
-            "*",  # day of week - keep flexible
+            str(next_utc_time.minute),
+            str(next_utc_time.hour),
+            cron_fields[2],  # day of month
+            cron_fields[3],  # month
+            cron_fields[4],  # day of week
         ]
 
         utc_cron = " ".join(utc_cron_parts)

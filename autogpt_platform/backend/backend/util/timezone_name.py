@@ -39,11 +39,14 @@ import pytz
 from pydantic import GetCoreSchemaHandler, GetJsonSchemaHandler
 from pydantic_core import PydanticCustomError, core_schema
 
+# Cache the timezones at module level to avoid repeated computation
+ALL_TIMEZONES: set[str] = set(pytz.all_timezones)
+
 
 def get_timezones() -> set[str]:
     """Get timezones from pytz for consistency across all environments."""
-    # Always use pytz to ensure consistent timezone list
-    return set(pytz.all_timezones)
+    # Return cached timezone set
+    return ALL_TIMEZONES
 
 
 class TimeZoneNameSettings(type):
