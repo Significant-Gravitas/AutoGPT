@@ -19,9 +19,14 @@ client = fastapi.testclient.TestClient(app)
 FIXED_NOW = datetime.datetime(2023, 1, 1, 0, 0, 0)
 
 
-def override_auth_middleware():
+def override_requires_user():
     """Override auth middleware for testing"""
-    return {"sub": "test-user-id"}
+    return autogpt_auth_lib.User(
+        user_id="test-user-id",
+        email="test@example.com",
+        phone_number="123-456-7890",
+        role="user",
+    )
 
 
 def override_get_user_id():
@@ -29,8 +34,8 @@ def override_get_user_id():
     return "test-user-id"
 
 
-app.dependency_overrides[autogpt_auth_lib.auth_middleware] = override_auth_middleware
-app.dependency_overrides[autogpt_auth_lib.depends.get_user_id] = override_get_user_id
+app.dependency_overrides[autogpt_auth_lib.requires_user] = override_requires_user
+app.dependency_overrides[autogpt_auth_lib.get_user_id] = override_get_user_id
 
 
 @pytest.mark.asyncio

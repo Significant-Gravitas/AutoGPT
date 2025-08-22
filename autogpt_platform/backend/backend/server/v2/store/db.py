@@ -1158,10 +1158,7 @@ async def get_my_agents(
         ) from e
 
 
-async def get_agent(
-    user_id: str | None,
-    store_listing_version_id: str,
-) -> GraphModel:
+async def get_agent(store_listing_version_id: str) -> GraphModel:
     """Get agent using the version ID and store listing version ID."""
     store_listing_version = (
         await prisma.models.StoreListingVersion.prisma().find_unique(
@@ -1173,7 +1170,6 @@ async def get_agent(
         raise ValueError(f"Store listing version {store_listing_version_id} not found")
 
     graph = await get_graph(
-        user_id=user_id,
         graph_id=store_listing_version.agentGraphId,
         version=store_listing_version.agentGraphVersion,
         for_export=True,

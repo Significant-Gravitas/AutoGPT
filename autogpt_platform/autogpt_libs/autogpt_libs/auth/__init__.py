@@ -1,13 +1,9 @@
-from .depends import requires_admin_user, requires_user
-from .jwt_utils import parse_jwt_token
-from .middleware import APIKeyValidator, auth_middleware
+from .dependencies import get_user_id, requires_admin_user, requires_user
 from .models import User
 
 __all__ = [
-    "parse_jwt_token",
     "requires_user",
     "requires_admin_user",
-    "APIKeyValidator",
-    "auth_middleware",
+    "get_user_id",
     "User",
 ]

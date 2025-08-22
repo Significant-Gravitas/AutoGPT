@@ -133,14 +133,21 @@ def test_endpoint_success(snapshot: Snapshot):
 ### Testing with Authentication
 
 ```python
-def override_auth_middleware():
-    return {"sub": "test-user-id"}
+def override_requires_user():
+    return autogpt_libs.auth.User(
+        user_id="test-user-id",
+        email="test@example.com",
+        phone_number="123-456-7890",
+        role="user",
+    )
+
 
 def override_get_user_id():
     return "test-user-id"
 
-app.dependency_overrides[auth_middleware] = override_auth_middleware
-app.dependency_overrides[get_user_id] = override_get_user_id
+
+app.dependency_overrides[autogpt_libs.auth.requires_user] = override_requires_user
+app.dependency_overrides[autogpt_libs.auth.get_user_id] = override_get_user_id
 ```
 
 ### Mocking External Services

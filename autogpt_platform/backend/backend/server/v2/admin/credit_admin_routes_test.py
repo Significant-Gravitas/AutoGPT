@@ -2,7 +2,6 @@ import json
 from unittest.mock import AsyncMock
 
 import autogpt_libs.auth
-import autogpt_libs.auth.depends
 import fastapi
 import fastapi.testclient
 import prisma.enums
@@ -35,7 +34,7 @@ def override_get_user_id() -> str:
 app.dependency_overrides[autogpt_libs.auth.requires_admin_user] = (
     override_requires_admin_user
 )
-app.dependency_overrides[autogpt_libs.auth.depends.get_user_id] = override_get_user_id
+app.dependency_overrides[autogpt_libs.auth.get_user_id] = override_get_user_id
 
 
 def test_add_user_credits_success(
@@ -326,6 +325,4 @@ def test_admin_endpoints_require_admin_role(mocker: pytest_mock.MockFixture) -> 
     app.dependency_overrides[autogpt_libs.auth.requires_admin_user] = (
         override_requires_admin_user
     )
-    app.dependency_overrides[autogpt_libs.auth.depends.get_user_id] = (
-        override_get_user_id
-    )
+    app.dependency_overrides[autogpt_libs.auth.get_user_id] = override_get_user_id

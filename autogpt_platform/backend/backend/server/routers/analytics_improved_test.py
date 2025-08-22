@@ -3,6 +3,7 @@
 import json
 from unittest.mock import AsyncMock, Mock
 
+import autogpt_libs.auth
 import fastapi
 import fastapi.testclient
 import pytest_mock
@@ -16,7 +17,6 @@ from backend.server.test_helpers import (
     assert_response_status,
     safe_parse_json,
 )
-from backend.server.utils import get_user_id
 
 app = fastapi.FastAPI()
 app.include_router(analytics_routes.router)
@@ -29,7 +29,7 @@ def override_get_user_id() -> str:
     return TEST_USER_ID
 
 
-app.dependency_overrides[get_user_id] = override_get_user_id
+app.dependency_overrides[autogpt_libs.auth.get_user_id] = override_get_user_id
 
 
 def test_log_raw_metric_success_improved(

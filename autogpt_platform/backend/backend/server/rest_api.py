@@ -3,12 +3,12 @@ import logging
 from enum import Enum
 from typing import Any, Optional
 
-import autogpt_libs.auth.models
 import fastapi
 import fastapi.responses
 import pydantic
 import starlette.middleware.cors
 import uvicorn
+from autogpt_libs.auth.helpers import add_auth_responses_to_openapi
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 
@@ -128,6 +128,9 @@ app = fastapi.FastAPI(
 )
 
 app.add_middleware(SecurityHeadersMiddleware)
+
+# Add 401 responses to authenticated endpoints in OpenAPI spec
+add_auth_responses_to_openapi(app)
 
 
 def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
@@ -365,10 +368,10 @@ class AgentServer(backend.util.service.AppProcess):
     @staticmethod
     async def test_review_store_listing(
         request: backend.server.v2.store.model.ReviewSubmissionRequest,
-        user: autogpt_libs.auth.models.User,
+        user_id: str,
     ):
         return await backend.server.v2.admin.store_admin_routes.review_submission(
-            request.store_listing_version_id, request, user
+            request.store_listing_version_id, request, user_id
         )
 
     @staticmethod

@@ -7,11 +7,11 @@ import fastapi
 import fastapi.testclient
 import pytest
 import pytest_mock
+from autogpt_libs.auth import get_user_id
 from pytest_snapshot.plugin import Snapshot
 
 import backend.server.routers.analytics as analytics_routes
 from backend.server.conftest import TEST_USER_ID
-from backend.server.utils import get_user_id
 
 app = fastapi.FastAPI()
 app.include_router(analytics_routes.router)

@@ -1,7 +1,6 @@
 import json
 
-import autogpt_libs.auth.depends
-import autogpt_libs.auth.middleware
+import autogpt_libs.auth
 import fastapi
 import fastapi.testclient
 import pytest_mock
@@ -9,7 +8,6 @@ from pytest_snapshot.plugin import Snapshot
 
 import backend.server.v2.otto.models as otto_models
 import backend.server.v2.otto.routes as otto_routes
-from backend.server.utils import get_user_id
 from backend.server.v2.otto.service import OttoService
 
 app = fastapi.FastAPI()
@@ -18,9 +16,14 @@ app.include_router(otto_routes.router)
 client = fastapi.testclient.TestClient(app)
 
 
-def override_auth_middleware():
+def override_requires_user():
     """Override auth middleware for testing"""
-    return {"sub": "test-user-id"}
+    return autogpt_libs.auth.User(
+        user_id="test-user-id",
+        email="test@example.com",
+        phone_number="123-456-7890",
+        role="user",
+    )
 
 
 def override_get_user_id():
@@ -28,10 +31,8 @@ def override_get_user_id():
     return "test-user-id"
 
 
-app.dependency_overrides[autogpt_libs.auth.middleware.auth_middleware] = (
-    override_auth_middleware
-)
-app.dependency_overrides[get_user_id] = override_get_user_id
+app.dependency_overrides[autogpt_libs.auth.requires_user] = override_requires_user
+app.dependency_overrides[autogpt_libs.auth.get_user_id] = override_get_user_id
 
 
 def test_ask_otto_success(
@@ -246,9 +247,9 @@ def test_ask_otto_unauthenticated(mocker: pytest_mock.MockFixture) -> None:
     # Remove the auth override to test unauthenticated access
     app.dependency_overrides.clear()
 
-    # Mock auth_middleware to raise an exception
+    # Mock get_jwt_payload to raise an exception
     mocker.patch(
-        "autogpt_libs.auth.middleware.auth_middleware",
+        "autogpt_libs.auth.middleware.get_jwt_payload",
         side_effect=fastapi.HTTPException(status_code=401, detail="Unauthorized"),
     )
 
@@ -263,9 +264,5 @@ def test_ask_otto_unauthenticated(mocker: pytest_mock.MockFixture) -> None:
     assert response.status_code == 502
 
     # Restore the override
-    app.dependency_overrides[autogpt_libs.auth.middleware.auth_middleware] = (
-        override_auth_middleware
-    )
-    app.dependency_overrides[autogpt_libs.auth.depends.get_user_id] = (
-        override_get_user_id
-    )
+    app.dependency_overrides[autogpt_libs.auth.requires_user] = override_requires_user
+    app.dependency_overrides[autogpt_libs.auth.get_user_id] = override_get_user_id

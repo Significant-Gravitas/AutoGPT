@@ -1,11 +1,53 @@
-from typing import Any, Dict
+import logging
+from typing import Any
 
 import jwt
+from fastapi import HTTPException, Security
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .config import settings
+from .models import DEFAULT_USER_ID, User
+
+logger = logging.getLogger(__name__)
+
+# Bearer token authentication scheme
+bearer_jwt_auth = HTTPBearer(
+    bearerFormat="jwt", scheme_name="HTTPBearerJWT", auto_error=False
+)
 
 
-def parse_jwt_token(token: str) -> Dict[str, Any]:
+def get_jwt_payload(
+    credentials: HTTPAuthorizationCredentials | None = Security(bearer_jwt_auth),
+) -> dict[str, Any]:
+    """
+    Extract and validate JWT payload from HTTP Authorization header.
+
+    This is the core authentication function that handles:
+    - Disabled authentication mode
+    - Missing credentials
+    - JWT token parsing and validation
+
+    :param credentials: HTTP Authorization credentials from bearer token
+    :return: JWT payload dictionary
+    :raises HTTPException: 401 if authentication fails
+    """
+    if not settings.ENABLE_AUTH:
+        # If authentication is disabled, allow the request to proceed
+        logger.warning("Auth disabled")
+        return {}
+
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Authorization header is missing")
+
+    try:
+        payload = parse_jwt_token(credentials.credentials)
+        logger.debug("Token decoded successfully")
+        return payload
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+
+def parse_jwt_token(token: str) -> dict[str, Any]:
     """
     Parse and validate a JWT token.
 
@@ -25,3 +67,21 @@ def parse_jwt_token(token: str) -> Dict[str, Any]:
         raise ValueError("Token has expired")
     except jwt.InvalidTokenError as e:
         raise ValueError(f"Invalid token: {str(e)}")
+
+
+def verify_user(jwt_payload: dict | None, admin_only: bool) -> User:
+    if not settings.ENABLE_AUTH and not jwt_payload:
+        jwt_payload = {"sub": DEFAULT_USER_ID, "role": "admin"}
+
+    if not jwt_payload:
+        raise HTTPException(status_code=401, detail="Authorization header is missing")
+
+    user_id = jwt_payload.get("sub")
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User ID not found in token")
+
+    if admin_only and jwt_payload["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    return User.from_payload(jwt_payload)

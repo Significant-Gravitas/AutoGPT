@@ -1,8 +1,7 @@
 import datetime
 import json
 
-import autogpt_libs.auth.depends
-import autogpt_libs.auth.middleware
+import autogpt_libs.auth
 import fastapi
 import fastapi.testclient
 import prisma.enums
@@ -22,20 +21,23 @@ app.include_router(backend.server.v2.store.routes.router)
 client = fastapi.testclient.TestClient(app)
 
 
-def override_auth_middleware() -> dict[str, str]:
+def override_requires_user():
     """Override auth middleware for testing"""
-    return {"sub": "test-user-id"}
+    return autogpt_libs.auth.User(
+        user_id="test-user-id",
+        email="test@example.com",
+        phone_number="123-456-7890",
+        role="user",
+    )
 
 
-def override_get_user_id() -> str:
+def override_get_user_id():
     """Override get_user_id for testing"""
     return "test-user-id"
 
 
-app.dependency_overrides[autogpt_libs.auth.middleware.auth_middleware] = (
-    override_auth_middleware
-)
-app.dependency_overrides[autogpt_libs.auth.depends.get_user_id] = override_get_user_id
+app.dependency_overrides[autogpt_libs.auth.requires_user] = override_requires_user
+app.dependency_overrides[autogpt_libs.auth.get_user_id] = override_get_user_id
 
 
 def test_get_agents_defaults(
