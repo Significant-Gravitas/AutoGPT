@@ -34,7 +34,7 @@ export function useAgentSelectStep({
 
   const agents: Agent[] =
     (myAgents?.status === 200 &&
-      myAgents.data.agents
+      myAgents.data?.agents
         .map(
           (agent): Agent => ({
             name: agent.agent_name,
