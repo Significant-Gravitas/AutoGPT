@@ -102,6 +102,22 @@ export const useLibraryUploadAgentDialog = () => {
     setisDroped(false);
   };
 
+  const clearAgentFile = () => {
+    const currentName = form.getValues("agentName");
+    const currentDescription = form.getValues("agentDescription");
+    const prevAgent = agentObject;
+
+    form.setValue("agentFile", undefined as any);
+    if (prevAgent && currentName === prevAgent.name) {
+      form.setValue("agentName", "");
+    }
+    if (prevAgent && currentDescription === prevAgent.description) {
+      form.setValue("agentDescription", "");
+    }
+
+    setAgentObject(null);
+  };
+
   return {
     onSubmit,
     isUploading,
@@ -112,5 +128,6 @@ export const useLibraryUploadAgentDialog = () => {
     isDroped,
     handleChange,
     setisDroped,
+    clearAgentFile,
   };
 };

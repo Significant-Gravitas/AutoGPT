@@ -1,16 +1,21 @@
-FROM python:3.11.10-slim-bookworm AS builder
+FROM debian:13-slim AS builder
 
 # Set environment variables
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /app
 
 RUN echo 'Acquire::http::Pipeline-Depth 0;\nAcquire::http::No-Cache true;\nAcquire::BrokenProxy true;\n' > /etc/apt/apt.conf.d/99fixbadproxy
 
-# Update package list and install build dependencies in a single layer
+# Update package list and install Python and build dependencies
 RUN apt-get update --allow-releaseinfo-change --fix-missing \
     && apt-get install -y \
+    python3.13 \
+    python3.13-dev \
+    python3.13-venv \
+    python3-pip \
     build-essential \
     libpq5 \
     libz-dev \
@@ -19,13 +24,11 @@ RUN apt-get update --allow-releaseinfo-change --fix-missing \
 
 ENV POETRY_HOME=/opt/poetry
 ENV POETRY_NO_INTERACTION=1
-ENV POETRY_VIRTUALENVS_CREATE=false
+ENV POETRY_VIRTUALENVS_CREATE=true
+ENV POETRY_VIRTUALENVS_IN_PROJECT=true
 ENV PATH=/opt/poetry/bin:$PATH
 
-# Upgrade pip and setuptools to fix security vulnerabilities
-RUN pip3 install --upgrade pip setuptools
-
-RUN pip3 install poetry
+RUN pip3 install poetry --break-system-packages
 
 # Copy and install dependencies
 COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
@@ -37,27 +40,30 @@ RUN poetry install --no-ansi --no-root
 COPY autogpt_platform/backend/schema.prisma ./
 RUN poetry run prisma generate
 
-FROM python:3.11.10-slim-bookworm AS server_dependencies
+FROM debian:13-slim AS server_dependencies
 
 WORKDIR /app
 
 ENV POETRY_HOME=/opt/poetry \
     POETRY_NO_INTERACTION=1 \
-    POETRY_VIRTUALENVS_CREATE=false
+    POETRY_VIRTUALENVS_CREATE=true \
+    POETRY_VIRTUALENVS_IN_PROJECT=true \
+    DEBIAN_FRONTEND=noninteractive
 ENV PATH=/opt/poetry/bin:$PATH
 
-# Upgrade pip and setuptools to fix security vulnerabilities
-RUN pip3 install --upgrade pip setuptools
+# Install Python without upgrading system-managed packages
+RUN apt-get update && apt-get install -y \
+    python3.13 \
+    python3-pip
 
 # Copy only necessary files from builder
 COPY --from=builder /app /app
-COPY --from=builder /usr/local/lib/python3.11 /usr/local/lib/python3.11
-COPY --from=builder /usr/local/bin /usr/local/bin
+COPY --from=builder /usr/local/lib/python3* /usr/local/lib/python3*
+COPY --from=builder /usr/local/bin/poetry /usr/local/bin/poetry
 # Copy Prisma binaries
 COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-python/binaries
 
-
-ENV PATH="/app/.venv/bin:$PATH"
+ENV PATH="/app/autogpt_platform/backend/.venv/bin:$PATH"
 
 RUN mkdir -p /app/autogpt_platform/autogpt_libs
 RUN mkdir -p /app/autogpt_platform/backend

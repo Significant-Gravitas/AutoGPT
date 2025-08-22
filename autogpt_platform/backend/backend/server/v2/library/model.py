@@ -8,9 +8,9 @@ import pydantic
 
 import backend.data.block as block_model
 import backend.data.graph as graph_model
-import backend.server.model as server_model
 from backend.data.model import CredentialsMetaInput, is_credentials_field_name
 from backend.integrations.providers import ProviderName
+from backend.util.models import Pagination
 
 
 class LibraryAgentStatus(str, Enum):
@@ -213,7 +213,7 @@ class LibraryAgentResponse(pydantic.BaseModel):
     """Response schema for a list of library agents and pagination info."""
 
     agents: list[LibraryAgent]
-    pagination: server_model.Pagination
+    pagination: Pagination
 
 
 class LibraryAgentPresetCreatable(pydantic.BaseModel):
@@ -317,7 +317,7 @@ class LibraryAgentPresetResponse(pydantic.BaseModel):
     """Response schema for a list of agent presets and pagination info."""
 
     presets: list[LibraryAgentPreset]
-    pagination: server_model.Pagination
+    pagination: Pagination
 
 
 class LibraryAgentFilter(str, Enum):
