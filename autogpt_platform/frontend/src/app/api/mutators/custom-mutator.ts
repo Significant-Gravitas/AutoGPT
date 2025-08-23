@@ -5,6 +5,8 @@ import {
 import { isServerSide } from "@/lib/utils/is-server-side";
 import { getAgptServerBaseUrl } from "@/lib/env-config";
 
+import { transformDates } from "./date-transformer";
+
 const FRONTEND_BASE_URL =
   process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "http://localhost:3000";
 const API_PROXY_BASE_URL = `${FRONTEND_BASE_URL}/api/proxy`; // Sending request via nextjs Server
@@ -98,9 +100,12 @@ export const customMutator = async <T = any>(
 
   const response_data = await getBody<T>(response);
 
+  // Transform ISO date strings to Date objects in the response data
+  const transformedData = transformDates(response_data);
+
   return {
     status: response.status,
-    data: response_data,
+    data: transformedData,
     headers: response.headers,
   } as T;
 };
