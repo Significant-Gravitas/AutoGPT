@@ -1320,8 +1320,12 @@ async def review_store_submission(
         # Send email notification to the agent creator
         if store_listing_version.AgentGraph and store_listing_version.AgentGraph.User:
             agent_creator = store_listing_version.AgentGraph.User
-            reviewer = submission.Reviewer if hasattr(submission, 'Reviewer') and submission.Reviewer else None
-            
+            reviewer = (
+                submission.Reviewer
+                if hasattr(submission, "Reviewer") and submission.Reviewer
+                else None
+            )
+
             try:
                 if is_approved:
                     # Send approval notification
@@ -1329,13 +1333,20 @@ async def review_store_submission(
                         agent_name=submission.name,
                         agent_id=submission.agentGraphId,
                         agent_version=submission.agentGraphVersion,
-                        reviewer_name=reviewer.name if reviewer else "AutoGPT Admin",
-                        reviewer_email=reviewer.email if reviewer else "admin@autogpt.co",
+                        reviewer_name=(
+                            reviewer.name
+                            if reviewer and reviewer.name
+                            else "AutoGPT Admin"
+                        ),
+                        reviewer_email=(
+                            reviewer.email if reviewer else "admin@autogpt.co"
+                        ),
                         comments=external_comments,
-                        reviewed_at=submission.reviewedAt or datetime.now(tz=timezone.utc),
+                        reviewed_at=submission.reviewedAt
+                        or datetime.now(tz=timezone.utc),
                         store_url=f"https://app.autogpt.com/store/{submission.StoreListing.slug if submission.StoreListing else submission.agentGraphId}",
                     )
-                    
+
                     notification_event = NotificationEventModel[AgentApprovalData](
                         user_id=agent_creator.id,
                         type=prisma.enums.NotificationType.AGENT_APPROVED,
@@ -1347,23 +1358,32 @@ async def review_store_submission(
                         agent_name=submission.name,
                         agent_id=submission.agentGraphId,
                         agent_version=submission.agentGraphVersion,
-                        reviewer_name=reviewer.name if reviewer else "AutoGPT Admin",
-                        reviewer_email=reviewer.email if reviewer else "admin@autogpt.co",
+                        reviewer_name=(
+                            reviewer.name
+                            if reviewer and reviewer.name
+                            else "AutoGPT Admin"
+                        ),
+                        reviewer_email=(
+                            reviewer.email if reviewer else "admin@autogpt.co"
+                        ),
                         comments=external_comments,
-                        reviewed_at=submission.reviewedAt or datetime.now(tz=timezone.utc),
+                        reviewed_at=submission.reviewedAt
+                        or datetime.now(tz=timezone.utc),
                         resubmit_url=f"https://app.autogpt.com/build/{submission.agentGraphId}",
                     )
-                    
+
                     notification_event = NotificationEventModel[AgentRejectionData](
                         user_id=agent_creator.id,
                         type=prisma.enums.NotificationType.AGENT_REJECTED,
                         data=notification_data,
                     )
-                
+
                 # Queue the notification for immediate sending
                 await queue_notification_async(notification_event)
-                logger.info(f"Queued {'approval' if is_approved else 'rejection'} notification for user {agent_creator.id} and agent {submission.name}")
-                
+                logger.info(
+                    f"Queued {'approval' if is_approved else 'rejection'} notification for user {agent_creator.id} and agent {submission.name}"
+                )
+
             except Exception as e:
                 logger.error(f"Failed to send email notification for agent review: {e}")
                 # Don't fail the review process if email sending fails
