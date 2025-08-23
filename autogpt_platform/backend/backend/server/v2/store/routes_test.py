@@ -1,10 +1,10 @@
 import datetime
 import json
 
-import autogpt_libs.auth
 import fastapi
 import fastapi.testclient
 import prisma.enums
+import pytest
 import pytest_mock
 from pytest_snapshot.plugin import Snapshot
 
@@ -21,23 +21,14 @@ app.include_router(backend.server.v2.store.routes.router)
 client = fastapi.testclient.TestClient(app)
 
 
-def override_requires_user():
-    """Override auth middleware for testing"""
-    return autogpt_libs.auth.User(
-        user_id="test-user-id",
-        email="test@example.com",
-        phone_number="123-456-7890",
-        role="user",
-    )
+@pytest.fixture(autouse=True)
+def setup_app_auth(mock_jwt_user):
+    """Setup auth overrides for all tests in this module"""
+    from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
-
-def override_get_user_id():
-    """Override get_user_id for testing"""
-    return "test-user-id"
-
-
-app.dependency_overrides[autogpt_libs.auth.requires_user] = override_requires_user
-app.dependency_overrides[autogpt_libs.auth.get_user_id] = override_get_user_id
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    yield
+    app.dependency_overrides.clear()
 
 
 def test_get_agents_defaults(

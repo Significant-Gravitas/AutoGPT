@@ -3,12 +3,11 @@ from unittest.mock import AsyncMock, Mock
 
 import fastapi
 import fastapi.testclient
+import pytest
 import pytest_mock
-from autogpt_libs.auth import get_user_id
 from pytest_snapshot.plugin import Snapshot
 
 import backend.server.routers.analytics as analytics_routes
-from backend.server.conftest import TEST_USER_ID
 
 app = fastapi.FastAPI()
 app.include_router(analytics_routes.router)
@@ -16,12 +15,14 @@ app.include_router(analytics_routes.router)
 client = fastapi.testclient.TestClient(app)
 
 
-def override_get_user_id() -> str:
-    """Override get_user_id for testing"""
-    return TEST_USER_ID
+@pytest.fixture(autouse=True)
+def setup_app_auth(mock_jwt_user):
+    """Setup auth overrides for all tests in this module"""
+    from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
-
-app.dependency_overrides[get_user_id] = override_get_user_id
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    yield
+    app.dependency_overrides.clear()
 
 
 def test_log_raw_metric_success(
@@ -53,7 +54,7 @@ def test_log_raw_metric_success(
 
     # Verify the function was called with correct parameters
     mock_log_metric.assert_called_once_with(
-        user_id=TEST_USER_ID,
+        user_id="test-user-id",
         metric_name="page_load_time",
         metric_value=2.5,
         data_string="/dashboard",
@@ -155,7 +156,7 @@ def test_log_raw_analytics_success(
 
     # Verify the function was called with correct parameters
     mock_log_analytics.assert_called_once_with(
-        TEST_USER_ID,
+        "test-user-id",
         "user_action",
         request_data["data"],
         "button_click_submit_form",

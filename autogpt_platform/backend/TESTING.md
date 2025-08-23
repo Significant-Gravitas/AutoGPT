@@ -132,22 +132,71 @@ def test_endpoint_success(snapshot: Snapshot):
 
 ### Testing with Authentication
 
+For the main API routes that use JWT authentication, auth is provided by the `autogpt_libs.auth` module. If the test actually uses the `user_id`, the recommended approach for testing is to mock the `get_jwt_payload` function, which underpins all higher-level auth functions used in the API (`requires_user`, `requires_admin_user`, `get_user_id`).
+
+If the test doesn't need the `user_id` specifically, mocking is not necessary as during tests auth is disabled anyway (see `conftest.py`).
+
+#### Using Global Auth Fixtures
+
+Two global auth fixtures are provided by `backend/server/conftest.py`:
+
+- `mock_jwt_user` - Regular user with TEST_USER_ID ("test-user-id")
+- `mock_jwt_admin` - Admin user with ADMIN_USER_ID ("admin-user-id")
+
+These provide the easiest way to set up authentication mocking in test modules:
+
 ```python
-def override_requires_user():
-    return autogpt_libs.auth.User(
-        user_id="test-user-id",
-        email="test@example.com",
-        phone_number="123-456-7890",
-        role="user",
-    )
+import fastapi
+import fastapi.testclient
+import pytest
+from backend.server.v2.myroute import router
 
+app = fastapi.FastAPI()
+app.include_router(router)
+client = fastapi.testclient.TestClient(app)
 
-def override_get_user_id():
-    return "test-user-id"
+@pytest.fixture(autouse=True)
+def setup_app_auth(mock_jwt_user):
+    """Setup auth overrides for all tests in this module"""
+    from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_user['get_jwt_payload']
+    yield
+    app.dependency_overrides.clear()
+```
 
-app.dependency_overrides[autogpt_libs.auth.requires_user] = override_requires_user
-app.dependency_overrides[autogpt_libs.auth.get_user_id] = override_get_user_id
+For admin-only endpoints, use `mock_jwt_admin` instead:
+
+```python
+@pytest.fixture(autouse=True)
+def setup_app_auth(mock_jwt_admin):
+    """Setup auth overrides for admin tests"""
+    from autogpt_libs.auth.jwt_utils import get_jwt_payload
+
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_admin['get_jwt_payload']
+    yield
+    app.dependency_overrides.clear()
+```
+
+#### Testing Unauthenticated Scenarios
+
+By default, the test environment has `ENABLE_AUTH=false` set in `conftest.py`, which means requests without dependency overrides will use the default user from the auth library rather than failing authentication. To test true unauthenticated behavior, you need to clear dependency overrides and potentially mock auth failures:
+
+```python
+def test_endpoint_requires_authentication():
+    # Set custom dependency override test unauthenticated access scenario
+    def auth_not_satisfied():
+        raise HTTPException(
+            status_code=401,
+            detail="Authorization header is missing",
+        )
+
+    app.dependency_overrides[get_jwt_payload] = auth_not_satisfied
+
+    with pytest.raises(HTTPException):
+        response = client.get("/protected-endpoint")
+
+    app.dependency_overrides.clear()
 ```
 
 ### Mocking External Services
@@ -160,10 +209,10 @@ def test_external_api_call(mocker, snapshot):
         "backend.services.external_api.call",
         return_value=mock_response
     )
-    
+
     response = client.post("/api/process")
     assert response.status_code == 200
-    
+
     snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps(response.json(), indent=2, sort_keys=True),
@@ -194,6 +243,17 @@ def test_external_api_call(mocker, snapshot):
 - Use `async def` with `@pytest.mark.asyncio` for testing async functions directly
 
 ### 5. Fixtures
+
+#### Global Fixtures (conftest.py)
+
+Authentication fixtures are available globally from `conftest.py`:
+
+- `mock_jwt_user` - Standard user authentication
+- `mock_jwt_admin` - Admin user authentication
+- `configured_snapshot` - Pre-configured snapshot fixture
+
+#### Custom Fixtures
+
 Create reusable fixtures for common test data:
 
 ```python
@@ -209,9 +269,18 @@ def test_create_user(sample_user, snapshot):
     # ... test implementation
 ```
 
+#### Test Isolation
+
+All tests must use fixtures that ensure proper isolation:
+
+- Authentication overrides are automatically cleaned up after each test
+- Database connections are properly managed with cleanup
+- Mock objects are reset between tests
+
 ## CI/CD Integration
 
 The GitHub Actions workflow automatically runs tests on:
+
 - Pull requests
 - Pushes to main branch
 
@@ -223,16 +292,19 @@ Snapshot tests work in CI by:
 ## Troubleshooting
 
 ### Snapshot Mismatches
+
 - Review the diff carefully
 - If changes are expected: `poetry run pytest --snapshot-update`
 - If changes are unexpected: Fix the code causing the difference
 
 ### Async Test Issues
+
 - Ensure async functions use `@pytest.mark.asyncio`
 - Use `AsyncMock` for mocking async functions
 - FastAPI TestClient handles async automatically
 
 ### Import Errors
+
 - Check that all dependencies are in `pyproject.toml`
 - Run `poetry install` to ensure dependencies are installed
 - Verify import paths are correct

@@ -1,7 +1,6 @@
 import datetime
 import json
 
-import autogpt_libs.auth as autogpt_auth_lib
 import fastapi.testclient
 import pytest
 import pytest_mock
@@ -19,23 +18,14 @@ client = fastapi.testclient.TestClient(app)
 FIXED_NOW = datetime.datetime(2023, 1, 1, 0, 0, 0)
 
 
-def override_requires_user():
-    """Override auth middleware for testing"""
-    return autogpt_auth_lib.User(
-        user_id="test-user-id",
-        email="test@example.com",
-        phone_number="123-456-7890",
-        role="user",
-    )
+@pytest.fixture(autouse=True)
+def setup_app_auth(mock_jwt_user):
+    """Setup auth overrides for all tests in this module"""
+    from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
-
-def override_get_user_id():
-    """Override get_user_id for testing"""
-    return "test-user-id"
-
-
-app.dependency_overrides[autogpt_auth_lib.requires_user] = override_requires_user
-app.dependency_overrides[autogpt_auth_lib.get_user_id] = override_get_user_id
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    yield
+    app.dependency_overrides.clear()
 
 
 @pytest.mark.asyncio

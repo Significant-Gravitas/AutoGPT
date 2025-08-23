@@ -2,7 +2,6 @@ import json
 from io import BytesIO
 from unittest.mock import AsyncMock, Mock, patch
 
-import autogpt_libs.auth.jwt_utils
 import fastapi
 import fastapi.testclient
 import pytest
@@ -23,20 +22,14 @@ app.include_router(v1_routes.v1_router)
 client = fastapi.testclient.TestClient(app)
 
 
-def override_get_jwt_payload(request: fastapi.Request) -> dict[str, str]:
-    """Override auth middleware for testing"""
-    return {"sub": TEST_USER_ID, "role": "user", "email": "test@example.com"}
+@pytest.fixture(autouse=True)
+def setup_app_auth(mock_jwt_user):
+    """Setup auth overrides for all tests in this module"""
+    from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
-
-def override_get_user_id() -> str:
-    """Override get_user_id for testing"""
-    return TEST_USER_ID
-
-
-app.dependency_overrides[autogpt_libs.auth.jwt_utils.get_jwt_payload] = (
-    override_get_jwt_payload
-)
-app.dependency_overrides[autogpt_libs.auth.get_user_id] = override_get_user_id
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    yield
+    app.dependency_overrides.clear()
 
 
 # Auth endpoints tests

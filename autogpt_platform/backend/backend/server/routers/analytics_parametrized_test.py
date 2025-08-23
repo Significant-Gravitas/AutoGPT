@@ -7,24 +7,14 @@ import fastapi
 import fastapi.testclient
 import pytest
 import pytest_mock
-from autogpt_libs.auth import get_user_id
 from pytest_snapshot.plugin import Snapshot
 
 import backend.server.routers.analytics as analytics_routes
-from backend.server.conftest import TEST_USER_ID
 
 app = fastapi.FastAPI()
 app.include_router(analytics_routes.router)
 
 client = fastapi.testclient.TestClient(app)
-
-
-def override_get_user_id() -> str:
-    """Override get_user_id for testing"""
-    return TEST_USER_ID
-
-
-app.dependency_overrides[get_user_id] = override_get_user_id
 
 
 @pytest.mark.parametrize(
