@@ -13,11 +13,7 @@ export default function SettingsPage() {
     isError,
     isLoading,
   } = useGetV1GetNotificationPreferences({
-    query: {
-      select: (res) => {
-        return res.data;
-      },
-    },
+    query: { select: (res) => (res.status === 200 ? res.data : null) },
   });
 
   const { user, isUserLoading } = useSupabase();
@@ -31,7 +27,7 @@ export default function SettingsPage() {
   }
 
   if (isError || !preferences || !preferences.preferences) {
-    return "Errror..."; // TODO: Will use a Error reusable components from Block Menu redesign
+    return "Error..."; // TODO: Will use a Error reusable components from Block Menu redesign
   }
 
   return (
