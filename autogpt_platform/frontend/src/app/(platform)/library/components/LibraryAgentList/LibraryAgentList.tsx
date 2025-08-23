@@ -28,7 +28,6 @@ export default function LibraryAgentList() {
           </div>
         ) : (
           <InfiniteScroll
-            dataLength={agents.length}
             isFetchingNextPage={isFetchingNextPage}
             fetchNextPage={fetchNextPage}
             hasNextPage={hasNextPage}

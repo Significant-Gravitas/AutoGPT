@@ -41,6 +41,7 @@ import LoadingBox, { LoadingSpinner } from "@/components/ui/loading";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { AgentRunDetailsView } from "./components/agent-run-details-view";
 import { AgentRunDraftView } from "./components/agent-run-draft-view";
+import { useAgentRunsInfinite } from "../use-agent-runs";
 import { AgentRunsSelectorList } from "./components/agent-runs-selector-list";
 import { AgentScheduleDetailsView } from "./components/agent-schedule-details-view";
 
@@ -55,7 +56,8 @@ export function OldAgentLibraryView() {
 
   const [graph, setGraph] = useState<Graph | null>(null); // Graph version corresponding to LibraryAgent
   const [agent, setAgent] = useState<LibraryAgent | null>(null);
-  const [agentRuns, setAgentRuns] = useState<GraphExecutionMeta[]>([]);
+  const agentRunsQuery = useAgentRunsInfinite(graph?.id); // only runs once graph.id is known
+  const agentRuns = agentRunsQuery.agentRuns;
   const [agentPresets, setAgentPresets] = useState<LibraryAgentPreset[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [selectedView, selectView] = useState<
@@ -156,19 +158,22 @@ export function OldAgentLibraryView() {
           (graph && graph.version == _graph.version) || setGraph(_graph),
       );
       Promise.all([
-        api.getGraphExecutions(agent.graph_id),
+        agentRunsQuery.refetchRuns(),
         api.listLibraryAgentPresets({
           graph_id: agent.graph_id,
           page_size: 100,
         }),
-      ]).then(([runs, presets]) => {
-        setAgentRuns(runs);
+      ]).then(([runsQueryResult, presets]) => {
         setAgentPresets(presets.presets);
 
+        const newestAgentRunsResponse = runsQueryResult.data?.pages[0];
+        if (!newestAgentRunsResponse || newestAgentRunsResponse.status != 200)
+          return;
+        const newestAgentRuns = newestAgentRunsResponse.data.executions;
         // Preload the corresponding graph versions for the latest 10 runs
-        new Set(runs.slice(0, 10).map((run) => run.graph_version)).forEach(
-          (version) => getGraphVersion(agent.graph_id, version),
-        );
+        new Set(
+          newestAgentRuns.slice(0, 10).map((run) => run.graph_version),
+        ).forEach((version) => getGraphVersion(agent.graph_id, version));
       });
     });
   }, [api, agentID, getGraphVersion, graph]);
@@ -187,7 +192,7 @@ export function OldAgentLibraryView() {
         else if (!latest.started_at) return latest;
         return latest.started_at > current.started_at ? latest : current;
       }, agentRuns[0]);
-      selectRun(latestRun.id);
+      selectRun(latestRun.id as GraphExecutionID);
     } else {
       // select top preset
       const latestPreset = agentPresets.toSorted(
@@ -277,18 +282,7 @@ export function OldAgentLibraryView() {
           incrementRuns();
         }
 
-        setAgentRuns((prev) => {
-          const index = prev.findIndex((run) => run.id === data.id);
-          if (index === -1) {
-            return [...prev, data];
-          }
-          const newRuns = [...prev];
-          newRuns[index] = { ...newRuns[index], ...data };
-          return newRuns;
-        });
-        if (data.id === selectedView.id) {
-          setSelectedRun((prev) => ({ ...prev, ...data }));
-        }
+        agentRunsQuery.upsertAgentRun(data);
       },
     );
 
@@ -344,7 +338,7 @@ export function OldAgentLibraryView() {
       if (selectedView.type == "run" && selectedView.id == run.id) {
         openRunDraftView();
       }
-      setAgentRuns((runs) => runs.filter((r) => r.id !== run.id));
+      agentRunsQuery.removeAgentRun(run.id);
     },
     [api, selectedView, openRunDraftView],
   );
@@ -481,9 +475,9 @@ export function OldAgentLibraryView() {
       {/* Sidebar w/ list of runs */}
       {/* TODO: render this below header in sm and md layouts */}
       <AgentRunsSelectorList
-        className="agpt-div w-full border-b lg:w-auto lg:border-b-0 lg:border-r"
+        className="agpt-div w-full border-b pb-2 lg:w-auto lg:border-b-0 lg:border-r lg:pb-0"
         agent={agent}
-        agentRuns={agentRuns}
+        agentRunsQuery={agentRunsQuery}
         agentPresets={agentPresets}
         schedules={schedules}
         selectedView={selectedView}

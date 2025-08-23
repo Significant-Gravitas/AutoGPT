@@ -1,4 +1,4 @@
-import { useGetV1GetAllExecutions } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { useGetV1ListAllExecutions } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { useGetV2ListLibraryAgents } from "@/app/api/__generated__/endpoints/library/library";
 
 import BackendAPI from "@/lib/autogpt-server-api/client";
@@ -44,7 +44,7 @@ export function useAgentActivityDropdown() {
     data: executions,
     isSuccess: executionsSuccess,
     error: executionsError,
-  } = useGetV1GetAllExecutions();
+  } = useGetV1ListAllExecutions();
 
   // Create a map of library agents
   useEffect(() => {
