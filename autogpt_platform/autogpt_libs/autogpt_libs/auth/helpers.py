@@ -40,16 +40,25 @@ def add_auth_responses_to_openapi(app: FastAPI) -> None:
                     details["responses"] = {}
 
                 details["responses"]["401"] = {
-                    "description": "Authentication required",
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {"detail": {"type": "string"}},
-                            }
-                        }
-                    },
+                    "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
                 }
+
+        # Ensure #/components/responses exists
+        if "responses" not in openapi_schema["components"]:
+            openapi_schema["components"]["responses"] = {}
+
+        # Define 401 response
+        openapi_schema["components"]["responses"]["HTTP401NotAuthenticatedError"] = {
+            "description": "Authentication required",
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {"detail": {"type": "string"}},
+                    }
+                }
+            },
+        }
 
         app.openapi_schema = openapi_schema
         return app.openapi_schema

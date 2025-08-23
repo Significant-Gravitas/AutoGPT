@@ -52,15 +52,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -111,15 +103,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -145,15 +129,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -201,15 +177,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -292,15 +260,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -369,15 +329,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -445,15 +397,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -525,15 +469,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -554,15 +490,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -675,15 +603,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -718,15 +638,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -743,15 +655,7 @@
             "content": { "application/json": { "schema": {} } }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -792,15 +696,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -823,15 +719,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -870,15 +758,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -895,15 +775,7 @@
             "content": { "application/json": { "schema": {} } }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -934,15 +806,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -959,15 +823,7 @@
             "content": { "application/json": { "schema": {} } }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -984,15 +840,7 @@
             "content": { "application/json": { "schema": {} } }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -1017,15 +865,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -1079,15 +919,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1149,15 +981,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1181,15 +1005,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -1220,15 +1036,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -1243,15 +1051,7 @@
             "content": { "application/json": { "schema": {} } }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -1304,15 +1104,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1332,15 +1124,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -1378,15 +1162,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -1424,15 +1200,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -1495,15 +1263,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1527,15 +1287,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -1560,15 +1312,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -1603,15 +1347,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -1668,15 +1404,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1732,15 +1460,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -1775,15 +1495,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -1826,15 +1538,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1875,15 +1579,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1924,15 +1620,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1998,15 +1686,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2055,15 +1735,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2089,15 +1761,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -2164,15 +1828,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2221,15 +1877,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2259,15 +1907,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2321,15 +1961,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -2370,15 +2002,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2404,15 +2028,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -2459,15 +2075,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2502,15 +2110,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -2548,15 +2148,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -2595,15 +2187,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -2639,15 +2223,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2685,15 +2261,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2741,15 +2309,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2770,15 +2330,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -2814,15 +2366,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -2983,15 +2527,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3029,15 +2565,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3089,15 +2617,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3252,15 +2772,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3301,15 +2813,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3355,15 +2859,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -3401,15 +2897,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3457,15 +2945,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3500,15 +2980,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -3543,15 +3015,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3653,15 +3117,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3709,15 +3165,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3756,15 +3204,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3804,15 +3244,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -3877,15 +3309,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3952,15 +3376,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -4006,15 +3422,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -4052,15 +3460,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -4106,15 +3506,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -4143,15 +3535,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -4190,15 +3574,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -4250,15 +3626,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -4344,15 +3712,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -4392,15 +3752,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -4437,15 +3789,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -4492,15 +3836,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -4535,15 +3871,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -4589,15 +3917,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -4641,15 +3961,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -4686,15 +3998,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -4731,15 +4035,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "detail": { "type": "string" } }
-                }
-              }
-            }
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -7938,6 +7234,19 @@
         "type": "apiKey",
         "in": "header",
         "name": "X-Postmark-Webhook-Token"
+      }
+    },
+    "responses": {
+      "HTTP401NotAuthenticatedError": {
+        "description": "Authentication required",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": { "detail": { "type": "string" } }
+            }
+          }
+        }
       }
     }
   }
