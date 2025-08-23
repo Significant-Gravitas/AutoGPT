@@ -1201,7 +1201,8 @@ class ExecutionProcessor:
                     f"User: {user_email or user_id}\n"
                     f"Balance dropped below ${LOW_BALANCE_THRESHOLD/100:.2f}\n"
                     f"Current balance: ${current_balance/100:.2f}\n"
-                    f"Transaction cost: ${transaction_cost/100:.2f}"
+                    f"Transaction cost: ${transaction_cost/100:.2f}\n"
+                    f"[View User Details](https://{base_url}/admin/spending?search={user_email})"
                 )
                 get_notification_manager_client().discord_system_alert(
                     alert_message, DiscordChannel.PRODUCT
