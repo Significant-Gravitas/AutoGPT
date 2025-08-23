@@ -1,10 +1,8 @@
 import { isServerSide } from "@/lib/utils/is-server-side";
-import { debounce } from "lodash";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 interface useInfiniteScrollProps {
   scrollThreshold: number;
-  scrollableTarget?: string;
   onLoadMore?: () => void;
   isFetchingNextPage: boolean;
   fetchNextPage: () => void;
@@ -12,7 +10,6 @@ interface useInfiniteScrollProps {
 }
 
 export const useInfiniteScroll = ({
-  scrollableTarget,
   onLoadMore,
   hasNextPage,
   isFetchingNextPage,
@@ -20,66 +17,50 @@ export const useInfiniteScroll = ({
   scrollThreshold,
 }: useInfiniteScrollProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const endOfListRef = useRef<HTMLDivElement>(null);
   const [isInView, setIsInView] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-
-  const handleScroll = useCallback(() => {
-    if (containerRef.current && !isServerSide()) {
-      const container = containerRef.current;
-      const { bottom } = container.getBoundingClientRect();
-      const { innerHeight } = window;
-      const isVisible = bottom <= innerHeight + scrollThreshold;
-      setIsInView(isVisible);
-    }
-  }, [scrollThreshold]);
-
-  const handleLoadMore = useCallback(() => {
-    if (hasNextPage && !isFetchingNextPage) {
-      fetchNextPage();
-    }
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+  const isLoadingRef = useRef(false);
 
   const loadMore = useCallback(async () => {
-    if (hasNextPage && !isLoading) {
-      setIsLoading(true);
+    if (hasNextPage && !isFetchingNextPage && !isLoadingRef.current) {
+      isLoadingRef.current = true;
       try {
-        handleLoadMore();
+        fetchNextPage();
         onLoadMore?.();
       } finally {
-        setIsLoading(false);
+        isLoadingRef.current = false;
       }
     }
-  }, [hasNextPage, isLoading, handleLoadMore, onLoadMore]);
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage, onLoadMore]);
 
   useEffect(() => {
-    if (!hasNextPage) return;
+    if (!hasNextPage || !endOfListRef.current || isServerSide()) return;
 
-    const handleDebouncedScroll = debounce(handleScroll, 200);
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        setIsInView(entry.isIntersecting);
+      },
+      {
+        rootMargin: `${scrollThreshold}px`,
+      },
+    );
 
-    const scrollElement = scrollableTarget
-      ? document.querySelector(scrollableTarget)
-      : window;
-
-    if (!scrollElement) return;
-
-    scrollElement.addEventListener("scroll", handleDebouncedScroll);
-
-    handleScroll();
+    observer.observe(endOfListRef.current);
 
     return () => {
-      scrollElement.removeEventListener("scroll", handleDebouncedScroll);
+      observer.disconnect();
     };
-  }, [handleScroll, hasNextPage, scrollableTarget]);
+  }, [hasNextPage, scrollThreshold]);
 
   useEffect(() => {
-    if (isInView && hasNextPage && !isLoading) {
+    if (isInView && hasNextPage && !isLoadingRef.current) {
       loadMore();
     }
-  }, [isInView, hasNextPage, isLoading, loadMore]);
+  }, [isInView, hasNextPage]);
 
   return {
     containerRef,
-    bottomRef,
+    endOfListRef,
   };
 };
