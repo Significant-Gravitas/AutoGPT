@@ -14,6 +14,8 @@ from backend.data.model import (
     CredentialsField,
     CredentialsMetaInput,
     CredentialsType,
+    OAuth2Credentials,
+    UserPasswordCredentials,
 )
 from backend.integrations.oauth.base import BaseOAuthHandler
 from backend.integrations.webhooks._base import BaseWebhooksManager
@@ -104,14 +106,39 @@ class Provider:
         )
 
     def get_test_credentials(self) -> Credentials:
-        """Get test credentials for the provider."""
-        return APIKeyCredentials(
-            id=str(self.test_credentials_uuid),
-            provider=self.name,
-            api_key=SecretStr("mock-api-key"),
-            title=f"Mock {self.name.title()} API key",
-            expires_at=None,
-        )
+        """Get test credentials for the provider based on supported auth types."""
+        test_id = str(self.test_credentials_uuid)
+
+        # Return credentials based on the first supported auth type
+        if "user_password" in self.supported_auth_types:
+            return UserPasswordCredentials(
+                id=test_id,
+                provider=self.name,
+                username=SecretStr(f"mock-{self.name}-username"),
+                password=SecretStr(f"mock-{self.name}-password"),
+                title=f"Mock {self.name.title()} credentials",
+            )
+        elif "oauth2" in self.supported_auth_types:
+            return OAuth2Credentials(
+                id=test_id,
+                provider=self.name,
+                username=f"mock-{self.name}-username",
+                access_token=SecretStr(f"mock-{self.name}-access-token"),
+                access_token_expires_at=None,
+                refresh_token=SecretStr(f"mock-{self.name}-refresh-token"),
+                refresh_token_expires_at=None,
+                scopes=[f"mock-{self.name}-scope"],
+                title=f"Mock {self.name.title()} OAuth credentials",
+            )
+        else:
+            # Default to API key credentials
+            return APIKeyCredentials(
+                id=test_id,
+                provider=self.name,
+                api_key=SecretStr(f"mock-{self.name}-api-key"),
+                title=f"Mock {self.name.title()} API key",
+                expires_at=None,
+            )
 
     def get_api(self, credentials: Credentials) -> Any:
         """Get API client instance for the given credentials."""
