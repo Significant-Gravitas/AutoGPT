@@ -1149,7 +1149,8 @@ class ExecutionProcessor:
                 f"Agent: {metadata.name if metadata else 'Unknown Agent'}\n"
                 f"Current balance: ${e.balance/100:.2f}\n"
                 f"Attempted cost: ${abs(e.amount)/100:.2f}\n"
-                f"Shortfall: ${abs(shortfall)/100:.2f}"
+                f"Shortfall: ${abs(shortfall)/100:.2f}\n"
+                f"[View User Details](https://{base_url}/admin/spending?search={user_email})"
             )
 
             # Send alert asynchronously
