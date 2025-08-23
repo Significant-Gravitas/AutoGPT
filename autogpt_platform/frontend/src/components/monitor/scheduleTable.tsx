@@ -254,7 +254,7 @@ export const SchedulesTable = ({
                   </TableCell>
                   <TableCell>
                     <Badge variant="secondary">
-                      {humanizeCronExpression(schedule.cron)}
+                      {humanizeCronExpression(schedule.cron, userTimezone)}
                     </Badge>
                   </TableCell>
                   <TableCell>

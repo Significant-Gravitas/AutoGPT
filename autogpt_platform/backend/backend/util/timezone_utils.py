@@ -87,15 +87,20 @@ def convert_utc_time_to_user_timezone(utc_time_str: str, user_timezone: str) -> 
         ISO format datetime string in user timezone
     """
     try:
-        # Parse UTC time
-        utc_time = datetime.fromisoformat(utc_time_str.replace("Z", "+00:00"))
-        if utc_time.tzinfo is None:
-            utc_time = utc_time.replace(tzinfo=ZoneInfo("UTC"))
+        # Parse the time string
+        parsed_time = datetime.fromisoformat(utc_time_str.replace("Z", "+00:00"))
 
-        # Convert to user timezone
         user_tz = ZoneInfo(user_timezone)
-        user_time = utc_time.astimezone(user_tz)
 
+        # If the time already has timezone info, convert it to user timezone
+        if parsed_time.tzinfo is not None:
+            # Convert to user timezone regardless of source timezone
+            user_time = parsed_time.astimezone(user_tz)
+            return user_time.isoformat()
+
+        # If no timezone info, treat as UTC and convert to user timezone
+        parsed_time = parsed_time.replace(tzinfo=ZoneInfo("UTC"))
+        user_time = parsed_time.astimezone(user_tz)
         return user_time.isoformat()
 
     except Exception as e:

@@ -1011,7 +1011,7 @@ async def list_graph_execution_schedules(
     user = await get_user_by_id(user_id)
     user_timezone = get_user_timezone_or_utc(user.timezone if user else None)
 
-    # Convert UTC next_run_time to user timezone for display
+    # Convert next_run_time to user timezone for display
     for schedule in schedules:
         if schedule.next_run_time:
             schedule.next_run_time = convert_utc_time_to_user_timezone(

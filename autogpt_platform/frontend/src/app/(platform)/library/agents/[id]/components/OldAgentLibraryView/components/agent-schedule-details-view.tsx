@@ -55,7 +55,7 @@ export function AgentScheduleDetailsView({
       },
       {
         label: "Schedule",
-        value: humanizeCronExpression(schedule.cron),
+        value: humanizeCronExpression(schedule.cron, userTimezone),
       },
       {
         label: "Next run",
