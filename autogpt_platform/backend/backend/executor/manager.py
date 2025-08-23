@@ -7,6 +7,7 @@ from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
+from dataclasses import dataclass, field
 
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
@@ -91,6 +92,77 @@ _logger = logging.getLogger(__name__)
 logger = TruncatedLogger(_logger, prefix="[GraphExecutor]")
 settings = Settings()
 
+# ============ Eventual Consistency Batch System ============ #
+
+@dataclass
+class PendingOperation:
+    """Represents a pending database operation to be batched."""
+    operation_type: str
+    node_exec_id: str
+    data: dict[str, Any]
+    timestamp: float = field(default_factory=time.time)
+
+@dataclass 
+class ExecutionBuffer:
+    """Thread-local buffer for batching database operations during execution."""
+    pending_outputs: list[PendingOperation] = field(default_factory=list)
+    pending_status_updates: list[PendingOperation] = field(default_factory=list) 
+    pending_stats_updates: list[PendingOperation] = field(default_factory=list)
+    
+    # Thread locks for atomicity within execution (replacing Redis locks)
+    output_pin_locks: dict[str, threading.Lock] = field(default_factory=lambda: defaultdict(threading.Lock))
+    
+    # Flush configuration
+    max_batch_size: int = 50
+    max_batch_age_seconds: float = 5.0
+    
+    def add_output_operation(self, node_exec_id: str, output_name: str, output_data: Any) -> None:
+        """Add an output operation to the batch."""
+        self.pending_outputs.append(PendingOperation(
+            operation_type="output",
+            node_exec_id=node_exec_id,
+            data={"output_name": output_name, "output_data": output_data}
+        ))
+        
+    def add_status_update(self, node_exec_id: str, status: ExecutionStatus, 
+                         execution_data: dict[str, Any] | None = None,
+                         stats: dict[str, Any] | None = None) -> None:
+        """Add a status update operation to the batch."""
+        self.pending_status_updates.append(PendingOperation(
+            operation_type="status",
+            node_exec_id=node_exec_id,
+            data={"status": status, "execution_data": execution_data, "stats": stats}
+        ))
+        
+    def add_stats_update(self, graph_exec_id: str, stats: GraphExecutionStats) -> None:
+        """Add a graph stats update operation to the batch."""
+        self.pending_stats_updates.append(PendingOperation(
+            operation_type="graph_stats", 
+            node_exec_id=graph_exec_id,  # Using node_exec_id field for graph_exec_id
+            data={"stats": stats}
+        ))
+        
+    def should_flush(self) -> bool:
+        """Check if we should flush based on batch size or age."""
+        total_ops = len(self.pending_outputs) + len(self.pending_status_updates) + len(self.pending_stats_updates)
+        if total_ops >= self.max_batch_size:
+            return True
+            
+        # Check age of oldest operation
+        oldest_time = min(
+            ([op.timestamp for op in self.pending_outputs] + 
+             [op.timestamp for op in self.pending_status_updates] +
+             [op.timestamp for op in self.pending_stats_updates]),
+            default=time.time()
+        )
+        return (time.time() - oldest_time) > self.max_batch_age_seconds
+        
+    def clear(self) -> None:
+        """Clear all pending operations."""
+        self.pending_outputs.clear()
+        self.pending_status_updates.clear() 
+        self.pending_stats_updates.clear()
+
 active_runs_gauge = Gauge(
     "execution_manager_active_runs", "Number of active graph runs"
 )
@@ -109,6 +181,7 @@ _tls = threading.local()
 def init_worker():
     """Initialize ExecutionProcessor instance in thread-local storage"""
     _tls.processor = ExecutionProcessor()
+    _tls.execution_buffer = ExecutionBuffer()
     _tls.processor.on_graph_executor_start()
 
 
@@ -240,11 +313,11 @@ async def _enqueue_next_nodes(
     async def add_enqueued_execution(
         node_exec_id: str, node_id: str, block_id: str, data: BlockInput
     ) -> NodeExecutionEntry:
-        await async_update_node_execution_status(
-            db_client=db_client,
-            exec_id=node_exec_id,
+        # Add status update to batch instead of immediate DB operation
+        _tls.execution_buffer.add_status_update(
+            node_exec_id=node_exec_id,
             status=ExecutionStatus.QUEUED,
-            execution_data=data,
+            execution_data=data
         )
         return NodeExecutionEntry(
             user_id=user_id,
@@ -278,7 +351,9 @@ async def _enqueue_next_nodes(
         # Multiple node can register the same next node, we need this to be atomic
         # To avoid same execution to be enqueued multiple times,
         # Or the same input to be consumed multiple times.
-        async with synchronized(f"upsert_input-{next_node_id}-{graph_exec_id}"):
+        # Use thread lock instead of Redis lock for better performance within single execution
+        lock_key = f"upsert_input-{next_node_id}-{graph_exec_id}"
+        with _tls.execution_buffer.output_pin_locks[lock_key]:
             # Add output data to the earliest incomplete execution, or create a new one.
             next_node_exec_id, next_node_input = await db_client.upsert_execution_input(
                 node_id=next_node_id,
@@ -286,10 +361,10 @@ async def _enqueue_next_nodes(
                 input_name=next_input_name,
                 input_data=next_data,
             )
-            await async_update_node_execution_status(
-                db_client=db_client,
-                exec_id=next_node_exec_id,
-                status=ExecutionStatus.INCOMPLETE,
+            # Add status update to batch instead of immediate DB operation  
+            _tls.execution_buffer.add_status_update(
+                node_exec_id=next_node_exec_id,
+                status=ExecutionStatus.INCOMPLETE
             )
 
             # Complete missing static input pins data using the last execution input.
@@ -455,19 +530,65 @@ class ExecutionProcessor:
         if node_error and not isinstance(node_error, str):
             node_stats["error"] = str(node_error) or node_stats.__class__.__name__
 
-        await async_update_node_execution_status(
-            db_client=db_client,
-            exec_id=node_exec.node_exec_id,
+        # Add final status and stats updates to batch
+        _tls.execution_buffer.add_status_update(
+            node_exec_id=node_exec.node_exec_id,
             status=status,
-            stats=node_stats,
+            stats=node_stats
         )
-        await async_update_graph_execution_state(
-            db_client=db_client,
+        _tls.execution_buffer.add_stats_update(
             graph_exec_id=node_exec.graph_exec_id,
-            stats=graph_stats,
+            stats=graph_stats
         )
+        
+        # Force flush at end of node execution to ensure consistency
+        await self._flush_execution_buffer(db_client)
 
         return execution_stats
+
+    @async_error_logged(swallow=True)
+    async def _flush_execution_buffer(self, db_client: "DatabaseManagerAsyncClient") -> None:
+        """Flush pending database operations from the execution buffer."""
+        buffer = _tls.execution_buffer
+        
+        try:
+            # Batch process outputs
+            for op in buffer.pending_outputs:
+                await db_client.upsert_execution_output(
+                    node_exec_id=op.node_exec_id,
+                    output_name=op.data["output_name"],
+                    output_data=op.data["output_data"]
+                )
+            
+            # Batch process status updates  
+            for op in buffer.pending_status_updates:
+                await async_update_node_execution_status(
+                    db_client=db_client,
+                    exec_id=op.node_exec_id,
+                    status=op.data["status"],
+                    execution_data=op.data.get("execution_data"),
+                    stats=op.data.get("stats")
+                )
+            
+            # Batch process graph stats updates
+            for op in buffer.pending_stats_updates:
+                await async_update_graph_execution_state(
+                    db_client=db_client,
+                    graph_exec_id=op.node_exec_id,  # node_exec_id field contains graph_exec_id 
+                    stats=op.data["stats"]
+                )
+                
+            logger.debug(f"Flushed batch: {len(buffer.pending_outputs)} outputs, "
+                        f"{len(buffer.pending_status_updates)} status updates, "
+                        f"{len(buffer.pending_stats_updates)} stats updates")
+                        
+        except Exception as e:
+            logger.error(f"Error flushing execution buffer: {e}")
+            # Re-raise to ensure operation failure is handled properly
+            raise
+        finally:
+            # Clear the buffer regardless of success/failure
+            buffer.clear()
 
     @async_time_measured
     async def _on_node_execution(
@@ -483,15 +604,16 @@ class ExecutionProcessor:
         status = ExecutionStatus.RUNNING
 
         async def persist_output(output_name: str, output_data: Any) -> None:
-            await db_client.upsert_execution_output(
+            # Add output to batch buffer instead of immediate DB operation
+            _tls.execution_buffer.add_output_operation(
                 node_exec_id=node_exec.node_exec_id,
                 output_name=output_name,
-                output_data=output_data,
+                output_data=output_data
             )
-            if exec_update := await db_client.get_node_execution(
-                node_exec.node_exec_id
-            ):
-                await send_async_execution_update(exec_update)
+            
+            # Check if we should flush the batch
+            if _tls.execution_buffer.should_flush():
+                await self._flush_execution_buffer(db_client)
 
             node_exec_progress.add_output(
                 ExecutionOutputEntry(
@@ -503,10 +625,10 @@ class ExecutionProcessor:
 
         try:
             log_metadata.info(f"Start node execution {node_exec.node_exec_id}")
-            await async_update_node_execution_status(
-                db_client=db_client,
-                exec_id=node_exec.node_exec_id,
-                status=ExecutionStatus.RUNNING,
+            # Add status update to batch instead of immediate DB operation
+            _tls.execution_buffer.add_status_update(
+                node_exec_id=node_exec.node_exec_id,
+                status=ExecutionStatus.RUNNING
             )
 
             async for output_name, output_data in execute_node(
@@ -667,6 +789,16 @@ class ExecutionProcessor:
             self._handle_agent_run_notif(db_client, graph_exec, exec_stats)
 
         finally:
+            # Final flush of any remaining batched operations
+            if hasattr(_tls, 'execution_buffer'):
+                try:
+                    asyncio.run_coroutine_threadsafe(
+                        self._flush_execution_buffer(get_db_async_client()),
+                        self.node_execution_loop
+                    ).result(timeout=30.0)
+                except Exception as e:
+                    logger.error(f"Failed to flush execution buffer at graph completion: {e}")
+            
             update_graph_execution_state(
                 db_client=db_client,
                 graph_exec_id=graph_exec.graph_exec_id,
@@ -1026,6 +1158,16 @@ class ExecutionProcessor:
                 status=execution_status,
                 stats={"error": str(error)} if error else None,
             )
+
+        # Ensure any remaining buffered operations are flushed during cleanup
+        if hasattr(_tls, 'execution_buffer'):
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    self._flush_execution_buffer(get_db_async_client()),
+                    self.node_execution_loop
+                ).result(timeout=10.0)
+            except Exception as e:
+                log_metadata.error(f"Failed to flush execution buffer during cleanup: {e}")
 
         clean_exec_files(graph_exec_id)
 
