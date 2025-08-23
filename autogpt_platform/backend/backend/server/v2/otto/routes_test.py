@@ -249,7 +249,7 @@ def test_ask_otto_unauthenticated(mocker: pytest_mock.MockFixture) -> None:
 
     # Mock get_jwt_payload to raise an exception
     mocker.patch(
-        "autogpt_libs.auth.middleware.get_jwt_payload",
+        "autogpt_libs.auth.jwt_utils.get_jwt_payload",
         side_effect=fastapi.HTTPException(status_code=401, detail="Unauthorized"),
     )
 
