@@ -247,12 +247,6 @@ def test_ask_otto_unauthenticated(mocker: pytest_mock.MockFixture) -> None:
     # Remove the auth override to test unauthenticated access
     app.dependency_overrides.clear()
 
-    # Mock get_jwt_payload to raise an exception
-    mocker.patch(
-        "autogpt_libs.auth.jwt_utils.get_jwt_payload",
-        side_effect=fastapi.HTTPException(status_code=401, detail="Unauthorized"),
-    )
-
     request_data = {
         "query": "Test",
         "conversation_history": [],
