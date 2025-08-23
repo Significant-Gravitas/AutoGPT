@@ -3,61 +3,70 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 import { useInfiniteScroll } from "./useInfiniteScroll";
+import LoadingBox from "@/components/ui/loading";
 
-interface InfiniteScrollProps {
+type InfiniteScrollProps = {
   children: React.ReactNode;
-  dataLength: number;
   hasNextPage: boolean;
   loader?: React.ReactNode;
-  endMessage?: React.ReactNode;
   scrollThreshold?: number;
   className?: string;
-  scrollableTarget?: string;
   onLoadMore?: () => void;
   isFetchingNextPage: boolean;
   fetchNextPage: () => void;
-}
+  direction?: "vertical" | "horizontal";
+} & (
+  | {
+      loadedItemsCount: number;
+      endMessage: React.ReactNode;
+    }
+  | {
+      loadedItemsCount?: never;
+      endMessage?: never;
+    }
+);
 
 export const InfiniteScroll: React.FC<InfiniteScrollProps> = ({
   children,
-  dataLength,
+  loadedItemsCount,
   hasNextPage,
   loader,
   endMessage,
   className,
   scrollThreshold = 20,
-  scrollableTarget,
   onLoadMore,
   isFetchingNextPage,
   fetchNextPage,
+  direction = "vertical",
 }) => {
-  const { containerRef, bottomRef } = useInfiniteScroll({
+  const { containerRef, endOfListRef } = useInfiniteScroll({
     isFetchingNextPage,
     fetchNextPage,
     scrollThreshold,
-    scrollableTarget,
     onLoadMore,
     hasNextPage,
   });
 
-  const defaultLoader = (
-    <div className="flex w-full items-center justify-center py-4">
-      <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-t-2 border-neutral-800" />
-    </div>
-  );
+  const defaultLoader = <LoadingBox className="w-full py-4" spinnerSize={12} />;
 
   return (
-    <div ref={containerRef} className={cn("w-full", className)}>
+    <div
+      ref={containerRef}
+      className={cn(
+        direction === "vertical" ? "w-full" : "flex h-full items-center",
+        className,
+      )}
+    >
       {children}
       {hasNextPage ? (
         <div
-          ref={bottomRef}
-          className="flex w-full items-center justify-center py-8"
+          ref={endOfListRef}
+          className={`flex items-center justify-center ${direction === "vertical" ? "w-full py-8" : "h-full flex-shrink-0 px-8"}`}
         >
           {loader || defaultLoader}
         </div>
       ) : (
-        dataLength > 0 && endMessage
+        loadedItemsCount && loadedItemsCount > 0 && endMessage
       )}
     </div>
   );

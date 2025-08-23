@@ -2071,8 +2071,8 @@
     "/api/executions": {
       "get": {
         "tags": ["v1", "graphs"],
-        "summary": "Get all executions",
-        "operationId": "getV1Get all executions",
+        "summary": "List all executions",
+        "operationId": "getV1List all executions",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2083,7 +2083,7 @@
                     "$ref": "#/components/schemas/GraphExecutionMeta"
                   },
                   "type": "array",
-                  "title": "Response Getv1Get All Executions"
+                  "title": "Response Getv1List All Executions"
                 }
               }
             }
@@ -2106,8 +2106,8 @@
     "/api/graphs/{graph_id}/executions": {
       "get": {
         "tags": ["v1", "graphs"],
-        "summary": "Get graph executions",
-        "operationId": "getV1Get graph executions",
+        "summary": "List graph executions",
+        "operationId": "getV1List graph executions",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -2115,6 +2115,33 @@
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "Graph Id" }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Page number (1-indexed)",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "Page number (1-indexed)"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Number of executions per page",
+              "default": 25,
+              "title": "Page Size"
+            },
+            "description": "Number of executions per page"
           }
         ],
         "responses": {
@@ -2123,11 +2150,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/GraphExecutionMeta"
-                  },
-                  "title": "Response Getv1Get Graph Executions"
+                  "$ref": "#/components/schemas/GraphExecutionsPaginated"
                 }
               }
             }
@@ -5539,6 +5562,7 @@
         },
         "type": "object",
         "required": [
+          "id",
           "user_id",
           "graph_id",
           "graph_version",
@@ -5616,6 +5640,7 @@
         },
         "type": "object",
         "required": [
+          "id",
           "user_id",
           "graph_id",
           "graph_version",
@@ -5671,6 +5696,7 @@
         },
         "type": "object",
         "required": [
+          "id",
           "user_id",
           "graph_id",
           "graph_version",
@@ -5683,6 +5709,20 @@
           "node_executions"
         ],
         "title": "GraphExecutionWithNodes"
+      },
+      "GraphExecutionsPaginated": {
+        "properties": {
+          "executions": {
+            "items": { "$ref": "#/components/schemas/GraphExecutionMeta" },
+            "type": "array",
+            "title": "Executions"
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        },
+        "type": "object",
+        "required": ["executions", "pagination"],
+        "title": "GraphExecutionsPaginated",
+        "description": "Response schema for paginated graph executions."
       },
       "GraphMeta": {
         "properties": {

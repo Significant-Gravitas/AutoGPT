@@ -25,11 +25,10 @@ export interface AgentTableRowProps {
   sub_heading: string;
   description: string;
   imageSrc: string[];
-  date_submitted: string;
+  dateSubmitted: Date;
   status: SubmissionStatus;
   runs: number;
   rating: number;
-  dateSubmitted: string;
   id: number;
   video_url?: string;
   categories?: string[];
@@ -130,7 +129,7 @@ export const AgentTableRow = ({
 
         {/* Date column */}
         <div className="text-sm text-neutral-600 dark:text-neutral-400">
-          {dateSubmitted}
+          {dateSubmitted.toLocaleDateString()}
         </div>
 
         {/* Status column */}
