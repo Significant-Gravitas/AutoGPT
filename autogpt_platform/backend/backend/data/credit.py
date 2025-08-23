@@ -34,10 +34,10 @@ from backend.data.model import (
 from backend.data.notifications import NotificationEventModel, RefundRequestData
 from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications.notifications import queue_notification_async
-from backend.server.model import Pagination
 from backend.server.v2.admin.model import UserHistoryResponse
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.json import SafeJson
+from backend.util.models import Pagination
 from backend.util.retry import func_retry
 from backend.util.settings import Settings
 

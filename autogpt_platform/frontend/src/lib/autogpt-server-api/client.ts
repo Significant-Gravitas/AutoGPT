@@ -31,6 +31,7 @@ import type {
   GraphExecution,
   GraphExecutionID,
   GraphExecutionMeta,
+  GraphExecutionsResponse,
   GraphID,
   GraphMeta,
   GraphUpdateable,
@@ -285,7 +286,7 @@ export default class BackendAPI {
     );
   }
 
-  getGraphExecutions(graphID: GraphID): Promise<GraphExecutionMeta[]> {
+  getGraphExecutions(graphID: GraphID): Promise<GraphExecutionsResponse> {
     return this._get(`/graphs/${graphID}/executions`).then((results) =>
       results.map(parseGraphExecutionTimestamps),
     );

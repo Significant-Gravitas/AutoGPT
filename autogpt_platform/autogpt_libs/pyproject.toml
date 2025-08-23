@@ -23,7 +23,7 @@ supabase = "^2.16.0"
 uvicorn = "^0.35.0"
 
 [tool.poetry.group.dev.dependencies]
-ruff = "^0.12.3"
+ruff = "^0.12.9"
 
 [build-system]
 requires = ["poetry-core"]

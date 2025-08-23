@@ -14,7 +14,7 @@ import backend.server.v2.admin.credit_admin_routes as credit_admin_routes
 import backend.server.v2.admin.model as admin_model
 from backend.data.model import UserTransaction
 from backend.server.conftest import ADMIN_USER_ID, TARGET_USER_ID
-from backend.server.model import Pagination
+from backend.util.models import Pagination
 
 app = fastapi.FastAPI()
 app.include_router(credit_admin_routes.router)
