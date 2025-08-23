@@ -108,7 +108,6 @@ _event_loop_thread: threading.Thread | None = None
 
 
 @func_retry
-
 def get_event_loop():
     """Get the shared event loop."""
     if _event_loop is None:
@@ -193,7 +192,6 @@ class GraphExecutionJobInfo(GraphExecutionJobArgs):
     next_run_time: str
 
     @staticmethod
-
     def from_db(
         job_args: GraphExecutionJobArgs, job_obj: JobObj
     ) -> "GraphExecutionJobInfo":
@@ -211,7 +209,6 @@ class NotificationJobInfo(NotificationJobArgs):
     next_run_time: str
 
     @staticmethod
-
     def from_db(
         job_args: NotificationJobArgs, job_obj: JobObj
     ) -> "NotificationJobInfo":
@@ -230,12 +227,10 @@ class Scheduler(AppService):
         self.register_system_tasks = register_system_tasks
 
     @classmethod
-
     def get_port(cls) -> int:
         return config.execution_scheduler_port
 
     @classmethod
-
     def db_pool_size(cls) -> int:
         return config.scheduler_db_pool_size
 
@@ -389,7 +384,6 @@ class Scheduler(AppService):
         logger.info("Scheduler cleanup complete.")
 
     @expose
-
     def add_graph_execution_schedule(
         self,
         user_id: str,
@@ -444,7 +438,6 @@ class Scheduler(AppService):
         return GraphExecutionJobInfo.from_db(job_args, job)
 
     @expose
-
     def delete_graph_execution_schedule(
         self, schedule_id: str, user_id: str
     ) -> GraphExecutionJobInfo:
@@ -462,7 +455,6 @@ class Scheduler(AppService):
         return GraphExecutionJobInfo.from_db(job_args, job)
 
     @expose
-
     def get_graph_execution_schedules(
         self, graph_id: str | None = None, user_id: str | None = None
     ) -> list[GraphExecutionJobInfo]:
@@ -485,27 +477,22 @@ class Scheduler(AppService):
         return schedules
 
     @expose
-
     def execute_process_existing_batches(self, kwargs: dict):
         process_existing_batches(**kwargs)
 
     @expose
-
     def execute_process_weekly_summary(self):
         process_weekly_summary()
 
     @expose
-
     def execute_report_late_executions(self):
         return report_late_executions()
 
     @expose
-
     def execute_report_block_error_rates(self):
         return report_block_error_rates()
 
     @expose
-
     def execute_cleanup_expired_files(self):
         """Manually trigger cleanup of expired cloud storage files."""
         return cleanup_expired_files()
@@ -513,7 +500,6 @@ class Scheduler(AppService):
 
 class SchedulerClient(AppServiceClient):
     @classmethod
-
     def get_service_type(cls):
         return Scheduler
 

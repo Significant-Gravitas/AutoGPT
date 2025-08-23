@@ -8,7 +8,6 @@ from backend.util.test import SpinTestServer
 
 
 @pytest.mark.asyncio(loop_scope="session")
-
 async def test_agent_schedule(server: SpinTestServer):
     await db.connect()
     test_user = await create_test_user()
@@ -43,7 +42,6 @@ async def test_agent_schedule(server: SpinTestServer):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-
 async def test_agent_schedule_validation(server: SpinTestServer):
     """Test that scheduler properly validates cron expressions."""
     await db.connect()
