@@ -13,7 +13,7 @@ export interface AgentTableCardProps {
   sub_heading: string;
   description: string;
   imageSrc: string[];
-  dateSubmitted: string;
+  dateSubmitted: Date;
   status: SubmissionStatus;
   runs: number;
   rating: number;
@@ -80,7 +80,7 @@ export const AgentTableCard = ({
       <div className="mt-4 flex flex-wrap gap-4">
         <Status status={status} />
         <div className="text-sm text-neutral-600 dark:text-neutral-400">
-          {dateSubmitted}
+          {dateSubmitted.toLocaleDateString()}
         </div>
         <div className="text-sm text-neutral-600 dark:text-neutral-400">
           {runs.toLocaleString()} runs
