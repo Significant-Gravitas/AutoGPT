@@ -94,6 +94,12 @@ export default function useCredentials(
   }
 
   const savedCredentials = provider.savedCredentials.filter((c) => {
+    // First, check if the credential type is supported by this block
+    const supportedTypes = credsInputSchema.credentials_types;
+    if (!supportedTypes.includes(c.type)) {
+      return false;
+    }
+
     // Filter by OAuth credentials that have sufficient scopes for this block
     if (c.type === "oauth2") {
       const requiredScopes = credsInputSchema.credentials_scopes;
@@ -108,7 +114,7 @@ export default function useCredentials(
       return discriminatorValue && getHostFromUrl(discriminatorValue) == c.host;
     }
 
-    // Include all other credential types
+    // Include all other credential types that passed the type check
     return true;
   });
 
