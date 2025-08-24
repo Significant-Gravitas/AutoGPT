@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 from backend.integrations.oauth.todoist import TodoistOAuthHandler
 
+from .discord import DiscordOAuthHandler
 from .github import GitHubOAuthHandler
 from .google import GoogleOAuthHandler
 from .notion import NotionOAuthHandler
@@ -15,6 +16,7 @@ if TYPE_CHECKING:
 # --8<-- [start:HANDLERS_BY_NAMEExample]
 # Build handlers dict with string keys for compatibility with SDK auto-registration
 _ORIGINAL_HANDLERS = [
+    DiscordOAuthHandler,
     GitHubOAuthHandler,
     GoogleOAuthHandler,
     NotionOAuthHandler,
