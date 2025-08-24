@@ -41,7 +41,7 @@ def sentry_capture_error(error: Exception):
 async def discord_send_alert(
     content: str, channel: DiscordChannel = DiscordChannel.PLATFORM
 ):
-    from backend.blocks.discord import SendDiscordMessageBlock
+    from backend.blocks.discord.bot_blocks import SendDiscordMessageBlock
     from backend.data.model import APIKeyCredentials, CredentialsMetaInput, ProviderName
 
     creds = APIKeyCredentials(
