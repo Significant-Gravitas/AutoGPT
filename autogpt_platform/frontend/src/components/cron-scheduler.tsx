@@ -298,7 +298,9 @@ export function CronScheduler({
                 if (selectedMonths.length === months.length) {
                   setSelectedMonths([]);
                 } else {
-                  setSelectedMonths(Array.from({ length: 12 }, (_, i) => i));
+                  setSelectedMonths(
+                    Array.from({ length: 12 }, (_, i) => i + 1),
+                  );
                 }
               }}
             >

@@ -901,7 +901,7 @@ export default function useAgentGraph(
           router.push("/monitoring");
         }
       } catch (error) {
-        console.error(error);
+        console.error("Error scheduling agent:", error);
         toast({
           variant: "destructive",
           title: "Error scheduling agent",
