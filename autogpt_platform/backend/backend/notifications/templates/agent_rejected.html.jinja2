@@ -13,113 +13,57 @@
   Subject: Your agent '{{ data.agent_name }}' needs some updates
 #}
 
-{% extends "base.html.jinja2" %}
 
 {% block content %}
-<div style="background: linear-gradient(135deg, #fed7d7 0%, #feb2b2 100%); padding: 40px 0; margin: -20px -20px 30px -20px; text-align: center;">
-  <h1 style="color: #742a2a; font-size: 28px; font-weight: 600; margin: 0;">
-    📝 Review Complete
-  </h1>
-  <p style="color: #9b2c2c; font-size: 18px; margin: 10px 0 0 0;">
-    Your agent submission needs some updates before approval
+<h1 style="color: #d73a49; font-size: 32px; font-weight: 700; margin: 0 0 16px 0; text-align: center;">
+  📝 Review Complete
+</h1>
+
+<p style="color: #586069; font-size: 18px; text-align: center; margin: 0 0 32px 0;">
+  Your agent <strong>'{{ data.agent_name }}'</strong> needs some updates before approval.
+</p>
+
+<div style="background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 8px; padding: 20px; margin: 0 0 24px 0;">
+  <h3 style="color: #721c24; font-size: 16px; font-weight: 600; margin: 0 0 12px 0;">
+    💬 Creator feedback area
+  </h3>
+  <p style="color: #721c24; margin: 0; font-size: 16px; line-height: 1.5;">
+    {{ data.comments }}
   </p>
 </div>
 
-<div style="margin-bottom: 30px;">
-  <h2 style="color: #2d3748; font-size: 22px; font-weight: 600; margin: 0 0 15px 0; border-bottom: 3px solid #e53e3e; padding-bottom: 8px;">
-    Agent Details
-  </h2>
-  
-  <div style="background: #f8fafc; border-left: 4px solid #e53e3e; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-    <div style="display: flex; flex-wrap: wrap; gap: 15px;">
-      <div style="flex: 1; min-width: 200px;">
-        <strong style="color: #2d3748;">Agent Name:</strong>
-        <div style="color: #4a5568; margin-top: 5px; font-size: 16px;">{{ data.agent_name }}</div>
-      </div>
-      <div style="flex: 1; min-width: 200px;">
-        <strong style="color: #2d3748;">Version:</strong>
-        <div style="color: #4a5568; margin-top: 5px; font-size: 16px;">v{{ data.agent_version }}</div>
-      </div>
-    </div>
-    
-    <div style="margin-top: 15px;">
-      <strong style="color: #2d3748;">Reviewed by:</strong>
-      <div style="color: #4a5568; margin-top: 5px; font-size: 16px;">{{ data.reviewer_name }}</div>
-    </div>
-    
-    <div style="margin-top: 15px;">
-      <strong style="color: #2d3748;">Review Date:</strong>
-      <div style="color: #4a5568; margin-top: 5px; font-size: 16px;">{{ data.reviewed_at.strftime('%B %d, %Y at %I:%M %p UTC') }}</div>
-    </div>
-  </div>
-</div>
-
-<div style="margin-bottom: 30px;">
-  <h3 style="color: #2d3748; font-size: 18px; font-weight: 600; margin: 0 0 15px 0;">
-    Reviewer Feedback
+<div style="background: #d4edda; border: 1px solid #c3e6cb; border-radius: 8px; padding: 20px; margin: 0 0 24px 0;">
+  <h3 style="color: #155724; font-size: 16px; font-weight: 600; margin: 0 0 12px 0;">
+    ☑ Steps to Resubmit:
   </h3>
-  <div style="background: #fef5e7; border: 1px solid #f6ad55; border-radius: 8px; padding: 20px; border-left: 4px solid #ed8936;">
-    <div style="display: flex; align-items: flex-start; gap: 10px;">
-      <div style="color: #ed8936; font-size: 20px; margin-top: 2px;">💬</div>
-      <div>
-        <p style="margin: 0; color: #744210; line-height: 1.6; font-weight: 500;">
-          {{ data.comments }}
-        </p>
-      </div>
-    </div>
-  </div>
+  <ul style="color: #155724; margin: 0; padding-left: 18px; font-size: 16px; line-height: 1.6;">
+    <li>Review the feedback provided above carefully</li>
+    <li>Make the necessary updates to your agent</li>
+    <li>Test your agent thoroughly to ensure it works as expected</li>
+    <li>Submit your updated agent for review</li>
+  </ul>
 </div>
 
-<div style="margin-bottom: 30px;">
-  <h3 style="color: #2d3748; font-size: 18px; font-weight: 600; margin: 0 0 15px 0;">
-    What's Next?
-  </h3>
-  <div style="background: #ebf8ff; border: 1px solid #90cdf4; border-radius: 8px; padding: 20px;">
-    <div style="margin-bottom: 15px;">
-      <h4 style="color: #2b6cb0; font-size: 16px; font-weight: 600; margin: 0 0 8px 0;">
-        📋 Steps to Resubmit:
-      </h4>
-      <ol style="margin: 0; padding-left: 20px; color: #2c5282;">
-        <li style="margin-bottom: 8px;">Review the feedback provided above carefully</li>
-        <li style="margin-bottom: 8px;">Make the necessary updates to your agent</li>
-        <li style="margin-bottom: 8px;">Test your agent thoroughly to ensure it works as expected</li>
-        <li style="margin-bottom: 8px;">Submit your updated agent for review</li>
-      </ol>
-    </div>
-    
-    <div style="background: #bee3f8; border-radius: 6px; padding: 15px; margin-top: 15px;">
-      <p style="margin: 0; color: #2c5282; font-size: 14px;">
-        <strong>💡 Tip:</strong> Address all the points mentioned in the feedback to increase your chances of approval in the next review.
-      </p>
-    </div>
-  </div>
+<div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 6px; padding: 12px; margin: 0 0 24px 0; text-align: center;">
+  <p style="margin: 0; color: #856404; font-size: 14px;">
+    <strong>💡 Tip:</strong> Address all the points mentioned in the feedback to increase your chances of approval in the next review.
+  </p>
 </div>
 
-<div style="text-align: center; margin: 30px 0;">
-  <a href="{{ data.resubmit_url }}" style="display: inline-block; background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%); color: white; text-decoration: none; padding: 15px 30px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(66, 153, 225, 0.4); transition: all 0.3s ease;">
+<div style="text-align: center; margin: 32px 0;">
+  <a href="{{ data.resubmit_url }}" style="display: inline-block; background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%); color: black; text-decoration: none; padding: 14px 28px; border-radius: 6px; font-weight: 600; font-size: 16px;">
     Update & Resubmit Agent
   </a>
 </div>
 
-<div style="background: #f0fff4; border: 1px solid #9ae6b4; border-radius: 8px; padding: 20px; margin-top: 30px;">
-  <h4 style="color: #2f855a; font-size: 16px; font-weight: 600; margin: 0 0 10px 0;">
-    🌟 Don't Give Up!
-  </h4>
-  <p style="margin: 0; color: #276749; line-height: 1.6;">
-    Many successful agents go through multiple iterations before approval. Use this feedback as an opportunity to make your agent even better. Our review team is here to help you succeed!
+<div style="background: #d1ecf1; border: 1px solid #bee5eb; border-radius: 6px; padding: 16px; margin: 24px 0;">
+  <p style="margin: 0; color: #0c5460; font-size: 14px; text-align: center;">
+    <strong>🌟 Don't Give Up!</strong> Many successful agents go through multiple iterations before approval. Our review team is here to help you succeed!
   </p>
 </div>
 
-<div style="background: #edf2f7; border-radius: 8px; padding: 20px; margin-top: 20px;">
-  <h4 style="color: #4a5568; font-size: 16px; font-weight: 600; margin: 0 0 10px 0;">
-    📞 Need Help?
-  </h4>
-  <p style="margin: 0; color: #718096; line-height: 1.6;">
-    If you have questions about the feedback or need clarification, feel free to reach out to our support team or check our documentation for agent development best practices.
-  </p>
-</div>
-
-<p style="margin-top: 30px; color: #718096; font-size: 14px; text-align: center;">
+<p style="color: #6a737d; font-size: 14px; text-align: center; margin: 24px 0 0 0;">
   We're excited to see your improved agent submission! 🚀
 </p>
+
 {% endblock %}

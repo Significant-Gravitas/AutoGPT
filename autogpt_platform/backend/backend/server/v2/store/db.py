@@ -23,8 +23,15 @@ from backend.data.notifications import (
     NotificationEventModel,
 )
 from backend.notifications.notifications import queue_notification_async
+from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
+settings = Settings()
+
+
+# Constants for default admin values
+DEFAULT_ADMIN_NAME = "AutoGPT Admin"
+DEFAULT_ADMIN_EMAIL = "admin@autogpt.co"
 
 
 def sanitize_query(query: str | None) -> str | None:
@@ -1321,13 +1328,24 @@ async def review_store_submission(
         if store_listing_version.AgentGraph and store_listing_version.AgentGraph.User:
             agent_creator = store_listing_version.AgentGraph.User
             reviewer = (
-                submission.Reviewer
-                if hasattr(submission, "Reviewer") and submission.Reviewer
+                store_listing_version.Reviewer
+                if store_listing_version.Reviewer
                 else None
             )
 
             try:
+                base_url = (
+                    settings.config.frontend_base_url
+                    or settings.config.platform_base_url
+                )
+
                 if is_approved:
+                    store_agent = (
+                        await prisma.models.StoreAgent.prisma().find_first_or_raise(
+                            where={"storeListingVersionId": submission.id}
+                        )
+                    )
+
                     # Send approval notification
                     notification_data = AgentApprovalData(
                         agent_name=submission.name,
@@ -1336,15 +1354,15 @@ async def review_store_submission(
                         reviewer_name=(
                             reviewer.name
                             if reviewer and reviewer.name
-                            else "AutoGPT Admin"
+                            else DEFAULT_ADMIN_NAME
                         ),
                         reviewer_email=(
-                            reviewer.email if reviewer else "admin@autogpt.co"
+                            reviewer.email if reviewer else DEFAULT_ADMIN_EMAIL
                         ),
                         comments=external_comments,
                         reviewed_at=submission.reviewedAt
                         or datetime.now(tz=timezone.utc),
-                        store_url=f"https://app.autogpt.com/store/{submission.StoreListing.slug if submission.StoreListing else submission.agentGraphId}",
+                        store_url=f"{base_url}/marketplace/agent/{store_agent.creator_username}/{store_agent.slug}",
                     )
 
                     notification_event = NotificationEventModel[AgentApprovalData](
@@ -1361,15 +1379,15 @@ async def review_store_submission(
                         reviewer_name=(
                             reviewer.name
                             if reviewer and reviewer.name
-                            else "AutoGPT Admin"
+                            else DEFAULT_ADMIN_NAME
                         ),
                         reviewer_email=(
-                            reviewer.email if reviewer else "admin@autogpt.co"
+                            reviewer.email if reviewer else DEFAULT_ADMIN_EMAIL
                         ),
                         comments=external_comments,
                         reviewed_at=submission.reviewedAt
                         or datetime.now(tz=timezone.utc),
-                        resubmit_url=f"https://app.autogpt.com/build/{submission.agentGraphId}",
+                        resubmit_url=f"{base_url}/build?flowID={submission.agentGraphId}",
                     )
 
                     notification_event = NotificationEventModel[AgentRejectionData](

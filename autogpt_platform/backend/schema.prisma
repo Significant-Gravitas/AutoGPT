@@ -33,6 +33,8 @@ model User {
   notifyOnDailySummary         Boolean @default(true)
   notifyOnWeeklySummary        Boolean @default(true)
   notifyOnMonthlySummary       Boolean @default(true)
+  notifyOnAgentApproved        Boolean @default(true)
+  notifyOnAgentRejected        Boolean @default(true)
 
   // Relations
 

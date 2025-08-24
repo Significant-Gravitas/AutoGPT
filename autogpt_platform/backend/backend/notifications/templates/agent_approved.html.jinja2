@@ -13,90 +13,51 @@
   Subject: 🎉 Your agent '{{ data.agent_name }}' has been approved!
 #}
 
-{% extends "base.html.jinja2" %}
-
 {% block content %}
-<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 0; margin: -20px -20px 30px -20px; text-align: center;">
-  <h1 style="color: white; font-size: 28px; font-weight: 600; margin: 0; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">
-    🎉 Congratulations!
-  </h1>
-  <p style="color: rgba(255,255,255,0.9); font-size: 18px; margin: 10px 0 0 0;">
-    Your agent has been approved and is now live in the store!
-  </p>
-</div>
+<h1 style="color: #28a745; font-size: 32px; font-weight: 700; margin: 0 0 16px 0; text-align: center;">
+  🎉 Congratulations!
+</h1>
 
-<div style="margin-bottom: 30px;">
-  <h2 style="color: #2d3748; font-size: 22px; font-weight: 600; margin: 0 0 15px 0; border-bottom: 3px solid #667eea; padding-bottom: 8px;">
-    Agent Details
-  </h2>
-  
-  <div style="background: #f8fafc; border-left: 4px solid #48bb78; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-    <div style="display: flex; flex-wrap: wrap; gap: 15px;">
-      <div style="flex: 1; min-width: 200px;">
-        <strong style="color: #2d3748;">Agent Name:</strong>
-        <div style="color: #4a5568; margin-top: 5px; font-size: 16px;">{{ data.agent_name }}</div>
-      </div>
-      <div style="flex: 1; min-width: 200px;">
-        <strong style="color: #2d3748;">Version:</strong>
-        <div style="color: #4a5568; margin-top: 5px; font-size: 16px;">v{{ data.agent_version }}</div>
-      </div>
-    </div>
-    
-    <div style="margin-top: 15px;">
-      <strong style="color: #2d3748;">Reviewed by:</strong>
-      <div style="color: #4a5568; margin-top: 5px; font-size: 16px;">{{ data.reviewer_name }}</div>
-    </div>
-    
-    <div style="margin-top: 15px;">
-      <strong style="color: #2d3748;">Review Date:</strong>
-      <div style="color: #4a5568; margin-top: 5px; font-size: 16px;">{{ data.reviewed_at.strftime('%B %d, %Y at %I:%M %p UTC') }}</div>
-    </div>
-  </div>
-</div>
+<p style="color: #586069; font-size: 18px; text-align: center; margin: 0 0 32px 0;">
+  Your agent <strong>'{{ data.agent_name }}'</strong> has been approved and is now live in the store!
+</p>
 
 {% if data.comments %}
-<div style="margin-bottom: 30px;">
-  <h3 style="color: #2d3748; font-size: 18px; font-weight: 600; margin: 0 0 15px 0;">
-    Reviewer Comments
+<div style="background: #d4edda; border: 1px solid #c3e6cb; border-radius: 8px; padding: 20px; margin: 0 0 24px 0;">
+  <h3 style="color: #155724; font-size: 16px; font-weight: 600; margin: 0 0 12px 0;">
+    💬 Creator feedback area
   </h3>
-  <div style="background: #edf2f7; border-radius: 8px; padding: 20px; border-left: 4px solid #4299e1;">
-    <p style="margin: 0; color: #4a5568; line-height: 1.6; font-style: italic;">
-      "{{ data.comments }}"
-    </p>
-  </div>
+  <p style="color: #155724; margin: 0; font-size: 16px; line-height: 1.5;">
+    {{ data.comments }}
+  </p>
 </div>
 {% endif %}
 
-<div style="margin-bottom: 30px;">
-  <h3 style="color: #2d3748; font-size: 18px; font-weight: 600; margin: 0 0 15px 0;">
+<div style="background: #d1ecf1; border: 1px solid #bee5eb; border-radius: 8px; padding: 20px; margin: 0 0 24px 0;">
+  <h3 style="color: #0c5460; font-size: 16px; font-weight: 600; margin: 0 0 12px 0;">
     What's Next?
   </h3>
-  <div style="background: #f0fff4; border: 1px solid #9ae6b4; border-radius: 8px; padding: 20px;">
-    <ul style="margin: 0; padding-left: 20px; color: #2f855a;">
-      <li style="margin-bottom: 8px;">Your agent is now live and discoverable in the AutoGPT Store</li>
-      <li style="margin-bottom: 8px;">Users can find, install, and run your agent</li>
-      <li style="margin-bottom: 8px;">You'll receive notifications when users interact with your agent</li>
-      <li>You can update your agent anytime by submitting a new version</li>
-    </ul>
-  </div>
+  <ul style="color: #0c5460; margin: 0; padding-left: 18px; font-size: 16px; line-height: 1.6;">
+    <li>Your agent is now live and discoverable in the AutoGPT Store</li>
+    <li>Users can find, install, and run your agent</li>
+    <li>You can update your agent anytime by submitting a new version</li>
+  </ul>
 </div>
 
-<div style="text-align: center; margin: 30px 0;">
-  <a href="{{ data.store_url }}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; padding: 15px 30px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); transition: all 0.3s ease;">
+<div style="text-align: center; margin: 32px 0;">
+  <a href="{{ data.store_url }}" style="display: inline-block; background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%); color: black; text-decoration: none; padding: 14px 28px; border-radius: 6px; font-weight: 600; font-size: 16px;">
     View Your Agent in Store
   </a>
 </div>
 
-<div style="background: #fffaf0; border: 1px solid #fbd38d; border-radius: 8px; padding: 20px; margin-top: 30px;">
-  <h4 style="color: #c05621; font-size: 16px; font-weight: 600; margin: 0 0 10px 0;">
-    💡 Pro Tip
-  </h4>
-  <p style="margin: 0; color: #744210; line-height: 1.6;">
-    Share your agent with the community! Post about it on social media, forums, or your blog to help more users discover and benefit from your creation.
+<div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 6px; padding: 16px; margin: 24px 0; text-align: center;">
+  <p style="margin: 0; color: #856404; font-size: 14px;">
+    <strong>💡 Pro Tip:</strong> Share your agent with the community! Post about it on social media, forums, or your blog to help more users discover and benefit from your creation.
   </p>
 </div>
 
-<p style="margin-top: 30px; color: #718096; font-size: 14px; text-align: center;">
+<p style="color: #6a737d; font-size: 14px; text-align: center; margin: 24px 0 0 0;">
   Thank you for contributing to the AutoGPT ecosystem! 🚀
 </p>
+
 {% endblock %}
