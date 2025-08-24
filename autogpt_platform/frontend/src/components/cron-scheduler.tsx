@@ -98,7 +98,6 @@ export function CronScheduler({
             <SelectValue placeholder="Select frequency" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="every minute">Every Minute</SelectItem>
             <SelectItem value="hourly">Every Hour</SelectItem>
             <SelectItem value="daily">Daily</SelectItem>
             <SelectItem value="weekly">Weekly</SelectItem>
@@ -340,7 +339,7 @@ export function CronScheduler({
         </div>
       )}
 
-      {frequency !== "every minute" && frequency !== "hourly" && (
+      {frequency !== "hourly" && (
         <div className="flex items-center gap-4 space-y-2">
           <Label className="pt-2">At</Label>
           <Input
