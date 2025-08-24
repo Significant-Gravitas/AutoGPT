@@ -42,7 +42,7 @@ def get_api(credentials: OAuth2Credentials) -> Requests:
         A configured Requests instance for Discord API calls.
     """
     return Requests(
-        trusted_origins=["discord.com", "discordapp.com"],
+        trusted_origins=[],
         extra_headers={
             "Authorization": f"Bearer {credentials.access_token.get_secret_value()}",
             "Content-Type": "application/json",
