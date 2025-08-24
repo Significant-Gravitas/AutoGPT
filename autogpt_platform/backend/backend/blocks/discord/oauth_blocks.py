@@ -7,6 +7,7 @@ from backend.data.model import OAuth2Credentials, SchemaField
 
 from ._api import DiscordOAuthUser, get_current_user
 from ._auth import (
+    DISCORD_OAUTH_IS_CONFIGURED,
     TEST_OAUTH_CREDENTIALS,
     TEST_OAUTH_CREDENTIALS_INPUT,
     DiscordOAuthCredentialsField,
@@ -43,6 +44,7 @@ class DiscordGetCurrentUserBlock(Block):
             output_schema=DiscordGetCurrentUserBlock.Output,
             description="Gets information about the currently authenticated Discord user using OAuth2 credentials.",
             categories={BlockCategory.SOCIAL},
+            disabled=not DISCORD_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_OAUTH_CREDENTIALS_INPUT,
             },

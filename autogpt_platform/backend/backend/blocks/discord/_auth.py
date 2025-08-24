@@ -36,10 +36,6 @@ def DiscordBotCredentialsField() -> DiscordBotCredentialsInput:
 
 def DiscordOAuthCredentialsField(scopes: list[str]) -> DiscordOAuthCredentialsInput:
     """Creates a Discord OAuth2 credentials field."""
-    if not DISCORD_OAUTH_IS_CONFIGURED:
-        raise ValueError(
-            "Discord OAuth is not configured. Please set DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET environment variables."
-        )
     return CredentialsField(
         description="Discord OAuth2 credentials",
         required_scopes=set(scopes) | {"identify"},  # Basic user info scope
