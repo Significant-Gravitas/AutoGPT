@@ -29,6 +29,8 @@ export function ApproveRejectButtons({
   const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
 
+  const isApproved = version.status === "APPROVED";
+
   const handleApproveSubmit = async (formData: FormData) => {
     setIsApproveDialogOpen(false);
     try {
@@ -51,18 +53,20 @@ export function ApproveRejectButtons({
 
   return (
     <>
-      <Button
-        size="sm"
-        variant="outline"
-        className="text-green-600 hover:bg-green-50 hover:text-green-700"
-        onClick={(e) => {
-          e.stopPropagation();
-          setIsApproveDialogOpen(true);
-        }}
-      >
-        <CheckCircle className="mr-2 h-4 w-4" />
-        Approve
-      </Button>
+      {!isApproved && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="text-green-600 hover:bg-green-50 hover:text-green-700"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsApproveDialogOpen(true);
+          }}
+        >
+          <CheckCircle className="mr-2 h-4 w-4" />
+          Approve
+        </Button>
+      )}
       <Button
         size="sm"
         variant="outline"
@@ -73,7 +77,7 @@ export function ApproveRejectButtons({
         }}
       >
         <XCircle className="mr-2 h-4 w-4" />
-        Reject
+        {isApproved ? "Revoke" : "Reject"}
       </Button>
 
       {/* Approve Dialog */}
@@ -124,9 +128,13 @@ export function ApproveRejectButtons({
       <Dialog open={isRejectDialogOpen} onOpenChange={setIsRejectDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reject Agent</DialogTitle>
+            <DialogTitle>
+              {isApproved ? "Revoke Approved Agent" : "Reject Agent"}
+            </DialogTitle>
             <DialogDescription>
-              Please provide feedback on why this agent is being rejected.
+              {isApproved
+                ? "Are you sure you want to revoke approval for this agent? This will remove it from the marketplace."
+                : "Please provide feedback on why this agent is being rejected."}
             </DialogDescription>
           </DialogHeader>
 
@@ -167,7 +175,7 @@ export function ApproveRejectButtons({
                 Cancel
               </Button>
               <Button type="submit" variant="destructive">
-                Reject
+                {isApproved ? "Revoke" : "Reject"}
               </Button>
             </DialogFooter>
           </form>
