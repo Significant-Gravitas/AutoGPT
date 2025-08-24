@@ -5,7 +5,7 @@ Discord OAuth-based blocks.
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import OAuth2Credentials, SchemaField
 
-from ._api import get_current_user
+from ._api import DiscordOAuthUser, get_current_user
 from ._auth import (
     TEST_OAUTH_CREDENTIALS,
     TEST_OAUTH_CREDENTIALS_INPUT,
@@ -58,21 +58,26 @@ class DiscordGetCurrentUserBlock(Block):
                 ("accent_color", 0),
             ],
             test_mock={
-                "get_current_user": lambda: {
-                    "user_id": "123456789012345678",
-                    "username": "testuser",
-                    "avatar_url": "https://cdn.discordapp.com/avatars/123456789012345678/avatar.png",
-                    "banner": None,
-                    "accent_color": 0,
-                }
+                "get_user": lambda _: DiscordOAuthUser(
+                    user_id="123456789012345678",
+                    username="testuser",
+                    avatar_url="https://cdn.discordapp.com/avatars/123456789012345678/avatar.png",
+                    banner=None,
+                    accent_color=0,
+                )
             },
         )
+
+    @staticmethod
+    async def get_user(credentials: OAuth2Credentials) -> DiscordOAuthUser:
+        user_info = await get_current_user(credentials)
+        return user_info
 
     async def run(
         self, input_data: Input, *, credentials: OAuth2Credentials, **kwargs
     ) -> BlockOutput:
         try:
-            result = await get_current_user(credentials)
+            result = await self.get_user(credentials)
 
             # Yield each output field
             yield "user_id", result.user_id
