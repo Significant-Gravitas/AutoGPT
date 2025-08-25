@@ -18,12 +18,14 @@
   🎉 Congratulations!
 </h1>
 
-<p style="color: #586069; font-size: 18px; text-align: center; margin: 0 0 32px 0;">
+<p style="color: #586069; font-size: 18px; text-align: center; margin: 0 0 24px 0;">
   Your agent <strong>'{{ data.agent_name }}'</strong> has been approved and is now live in the store!
 </p>
 
+<div style="height: 32px; background: transparent;"></div>
+
 {% if data.comments %}
-<div style="background: #d4edda; border: 1px solid #c3e6cb; border-radius: 8px; padding: 20px; margin: 0 0 24px 0;">
+<div style="background: #d4edda; border: 1px solid #c3e6cb; border-radius: 8px; padding: 20px; margin: 0;">
   <h3 style="color: #155724; font-size: 16px; font-weight: 600; margin: 0 0 12px 0;">
     💬 Creator feedback area
   </h3>
@@ -31,9 +33,11 @@
     {{ data.comments }}
   </p>
 </div>
+
+<div style="height: 40px; background: transparent;"></div>
 {% endif %}
 
-<div style="background: #d1ecf1; border: 1px solid #bee5eb; border-radius: 8px; padding: 20px; margin: 0 0 24px 0;">
+<div style="background: #d1ecf1; border: 1px solid #bee5eb; border-radius: 8px; padding: 20px; margin: 0;">
   <h3 style="color: #0c5460; font-size: 16px; font-weight: 600; margin: 0 0 12px 0;">
     What's Next?
   </h3>
@@ -44,11 +48,15 @@
   </ul>
 </div>
 
-<div style="text-align: center; margin: 32px 0;">
+<div style="height: 32px; background: transparent;"></div>
+
+<div style="text-align: center; margin: 24px 0;">
   <a href="{{ data.store_url }}" style="display: inline-block; background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%); color: black; text-decoration: none; padding: 14px 28px; border-radius: 6px; font-weight: 600; font-size: 16px;">
     View Your Agent in Store
   </a>
 </div>
+
+<div style="height: 32px; background: transparent;"></div>
 
 <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 6px; padding: 16px; margin: 24px 0; text-align: center;">
   <p style="margin: 0; color: #856404; font-size: 14px;">
@@ -56,7 +64,9 @@
   </p>
 </div>
 
-<p style="color: #6a737d; font-size: 14px; text-align: center; margin: 32px 0 24px 0;">
+<div style="height: 32px; background: transparent;"></div>
+
+<p style="color: #6a737d; font-size: 14px; text-align: center; margin: 24px 0;">
   Thank you for contributing to the AutoGPT ecosystem! 🚀
 </p>
 
