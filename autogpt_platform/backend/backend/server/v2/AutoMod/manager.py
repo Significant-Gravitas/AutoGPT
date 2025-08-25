@@ -83,7 +83,7 @@ class AutoModManager:
             f"Moderating inputs for graph execution {graph_exec.graph_exec_id}"
         )
         try:
-            moderation_passed = await self._moderate_content(
+            moderation_passed, content_id = await self._moderate_content(
                 content,
                 {
                     "user_id": graph_exec.user_id,
@@ -107,6 +107,7 @@ class AutoModManager:
                     user_id=graph_exec.user_id,
                     graph_exec_id=graph_exec.graph_exec_id,
                     moderation_type="input",
+                    content_id=content_id,
                 )
 
             return None
@@ -167,7 +168,7 @@ class AutoModManager:
         # Run moderation
         logger.warning(f"Moderating outputs for graph execution {graph_exec_id}")
         try:
-            moderation_passed = await self._moderate_content(
+            moderation_passed, content_id = await self._moderate_content(
                 content,
                 {
                     "user_id": user_id,
@@ -189,6 +190,7 @@ class AutoModManager:
                     user_id=user_id,
                     graph_exec_id=graph_exec_id,
                     moderation_type="output",
+                    content_id=content_id,
                 )
 
             return None
@@ -275,12 +277,13 @@ class AutoModManager:
             ]
         )
 
-    async def _moderate_content(self, content: str, metadata: dict[str, Any]) -> bool:
+    async def _moderate_content(self, content: str, metadata: dict[str, Any]) -> tuple[bool, str | None]:
         """Moderate content using AutoMod API
 
         Returns:
-            True: Content approved or timeout occurred
-            False: Content rejected by moderation
+            Tuple of (approval_status, content_id)
+            - approval_status: True if approved or timeout occurred, False if rejected
+            - content_id: Reference ID from moderation API, or None if not available
 
         Raises:
             asyncio.TimeoutError: When moderation times out (should be bypassed)
@@ -298,12 +301,12 @@ class AutoModManager:
                 logger.debug(
                     f"Content approved for {metadata.get('graph_exec_id', 'unknown')}"
                 )
-                return True
+                return True, response.content_id
             else:
                 reasons = [r.reason for r in response.moderation_results if r.reason]
                 error_msg = f"Content rejected by AutoMod: {'; '.join(reasons)}"
                 logger.warning(f"Content rejected: {error_msg}")
-                return False
+                return False, response.content_id
 
         except asyncio.TimeoutError:
             # Re-raise timeout to be handled by calling methods
@@ -313,7 +316,7 @@ class AutoModManager:
             raise
         except Exception as e:
             logger.error(f"AutoMod moderation error: {e}")
-            return self.config.fail_open
+            return self.config.fail_open, None
 
     async def _make_request(self, request_data: AutoModRequest) -> AutoModResponse:
         """Make HTTP request to AutoMod API using the standard request utility"""
