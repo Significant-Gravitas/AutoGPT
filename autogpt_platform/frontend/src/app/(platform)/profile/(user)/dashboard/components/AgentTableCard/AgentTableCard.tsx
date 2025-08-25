@@ -3,8 +3,8 @@
 import Image from "next/image";
 import { IconStarFilled, IconMore } from "@/components/ui/icons";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
-import { Status, StatusType } from "@/components/agptui/Status";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
+import { Status } from "@/components/agptui/Status";
 
 export interface AgentTableCardProps {
   agent_id: string;
@@ -13,8 +13,8 @@ export interface AgentTableCardProps {
   sub_heading: string;
   description: string;
   imageSrc: string[];
-  dateSubmitted: string;
-  status: StatusType;
+  dateSubmitted: Date;
+  status: SubmissionStatus;
   runs: number;
   rating: number;
   id: number;
@@ -44,8 +44,7 @@ export const AgentTableCard = ({
       description,
       image_urls: imageSrc,
       date_submitted: dateSubmitted,
-      // SafeCast: status is a string from the API...
-      status: status.toUpperCase() as SubmissionStatus,
+      status: status,
       runs,
       rating,
     });
@@ -81,7 +80,7 @@ export const AgentTableCard = ({
       <div className="mt-4 flex flex-wrap gap-4">
         <Status status={status} />
         <div className="text-sm text-neutral-600 dark:text-neutral-400">
-          {dateSubmitted}
+          {dateSubmitted.toLocaleDateString()}
         </div>
         <div className="text-sm text-neutral-600 dark:text-neutral-400">
           {runs.toLocaleString()} runs

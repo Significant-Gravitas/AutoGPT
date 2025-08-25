@@ -1580,8 +1580,8 @@
     "/api/executions": {
       "get": {
         "tags": ["v1", "graphs"],
-        "summary": "Get all executions",
-        "operationId": "getV1Get all executions",
+        "summary": "List all executions",
+        "operationId": "getV1List all executions",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1592,7 +1592,7 @@
                     "$ref": "#/components/schemas/GraphExecutionMeta"
                   },
                   "type": "array",
-                  "title": "Response Getv1Get All Executions"
+                  "title": "Response Getv1List All Executions"
                 }
               }
             }
@@ -1603,14 +1603,41 @@
     "/api/graphs/{graph_id}/executions": {
       "get": {
         "tags": ["v1", "graphs"],
-        "summary": "Get graph executions",
-        "operationId": "getV1Get graph executions",
+        "summary": "List graph executions",
+        "operationId": "getV1List graph executions",
         "parameters": [
           {
             "name": "graph_id",
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "Graph Id" }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Page number (1-indexed)",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "Page number (1-indexed)"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Number of executions per page",
+              "default": 25,
+              "title": "Page Size"
+            },
+            "description": "Number of executions per page"
           }
         ],
         "responses": {
@@ -1619,11 +1646,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/GraphExecutionMeta"
-                  },
-                  "title": "Response Getv1Get Graph Executions"
+                  "$ref": "#/components/schemas/GraphExecutionsPaginated"
                 }
               }
             }
@@ -2600,6 +2623,50 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/StoreSubmissionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StoreSubmission" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/submissions/{store_listing_version_id}": {
+      "put": {
+        "tags": ["v2", "store", "private"],
+        "summary": "Edit store submission",
+        "description": "Edit an existing store listing submission.\n\nArgs:\n    store_listing_version_id (str): ID of the store listing version to edit\n    submission_request (StoreSubmissionRequest): The updated submission details\n    user_id (str): ID of the authenticated user editing the listing\n\nReturns:\n    StoreSubmission: The updated store submission\n\nRaises:\n    HTTPException: If there is an error editing the submission",
+        "operationId": "putV2Edit store submission",
+        "parameters": [
+          {
+            "name": "store_listing_version_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Store Listing Version Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreSubmissionEditRequest"
               }
             }
           }
@@ -4440,6 +4507,7 @@
         },
         "type": "object",
         "required": [
+          "id",
           "user_id",
           "graph_id",
           "graph_version",
@@ -4517,6 +4585,7 @@
         },
         "type": "object",
         "required": [
+          "id",
           "user_id",
           "graph_id",
           "graph_version",
@@ -4572,6 +4641,7 @@
         },
         "type": "object",
         "required": [
+          "id",
           "user_id",
           "graph_id",
           "graph_version",
@@ -4584,6 +4654,20 @@
           "node_executions"
         ],
         "title": "GraphExecutionWithNodes"
+      },
+      "GraphExecutionsPaginated": {
+        "properties": {
+          "executions": {
+            "items": { "$ref": "#/components/schemas/GraphExecutionMeta" },
+            "type": "array",
+            "title": "Executions"
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        },
+        "type": "object",
+        "required": ["executions", "pagination"],
+        "title": "GraphExecutionsPaginated",
+        "description": "Response schema for paginated graph executions."
       },
       "GraphMeta": {
         "properties": {
@@ -6299,6 +6383,16 @@
           "changes_summary": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Changes Summary"
+          },
+          "video_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Video Url"
+          },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories",
+            "default": []
           }
         },
         "type": "object",
@@ -6316,6 +6410,40 @@
           "rating"
         ],
         "title": "StoreSubmission"
+      },
+      "StoreSubmissionEditRequest": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "sub_heading": { "type": "string", "title": "Sub Heading" },
+          "video_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Video Url"
+          },
+          "image_urls": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Image Urls",
+            "default": []
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories",
+            "default": []
+          },
+          "changes_summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Changes Summary"
+          }
+        },
+        "type": "object",
+        "required": ["name", "sub_heading"],
+        "title": "StoreSubmissionEditRequest"
       },
       "StoreSubmissionRequest": {
         "properties": {

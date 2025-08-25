@@ -45,6 +45,7 @@ export default function LibraryUploadAgentDialog(): React.ReactNode {
     form,
     setisDroped,
     agentObject,
+    clearAgentFile,
   } = useLibraryUploadAgentDialog();
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -105,9 +106,7 @@ export default function LibraryUploadAgentDialog(): React.ReactNode {
                       <div className="relative flex rounded-[10px] border p-2 font-sans text-sm font-medium text-[#525252] outline-none">
                         <span className="line-clamp-1">{field.value.name}</span>
                         <Button
-                          onClick={() =>
-                            form.setValue("agentFile", undefined as any)
-                          }
+                          onClick={clearAgentFile}
                           className="absolute left-[-10px] top-[-16px] mt-2 h-fit border-none bg-red-200 p-1"
                         >
                           <X

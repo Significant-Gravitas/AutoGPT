@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/collapsible";
 import { CaretDownIcon } from "@phosphor-icons/react";
 
-interface CollapsibleProps {
+interface Props {
   trigger: React.ReactNode;
   children: React.ReactNode;
   defaultOpen?: boolean;
@@ -29,7 +29,7 @@ export function Collapsible({
   className,
   triggerClassName,
   contentClassName,
-}: CollapsibleProps) {
+}: Props) {
   const [isOpen, setIsOpen] = React.useState(defaultOpen);
   const isControlled = open !== undefined;
   const openState = isControlled ? open : isOpen;
@@ -71,5 +71,3 @@ export function Collapsible({
     </BaseCollapsible>
   );
 }
-
-export default Collapsible;
