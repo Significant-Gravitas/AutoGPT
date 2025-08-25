@@ -54,25 +54,19 @@ class AgentRunData(BaseNotificationData):
 
 
 class ZeroBalanceData(BaseNotificationData):
-    last_transaction: float
-    last_transaction_time: datetime
-    top_up_link: str
-
-    @field_validator("last_transaction_time")
-    @classmethod
-    def validate_timezone(cls, value: datetime):
-        if value.tzinfo is None:
-            raise ValueError("datetime must have timezone information")
-        return value
-
-
-class LowBalanceData(BaseNotificationData):
     agent_name: str = Field(..., description="Name of the agent")
     current_balance: float = Field(
         ..., description="Current balance in credits (100 = $1)"
     )
     billing_page_link: str = Field(..., description="Link to billing page")
     shortfall: float = Field(..., description="Amount of credits needed to continue")
+
+
+class LowBalanceData(BaseNotificationData):
+    current_balance: float = Field(
+        ..., description="Current balance in credits (100 = $1)"
+    )
+    billing_page_link: str = Field(..., description="Link to billing page")
 
 
 class BlockExecutionFailedData(BaseNotificationData):
@@ -312,7 +306,7 @@ class NotificationTypeOverride:
             # These are batched by the notification service
             NotificationType.AGENT_RUN: QueueType.BATCH,
             # These are batched by the notification service, but with a backoff strategy
-            NotificationType.ZERO_BALANCE: QueueType.BACKOFF,
+            NotificationType.ZERO_BALANCE: QueueType.IMMEDIATE,
             NotificationType.LOW_BALANCE: QueueType.IMMEDIATE,
             NotificationType.BLOCK_EXECUTION_FAILED: QueueType.BACKOFF,
             NotificationType.CONTINUOUS_AGENT_ERROR: QueueType.BACKOFF,

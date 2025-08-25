@@ -183,11 +183,11 @@ class DatabaseManagerClient(AppServiceClient):
     spend_credits = _(d.spend_credits)
     get_credits = _(d.get_credits)
 
-    # Summary data - async
-    get_user_execution_summary_data = _(d.get_user_execution_summary_data)
-
     # Block error monitoring
     get_block_error_stats = _(d.get_block_error_stats)
+
+    # User Emails
+    get_user_email_by_id = _(d.get_user_email_by_id)
 
     # Library
     list_library_agents = _(d.list_library_agents)
