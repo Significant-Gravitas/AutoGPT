@@ -39,6 +39,17 @@ export function CronSchedulerDialog({
       });
       return;
     }
+
+    // Validate cron expression before proceeding
+    if (!cronExpression || cronExpression.trim() === "") {
+      toast({
+        variant: "destructive",
+        title: "Invalid schedule",
+        description: "Please enter a valid cron expression",
+      });
+      return;
+    }
+
     afterCronCreation(cronExpression, scheduleName);
     setOpen(false);
   };
