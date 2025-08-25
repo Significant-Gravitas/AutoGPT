@@ -56,6 +56,46 @@ TimezoneLiteral = Literal[
 logger = logging.getLogger(__name__)
 
 
+def _get_timezone(
+    format_type: Any,  # Any format type with timezone and use_user_timezone attributes
+    user_timezone: str | None,
+) -> ZoneInfo:
+    """
+    Determine which timezone to use based on format settings and user context.
+
+    Args:
+        format_type: The format configuration containing timezone settings
+        user_timezone: The user's timezone from context
+
+    Returns:
+        ZoneInfo object for the determined timezone
+    """
+    if format_type.use_user_timezone and user_timezone:
+        tz = ZoneInfo(user_timezone)
+        logger.debug(f"Using user timezone: {user_timezone}")
+    else:
+        tz = ZoneInfo(format_type.timezone)
+        logger.debug(f"Using specified timezone: {format_type.timezone}")
+    return tz
+
+
+def _format_datetime_iso8601(dt: datetime, include_microseconds: bool = False) -> str:
+    """
+    Format a datetime object to ISO8601 string.
+
+    Args:
+        dt: The datetime object to format
+        include_microseconds: Whether to include microseconds in the output
+
+    Returns:
+        ISO8601 formatted string
+    """
+    if include_microseconds:
+        return dt.isoformat()
+    else:
+        return dt.isoformat(timespec="seconds")
+
+
 # BACKWARDS COMPATIBILITY NOTE:
 # The timezone field is kept at the format level (not block level) for backwards compatibility.
 # Existing graphs have timezone saved within format_type, moving it would break them.
@@ -147,41 +187,21 @@ class GetCurrentTimeBlock(Block):
         # Extract timezone from user_context (always present)
         effective_timezone = user_context.timezone
 
+        # Get the appropriate timezone
+        tz = _get_timezone(input_data.format_type, effective_timezone)
+        dt = datetime.now(tz=tz)
+
         if isinstance(input_data.format_type, TimeISO8601Format):
-            # Determine which timezone to use
-            if input_data.format_type.use_user_timezone and effective_timezone:
-                tz = ZoneInfo(effective_timezone)
-                logger.debug(f"Using user timezone: {effective_timezone}")
-            else:
-                tz = ZoneInfo(input_data.format_type.timezone)
-                logger.debug(
-                    f"Using specified timezone: {input_data.format_type.timezone}"
-                )
-
-            dt = datetime.now(tz=tz)
-
             # Get the full ISO format and extract just the time portion with timezone
-            if input_data.format_type.include_microseconds:
-                full_iso = dt.isoformat()
-            else:
-                full_iso = dt.isoformat(timespec="seconds")
-
+            full_iso = _format_datetime_iso8601(
+                dt, input_data.format_type.include_microseconds
+            )
             # Extract time portion (everything after 'T')
             current_time = full_iso.split("T")[1] if "T" in full_iso else full_iso
             current_time = f"T{current_time}"  # Add T prefix for ISO 8601 time format
         else:  # TimeStrftimeFormat
-            # Determine which timezone to use
-            if input_data.format_type.use_user_timezone and effective_timezone:
-                tz = ZoneInfo(effective_timezone)
-                logger.debug(f"Using user timezone: {effective_timezone}")
-            else:
-                tz = ZoneInfo(input_data.format_type.timezone)
-                logger.debug(
-                    f"Using specified timezone: {input_data.format_type.timezone}"
-                )
-
-            dt = datetime.now(tz=tz)
             current_time = dt.strftime(input_data.format_type.format)
+
         yield "time", current_time
 
 
@@ -278,31 +298,14 @@ class GetCurrentDateBlock(Block):
         except ValueError:
             offset = 0
 
+        # Get the appropriate timezone
+        tz = _get_timezone(input_data.format_type, effective_timezone)
+        current_date = datetime.now(tz=tz) - timedelta(days=offset)
+
         if isinstance(input_data.format_type, DateISO8601Format):
-            # ISO 8601 format for date only (YYYY-MM-DD)
-            # Determine which timezone to use
-            if input_data.format_type.use_user_timezone and effective_timezone:
-                tz = ZoneInfo(effective_timezone)
-                logger.debug(f"Using user timezone: {effective_timezone}")
-            else:
-                tz = ZoneInfo(input_data.format_type.timezone)
-                logger.debug(
-                    f"Using specified timezone: {input_data.format_type.timezone}"
-                )
-            current_date = datetime.now(tz=tz) - timedelta(days=offset)
             # ISO 8601 date format is YYYY-MM-DD
             date_str = current_date.date().isoformat()
         else:  # DateStrftimeFormat
-            # Determine which timezone to use
-            if input_data.format_type.use_user_timezone and effective_timezone:
-                tz = ZoneInfo(effective_timezone)
-                logger.debug(f"Using user timezone: {effective_timezone}")
-            else:
-                tz = ZoneInfo(input_data.format_type.timezone)
-                logger.debug(
-                    f"Using specified timezone: {input_data.format_type.timezone}"
-                )
-            current_date = datetime.now(tz=tz) - timedelta(days=offset)
             date_str = current_date.strftime(input_data.format_type.format)
 
         yield "date", date_str
@@ -396,36 +399,18 @@ class GetCurrentDateAndTimeBlock(Block):
         user_context: UserContext = kwargs["user_context"]
         effective_timezone = user_context.timezone
 
+        # Get the appropriate timezone
+        tz = _get_timezone(input_data.format_type, effective_timezone)
+        dt = datetime.now(tz=tz)
+
         if isinstance(input_data.format_type, ISO8601Format):
             # ISO 8601 format with specified timezone (also RFC3339-compliant)
-            # Determine which timezone to use
-            if input_data.format_type.use_user_timezone and effective_timezone:
-                tz = ZoneInfo(effective_timezone)
-                logger.debug(f"Using user timezone: {effective_timezone}")
-            else:
-                tz = ZoneInfo(input_data.format_type.timezone)
-                logger.debug(
-                    f"Using specified timezone: {input_data.format_type.timezone}"
-                )
-            dt = datetime.now(tz=tz)
-
-            # Format with or without microseconds
-            if input_data.format_type.include_microseconds:
-                current_date_time = dt.isoformat()
-            else:
-                current_date_time = dt.isoformat(timespec="seconds")
+            current_date_time = _format_datetime_iso8601(
+                dt, input_data.format_type.include_microseconds
+            )
         else:  # StrftimeFormat
-            # Determine which timezone to use
-            if input_data.format_type.use_user_timezone and effective_timezone:
-                tz = ZoneInfo(effective_timezone)
-                logger.debug(f"Using user timezone: {effective_timezone}")
-            else:
-                tz = ZoneInfo(input_data.format_type.timezone)
-                logger.debug(
-                    f"Using specified timezone: {input_data.format_type.timezone}"
-                )
-            dt = datetime.now(tz=tz)
             current_date_time = dt.strftime(input_data.format_type.format)
+
         yield "date_time", current_date_time
 
 
