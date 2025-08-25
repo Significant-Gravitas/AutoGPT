@@ -36,6 +36,8 @@ model User {
   notifyOnAgentApproved        Boolean @default(true)
   notifyOnAgentRejected        Boolean @default(true)
 
+  timezone                     String  @default("not-set")
+
   // Relations
 
   AgentGraphs          AgentGraph[]
