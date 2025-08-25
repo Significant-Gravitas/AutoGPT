@@ -1,11 +1,11 @@
 "use client";
 
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useAgentRunModal } from "./useAgentRunModal";
+import { ModalHeader } from "./components/ModalHeader/ModalHeader";
 
 interface Props {
   triggerSlot: React.ReactNode;
@@ -35,28 +35,12 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
   return (
     <Dialog
       controlled={{ isOpen, set: setIsOpen }}
-      styling={{ maxWidth: "1024px", maxHeight: "90vh" }}
+      styling={{ maxWidth: "600px", maxHeight: "90vh" }}
     >
       <Dialog.Trigger>{triggerSlot}</Dialog.Trigger>
       <Dialog.Content>
         <div className="space-y-6">
-          {/* Header */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <Badge variant="info">
-                {showScheduleView ? "Schedule Run" : "New run"}
-              </Badge>
-              {agent.has_external_trigger && (
-                <Badge variant="info">Marketplace</Badge>
-              )}
-            </div>
-            <div>
-              <h2 className="mb-1 text-xl font-semibold text-neutral-800">
-                {agent.name}
-              </h2>
-              <p className="text-sm text-neutral-600">{agent.description}</p>
-            </div>
-          </div>
+          <ModalHeader showScheduleView={showScheduleView} agent={agent} />
 
           {/* Content */}
           <div className="space-y-6">
@@ -129,11 +113,8 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
                 )}
 
                 <div className="flex justify-end gap-3 border-t pt-4">
-                  <Button variant="ghost" onClick={() => setIsOpen(false)}>
-                    Cancel
-                  </Button>
                   {!agent.has_external_trigger && (
-                    <Button variant="ghost" onClick={handleShowSchedule}>
+                    <Button variant="secondary" onClick={handleShowSchedule}>
                       Schedule Run
                     </Button>
                   )}
