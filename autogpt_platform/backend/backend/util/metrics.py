@@ -57,7 +57,7 @@ async def discord_send_alert(
     elif channel == DiscordChannel.PRODUCT:
         channel_name = settings.config.product_alert_discord_channel
     else:
-        channel_name = settings.config.platform_alert_discord_channel  # fallback
+        channel_name = settings.config.platform_alert_discord_channel
 
     return await SendDiscordMessageBlock().run_once(
         SendDiscordMessageBlock.Input(
