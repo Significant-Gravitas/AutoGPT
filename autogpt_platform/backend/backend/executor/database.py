@@ -173,9 +173,6 @@ class DatabaseManagerClient(AppServiceClient):
     spend_credits = _(d.spend_credits)
     get_credits = _(d.get_credits)
 
-    # Summary data - async
-    get_user_execution_summary_data = _(d.get_user_execution_summary_data)
-
     # Block error monitoring
     get_block_error_stats = _(d.get_block_error_stats)
 
@@ -192,7 +189,6 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_latest_node_execution = d.get_latest_node_execution
     get_graph = d.get_graph
     get_graph_metadata = d.get_graph_metadata
-    get_graph_execution_meta = d.get_graph_execution_meta
     get_node = d.get_node
     get_node_execution = d.get_node_execution
     get_node_executions = d.get_node_executions
