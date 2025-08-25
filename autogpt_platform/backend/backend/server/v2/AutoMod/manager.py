@@ -99,7 +99,7 @@ class AutoModManager:
                 )
                 # Update node statuses for frontend display before raising error
                 await self._update_failed_nodes_for_moderation(
-                    db_client, graph_exec.graph_exec_id, "input"
+                    db_client, graph_exec.graph_exec_id, "input", content_id
                 )
 
                 return ModerationError(
@@ -182,7 +182,7 @@ class AutoModManager:
                 logger.warning(f"Moderation failed for graph execution {graph_exec_id}")
                 # Update node statuses for frontend display before raising error
                 await self._update_failed_nodes_for_moderation(
-                    db_client, graph_exec_id, "output"
+                    db_client, graph_exec_id, "output", content_id
                 )
 
                 return ModerationError(
@@ -214,6 +214,7 @@ class AutoModManager:
         db_client: "DatabaseManagerAsyncClient",
         graph_exec_id: str,
         moderation_type: Literal["input", "output"],
+        content_id: str | None = None,
     ):
         """Update node execution statuses for frontend display when moderation fails"""
         # Import here to avoid circular imports
@@ -238,6 +239,11 @@ class AutoModManager:
         if not executions_to_update:
             return
 
+        # Create error message with content_id if available
+        error_message = "Failed due to content moderation"
+        if content_id:
+            error_message += f" (Moderation ID: {content_id})"
+
         # Prepare database update tasks
         exec_updates = []
         for exec_entry in executions_to_update:
@@ -247,11 +253,11 @@ class AutoModManager:
 
             if exec_entry.input_data:
                 for name in exec_entry.input_data.keys():
-                    cleared_inputs[name] = ["Failed due to content moderation"]
+                    cleared_inputs[name] = [error_message]
 
             if exec_entry.output_data:
                 for name in exec_entry.output_data.keys():
-                    cleared_outputs[name] = ["Failed due to content moderation"]
+                    cleared_outputs[name] = [error_message]
 
             # Add update task to list
             exec_updates.append(
@@ -259,7 +265,7 @@ class AutoModManager:
                     exec_entry.node_exec_id,
                     status=ExecutionStatus.FAILED,
                     stats={
-                        "error": "Failed due to content moderation",
+                        "error": error_message,
                         "cleared_inputs": cleared_inputs,
                         "cleared_outputs": cleared_outputs,
                     },
