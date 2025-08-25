@@ -292,13 +292,14 @@ class GraphExecutionWithNodes(GraphExecution):
             node_executions=node_executions,
         )
 
-    def to_graph_execution_entry(self):
+    def to_graph_execution_entry(self, user_context: "UserContext"):
         return GraphExecutionEntry(
             user_id=self.user_id,
             graph_id=self.graph_id,
             graph_version=self.graph_version or 0,
             graph_exec_id=self.id,
             nodes_input_masks={},  # FIXME: store credentials on AgentGraphExecution
+            user_context=user_context,
         )
 
 
@@ -370,7 +371,9 @@ class NodeExecutionResult(BaseModel):
             end_time=_node_exec.endedTime,
         )
 
-    def to_node_execution_entry(self) -> "NodeExecutionEntry":
+    def to_node_execution_entry(
+        self, user_context: "UserContext"
+    ) -> "NodeExecutionEntry":
         return NodeExecutionEntry(
             user_id=self.user_id,
             graph_exec_id=self.graph_exec_id,
@@ -379,6 +382,7 @@ class NodeExecutionResult(BaseModel):
             node_id=self.node_id,
             block_id=self.block_id,
             inputs=self.input_data,
+            user_context=user_context,
         )
 
 
@@ -873,12 +877,19 @@ async def get_latest_node_execution(
 # ----------------- Execution Infrastructure ----------------- #
 
 
+class UserContext(BaseModel):
+    """Generic user context for graph execution containing user-specific settings."""
+
+    timezone: str
+
+
 class GraphExecutionEntry(BaseModel):
     user_id: str
     graph_exec_id: str
     graph_id: str
     graph_version: int
     nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None
+    user_context: UserContext
 
 
 class NodeExecutionEntry(BaseModel):
@@ -889,6 +900,7 @@ class NodeExecutionEntry(BaseModel):
     node_id: str
     block_id: str
     inputs: BlockInput
+    user_context: UserContext
 
 
 class ExecutionQueue(Generic[T]):

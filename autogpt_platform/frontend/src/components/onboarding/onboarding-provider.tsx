@@ -11,6 +11,7 @@ import {
 import { OnboardingStep, UserOnboarding } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useOnboardingTimezoneDetection } from "@/hooks/useOnboardingTimezoneDetection";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -77,6 +78,9 @@ export default function OnboardingProvider({
   const pathname = usePathname();
   const router = useRouter();
   const { user, isUserLoading } = useSupabase();
+
+  // Automatically detect and set timezone for new users during onboarding
+  useOnboardingTimezoneDetection();
 
   useEffect(() => {
     const fetchOnboarding = async () => {
