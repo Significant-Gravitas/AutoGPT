@@ -22,20 +22,20 @@ ALGO_RECOMMENDATION = (
 
 class Settings:
     def __init__(self):
-        self.JWT_SECRET_KEY: str = os.getenv(
+        self.JWT_VERIFY_KEY: str = os.getenv(
             "JWT_VERIFY_KEY", os.getenv("SUPABASE_JWT_SECRET", "")
         ).strip()
         self.JWT_ALGORITHM: str = os.getenv("JWT_SIGN_ALGORITHM", "HS256").strip()
 
-        if not self.JWT_SECRET_KEY:
+        if not self.JWT_VERIFY_KEY:
             raise AuthConfigError(
-                "SUPABASE_JWT_SECRET must be set. "
+                "JWT_VERIFY_KEY must be set. "
                 "An empty JWT secret would allow anyone to forge valid tokens."
             )
 
-        if len(self.JWT_SECRET_KEY) < 32:
+        if len(self.JWT_VERIFY_KEY) < 32:
             logger.warning(
-                "⚠️ SUPABASE_JWT_SECRET appears weak (less than 32 characters). "
+                "⚠️ JWT_VERIFY_KEY appears weak (less than 32 characters). "
                 "Consider using a longer, cryptographically secure secret."
             )
 
@@ -53,14 +53,14 @@ class Settings:
             or self.JWT_ALGORITHM == "none"
         ):
             raise AuthConfigError(
-                f"Invalid JWT_ALGORITHM: '{self.JWT_ALGORITHM}'. "
+                f"Invalid JWT_SIGN_ALGORITHM: '{self.JWT_ALGORITHM}'. "
                 "Supported algorithms are listed on "
                 "https://pyjwt.readthedocs.io/en/stable/algorithms.html"
             )
 
         if self.JWT_ALGORITHM.startswith("HS"):
             logger.warning(
-                f"⚠️ SUPABASE_JWT_ALGORITHM is set to '{self.JWT_ALGORITHM}', "
+                f"⚠️ JWT_SIGN_ALGORITHM is set to '{self.JWT_ALGORITHM}', "
                 "a symmetric shared-key signature algorithm. " + ALGO_RECOMMENDATION
             )
 

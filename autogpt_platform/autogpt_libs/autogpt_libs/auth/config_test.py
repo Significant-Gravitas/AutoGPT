@@ -15,15 +15,24 @@ from autogpt_libs.auth.config import AuthConfigError, Settings
 def test_environment_variable_precedence(mocker: MockerFixture):
     """Test that environment variables take precedence over defaults."""
     secret = "environment-secret-key-with-proper-length-123456"
+    mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": secret}, clear=True)
+
+    settings = Settings()
+    assert settings.JWT_VERIFY_KEY == secret
+
+
+def test_environment_variable_backwards_compatible(mocker: MockerFixture):
+    """Test that SUPABASE_JWT_SECRET is read if JWT_VERIFY_KEY is not set."""
+    secret = "environment-secret-key-with-proper-length-123456"
     mocker.patch.dict(os.environ, {"SUPABASE_JWT_SECRET": secret}, clear=True)
 
     settings = Settings()
-    assert settings.JWT_SECRET_KEY == secret
+    assert settings.JWT_VERIFY_KEY == secret
 
 
 def test_jwt_algorithm_always_hs256(mocker: MockerFixture):
     """Test that JWT algorithm is always HS256."""
-    mocker.patch.dict(os.environ, {"SUPABASE_JWT_SECRET": "a" * 32}, clear=True)
+    mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": "a" * 32}, clear=True)
 
     settings = Settings()
     assert settings.JWT_ALGORITHM == "HS256"
@@ -39,43 +48,43 @@ def test_auth_config_error_inheritance():
 def test_settings_static_after_creation(mocker: MockerFixture):
     """Test that settings maintain their values after creation."""
     secret = "immutable-secret-key-with-proper-length-12345"
-    mocker.patch.dict(os.environ, {"SUPABASE_JWT_SECRET": secret}, clear=True)
+    mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": secret}, clear=True)
 
     settings = Settings()
-    original_secret = settings.JWT_SECRET_KEY
+    original_secret = settings.JWT_VERIFY_KEY
 
     # Changing environment after creation shouldn't affect settings
-    os.environ["SUPABASE_JWT_SECRET"] = "different-secret"
+    os.environ["JWT_VERIFY_KEY"] = "different-secret"
 
-    assert settings.JWT_SECRET_KEY == original_secret
+    assert settings.JWT_VERIFY_KEY == original_secret
 
 
 def test_config_loads_with_valid_secret(mocker: MockerFixture):
     """Test auth enabled with a valid JWT secret."""
     valid_secret = "a" * 32  # 32 character secret
-    mocker.patch.dict(os.environ, {"SUPABASE_JWT_SECRET": valid_secret}, clear=True)
+    mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": valid_secret}, clear=True)
 
     settings = Settings()
-    assert settings.JWT_SECRET_KEY == valid_secret
+    assert settings.JWT_VERIFY_KEY == valid_secret
 
 
 def test_config_loads_with_strong_secret(mocker: MockerFixture):
     """Test auth enabled with a cryptographically strong secret."""
     strong_secret = "super-secret-jwt-token-with-at-least-32-characters-long"
-    mocker.patch.dict(os.environ, {"SUPABASE_JWT_SECRET": strong_secret}, clear=True)
+    mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": strong_secret}, clear=True)
 
     settings = Settings()
-    assert settings.JWT_SECRET_KEY == strong_secret
-    assert len(settings.JWT_SECRET_KEY) >= 32
+    assert settings.JWT_VERIFY_KEY == strong_secret
+    assert len(settings.JWT_VERIFY_KEY) >= 32
 
 
 def test_secret_empty_raises_error(mocker: MockerFixture):
     """Test that auth enabled with empty secret raises AuthConfigError."""
-    mocker.patch.dict(os.environ, {"SUPABASE_JWT_SECRET": ""}, clear=True)
+    mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": ""}, clear=True)
 
     with pytest.raises(Exception) as exc_info:
         Settings()
-    assert "SUPABASE_JWT_SECRET" in str(exc_info.value)
+    assert "JWT_VERIFY_KEY" in str(exc_info.value)
 
 
 def test_secret_missing_raises_error(mocker: MockerFixture):
@@ -84,13 +93,13 @@ def test_secret_missing_raises_error(mocker: MockerFixture):
 
     with pytest.raises(Exception) as exc_info:
         Settings()
-    assert "SUPABASE_JWT_SECRET" in str(exc_info.value)
+    assert "JWT_VERIFY_KEY" in str(exc_info.value)
 
 
 @pytest.mark.parametrize("secret", [" ", "  ", "\t", "\n", " \t\n "])
 def test_secret_only_whitespace_raises_error(mocker: MockerFixture, secret: str):
     """Test that auth enabled with whitespace-only secret raises error."""
-    mocker.patch.dict(os.environ, {"SUPABASE_JWT_SECRET": secret}, clear=True)
+    mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": secret}, clear=True)
 
     with pytest.raises(ValueError):
         Settings()
@@ -101,11 +110,11 @@ def test_secret_weak_logs_warning(
 ):
     """Test that weak JWT secret triggers warning log."""
     weak_secret = "short"  # Less than 32 characters
-    mocker.patch.dict(os.environ, {"SUPABASE_JWT_SECRET": weak_secret}, clear=True)
+    mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": weak_secret}, clear=True)
 
     with caplog.at_level(logging.WARNING):
         settings = Settings()
-        assert settings.JWT_SECRET_KEY == weak_secret
+        assert settings.JWT_VERIFY_KEY == weak_secret
         assert "secret appears weak" in caplog.text.lower()
         assert "less than 32 characters" in caplog.text
 
@@ -115,11 +124,11 @@ def test_secret_31_char_logs_warning(
 ):
     """Test that 31-character secret triggers warning (boundary test)."""
     secret_31 = "a" * 31  # Exactly 31 characters
-    mocker.patch.dict(os.environ, {"SUPABASE_JWT_SECRET": secret_31}, clear=True)
+    mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": secret_31}, clear=True)
 
     with caplog.at_level(logging.WARNING):
         settings = Settings()
-        assert len(settings.JWT_SECRET_KEY) == 31
+        assert len(settings.JWT_VERIFY_KEY) == 31
         assert "secret appears weak" in caplog.text.lower()
 
 
@@ -128,76 +137,76 @@ def test_secret_32_char_no_warning(
 ):
     """Test that 32-character secret does not trigger warning (boundary test)."""
     secret_32 = "a" * 32  # Exactly 32 characters
-    mocker.patch.dict(os.environ, {"SUPABASE_JWT_SECRET": secret_32}, clear=True)
+    mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": secret_32}, clear=True)
 
     with caplog.at_level(logging.WARNING):
         settings = Settings()
-        assert len(settings.JWT_SECRET_KEY) == 32
+        assert len(settings.JWT_VERIFY_KEY) == 32
         assert "JWT secret appears weak" not in caplog.text
 
 
 def test_secret_whitespace_stripped(mocker: MockerFixture):
     """Test that JWT secret whitespace is stripped."""
     secret = "a" * 32
-    mocker.patch.dict(os.environ, {"SUPABASE_JWT_SECRET": f"  {secret}  "}, clear=True)
+    mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": f"  {secret}  "}, clear=True)
 
     settings = Settings()
-    assert settings.JWT_SECRET_KEY == secret
+    assert settings.JWT_VERIFY_KEY == secret
 
 
 def test_secret_with_special_characters(mocker: MockerFixture):
     """Test JWT secret with special characters."""
     special_secret = "!@#$%^&*()_+-=[]{}|;:,.<>?`~" + "a" * 10  # 40 chars total
-    mocker.patch.dict(os.environ, {"SUPABASE_JWT_SECRET": special_secret}, clear=True)
+    mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": special_secret}, clear=True)
 
     settings = Settings()
-    assert settings.JWT_SECRET_KEY == special_secret
+    assert settings.JWT_VERIFY_KEY == special_secret
 
 
 def test_secret_with_unicode(mocker: MockerFixture):
     """Test JWT secret with unicode characters."""
     unicode_secret = "秘密🔐キー" + "a" * 25  # Ensure >32 bytes
-    mocker.patch.dict(os.environ, {"SUPABASE_JWT_SECRET": unicode_secret}, clear=True)
+    mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": unicode_secret}, clear=True)
 
     settings = Settings()
-    assert settings.JWT_SECRET_KEY == unicode_secret
+    assert settings.JWT_VERIFY_KEY == unicode_secret
 
 
 def test_secret_very_long(mocker: MockerFixture):
     """Test JWT secret with excessive length."""
     long_secret = "a" * 1000  # 1000 character secret
-    mocker.patch.dict(os.environ, {"SUPABASE_JWT_SECRET": long_secret}, clear=True)
+    mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": long_secret}, clear=True)
 
     settings = Settings()
-    assert settings.JWT_SECRET_KEY == long_secret
-    assert len(settings.JWT_SECRET_KEY) == 1000
+    assert settings.JWT_VERIFY_KEY == long_secret
+    assert len(settings.JWT_VERIFY_KEY) == 1000
 
 
 def test_secret_with_newline(mocker: MockerFixture):
     """Test JWT secret containing newlines."""
     multiline_secret = "secret\nwith\nnewlines" + "a" * 20
-    mocker.patch.dict(os.environ, {"SUPABASE_JWT_SECRET": multiline_secret}, clear=True)
+    mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": multiline_secret}, clear=True)
 
     settings = Settings()
-    assert settings.JWT_SECRET_KEY == multiline_secret
+    assert settings.JWT_VERIFY_KEY == multiline_secret
 
 
 def test_secret_base64_encoded(mocker: MockerFixture):
     """Test JWT secret that looks like base64."""
     base64_secret = "dGhpc19pc19hX3NlY3JldF9rZXlfd2l0aF9wcm9wZXJfbGVuZ3Ro"
-    mocker.patch.dict(os.environ, {"SUPABASE_JWT_SECRET": base64_secret}, clear=True)
+    mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": base64_secret}, clear=True)
 
     settings = Settings()
-    assert settings.JWT_SECRET_KEY == base64_secret
+    assert settings.JWT_VERIFY_KEY == base64_secret
 
 
 def test_secret_numeric_only(mocker: MockerFixture):
     """Test JWT secret with only numbers."""
     numeric_secret = "1234567890" * 4  # 40 character numeric secret
-    mocker.patch.dict(os.environ, {"SUPABASE_JWT_SECRET": numeric_secret}, clear=True)
+    mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": numeric_secret}, clear=True)
 
     settings = Settings()
-    assert settings.JWT_SECRET_KEY == numeric_secret
+    assert settings.JWT_VERIFY_KEY == numeric_secret
 
 
 def test_algorithm_whitespace_stripped(mocker: MockerFixture):
@@ -205,7 +214,7 @@ def test_algorithm_whitespace_stripped(mocker: MockerFixture):
     secret = "a" * 32
     mocker.patch.dict(
         os.environ,
-        {"SUPABASE_JWT_SECRET": secret, "SUPABASE_JWT_ALGORITHM": "  HS256  "},
+        {"JWT_VERIFY_KEY": secret, "JWT_SIGN_ALGORITHM": "  HS256  "},
         clear=True,
     )
 
@@ -216,7 +225,7 @@ def test_algorithm_whitespace_stripped(mocker: MockerFixture):
 def test_no_crypto_warning(mocker: MockerFixture, caplog: pytest.LogCaptureFixture):
     """Test warning when crypto package is not available."""
     secret = "a" * 32
-    mocker.patch.dict(os.environ, {"SUPABASE_JWT_SECRET": secret}, clear=True)
+    mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": secret}, clear=True)
 
     # Mock has_crypto to return False
     mocker.patch("autogpt_libs.auth.config.has_crypto", False)
@@ -232,13 +241,13 @@ def test_invalid_algorithm_raises_error(mocker: MockerFixture):
     secret = "a" * 32
     mocker.patch.dict(
         os.environ,
-        {"SUPABASE_JWT_SECRET": secret, "SUPABASE_JWT_ALGORITHM": "INVALID_ALG"},
+        {"JWT_VERIFY_KEY": secret, "JWT_SIGN_ALGORITHM": "INVALID_ALG"},
         clear=True,
     )
 
     with pytest.raises(AuthConfigError) as exc_info:
         Settings()
-    assert "Invalid JWT_ALGORITHM" in str(exc_info.value)
+    assert "Invalid JWT_SIGN_ALGORITHM" in str(exc_info.value)
     assert "INVALID_ALG" in str(exc_info.value)
 
 
@@ -247,13 +256,13 @@ def test_none_algorithm_raises_error(mocker: MockerFixture):
     secret = "a" * 32
     mocker.patch.dict(
         os.environ,
-        {"SUPABASE_JWT_SECRET": secret, "SUPABASE_JWT_ALGORITHM": "none"},
+        {"JWT_VERIFY_KEY": secret, "JWT_SIGN_ALGORITHM": "none"},
         clear=True,
     )
 
     with pytest.raises(AuthConfigError) as exc_info:
         Settings()
-    assert "Invalid JWT_ALGORITHM" in str(exc_info.value)
+    assert "Invalid JWT_SIGN_ALGORITHM" in str(exc_info.value)
 
 
 @pytest.mark.parametrize("algorithm", ["HS256", "HS384", "HS512"])
@@ -264,7 +273,7 @@ def test_symmetric_algorithm_warning(
     secret = "a" * 32
     mocker.patch.dict(
         os.environ,
-        {"SUPABASE_JWT_SECRET": secret, "SUPABASE_JWT_ALGORITHM": algorithm},
+        {"JWT_VERIFY_KEY": secret, "JWT_SIGN_ALGORITHM": algorithm},
         clear=True,
     )
 
@@ -286,7 +295,7 @@ def test_asymmetric_algorithm_no_warning(
     secret = "a" * 32
     mocker.patch.dict(
         os.environ,
-        {"SUPABASE_JWT_SECRET": secret, "SUPABASE_JWT_ALGORITHM": algorithm},
+        {"JWT_VERIFY_KEY": secret, "JWT_SIGN_ALGORITHM": algorithm},
         clear=True,
     )
 

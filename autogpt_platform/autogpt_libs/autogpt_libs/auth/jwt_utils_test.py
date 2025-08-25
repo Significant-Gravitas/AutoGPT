@@ -51,7 +51,7 @@ class TestJWTUtils:
         """Test parsing a valid JWT token."""
         mocker.patch.dict(
             os.environ,
-            {"SUPABASE_JWT_SECRET": self.valid_secret},
+            {"JWT_VERIFY_KEY": self.valid_secret},
             clear=True,
         )
         # Need to reimport to get new settings
@@ -69,7 +69,7 @@ class TestJWTUtils:
         """Test parsing an expired JWT token."""
         mocker.patch.dict(
             os.environ,
-            {"SUPABASE_JWT_SECRET": self.valid_secret},
+            {"JWT_VERIFY_KEY": self.valid_secret},
             clear=True,
         )
         from autogpt_libs.auth import jwt_utils
@@ -89,7 +89,7 @@ class TestJWTUtils:
         """Test parsing a token with invalid signature."""
         mocker.patch.dict(
             os.environ,
-            {"SUPABASE_JWT_SECRET": self.valid_secret},
+            {"JWT_VERIFY_KEY": self.valid_secret},
             clear=True,
         )
         from autogpt_libs.auth import jwt_utils
@@ -106,7 +106,7 @@ class TestJWTUtils:
         """Test parsing a malformed token."""
         mocker.patch.dict(
             os.environ,
-            {"SUPABASE_JWT_SECRET": self.valid_secret},
+            {"JWT_VERIFY_KEY": self.valid_secret},
             clear=True,
         )
         from autogpt_libs.auth import jwt_utils
@@ -131,7 +131,7 @@ class TestJWTUtils:
         """Test parsing a token with wrong audience."""
         mocker.patch.dict(
             os.environ,
-            {"SUPABASE_JWT_SECRET": self.valid_secret},
+            {"JWT_VERIFY_KEY": self.valid_secret},
             clear=True,
         )
         from autogpt_libs.auth import jwt_utils
@@ -148,7 +148,7 @@ class TestJWTUtils:
         """Test parsing a token without audience claim."""
         mocker.patch.dict(
             os.environ,
-            {"SUPABASE_JWT_SECRET": self.valid_secret},
+            {"JWT_VERIFY_KEY": self.valid_secret},
             clear=True,
         )
         from autogpt_libs.auth import jwt_utils
@@ -165,7 +165,7 @@ class TestJWTUtils:
         """Test extracting JWT payload with valid bearer token."""
         mocker.patch.dict(
             os.environ,
-            {"SUPABASE_JWT_SECRET": self.valid_secret},
+            {"JWT_VERIFY_KEY": self.valid_secret},
             clear=True,
         )
         from autogpt_libs.auth import jwt_utils
@@ -182,7 +182,7 @@ class TestJWTUtils:
         """Test JWT payload when no credentials provided."""
         mocker.patch.dict(
             os.environ,
-            {"SUPABASE_JWT_SECRET": self.valid_secret},
+            {"JWT_VERIFY_KEY": self.valid_secret},
             clear=True,
         )
         from autogpt_libs.auth import jwt_utils
@@ -197,7 +197,7 @@ class TestJWTUtils:
         """Test JWT payload extraction with invalid token."""
         mocker.patch.dict(
             os.environ,
-            {"SUPABASE_JWT_SECRET": self.valid_secret},
+            {"JWT_VERIFY_KEY": self.valid_secret},
             clear=True,
         )
         from autogpt_libs.auth import jwt_utils
@@ -285,7 +285,7 @@ class TestJWTEdgeCases:
         """Test JWT token with additional custom claims."""
         mocker.patch.dict(
             os.environ,
-            {"SUPABASE_JWT_SECRET": self.valid_secret},
+            {"JWT_VERIFY_KEY": self.valid_secret},
             clear=True,
         )
         from autogpt_libs.auth import jwt_utils
@@ -343,7 +343,7 @@ class TestJWTEdgeCases:
         """Test JWT token with issued-at time in future."""
         mocker.patch.dict(
             os.environ,
-            {"SUPABASE_JWT_SECRET": self.valid_secret},
+            {"JWT_VERIFY_KEY": self.valid_secret},
             clear=True,
         )
         from autogpt_libs.auth import jwt_utils
@@ -365,7 +365,7 @@ class TestJWTEdgeCases:
         """Test that only HS256 algorithm is accepted."""
         mocker.patch.dict(
             os.environ,
-            {"SUPABASE_JWT_SECRET": self.valid_secret},
+            {"JWT_VERIFY_KEY": self.valid_secret},
             clear=True,
         )
         from autogpt_libs.auth import jwt_utils

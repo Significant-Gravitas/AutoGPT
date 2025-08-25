@@ -4,11 +4,11 @@ Tests the full authentication flow from HTTP requests to user validation.
 """
 
 import os
-from unittest import mock
 
 import pytest
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.testclient import TestClient
+from pytest_mock import MockerFixture
 
 from autogpt_libs.auth.config import Settings
 from autogpt_libs.auth.dependencies import (
@@ -16,7 +16,7 @@ from autogpt_libs.auth.dependencies import (
     requires_admin_user,
     requires_user,
 )
-from autogpt_libs.auth.models import DEFAULT_USER_ID, User
+from autogpt_libs.auth.models import User
 
 
 class TestAuthDependencies:
@@ -46,20 +46,20 @@ class TestAuthDependencies:
         """Create a test client."""
         return TestClient(app)
 
-    def test_requires_user_with_valid_jwt_payload(self):
+    def test_requires_user_with_valid_jwt_payload(self, mocker: MockerFixture):
         """Test requires_user with valid JWT payload."""
         jwt_payload = {"sub": "user-123", "role": "user", "email": "user@example.com"}
 
         # Mock get_jwt_payload to return our test payload
-        with mock.patch(
+        mocker.patch(
             "autogpt_libs.auth.dependencies.get_jwt_payload", return_value=jwt_payload
-        ):
-            user = requires_user(jwt_payload)
-            assert isinstance(user, User)
-            assert user.user_id == "user-123"
-            assert user.role == "user"
+        )
+        user = requires_user(jwt_payload)
+        assert isinstance(user, User)
+        assert user.user_id == "user-123"
+        assert user.role == "user"
 
-    def test_requires_user_with_admin_jwt_payload(self):
+    def test_requires_user_with_admin_jwt_payload(self, mocker: MockerFixture):
         """Test requires_user accepts admin users."""
         jwt_payload = {
             "sub": "admin-456",
@@ -67,12 +67,12 @@ class TestAuthDependencies:
             "email": "admin@example.com",
         }
 
-        with mock.patch(
+        mocker.patch(
             "autogpt_libs.auth.dependencies.get_jwt_payload", return_value=jwt_payload
-        ):
-            user = requires_user(jwt_payload)
-            assert user.user_id == "admin-456"
-            assert user.role == "admin"
+        )
+        user = requires_user(jwt_payload)
+        assert user.user_id == "admin-456"
+        assert user.role == "admin"
 
     def test_requires_user_missing_sub(self):
         """Test requires_user with missing user ID."""
@@ -91,7 +91,7 @@ class TestAuthDependencies:
             requires_user(jwt_payload)
         assert exc_info.value.status_code == 401
 
-    def test_requires_admin_user_with_admin(self):
+    def test_requires_admin_user_with_admin(self, mocker: MockerFixture):
         """Test requires_admin_user with admin role."""
         jwt_payload = {
             "sub": "admin-789",
@@ -99,12 +99,12 @@ class TestAuthDependencies:
             "email": "admin@example.com",
         }
 
-        with mock.patch(
+        mocker.patch(
             "autogpt_libs.auth.dependencies.get_jwt_payload", return_value=jwt_payload
-        ):
-            user = requires_admin_user(jwt_payload)
-            assert user.user_id == "admin-789"
-            assert user.role == "admin"
+        )
+        user = requires_admin_user(jwt_payload)
+        assert user.user_id == "admin-789"
+        assert user.role == "admin"
 
     def test_requires_admin_user_with_regular_user(self):
         """Test requires_admin_user rejects regular users."""
@@ -122,15 +122,15 @@ class TestAuthDependencies:
         with pytest.raises(KeyError):
             requires_admin_user(jwt_payload)
 
-    def test_get_user_id_with_valid_payload(self):
+    def test_get_user_id_with_valid_payload(self, mocker: MockerFixture):
         """Test get_user_id extracts user ID correctly."""
         jwt_payload = {"sub": "user-id-xyz", "role": "user"}
 
-        with mock.patch(
+        mocker.patch(
             "autogpt_libs.auth.dependencies.get_jwt_payload", return_value=jwt_payload
-        ):
-            user_id = get_user_id(jwt_payload)
-            assert user_id == "user-id-xyz"
+        )
+        user_id = get_user_id(jwt_payload)
+        assert user_id == "user-id-xyz"
 
     def test_get_user_id_missing_sub(self):
         """Test get_user_id with missing user ID."""
@@ -149,25 +149,6 @@ class TestAuthDependencies:
             get_user_id(jwt_payload)
         assert exc_info.value.status_code == 401
 
-    def test_auth_disabled_flow(self):
-        """Test authentication flow when auth is disabled."""
-        with mock.patch.dict(os.environ, {"ENABLE_AUTH": "false"}, clear=True):
-            from autogpt_libs.auth import jwt_utils
-
-            with mock.patch.object(jwt_utils, "settings", Settings()):
-                # When auth is disabled, default payload is used
-                jwt_payload = {"sub": DEFAULT_USER_ID, "role": "admin"}
-
-                user = requires_user(jwt_payload)
-                assert user.user_id == DEFAULT_USER_ID
-                assert user.role == "admin"
-
-                admin = requires_admin_user(jwt_payload)
-                assert admin.role == "admin"
-
-                user_id = get_user_id(jwt_payload)
-                assert user_id == DEFAULT_USER_ID
-
 
 class TestAuthDependenciesIntegration:
     """Integration tests for auth dependencies with FastAPI."""
@@ -182,122 +163,99 @@ class TestAuthDependenciesIntegration:
 
         return _create_token
 
-    def test_endpoint_auth_disabled(self):
-        """Test endpoints work without auth when disabled."""
-        with mock.patch.dict(os.environ, {"ENABLE_AUTH": "false"}, clear=True):
-            app = FastAPI()
-
-            @app.get("/test")
-            def test_endpoint(user: User = Depends(requires_user)):
-                return {"user_id": user.user_id}
-
-            # Need to patch the settings at import time
-            from autogpt_libs.auth import jwt_utils
-
-            with mock.patch.object(jwt_utils, "settings", Settings()):
-                client = TestClient(app)
-
-                # No auth header needed when auth is disabled
-                response = client.get("/test")
-                assert response.status_code == 200
-                assert response.json()["user_id"] == DEFAULT_USER_ID
-
-    def test_endpoint_auth_enabled_no_token(self):
+    def test_endpoint_auth_enabled_no_token(self, mocker: MockerFixture):
         """Test endpoints require token when auth is enabled."""
-        with mock.patch.dict(
+        mocker.patch.dict(
             os.environ,
-            {
-                "ENABLE_AUTH": "true",
-                "SUPABASE_JWT_SECRET": "test-secret-with-proper-length-123456",
-            },
+            {"JWT_VERIFY_KEY": "test-secret-with-proper-length-123456"},
             clear=True,
-        ):
-            app = FastAPI()
+        )
+        app = FastAPI()
 
-            @app.get("/test")
-            def test_endpoint(user: User = Depends(requires_user)):
-                return {"user_id": user.user_id}
+        @app.get("/test")
+        def test_endpoint(user: User = Depends(requires_user)):
+            return {"user_id": user.user_id}
 
-            from autogpt_libs.auth import jwt_utils
+        from autogpt_libs.auth import jwt_utils
 
-            with mock.patch.object(jwt_utils, "settings", Settings()):
-                client = TestClient(app)
+        mocker.patch.object(jwt_utils, "settings", Settings())
+        client = TestClient(app)
 
-                # Should fail without auth header
-                response = client.get("/test")
-                assert response.status_code == 401
+        # Should fail without auth header
+        response = client.get("/test")
+        assert response.status_code == 401
 
-    def test_endpoint_with_valid_token(self, create_token):
+    def test_endpoint_with_valid_token(self, create_token, mocker: MockerFixture):
         """Test endpoint with valid JWT token."""
         secret = "test-secret-with-proper-length-123456"
-        with mock.patch.dict(
+        mocker.patch.dict(
             os.environ,
-            {"ENABLE_AUTH": "true", "SUPABASE_JWT_SECRET": secret},
+            {"JWT_VERIFY_KEY": secret},
             clear=True,
-        ):
-            app = FastAPI()
+        )
+        app = FastAPI()
 
-            @app.get("/test")
-            def test_endpoint(user: User = Depends(requires_user)):
-                return {"user_id": user.user_id, "role": user.role}
+        @app.get("/test")
+        def test_endpoint(user: User = Depends(requires_user)):
+            return {"user_id": user.user_id, "role": user.role}
 
-            from autogpt_libs.auth import jwt_utils
+        from autogpt_libs.auth import jwt_utils
 
-            with mock.patch.object(jwt_utils, "settings", Settings()):
-                client = TestClient(app)
+        mocker.patch.object(jwt_utils, "settings", Settings())
+        client = TestClient(app)
 
-                token = create_token(
-                    {"sub": "test-user", "role": "user", "aud": "authenticated"},
-                    secret=secret,
-                )
+        token = create_token(
+            {"sub": "test-user", "role": "user", "aud": "authenticated"},
+            secret=secret,
+        )
 
-                response = client.get(
-                    "/test", headers={"Authorization": f"Bearer {token}"}
-                )
-                assert response.status_code == 200
-                assert response.json()["user_id"] == "test-user"
+        response = client.get("/test", headers={"Authorization": f"Bearer {token}"})
+        assert response.status_code == 200
+        assert response.json()["user_id"] == "test-user"
 
-    def test_admin_endpoint_requires_admin_role(self, create_token):
+    def test_admin_endpoint_requires_admin_role(
+        self, create_token, mocker: MockerFixture
+    ):
         """Test admin endpoint rejects non-admin users."""
         secret = "test-secret-with-proper-length-123456"
-        with mock.patch.dict(
+        mocker.patch.dict(
             os.environ,
-            {"ENABLE_AUTH": "true", "SUPABASE_JWT_SECRET": secret},
+            {"JWT_VERIFY_KEY": secret},
             clear=True,
-        ):
-            app = FastAPI()
+        )
+        app = FastAPI()
 
-            @app.get("/admin")
-            def admin_endpoint(user: User = Depends(requires_admin_user)):
-                return {"user_id": user.user_id}
+        @app.get("/admin")
+        def admin_endpoint(user: User = Depends(requires_admin_user)):
+            return {"user_id": user.user_id}
 
-            from autogpt_libs.auth import jwt_utils
+        from autogpt_libs.auth import jwt_utils
 
-            with mock.patch.object(jwt_utils, "settings", Settings()):
-                client = TestClient(app)
+        mocker.patch.object(jwt_utils, "settings", Settings())
+        client = TestClient(app)
 
-                # Regular user token
-                user_token = create_token(
-                    {"sub": "regular-user", "role": "user", "aud": "authenticated"},
-                    secret=secret,
-                )
+        # Regular user token
+        user_token = create_token(
+            {"sub": "regular-user", "role": "user", "aud": "authenticated"},
+            secret=secret,
+        )
 
-                response = client.get(
-                    "/admin", headers={"Authorization": f"Bearer {user_token}"}
-                )
-                assert response.status_code == 403
+        response = client.get(
+            "/admin", headers={"Authorization": f"Bearer {user_token}"}
+        )
+        assert response.status_code == 403
 
-                # Admin token
-                admin_token = create_token(
-                    {"sub": "admin-user", "role": "admin", "aud": "authenticated"},
-                    secret=secret,
-                )
+        # Admin token
+        admin_token = create_token(
+            {"sub": "admin-user", "role": "admin", "aud": "authenticated"},
+            secret=secret,
+        )
 
-                response = client.get(
-                    "/admin", headers={"Authorization": f"Bearer {admin_token}"}
-                )
-                assert response.status_code == 200
-                assert response.json()["user_id"] == "admin-user"
+        response = client.get(
+            "/admin", headers={"Authorization": f"Bearer {admin_token}"}
+        )
+        assert response.status_code == 200
+        assert response.json()["user_id"] == "admin-user"
 
 
 class TestAuthDependenciesEdgeCases:
@@ -367,45 +325,52 @@ class TestAuthDependenciesEdgeCases:
         assert user1.role == "user"
         assert user2.role == "admin"
 
-    def test_dependency_error_propagation(self):
+    @pytest.mark.parametrize(
+        "payload,expected_error,admin_only",
+        [
+            (None, "Authorization header is missing", False),
+            ({}, "User ID not found", False),
+            ({"sub": ""}, "User ID not found", False),
+            ({"role": "user"}, "User ID not found", False),
+            ({"sub": "user", "role": "user"}, "Admin access required", True),
+        ],
+    )
+    def test_dependency_error_cases(
+        self, mocker: MockerFixture, payload, expected_error: str, admin_only: bool
+    ):
         """Test that errors propagate correctly through dependencies."""
         # Enable auth for this test
-        with mock.patch.dict(
+        mocker.patch.dict(
             os.environ,
-            {"ENABLE_AUTH": "true", "SUPABASE_JWT_SECRET": "test-secret-123456"},
+            {"JWT_VERIFY_KEY": "test-secret-123456"},
             clear=True,
-        ):
-            from autogpt_libs.auth import jwt_utils
+        )
+        from autogpt_libs.auth import jwt_utils
 
-            with mock.patch.object(jwt_utils, "settings", Settings()):
-                # Test various error conditions
-                error_payloads = [
-                    (None, "Authorization header is missing"),  # None payload
-                    ({}, "User ID not found"),  # Missing sub
-                    ({"sub": ""}, "User ID not found"),  # Empty sub
-                    ({"sub": "user", "role": "user"}, None),  # Valid for requires_user
-                    (
-                        {"sub": "user", "role": "user"},
-                        "Admin access required",
-                    ),  # Invalid for requires_admin_user
-                ]
+        mocker.patch.object(jwt_utils, "settings", Settings())
 
-                # Test None payload
-                with pytest.raises(HTTPException) as exc_info:
-                    requires_user(error_payloads[0][0])
-                assert error_payloads[0][1] in exc_info.value.detail
+        # Import verify_user to test it directly since dependencies use FastAPI Security
+        from autogpt_libs.auth.jwt_utils import verify_user
 
-                # Test empty dict and empty sub
-                for payload, expected_error in error_payloads[1:3]:
-                    with pytest.raises(HTTPException) as exc_info:
-                        requires_user(payload)
-                    assert expected_error in exc_info.value.detail
+        with pytest.raises(HTTPException) as exc_info:
+            verify_user(payload, admin_only=admin_only)
+        assert expected_error in exc_info.value.detail
 
-                # Valid case
-                user = requires_user(error_payloads[3][0])
-                assert user.user_id == "user"
+    def test_dependency_valid_user(self, mocker: MockerFixture):
+        """Test valid user case for dependency."""
+        # Enable auth for this test
+        mocker.patch.dict(
+            os.environ,
+            {"JWT_VERIFY_KEY": "test-secret-123456"},
+            clear=True,
+        )
+        from autogpt_libs.auth import jwt_utils
 
-                # Admin check
-                with pytest.raises(HTTPException) as exc_info:
-                    requires_admin_user(error_payloads[4][0])
-                assert error_payloads[4][1] in exc_info.value.detail
+        mocker.patch.object(jwt_utils, "settings", Settings())
+
+        # Import verify_user to test it directly since dependencies use FastAPI Security
+        from autogpt_libs.auth.jwt_utils import verify_user
+
+        # Valid case
+        user = verify_user({"sub": "user", "role": "user"}, admin_only=False)
+        assert user.user_id == "user"
