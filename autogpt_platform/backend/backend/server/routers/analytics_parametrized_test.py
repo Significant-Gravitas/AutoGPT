@@ -17,6 +17,16 @@ app.include_router(analytics_routes.router)
 client = fastapi.testclient.TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def setup_app_auth(mock_jwt_user):
+    """Setup auth overrides for all tests in this module"""
+    from autogpt_libs.auth.jwt_utils import get_jwt_payload
+
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    yield
+    app.dependency_overrides.clear()
+
+
 @pytest.mark.parametrize(
     "metric_value,metric_name,data_string,test_id",
     [

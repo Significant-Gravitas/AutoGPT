@@ -13,7 +13,6 @@ from pytest_snapshot.plugin import Snapshot
 import backend.server.v2.admin.credit_admin_routes as credit_admin_routes
 import backend.server.v2.admin.model as admin_model
 from backend.data.model import UserTransaction
-from backend.server.conftest import ADMIN_USER_ID, TARGET_USER_ID
 from backend.util.models import Pagination
 
 app = fastapi.FastAPI()
@@ -33,6 +32,8 @@ def setup_app_admin_auth(mock_jwt_admin):
 def test_add_user_credits_success(
     mocker: pytest_mock.MockFixture,
     configured_snapshot: Snapshot,
+    admin_user_id: str,
+    target_user_id: str,
 ) -> None:
     """Test successful credit addition by admin"""
     # Mock the credit model
@@ -44,7 +45,7 @@ def test_add_user_credits_success(
     )
 
     request_data = {
-        "user_id": TARGET_USER_ID,
+        "user_id": target_user_id,
         "amount": 500,
         "comments": "Test credit grant for debugging",
     }
@@ -59,12 +60,12 @@ def test_add_user_credits_success(
     # Verify the function was called with correct parameters
     mock_credit_model._add_transaction.assert_called_once()
     call_args = mock_credit_model._add_transaction.call_args
-    assert call_args[0] == (TARGET_USER_ID, 500)
+    assert call_args[0] == (target_user_id, 500)
     assert call_args[1]["transaction_type"] == prisma.enums.CreditTransactionType.GRANT
     # Check that metadata is a Json object with the expected content
     assert isinstance(call_args[1]["metadata"], Json)
     assert call_args[1]["metadata"] == Json(
-        {"admin_id": ADMIN_USER_ID, "reason": "Test credit grant for debugging"}
+        {"admin_id": admin_user_id, "reason": "Test credit grant for debugging"}
     )
 
     # Snapshot test the response

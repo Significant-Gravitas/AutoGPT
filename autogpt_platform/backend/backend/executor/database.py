@@ -42,6 +42,8 @@ from backend.data.user import (
     get_user_notification_preference,
     update_user_integrations,
 )
+from backend.server.v2.library.db import add_store_agent_to_library, list_library_agents
+from backend.server.v2.store.db import get_store_agent_details, get_store_agents
 from backend.util.service import (
     AppService,
     AppServiceClient,
@@ -145,6 +147,14 @@ class DatabaseManager(AppService):
         get_user_notification_oldest_message_in_batch
     )
 
+    # Library
+    list_library_agents = _(list_library_agents)
+    add_store_agent_to_library = _(add_store_agent_to_library)
+
+    # Store
+    get_store_agents = _(get_store_agents)
+    get_store_agent_details = _(get_store_agent_details)
+
     # Summary data - async
     get_user_execution_summary_data = _(get_user_execution_summary_data)
 
@@ -178,6 +188,14 @@ class DatabaseManagerClient(AppServiceClient):
 
     # Block error monitoring
     get_block_error_stats = _(d.get_block_error_stats)
+
+    # Library
+    list_library_agents = _(d.list_library_agents)
+    add_store_agent_to_library = _(d.add_store_agent_to_library)
+
+    # Store
+    get_store_agents = _(d.get_store_agents)
+    get_store_agent_details = _(d.get_store_agent_details)
 
 
 class DatabaseManagerAsyncClient(AppServiceClient):
@@ -222,6 +240,14 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_notification_oldest_message_in_batch = (
         d.get_user_notification_oldest_message_in_batch
     )
+
+    # Library
+    list_library_agents = d.list_library_agents
+    add_store_agent_to_library = d.add_store_agent_to_library
+
+    # Store
+    get_store_agents = d.get_store_agents
+    get_store_agent_details = d.get_store_agent_details
 
     # Summary data
     get_user_execution_summary_data = d.get_user_execution_summary_data
