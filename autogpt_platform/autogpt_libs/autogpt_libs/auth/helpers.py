@@ -44,8 +44,6 @@ def add_auth_responses_to_openapi(app: FastAPI) -> None:
                 }
 
         # Ensure #/components/responses exists
-        if "components" not in openapi_schema:
-            openapi_schema["components"] = {}
         if "responses" not in openapi_schema["components"]:
             openapi_schema["components"]["responses"] = {}
 
