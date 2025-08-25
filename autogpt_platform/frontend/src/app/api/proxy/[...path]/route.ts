@@ -109,14 +109,10 @@ function createErrorResponse(
     "status" in error &&
     [401, 403].includes(error.status as number)
   ) {
+    // Log this since it indicates a potential frontend bug
     console.warn(
       `Authentication error in API proxy for ${method} ${path}:`,
       "message" in error ? error.message : error,
-    );
-  } else {
-    console.error(
-      `API proxy received error response from ${method} ${path}:`,
-      error,
     );
   }
 
