@@ -195,7 +195,7 @@ class DatabaseManagerClient(AppServiceClient):
 
     # Store
     get_store_agents = _(d.get_store_agents)
-    get_store_agent_details = _(d.get_store_agent_detai
+    get_store_agent_details = _(d.get_store_agent_details)
 
 
 class DatabaseManagerAsyncClient(AppServiceClient):
