@@ -20,6 +20,7 @@ from backend.data.notifications import (
     LowBalanceData,
     NotificationEventModel,
     NotificationType,
+    ZeroBalanceData,
 )
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.executor.activity_status_generator import (
@@ -75,6 +76,7 @@ from backend.util.clients import (
     get_database_manager_async_client,
     get_database_manager_client,
     get_execution_event_bus,
+    get_notification_manager_client,
 )
 from backend.util.decorator import (
     async_error_logged,
@@ -84,6 +86,7 @@ from backend.util.decorator import (
 )
 from backend.util.file import clean_exec_files
 from backend.util.logging import TruncatedLogger, configure_logging
+from backend.util.metrics import DiscordChannel
 from backend.util.process import AppProcess, set_service_name
 from backend.util.retry import continuous_retry, func_retry
 from backend.util.settings import Settings
@@ -684,19 +687,20 @@ class ExecutionProcessor:
         self,
         node_exec: NodeExecutionEntry,
         execution_count: int,
-    ) -> int:
+    ) -> tuple[int, int]:
         total_cost = 0
+        remaining_balance = 0
         db_client = get_db_client()
         block = get_block(node_exec.block_id)
         if not block:
             logger.error(f"Block {node_exec.block_id} not found.")
-            return total_cost
+            return total_cost, 0
 
         cost, matching_filter = block_usage_cost(
             block=block, input_data=node_exec.inputs
         )
         if cost > 0:
-            db_client.spend_credits(
+            remaining_balance = db_client.spend_credits(
                 user_id=node_exec.user_id,
                 cost=cost,
                 metadata=UsageTransactionMetadata(
@@ -714,7 +718,7 @@ class ExecutionProcessor:
 
         cost, usage_count = execution_usage_cost(execution_count)
         if cost > 0:
-            db_client.spend_credits(
+            remaining_balance = db_client.spend_credits(
                 user_id=node_exec.user_id,
                 cost=cost,
                 metadata=UsageTransactionMetadata(
@@ -729,7 +733,7 @@ class ExecutionProcessor:
             )
             total_cost += cost
 
-        return total_cost
+        return total_cost, remaining_balance
 
     @time_measured
     def _on_graph_execution(
@@ -812,12 +816,19 @@ class ExecutionProcessor:
 
                 # Charge usage (may raise) ------------------------------
                 try:
-                    cost = self._charge_usage(
+                    cost, remaining_balance = self._charge_usage(
                         node_exec=queued_node_exec,
                         execution_count=increment_execution_count(graph_exec.user_id),
                     )
                     with execution_stats_lock:
                         execution_stats.cost += cost
+                    # Check if we crossed the low balance threshold
+                    self._handle_low_balance(
+                        db_client=db_client,
+                        user_id=graph_exec.user_id,
+                        current_balance=remaining_balance,
+                        transaction_cost=cost,
+                    )
                 except InsufficientBalanceError as balance_error:
                     error = balance_error  # Set error to trigger FAILED status
                     node_exec_id = queued_node_exec.node_exec_id
@@ -832,11 +843,10 @@ class ExecutionProcessor:
                         status=ExecutionStatus.FAILED,
                     )
 
-                    self._handle_low_balance_notif(
+                    self._handle_insufficient_funds_notif(
                         db_client,
                         graph_exec.user_id,
                         graph_exec.graph_id,
-                        execution_stats,
                         error,
                     )
                     # Gracefully stop the execution loop
@@ -1110,31 +1120,98 @@ class ExecutionProcessor:
             )
         )
 
-    def _handle_low_balance_notif(
+    def _handle_insufficient_funds_notif(
         self,
         db_client: "DatabaseManagerClient",
         user_id: str,
         graph_id: str,
-        exec_stats: GraphExecutionStats,
         e: InsufficientBalanceError,
     ):
-        shortfall = e.balance - e.amount
+        shortfall = abs(e.amount) - e.balance
         metadata = db_client.get_graph_metadata(graph_id)
         base_url = (
             settings.config.frontend_base_url or settings.config.platform_base_url
         )
+
         queue_notification(
             NotificationEventModel(
                 user_id=user_id,
-                type=NotificationType.LOW_BALANCE,
-                data=LowBalanceData(
-                    current_balance=exec_stats.cost,
+                type=NotificationType.ZERO_BALANCE,
+                data=ZeroBalanceData(
+                    current_balance=e.balance,
                     billing_page_link=f"{base_url}/profile/credits",
                     shortfall=shortfall,
                     agent_name=metadata.name if metadata else "Unknown Agent",
                 ),
             )
         )
+
+        try:
+            user_email = db_client.get_user_email_by_id(user_id)
+
+            alert_message = (
+                f"❌ **Insufficient Funds Alert**\n"
+                f"User: {user_email or user_id}\n"
+                f"Agent: {metadata.name if metadata else 'Unknown Agent'}\n"
+                f"Current balance: ${e.balance/100:.2f}\n"
+                f"Attempted cost: ${abs(e.amount)/100:.2f}\n"
+                f"Shortfall: ${abs(shortfall)/100:.2f}\n"
+                f"[View User Details]({base_url}/admin/spending?search={user_email})"
+            )
+
+            get_notification_manager_client().discord_system_alert(
+                alert_message, DiscordChannel.PRODUCT
+            )
+        except Exception as alert_error:
+            logger.error(
+                f"Failed to send insufficient funds Discord alert: {alert_error}"
+            )
+
+    def _handle_low_balance(
+        self,
+        db_client: "DatabaseManagerClient",
+        user_id: str,
+        current_balance: int,
+        transaction_cost: int,
+    ):
+        """Check and handle low balance scenarios after a transaction"""
+        LOW_BALANCE_THRESHOLD = settings.config.low_balance_threshold
+
+        balance_before = current_balance + transaction_cost
+
+        if (
+            current_balance < LOW_BALANCE_THRESHOLD
+            and balance_before >= LOW_BALANCE_THRESHOLD
+        ):
+            base_url = (
+                settings.config.frontend_base_url or settings.config.platform_base_url
+            )
+            queue_notification(
+                NotificationEventModel(
+                    user_id=user_id,
+                    type=NotificationType.LOW_BALANCE,
+                    data=LowBalanceData(
+                        current_balance=current_balance,
+                        billing_page_link=f"{base_url}/profile/credits",
+                    ),
+                )
+            )
+
+            try:
+                user_email = db_client.get_user_email_by_id(user_id)
+                alert_message = (
+                    f"⚠️ **Low Balance Alert**\n"
+                    f"User: {user_email or user_id}\n"
+                    f"Balance dropped below ${LOW_BALANCE_THRESHOLD/100:.2f}\n"
+                    f"Current balance: ${current_balance/100:.2f}\n"
+                    f"Transaction cost: ${transaction_cost/100:.2f}\n"
+                    f"[View User Details]({base_url}/admin/spending?search={user_email})"
+                )
+                get_notification_manager_client().discord_system_alert(
+                    alert_message, DiscordChannel.PRODUCT
+                )
+            except Exception as e:
+                logger.error(f"Failed to send low balance Discord alert: {e}")
 
 
 class ExecutionManager(AppProcess):
