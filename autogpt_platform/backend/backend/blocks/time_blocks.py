@@ -78,17 +78,15 @@ class TimeStrftimeFormat(BaseModel):
     discriminator: Literal["strftime"]
     format: str = "%H:%M:%S"
     timezone: TimezoneLiteral = "UTC"
-    use_user_timezone: bool = (
-        False  # When True, overrides timezone with user's profile timezone
-    )
+    # When True, overrides timezone with user's profile timezone
+    use_user_timezone: bool = False
 
 
 class TimeISO8601Format(BaseModel):
     discriminator: Literal["iso8601"]
     timezone: TimezoneLiteral = "UTC"
-    use_user_timezone: bool = (
-        False  # When True, overrides timezone with user's profile timezone
-    )
+    # When True, overrides timezone with user's profile timezone
+    use_user_timezone: bool = False
     include_microseconds: bool = False
 
 
@@ -191,17 +189,15 @@ class DateStrftimeFormat(BaseModel):
     discriminator: Literal["strftime"]
     format: str = "%Y-%m-%d"
     timezone: TimezoneLiteral = "UTC"
-    use_user_timezone: bool = (
-        False  # When True, overrides timezone with user's profile timezone
-    )
+    # When True, overrides timezone with user's profile timezone
+    use_user_timezone: bool = False
 
 
 class DateISO8601Format(BaseModel):
     discriminator: Literal["iso8601"]
     timezone: TimezoneLiteral = "UTC"
-    use_user_timezone: bool = (
-        False  # When True, overrides timezone with user's profile timezone
-    )
+    # When True, overrides timezone with user's profile timezone
+    use_user_timezone: bool = False
 
 
 class GetCurrentDateBlock(Block):
@@ -316,17 +312,15 @@ class StrftimeFormat(BaseModel):
     discriminator: Literal["strftime"]
     format: str = "%Y-%m-%d %H:%M:%S"
     timezone: TimezoneLiteral = "UTC"
-    use_user_timezone: bool = (
-        False  # When True, overrides timezone with user's profile timezone
-    )
+    # When True, overrides timezone with user's profile timezone
+    use_user_timezone: bool = False
 
 
 class ISO8601Format(BaseModel):
     discriminator: Literal["iso8601"]
     timezone: TimezoneLiteral = "UTC"
-    use_user_timezone: bool = (
-        False  # When True, overrides timezone with user's profile timezone
-    )
+    # When True, overrides timezone with user's profile timezone
+    use_user_timezone: bool = False
     include_microseconds: bool = False
 
 
