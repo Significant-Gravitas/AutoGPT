@@ -863,6 +863,22 @@ files = [
 ]
 
 [[package]]
+name = "croniter"
+version = "6.0.0"
+description = "croniter provides iteration for datetime object with cron like format"
+optional = false
+python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,>=2.6"
+groups = ["main"]
+files = [
+    {file = "croniter-6.0.0-py2.py3-none-any.whl", hash = "sha256:2f878c3856f17896979b2a4379ba1f09c83e374931ea15cc835c5dd2eee9b368"},
+    {file = "croniter-6.0.0.tar.gz", hash = "sha256:37c504b313956114a983ece2c2b07790b1f1094fe9d81cc94739214748255577"},
+]
+
+[package.dependencies]
+python-dateutil = "*"
+pytz = ">2021.1"
+
+[[package]]
 name = "cryptography"
 version = "43.0.3"
 description = "cryptography is a package which provides cryptographic recipes and primitives to Python developers."
@@ -6806,4 +6822,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "f5120d066e4675f997a725289c8a5b288f38d5f7e8830049df4e87ab7c556641"
+content-hash = "e780199a6b02f5fef3f930a4f1d69443af1977b591172c3a18a299166345c37a"
