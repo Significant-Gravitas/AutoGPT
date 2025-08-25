@@ -4,7 +4,7 @@ const commonStyles = {
   overlay:
     "fixed inset-0 z-50 bg-stone-500/20 dark:bg-black/50 backdrop-blur-md animate-fade-in",
   content:
-    "bg-white p-6 fixed rounded-xl flex flex-col z-50 w-full overflow-hidden",
+    "bg-white p-6 fixed rounded-2xlarge flex flex-col z-50 w-full overflow-hidden",
 };
 
 // Modal specific styles
