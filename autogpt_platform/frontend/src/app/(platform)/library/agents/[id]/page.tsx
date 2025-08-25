@@ -8,7 +8,7 @@ import { AgentRunsView } from "./components/AgentRunsView/AgentRunsView";
 export default function AgentLibraryPage() {
   const isNewAgentRunsEnabled = useGetFlag(Flag.NEW_AGENT_RUNS);
 
-  if (true) {
+  if (isNewAgentRunsEnabled) {
     return <AgentRunsView />;
   }
 

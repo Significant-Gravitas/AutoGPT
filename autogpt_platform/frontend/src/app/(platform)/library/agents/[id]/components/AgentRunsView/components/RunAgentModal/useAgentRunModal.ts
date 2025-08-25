@@ -29,7 +29,8 @@ export function useAgentRunModal(
   const [isOpen, setIsOpen] = useState(false);
   const [showScheduleView, setShowScheduleView] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
-  const [scheduleName, setScheduleName] = useState("");
+  const defaultScheduleName = useMemo(() => `Run ${agent.name}`, [agent.name]);
+  const [scheduleName, setScheduleName] = useState(defaultScheduleName);
   const [cronExpression, setCronExpression] = useState("0 9 * * 1");
 
   // Determine the default run type based on agent capabilities
@@ -244,11 +245,17 @@ export function useAgentRunModal(
   ]);
 
   function handleShowSchedule() {
+    // Initialize with sensible defaults when entering schedule view
+    setScheduleName((prev) => prev || defaultScheduleName);
+    setCronExpression((prev) => prev || "0 9 * * 1");
     setShowScheduleView(true);
   }
 
   function handleGoBack() {
     setShowScheduleView(false);
+    // Reset schedule fields on exit
+    setScheduleName(defaultScheduleName);
+    setCronExpression("0 9 * * 1");
   }
 
   function handleSetScheduleName(name: string) {

@@ -17,7 +17,7 @@ export function DefaultRunView({
   onInputChange,
 }: Props) {
   return (
-    <div className="space-y-4">
+    <div className="mt-6">
       {defaultRunType === "automatic-trigger" && <WebhookTriggerBanner />}
 
       <AgentInputFields

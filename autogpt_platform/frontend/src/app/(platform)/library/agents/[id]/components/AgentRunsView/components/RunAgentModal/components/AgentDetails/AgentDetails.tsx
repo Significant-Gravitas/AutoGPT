@@ -10,7 +10,7 @@ interface Props {
 
 export function AgentDetails({ agent }: Props) {
   return (
-    <div className="mt-4 flex flex-col gap-4">
+    <div className="mt-4 flex flex-col gap-5">
       <div>
         <Text variant="body-medium" className="mb-1 !text-black">
           Current Status
@@ -40,7 +40,6 @@ export function AgentDetails({ agent }: Props) {
           )}
         </div>
       </div>
-
       <div>
         <Text variant="body-medium" className="mb-1 !text-black">
           Last Updated

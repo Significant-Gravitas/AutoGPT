@@ -4,17 +4,14 @@ import { Text } from "@/components/atoms/Text/Text";
 import { ShowMoreText } from "@/components/molecules/ShowMoreText/ShowMoreText";
 
 interface ModalHeaderProps {
-  showScheduleView: boolean;
   agent: LibraryAgent;
 }
 
-export function ModalHeader({ showScheduleView, agent }: ModalHeaderProps) {
+export function ModalHeader({ agent }: ModalHeaderProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <Badge variant="info">
-          {showScheduleView ? "New Trigger" : "New run"}
-        </Badge>
+        <Badge variant="info">New Run</Badge>
       </div>
       <div>
         <Text variant="h3">{agent.name}</Text>
