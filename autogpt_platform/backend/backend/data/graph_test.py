@@ -2,7 +2,6 @@ import json
 from typing import Any
 from uuid import UUID
 
-import autogpt_libs.auth.models
 import fastapi.exceptions
 import pytest
 from pytest_snapshot.plugin import Snapshot
@@ -317,12 +316,7 @@ async def test_access_store_listing_graph(server: SpinTestServer):
             is_approved=True,
             comments="Test comments",
         ),
-        autogpt_libs.auth.models.User(
-            user_id=admin_user.id,
-            role="admin",
-            email=admin_user.email,
-            phone_number="1234567890",
-        ),
+        user_id=admin_user.id,
     )
 
     # Now we check the graph can be accessed by a user that does not own the graph

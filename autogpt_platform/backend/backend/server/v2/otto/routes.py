@@ -1,9 +1,7 @@
 import logging
 
-from autogpt_libs.auth.middleware import auth_middleware
-from fastapi import APIRouter, Depends, HTTPException
-
-from backend.server.utils import get_user_id
+from autogpt_libs.auth import get_user_id, requires_user
+from fastapi import APIRouter, HTTPException, Security
 
 from .models import ApiResponse, ChatRequest
 from .service import OttoService
@@ -16,11 +14,11 @@ router = APIRouter()
 @router.post(
     "/ask",
     response_model=ApiResponse,
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
     summary="Proxy Otto Chat Request",
 )
 async def proxy_otto_request(
-    request: ChatRequest, user_id: str = Depends(get_user_id)
+    request: ChatRequest, user_id: str = Security(get_user_id)
 ) -> ApiResponse:
     """
     Proxy requests to Otto API while adding necessary security headers and logging.

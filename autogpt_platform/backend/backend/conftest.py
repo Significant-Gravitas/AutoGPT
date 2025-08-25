@@ -6,8 +6,6 @@ from dotenv import load_dotenv
 
 from backend.util.logging import configure_logging
 
-os.environ["ENABLE_AUTH"] = "false"
-
 load_dotenv()
 
 #  NOTE: You can run tests like with the --log-cli-level=INFO to see the logs

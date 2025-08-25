@@ -3,14 +3,15 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Annotated, Awaitable, List, Literal
 
+from autogpt_libs.auth import get_user_id
 from fastapi import (
     APIRouter,
     Body,
-    Depends,
     HTTPException,
     Path,
     Query,
     Request,
+    Security,
     status,
 )
 from pydantic import BaseModel, Field, SecretStr
@@ -50,8 +51,6 @@ from backend.util.settings import Settings
 if TYPE_CHECKING:
     from backend.integrations.oauth import BaseOAuthHandler
 
-from ..utils import get_user_id
-
 logger = logging.getLogger(__name__)
 settings = Settings()
 router = APIRouter()
@@ -69,7 +68,7 @@ async def login(
     provider: Annotated[
         ProviderName, Path(title="The provider to initiate an OAuth flow for")
     ],
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
     request: Request,
     scopes: Annotated[
         str, Query(title="Comma-separated list of authorization scopes")
@@ -109,7 +108,7 @@ async def callback(
     ],
     code: Annotated[str, Body(title="Authorization code acquired by user login")],
     state_token: Annotated[str, Body(title="Anti-CSRF nonce")],
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
     request: Request,
 ) -> CredentialsMetaResponse:
     logger.debug(f"Received OAuth callback for provider: {provider}")
@@ -182,7 +181,7 @@ async def callback(
 
 @router.get("/credentials")
 async def list_credentials(
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
     credentials = await creds_manager.store.get_all_creds(user_id)
     return [
@@ -204,7 +203,7 @@ async def list_credentials_by_provider(
     provider: Annotated[
         ProviderName, Path(title="The provider to list credentials for")
     ],
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
     credentials = await creds_manager.store.get_creds_by_provider(user_id, provider)
     return [
@@ -227,7 +226,7 @@ async def get_credential(
         ProviderName, Path(title="The provider to retrieve credentials for")
     ],
     cred_id: Annotated[str, Path(title="The ID of the credentials to retrieve")],
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
 ) -> Credentials:
     credential = await creds_manager.get(user_id, cred_id)
     if not credential:
@@ -244,7 +243,7 @@ async def get_credential(
 
 @router.post("/{provider}/credentials", status_code=201)
 async def create_credentials(
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
     provider: Annotated[
         ProviderName, Path(title="The provider to create credentials for")
     ],
@@ -288,7 +287,7 @@ async def delete_credentials(
         ProviderName, Path(title="The provider to delete credentials for")
     ],
     cred_id: Annotated[str, Path(title="The ID of the credentials to delete")],
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
     force: Annotated[
         bool, Query(title="Whether to proceed if any linked webhooks are still in use")
     ] = False,
@@ -429,7 +428,7 @@ async def webhook_ingress_generic(
 @router.post("/webhooks/{webhook_id}/ping")
 async def webhook_ping(
     webhook_id: Annotated[str, Path(title="Our ID for the webhook")],
-    user_id: Annotated[str, Depends(get_user_id)],  # require auth
+    user_id: Annotated[str, Security(get_user_id)],  # require auth
 ):
     webhook = await get_webhook(webhook_id)
     webhook_manager = get_webhook_manager(webhook.provider)
@@ -568,7 +567,7 @@ def _get_provider_oauth_handler(
 
 @router.get("/ayrshare/sso_url")
 async def get_ayrshare_sso_url(
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
 ) -> AyrshareSSOResponse:
     """
     Generate an SSO URL for Ayrshare social media integration.

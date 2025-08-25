@@ -1,19 +1,18 @@
 import json
 from unittest.mock import AsyncMock
 
-import autogpt_libs.auth
-import autogpt_libs.auth.depends
 import fastapi
 import fastapi.testclient
 import prisma.enums
+import pytest
 import pytest_mock
+from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from prisma import Json
 from pytest_snapshot.plugin import Snapshot
 
 import backend.server.v2.admin.credit_admin_routes as credit_admin_routes
 import backend.server.v2.admin.model as admin_model
 from backend.data.model import UserTransaction
-from backend.server.conftest import ADMIN_USER_ID, TARGET_USER_ID
 from backend.util.models import Pagination
 
 app = fastapi.FastAPI()
@@ -22,25 +21,19 @@ app.include_router(credit_admin_routes.router)
 client = fastapi.testclient.TestClient(app)
 
 
-def override_requires_admin_user() -> dict[str, str]:
-    """Override admin user check for testing"""
-    return {"sub": ADMIN_USER_ID, "role": "admin"}
-
-
-def override_get_user_id() -> str:
-    """Override get_user_id for testing"""
-    return ADMIN_USER_ID
-
-
-app.dependency_overrides[autogpt_libs.auth.requires_admin_user] = (
-    override_requires_admin_user
-)
-app.dependency_overrides[autogpt_libs.auth.depends.get_user_id] = override_get_user_id
+@pytest.fixture(autouse=True)
+def setup_app_admin_auth(mock_jwt_admin):
+    """Setup admin auth overrides for all tests in this module"""
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_admin["get_jwt_payload"]
+    yield
+    app.dependency_overrides.clear()
 
 
 def test_add_user_credits_success(
     mocker: pytest_mock.MockFixture,
     configured_snapshot: Snapshot,
+    admin_user_id: str,
+    target_user_id: str,
 ) -> None:
     """Test successful credit addition by admin"""
     # Mock the credit model
@@ -52,7 +45,7 @@ def test_add_user_credits_success(
     )
 
     request_data = {
-        "user_id": TARGET_USER_ID,
+        "user_id": target_user_id,
         "amount": 500,
         "comments": "Test credit grant for debugging",
     }
@@ -67,12 +60,12 @@ def test_add_user_credits_success(
     # Verify the function was called with correct parameters
     mock_credit_model._add_transaction.assert_called_once()
     call_args = mock_credit_model._add_transaction.call_args
-    assert call_args[0] == (TARGET_USER_ID, 500)
+    assert call_args[0] == (target_user_id, 500)
     assert call_args[1]["transaction_type"] == prisma.enums.CreditTransactionType.GRANT
     # Check that metadata is a Json object with the expected content
     assert isinstance(call_args[1]["metadata"], Json)
     assert call_args[1]["metadata"] == Json(
-        {"admin_id": ADMIN_USER_ID, "reason": "Test credit grant for debugging"}
+        {"admin_id": admin_user_id, "reason": "Test credit grant for debugging"}
     )
 
     # Snapshot test the response
@@ -290,18 +283,10 @@ def test_add_credits_invalid_request() -> None:
     assert response.status_code == 422
 
 
-def test_admin_endpoints_require_admin_role(mocker: pytest_mock.MockFixture) -> None:
+def test_admin_endpoints_require_admin_role(mock_jwt_user) -> None:
     """Test that admin endpoints require admin role"""
-    # Clear the admin override to test authorization
-    app.dependency_overrides.clear()
-
-    # Mock requires_admin_user to raise an exception
-    mocker.patch(
-        "autogpt_libs.auth.requires_admin_user",
-        side_effect=fastapi.HTTPException(
-            status_code=403, detail="Admin access required"
-        ),
-    )
+    # Simulate regular non-admin user
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
 
     # Test add_credits endpoint
     response = client.post(
@@ -312,20 +297,8 @@ def test_admin_endpoints_require_admin_role(mocker: pytest_mock.MockFixture) -> 
             "comments": "test",
         },
     )
-    assert (
-        response.status_code == 401
-    )  # Auth middleware returns 401 when auth is disabled
+    assert response.status_code == 403
 
     # Test users_history endpoint
     response = client.get("/admin/users_history")
-    assert (
-        response.status_code == 401
-    )  # Auth middleware returns 401 when auth is disabled
-
-    # Restore the override
-    app.dependency_overrides[autogpt_libs.auth.requires_admin_user] = (
-        override_requires_admin_user
-    )
-    app.dependency_overrides[autogpt_libs.auth.depends.get_user_id] = (
-        override_get_user_id
-    )
+    assert response.status_code == 403

@@ -261,10 +261,11 @@ export const CustomNode = React.memo(
       const handleSSOLogin = async () => {
         setIsLoading(true);
         try {
-          const {
-            data: { sso_url },
-          } = await getV1GetAyrshareSsoUrl();
-          const popup = window.open(sso_url, "_blank", "popup=true");
+          const { data, status } = await getV1GetAyrshareSsoUrl();
+          if (status !== 200) {
+            throw new Error(data.detail);
+          }
+          const popup = window.open(data.sso_url, "_blank", "popup=true");
           if (!popup) {
             throw new Error(
               "Please allow popups for this site to be able to login with Ayrshare",

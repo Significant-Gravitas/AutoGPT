@@ -44,7 +44,9 @@ export function useAgentActivityDropdown() {
     data: executions,
     isSuccess: executionsSuccess,
     error: executionsError,
-  } = useGetV1ListAllExecutions();
+  } = useGetV1ListAllExecutions({
+    query: { select: (res) => (res.status === 200 ? res.data : null) },
+  });
 
   // Create a map of library agents
   useEffect(() => {
@@ -112,7 +114,7 @@ export function useAgentActivityDropdown() {
   // Process initial execution state when data loads
   useEffect(() => {
     if (executions && executionsSuccess && agentInfoMap.size > 0) {
-      const notifications = categorizeExecutions(executions.data, agentInfoMap);
+      const notifications = categorizeExecutions(executions, agentInfoMap);
       setNotifications(notifications);
     }
   }, [executions, executionsSuccess, agentInfoMap]);

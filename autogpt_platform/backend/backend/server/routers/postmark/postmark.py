@@ -1,8 +1,7 @@
 import logging
 from typing import Annotated
 
-from autogpt_libs.auth.middleware import APIKeyValidator
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, HTTPException, Query, Security
 from fastapi.responses import JSONResponse
 
 from backend.data.user import (
@@ -20,18 +19,18 @@ from backend.server.routers.postmark.models import (
     PostmarkSubscriptionChangeWebhook,
     PostmarkWebhook,
 )
+from backend.server.utils.api_key_auth import APIKeyAuthenticator
 from backend.util.settings import Settings
 
+logger = logging.getLogger(__name__)
 settings = Settings()
-postmark_validator = APIKeyValidator(
-    "X-Postmark-Webhook-Token",
-    settings.secrets.postmark_webhook_token,
-)
 
 router = APIRouter()
 
-
-logger = logging.getLogger(__name__)
+postmark_api_key_auth = APIKeyAuthenticator(
+    "X-Postmark-Webhook-Token",
+    settings.secrets.postmark_webhook_token,
+)
 
 
 @router.post("/unsubscribe", summary="One Click Email Unsubscribe")
@@ -50,7 +49,7 @@ async def unsubscribe_via_one_click(token: Annotated[str, Query()]):
 
 @router.post(
     "/",
-    dependencies=[Depends(postmark_validator.get_dependency())],
+    dependencies=[Security(postmark_api_key_auth)],
     summary="Handle Postmark Email Webhooks",
 )
 async def postmark_webhook_handler(

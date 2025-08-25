@@ -1,11 +1,10 @@
 import datetime
 import json
 
-import autogpt_libs.auth.depends
-import autogpt_libs.auth.middleware
 import fastapi
 import fastapi.testclient
 import prisma.enums
+import pytest
 import pytest_mock
 from pytest_snapshot.plugin import Snapshot
 
@@ -22,20 +21,14 @@ app.include_router(backend.server.v2.store.routes.router)
 client = fastapi.testclient.TestClient(app)
 
 
-def override_auth_middleware() -> dict[str, str]:
-    """Override auth middleware for testing"""
-    return {"sub": "test-user-id"}
+@pytest.fixture(autouse=True)
+def setup_app_auth(mock_jwt_user):
+    """Setup auth overrides for all tests in this module"""
+    from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
-
-def override_get_user_id() -> str:
-    """Override get_user_id for testing"""
-    return "test-user-id"
-
-
-app.dependency_overrides[autogpt_libs.auth.middleware.auth_middleware] = (
-    override_auth_middleware
-)
-app.dependency_overrides[autogpt_libs.auth.depends.get_user_id] = override_get_user_id
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    yield
+    app.dependency_overrides.clear()
 
 
 def test_get_agents_defaults(
@@ -536,6 +529,7 @@ def test_get_creator_details(
 def test_get_submissions_success(
     mocker: pytest_mock.MockFixture,
     snapshot: Snapshot,
+    test_user_id: str,
 ) -> None:
     mocked_value = backend.server.v2.store.model.StoreSubmissionsResponse(
         submissions=[
@@ -576,12 +570,13 @@ def test_get_submissions_success(
     assert data.pagination.current_page == 1
     snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(json.dumps(response.json(), indent=2), "sub_success")
-    mock_db_call.assert_called_once_with(user_id="test-user-id", page=1, page_size=20)
+    mock_db_call.assert_called_once_with(user_id=test_user_id, page=1, page_size=20)
 
 
 def test_get_submissions_pagination(
     mocker: pytest_mock.MockFixture,
     snapshot: Snapshot,
+    test_user_id: str,
 ) -> None:
     mocked_value = backend.server.v2.store.model.StoreSubmissionsResponse(
         submissions=[],
@@ -605,7 +600,7 @@ def test_get_submissions_pagination(
     assert data.pagination.page_size == 5
     snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(json.dumps(response.json(), indent=2), "sub_pagination")
-    mock_db_call.assert_called_once_with(user_id="test-user-id", page=2, page_size=5)
+    mock_db_call.assert_called_once_with(user_id=test_user_id, page=2, page_size=5)
 
 
 def test_get_submissions_malformed_request(mocker: pytest_mock.MockFixture):
