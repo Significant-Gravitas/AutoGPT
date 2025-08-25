@@ -465,6 +465,10 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     twitter_client_secret: str = Field(
         default="", description="Twitter/X OAuth client secret"
     )
+    discord_client_id: str = Field(default="", description="Discord OAuth client ID")
+    discord_client_secret: str = Field(
+        default="", description="Discord OAuth client secret"
+    )
 
     openai_api_key: str = Field(default="", description="OpenAI API key")
     aiml_api_key: str = Field(default="", description="'AI/ML API' key")
