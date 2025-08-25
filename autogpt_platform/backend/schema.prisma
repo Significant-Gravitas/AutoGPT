@@ -33,6 +33,8 @@ model User {
   notifyOnDailySummary         Boolean @default(true)
   notifyOnWeeklySummary        Boolean @default(true)
   notifyOnMonthlySummary       Boolean @default(true)
+  notifyOnAgentApproved        Boolean @default(true)
+  notifyOnAgentRejected        Boolean @default(true)
 
   // Relations
 
@@ -187,6 +189,8 @@ enum NotificationType {
   MONTHLY_SUMMARY
   REFUND_REQUEST
   REFUND_PROCESSED
+  AGENT_APPROVED
+  AGENT_REJECTED
 }
 
 model NotificationEvent {
