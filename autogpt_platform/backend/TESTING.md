@@ -140,8 +140,8 @@ If the test doesn't need the `user_id` specifically, mocking is not necessary as
 
 Two global auth fixtures are provided by `backend/server/conftest.py`:
 
-- `mock_jwt_user` - Regular user with TEST_USER_ID ("test-user-id")
-- `mock_jwt_admin` - Admin user with ADMIN_USER_ID ("admin-user-id")
+- `mock_jwt_user` - Regular user with `test_user_id` ("test-user-id")
+- `mock_jwt_admin` - Admin user with `admin_user_id` ("admin-user-id")
 
 These provide the easiest way to set up authentication mocking in test modules:
 
@@ -177,6 +177,12 @@ def setup_app_auth(mock_jwt_admin):
     yield
     app.dependency_overrides.clear()
 ```
+
+The IDs are also available separately as fixtures:
+
+- `test_user_id`
+- `admin_user_id`
+- `target_user_id` (for admin <-> user operations)
 
 ### Mocking External Services
 

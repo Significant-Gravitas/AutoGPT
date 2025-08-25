@@ -36,6 +36,7 @@ def setup_app_auth(mock_jwt_user):
 def test_log_raw_metric_success_improved(
     mocker: pytest_mock.MockFixture,
     configured_snapshot: Snapshot,
+    test_user_id: str,
 ) -> None:
     """Test successful raw metric logging with improved assertions."""
     # Mock the analytics function
@@ -64,7 +65,7 @@ def test_log_raw_metric_success_improved(
     # Verify the function was called with correct parameters
     assert_mock_called_with_partial(
         mock_log_metric,
-        user_id="test-user-id",
+        user_id=test_user_id,
         metric_name="page_load_time",
         metric_value=2.5,
         data_string="/dashboard",

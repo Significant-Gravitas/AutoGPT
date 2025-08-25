@@ -28,6 +28,7 @@ def setup_app_auth(mock_jwt_user):
 def test_log_raw_metric_success(
     mocker: pytest_mock.MockFixture,
     configured_snapshot: Snapshot,
+    test_user_id: str,
 ) -> None:
     """Test successful raw metric logging"""
 
@@ -54,7 +55,7 @@ def test_log_raw_metric_success(
 
     # Verify the function was called with correct parameters
     mock_log_metric.assert_called_once_with(
-        user_id="test-user-id",
+        user_id=test_user_id,
         metric_name="page_load_time",
         metric_value=2.5,
         data_string="/dashboard",
@@ -122,6 +123,7 @@ def test_log_raw_metric_various_values(
 def test_log_raw_analytics_success(
     mocker: pytest_mock.MockFixture,
     configured_snapshot: Snapshot,
+    test_user_id: str,
 ) -> None:
     """Test successful raw analytics logging"""
 
@@ -156,7 +158,7 @@ def test_log_raw_analytics_success(
 
     # Verify the function was called with correct parameters
     mock_log_analytics.assert_called_once_with(
-        "test-user-id",
+        test_user_id,
         "user_action",
         request_data["data"],
         "button_click_submit_form",
