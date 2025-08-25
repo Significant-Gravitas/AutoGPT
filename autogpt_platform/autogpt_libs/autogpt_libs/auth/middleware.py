@@ -10,8 +10,8 @@ from starlette.status import HTTP_401_UNAUTHORIZED
 from .config import settings
 from .jwt_utils import parse_jwt_token
 
-security = HTTPBearer()
 logger = logging.getLogger(__name__)
+bearer_auth = HTTPBearer(auto_error=False)
 
 
 async def auth_middleware(request: Request):
@@ -20,11 +20,10 @@ async def auth_middleware(request: Request):
         logger.warning("Auth disabled")
         return {}
 
-    security = HTTPBearer()
-    credentials = await security(request)
+    credentials = await bearer_auth(request)
 
     if not credentials:
-        raise HTTPException(status_code=401, detail="Authorization header is missing")
+        raise HTTPException(status_code=401, detail="Not authenticated")
 
     try:
         payload = parse_jwt_token(credentials.credentials)
