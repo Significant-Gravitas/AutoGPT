@@ -2,45 +2,29 @@ import base64
 import io
 import mimetypes
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import aiohttp
 import discord
 from pydantic import SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import (
-    APIKeyCredentials,
-    CredentialsField,
-    CredentialsMetaInput,
-    SchemaField,
-)
-from backend.integrations.providers import ProviderName
+from backend.data.model import APIKeyCredentials, SchemaField
 from backend.util.file import store_media_file
 from backend.util.type import MediaFileType
 
-DiscordCredentials = CredentialsMetaInput[
-    Literal[ProviderName.DISCORD], Literal["api_key"]
-]
-
-
-def DiscordCredentialsField() -> DiscordCredentials:
-    return CredentialsField(description="Discord bot token")
-
-
-TEST_CREDENTIALS = APIKeyCredentials(
-    id="01234567-89ab-cdef-0123-456789abcdef",
-    provider="discord",
-    api_key=SecretStr("test_api_key"),
-    title="Mock Discord API key",
-    expires_at=None,
+from ._auth import (
+    TEST_BOT_CREDENTIALS,
+    TEST_BOT_CREDENTIALS_INPUT,
+    DiscordBotCredentialsField,
+    DiscordBotCredentialsInput,
 )
-TEST_CREDENTIALS_INPUT = {
-    "provider": TEST_CREDENTIALS.provider,
-    "id": TEST_CREDENTIALS.id,
-    "type": TEST_CREDENTIALS.type,
-    "title": TEST_CREDENTIALS.type,
-}
+
+# Keep backward compatibility alias
+DiscordCredentials = DiscordBotCredentialsInput
+DiscordCredentialsField = DiscordBotCredentialsField
+TEST_CREDENTIALS = TEST_BOT_CREDENTIALS
+TEST_CREDENTIALS_INPUT = TEST_BOT_CREDENTIALS_INPUT
 
 
 class ReadDiscordMessagesBlock(Block):

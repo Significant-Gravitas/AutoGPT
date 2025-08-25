@@ -5,6 +5,7 @@ import pydantic
 
 from backend.data.api_key import APIKeyPermission, APIKeyWithoutHash
 from backend.data.graph import Graph
+from backend.util.timezone_name import TimeZoneName
 
 
 class WSMethod(enum.Enum):
@@ -70,3 +71,12 @@ class UploadFileResponse(pydantic.BaseModel):
     size: int
     content_type: str
     expires_in_hours: int
+
+
+class TimezoneResponse(pydantic.BaseModel):
+    # Allow "not-set" as a special value, or any valid IANA timezone
+    timezone: TimeZoneName | str
+
+
+class UpdateTimezoneRequest(pydantic.BaseModel):
+    timezone: TimeZoneName

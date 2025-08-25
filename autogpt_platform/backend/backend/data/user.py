@@ -208,6 +208,8 @@ async def get_user_notification_preference(user_id: str) -> NotificationPreferen
             NotificationType.DAILY_SUMMARY: user.notifyOnDailySummary or False,
             NotificationType.WEEKLY_SUMMARY: user.notifyOnWeeklySummary or False,
             NotificationType.MONTHLY_SUMMARY: user.notifyOnMonthlySummary or False,
+            NotificationType.AGENT_APPROVED: user.notifyOnAgentApproved or False,
+            NotificationType.AGENT_REJECTED: user.notifyOnAgentRejected or False,
         }
         daily_limit = user.maxEmailsPerDay or 3
         notification_preference = NotificationPreference(
@@ -266,6 +268,14 @@ async def update_user_notification_preference(
             update_data["notifyOnMonthlySummary"] = data.preferences[
                 NotificationType.MONTHLY_SUMMARY
             ]
+        if NotificationType.AGENT_APPROVED in data.preferences:
+            update_data["notifyOnAgentApproved"] = data.preferences[
+                NotificationType.AGENT_APPROVED
+            ]
+        if NotificationType.AGENT_REJECTED in data.preferences:
+            update_data["notifyOnAgentRejected"] = data.preferences[
+                NotificationType.AGENT_REJECTED
+            ]
         if data.daily_limit:
             update_data["maxEmailsPerDay"] = data.daily_limit
 
@@ -286,6 +296,8 @@ async def update_user_notification_preference(
             NotificationType.DAILY_SUMMARY: user.notifyOnDailySummary or True,
             NotificationType.WEEKLY_SUMMARY: user.notifyOnWeeklySummary or True,
             NotificationType.MONTHLY_SUMMARY: user.notifyOnMonthlySummary or True,
+            NotificationType.AGENT_APPROVED: user.notifyOnAgentApproved or True,
+            NotificationType.AGENT_REJECTED: user.notifyOnAgentRejected or True,
         }
         notification_preference = NotificationPreference(
             user_id=user.id,
@@ -384,3 +396,17 @@ async def unsubscribe_user_by_token(token: str) -> None:
         )
     except Exception as e:
         raise DatabaseError(f"Failed to unsubscribe user by token {token}: {e}") from e
+
+
+async def update_user_timezone(user_id: str, timezone: str) -> User:
+    """Update a user's timezone setting."""
+    try:
+        user = await PrismaUser.prisma().update(
+            where={"id": user_id},
+            data={"timezone": timezone},
+        )
+        if not user:
+            raise ValueError(f"User not found with ID: {user_id}")
+        return User.from_db(user)
+    except Exception as e:
+        raise DatabaseError(f"Failed to update timezone for user {user_id}: {e}") from e
