@@ -6,7 +6,7 @@ import time
 from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any, Optional, Tuple, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
 
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
@@ -681,7 +681,7 @@ class ExecutionProcessor:
         self,
         node_exec: NodeExecutionEntry,
         execution_count: int,
-    ) -> Tuple[int, int]:
+    ) -> tuple[int, int]:
         total_cost = 0
         remaining_balance = 0
         db_client = get_db_client()
@@ -1124,7 +1124,6 @@ class ExecutionProcessor:
             settings.config.frontend_base_url or settings.config.platform_base_url
         )
 
-        # Queue notification for the user
         queue_notification(
             NotificationEventModel(
                 user_id=user_id,
@@ -1138,11 +1137,9 @@ class ExecutionProcessor:
             )
         )
 
-        # Send Discord alert to admins
         try:
-            # user
             user_email = db_client.get_user_email_by_id(user_id)
-            # Get user email for the alert
+
             alert_message = (
                 f"❌ **Insufficient Funds Alert**\n"
                 f"User: {user_email or user_id}\n"
@@ -1153,7 +1150,6 @@ class ExecutionProcessor:
                 f"[View User Details]({base_url}/admin/spending?search={user_email})"
             )
 
-            # Send alert asynchronously
             get_notification_manager_client().discord_system_alert(
                 alert_message, DiscordChannel.PRODUCT
             )
@@ -1172,10 +1168,8 @@ class ExecutionProcessor:
         """Check and handle low balance scenarios after a transaction"""
         LOW_BALANCE_THRESHOLD = settings.config.low_balance_threshold
 
-        # Get balance before the transaction
         balance_before = current_balance + transaction_cost
 
-        # Check if we crossed the threshold
         if (
             current_balance < LOW_BALANCE_THRESHOLD
             and balance_before >= LOW_BALANCE_THRESHOLD
@@ -1194,7 +1188,6 @@ class ExecutionProcessor:
                 )
             )
 
-            # Send Discord alert to admins
             try:
                 user_email = db_client.get_user_email_by_id(user_id)
                 alert_message = (
