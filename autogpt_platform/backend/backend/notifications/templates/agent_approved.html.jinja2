@@ -1,0 +1,73 @@
+{# Agent Approved Notification Email Template #}
+{#
+  Template variables:
+  data.agent_name: the name of the approved agent
+  data.agent_id: the ID of the agent
+  data.agent_version: the version of the agent
+  data.reviewer_name: the name of the reviewer who approved it
+  data.reviewer_email: the email of the reviewer
+  data.comments: comments from the reviewer
+  data.reviewed_at: when the agent was reviewed
+  data.store_url: URL to view the agent in the store
+
+  Subject: 🎉 Your agent '{{ data.agent_name }}' has been approved!
+#}
+
+{% block content %}
+<h1 style="color: #28a745; font-size: 32px; font-weight: 700; margin: 0 0 24px 0; text-align: center;">
+  🎉 Congratulations!
+</h1>
+
+<p style="color: #586069; font-size: 18px; text-align: center; margin: 0 0 24px 0;">
+  Your agent <strong>'{{ data.agent_name }}'</strong> has been approved and is now live in the store!
+</p>
+
+<div style="height: 32px; background: transparent;"></div>
+
+{% if data.comments %}
+<div style="background: #d4edda; border: 1px solid #c3e6cb; border-radius: 8px; padding: 20px; margin: 0;">
+  <h3 style="color: #155724; font-size: 16px; font-weight: 600; margin: 0 0 12px 0;">
+    💬 Creator feedback area
+  </h3>
+  <p style="color: #155724; margin: 0; font-size: 16px; line-height: 1.5;">
+    {{ data.comments }}
+  </p>
+</div>
+
+<div style="height: 40px; background: transparent;"></div>
+{% endif %}
+
+<div style="background: #d1ecf1; border: 1px solid #bee5eb; border-radius: 8px; padding: 20px; margin: 0;">
+  <h3 style="color: #0c5460; font-size: 16px; font-weight: 600; margin: 0 0 12px 0;">
+    What's Next?
+  </h3>
+  <ul style="color: #0c5460; margin: 0; padding-left: 18px; font-size: 16px; line-height: 1.6;">
+    <li>Your agent is now live and discoverable in the AutoGPT Store</li>
+    <li>Users can find, install, and run your agent</li>
+    <li>You can update your agent anytime by submitting a new version</li>
+  </ul>
+</div>
+
+<div style="height: 32px; background: transparent;"></div>
+
+<div style="text-align: center; margin: 24px 0;">
+  <a href="{{ data.store_url }}" style="display: inline-block; background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%); color: black; text-decoration: none; padding: 14px 28px; border-radius: 6px; font-weight: 600; font-size: 16px;">
+    View Your Agent in Store
+  </a>
+</div>
+
+<div style="height: 32px; background: transparent;"></div>
+
+<div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 6px; padding: 16px; margin: 24px 0; text-align: center;">
+  <p style="margin: 0; color: #856404; font-size: 14px;">
+    <strong>💡 Pro Tip:</strong> Share your agent with the community! Post about it on social media, forums, or your blog to help more users discover and benefit from your creation.
+  </p>
+</div>
+
+<div style="height: 32px; background: transparent;"></div>
+
+<p style="color: #6a737d; font-size: 14px; text-align: center; margin: 24px 0;">
+  Thank you for contributing to the AutoGPT ecosystem! 🚀
+</p>
+
+{% endblock %}
