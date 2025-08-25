@@ -688,7 +688,7 @@ class ExecutionProcessor:
         block = get_block(node_exec.block_id)
         if not block:
             logger.error(f"Block {node_exec.block_id} not found.")
-            return total_cost, remaining_balance
+            return total_cost, 0
 
         cost, matching_filter = block_usage_cost(
             block=block, input_data=node_exec.inputs
