@@ -1,15 +1,15 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
-import { ShowMore } from "./ShowMore";
+import { ShowMoreText } from "./ShowMoreText";
 
-const meta: Meta<typeof ShowMore> = {
-  title: "Molecules/ShowMore",
-  component: ShowMore,
+const meta: Meta<typeof ShowMoreText> = {
+  title: "Molecules/ShowMoreText",
+  component: ShowMoreText,
   parameters: {
     layout: "centered",
     docs: {
       description: {
         component: `
-## ShowMore Component
+## ShowMoreText Component
 
 A simplified text truncation component that shows a preview of text content with an expand/collapse toggle functionality.
 
@@ -26,13 +26,13 @@ A simplified text truncation component that shows a preview of text content with
 ### 🎯 Usage
 
 \`\`\`tsx
-<ShowMore 
+<ShowMoreText 
   variant="body" 
   previewLimit={150}
 >
   This is a long piece of text that will be truncated at the specified 
   character limit and show a "more" button to expand the full content.
-</ShowMore>
+</ShowMoreText>
 \`\`\`
 
 ### Props
@@ -113,7 +113,7 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   args: {
     children:
-      "This is a longer piece of text that will be truncated at the preview limit. When you click 'more', you'll see the full content. This demonstrates the basic functionality of the ShowMore component with plain text content.",
+      "This is a longer piece of text that will be truncated at the preview limit. When you click 'more', you'll see the full content. This demonstrates the basic functionality of the ShowMoreText component with plain text content.",
     variant: "body",
     previewLimit: 100,
   },
@@ -148,18 +148,18 @@ export const LeadVariant: Story = {
 export const LargeVariants: Story = {
   render: () => (
     <div className="max-w-2xl space-y-4">
-      <ShowMore variant="large" previewLimit={60}>
-        Large variant: This demonstrates how the ShowMore component works with
-        the large text variant and how the toggle scales appropriately.
-      </ShowMore>
-      <ShowMore variant="large-medium" previewLimit={60}>
+      <ShowMoreText variant="large" previewLimit={60}>
+        Large variant: This demonstrates how the ShowMoreText component works
+        with the large text variant and how the toggle scales appropriately.
+      </ShowMoreText>
+      <ShowMoreText variant="large-medium" previewLimit={60}>
         Large medium variant: This shows the medium weight version of the large
         text variant with proper toggle sizing.
-      </ShowMore>
-      <ShowMore variant="large-semibold" previewLimit={60}>
+      </ShowMoreText>
+      <ShowMoreText variant="large-semibold" previewLimit={60}>
         Large semibold variant: This demonstrates the semibold version with
         heavier font weight and matching toggle.
-      </ShowMore>
+      </ShowMoreText>
     </div>
   ),
 };
@@ -170,14 +170,14 @@ export const LargeVariants: Story = {
 export const BodyVariants: Story = {
   render: () => (
     <div className="max-w-xl space-y-4">
-      <ShowMore variant="body" previewLimit={70}>
+      <ShowMoreText variant="body" previewLimit={70}>
         Body variant: This is the default text variant used for most content. It
         provides good readability and spacing.
-      </ShowMore>
-      <ShowMore variant="body-medium" previewLimit={70}>
+      </ShowMoreText>
+      <ShowMoreText variant="body-medium" previewLimit={70}>
         Body medium variant: This uses medium font weight for slightly more
         emphasis while maintaining readability.
-      </ShowMore>
+      </ShowMoreText>
     </div>
   ),
 };
@@ -188,15 +188,15 @@ export const BodyVariants: Story = {
 export const SmallVariants: Story = {
   render: () => (
     <div className="max-w-lg space-y-4">
-      <ShowMore variant="small" previewLimit={80}>
+      <ShowMoreText variant="small" previewLimit={80}>
         Small variant: This demonstrates the small text variant which is useful
         for secondary information, captions, or footnotes where space is
         limited.
-      </ShowMore>
-      <ShowMore variant="small-medium" previewLimit={80}>
+      </ShowMoreText>
+      <ShowMoreText variant="small-medium" previewLimit={80}>
         Small medium variant: This uses the small size with medium font weight
         for small text that needs slightly more emphasis.
-      </ShowMore>
+      </ShowMoreText>
     </div>
   ),
 };
@@ -219,7 +219,7 @@ export const CustomLimit: Story = {
 export const DefaultExpanded: Story = {
   args: {
     children:
-      "This ShowMore component starts in the expanded state by default. You can click 'less' to collapse it to the preview mode. This is useful when you want to show the full content initially but still provide the option to collapse it.",
+      "This ShowMoreText component starts in the expanded state by default. You can click 'less' to collapse it to the preview mode. This is useful when you want to show the full content initially but still provide the option to collapse it.",
     variant: "body",
     previewLimit: 80,
     defaultExpanded: true,
@@ -248,38 +248,38 @@ export const LongContent: Story = {
     <div className="max-w-2xl space-y-6">
       <div>
         <h3 className="mb-2 text-sm font-medium text-gray-500">Lead Text</h3>
-        <ShowMore variant="lead" previewLimit={120}>
+        <ShowMoreText variant="lead" previewLimit={120}>
           Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do
           eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad
           minim veniam, quis nostrud exercitation ullamco laboris nisi ut
           aliquip ex ea commodo consequat. Duis aute irure dolor in
           reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla
           pariatur.
-        </ShowMore>
+        </ShowMoreText>
       </div>
 
       <div>
         <h3 className="mb-2 text-sm font-medium text-gray-500">Body Text</h3>
-        <ShowMore variant="body" previewLimit={120}>
+        <ShowMoreText variant="body" previewLimit={120}>
           Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do
           eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad
           minim veniam, quis nostrud exercitation ullamco laboris nisi ut
           aliquip ex ea commodo consequat. Duis aute irure dolor in
           reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla
           pariatur.
-        </ShowMore>
+        </ShowMoreText>
       </div>
 
       <div>
         <h3 className="mb-2 text-sm font-medium text-gray-500">Small Text</h3>
-        <ShowMore variant="small" previewLimit={120}>
+        <ShowMoreText variant="small" previewLimit={120}>
           Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do
           eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad
           minim veniam, quis nostrud exercitation ullamco laboris nisi ut
           aliquip ex ea commodo consequat. Duis aute irure dolor in
           reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla
           pariatur.
-        </ShowMore>
+        </ShowMoreText>
       </div>
     </div>
   ),

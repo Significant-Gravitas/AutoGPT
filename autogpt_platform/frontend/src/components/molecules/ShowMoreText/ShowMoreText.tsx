@@ -6,7 +6,7 @@ import { CaretDownIcon, CaretUpIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
 import { getIconSize, ShowMoreTextVariant } from "./helpers";
 
-interface ShowMoreProps {
+interface Props {
   children: string;
   previewLimit?: number;
   variant?: ShowMoreTextVariant;
@@ -15,14 +15,14 @@ interface ShowMoreProps {
   defaultExpanded?: boolean;
 }
 
-export function ShowMore({
+export function ShowMoreText({
   children,
   previewLimit = 100,
   variant = "body",
   className,
   toggleClassName,
   defaultExpanded = false,
-}: ShowMoreProps) {
+}: Props) {
   const [isExpanded, setIsExpanded] = React.useState(defaultExpanded);
 
   const shouldTruncate = children.length > previewLimit;
@@ -75,5 +75,3 @@ export function ShowMore({
     </Text>
   );
 }
-
-export default ShowMore;
