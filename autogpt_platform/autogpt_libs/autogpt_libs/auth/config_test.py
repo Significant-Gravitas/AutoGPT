@@ -30,14 +30,6 @@ def test_environment_variable_backwards_compatible(mocker: MockerFixture):
     assert settings.JWT_VERIFY_KEY == secret
 
 
-def test_jwt_algorithm_always_hs256(mocker: MockerFixture):
-    """Test that JWT algorithm is always HS256."""
-    mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": "a" * 32}, clear=True)
-
-    settings = Settings()
-    assert settings.JWT_ALGORITHM == "HS256"
-
-
 def test_auth_config_error_inheritance():
     """Test that AuthConfigError is properly defined as an Exception."""
     assert issubclass(AuthConfigError, Exception)
@@ -59,7 +51,7 @@ def test_settings_static_after_creation(mocker: MockerFixture):
     assert settings.JWT_VERIFY_KEY == original_secret
 
 
-def test_config_loads_with_valid_secret(mocker: MockerFixture):
+def test_settings_load_with_valid_secret(mocker: MockerFixture):
     """Test auth enabled with a valid JWT secret."""
     valid_secret = "a" * 32  # 32 character secret
     mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": valid_secret}, clear=True)
@@ -68,7 +60,7 @@ def test_config_loads_with_valid_secret(mocker: MockerFixture):
     assert settings.JWT_VERIFY_KEY == valid_secret
 
 
-def test_config_loads_with_strong_secret(mocker: MockerFixture):
+def test_settings_load_with_strong_secret(mocker: MockerFixture):
     """Test auth enabled with a cryptographically strong secret."""
     strong_secret = "super-secret-jwt-token-with-at-least-32-characters-long"
     mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": strong_secret}, clear=True)
@@ -209,6 +201,14 @@ def test_secret_numeric_only(mocker: MockerFixture):
     assert settings.JWT_VERIFY_KEY == numeric_secret
 
 
+def test_algorithm_default_hs256(mocker: MockerFixture):
+    """Test that JWT algorithm defaults to HS256."""
+    mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": "a" * 32}, clear=True)
+
+    settings = Settings()
+    assert settings.JWT_ALGORITHM == "HS256"
+
+
 def test_algorithm_whitespace_stripped(mocker: MockerFixture):
     """Test that JWT algorithm whitespace is stripped."""
     secret = "a" * 32
@@ -236,7 +236,7 @@ def test_no_crypto_warning(mocker: MockerFixture, caplog: pytest.LogCaptureFixtu
         assert "cryptography" in caplog.text
 
 
-def test_invalid_algorithm_raises_error(mocker: MockerFixture):
+def test_algorithm_invalid_raises_error(mocker: MockerFixture):
     """Test that invalid JWT algorithm raises AuthConfigError."""
     secret = "a" * 32
     mocker.patch.dict(
@@ -251,7 +251,7 @@ def test_invalid_algorithm_raises_error(mocker: MockerFixture):
     assert "INVALID_ALG" in str(exc_info.value)
 
 
-def test_none_algorithm_raises_error(mocker: MockerFixture):
+def test_algorithm_none_raises_error(mocker: MockerFixture):
     """Test that 'none' algorithm raises AuthConfigError."""
     secret = "a" * 32
     mocker.patch.dict(
@@ -266,7 +266,7 @@ def test_none_algorithm_raises_error(mocker: MockerFixture):
 
 
 @pytest.mark.parametrize("algorithm", ["HS256", "HS384", "HS512"])
-def test_symmetric_algorithm_warning(
+def test_algorithm_symmetric_warning(
     mocker: MockerFixture, caplog: pytest.LogCaptureFixture, algorithm: str
 ):
     """Test warning for symmetric algorithms (HS256, HS384, HS512)."""
@@ -288,7 +288,7 @@ def test_symmetric_algorithm_warning(
     "algorithm",
     ["ES256", "ES384", "ES512", "RS256", "RS384", "RS512", "PS256", "PS384", "PS512"],
 )
-def test_asymmetric_algorithm_no_warning(
+def test_algorithm_asymmetric_no_warning(
     mocker: MockerFixture, caplog: pytest.LogCaptureFixture, algorithm: str
 ):
     """Test that asymmetric algorithms do not trigger warning."""
