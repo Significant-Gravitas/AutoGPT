@@ -115,7 +115,7 @@ def test_secret_weak_logs_warning(
     with caplog.at_level(logging.WARNING):
         settings = Settings()
         assert settings.JWT_VERIFY_KEY == weak_secret
-        assert "secret appears weak" in caplog.text.lower()
+        assert "key appears weak" in caplog.text.lower()
         assert "less than 32 characters" in caplog.text
 
 
@@ -129,7 +129,7 @@ def test_secret_31_char_logs_warning(
     with caplog.at_level(logging.WARNING):
         settings = Settings()
         assert len(settings.JWT_VERIFY_KEY) == 31
-        assert "secret appears weak" in caplog.text.lower()
+        assert "key appears weak" in caplog.text.lower()
 
 
 def test_secret_32_char_no_warning(
