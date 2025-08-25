@@ -178,27 +178,6 @@ def setup_app_auth(mock_jwt_admin):
     app.dependency_overrides.clear()
 ```
 
-#### Testing Unauthenticated Scenarios
-
-By default, the test environment has `ENABLE_AUTH=false` set in `conftest.py`, which means requests without dependency overrides will use the default user from the auth library rather than failing authentication. To test true unauthenticated behavior, you need to clear dependency overrides and potentially mock auth failures:
-
-```python
-def test_endpoint_requires_authentication():
-    # Set custom dependency override test unauthenticated access scenario
-    def auth_not_satisfied():
-        raise HTTPException(
-            status_code=401,
-            detail="Authorization header is missing",
-        )
-
-    app.dependency_overrides[get_jwt_payload] = auth_not_satisfied
-
-    with pytest.raises(HTTPException):
-        response = client.get("/protected-endpoint")
-
-    app.dependency_overrides.clear()
-```
-
 ### Mocking External Services
 
 ```python

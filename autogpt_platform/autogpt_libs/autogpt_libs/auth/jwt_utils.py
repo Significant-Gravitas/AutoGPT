@@ -6,7 +6,7 @@ from fastapi import HTTPException, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .config import settings
-from .models import DEFAULT_USER_ID, User
+from .models import User
 
 logger = logging.getLogger(__name__)
 
@@ -14,8 +14,6 @@ logger = logging.getLogger(__name__)
 bearer_jwt_auth = HTTPBearer(
     bearerFormat="jwt", scheme_name="HTTPBearerJWT", auto_error=False
 )
-
-AUTH_DISABLED_DEFAULT_PAYLOAD = {"sub": DEFAULT_USER_ID, "role": "admin"}
 
 
 def get_jwt_payload(
@@ -34,10 +32,6 @@ def get_jwt_payload(
     :raises HTTPException: 401 if authentication fails
     """
     if not credentials:
-        if not settings.ENABLE_AUTH:
-            # If authentication is disabled, allow the request to proceed
-            return AUTH_DISABLED_DEFAULT_PAYLOAD
-
         raise HTTPException(status_code=401, detail="Authorization header is missing")
 
     try:
@@ -71,9 +65,6 @@ def parse_jwt_token(token: str) -> dict[str, Any]:
 
 
 def verify_user(jwt_payload: dict | None, admin_only: bool) -> User:
-    if not settings.ENABLE_AUTH and not jwt_payload:
-        jwt_payload = AUTH_DISABLED_DEFAULT_PAYLOAD
-
     if not jwt_payload:
         raise HTTPException(status_code=401, detail="Authorization header is missing")
 

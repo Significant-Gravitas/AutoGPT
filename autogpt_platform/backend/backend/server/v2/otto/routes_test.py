@@ -2,6 +2,7 @@ import json
 
 import fastapi
 import fastapi.testclient
+import pytest
 import pytest_mock
 from pytest_snapshot.plugin import Snapshot
 
@@ -13,6 +14,16 @@ app = fastapi.FastAPI()
 app.include_router(otto_routes.router)
 
 client = fastapi.testclient.TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def setup_app_auth(mock_jwt_user):
+    """Setup auth overrides for all tests in this module"""
+    from autogpt_libs.auth.jwt_utils import get_jwt_payload
+
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    yield
+    app.dependency_overrides.clear()
 
 
 def test_ask_otto_success(
@@ -222,8 +233,8 @@ def test_ask_otto_invalid_request() -> None:
     assert response.status_code == 422
 
 
-def test_ask_otto_unauthenticated() -> None:
-    """Test Otto API request without authentication"""
+def test_ask_otto_unconfigured() -> None:
+    """Test Otto API request without configuration"""
     request_data = {
         "query": "Test",
         "conversation_history": [],
