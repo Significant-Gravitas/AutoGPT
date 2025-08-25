@@ -18,6 +18,8 @@ import { Input } from "@/components/ui/input";
 import LoadingBox from "@/components/ui/loading";
 import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+import { formatScheduleTime } from "@/lib/timezone-utils";
+import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 import { PlayIcon } from "lucide-react";
 
 export function AgentScheduleDetailsView({
@@ -39,6 +41,10 @@ export function AgentScheduleDetailsView({
 
   const toastOnFail = useToastOnFail();
 
+  // Get user's timezone for displaying schedule times
+  const { data: timezoneData } = useGetV1GetUserTimezone();
+  const userTimezone = timezoneData?.data?.timezone || "UTC";
+
   const infoStats: { label: string; value: React.ReactNode }[] = useMemo(() => {
     return [
       {
@@ -49,14 +55,14 @@ export function AgentScheduleDetailsView({
       },
       {
         label: "Schedule",
-        value: humanizeCronExpression(schedule.cron),
+        value: humanizeCronExpression(schedule.cron, userTimezone),
       },
       {
         label: "Next run",
-        value: schedule.next_run_time.toLocaleString(),
+        value: formatScheduleTime(schedule.next_run_time, userTimezone),
       },
     ];
-  }, [schedule, selectedRunStatus]);
+  }, [schedule, selectedRunStatus, userTimezone]);
 
   const agentRunInputs: Record<
     string,

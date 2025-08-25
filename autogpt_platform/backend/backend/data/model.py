@@ -96,6 +96,12 @@ class User(BaseModel):
         default=True, description="Notify on monthly summary"
     )
 
+    # User timezone for scheduling and time display
+    timezone: str = Field(
+        default="not-set",
+        description="User timezone (IANA timezone identifier or 'not-set')",
+    )
+
     @classmethod
     def from_db(cls, prisma_user: "PrismaUser") -> "User":
         """Convert a database User object to application User model."""
@@ -149,6 +155,7 @@ class User(BaseModel):
             notify_on_daily_summary=prisma_user.notifyOnDailySummary or True,
             notify_on_weekly_summary=prisma_user.notifyOnWeeklySummary or True,
             notify_on_monthly_summary=prisma_user.notifyOnMonthlySummary or True,
+            timezone=prisma_user.timezone or "not-set",
         )
 
 

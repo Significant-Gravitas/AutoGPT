@@ -26,6 +26,9 @@ class AutoModResponse(BaseModel):
     """Response model for AutoMod API"""
 
     success: bool = Field(..., description="Whether the request was successful")
+    content_id: str = Field(
+        ..., description="Unique reference ID for this moderation request"
+    )
     status: str = Field(
         ..., description="Overall status: 'approved', 'rejected', 'flagged', 'pending'"
     )
