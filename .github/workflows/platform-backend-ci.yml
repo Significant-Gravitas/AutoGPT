@@ -201,7 +201,7 @@ jobs:
           DIRECT_URL: ${{ steps.supabase.outputs.DB_URL }}
           SUPABASE_URL: ${{ steps.supabase.outputs.API_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ steps.supabase.outputs.SERVICE_ROLE_KEY }}
-          SUPABASE_JWT_SECRET: ${{ steps.supabase.outputs.JWT_SECRET }}
+          JWT_VERIFY_KEY: ${{ steps.supabase.outputs.JWT_SECRET }}
           REDIS_HOST: "localhost"
           REDIS_PORT: "6379"
           REDIS_PASSWORD: "testpassword"

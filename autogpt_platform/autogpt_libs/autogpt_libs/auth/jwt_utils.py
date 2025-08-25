@@ -53,7 +53,7 @@ def parse_jwt_token(token: str) -> dict[str, Any]:
     try:
         payload = jwt.decode(
             token,
-            settings.JWT_SECRET_KEY,
+            settings.JWT_VERIFY_KEY,
             algorithms=[settings.JWT_ALGORITHM],
             audience="authenticated",
         )
@@ -65,7 +65,7 @@ def parse_jwt_token(token: str) -> dict[str, Any]:
 
 
 def verify_user(jwt_payload: dict | None, admin_only: bool) -> User:
-    if not jwt_payload:
+    if jwt_payload is None:
         raise HTTPException(status_code=401, detail="Authorization header is missing")
 
     user_id = jwt_payload.get("sub")
