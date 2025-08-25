@@ -9,7 +9,6 @@ import prisma.models
 import prisma.types
 
 import backend.data.graph as graph_db
-import backend.server.model
 import backend.server.v2.library.model as library_model
 import backend.server.v2.store.exceptions as store_exceptions
 import backend.server.v2.store.image_gen as store_image_gen
@@ -23,6 +22,7 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import on_graph_activate
 from backend.util.exceptions import NotFoundError
 from backend.util.json import SafeJson
+from backend.util.models import Pagination
 from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
@@ -131,7 +131,7 @@ async def list_library_agents(
         # Return the response with only valid agents
         return library_model.LibraryAgentResponse(
             agents=valid_library_agents,
-            pagination=backend.server.model.Pagination(
+            pagination=Pagination(
                 total_items=agent_count,
                 total_pages=(agent_count + page_size - 1) // page_size,
                 current_page=page,
@@ -241,7 +241,11 @@ async def get_library_agent_by_graph_id(
         )
         if not agent:
             return None
-        return library_model.LibraryAgent.from_db(agent)
+
+        assert agent.AgentGraph  # make type checker happy
+        # Include sub-graphs so we can make a full credentials input schema
+        sub_graphs = await graph_db.get_sub_graphs(agent.AgentGraph)
+        return library_model.LibraryAgent.from_db(agent, sub_graphs=sub_graphs)
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error fetching library agent by graph ID: {e}")
         raise store_exceptions.DatabaseError("Failed to fetch library agent") from e
@@ -625,7 +629,7 @@ async def list_presets(
 
         return library_model.LibraryAgentPresetResponse(
             presets=presets,
-            pagination=backend.server.model.Pagination(
+            pagination=Pagination(
                 total_items=total_items,
                 total_pages=total_pages,
                 current_page=page,

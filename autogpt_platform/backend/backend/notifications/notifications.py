@@ -31,7 +31,13 @@ from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
 from backend.util.metrics import discord_send_alert
 from backend.util.retry import continuous_retry
-from backend.util.service import AppService, AppServiceClient, endpoint_to_sync, expose
+from backend.util.service import (
+    AppService,
+    AppServiceClient,
+    UnhealthyServiceError,
+    endpoint_to_sync,
+    expose,
+)
 from backend.util.settings import Settings
 
 logger = TruncatedLogger(logging.getLogger(__name__), "[NotificationManager]")
@@ -183,15 +189,23 @@ class NotificationManager(AppService):
     def rabbit(self) -> rabbitmq.AsyncRabbitMQ:
         """Access the RabbitMQ service. Will raise if not configured."""
         if not hasattr(self, "rabbitmq_service") or not self.rabbitmq_service:
-            raise RuntimeError("RabbitMQ not configured for this service")
+            raise UnhealthyServiceError("RabbitMQ not configured for this service")
         return self.rabbitmq_service
 
     @property
     def rabbit_config(self) -> rabbitmq.RabbitMQConfig:
         """Access the RabbitMQ config. Will raise if not configured."""
         if not self.rabbitmq_config:
-            raise RuntimeError("RabbitMQ not configured for this service")
+            raise UnhealthyServiceError("RabbitMQ not configured for this service")
         return self.rabbitmq_config
+
+    async def health_check(self) -> str:
+        # Service is unhealthy if RabbitMQ is not ready
+        if not hasattr(self, "rabbitmq_service") or not self.rabbitmq_service:
+            raise UnhealthyServiceError("RabbitMQ not configured for this service")
+        if not self.rabbitmq_service.is_ready:
+            raise UnhealthyServiceError("RabbitMQ channel is not ready")
+        return await super().health_check()
 
     @classmethod
     def get_port(cls) -> int:
@@ -209,10 +223,14 @@ class NotificationManager(AppService):
             processed_count = 0
             current_time = datetime.now(tz=timezone.utc)
             start_time = current_time - timedelta(days=7)
+            logger.info(
+                f"Querying for active users between {start_time} and {current_time}"
+            )
             users = await get_database_manager_async_client().get_active_user_ids_in_timerange(
                 end_time=current_time.isoformat(),
                 start_time=start_time.isoformat(),
             )
+            logger.info(f"Found {len(users)} active users in the last 7 days")
             for user in users:
                 await self._queue_scheduled_notification(
                     SummaryParamsEventModel(
@@ -370,10 +388,13 @@ class NotificationManager(AppService):
     async def _queue_scheduled_notification(self, event: SummaryParamsEventModel):
         """Queue a scheduled notification - exposed method for other services to call"""
         try:
-            logger.debug(f"Received Request to queue scheduled notification {event=}")
+            logger.info(
+                f"Queueing scheduled notification type={event.type} user_id={event.user_id}"
+            )
 
             exchange = "notifications"
             routing_key = get_routing_key(event.type)
+            logger.info(f"Using routing key: {routing_key}")
 
             # Publish to RabbitMQ
             await self.rabbit.publish_message(
@@ -381,6 +402,7 @@ class NotificationManager(AppService):
                 message=event.model_dump_json(),
                 exchange=next(ex for ex in EXCHANGES if ex.name == exchange),
             )
+            logger.info(f"Successfully queued notification for user {event.user_id}")
 
         except Exception as e:
             logger.exception(f"Error queueing notification: {e}")
@@ -402,85 +424,99 @@ class NotificationManager(AppService):
         # only if both are true, should we email this person
         return validated_email and preference
 
-    def _gather_summary_data(
+    async def _gather_summary_data(
         self, user_id: str, event_type: NotificationType, params: BaseSummaryParams
     ) -> BaseSummaryData:
         """Gathers the data to build a summary notification"""
 
         logger.info(
-            f"Gathering summary data for {user_id} and {event_type} wiht {params=}"
+            f"Gathering summary data for {user_id} and {event_type} with {params=}"
         )
 
-        # total_credits_used = self.run_and_wait(
-        #     get_total_credits_used(user_id, start_time, end_time)
-        # )
-
-        # total_executions = self.run_and_wait(
-        #     get_total_executions(user_id, start_time, end_time)
-        # )
-
-        # most_used_agent = self.run_and_wait(
-        #     get_most_used_agent(user_id, start_time, end_time)
-        # )
-
-        # execution_times = self.run_and_wait(
-        #     get_execution_time(user_id, start_time, end_time)
-        # )
-
-        # runs = self.run_and_wait(
-        #     get_runs(user_id, start_time, end_time)
-        # )
-        total_credits_used = 3.0
-        total_executions = 2
-        most_used_agent = {"name": "Some"}
-        execution_times = [1, 2, 3]
-        runs = [{"status": "COMPLETED"}, {"status": "FAILED"}]
-
-        successful_runs = len([run for run in runs if run["status"] == "COMPLETED"])
-        failed_runs = len([run for run in runs if run["status"] != "COMPLETED"])
-        average_execution_time = (
-            sum(execution_times) / len(execution_times) if execution_times else 0
-        )
-        # cost_breakdown = self.run_and_wait(
-        #     get_cost_breakdown(user_id, start_time, end_time)
-        # )
-
-        cost_breakdown = {
-            "agent1": 1.0,
-            "agent2": 2.0,
-        }
-
-        if event_type == NotificationType.DAILY_SUMMARY and isinstance(
-            params, DailySummaryParams
-        ):
-            return DailySummaryData(
-                total_credits_used=total_credits_used,
-                total_executions=total_executions,
-                most_used_agent=most_used_agent["name"],
-                total_execution_time=sum(execution_times),
-                successful_runs=successful_runs,
-                failed_runs=failed_runs,
-                average_execution_time=average_execution_time,
-                cost_breakdown=cost_breakdown,
-                date=params.date,
+        try:
+            # Get summary data from the database
+            summary_data = await get_database_manager_async_client().get_user_execution_summary_data(
+                user_id=user_id,
+                start_time=params.start_date,
+                end_time=params.end_date,
             )
-        elif event_type == NotificationType.WEEKLY_SUMMARY and isinstance(
-            params, WeeklySummaryParams
-        ):
-            return WeeklySummaryData(
-                total_credits_used=total_credits_used,
-                total_executions=total_executions,
-                most_used_agent=most_used_agent["name"],
-                total_execution_time=sum(execution_times),
-                successful_runs=successful_runs,
-                failed_runs=failed_runs,
-                average_execution_time=average_execution_time,
-                cost_breakdown=cost_breakdown,
-                start_date=params.start_date,
-                end_date=params.end_date,
-            )
-        else:
-            raise ValueError("Invalid event type or params")
+
+            # Extract data from summary
+            total_credits_used = summary_data.total_credits_used
+            total_executions = summary_data.total_executions
+            most_used_agent = summary_data.most_used_agent
+            successful_runs = summary_data.successful_runs
+            failed_runs = summary_data.failed_runs
+            total_execution_time = summary_data.total_execution_time
+            average_execution_time = summary_data.average_execution_time
+            cost_breakdown = summary_data.cost_breakdown
+
+            if event_type == NotificationType.DAILY_SUMMARY and isinstance(
+                params, DailySummaryParams
+            ):
+                return DailySummaryData(
+                    total_credits_used=total_credits_used,
+                    total_executions=total_executions,
+                    most_used_agent=most_used_agent,
+                    total_execution_time=total_execution_time,
+                    successful_runs=successful_runs,
+                    failed_runs=failed_runs,
+                    average_execution_time=average_execution_time,
+                    cost_breakdown=cost_breakdown,
+                    date=params.date,
+                )
+            elif event_type == NotificationType.WEEKLY_SUMMARY and isinstance(
+                params, WeeklySummaryParams
+            ):
+                return WeeklySummaryData(
+                    total_credits_used=total_credits_used,
+                    total_executions=total_executions,
+                    most_used_agent=most_used_agent,
+                    total_execution_time=total_execution_time,
+                    successful_runs=successful_runs,
+                    failed_runs=failed_runs,
+                    average_execution_time=average_execution_time,
+                    cost_breakdown=cost_breakdown,
+                    start_date=params.start_date,
+                    end_date=params.end_date,
+                )
+            else:
+                raise ValueError("Invalid event type or params")
+
+        except Exception as e:
+            logger.error(f"Failed to gather summary data: {e}")
+            # Return sensible defaults in case of error
+            if event_type == NotificationType.DAILY_SUMMARY and isinstance(
+                params, DailySummaryParams
+            ):
+                return DailySummaryData(
+                    total_credits_used=0.0,
+                    total_executions=0,
+                    most_used_agent="No data available",
+                    total_execution_time=0.0,
+                    successful_runs=0,
+                    failed_runs=0,
+                    average_execution_time=0.0,
+                    cost_breakdown={},
+                    date=params.date,
+                )
+            elif event_type == NotificationType.WEEKLY_SUMMARY and isinstance(
+                params, WeeklySummaryParams
+            ):
+                return WeeklySummaryData(
+                    total_credits_used=0.0,
+                    total_executions=0,
+                    most_used_agent="No data available",
+                    total_execution_time=0.0,
+                    successful_runs=0,
+                    failed_runs=0,
+                    average_execution_time=0.0,
+                    cost_breakdown={},
+                    start_date=params.start_date,
+                    end_date=params.end_date,
+                )
+            else:
+                raise ValueError("Invalid event type or params") from e
 
     async def _should_batch(
         self, user_id: str, event_type: NotificationType, event: NotificationEventModel
@@ -750,7 +786,7 @@ class NotificationManager(AppService):
                 )
                 return True
 
-            summary_data = self._gather_summary_data(
+            summary_data = await self._gather_summary_data(
                 event.user_id, event.type, model.data
             )
 

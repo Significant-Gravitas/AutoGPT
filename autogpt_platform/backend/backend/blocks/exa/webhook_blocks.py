@@ -114,6 +114,7 @@ class ExaWebsetWebhookBlock(Block):
 
     def __init__(self):
         super().__init__(
+            disabled=True,
             id="d0204ed8-8b81-408d-8b8d-ed087a546228",
             description="Receive webhook notifications for Exa webset events",
             categories={BlockCategory.INPUT},

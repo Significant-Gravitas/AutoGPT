@@ -37,6 +37,7 @@ LLMProviderName = Literal[
     ProviderName.OPENAI,
     ProviderName.OPEN_ROUTER,
     ProviderName.LLAMA_API,
+    ProviderName.V0,
 ]
 AICredentials = CredentialsMetaInput[LLMProviderName, Literal["api_key"]]
 
@@ -155,6 +156,10 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     LLAMA_API_LLAMA4_MAVERICK = "Llama-4-Maverick-17B-128E-Instruct-FP8"
     LLAMA_API_LLAMA3_3_8B = "Llama-3.3-8B-Instruct"
     LLAMA_API_LLAMA3_3_70B = "Llama-3.3-70B-Instruct"
+    # v0 by Vercel models
+    V0_1_5_MD = "v0-1.5-md"
+    V0_1_5_LG = "v0-1.5-lg"
+    V0_1_0_MD = "v0-1.0-md"
 
     @property
     def metadata(self) -> ModelMetadata:
@@ -183,7 +188,7 @@ MODEL_METADATA = {
     LlmModel.GPT5: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_MINI: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_NANO: ModelMetadata("openai", 400000, 128000),
-    LlmModel.GPT5_CHAT: ModelMetadata("openai", 400000, 128000),
+    LlmModel.GPT5_CHAT: ModelMetadata("openai", 400000, 16384),
     LlmModel.GPT41: ModelMetadata("openai", 1047576, 32768),
     LlmModel.GPT41_MINI: ModelMetadata("openai", 1047576, 32768),
     LlmModel.GPT4O_MINI: ModelMetadata(
@@ -196,7 +201,7 @@ MODEL_METADATA = {
     LlmModel.GPT3_5_TURBO: ModelMetadata("openai", 16385, 4096),  # gpt-3.5-turbo-0125
     # https://docs.anthropic.com/en/docs/about-claude/models
     LlmModel.CLAUDE_4_1_OPUS: ModelMetadata(
-        "openai", 200000, 32000
+        "anthropic", 200000, 32000
     ),  # claude-opus-4-1-20250805
     LlmModel.CLAUDE_4_OPUS: ModelMetadata(
         "anthropic", 200000, 8192
@@ -280,6 +285,10 @@ MODEL_METADATA = {
     LlmModel.LLAMA_API_LLAMA4_MAVERICK: ModelMetadata("llama_api", 128000, 4028),
     LlmModel.LLAMA_API_LLAMA3_3_8B: ModelMetadata("llama_api", 128000, 4028),
     LlmModel.LLAMA_API_LLAMA3_3_70B: ModelMetadata("llama_api", 128000, 4028),
+    # v0 by Vercel models
+    LlmModel.V0_1_5_MD: ModelMetadata("v0", 128000, 64000),
+    LlmModel.V0_1_5_LG: ModelMetadata("v0", 512000, 64000),
+    LlmModel.V0_1_0_MD: ModelMetadata("v0", 128000, 64000),
 }
 
 for model in LlmModel:
@@ -493,6 +502,7 @@ async def llm_call(
                 messages=messages,
                 max_tokens=max_tokens,
                 tools=an_tools,
+                timeout=600,
             )
 
             if not resp.content:
@@ -675,7 +685,11 @@ async def llm_call(
         client = openai.OpenAI(
             base_url="https://api.aimlapi.com/v2",
             api_key=credentials.api_key.get_secret_value(),
-            default_headers={"X-Project": "AutoGPT"},
+            default_headers={
+                "X-Project": "AutoGPT",
+                "X-Title": "AutoGPT",
+                "HTTP-Referer": "https://github.com/Significant-Gravitas/AutoGPT",
+            },
         )
 
         completion = client.chat.completions.create(
@@ -694,6 +708,42 @@ async def llm_call(
                 completion.usage.completion_tokens if completion.usage else 0
             ),
             reasoning=None,
+        )
+    elif provider == "v0":
+        tools_param = tools if tools else openai.NOT_GIVEN
+        client = openai.AsyncOpenAI(
+            base_url="https://api.v0.dev/v1",
+            api_key=credentials.api_key.get_secret_value(),
+        )
+
+        response_format = None
+        if json_format:
+            response_format = {"type": "json_object"}
+
+        parallel_tool_calls_param = get_parallel_tool_calls_param(
+            llm_model, parallel_tool_calls
+        )
+
+        response = await client.chat.completions.create(
+            model=llm_model.value,
+            messages=prompt,  # type: ignore
+            response_format=response_format,  # type: ignore
+            max_tokens=max_tokens,
+            tools=tools_param,  # type: ignore
+            parallel_tool_calls=parallel_tool_calls_param,
+        )
+
+        tool_calls = extract_openai_tool_calls(response)
+        reasoning = extract_openai_reasoning(response)
+
+        return LLMResponse(
+            raw_response=response.choices[0].message,
+            prompt=prompt,
+            response=response.choices[0].message.content or "",
+            tool_calls=tool_calls,
+            prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
+            completion_tokens=response.usage.completion_tokens if response.usage else 0,
+            reasoning=reasoning,
         )
     else:
         raise ValueError(f"Unsupported LLM provider: {provider}")

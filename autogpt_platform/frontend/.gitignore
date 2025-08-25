@@ -31,6 +31,7 @@ yarn.lock
 package-lock.json
 
 # local env files
+.env
 .env*.local
 
 # vercel
@@ -54,3 +55,6 @@ storybook-static
 *.ign.*
 !.npmrc
 .cursorrules
+
+# Generated API files
+src/app/api/__generated__/

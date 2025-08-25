@@ -33,12 +33,13 @@ from prisma.types import (
     AgentNodeExecutionUpdateInput,
     AgentNodeExecutionWhereInput,
 )
-from pydantic import BaseModel, ConfigDict, JsonValue
+from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 from pydantic.fields import Field
 
 from backend.server.v2.store.exceptions import DatabaseError
 from backend.util import type as type_utils
 from backend.util.json import SafeJson
+from backend.util.models import Pagination
 from backend.util.retry import func_retry
 from backend.util.settings import Config
 from backend.util.truncate import truncate
@@ -59,7 +60,7 @@ from .includes import (
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     graph_execution_include,
 )
-from .model import GraphExecutionStats
+from .model import GraphExecutionStats, NodeExecutionStats
 
 T = TypeVar("T")
 
@@ -89,6 +90,7 @@ ExecutionStatus = AgentExecutionStatus
 
 
 class GraphExecutionMeta(BaseDbModel):
+    id: str  # type: ignore # Override base class to make this required
     user_id: str
     graph_id: str
     graph_version: int
@@ -318,18 +320,30 @@ class NodeExecutionResult(BaseModel):
 
     @staticmethod
     def from_db(_node_exec: AgentNodeExecution, user_id: Optional[str] = None):
-        if _node_exec.executionData:
-            # Execution that has been queued for execution will persist its data.
+        try:
+            stats = NodeExecutionStats.model_validate(_node_exec.stats or {})
+        except (ValueError, ValidationError):
+            stats = NodeExecutionStats()
+
+        if stats.cleared_inputs:
+            input_data: BlockInput = defaultdict()
+            for name, messages in stats.cleared_inputs.items():
+                input_data[name] = messages[-1] if messages else ""
+        elif _node_exec.executionData:
             input_data = type_utils.convert(_node_exec.executionData, dict[str, Any])
         else:
-            # For incomplete execution, executionData will not be yet available.
             input_data: BlockInput = defaultdict()
             for data in _node_exec.Input or []:
                 input_data[data.name] = type_utils.convert(data.data, type[Any])
 
         output_data: CompletedBlockOutput = defaultdict(list)
-        for data in _node_exec.Output or []:
-            output_data[data.name].append(type_utils.convert(data.data, type[Any]))
+
+        if stats.cleared_outputs:
+            for name, messages in stats.cleared_outputs.items():
+                output_data[name].extend(messages)
+        else:
+            for data in _node_exec.Output or []:
+                output_data[data.name].append(type_utils.convert(data.data, type[Any]))
 
         graph_execution: AgentGraphExecution | None = _node_exec.GraphExecution
         if graph_execution:
@@ -372,13 +386,13 @@ class NodeExecutionResult(BaseModel):
 
 
 async def get_graph_executions(
-    graph_exec_id: str | None = None,
-    graph_id: str | None = None,
-    user_id: str | None = None,
-    statuses: list[ExecutionStatus] | None = None,
-    created_time_gte: datetime | None = None,
-    created_time_lte: datetime | None = None,
-    limit: int | None = None,
+    graph_exec_id: Optional[str] = None,
+    graph_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+    statuses: Optional[list[ExecutionStatus]] = None,
+    created_time_gte: Optional[datetime] = None,
+    created_time_lte: Optional[datetime] = None,
+    limit: Optional[int] = None,
 ) -> list[GraphExecutionMeta]:
     """⚠️ **Optional `user_id` check**: MUST USE check in user-facing endpoints."""
     where_filter: AgentGraphExecutionWhereInput = {
@@ -404,6 +418,60 @@ async def get_graph_executions(
         take=limit,
     )
     return [GraphExecutionMeta.from_db(execution) for execution in executions]
+
+
+class GraphExecutionsPaginated(BaseModel):
+    """Response schema for paginated graph executions."""
+
+    executions: list[GraphExecutionMeta]
+    pagination: Pagination
+
+
+async def get_graph_executions_paginated(
+    user_id: str,
+    graph_id: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 25,
+    statuses: Optional[list[ExecutionStatus]] = None,
+    created_time_gte: Optional[datetime] = None,
+    created_time_lte: Optional[datetime] = None,
+) -> GraphExecutionsPaginated:
+    """Get paginated graph executions for a specific graph."""
+    where_filter: AgentGraphExecutionWhereInput = {
+        "isDeleted": False,
+        "userId": user_id,
+    }
+
+    if graph_id:
+        where_filter["agentGraphId"] = graph_id
+    if created_time_gte or created_time_lte:
+        where_filter["createdAt"] = {
+            "gte": created_time_gte or datetime.min.replace(tzinfo=timezone.utc),
+            "lte": created_time_lte or datetime.max.replace(tzinfo=timezone.utc),
+        }
+    if statuses:
+        where_filter["OR"] = [{"executionStatus": status} for status in statuses]
+
+    total_count = await AgentGraphExecution.prisma().count(where=where_filter)
+    total_pages = (total_count + page_size - 1) // page_size
+
+    offset = (page - 1) * page_size
+    executions = await AgentGraphExecution.prisma().find_many(
+        where=where_filter,
+        order={"createdAt": "desc"},
+        take=page_size,
+        skip=offset,
+    )
+
+    return GraphExecutionsPaginated(
+        executions=[GraphExecutionMeta.from_db(execution) for execution in executions],
+        pagination=Pagination(
+            total_items=total_count,
+            total_pages=total_pages,
+            current_page=page,
+            page_size=page_size,
+        ),
+    )
 
 
 async def get_graph_execution_meta(

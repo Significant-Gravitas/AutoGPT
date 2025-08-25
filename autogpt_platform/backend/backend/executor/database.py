@@ -20,6 +20,7 @@ from backend.data.execution import (
     upsert_execution_input,
     upsert_execution_output,
 )
+from backend.data.generate_data import get_user_execution_summary_data
 from backend.data.graph import (
     get_connected_output_nodes,
     get_graph,
@@ -41,7 +42,15 @@ from backend.data.user import (
     get_user_notification_preference,
     update_user_integrations,
 )
-from backend.util.service import AppService, AppServiceClient, endpoint_to_sync, expose
+from backend.server.v2.library.db import add_store_agent_to_library, list_library_agents
+from backend.server.v2.store.db import get_store_agent_details, get_store_agents
+from backend.util.service import (
+    AppService,
+    AppServiceClient,
+    UnhealthyServiceError,
+    endpoint_to_sync,
+    expose,
+)
 from backend.util.settings import Config
 
 config = Config()
@@ -73,10 +82,10 @@ class DatabaseManager(AppService):
         logger.info(f"[{self.service_name}] ⏳ Disconnecting Database...")
         self.run_and_wait(db.disconnect())
 
-    def health_check(self) -> str:
+    async def health_check(self) -> str:
         if not db.is_connected():
-            raise RuntimeError("Database is not connected")
-        return super().health_check()
+            raise UnhealthyServiceError("Database is not connected")
+        return await super().health_check()
 
     @classmethod
     def get_port(cls) -> int:
@@ -138,6 +147,17 @@ class DatabaseManager(AppService):
         get_user_notification_oldest_message_in_batch
     )
 
+    # Library
+    list_library_agents = _(list_library_agents)
+    add_store_agent_to_library = _(add_store_agent_to_library)
+
+    # Store
+    get_store_agents = _(get_store_agents)
+    get_store_agent_details = _(get_store_agent_details)
+
+    # Summary data - async
+    get_user_execution_summary_data = _(get_user_execution_summary_data)
+
 
 class DatabaseManagerClient(AppServiceClient):
     d = DatabaseManager
@@ -163,8 +183,19 @@ class DatabaseManagerClient(AppServiceClient):
     spend_credits = _(d.spend_credits)
     get_credits = _(d.get_credits)
 
+    # Summary data - async
+    get_user_execution_summary_data = _(d.get_user_execution_summary_data)
+
     # Block error monitoring
     get_block_error_stats = _(d.get_block_error_stats)
+
+    # Library
+    list_library_agents = _(d.list_library_agents)
+    add_store_agent_to_library = _(d.add_store_agent_to_library)
+
+    # Store
+    get_store_agents = _(d.get_store_agents)
+    get_store_agent_details = _(d.get_store_agent_details)
 
 
 class DatabaseManagerAsyncClient(AppServiceClient):
@@ -209,3 +240,14 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_notification_oldest_message_in_batch = (
         d.get_user_notification_oldest_message_in_batch
     )
+
+    # Library
+    list_library_agents = d.list_library_agents
+    add_store_agent_to_library = d.add_store_agent_to_library
+
+    # Store
+    get_store_agents = d.get_store_agents
+    get_store_agent_details = d.get_store_agent_details
+
+    # Summary data
+    get_user_execution_summary_data = d.get_user_execution_summary_data

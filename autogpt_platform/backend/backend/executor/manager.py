@@ -27,7 +27,7 @@ from backend.executor.activity_status_generator import (
 )
 from backend.executor.utils import LogMetadata
 from backend.notifications.notifications import queue_notification
-from backend.util.exceptions import InsufficientBalanceError
+from backend.util.exceptions import InsufficientBalanceError, ModerationError
 
 if TYPE_CHECKING:
     from backend.executor import DatabaseManagerClient, DatabaseManagerAsyncClient
@@ -67,6 +67,7 @@ from backend.executor.utils import (
     validate_exec,
 )
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.server.v2.AutoMod.manager import automod_manager
 from backend.util import json
 from backend.util.clients import (
     get_async_execution_event_bus,
@@ -759,6 +760,22 @@ class ExecutionProcessor:
                     amount=1,
                 )
 
+            # Input moderation
+            try:
+                if moderation_error := asyncio.run_coroutine_threadsafe(
+                    automod_manager.moderate_graph_execution_inputs(
+                        db_client=get_db_async_client(),
+                        graph_exec=graph_exec,
+                    ),
+                    self.node_evaluation_loop,
+                ).result(timeout=30.0):
+                    raise moderation_error
+            except asyncio.TimeoutError:
+                log_metadata.warning(
+                    f"Input moderation timed out for graph execution {graph_exec.graph_exec_id}, bypassing moderation and continuing execution"
+                )
+                # Continue execution without moderation
+
             # ------------------------------------------------------------
             # Pre‑populate queue ---------------------------------------
             # ------------------------------------------------------------
@@ -897,6 +914,25 @@ class ExecutionProcessor:
                         time.sleep(0.1)
 
             # loop done --------------------------------------------------
+
+            # Output moderation
+            try:
+                if moderation_error := asyncio.run_coroutine_threadsafe(
+                    automod_manager.moderate_graph_execution_outputs(
+                        db_client=get_db_async_client(),
+                        graph_exec_id=graph_exec.graph_exec_id,
+                        user_id=graph_exec.user_id,
+                        graph_id=graph_exec.graph_id,
+                    ),
+                    self.node_evaluation_loop,
+                ).result(timeout=30.0):
+                    raise moderation_error
+            except asyncio.TimeoutError:
+                log_metadata.warning(
+                    f"Output moderation timed out for graph execution {graph_exec.graph_exec_id}, bypassing moderation and continuing execution"
+                )
+                # Continue execution without moderation
+
             # Determine final execution status based on whether there was an error or termination
             if cancel.is_set():
                 execution_status = ExecutionStatus.TERMINATED
@@ -917,11 +953,12 @@ class ExecutionProcessor:
                 else Exception(f"{e.__class__.__name__}: {e}")
             )
 
-            known_errors = (InsufficientBalanceError,)
+            known_errors = (InsufficientBalanceError, ModerationError)
             if isinstance(error, known_errors):
                 execution_stats.error = str(error)
                 return ExecutionStatus.FAILED
 
+            execution_status = ExecutionStatus.FAILED
             log_metadata.exception(
                 f"Failed graph execution {graph_exec.graph_exec_id}: {error}"
             )
@@ -1171,6 +1208,9 @@ class ExecutionManager(AppProcess):
             )
             return
 
+        # Check if channel is closed and force reconnection if needed
+        if not self.cancel_client.is_ready:
+            self.cancel_client.disconnect()
         self.cancel_client.connect()
         cancel_channel = self.cancel_client.get_channel()
         cancel_channel.basic_consume(
@@ -1200,6 +1240,9 @@ class ExecutionManager(AppProcess):
             )
             return
 
+        # Check if channel is closed and force reconnection if needed
+        if not self.run_client.is_ready:
+            self.run_client.disconnect()
         self.run_client.connect()
         run_channel = self.run_client.get_channel()
         run_channel.basic_qos(prefetch_count=self.pool_size)
@@ -1361,6 +1404,25 @@ class ExecutionManager(AppProcess):
         else:
             utilization_gauge.set(active_count / self.pool_size)
 
+    def _stop_message_consumers(
+        self, thread: threading.Thread, client: SyncRabbitMQ, prefix: str
+    ):
+        try:
+            channel = client.get_channel()
+            channel.connection.add_callback_threadsafe(lambda: channel.stop_consuming())
+
+            try:
+                thread.join(timeout=300)
+            except TimeoutError:
+                logger.error(
+                    f"{prefix} ⚠️ Run thread did not finish in time, forcing disconnect"
+                )
+
+            client.disconnect()
+            logger.info(f"{prefix} ✅ Run client disconnected")
+        except Exception as e:
+            logger.error(f"{prefix} ⚠️ Error disconnecting run client: {type(e)} {e}")
+
     def cleanup(self):
         """Override cleanup to implement graceful shutdown with active execution waiting."""
         prefix = f"[{self.service_name}][on_graph_executor_stop {os.getpid()}]"
@@ -1416,32 +1478,16 @@ class ExecutionManager(AppProcess):
             logger.error(f"{prefix} ⚠️ Error during executor shutdown: {type(e)} {e}")
 
         # Disconnect the run execution consumer
-        try:
-            run_channel = self.run_client.get_channel()
-            run_channel.connection.add_callback_threadsafe(
-                lambda: run_channel.stop_consuming()
-            )
-            self.run_thread.join()
-            run_channel.connection.add_callback_threadsafe(
-                lambda: self.run_client.disconnect()
-            )
-            logger.info(f"{prefix} ✅ Run client disconnected")
-        except Exception as e:
-            logger.error(f"{prefix} ⚠️ Error disconnecting run client: {type(e)} {e}")
-
-        # Disconnect the cancel execution consumer
-        try:
-            cancel_channel = self.cancel_client.get_channel()
-            cancel_channel.connection.add_callback_threadsafe(
-                lambda: cancel_channel.stop_consuming()
-            )
-            self.cancel_thread.join()
-            cancel_channel.connection.add_callback_threadsafe(
-                lambda: self.cancel_client.disconnect()
-            )
-            logger.info(f"{prefix} ✅ Cancel client disconnected")
-        except Exception as e:
-            logger.error(f"{prefix} ⚠️ Error disconnecting cancel client: {type(e)} {e}")
+        self._stop_message_consumers(
+            self.run_thread,
+            self.run_client,
+            prefix + " [run-consumer]",
+        )
+        self._stop_message_consumers(
+            self.cancel_thread,
+            self.cancel_client,
+            prefix + " [cancel-consumer]",
+        )
 
         logger.info(f"{prefix} ✅ Finished GraphExec cleanup")
 

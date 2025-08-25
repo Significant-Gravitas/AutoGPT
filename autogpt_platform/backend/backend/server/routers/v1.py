@@ -8,7 +8,6 @@ from typing import Annotated, Any, Sequence
 import pydantic
 import stripe
 from autogpt_libs.auth.middleware import auth_middleware
-from autogpt_libs.feature_flag.client import feature_flag
 from fastapi import (
     APIRouter,
     Body,
@@ -16,6 +15,7 @@ from fastapi import (
     File,
     HTTPException,
     Path,
+    Query,
     Request,
     Response,
     UploadFile,
@@ -458,12 +458,16 @@ async def stripe_webhook(request: Request):
         event = stripe.Webhook.construct_event(
             payload, sig_header, settings.secrets.stripe_webhook_secret
         )
-    except ValueError:
+    except ValueError as e:
         # Invalid payload
-        raise HTTPException(status_code=400)
-    except stripe.SignatureVerificationError:
+        raise HTTPException(
+            status_code=400, detail=f"Invalid payload: {str(e) or type(e).__name__}"
+        )
+    except stripe.SignatureVerificationError as e:
         # Invalid signature
-        raise HTTPException(status_code=400)
+        raise HTTPException(
+            status_code=400, detail=f"Invalid signature: {str(e) or type(e).__name__}"
+        )
 
     if (
         event["type"] == "checkout.session.completed"
@@ -676,7 +680,15 @@ async def update_graph(
             # Handle deactivation of the previously active version
             await on_graph_deactivate(current_active_version, user_id=user_id)
 
-    return new_graph_version
+    # Fetch new graph version *with sub-graphs* (needed for credentials input schema)
+    new_graph_version_with_subgraphs = await graph_db.get_graph(
+        graph_id,
+        new_graph_version.version,
+        user_id=user_id,
+        include_subgraphs=True,
+    )
+    assert new_graph_version_with_subgraphs  # make type checker happy
+    return new_graph_version_with_subgraphs
 
 
 @v1_router.put(
@@ -808,11 +820,11 @@ async def _stop_graph_run(
 
 @v1_router.get(
     path="/executions",
-    summary="Get all executions",
+    summary="List all executions",
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
-async def get_graphs_executions(
+async def list_graphs_executions(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> list[execution_db.GraphExecutionMeta]:
     return await execution_db.get_graph_executions(user_id=user_id)
@@ -820,15 +832,24 @@ async def get_graphs_executions(
 
 @v1_router.get(
     path="/graphs/{graph_id}/executions",
-    summary="Get graph executions",
+    summary="List graph executions",
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
-async def get_graph_executions(
+async def list_graph_executions(
     graph_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
-) -> list[execution_db.GraphExecutionMeta]:
-    return await execution_db.get_graph_executions(graph_id=graph_id, user_id=user_id)
+    page: int = Query(1, ge=1, description="Page number (1-indexed)"),
+    page_size: int = Query(
+        25, ge=1, le=100, description="Number of executions per page"
+    ),
+) -> execution_db.GraphExecutionsPaginated:
+    return await execution_db.get_graph_executions_paginated(
+        graph_id=graph_id,
+        user_id=user_id,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @v1_router.get(
@@ -1059,7 +1080,6 @@ async def get_api_key(
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
-@feature_flag("api-keys-enabled")
 async def delete_api_key(
     key_id: str, user_id: Annotated[str, Depends(get_user_id)]
 ) -> Optional[APIKeyWithoutHash]:
@@ -1088,7 +1108,6 @@ async def delete_api_key(
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
-@feature_flag("api-keys-enabled")
 async def suspend_key(
     key_id: str, user_id: Annotated[str, Depends(get_user_id)]
 ) -> Optional[APIKeyWithoutHash]:
@@ -1114,7 +1133,6 @@ async def suspend_key(
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
-@feature_flag("api-keys-enabled")
 async def update_permissions(
     key_id: str,
     request: UpdatePermissionsRequest,
