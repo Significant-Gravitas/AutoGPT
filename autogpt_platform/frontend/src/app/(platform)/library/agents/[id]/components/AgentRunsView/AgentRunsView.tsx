@@ -5,18 +5,16 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useAgentRunsView } from "./useAgentRunsView";
 import { AgentRunsLoading } from "./components/AgentRunsLoading";
 import { Button } from "@/components/atoms/Button/Button";
-import { Plus } from "@phosphor-icons/react";
 import { RunAgentModal } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/RunAgentModal/RunAgentModal";
+import { PlusIcon } from "@phosphor-icons/react/dist/ssr";
 
 export function AgentRunsView() {
   const { response, ready, error, agentId } = useAgentRunsView();
 
-  // Handle loading state
   if (!ready) {
     return <AgentRunsLoading />;
   }
 
-  // Handle errors - check for query error first, then response errors
   if (error || (response && response.status !== 200)) {
     return (
       <ErrorCard
@@ -57,7 +55,7 @@ export function AgentRunsView() {
         <RunAgentModal
           triggerSlot={
             <Button variant="primary" size="large" className="w-full">
-              <Plus size={20} /> New Run
+              <PlusIcon size={20} /> New Run
             </Button>
           }
           agent={agent}

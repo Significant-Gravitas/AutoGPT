@@ -1,6 +1,7 @@
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Text } from "@/components/atoms/Text/Text";
+import { ShowMoreText } from "@/components/molecules/ShowMoreText/ShowMoreText";
 
 interface ModalHeaderProps {
   showScheduleView: boolean;
@@ -17,8 +18,16 @@ export function ModalHeader({ showScheduleView, agent }: ModalHeaderProps) {
       </div>
       <div>
         <Text variant="h3">{agent.name}</Text>
-        <Text variant="body-medium">by {agent.creator_name}</Text>
-        <Text variant="small">{agent.description}</Text>
+        <Text variant="body-medium">
+          by {agent.creator_name === "Unknown" ? "–" : agent.creator_name}
+        </Text>
+        <ShowMoreText
+          previewLimit={80}
+          variant="small"
+          className="mt-4 !text-zinc-700"
+        >
+          {agent.description}
+        </ShowMoreText>
       </div>
     </div>
   );
