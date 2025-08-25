@@ -106,6 +106,60 @@ export function NotificationForm({ preferences, user }: NotificationFormProps) {
             />
           </div>
 
+          {/* Store Notifications */}
+          <div className="flex flex-col gap-6">
+            <Text variant="h4" size="body-medium" className="text-slate-400">
+              Store Notifications
+            </Text>
+            <FormField
+              control={form.control}
+              name="notifyOnAgentApproved"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Text variant="h4" size="body-medium">
+                      Agent Approved
+                    </Text>
+                    <Text variant="body">
+                      Get notified when your submitted agent is approved for the
+                      store
+                    </Text>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="notifyOnAgentRejected"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Text variant="h4" size="body-medium">
+                      Agent Rejected
+                    </Text>
+                    <Text variant="body">
+                      Receive notifications when your agent submission needs
+                      updates
+                    </Text>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+          </div>
+
           {/* Balance Notifications */}
           <div className="flex flex-col gap-4">
             <Text variant="h4" size="body-medium" className="text-slate-400">

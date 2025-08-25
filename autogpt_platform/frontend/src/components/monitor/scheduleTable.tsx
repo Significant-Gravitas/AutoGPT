@@ -15,6 +15,11 @@ import { ClockIcon, Loader2 } from "lucide-react";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import {
+  formatScheduleTime,
+  getTimezoneAbbreviation,
+} from "@/lib/timezone-utils";
+import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -58,6 +63,10 @@ export const SchedulesTable = ({
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState<string>(""); // Graph ID
+
+  // Get user's timezone for displaying schedule times
+  const { data: timezoneData } = useGetV1GetUserTimezone();
+  const userTimezone = timezoneData?.data?.timezone || "UTC";
 
   const filteredAndSortedSchedules = [...schedules]
     .filter(
@@ -218,7 +227,7 @@ export const SchedulesTable = ({
               >
                 Schedule
               </TableHead>
-
+              <TableHead>Timezone</TableHead>
               <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -226,7 +235,7 @@ export const SchedulesTable = ({
             {filteredAndSortedSchedules.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={4}
+                  colSpan={6}
                   className="py-8 text-center text-lg text-gray-400"
                 >
                   No schedules are available
@@ -241,14 +250,18 @@ export const SchedulesTable = ({
                   </TableCell>
                   <TableCell>{schedule.graph_version}</TableCell>
                   <TableCell>
-                    {schedule.next_run_time.toLocaleString()}
+                    {formatScheduleTime(schedule.next_run_time, userTimezone)}
                   </TableCell>
                   <TableCell>
                     <Badge variant="secondary">
-                      {humanizeCronExpression(schedule.cron)}
+                      {humanizeCronExpression(schedule.cron, userTimezone)}
                     </Badge>
                   </TableCell>
-
+                  <TableCell>
+                    <span className="text-sm text-muted-foreground">
+                      {getTimezoneAbbreviation(userTimezone)}
+                    </span>
+                  </TableCell>
                   <TableCell>
                     <div className="flex space-x-2">
                       <Button

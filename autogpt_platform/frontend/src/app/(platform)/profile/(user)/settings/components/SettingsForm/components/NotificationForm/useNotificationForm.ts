@@ -18,6 +18,8 @@ const notificationFormSchema = z.object({
   notifyOnDailySummary: z.boolean(),
   notifyOnWeeklySummary: z.boolean(),
   notifyOnMonthlySummary: z.boolean(),
+  notifyOnAgentApproved: z.boolean(),
+  notifyOnAgentRejected: z.boolean(),
 });
 
 function createNotificationDefaultValues(preferences: {
@@ -34,6 +36,8 @@ function createNotificationDefaultValues(preferences: {
     notifyOnDailySummary: preferences.preferences?.DAILY_SUMMARY,
     notifyOnWeeklySummary: preferences.preferences?.WEEKLY_SUMMARY,
     notifyOnMonthlySummary: preferences.preferences?.MONTHLY_SUMMARY,
+    notifyOnAgentApproved: preferences.preferences?.AGENT_APPROVED,
+    notifyOnAgentRejected: preferences.preferences?.AGENT_REJECTED,
   };
 }
 
@@ -80,6 +84,8 @@ export function useNotificationForm({
           DAILY_SUMMARY: values.notifyOnDailySummary,
           WEEKLY_SUMMARY: values.notifyOnWeeklySummary,
           MONTHLY_SUMMARY: values.notifyOnMonthlySummary,
+          AGENT_APPROVED: values.notifyOnAgentApproved,
+          AGENT_REJECTED: values.notifyOnAgentRejected,
         },
         daily_limit: 0,
       };

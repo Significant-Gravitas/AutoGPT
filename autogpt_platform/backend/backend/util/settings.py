@@ -95,6 +95,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=500,
         description="Maximum number of credits above the balance to be auto-approved.",
     )
+    low_balance_threshold: int = Field(
+        default=500,
+        description="Credit threshold for low balance notifications (100 = $1, default 500 = $5)",
+    )
     refund_notification_email: str = Field(
         default="refund@agpt.co",
         description="Email address to send refund notifications to.",
@@ -249,6 +253,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     platform_alert_discord_channel: str = Field(
         default="local-alerts",
         description="The Discord channel for the platform",
+    )
+    product_alert_discord_channel: str = Field(
+        default="product-alerts",
+        description="The Discord channel for product alerts (low balance, zero balance, etc.)",
     )
 
     clamav_service_host: str = Field(
@@ -464,6 +472,10 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     twitter_client_id: str = Field(default="", description="Twitter/X OAuth client ID")
     twitter_client_secret: str = Field(
         default="", description="Twitter/X OAuth client secret"
+    )
+    discord_client_id: str = Field(default="", description="Discord OAuth client ID")
+    discord_client_secret: str = Field(
+        default="", description="Discord OAuth client secret"
     )
 
     openai_api_key: str = Field(default="", description="OpenAI API key")
