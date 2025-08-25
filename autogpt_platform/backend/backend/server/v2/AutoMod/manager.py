@@ -277,7 +277,9 @@ class AutoModManager:
             ]
         )
 
-    async def _moderate_content(self, content: str, metadata: dict[str, Any]) -> tuple[bool, str | None]:
+    async def _moderate_content(
+        self, content: str, metadata: dict[str, Any]
+    ) -> tuple[bool, str | None]:
         """Moderate content using AutoMod API
 
         Returns:
