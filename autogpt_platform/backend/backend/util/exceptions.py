@@ -40,6 +40,7 @@ class ModerationError(ValueError):
     message: str
     graph_exec_id: str
     moderation_type: str
+    content_id: str | None
 
     def __init__(
         self,
@@ -47,16 +48,20 @@ class ModerationError(ValueError):
         user_id: str,
         graph_exec_id: str,
         moderation_type: str = "content",
+        content_id: str | None = None,
     ):
         super().__init__(message)
-        self.args = (message, user_id, graph_exec_id, moderation_type)
+        self.args = (message, user_id, graph_exec_id, moderation_type, content_id)
         self.message = message
         self.user_id = user_id
         self.graph_exec_id = graph_exec_id
         self.moderation_type = moderation_type
+        self.content_id = content_id
 
     def __str__(self):
         """Used to display the error message in the frontend, because we str() the error when sending the execution update"""
+        if self.content_id:
+            return f"{self.message} (Moderation ID: {self.content_id})"
         return self.message
 
 
