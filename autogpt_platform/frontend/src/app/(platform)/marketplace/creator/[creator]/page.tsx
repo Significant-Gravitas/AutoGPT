@@ -21,7 +21,9 @@ export async function generateMetadata({
   params: Promise<MarketplaceCreatorPageParams>;
 }): Promise<Metadata> {
   const params = await _params;
-  const {data: creator} = await getV2GetCreatorDetails(params.creator.toLowerCase());
+  const { data: creator } = await getV2GetCreatorDetails(
+    params.creator.toLowerCase(),
+  );
 
   return {
     title: `${(creator as CreatorDetails).name} - AutoGPT Store`,

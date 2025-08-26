@@ -7,6 +7,8 @@ import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { CreatorInfoCard } from "../CreatorInfoCard/CreatorInfoCard";
 import { CreatorLinks } from "../CreatorLinks/CreatorLinks";
 import { useMainCreatorPage } from "./useMainCreatorPage";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { CreatorPageLoading } from "../CreatorPageLoading";
 
 interface MainCreatorPageProps {
   params: MarketplaceCreatorPageParams;
@@ -17,13 +19,22 @@ export const MainCreatorPage = ({ params }: MainCreatorPageProps) => {
     params,
   });
 
-  // FRONTEND-TODO : Add better ui for error and loading
-  if (isLoading) {
-    return "Loading....";
-  }
+  if (isLoading) return <CreatorPageLoading />;
 
   if (hasError) {
-    return "Error...";
+    return (
+      <div className="mx-auto w-screen max-w-[1360px]">
+        <div className="flex min-h-[60vh] items-center justify-center">
+          <ErrorCard
+            isSuccess={false}
+            responseError={{ message: "Failed to load creator data" }}
+            context="creator page"
+            onRetry={() => window.location.reload()}
+            className="w-full max-w-md"
+          />
+        </div>
+      </div>
+    );
   }
 
   if (creator)
