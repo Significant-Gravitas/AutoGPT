@@ -452,7 +452,7 @@ class LocalExecutorCache:
             )
             conn.commit()
 
-    def cache_node(self, node: "Node"):
+    def cache_node(self, node):
         """Cache a node definition locally"""
         import json
 
