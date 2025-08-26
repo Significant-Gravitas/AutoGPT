@@ -509,7 +509,7 @@ export function AgentRunDraftView({
 
   return (
     <div className={cn("agpt-div flex gap-6", className)}>
-      <div className="flex flex-1 flex-col gap-4">
+      <div className="flex min-w-0 flex-1 flex-col gap-4">
         <Card className="agpt-box">
           <CardHeader>
             <CardTitle className="font-poppins text-lg">Input</CardTitle>
