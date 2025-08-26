@@ -11,7 +11,6 @@ export const useMainMarketplacePage = () => {
     data: featuredAgents,
     isLoading: isFeaturedAgentsLoading,
     isError: isFeaturedAgentsError,
-    error: featuredAgentsError,
   } = useGetV2ListStoreAgents(
     { featured: true },
     {
