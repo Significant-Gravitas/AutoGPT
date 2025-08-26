@@ -1,8 +1,43 @@
 import logging
+import signal
+import threading
+from contextlib import contextmanager
 from enum import Enum
-from typing import Optional
 
+# Monkey patch Stagehands to prevent signal handling in worker threads
+import stagehand.main
 from stagehand import Stagehand
+
+# Store the original method
+original_register_signal_handlers = stagehand.main.Stagehand._register_signal_handlers
+
+def safe_register_signal_handlers(self):
+    """Only register signal handlers in the main thread"""
+    if threading.current_thread() is threading.main_thread():
+        original_register_signal_handlers(self)
+    else:
+        # Skip signal handling in worker threads
+        pass
+
+# Replace the method
+stagehand.main.Stagehand._register_signal_handlers = safe_register_signal_handlers
+
+@contextmanager
+def disable_signal_handling():
+    """Context manager to temporarily disable signal handling"""
+    if threading.current_thread() is not threading.main_thread():
+        # In worker threads, temporarily replace signal.signal with a no-op
+        original_signal = signal.signal
+        def noop_signal(*args, **kwargs):
+            pass
+        signal.signal = noop_signal
+        try:
+            yield
+        finally:
+            signal.signal = original_signal
+    else:
+        # In main thread, don't modify anything
+        yield
 
 from backend.blocks.llm import (
     MODEL_METADATA,
@@ -11,6 +46,7 @@ from backend.blocks.llm import (
     LlmModel,
     ModelMetadata,
 )
+from backend.blocks.stagehand._config import stagehand as stagehand_provider
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -21,10 +57,7 @@ from backend.sdk import (
     SchemaField,
 )
 
-from ._config import stagehand as stagehand_provider
-
 logger = logging.getLogger(__name__)
-
 
 class StagehandRecommendedLlmModel(str, Enum):
     """
@@ -57,6 +90,7 @@ class StagehandRecommendedLlmModel(str, Enum):
             ), "Logic failed and open_router provider attempted to be prepended to model name! in stagehand/_config.py"
             model_name = f"{model_metadata.provider}/{model_name}"
 
+        logger.error(f"Model name: {model_name}")
         return model_name
 
     @property
@@ -136,14 +170,20 @@ class StagehandObserveBlock(Block):
         **kwargs,
     ) -> BlockOutput:
 
-        stagehand = Stagehand(
-            api_key=stagehand_credentials.api_key.get_secret_value(),
-            project_id=input_data.browserbase_project_id,
-            model=input_data.model.provider_name,
-            model_api_key=model_credentials.api_key.get_secret_value(),
+        logger.info(f"OBSERVE: Stagehand credentials: {stagehand_credentials}")
+        logger.info(
+            f"OBSERVE: Model credentials: {model_credentials} for provider {model_credentials.provider} secret: {model_credentials.api_key.get_secret_value()}"
         )
 
-        await stagehand.init()
+        with disable_signal_handling():
+            stagehand = Stagehand(
+                api_key=stagehand_credentials.api_key.get_secret_value(),
+                project_id=input_data.browserbase_project_id,
+                model_name=input_data.model.provider_name,
+                model_api_key=model_credentials.api_key.get_secret_value(),
+            )
+
+            await stagehand.init()
 
         page = stagehand.page
 
@@ -230,14 +270,20 @@ class StagehandActBlock(Block):
         **kwargs,
     ) -> BlockOutput:
 
-        stagehand = Stagehand(
-            api_key=stagehand_credentials.api_key.get_secret_value(),
-            project_id=input_data.browserbase_project_id,
-            model=input_data.model.provider_name,
-            model_api_key=model_credentials.api_key.get_secret_value(),
+        logger.info(f"ACT: Stagehand credentials: {stagehand_credentials}")
+        logger.info(
+            f"ACT: Model credentials: {model_credentials} for provider {model_credentials.provider} secret: {model_credentials.api_key.get_secret_value()}"
         )
 
-        await stagehand.init()
+        with disable_signal_handling():
+            stagehand = Stagehand(
+                api_key=stagehand_credentials.api_key.get_secret_value(),
+                project_id=input_data.browserbase_project_id,
+                model_name=input_data.model.provider_name,
+                model_api_key=model_credentials.api_key.get_secret_value(),
+            )
+
+            await stagehand.init()
 
         page = stagehand.page
 
@@ -312,14 +358,20 @@ class StagehandExtractBlock(Block):
         **kwargs,
     ) -> BlockOutput:
 
-        stagehand = Stagehand(
-            api_key=stagehand_credentials.api_key.get_secret_value(),
-            project_id=input_data.browserbase_project_id,
-            model=input_data.model.provider_name,
-            model_api_key=model_credentials.api_key.get_secret_value(),
+        logger.info(f"EXTRACT: Stagehand credentials: {stagehand_credentials}")
+        logger.info(
+            f"EXTRACT: Model credentials: {model_credentials} for provider {model_credentials.provider} secret: {model_credentials.api_key.get_secret_value()}"
         )
 
-        await stagehand.init()
+        with disable_signal_handling():
+            stagehand = Stagehand(
+                api_key=stagehand_credentials.api_key.get_secret_value(),
+                project_id=input_data.browserbase_project_id,
+                model_name=input_data.model.provider_name,
+                model_api_key=model_credentials.api_key.get_secret_value(),
+            )
+
+            await stagehand.init()
 
         page = stagehand.page
 
@@ -331,4 +383,4 @@ class StagehandExtractBlock(Block):
             iframes=input_data.iframes,
             domSettleTimeoutMs=input_data.domSettleTimeoutMs,
         )
-        yield "extraction", extraction["extraction"]
+        yield "extraction", str(extraction.model_dump()["extraction"])
