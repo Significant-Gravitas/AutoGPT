@@ -1394,14 +1394,14 @@ class ExecutionManager(AppProcess):
         delivery_tag = method.delivery_tag
 
         @func_retry
-        def _ack_message(reject: bool = False):
+        def _ack_message(reject: bool, requeue: bool):
             """Acknowledge or reject the message based on execution status."""
 
             # Connection can be lost, so always get a fresh channel
             channel = self.run_client.get_channel()
             if reject:
                 channel.connection.add_callback_threadsafe(
-                    lambda: channel.basic_nack(delivery_tag, requeue=True)
+                    lambda: channel.basic_nack(delivery_tag, requeue=requeue)
                 )
             else:
                 channel.connection.add_callback_threadsafe(
@@ -1413,13 +1413,13 @@ class ExecutionManager(AppProcess):
             logger.info(
                 f"[{self.service_name}] Rejecting new execution during shutdown"
             )
-            _ack_message(reject=True)
+            _ack_message(reject=True, requeue=True)
             return
 
         # Check if we can accept more runs
         self._cleanup_completed_runs()
         if len(self.active_graph_runs) >= self.pool_size:
-            _ack_message(reject=True)
+            _ack_message(reject=True, requeue=True)
             return
 
         try:
@@ -1428,7 +1428,7 @@ class ExecutionManager(AppProcess):
             logger.error(
                 f"[{self.service_name}] Could not parse run message: {e}, body={body}"
             )
-            _ack_message(reject=True)
+            _ack_message(reject=True, requeue=False)
             return
 
         graph_exec_id = graph_exec_entry.graph_exec_id
@@ -1440,7 +1440,7 @@ class ExecutionManager(AppProcess):
             logger.error(
                 f"[{self.service_name}] Graph {graph_exec_id} already running; rejecting duplicate run."
             )
-            _ack_message(reject=True)
+            _ack_message(reject=True, requeue=False)
             return
 
         cancel_event = threading.Event()
@@ -1456,9 +1456,9 @@ class ExecutionManager(AppProcess):
                     logger.error(
                         f"[{self.service_name}] Execution for {graph_exec_id} failed: {type(exec_error)} {exec_error}"
                     )
-                    _ack_message(reject=True)
+                    _ack_message(reject=True, requeue=True)
                 else:
-                    _ack_message(reject=False)
+                    _ack_message(reject=False, requeue=False)
             except BaseException as e:
                 logger.exception(
                     f"[{self.service_name}] Error in run completion callback: {e}"
