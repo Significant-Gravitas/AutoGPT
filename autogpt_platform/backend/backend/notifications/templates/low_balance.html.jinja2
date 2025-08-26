@@ -1,9 +1,7 @@
 {# Low Balance Notification Email Template #}
 {# Template variables:
-data.agent_name: the name of the agent
 data.current_balance: the current balance of the user
 data.billing_page_link: the link to the billing page
-data.shortfall: the shortfall amount
 #}
 
 <p style="
@@ -25,7 +23,7 @@ data.shortfall: the shortfall amount
     margin-top: 0;
     margin-bottom: 20px;
   ">
-  Your agent "<strong>{{ data.agent_name }}</strong>" has been stopped due to low balance.
+  Your account balance has dropped below the recommended threshold.
 </p>
 
 <div style="
@@ -43,15 +41,6 @@ data.shortfall: the shortfall amount
     margin-bottom: 10px;
   ">
     <strong>Current Balance:</strong> ${{ "{:.2f}".format((data.current_balance|float)/100) }}
-  </p>
-  <p style="
-    font-family: 'Poppins', sans-serif;
-    color: #070629;
-    font-size: 16px;
-    margin-top: 0;
-    margin-bottom: 10px;
-  ">
-    <strong>Shortfall:</strong> ${{ "{:.2f}".format((data.shortfall|float)/100) }}
   </p>
 </div>
 
@@ -79,7 +68,7 @@ data.shortfall: the shortfall amount
     margin-top: 0;
     margin-bottom: 5px;
   ">
-    Your agent "<strong>{{ data.agent_name }}</strong>" requires additional credits to continue running. The current operation has been canceled until your balance is replenished.
+    Your account requires additional credits to continue running agents. Please add credits to your account to avoid service interruption.
   </p>
 </div>
 
@@ -110,5 +99,5 @@ data.shortfall: the shortfall amount
     margin-bottom: 10px;
     font-style: italic;
   ">
-  This is an automated notification. Your agent is stopped and will need manually restarted unless set to trigger automatically.
+  This is an automated low balance notification. Consider adding credits soon to avoid service interruption.
 </p>

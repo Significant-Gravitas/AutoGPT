@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 from datetime import datetime, timedelta
 from typing import Any, Literal, Union
@@ -7,6 +8,7 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.execution import UserContext
 from backend.data.model import SchemaField
 
 # Shared timezone literal type for all time/date blocks
@@ -51,16 +53,80 @@ TimezoneLiteral = Literal[
     "Etc/GMT+12",  # UTC-12:00
 ]
 
+logger = logging.getLogger(__name__)
+
+
+def _get_timezone(
+    format_type: Any,  # Any format type with timezone and use_user_timezone attributes
+    user_timezone: str | None,
+) -> ZoneInfo:
+    """
+    Determine which timezone to use based on format settings and user context.
+
+    Args:
+        format_type: The format configuration containing timezone settings
+        user_timezone: The user's timezone from context
+
+    Returns:
+        ZoneInfo object for the determined timezone
+    """
+    if format_type.use_user_timezone and user_timezone:
+        tz = ZoneInfo(user_timezone)
+        logger.debug(f"Using user timezone: {user_timezone}")
+    else:
+        tz = ZoneInfo(format_type.timezone)
+        logger.debug(f"Using specified timezone: {format_type.timezone}")
+    return tz
+
+
+def _format_datetime_iso8601(dt: datetime, include_microseconds: bool = False) -> str:
+    """
+    Format a datetime object to ISO8601 string.
+
+    Args:
+        dt: The datetime object to format
+        include_microseconds: Whether to include microseconds in the output
+
+    Returns:
+        ISO8601 formatted string
+    """
+    if include_microseconds:
+        return dt.isoformat()
+    else:
+        return dt.isoformat(timespec="seconds")
+
+
+# BACKWARDS COMPATIBILITY NOTE:
+# The timezone field is kept at the format level (not block level) for backwards compatibility.
+# Existing graphs have timezone saved within format_type, moving it would break them.
+#
+# The use_user_timezone flag was added to allow using the user's profile timezone.
+# Default is False to maintain backwards compatibility - existing graphs will continue
+# using their specified timezone.
+#
+# KNOWN ISSUE: If a user switches between format types (strftime <-> iso8601),
+# the timezone setting doesn't carry over. This is a UX issue but fixing it would
+# require either:
+#   1. Moving timezone to block level (breaking change, needs migration)
+#   2. Complex state management to sync timezone across format types
+#
+# Future migration path: When we do a major version bump, consider moving timezone
+# to the block Input level for better UX.
+
 
 class TimeStrftimeFormat(BaseModel):
     discriminator: Literal["strftime"]
     format: str = "%H:%M:%S"
     timezone: TimezoneLiteral = "UTC"
+    # When True, overrides timezone with user's profile timezone
+    use_user_timezone: bool = False
 
 
 class TimeISO8601Format(BaseModel):
     discriminator: Literal["iso8601"]
     timezone: TimezoneLiteral = "UTC"
+    # When True, overrides timezone with user's profile timezone
+    use_user_timezone: bool = False
     include_microseconds: bool = False
 
 
@@ -115,25 +181,27 @@ class GetCurrentTimeBlock(Block):
             ],
         )
 
-    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(
+        self, input_data: Input, *, user_context: UserContext, **kwargs
+    ) -> BlockOutput:
+        # Extract timezone from user_context (always present)
+        effective_timezone = user_context.timezone
+
+        # Get the appropriate timezone
+        tz = _get_timezone(input_data.format_type, effective_timezone)
+        dt = datetime.now(tz=tz)
+
         if isinstance(input_data.format_type, TimeISO8601Format):
-            # ISO 8601 format for time only (extract time portion from full ISO datetime)
-            tz = ZoneInfo(input_data.format_type.timezone)
-            dt = datetime.now(tz=tz)
-
             # Get the full ISO format and extract just the time portion with timezone
-            if input_data.format_type.include_microseconds:
-                full_iso = dt.isoformat()
-            else:
-                full_iso = dt.isoformat(timespec="seconds")
-
+            full_iso = _format_datetime_iso8601(
+                dt, input_data.format_type.include_microseconds
+            )
             # Extract time portion (everything after 'T')
             current_time = full_iso.split("T")[1] if "T" in full_iso else full_iso
             current_time = f"T{current_time}"  # Add T prefix for ISO 8601 time format
         else:  # TimeStrftimeFormat
-            tz = ZoneInfo(input_data.format_type.timezone)
-            dt = datetime.now(tz=tz)
             current_time = dt.strftime(input_data.format_type.format)
+
         yield "time", current_time
 
 
@@ -141,11 +209,15 @@ class DateStrftimeFormat(BaseModel):
     discriminator: Literal["strftime"]
     format: str = "%Y-%m-%d"
     timezone: TimezoneLiteral = "UTC"
+    # When True, overrides timezone with user's profile timezone
+    use_user_timezone: bool = False
 
 
 class DateISO8601Format(BaseModel):
     discriminator: Literal["iso8601"]
     timezone: TimezoneLiteral = "UTC"
+    # When True, overrides timezone with user's profile timezone
+    use_user_timezone: bool = False
 
 
 class GetCurrentDateBlock(Block):
@@ -217,20 +289,23 @@ class GetCurrentDateBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        # Extract timezone from user_context (required keyword argument)
+        user_context: UserContext = kwargs["user_context"]
+        effective_timezone = user_context.timezone
+
         try:
             offset = int(input_data.offset)
         except ValueError:
             offset = 0
 
+        # Get the appropriate timezone
+        tz = _get_timezone(input_data.format_type, effective_timezone)
+        current_date = datetime.now(tz=tz) - timedelta(days=offset)
+
         if isinstance(input_data.format_type, DateISO8601Format):
-            # ISO 8601 format for date only (YYYY-MM-DD)
-            tz = ZoneInfo(input_data.format_type.timezone)
-            current_date = datetime.now(tz=tz) - timedelta(days=offset)
             # ISO 8601 date format is YYYY-MM-DD
             date_str = current_date.date().isoformat()
         else:  # DateStrftimeFormat
-            tz = ZoneInfo(input_data.format_type.timezone)
-            current_date = datetime.now(tz=tz) - timedelta(days=offset)
             date_str = current_date.strftime(input_data.format_type.format)
 
         yield "date", date_str
@@ -240,11 +315,15 @@ class StrftimeFormat(BaseModel):
     discriminator: Literal["strftime"]
     format: str = "%Y-%m-%d %H:%M:%S"
     timezone: TimezoneLiteral = "UTC"
+    # When True, overrides timezone with user's profile timezone
+    use_user_timezone: bool = False
 
 
 class ISO8601Format(BaseModel):
     discriminator: Literal["iso8601"]
     timezone: TimezoneLiteral = "UTC"
+    # When True, overrides timezone with user's profile timezone
+    use_user_timezone: bool = False
     include_microseconds: bool = False
 
 
@@ -316,20 +395,22 @@ class GetCurrentDateAndTimeBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        # Extract timezone from user_context (required keyword argument)
+        user_context: UserContext = kwargs["user_context"]
+        effective_timezone = user_context.timezone
+
+        # Get the appropriate timezone
+        tz = _get_timezone(input_data.format_type, effective_timezone)
+        dt = datetime.now(tz=tz)
+
         if isinstance(input_data.format_type, ISO8601Format):
             # ISO 8601 format with specified timezone (also RFC3339-compliant)
-            tz = ZoneInfo(input_data.format_type.timezone)
-            dt = datetime.now(tz=tz)
-
-            # Format with or without microseconds
-            if input_data.format_type.include_microseconds:
-                current_date_time = dt.isoformat()
-            else:
-                current_date_time = dt.isoformat(timespec="seconds")
+            current_date_time = _format_datetime_iso8601(
+                dt, input_data.format_type.include_microseconds
+            )
         else:  # StrftimeFormat
-            tz = ZoneInfo(input_data.format_type.timezone)
-            dt = datetime.now(tz=tz)
             current_date_time = dt.strftime(input_data.format_type.format)
+
         yield "date_time", current_date_time
 
 
