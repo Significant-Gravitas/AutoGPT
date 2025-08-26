@@ -5891,22 +5891,23 @@ sqlcipher = ["sqlcipher3_binary"]
 
 [[package]]
 name = "stagehand"
-version = "0.5.0"
+version = "0.5.1"
 description = "Python SDK for Stagehand"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "stagehand-0.5.0-py3-none-any.whl", hash = "sha256:4b7a61e414c8680ed601d7b3ddc1ea46b4b308d649a286f65db0f17b28f19a68"},
-    {file = "stagehand-0.5.0.tar.gz", hash = "sha256:58d11bc05178033e0f224c2d7969cff8945d0e5b1416dc88b30e4d578f309cdc"},
+    {file = "stagehand-0.5.1-py3-none-any.whl", hash = "sha256:97f88ef31c4b2ad448c2ef341a3cff074b83e40c60872d8f49f79c82f9249174"},
+    {file = "stagehand-0.5.1.tar.gz", hash = "sha256:312611f776a5f93f3a10a3cae87cd4881eb020c999a87394b21bff2b123fdfc3"},
 ]
 
 [package.dependencies]
 anthropic = ">=0.51.0"
 browserbase = ">=1.4.0"
 httpx = ">=0.24.0"
-litellm = ">=1.72.0"
-openai = ">=1.83.0"
+litellm = ">=1.72.0,<1.75.0"
+nest-asyncio = ">=1.6.0"
+openai = ">=1.83.0,<1.99.6"
 playwright = ">=1.42.1"
 pydantic = ">=1.10.0"
 python-dotenv = ">=1.0.0"

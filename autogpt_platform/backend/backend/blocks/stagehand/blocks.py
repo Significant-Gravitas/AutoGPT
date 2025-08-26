@@ -40,10 +40,6 @@ class StagehandRecommendedLlmModel(str, Enum):
     # Anthropic
     CLAUDE_3_7_SONNET = "claude-3-7-sonnet-20250219"
 
-    # Google #
-    GEMINI_2_5_FLASH = "google/gemini-2.5-flash"  # <- Recommend
-    GEMINI_2_5_PRO = "google/gemini-2.5-pro-preview-03-25"
-
     @property
     def provider_name(self) -> str:
         """
@@ -94,8 +90,8 @@ class StagehandObserveBlock(Block):
         # Model selection and credentials (provider-discriminated like llm.py)
         model: StagehandRecommendedLlmModel = SchemaField(
             title="LLM Model",
-            description="LLM to use for Stagehand (provider is inferred). Gemini 2.5 Flash is recommended.",
-            default=StagehandRecommendedLlmModel.GEMINI_2_5_FLASH,
+            description="LLM to use for Stagehand (provider is inferred)",
+            default=StagehandRecommendedLlmModel.CLAUDE_3_7_SONNET,
             advanced=False,
         )
         model_credentials: AICredentials = AICredentialsField()
@@ -144,7 +140,7 @@ class StagehandObserveBlock(Block):
             api_key=stagehand_credentials.api_key.get_secret_value(),
             project_id=input_data.browserbase_project_id,
             model=input_data.model.provider_name,
-            model_credentials=model_credentials.api_key.get_secret_value(),
+            model_api_key=model_credentials.api_key.get_secret_value(),
         )
 
         await stagehand.init()
@@ -181,8 +177,8 @@ class StagehandActBlock(Block):
         # Model selection and credentials (provider-discriminated like llm.py)
         model: StagehandRecommendedLlmModel = SchemaField(
             title="LLM Model",
-            description="LLM to use for Stagehand (provider is inferred). Gemini 2.5 Flash is recommended.",
-            default=StagehandRecommendedLlmModel.GEMINI_2_5_FLASH,
+            description="LLM to use for Stagehand (provider is inferred)",
+            default=StagehandRecommendedLlmModel.CLAUDE_3_7_SONNET,
             advanced=False,
         )
         model_credentials: AICredentials = AICredentialsField()
@@ -216,7 +212,6 @@ class StagehandActBlock(Block):
         message: str = SchemaField(description="Details about the action’s execution.")
         action: str = SchemaField(description="Action performed")
 
-
     def __init__(self):
         super().__init__(
             id="86eba68b-9549-4c0b-a0db-47d85a56cc27",
@@ -239,7 +234,7 @@ class StagehandActBlock(Block):
             api_key=stagehand_credentials.api_key.get_secret_value(),
             project_id=input_data.browserbase_project_id,
             model=input_data.model.provider_name,
-            model_credentials=model_credentials.api_key.get_secret_value(),
+            model_api_key=model_credentials.api_key.get_secret_value(),
         )
 
         await stagehand.init()
@@ -276,8 +271,8 @@ class StagehandExtractBlock(Block):
         # Model selection and credentials (provider-discriminated like llm.py)
         model: StagehandRecommendedLlmModel = SchemaField(
             title="LLM Model",
-            description="LLM to use for Stagehand (provider is inferred). Gemini 2.5 Flash is recommended.",
-            default=StagehandRecommendedLlmModel.GEMINI_2_5_FLASH,
+            description="LLM to use for Stagehand (provider is inferred)",
+            default=StagehandRecommendedLlmModel.CLAUDE_3_7_SONNET,
             advanced=False,
         )
         model_credentials: AICredentials = AICredentialsField()
@@ -321,7 +316,7 @@ class StagehandExtractBlock(Block):
             api_key=stagehand_credentials.api_key.get_secret_value(),
             project_id=input_data.browserbase_project_id,
             model=input_data.model.provider_name,
-            model_credentials=model_credentials.api_key.get_secret_value(),
+            model_api_key=model_credentials.api_key.get_secret_value(),
         )
 
         await stagehand.init()
