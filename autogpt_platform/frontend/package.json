@@ -92,7 +92,7 @@
     "tailwindcss-animate": "1.0.7",
     "uuid": "11.1.0",
     "vaul": "1.1.2",
-    "zod": "3.25.76"
+    "zod": "4.0.17"
   },
   "devDependencies": {
     "@chromatic-com/storybook": "4.1.0",
