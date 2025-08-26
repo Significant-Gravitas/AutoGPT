@@ -580,7 +580,11 @@ class ExecutionProcessor:
         self.node_execution_thread.start()
         self.node_evaluation_thread.start()
 
-        # Initialize local cache with original database client
+        # Start background sync manager
+        from backend.executor.sync_manager import get_sync_manager
+
+        get_sync_manager().start()
+
         logger.info(f"[GraphExecutor] {self.tid} started")
 
     @error_logged(swallow=False)
@@ -703,6 +707,9 @@ class ExecutionProcessor:
         self,
         node_exec: NodeExecutionEntry,
         execution_count: int,
+        async_mode: bool = False,
+        execution_stats=None,
+        execution_stats_lock=None,
     ) -> tuple[int, int]:
         db_client = get_db_client()
         block = get_block(node_exec.block_id)
@@ -710,47 +717,61 @@ class ExecutionProcessor:
             logger.error(f"Block {node_exec.block_id} not found.")
             return 0, 0
 
-        total_cost = 0
-        remaining_balance = 0
-
-        cost, matching_filter = block_usage_cost(
+        # Calculate estimated costs
+        block_cost, matching_filter = block_usage_cost(
             block=block, input_data=node_exec.inputs
         )
-        if cost > 0:
-            remaining_balance = db_client.spend_credits(
-                user_id=node_exec.user_id,
-                cost=cost,
-                metadata=UsageTransactionMetadata(
-                    graph_exec_id=node_exec.graph_exec_id,
-                    graph_id=node_exec.graph_id,
-                    node_exec_id=node_exec.node_exec_id,
-                    node_id=node_exec.node_id,
-                    block_id=node_exec.block_id,
-                    block=block.name,
-                    input=matching_filter,
-                    reason=f"Ran block {node_exec.block_id} {block.name}",
-                ),
-            )
-            total_cost += cost
+        exec_cost, usage_count = execution_usage_cost(execution_count)
+        total_cost = block_cost + exec_cost
 
-        cost, usage_count = execution_usage_cost(execution_count)
-        if cost > 0:
-            remaining_balance = db_client.spend_credits(
-                user_id=node_exec.user_id,
-                cost=cost,
-                metadata=UsageTransactionMetadata(
-                    graph_exec_id=node_exec.graph_exec_id,
-                    graph_id=node_exec.graph_id,
-                    input={
-                        "execution_count": usage_count,
-                        "charge": "Execution Cost",
-                    },
-                    reason=f"Execution Cost for {usage_count} blocks of ex_id:{node_exec.graph_exec_id} g_id:{node_exec.graph_id}",
-                ),
-            )
-            total_cost += cost
+        # Get current balance
+        current_balance = db_client.get_credits(node_exec.user_id)
 
-        return total_cost, remaining_balance
+        if async_mode:
+            # Queue charges for background processing
+            from backend.executor.charge_manager import get_charge_manager
+
+            get_charge_manager().charge_async(
+                node_exec, execution_count, execution_stats, execution_stats_lock
+            )
+            # Return estimated cost and current balance
+            return total_cost, current_balance
+        else:
+            # Synchronous charging (fallback)
+            remaining_balance = current_balance
+
+            if block_cost > 0:
+                remaining_balance = db_client.spend_credits(
+                    user_id=node_exec.user_id,
+                    cost=block_cost,
+                    metadata=UsageTransactionMetadata(
+                        graph_exec_id=node_exec.graph_exec_id,
+                        graph_id=node_exec.graph_id,
+                        node_exec_id=node_exec.node_exec_id,
+                        node_id=node_exec.node_id,
+                        block_id=node_exec.block_id,
+                        block=block.name,
+                        input=matching_filter,
+                        reason=f"Ran block {node_exec.block_id} {block.name}",
+                    ),
+                )
+
+            if exec_cost > 0:
+                remaining_balance = db_client.spend_credits(
+                    user_id=node_exec.user_id,
+                    cost=exec_cost,
+                    metadata=UsageTransactionMetadata(
+                        graph_exec_id=node_exec.graph_exec_id,
+                        graph_id=node_exec.graph_id,
+                        input={
+                            "execution_count": usage_count,
+                            "charge": "Execution Cost",
+                        },
+                        reason=f"Execution Cost for {usage_count} blocks",
+                    ),
+                )
+
+            return total_cost, remaining_balance
 
     @time_measured
     def _on_graph_execution(
@@ -831,21 +852,23 @@ class ExecutionProcessor:
                     f"for node {queued_node_exec.node_id}",
                 )
 
-                # Charge usage (may raise) ------------------------------
+                # Charge usage (non-blocking mode) ----------------------
                 try:
                     cost, remaining_balance = self._charge_usage(
                         node_exec=queued_node_exec,
                         execution_count=increment_execution_count(graph_exec.user_id),
+                        async_mode=True,
+                        execution_stats=execution_stats,
+                        execution_stats_lock=execution_stats_lock,
                     )
-                    with execution_stats_lock:
-                        execution_stats.cost += cost
-                    # Check if we crossed the low balance threshold
-                    self._handle_low_balance(
-                        db_client=db_client,
-                        user_id=graph_exec.user_id,
-                        current_balance=remaining_balance,
-                        transaction_cost=cost,
-                    )
+                    # Validate sufficient balance before proceeding
+                    if remaining_balance < cost:
+                        raise InsufficientBalanceError(
+                            user_id=graph_exec.user_id,
+                            balance=remaining_balance,
+                            amount=cost,
+                            message="Insufficient balance for execution",
+                        )
 
                 except InsufficientBalanceError as balance_error:
                     error = balance_error  # Set error to trigger FAILED status
@@ -1587,6 +1610,24 @@ class ExecutionManager(AppProcess):
             logger.info(f"{prefix} ✅ Cache cleared")
         except Exception as e:
             logger.error(f"{prefix} ⚠️ Error clearing cache: {e}")
+
+        # Shutdown charge manager
+        try:
+            from backend.executor.charge_manager import get_charge_manager
+
+            get_charge_manager().shutdown()
+            logger.info(f"{prefix} ✅ Charge manager shutdown")
+        except Exception as e:
+            logger.error(f"{prefix} ⚠️ Error shutting down charge manager: {e}")
+
+        # Stop sync manager
+        try:
+            from backend.executor.sync_manager import get_sync_manager
+
+            get_sync_manager().stop()
+            logger.info(f"{prefix} ✅ Sync manager stopped")
+        except Exception as e:
+            logger.error(f"{prefix} ⚠️ Error stopping sync manager: {e}")
 
         # Disconnect the run execution consumer
         self._stop_message_consumers(
