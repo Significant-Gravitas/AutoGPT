@@ -1,5 +1,6 @@
 import {
   getV1ListGraphExecutionsResponse,
+  getV1ListGraphExecutionsResponse200,
   useGetV1ListGraphExecutionsInfinite,
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { GraphExecutionsPaginated } from "@/app/api/__generated__/models/graphExecutionsPaginated";
@@ -92,12 +93,14 @@ export const useAgentRunsInfinite = (graphID?: GraphID) => {
 
   const upsertAgentRun = (newAgentRun: GraphExecutionMeta) => {
     queryClient.setQueryData(
-      [queryKey, { page: 1, page_size: 20 }],
+      queryKey,
       (currentQueryData: typeof queryResults) => {
         if (!currentQueryData?.pages) return currentQueryData;
 
         const exists = currentQueryData.pages.some((page) => {
-          const response = page.data as GraphExecutionsPaginated;
+          if (page.status !== 200) return false;
+
+          const response = page.data;
           return response.executions.some((run) => run.id === newAgentRun.id);
         });
         if (exists) {
@@ -105,7 +108,8 @@ export const useAgentRunsInfinite = (graphID?: GraphID) => {
           return {
             ...currentQueryData,
             pages: currentQueryData.pages.map((page) => {
-              const response = page.data as GraphExecutionsPaginated;
+              if (page.status !== 200) return page;
+              const response = page.data;
               const executions = response.executions;
 
               const index = executions.findIndex(
@@ -122,24 +126,24 @@ export const useAgentRunsInfinite = (graphID?: GraphID) => {
                   ...response,
                   executions: newExecutions,
                 },
-              };
+              } satisfies getV1ListGraphExecutionsResponse;
             }),
           };
         }
 
         // If the run does not exist, we add it to the first page
-        const page = currentQueryData.pages[0];
-        const updatedExecutions = [
-          newAgentRun,
-          ...(page.data as GraphExecutionsPaginated).executions,
-        ];
+        const page = currentQueryData
+          .pages[0] as getV1ListGraphExecutionsResponse200 & {
+          headers: Headers;
+        };
+        const updatedExecutions = [newAgentRun, ...page.data.executions];
         const updatedPage = {
           ...page,
           data: {
             ...page.data,
             executions: updatedExecutions,
           },
-        };
+        } satisfies getV1ListGraphExecutionsResponse;
         const updatedPages = [updatedPage, ...currentQueryData.pages.slice(1)];
         return {
           ...currentQueryData,
