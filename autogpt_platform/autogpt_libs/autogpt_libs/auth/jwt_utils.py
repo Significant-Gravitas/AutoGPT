@@ -23,9 +23,9 @@ def get_jwt_payload(
     Extract and validate JWT payload from HTTP Authorization header.
 
     This is the core authentication function that handles:
-    - Disabled authentication mode
-    - Missing credentials
-    - JWT token parsing and validation
+    - Reading the `Authorization` header to obtain the JWT token
+    - Verifying the JWT token's signature
+    - Decoding the JWT token's payload
 
     :param credentials: HTTP Authorization credentials from bearer token
     :return: JWT payload dictionary

@@ -29,7 +29,7 @@ from backend.data.user import generate_unsubscribe_link
 from backend.notifications.email import EmailSender
 from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
-from backend.util.metrics import discord_send_alert
+from backend.util.metrics import DiscordChannel, discord_send_alert
 from backend.util.retry import continuous_retry
 from backend.util.service import (
     AppService,
@@ -382,8 +382,10 @@ class NotificationManager(AppService):
             }
 
     @expose
-    async def discord_system_alert(self, content: str):
-        await discord_send_alert(content)
+    async def discord_system_alert(
+        self, content: str, channel: DiscordChannel = DiscordChannel.PLATFORM
+    ):
+        await discord_send_alert(content, channel)
 
     async def _queue_scheduled_notification(self, event: SummaryParamsEventModel):
         """Queue a scheduled notification - exposed method for other services to call"""

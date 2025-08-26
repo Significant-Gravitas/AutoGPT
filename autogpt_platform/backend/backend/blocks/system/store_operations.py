@@ -288,7 +288,7 @@ class SearchStoreAgentsBlock(Block):
 
         result = await get_database_manager_async_client().get_store_agents(
             featured=False,
-            creator=None,
+            creators=None,
             sorted_by=sorted_by_map.get(sort_by, "most_popular"),
             search_query=query,
             category=category,
