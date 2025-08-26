@@ -407,6 +407,7 @@ export type LibraryAgent = {
   name: string;
   description: string;
   input_schema: GraphIOSchema;
+  output_schema: GraphIOSchema;
   credentials_input_schema: CredentialsInputSchema;
   new_output: boolean;
   can_access_graph: boolean;

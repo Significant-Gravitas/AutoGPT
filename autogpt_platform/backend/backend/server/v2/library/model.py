@@ -51,6 +51,7 @@ class LibraryAgent(pydantic.BaseModel):
     description: str
 
     input_schema: dict[str, Any]  # Should be BlockIOObjectSubSchema in frontend
+    output_schema: dict[str, Any]
     credentials_input_schema: dict[str, Any] | None = pydantic.Field(
         description="Input schema for credentials required by the agent",
     )
@@ -126,6 +127,7 @@ class LibraryAgent(pydantic.BaseModel):
             name=graph.name,
             description=graph.description,
             input_schema=graph.input_schema,
+            output_schema=graph.output_schema,
             credentials_input_schema=(
                 graph.credentials_input_schema if sub_graphs is not None else None
             ),
