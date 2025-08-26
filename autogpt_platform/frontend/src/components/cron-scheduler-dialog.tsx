@@ -5,6 +5,9 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { Separator } from "@/components/ui/separator";
 import { CronScheduler } from "@/components/cron-scheduler";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
+import { getTimezoneDisplayName } from "@/lib/timezone-utils";
+import { InfoIcon } from "lucide-react";
 
 type CronSchedulerDialogProps = {
   open: boolean;
@@ -23,6 +26,11 @@ export function CronSchedulerDialog({
   const [cronExpression, setCronExpression] = useState<string>("");
   const [scheduleName, setScheduleName] = useState<string>(defaultScheduleName);
 
+  // Get user's timezone
+  const { data: timezoneData } = useGetV1GetUserTimezone();
+  const userTimezone = timezoneData?.data?.timezone || "UTC";
+  const timezoneDisplay = getTimezoneDisplayName(userTimezone);
+
   // Reset state when dialog opens
   useEffect(() => {
     if (open) {
@@ -39,6 +47,17 @@ export function CronSchedulerDialog({
       });
       return;
     }
+
+    // Validate cron expression before proceeding
+    if (!cronExpression || cronExpression.trim() === "") {
+      toast({
+        variant: "destructive",
+        title: "Invalid schedule",
+        description: "Please enter a valid cron expression",
+      });
+      return;
+    }
+
     afterCronCreation(cronExpression, scheduleName);
     setOpen(false);
   };
@@ -59,6 +78,27 @@ export function CronSchedulerDialog({
             </div>
 
             <CronScheduler onCronExpressionChange={setCronExpression} />
+
+            {/* Timezone info */}
+            {userTimezone === "not-set" ? (
+              <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 p-3">
+                <InfoIcon className="h-4 w-4 text-amber-600" />
+                <p className="text-sm text-amber-800">
+                  No timezone set. Schedule will run in UTC.
+                  <a href="/profile/settings" className="ml-1 underline">
+                    Set your timezone
+                  </a>
+                </p>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 rounded-md bg-muted/50 p-3">
+                <InfoIcon className="h-4 w-4 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">
+                  Schedule will run in your timezone:{" "}
+                  <span className="font-medium">{timezoneDisplay}</span>
+                </p>
+              </div>
+            )}
           </div>
 
           <Separator className="my-4" />

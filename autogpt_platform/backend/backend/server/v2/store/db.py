@@ -17,8 +17,21 @@ from backend.data.graph import (
     get_sub_graphs,
 )
 from backend.data.includes import AGENT_GRAPH_INCLUDE
+from backend.data.notifications import (
+    AgentApprovalData,
+    AgentRejectionData,
+    NotificationEventModel,
+)
+from backend.notifications.notifications import queue_notification_async
+from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
+settings = Settings()
+
+
+# Constants for default admin values
+DEFAULT_ADMIN_NAME = "AutoGPT Admin"
+DEFAULT_ADMIN_EMAIL = "admin@autogpt.co"
 
 
 def sanitize_query(query: str | None) -> str | None:
@@ -1241,7 +1254,8 @@ async def review_store_submission(
                 where={"id": store_listing_version_id},
                 include={
                     "StoreListing": True,
-                    "AgentGraph": {"include": AGENT_GRAPH_INCLUDE},
+                    "AgentGraph": {"include": {**AGENT_GRAPH_INCLUDE, "User": True}},
+                    "Reviewer": True,
                 },
             )
         )
@@ -1347,6 +1361,89 @@ async def review_store_submission(
             raise backend.server.v2.store.exceptions.DatabaseError(
                 f"Failed to update store listing version {store_listing_version_id}"
             )
+
+        # Send email notification to the agent creator
+        if store_listing_version.AgentGraph and store_listing_version.AgentGraph.User:
+            agent_creator = store_listing_version.AgentGraph.User
+            reviewer = (
+                store_listing_version.Reviewer
+                if store_listing_version.Reviewer
+                else None
+            )
+
+            try:
+                base_url = (
+                    settings.config.frontend_base_url
+                    or settings.config.platform_base_url
+                )
+
+                if is_approved:
+                    store_agent = (
+                        await prisma.models.StoreAgent.prisma().find_first_or_raise(
+                            where={"storeListingVersionId": submission.id}
+                        )
+                    )
+
+                    # Send approval notification
+                    notification_data = AgentApprovalData(
+                        agent_name=submission.name,
+                        agent_id=submission.agentGraphId,
+                        agent_version=submission.agentGraphVersion,
+                        reviewer_name=(
+                            reviewer.name
+                            if reviewer and reviewer.name
+                            else DEFAULT_ADMIN_NAME
+                        ),
+                        reviewer_email=(
+                            reviewer.email if reviewer else DEFAULT_ADMIN_EMAIL
+                        ),
+                        comments=external_comments,
+                        reviewed_at=submission.reviewedAt
+                        or datetime.now(tz=timezone.utc),
+                        store_url=f"{base_url}/marketplace/agent/{store_agent.creator_username}/{store_agent.slug}",
+                    )
+
+                    notification_event = NotificationEventModel[AgentApprovalData](
+                        user_id=agent_creator.id,
+                        type=prisma.enums.NotificationType.AGENT_APPROVED,
+                        data=notification_data,
+                    )
+                else:
+                    # Send rejection notification
+                    notification_data = AgentRejectionData(
+                        agent_name=submission.name,
+                        agent_id=submission.agentGraphId,
+                        agent_version=submission.agentGraphVersion,
+                        reviewer_name=(
+                            reviewer.name
+                            if reviewer and reviewer.name
+                            else DEFAULT_ADMIN_NAME
+                        ),
+                        reviewer_email=(
+                            reviewer.email if reviewer else DEFAULT_ADMIN_EMAIL
+                        ),
+                        comments=external_comments,
+                        reviewed_at=submission.reviewedAt
+                        or datetime.now(tz=timezone.utc),
+                        resubmit_url=f"{base_url}/build?flowID={submission.agentGraphId}",
+                    )
+
+                    notification_event = NotificationEventModel[AgentRejectionData](
+                        user_id=agent_creator.id,
+                        type=prisma.enums.NotificationType.AGENT_REJECTED,
+                        data=notification_data,
+                    )
+
+                # Queue the notification for immediate sending
+                await queue_notification_async(notification_event)
+                logger.info(
+                    f"Queued {'approval' if is_approved else 'rejection'} notification for user {agent_creator.id} and agent {submission.name}"
+                )
+
+            except Exception as e:
+                logger.error(f"Failed to send email notification for agent review: {e}")
+                # Don't fail the review process if email sending fails
+                pass
 
         # Convert to Pydantic model for consistency
         return backend.server.v2.store.model.StoreSubmission(

@@ -880,6 +880,16 @@ export default function useAgentGraph(
     ) => {
       if (!savedAgent || isScheduling) return;
 
+      // Validate cron expression
+      if (!cronExpression || cronExpression.trim() === "") {
+        toast({
+          variant: "destructive",
+          title: "Invalid schedule",
+          description: "Please enter a valid cron expression",
+        });
+        return;
+      }
+
       setIsScheduling(true);
       try {
         await api.createGraphExecutionSchedule({
@@ -899,7 +909,7 @@ export default function useAgentGraph(
           router.push("/monitoring");
         }
       } catch (error) {
-        console.error(error);
+        console.error("Error scheduling agent:", error);
         toast({
           variant: "destructive",
           title: "Error scheduling agent",

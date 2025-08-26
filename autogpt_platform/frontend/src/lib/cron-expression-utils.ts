@@ -49,16 +49,19 @@ export function makeCronExpression(params: CronExpressionParams): string {
   if (frequency === "daily") return `${params.minute} ${params.hour} * * *`;
   if (frequency === "weekly") {
     const { minute, hour, days } = params;
+    if (days.length === 0) return ""; // Return empty string for invalid weekly schedule
     const weekDaysExpr = days.sort((a, b) => a - b).join(",");
     return `${minute} ${hour} * * ${weekDaysExpr}`;
   }
   if (frequency === "monthly") {
     const { minute, hour, days } = params;
+    if (days.length === 0) return ""; // Return empty string for invalid monthly schedule
     const monthDaysExpr = days.sort((a, b) => a - b).join(",");
     return `${minute} ${hour} ${monthDaysExpr} * *`;
   }
   if (frequency === "yearly") {
     const { minute, hour, months } = params;
+    if (months.length === 0) return ""; // Return empty string for invalid yearly schedule
     const monthList = months.sort((a, b) => a - b).join(",");
     return `${minute} ${hour} 1 ${monthList} *`;
   }
@@ -76,7 +79,10 @@ export function makeCronExpression(params: CronExpressionParams): string {
   return "";
 }
 
-export function humanizeCronExpression(cronExpression: string): string {
+export function humanizeCronExpression(
+  cronExpression: string,
+  userTimezone?: string,
+): string {
   const parts = cronExpression.trim().split(/\s+/);
   if (parts.length !== 5) {
     throw new Error("Invalid cron expression format.");
@@ -132,7 +138,7 @@ export function humanizeCronExpression(cronExpression: string): string {
     !minute.includes("/") &&
     !hour.includes("/")
   ) {
-    return `Every day at ${formatTime(hour, minute)}`;
+    return `Every day at ${formatTime(hour, minute, userTimezone)}`;
   }
 
   // Handle weekly (e.g., 30 14 * * 1,3,5)
@@ -144,7 +150,7 @@ export function humanizeCronExpression(cronExpression: string): string {
     !hour.includes("/")
   ) {
     const days = getDayNames(dayOfWeek);
-    return `Every ${days} at ${formatTime(hour, minute)}`;
+    return `Every ${days} at ${formatTime(hour, minute, userTimezone)}`;
   }
 
   // Handle monthly (e.g., 30 14 1,15 * *)
@@ -157,7 +163,7 @@ export function humanizeCronExpression(cronExpression: string): string {
   ) {
     const days = dayOfMonth.split(",").map(Number);
     const dayList = days.join(", ");
-    return `On day ${dayList} of every month at ${formatTime(hour, minute)}`;
+    return `On day ${dayList} of every month at ${formatTime(hour, minute, userTimezone)}`;
   }
 
   // Handle yearly (e.g., 30 14 1 1,6,12 *)
@@ -169,7 +175,7 @@ export function humanizeCronExpression(cronExpression: string): string {
     !hour.includes("/")
   ) {
     const months = getMonthNames(month);
-    return `Every year on the 1st day of ${months} at ${formatTime(hour, minute)}`;
+    return `Every year on the 1st day of ${months} at ${formatTime(hour, minute, userTimezone)}`;
   }
 
   // Handle custom minute intervals with other fields as * (e.g., every N minutes)
@@ -205,13 +211,41 @@ export function humanizeCronExpression(cronExpression: string): string {
     !hour.includes("/")
   ) {
     const interval = dayOfMonth.substring(2);
-    return `Every ${interval} days at ${formatTime(hour, minute)}`;
+    return `Every ${interval} days at ${formatTime(hour, minute, userTimezone)}`;
   }
 
   return `Cron Expression: ${cronExpression}`;
 }
 
-function formatTime(hour: string, minute: string): string {
+function formatTime(
+  hour: string,
+  minute: string,
+  userTimezone?: string,
+): string {
+  // Convert from UTC cron time to user timezone for display consistency with next_run_time
+  if (userTimezone && userTimezone !== "UTC" && userTimezone !== "not-set") {
+    try {
+      // Create a date in UTC with the cron hour/minute (cron expressions are stored in UTC)
+      const utcDate = new Date();
+      utcDate.setUTCHours(parseInt(hour), parseInt(minute), 0, 0);
+
+      // Format in user's timezone to match next_run_time display
+      const formatter = new Intl.DateTimeFormat("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+        timeZone: userTimezone,
+      });
+
+      return formatter.format(utcDate);
+    } catch {
+      // Fallback to original formatting if timezone conversion fails
+      const formattedHour = padZero(hour);
+      const formattedMinute = padZero(minute);
+      return `${formattedHour}:${formattedMinute}`;
+    }
+  }
+
   const formattedHour = padZero(hour);
   const formattedMinute = padZero(minute);
   return `${formattedHour}:${formattedMinute}`;
