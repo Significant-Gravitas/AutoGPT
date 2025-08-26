@@ -98,8 +98,23 @@ function createResponse(
   }
 }
 
-function createErrorResponse(error: unknown): NextResponse {
-  console.error("API proxy error:", error);
+function createErrorResponse(
+  error: unknown,
+  path: string,
+  method: string,
+): NextResponse {
+  if (
+    error &&
+    typeof error === "object" &&
+    "status" in error &&
+    [401, 403].includes(error.status as number)
+  ) {
+    // Log this since it indicates a potential frontend bug
+    console.warn(
+      `Authentication error in API proxy for ${method} ${path}:`,
+      "message" in error ? error.message : error,
+    );
+  }
 
   // If it's our custom ApiError, preserve the original status and response
   if (error instanceof ApiError) {
@@ -147,7 +162,6 @@ async function handler(
   const contentType = req.headers.get("Content-Type");
 
   let responseBody: any;
-  const responseStatus: number = 200;
   const responseHeaders: Record<string, string> = {
     "Content-Type": "application/json",
   };
@@ -166,9 +180,13 @@ async function handler(
       return createUnsupportedContentTypeResponse(contentType);
     }
 
-    return createResponse(responseBody, responseStatus, responseHeaders);
+    return createResponse(responseBody, 200, responseHeaders);
   } catch (error) {
-    return createErrorResponse(error);
+    return createErrorResponse(
+      error,
+      path.map((s) => `/${s}`).join(""),
+      method,
+    );
   }
 }
 
