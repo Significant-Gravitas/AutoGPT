@@ -407,6 +407,7 @@ export type LibraryAgent = {
   name: string;
   description: string;
   input_schema: GraphIOSchema;
+  output_schema: GraphIOSchema;
   credentials_input_schema: CredentialsInputSchema;
   new_output: boolean;
   can_access_graph: boolean;
@@ -571,7 +572,9 @@ export type NotificationType =
   | "CONTINUOUS_AGENT_ERROR"
   | "DAILY_SUMMARY"
   | "WEEKLY_SUMMARY"
-  | "MONTHLY_SUMMARY";
+  | "MONTHLY_SUMMARY"
+  | "AGENT_APPROVED"
+  | "AGENT_REJECTED";
 
 // Mirror of backend/backend/data/notifications.py:NotificationPreference
 export type NotificationPreferenceDTO = {
