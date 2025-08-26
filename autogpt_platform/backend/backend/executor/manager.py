@@ -5,13 +5,13 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
-from contextlib import asynccontextmanager
+
+# from contextlib import asynccontextmanager  # No longer needed with local locks
 from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
 
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
 from pydantic import JsonValue
-from redis.asyncio.lock import Lock as RedisLock
 
 from backend.blocks.io import AgentOutputBlock
 from backend.data.model import GraphExecutionStats, NodeExecutionStats
@@ -29,6 +29,9 @@ from backend.executor.activity_status_generator import (
 from backend.executor.utils import LogMetadata
 from backend.notifications.notifications import queue_notification
 from backend.util.exceptions import InsufficientBalanceError, ModerationError
+
+# from redis.asyncio.lock import Lock as RedisLock  # No longer needed with local locks
+
 
 if TYPE_CHECKING:
     from backend.executor import DatabaseManagerClient, DatabaseManagerAsyncClient
@@ -55,6 +58,11 @@ from backend.data.execution import (
     UserContext,
 )
 from backend.data.graph import Link, Node
+from backend.executor.cached_database_manager import (
+    create_cached_db_async_client,
+    create_cached_db_client,
+)
+from backend.executor.local_cache import cleanup_executor_cache, get_executor_cache
 from backend.executor.utils import (
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
     GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
@@ -287,7 +295,10 @@ async def _enqueue_next_nodes(
         # Multiple node can register the same next node, we need this to be atomic
         # To avoid same execution to be enqueued multiple times,
         # Or the same input to be consumed multiple times.
-        async with synchronized(f"upsert_input-{next_node_id}-{graph_exec_id}"):
+        # Use local cache's thread-based synchronization instead of Redis
+        async with get_executor_cache().local_synchronized(
+            f"upsert_input-{next_node_id}-{graph_exec_id}"
+        ):
             # Add output data to the earliest incomplete execution, or create a new one.
             next_node_exec_id, next_node_input = await db_client.upsert_execution_input(
                 node_id=next_node_id,
@@ -576,7 +587,13 @@ class ExecutionProcessor:
         )
         self.node_execution_thread.start()
         self.node_evaluation_thread.start()
-        logger.info(f"[GraphExecutor] {self.tid} started")
+
+        # Initialize local cache with original database client
+        from backend.executor.local_cache import initialize_executor_cache
+
+        initialize_executor_cache(get_database_manager_client())
+
+        logger.info(f"[GraphExecutor] {self.tid} started with local cache")
 
     @error_logged(swallow=False)
     def on_graph_execution(
@@ -608,6 +625,15 @@ class ExecutionProcessor:
         if exec_meta.status == ExecutionStatus.QUEUED:
             log_metadata.info(f"⚙️ Starting graph execution #{graph_exec.graph_exec_id}")
             exec_meta.status = ExecutionStatus.RUNNING
+
+            # Populate local cache with existing node executions for hot path optimization
+            try:
+                get_executor_cache().populate_cache_for_execution(
+                    graph_exec.graph_exec_id
+                )
+            except Exception as e:
+                log_metadata.error(f"Failed to populate cache for execution: {e}")
+
             send_execution_update(
                 db_client.update_graph_execution_start_time(graph_exec.graph_exec_id)
             )
@@ -683,57 +709,119 @@ class ExecutionProcessor:
                 stats=exec_stats,
             )
 
-    def _charge_usage(
+    def _charge_usage_blocking(
         self,
         node_exec: NodeExecutionEntry,
         execution_count: int,
     ) -> tuple[int, int]:
-        total_cost = 0
-        remaining_balance = 0
+        """
+        Blocking version for initial balance check only.
+        Returns estimated cost and current balance.
+        """
         db_client = get_db_client()
         block = get_block(node_exec.block_id)
         if not block:
             logger.error(f"Block {node_exec.block_id} not found.")
-            return total_cost, 0
+            return 0, 0
 
-        cost, matching_filter = block_usage_cost(
-            block=block, input_data=node_exec.inputs
-        )
-        if cost > 0:
-            remaining_balance = db_client.spend_credits(
-                user_id=node_exec.user_id,
-                cost=cost,
-                metadata=UsageTransactionMetadata(
-                    graph_exec_id=node_exec.graph_exec_id,
-                    graph_id=node_exec.graph_id,
-                    node_exec_id=node_exec.node_exec_id,
-                    node_id=node_exec.node_id,
-                    block_id=node_exec.block_id,
-                    block=block.name,
-                    input=matching_filter,
-                    reason=f"Ran block {node_exec.block_id} {block.name}",
-                ),
+        # Calculate costs but don't charge yet
+        block_cost, _ = block_usage_cost(block=block, input_data=node_exec.inputs)
+        execution_cost, _ = execution_usage_cost(execution_count)
+        total_estimated_cost = block_cost + execution_cost
+
+        # Get current balance for validation
+        current_balance = db_client.get_credits(node_exec.user_id)
+
+        return total_estimated_cost, current_balance
+
+    def _charge_usage_async(
+        self,
+        node_exec: NodeExecutionEntry,
+        execution_count: int,
+        execution_stats: GraphExecutionStats,
+        execution_stats_lock: threading.Lock,
+    ):
+        """
+        Non-blocking version that queues credit charges and updates stats eventually.
+        This runs in background and doesn't block the execution flow.
+        """
+
+        def _do_charge():
+            try:
+                total_cost = 0
+                db_client = get_db_client()
+                block = get_block(node_exec.block_id)
+                if not block:
+                    logger.error(f"Block {node_exec.block_id} not found.")
+                    return
+
+                # Charge for block usage
+                cost, matching_filter = block_usage_cost(
+                    block=block, input_data=node_exec.inputs
+                )
+                if cost > 0:
+                    db_client.spend_credits(
+                        user_id=node_exec.user_id,
+                        cost=cost,
+                        metadata=UsageTransactionMetadata(
+                            graph_exec_id=node_exec.graph_exec_id,
+                            graph_id=node_exec.graph_id,
+                            node_exec_id=node_exec.node_exec_id,
+                            node_id=node_exec.node_id,
+                            block_id=node_exec.block_id,
+                            block=block.name,
+                            input=matching_filter,
+                            reason=f"Ran block {node_exec.block_id} {block.name}",
+                        ),
+                    )
+                    total_cost += cost
+
+                # Charge for execution cost
+                cost, usage_count = execution_usage_cost(execution_count)
+                if cost > 0:
+                    remaining_balance = db_client.spend_credits(
+                        user_id=node_exec.user_id,
+                        cost=cost,
+                        metadata=UsageTransactionMetadata(
+                            graph_exec_id=node_exec.graph_exec_id,
+                            graph_id=node_exec.graph_id,
+                            input={
+                                "execution_count": usage_count,
+                                "charge": "Execution Cost",
+                            },
+                            reason=f"Execution Cost for {usage_count} blocks of ex_id:{node_exec.graph_exec_id} g_id:{node_exec.graph_id}",
+                        ),
+                    )
+
+                    # Check for low balance after charging
+                    self._handle_low_balance(
+                        db_client=db_client,
+                        user_id=node_exec.user_id,
+                        current_balance=remaining_balance,
+                        transaction_cost=cost,
+                    )
+
+                # Update execution stats eventually (non-blocking)
+                with execution_stats_lock:
+                    execution_stats.cost += total_cost
+
+                logger.debug(
+                    f"Async charge completed: ${total_cost/100:.2f} for {node_exec.node_exec_id}"
+                )
+
+            except Exception as e:
+                logger.error(f"Async charge failed for {node_exec.node_exec_id}: {e}")
+                # Could implement retry logic here
+
+        # Submit to thread pool for background processing
+        import concurrent.futures
+
+        if not hasattr(self, "_charge_executor"):
+            self._charge_executor = concurrent.futures.ThreadPoolExecutor(
+                max_workers=2, thread_name_prefix="charge-worker"
             )
-            total_cost += cost
 
-        cost, usage_count = execution_usage_cost(execution_count)
-        if cost > 0:
-            remaining_balance = db_client.spend_credits(
-                user_id=node_exec.user_id,
-                cost=cost,
-                metadata=UsageTransactionMetadata(
-                    graph_exec_id=node_exec.graph_exec_id,
-                    graph_id=node_exec.graph_id,
-                    input={
-                        "execution_count": usage_count,
-                        "charge": "Execution Cost",
-                    },
-                    reason=f"Execution Cost for {usage_count} blocks of ex_id:{node_exec.graph_exec_id} g_id:{node_exec.graph_id}",
-                ),
-            )
-            total_cost += cost
-
-        return total_cost, remaining_balance
+        self._charge_executor.submit(_do_charge)
 
     @time_measured
     def _on_graph_execution(
@@ -814,21 +902,35 @@ class ExecutionProcessor:
                     f"for node {queued_node_exec.node_id}",
                 )
 
-                # Charge usage (may raise) ------------------------------
+                # Quick balance validation (blocking) then async charge (non-blocking) ----
                 try:
-                    cost, remaining_balance = self._charge_usage(
+                    execution_count = increment_execution_count(
+                        graph_exec.user_id, graph_exec.graph_exec_id
+                    )
+
+                    # Quick balance check - blocks only to validate user has funds
+                    estimated_cost, current_balance = self._charge_usage_blocking(
                         node_exec=queued_node_exec,
-                        execution_count=increment_execution_count(graph_exec.user_id),
+                        execution_count=execution_count,
                     )
-                    with execution_stats_lock:
-                        execution_stats.cost += cost
-                    # Check if we crossed the low balance threshold
-                    self._handle_low_balance(
-                        db_client=db_client,
-                        user_id=graph_exec.user_id,
-                        current_balance=remaining_balance,
-                        transaction_cost=cost,
+
+                    # Validate sufficient balance before proceeding
+                    if current_balance < estimated_cost:
+                        raise InsufficientBalanceError(
+                            user_id=graph_exec.user_id,
+                            balance=current_balance,
+                            amount=estimated_cost,
+                            message=f"Insufficient balance for execution: {current_balance} < {estimated_cost}",
+                        )
+
+                    # Queue actual charging to run in background (non-blocking)
+                    self._charge_usage_async(
+                        node_exec=queued_node_exec,
+                        execution_count=execution_count,
+                        execution_stats=execution_stats,
+                        execution_stats_lock=execution_stats_lock,
                     )
+
                 except InsufficientBalanceError as balance_error:
                     error = balance_error  # Set error to trigger FAILED status
                     node_exec_id = queued_node_exec.node_exec_id
@@ -1563,6 +1665,23 @@ class ExecutionManager(AppProcess):
         except Exception as e:
             logger.error(f"{prefix} ⚠️ Error during executor shutdown: {type(e)} {e}")
 
+        # Cleanup local cache
+        try:
+            cleanup_executor_cache()
+            logger.info(f"{prefix} ✅ Local cache cleanup completed")
+        except Exception as e:
+            logger.error(f"{prefix} ⚠️ Error during cache cleanup: {type(e)} {e}")
+
+        # Cleanup charge executor
+        try:
+            if hasattr(self, "_charge_executor"):
+                self._charge_executor.shutdown(wait=True)
+                logger.info(f"{prefix} ✅ Charge executor cleanup completed")
+        except Exception as e:
+            logger.error(
+                f"{prefix} ⚠️ Error during charge executor cleanup: {type(e)} {e}"
+            )
+
         # Disconnect the run execution consumer
         self._stop_message_consumers(
             self.run_thread,
@@ -1582,11 +1701,15 @@ class ExecutionManager(AppProcess):
 
 
 def get_db_client() -> "DatabaseManagerClient":
-    return get_database_manager_client()
+    # Return cached client for non-blocking operations
+    original_client = get_database_manager_client()
+    return create_cached_db_client(original_client)
 
 
 def get_db_async_client() -> "DatabaseManagerAsyncClient":
-    return get_database_manager_async_client()
+    # Return cached async client for non-blocking operations
+    original_client = get_database_manager_async_client()
+    return create_cached_db_async_client(original_client)
 
 
 @func_retry
@@ -1667,23 +1790,26 @@ def update_graph_execution_state(
     return graph_update
 
 
-@asynccontextmanager
-async def synchronized(key: str, timeout: int = 60):
-    r = await redis.get_redis_async()
-    lock: RedisLock = r.lock(f"lock:{key}", timeout=timeout)
-    try:
-        await lock.acquire()
-        yield
-    finally:
-        if await lock.locked() and await lock.owned():
-            await lock.release()
+# Redis-based synchronized function replaced by local cache thread locks
+# @asynccontextmanager
+# async def synchronized(key: str, timeout: int = 60):
+#     r = await redis.get_redis_async()
+#     lock: RedisLock = r.lock(f"lock:{key}", timeout=timeout)
+#     try:
+#         await lock.acquire()
+#         yield
+#     finally:
+#         if await lock.locked() and await lock.owned():
+#             await lock.release()
 
 
-def increment_execution_count(user_id: str) -> int:
+def increment_execution_count(user_id: str, graph_exec_id: Optional[str] = None) -> int:
     """
     Increment the execution count for a given user,
     this will be used to charge the user for the execution cost.
+    Uses Redis for global counting.
     """
+    # Use Redis for execution counting (kept as suggested)
     r = redis.get_redis()
     k = f"uec:{user_id}"  # User Execution Count global key
     counter = cast(int, r.incr(k))
