@@ -17,3 +17,13 @@ export function formatTimeAgo(dateStr: string): string {
   const diffDays = Math.floor(diffHours / HOURS_PER_DAY);
   return `${diffDays}d ago`;
 }
+
+export function formatDate(date: Date) {
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(date));
+}
