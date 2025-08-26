@@ -215,9 +215,7 @@ class StagehandActBlock(Block):
         )
         message: str = SchemaField(description="Details about the action’s execution.")
         action: str = SchemaField(description="Action performed")
-        error: Optional[str] = SchemaField(
-            description="Error message if the action failed"
-        )
+
 
     def __init__(self):
         super().__init__(
