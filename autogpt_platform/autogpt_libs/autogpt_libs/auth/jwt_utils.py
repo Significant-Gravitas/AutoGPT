@@ -5,7 +5,7 @@ import jwt
 from fastapi import HTTPException, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from .config import settings
+from .config import get_settings
 from .models import User
 
 logger = logging.getLogger(__name__)
@@ -50,6 +50,7 @@ def parse_jwt_token(token: str) -> dict[str, Any]:
     :return: The decoded payload
     :raises ValueError: If the token is invalid or expired
     """
+    settings = get_settings()
     try:
         payload = jwt.decode(
             token,
