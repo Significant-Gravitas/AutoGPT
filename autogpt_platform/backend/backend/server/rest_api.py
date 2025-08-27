@@ -8,7 +8,8 @@ import fastapi.responses
 import pydantic
 import starlette.middleware.cors
 import uvicorn
-from autogpt_libs.auth.helpers import add_auth_responses_to_openapi
+from autogpt_libs.auth import add_auth_responses_to_openapi
+from autogpt_libs.auth import verify_settings as verify_auth_settings
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 
@@ -61,6 +62,8 @@ def launch_darkly_context():
 
 @contextlib.asynccontextmanager
 async def lifespan_context(app: fastapi.FastAPI):
+    verify_auth_settings()
+
     await backend.data.db.connect()
 
     # Ensure SDK auto-registration is patched before initializing blocks

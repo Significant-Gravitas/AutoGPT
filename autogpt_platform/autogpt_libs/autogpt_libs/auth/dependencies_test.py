@@ -6,11 +6,10 @@ Tests the full authentication flow from HTTP requests to user validation.
 import os
 
 import pytest
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Security
 from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 
-from autogpt_libs.auth.config import Settings
 from autogpt_libs.auth.dependencies import (
     get_user_id,
     requires_admin_user,
@@ -28,15 +27,15 @@ class TestAuthDependencies:
         app = FastAPI()
 
         @app.get("/user")
-        def get_user_endpoint(user: User = Depends(requires_user)):
+        def get_user_endpoint(user: User = Security(requires_user)):
             return {"user_id": user.user_id, "role": user.role}
 
         @app.get("/admin")
-        def get_admin_endpoint(user: User = Depends(requires_admin_user)):
+        def get_admin_endpoint(user: User = Security(requires_admin_user)):
             return {"user_id": user.user_id, "role": user.role}
 
         @app.get("/user-id")
-        def get_user_id_endpoint(user_id: str = Depends(get_user_id)):
+        def get_user_id_endpoint(user_id: str = Security(get_user_id)):
             return {"user_id": user_id}
 
         return app
@@ -153,91 +152,71 @@ class TestAuthDependencies:
 class TestAuthDependenciesIntegration:
     """Integration tests for auth dependencies with FastAPI."""
 
+    acceptable_jwt_secret = "test-secret-with-proper-length-123456"
+
     @pytest.fixture
-    def create_token(self):
+    def create_token(self, mocker: MockerFixture):
         """Helper to create JWT tokens."""
         import jwt
 
-        def _create_token(payload, secret="test-secret-with-proper-length-123456"):
+        mocker.patch.dict(
+            os.environ,
+            {"JWT_VERIFY_KEY": self.acceptable_jwt_secret},
+            clear=True,
+        )
+
+        def _create_token(payload, secret=self.acceptable_jwt_secret):
             return jwt.encode(payload, secret, algorithm="HS256")
 
         return _create_token
 
-    def test_endpoint_auth_enabled_no_token(self, mocker: MockerFixture):
+    def test_endpoint_auth_enabled_no_token(self):
         """Test endpoints require token when auth is enabled."""
-        mocker.patch.dict(
-            os.environ,
-            {"JWT_VERIFY_KEY": "test-secret-with-proper-length-123456"},
-            clear=True,
-        )
         app = FastAPI()
 
         @app.get("/test")
-        def test_endpoint(user: User = Depends(requires_user)):
+        def test_endpoint(user: User = Security(requires_user)):
             return {"user_id": user.user_id}
 
-        from autogpt_libs.auth import jwt_utils
-
-        mocker.patch.object(jwt_utils, "settings", Settings())
         client = TestClient(app)
 
         # Should fail without auth header
         response = client.get("/test")
         assert response.status_code == 401
 
-    def test_endpoint_with_valid_token(self, create_token, mocker: MockerFixture):
+    def test_endpoint_with_valid_token(self, create_token):
         """Test endpoint with valid JWT token."""
-        secret = "test-secret-with-proper-length-123456"
-        mocker.patch.dict(
-            os.environ,
-            {"JWT_VERIFY_KEY": secret},
-            clear=True,
-        )
         app = FastAPI()
 
         @app.get("/test")
-        def test_endpoint(user: User = Depends(requires_user)):
+        def test_endpoint(user: User = Security(requires_user)):
             return {"user_id": user.user_id, "role": user.role}
 
-        from autogpt_libs.auth import jwt_utils
-
-        mocker.patch.object(jwt_utils, "settings", Settings())
         client = TestClient(app)
 
         token = create_token(
             {"sub": "test-user", "role": "user", "aud": "authenticated"},
-            secret=secret,
+            secret=self.acceptable_jwt_secret,
         )
 
         response = client.get("/test", headers={"Authorization": f"Bearer {token}"})
         assert response.status_code == 200
         assert response.json()["user_id"] == "test-user"
 
-    def test_admin_endpoint_requires_admin_role(
-        self, create_token, mocker: MockerFixture
-    ):
+    def test_admin_endpoint_requires_admin_role(self, create_token):
         """Test admin endpoint rejects non-admin users."""
-        secret = "test-secret-with-proper-length-123456"
-        mocker.patch.dict(
-            os.environ,
-            {"JWT_VERIFY_KEY": secret},
-            clear=True,
-        )
         app = FastAPI()
 
         @app.get("/admin")
-        def admin_endpoint(user: User = Depends(requires_admin_user)):
+        def admin_endpoint(user: User = Security(requires_admin_user)):
             return {"user_id": user.user_id}
 
-        from autogpt_libs.auth import jwt_utils
-
-        mocker.patch.object(jwt_utils, "settings", Settings())
         client = TestClient(app)
 
         # Regular user token
         user_token = create_token(
             {"sub": "regular-user", "role": "user", "aud": "authenticated"},
-            secret=secret,
+            secret=self.acceptable_jwt_secret,
         )
 
         response = client.get(
@@ -248,7 +227,7 @@ class TestAuthDependenciesIntegration:
         # Admin token
         admin_token = create_token(
             {"sub": "admin-user", "role": "admin", "aud": "authenticated"},
-            secret=secret,
+            secret=self.acceptable_jwt_secret,
         )
 
         response = client.get(
@@ -336,19 +315,9 @@ class TestAuthDependenciesEdgeCases:
         ],
     )
     def test_dependency_error_cases(
-        self, mocker: MockerFixture, payload, expected_error: str, admin_only: bool
+        self, payload, expected_error: str, admin_only: bool
     ):
         """Test that errors propagate correctly through dependencies."""
-        # Enable auth for this test
-        mocker.patch.dict(
-            os.environ,
-            {"JWT_VERIFY_KEY": "test-secret-123456"},
-            clear=True,
-        )
-        from autogpt_libs.auth import jwt_utils
-
-        mocker.patch.object(jwt_utils, "settings", Settings())
-
         # Import verify_user to test it directly since dependencies use FastAPI Security
         from autogpt_libs.auth.jwt_utils import verify_user
 
@@ -356,18 +325,8 @@ class TestAuthDependenciesEdgeCases:
             verify_user(payload, admin_only=admin_only)
         assert expected_error in exc_info.value.detail
 
-    def test_dependency_valid_user(self, mocker: MockerFixture):
+    def test_dependency_valid_user(self):
         """Test valid user case for dependency."""
-        # Enable auth for this test
-        mocker.patch.dict(
-            os.environ,
-            {"JWT_VERIFY_KEY": "test-secret-123456"},
-            clear=True,
-        )
-        from autogpt_libs.auth import jwt_utils
-
-        mocker.patch.object(jwt_utils, "settings", Settings())
-
         # Import verify_user to test it directly since dependencies use FastAPI Security
         from autogpt_libs.auth.jwt_utils import verify_user
 

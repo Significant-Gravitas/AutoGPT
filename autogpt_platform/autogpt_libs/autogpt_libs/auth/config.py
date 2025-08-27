@@ -27,6 +27,9 @@ class Settings:
         ).strip()
         self.JWT_ALGORITHM: str = os.getenv("JWT_SIGN_ALGORITHM", "HS256").strip()
 
+        self.validate()
+
+    def validate(self):
         if not self.JWT_VERIFY_KEY:
             raise AuthConfigError(
                 "JWT_VERIFY_KEY must be set. "
@@ -65,4 +68,23 @@ class Settings:
             )
 
 
-settings = Settings()
+_settings: Settings = None  # type: ignore
+
+
+def get_settings() -> Settings:
+    global _settings
+
+    if not _settings:
+        _settings = Settings()
+
+    return _settings
+
+
+def verify_settings() -> None:
+    global _settings
+
+    if not _settings:
+        _settings = Settings()  # calls validation indirectly
+        return
+
+    _settings.validate()
