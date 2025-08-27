@@ -82,7 +82,7 @@ async def generate_agent_image_v2(graph: BaseGraph | AgentGraph) -> io.BytesIO:
                 type=ideogram_credentials.type,
             ),
             prompt=prompt,
-            ideogram_model_name=IdeogramModelName.V2,
+            ideogram_model_name=IdeogramModelName.V3,
             aspect_ratio=AspectRatio.ASPECT_16_9,
             magic_prompt_option=MagicPromptOption.OFF,
             style_type=StyleType.AUTO,
