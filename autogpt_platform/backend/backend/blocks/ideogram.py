@@ -338,9 +338,12 @@ class IdeogramModelBlock(Block):
                 "model": model_name,
                 "aspect_ratio": aspect_ratio,
                 "magic_prompt_option": magic_prompt_option,
-                "style_type": style_type,
             }
         }
+
+        # Only add style_type for V2, V2_TURBO, and V3 models (V1 models don't support it)
+        if model_name in ["V_2", "V_2_TURBO", "V_3"]:
+            data["image_request"]["style_type"] = style_type
 
         if seed is not None:
             data["image_request"]["seed"] = seed
@@ -348,12 +351,14 @@ class IdeogramModelBlock(Block):
         if negative_prompt:
             data["image_request"]["negative_prompt"] = negative_prompt
 
-        if color_palette_name != "NONE":
-            data["color_palette"] = {"name": color_palette_name}
-        elif custom_colors:
-            data["color_palette"] = {
-                "members": [{"color_hex": color} for color in custom_colors]
-            }
+        # Only add color palette for V2 and V2_TURBO models (V1 models don't support it)
+        if model_name in ["V_2", "V_2_TURBO"]:
+            if color_palette_name != "NONE":
+                data["color_palette"] = {"name": color_palette_name}
+            elif custom_colors:
+                data["color_palette"] = {
+                    "members": [{"color_hex": color} for color in custom_colors]
+                }
 
         try:
             response = await Requests().post(url, headers=headers, json=data)
