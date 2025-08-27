@@ -1,7 +1,11 @@
 "use client";
-import { useGetV1GetNotificationPreferences } from "@/app/api/__generated__/endpoints/auth/auth";
+import {
+  useGetV1GetNotificationPreferences,
+  useGetV1GetUserTimezone,
+} from "@/app/api/__generated__/endpoints/auth/auth";
 import { SettingsForm } from "@/app/(platform)/profile/(user)/settings/components/SettingsForm/SettingsForm";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useTimezoneDetection } from "@/hooks/useTimezoneDetection";
 import * as React from "react";
 import SettingsLoading from "./loading";
 import { redirect } from "next/navigation";
@@ -10,8 +14,8 @@ import { Text } from "@/components/atoms/Text/Text";
 export default function SettingsPage() {
   const {
     data: preferences,
-    isError,
-    isLoading,
+    isError: preferencesError,
+    isLoading: preferencesLoading,
   } = useGetV1GetNotificationPreferences({
     query: {
       select: (res) => {
@@ -20,9 +24,24 @@ export default function SettingsPage() {
     },
   });
 
+  const { data: timezoneData, isLoading: timezoneLoading } =
+    useGetV1GetUserTimezone({
+      query: {
+        select: (res) => {
+          return res.data;
+        },
+      },
+    });
+
   const { user, isUserLoading } = useSupabase();
 
-  if (isLoading || isUserLoading) {
+  // Auto-detect timezone if it's not set
+  const timezone = timezoneData?.timezone
+    ? String(timezoneData.timezone)
+    : "not-set";
+  useTimezoneDetection(timezone);
+
+  if (preferencesLoading || isUserLoading || timezoneLoading) {
     return <SettingsLoading />;
   }
 
@@ -30,7 +49,7 @@ export default function SettingsPage() {
     redirect("/login");
   }
 
-  if (isError || !preferences || !preferences.preferences) {
+  if (preferencesError || !preferences || !preferences.preferences) {
     return "Errror..."; // TODO: Will use a Error reusable components from Block Menu redesign
   }
 
@@ -42,7 +61,7 @@ export default function SettingsPage() {
           Manage your account settings and preferences.
         </Text>
       </div>
-      <SettingsForm preferences={preferences} user={user} />
+      <SettingsForm preferences={preferences} user={user} timezone={timezone} />
     </div>
   );
 }

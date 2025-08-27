@@ -20,6 +20,8 @@ import backend.server.routers.postmark.postmark
 import backend.server.routers.v1
 import backend.server.v2.admin.credit_admin_routes
 import backend.server.v2.admin.store_admin_routes
+import backend.server.v2.builder
+import backend.server.v2.builder.routes
 import backend.server.v2.library.db
 import backend.server.v2.library.model
 import backend.server.v2.library.routes
@@ -194,6 +196,9 @@ app.add_exception_handler(Exception, handle_internal_http_error(500))
 app.include_router(backend.server.routers.v1.v1_router, tags=["v1"], prefix="/api")
 app.include_router(
     backend.server.v2.store.routes.router, tags=["v2"], prefix="/api/store"
+)
+app.include_router(
+    backend.server.v2.builder.routes.router, tags=["v2"], prefix="/api/builder"
 )
 app.include_router(
     backend.server.v2.admin.store_admin_routes.router,

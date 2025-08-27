@@ -250,7 +250,7 @@ export type GraphExecutionMeta = {
   user_id: UserID;
   graph_id: GraphID;
   graph_version: number;
-  preset_id?: LibraryAgentPresetID;
+  preset_id: LibraryAgentPresetID | null;
   status:
     | "QUEUED"
     | "RUNNING"
@@ -260,16 +260,17 @@ export type GraphExecutionMeta = {
     | "INCOMPLETE";
   started_at: Date;
   ended_at: Date;
-  stats?: {
-    error?: string;
+  stats: {
+    error: string | null;
     cost: number;
     duration: number;
     duration_cpu_only: number;
     node_exec_time: number;
     node_exec_time_cpu_only: number;
     node_exec_count: number;
-    activity_status?: string;
-  };
+    activity_status: string | null;
+    [key: string]: any;
+  } | null;
 };
 
 export type GraphExecutionID = Brand<string, "GraphExecutionID">;
@@ -279,6 +280,11 @@ export type GraphExecution = GraphExecutionMeta & {
   inputs: Record<string, any>;
   outputs: Record<string, Array<any>>;
   node_executions?: NodeExecutionResult[];
+};
+
+export type GraphExecutionsResponse = {
+  executions: GraphExecutionMeta[];
+  pagination: Pagination;
 };
 
 /* Mirror of backend/data/graph.py:GraphMeta */
@@ -401,6 +407,7 @@ export type LibraryAgent = {
   name: string;
   description: string;
   input_schema: GraphIOSchema;
+  output_schema: GraphIOSchema;
   credentials_input_schema: CredentialsInputSchema;
   new_output: boolean;
   can_access_graph: boolean;
@@ -433,12 +440,7 @@ export enum AgentStatus {
 
 export type LibraryAgentResponse = {
   agents: LibraryAgent[];
-  pagination: {
-    current_page: number;
-    page_size: number;
-    total_items: number;
-    total_pages: number;
-  };
+  pagination: Pagination;
 };
 
 export type LibraryAgentPreset = {
@@ -458,11 +460,7 @@ export type LibraryAgentPresetID = Brand<string, "LibraryAgentPresetID">;
 
 export type LibraryAgentPresetResponse = {
   presets: LibraryAgentPreset[];
-  pagination: {
-    total: number;
-    page: number;
-    size: number;
-  };
+  pagination: Pagination;
 };
 
 export type LibraryAgentPresetCreatable = Omit<
@@ -574,7 +572,9 @@ export type NotificationType =
   | "CONTINUOUS_AGENT_ERROR"
   | "DAILY_SUMMARY"
   | "WEEKLY_SUMMARY"
-  | "MONTHLY_SUMMARY";
+  | "MONTHLY_SUMMARY"
+  | "AGENT_APPROVED"
+  | "AGENT_REJECTED";
 
 // Mirror of backend/backend/data/notifications.py:NotificationPreference
 export type NotificationPreferenceDTO = {

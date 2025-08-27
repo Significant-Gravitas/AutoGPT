@@ -91,29 +91,6 @@ export function createAgentInfoMap(
   return agentMap;
 }
 
-export function convertLegacyExecutionToGenerated(
-  execution: GraphExecution,
-): GeneratedGraphExecutionMeta {
-  return {
-    id: execution.id,
-    user_id: execution.user_id,
-    graph_id: execution.graph_id,
-    graph_version: execution.graph_version,
-    preset_id: execution.preset_id,
-    status: execution.status as AgentExecutionStatus,
-    started_at: execution.started_at.toISOString(),
-    ended_at: execution.ended_at.toISOString(),
-    stats: execution.stats || {
-      cost: 0,
-      duration: 0,
-      duration_cpu_only: 0,
-      node_exec_time: 0,
-      node_exec_time_cpu_only: 0,
-      node_exec_count: 0,
-    },
-  };
-}
-
 export function enrichExecutionWithAgentInfo(
   execution: GeneratedGraphExecutionMeta,
   agentInfoMap: Map<
@@ -300,10 +277,9 @@ export function handleExecutionUpdate(
     { name: string; description: string; library_agent_id?: string }
   >,
 ): NotificationState {
-  // Convert and enrich the execution
-  const convertedExecution = convertLegacyExecutionToGenerated(execution);
+  // Enrich the execution
   const enrichedExecution = enrichExecutionWithAgentInfo(
-    convertedExecution,
+    execution,
     agentInfoMap,
   );
 
