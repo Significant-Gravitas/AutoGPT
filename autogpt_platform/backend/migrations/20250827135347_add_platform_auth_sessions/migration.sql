@@ -2,6 +2,12 @@
 -- This creates a copy of auth.sessions in the platform schema for permanent storage
 -- since auth.sessions only retains data for ~1 month
 -- This migration is idempotent and can be run multiple times safely
+--
+-- Features:
+-- 1. Creates auth_sessions table in platform schema for permanent storage
+-- 2. Automatically seeds all existing sessions from auth.sessions on first run
+-- 3. Creates triggers to automatically copy new/updated sessions going forward
+-- 4. Uses UPSERT (ON CONFLICT DO UPDATE) to ensure data consistency
 
 -- Create the platform.auth_sessions table if it doesn't exist
 -- This mirrors the structure of auth.sessions but in the platform schema for long-term storage
@@ -28,6 +34,8 @@ CREATE INDEX IF NOT EXISTS "idx_auth_sessions_updated_at" ON "auth_sessions" ("u
 -- Create trigger function to copy data from auth.sessions to platform.auth_sessions
 -- This function will only be created if the auth schema exists
 DO $$
+DECLARE
+    v_row_count INTEGER;
 BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = 'auth') THEN
         CREATE OR REPLACE FUNCTION copy_auth_session_to_platform()
@@ -90,8 +98,17 @@ BEGIN
               FOR EACH ROW
               EXECUTE FUNCTION copy_auth_session_to_platform();
 
-            -- Copy existing data from auth.sessions to platform.auth_sessions
-            -- This ensures we don't lose any current session data
+            -- Initial seeding: Copy ALL existing data from auth.sessions to platform.auth_sessions
+            -- This ensures we don't lose any historical session data
+            
+            -- Check current state
+            SELECT COUNT(*) INTO v_row_count FROM "auth_sessions";
+            RAISE NOTICE 'Current auth_sessions table has % existing records', v_row_count;
+            
+            SELECT COUNT(*) INTO v_row_count FROM "auth"."sessions";
+            RAISE NOTICE 'Found % records in auth.sessions to seed', v_row_count;
+            
+            -- Perform the seeding with UPSERT to handle existing records
             INSERT INTO "auth_sessions" (
               "id",
               "user_id", 
@@ -118,7 +135,23 @@ BEGIN
               "ip",
               "tag"
             FROM "auth"."sessions"
-            ON CONFLICT (id) DO NOTHING;
+            ON CONFLICT (id) DO UPDATE SET
+              "user_id" = EXCLUDED.user_id,
+              "updated_at" = EXCLUDED.updated_at,
+              "factor_id" = EXCLUDED.factor_id,
+              "aal" = EXCLUDED.aal,
+              "not_after" = EXCLUDED.not_after,
+              "refreshed_at" = EXCLUDED.refreshed_at,
+              "user_agent" = EXCLUDED.user_agent,
+              "ip" = EXCLUDED.ip,
+              "tag" = EXCLUDED.tag;
+            
+            GET DIAGNOSTICS v_row_count = ROW_COUNT;
+            RAISE NOTICE 'Successfully processed % session records', v_row_count;
+            
+            -- Final count
+            SELECT COUNT(*) INTO v_row_count FROM "auth_sessions";
+            RAISE NOTICE 'auth_sessions table now contains % total records', v_row_count;
         END IF;
     END IF;
 END $$;
