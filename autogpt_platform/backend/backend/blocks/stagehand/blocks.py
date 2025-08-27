@@ -8,37 +8,6 @@ from enum import Enum
 import stagehand.main
 from stagehand import Stagehand
 
-# Store the original method
-original_register_signal_handlers = stagehand.main.Stagehand._register_signal_handlers
-
-def safe_register_signal_handlers(self):
-    """Only register signal handlers in the main thread"""
-    if threading.current_thread() is threading.main_thread():
-        original_register_signal_handlers(self)
-    else:
-        # Skip signal handling in worker threads
-        pass
-
-# Replace the method
-stagehand.main.Stagehand._register_signal_handlers = safe_register_signal_handlers
-
-@contextmanager
-def disable_signal_handling():
-    """Context manager to temporarily disable signal handling"""
-    if threading.current_thread() is not threading.main_thread():
-        # In worker threads, temporarily replace signal.signal with a no-op
-        original_signal = signal.signal
-        def noop_signal(*args, **kwargs):
-            pass
-        signal.signal = noop_signal
-        try:
-            yield
-        finally:
-            signal.signal = original_signal
-    else:
-        # In main thread, don't modify anything
-        yield
-
 from backend.blocks.llm import (
     MODEL_METADATA,
     AICredentials,
@@ -57,7 +26,45 @@ from backend.sdk import (
     SchemaField,
 )
 
+# Store the original method
+original_register_signal_handlers = stagehand.main.Stagehand._register_signal_handlers
+
+
+def safe_register_signal_handlers(self):
+    """Only register signal handlers in the main thread"""
+    if threading.current_thread() is threading.main_thread():
+        original_register_signal_handlers(self)
+    else:
+        # Skip signal handling in worker threads
+        pass
+
+
+# Replace the method
+stagehand.main.Stagehand._register_signal_handlers = safe_register_signal_handlers
+
+
+@contextmanager
+def disable_signal_handling():
+    """Context manager to temporarily disable signal handling"""
+    if threading.current_thread() is not threading.main_thread():
+        # In worker threads, temporarily replace signal.signal with a no-op
+        original_signal = signal.signal
+
+        def noop_signal(*args, **kwargs):
+            pass
+
+        signal.signal = noop_signal
+        try:
+            yield
+        finally:
+            signal.signal = original_signal
+    else:
+        # In main thread, don't modify anything
+        yield
+
+
 logger = logging.getLogger(__name__)
+
 
 class StagehandRecommendedLlmModel(str, Enum):
     """
