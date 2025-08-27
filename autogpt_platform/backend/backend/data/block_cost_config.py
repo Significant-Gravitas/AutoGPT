@@ -316,9 +316,9 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                     "id": ideogram_credentials.id,
                     "provider": ideogram_credentials.provider,
                     "type": ideogram_credentials.type,
-                }
+                },
             },
-        )
+        ),
     ],
     AIShortformVideoCreatorBlock: [
         BlockCost(

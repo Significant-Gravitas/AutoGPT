@@ -241,13 +241,28 @@ class IdeogramModelBlock(Block):
         # Use V3 endpoint for V3 model, legacy endpoint for others
         if model_name == "V_3":
             return await self._run_model_v3(
-                api_key, prompt, seed, aspect_ratio, magic_prompt_option, 
-                style_type, negative_prompt, color_palette_name, custom_colors
+                api_key,
+                prompt,
+                seed,
+                aspect_ratio,
+                magic_prompt_option,
+                style_type,
+                negative_prompt,
+                color_palette_name,
+                custom_colors,
             )
         else:
             return await self._run_model_legacy(
-                api_key, model_name, prompt, seed, aspect_ratio, magic_prompt_option,
-                style_type, negative_prompt, color_palette_name, custom_colors
+                api_key,
+                model_name,
+                prompt,
+                seed,
+                aspect_ratio,
+                magic_prompt_option,
+                style_type,
+                negative_prompt,
+                color_palette_name,
+                custom_colors,
             )
 
     async def _run_model_v3(
@@ -271,11 +286,11 @@ class IdeogramModelBlock(Block):
         # Map legacy aspect ratio values to V3 format
         aspect_ratio_map = {
             "ASPECT_10_16": "10x16",
-            "ASPECT_16_10": "16x10", 
+            "ASPECT_16_10": "16x10",
             "ASPECT_9_16": "9x16",
             "ASPECT_16_9": "16x9",
             "ASPECT_3_2": "3x2",
-            "ASPECT_2_3": "2x3", 
+            "ASPECT_2_3": "2x3",
             "ASPECT_4_3": "4x3",
             "ASPECT_3_4": "3x4",
             "ASPECT_1_1": "1x1",
@@ -284,11 +299,13 @@ class IdeogramModelBlock(Block):
             # Additional V3 supported ratios
             "ASPECT_1_2": "1x2",
             "ASPECT_2_1": "2x1",
-            "ASPECT_4_5": "4x5", 
+            "ASPECT_4_5": "4x5",
             "ASPECT_5_4": "5x4",
         }
-        
-        v3_aspect_ratio = aspect_ratio_map.get(aspect_ratio, "1x1")  # Default to 1x1 if not found
+
+        v3_aspect_ratio = aspect_ratio_map.get(
+            aspect_ratio, "1x1"
+        )  # Default to 1x1 if not found
 
         # Use JSON for V3 endpoint (simpler than multipart/form-data)
         data: Dict[str, Any] = {
@@ -306,7 +323,7 @@ class IdeogramModelBlock(Block):
 
         # Note: V3 endpoint may have different color palette support
         # For now, we'll omit color palettes for V3 to avoid errors
-        
+
         try:
             response = await Requests().post(url, headers=headers, json=data)
             return response.json()["data"][0]["url"]
