@@ -1,11 +1,12 @@
 -- Migration: Add platform.auth_sessions table for long-term storage
 -- This creates a copy of auth.sessions in the platform schema for permanent storage
 -- since auth.sessions only retains data for ~1 month
+-- This migration is idempotent and can be run multiple times safely
 
--- Create the platform.auth_sessions table
+-- Create the platform.auth_sessions table if it doesn't exist
 -- This mirrors the structure of auth.sessions but in the platform schema for long-term storage
 -- Using TEXT for aal column to avoid enum type dependency issues
-CREATE TABLE "auth_sessions" (
+CREATE TABLE IF NOT EXISTS "auth_sessions" (
   "id" uuid PRIMARY KEY,
   "user_id" uuid NOT NULL,
   "created_at" TIMESTAMP WITH TIME ZONE DEFAULT now(),
@@ -19,10 +20,10 @@ CREATE TABLE "auth_sessions" (
   "tag" TEXT
 );
 
--- Add indexes for performance
-CREATE INDEX "idx_auth_sessions_user_id" ON "auth_sessions" ("user_id");
-CREATE INDEX "idx_auth_sessions_created_at" ON "auth_sessions" ("created_at");
-CREATE INDEX "idx_auth_sessions_updated_at" ON "auth_sessions" ("updated_at");
+-- Add indexes for performance (IF NOT EXISTS)
+CREATE INDEX IF NOT EXISTS "idx_auth_sessions_user_id" ON "auth_sessions" ("user_id");
+CREATE INDEX IF NOT EXISTS "idx_auth_sessions_created_at" ON "auth_sessions" ("created_at");
+CREATE INDEX IF NOT EXISTS "idx_auth_sessions_updated_at" ON "auth_sessions" ("updated_at");
 
 -- Create trigger function to copy data from auth.sessions to platform.auth_sessions
 -- This function will only be created if the auth schema exists
@@ -63,7 +64,7 @@ BEGIN
             "user_id" = NEW.user_id,
             "updated_at" = NEW.updated_at,
             "factor_id" = NEW.factor_id,
-            "aal" = NEW.aal::text::"aal_level",
+            "aal" = NEW.aal::text,
             "not_after" = NEW.not_after,
             "refreshed_at" = NEW.refreshed_at,
             "user_agent" = NEW.user_agent,
