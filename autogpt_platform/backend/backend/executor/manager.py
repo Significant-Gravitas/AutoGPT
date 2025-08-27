@@ -20,6 +20,7 @@ from backend.data.notifications import (
     LowBalanceData,
     NotificationEventModel,
     NotificationType,
+    ZeroBalanceData,
 )
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.executor.activity_status_generator import (
@@ -51,6 +52,7 @@ from backend.data.execution import (
     GraphExecutionEntry,
     NodeExecutionEntry,
     NodeExecutionResult,
+    UserContext,
 )
 from backend.data.graph import Link, Node
 from backend.executor.utils import (
@@ -74,6 +76,7 @@ from backend.util.clients import (
     get_database_manager_async_client,
     get_database_manager_client,
     get_execution_event_bus,
+    get_notification_manager_client,
 )
 from backend.util.decorator import (
     async_error_logged,
@@ -83,6 +86,7 @@ from backend.util.decorator import (
 )
 from backend.util.file import clean_exec_files
 from backend.util.logging import TruncatedLogger, configure_logging
+from backend.util.metrics import DiscordChannel
 from backend.util.process import AppProcess, set_service_name
 from backend.util.retry import continuous_retry, func_retry
 from backend.util.settings import Settings
@@ -190,6 +194,9 @@ async def execute_node(
         "user_id": user_id,
     }
 
+    # Add user context from NodeExecutionEntry
+    extra_exec_kwargs["user_context"] = data.user_context
+
     # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
     # changes during execution. ⚠️ This means a set of credentials can only be used by
     # one (running) block at a time; simultaneous execution of blocks using same
@@ -236,6 +243,7 @@ async def _enqueue_next_nodes(
     graph_id: str,
     log_metadata: LogMetadata,
     nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]],
+    user_context: UserContext,
 ) -> list[NodeExecutionEntry]:
     async def add_enqueued_execution(
         node_exec_id: str, node_id: str, block_id: str, data: BlockInput
@@ -254,6 +262,7 @@ async def _enqueue_next_nodes(
             node_id=node_id,
             block_id=block_id,
             inputs=data,
+            user_context=user_context,
         )
 
     async def register_next_executions(node_link: Link) -> list[NodeExecutionEntry]:
@@ -678,19 +687,20 @@ class ExecutionProcessor:
         self,
         node_exec: NodeExecutionEntry,
         execution_count: int,
-    ) -> int:
+    ) -> tuple[int, int]:
         total_cost = 0
+        remaining_balance = 0
         db_client = get_db_client()
         block = get_block(node_exec.block_id)
         if not block:
             logger.error(f"Block {node_exec.block_id} not found.")
-            return total_cost
+            return total_cost, 0
 
         cost, matching_filter = block_usage_cost(
             block=block, input_data=node_exec.inputs
         )
         if cost > 0:
-            db_client.spend_credits(
+            remaining_balance = db_client.spend_credits(
                 user_id=node_exec.user_id,
                 cost=cost,
                 metadata=UsageTransactionMetadata(
@@ -708,7 +718,7 @@ class ExecutionProcessor:
 
         cost, usage_count = execution_usage_cost(execution_count)
         if cost > 0:
-            db_client.spend_credits(
+            remaining_balance = db_client.spend_credits(
                 user_id=node_exec.user_id,
                 cost=cost,
                 metadata=UsageTransactionMetadata(
@@ -723,7 +733,7 @@ class ExecutionProcessor:
             )
             total_cost += cost
 
-        return total_cost
+        return total_cost, remaining_balance
 
     @time_measured
     def _on_graph_execution(
@@ -787,7 +797,8 @@ class ExecutionProcessor:
                     ExecutionStatus.TERMINATED,
                 ],
             ):
-                execution_queue.add(node_exec.to_node_execution_entry())
+                node_entry = node_exec.to_node_execution_entry(graph_exec.user_context)
+                execution_queue.add(node_entry)
 
             # ------------------------------------------------------------
             # Main dispatch / polling loop -----------------------------
@@ -805,12 +816,19 @@ class ExecutionProcessor:
 
                 # Charge usage (may raise) ------------------------------
                 try:
-                    cost = self._charge_usage(
+                    cost, remaining_balance = self._charge_usage(
                         node_exec=queued_node_exec,
                         execution_count=increment_execution_count(graph_exec.user_id),
                     )
                     with execution_stats_lock:
                         execution_stats.cost += cost
+                    # Check if we crossed the low balance threshold
+                    self._handle_low_balance(
+                        db_client=db_client,
+                        user_id=graph_exec.user_id,
+                        current_balance=remaining_balance,
+                        transaction_cost=cost,
+                    )
                 except InsufficientBalanceError as balance_error:
                     error = balance_error  # Set error to trigger FAILED status
                     node_exec_id = queued_node_exec.node_exec_id
@@ -825,11 +843,10 @@ class ExecutionProcessor:
                         status=ExecutionStatus.FAILED,
                     )
 
-                    self._handle_low_balance_notif(
+                    self._handle_insufficient_funds_notif(
                         db_client,
                         graph_exec.user_id,
                         graph_exec.graph_id,
-                        execution_stats,
                         error,
                     )
                     # Gracefully stop the execution loop
@@ -1052,6 +1069,7 @@ class ExecutionProcessor:
         db_client = get_db_async_client()
 
         log_metadata.debug(f"Enqueue nodes for {node_id}: {output}")
+
         for next_execution in await _enqueue_next_nodes(
             db_client=db_client,
             node=output.node,
@@ -1061,6 +1079,7 @@ class ExecutionProcessor:
             graph_id=graph_exec.graph_id,
             log_metadata=log_metadata,
             nodes_input_masks=nodes_input_masks,
+            user_context=graph_exec.user_context,
         ):
             execution_queue.add(next_execution)
 
@@ -1101,31 +1120,98 @@ class ExecutionProcessor:
             )
         )
 
-    def _handle_low_balance_notif(
+    def _handle_insufficient_funds_notif(
         self,
         db_client: "DatabaseManagerClient",
         user_id: str,
         graph_id: str,
-        exec_stats: GraphExecutionStats,
         e: InsufficientBalanceError,
     ):
-        shortfall = e.balance - e.amount
+        shortfall = abs(e.amount) - e.balance
         metadata = db_client.get_graph_metadata(graph_id)
         base_url = (
             settings.config.frontend_base_url or settings.config.platform_base_url
         )
+
         queue_notification(
             NotificationEventModel(
                 user_id=user_id,
-                type=NotificationType.LOW_BALANCE,
-                data=LowBalanceData(
-                    current_balance=exec_stats.cost,
+                type=NotificationType.ZERO_BALANCE,
+                data=ZeroBalanceData(
+                    current_balance=e.balance,
                     billing_page_link=f"{base_url}/profile/credits",
                     shortfall=shortfall,
                     agent_name=metadata.name if metadata else "Unknown Agent",
                 ),
             )
         )
+
+        try:
+            user_email = db_client.get_user_email_by_id(user_id)
+
+            alert_message = (
+                f"❌ **Insufficient Funds Alert**\n"
+                f"User: {user_email or user_id}\n"
+                f"Agent: {metadata.name if metadata else 'Unknown Agent'}\n"
+                f"Current balance: ${e.balance/100:.2f}\n"
+                f"Attempted cost: ${abs(e.amount)/100:.2f}\n"
+                f"Shortfall: ${abs(shortfall)/100:.2f}\n"
+                f"[View User Details]({base_url}/admin/spending?search={user_email})"
+            )
+
+            get_notification_manager_client().discord_system_alert(
+                alert_message, DiscordChannel.PRODUCT
+            )
+        except Exception as alert_error:
+            logger.error(
+                f"Failed to send insufficient funds Discord alert: {alert_error}"
+            )
+
+    def _handle_low_balance(
+        self,
+        db_client: "DatabaseManagerClient",
+        user_id: str,
+        current_balance: int,
+        transaction_cost: int,
+    ):
+        """Check and handle low balance scenarios after a transaction"""
+        LOW_BALANCE_THRESHOLD = settings.config.low_balance_threshold
+
+        balance_before = current_balance + transaction_cost
+
+        if (
+            current_balance < LOW_BALANCE_THRESHOLD
+            and balance_before >= LOW_BALANCE_THRESHOLD
+        ):
+            base_url = (
+                settings.config.frontend_base_url or settings.config.platform_base_url
+            )
+            queue_notification(
+                NotificationEventModel(
+                    user_id=user_id,
+                    type=NotificationType.LOW_BALANCE,
+                    data=LowBalanceData(
+                        current_balance=current_balance,
+                        billing_page_link=f"{base_url}/profile/credits",
+                    ),
+                )
+            )
+
+            try:
+                user_email = db_client.get_user_email_by_id(user_id)
+                alert_message = (
+                    f"⚠️ **Low Balance Alert**\n"
+                    f"User: {user_email or user_id}\n"
+                    f"Balance dropped below ${LOW_BALANCE_THRESHOLD/100:.2f}\n"
+                    f"Current balance: ${current_balance/100:.2f}\n"
+                    f"Transaction cost: ${transaction_cost/100:.2f}\n"
+                    f"[View User Details]({base_url}/admin/spending?search={user_email})"
+                )
+                get_notification_manager_client().discord_system_alert(
+                    alert_message, DiscordChannel.PRODUCT
+                )
+            except Exception as e:
+                logger.error(f"Failed to send low balance Discord alert: {e}")
 
 
 class ExecutionManager(AppProcess):
@@ -1308,14 +1394,14 @@ class ExecutionManager(AppProcess):
         delivery_tag = method.delivery_tag
 
         @func_retry
-        def _ack_message(reject: bool = False):
+        def _ack_message(reject: bool, requeue: bool):
             """Acknowledge or reject the message based on execution status."""
 
             # Connection can be lost, so always get a fresh channel
             channel = self.run_client.get_channel()
             if reject:
                 channel.connection.add_callback_threadsafe(
-                    lambda: channel.basic_nack(delivery_tag, requeue=True)
+                    lambda: channel.basic_nack(delivery_tag, requeue=requeue)
                 )
             else:
                 channel.connection.add_callback_threadsafe(
@@ -1327,13 +1413,13 @@ class ExecutionManager(AppProcess):
             logger.info(
                 f"[{self.service_name}] Rejecting new execution during shutdown"
             )
-            _ack_message(reject=True)
+            _ack_message(reject=True, requeue=True)
             return
 
         # Check if we can accept more runs
         self._cleanup_completed_runs()
         if len(self.active_graph_runs) >= self.pool_size:
-            _ack_message(reject=True)
+            _ack_message(reject=True, requeue=True)
             return
 
         try:
@@ -1342,7 +1428,7 @@ class ExecutionManager(AppProcess):
             logger.error(
                 f"[{self.service_name}] Could not parse run message: {e}, body={body}"
             )
-            _ack_message(reject=True)
+            _ack_message(reject=True, requeue=False)
             return
 
         graph_exec_id = graph_exec_entry.graph_exec_id
@@ -1354,7 +1440,7 @@ class ExecutionManager(AppProcess):
             logger.error(
                 f"[{self.service_name}] Graph {graph_exec_id} already running; rejecting duplicate run."
             )
-            _ack_message(reject=True)
+            _ack_message(reject=True, requeue=False)
             return
 
         cancel_event = threading.Event()
@@ -1370,9 +1456,9 @@ class ExecutionManager(AppProcess):
                     logger.error(
                         f"[{self.service_name}] Execution for {graph_exec_id} failed: {type(exec_error)} {exec_error}"
                     )
-                    _ack_message(reject=True)
+                    _ack_message(reject=True, requeue=True)
                 else:
-                    _ack_message(reject=False)
+                    _ack_message(reject=False, requeue=False)
             except BaseException as e:
                 logger.exception(
                     f"[{self.service_name}] Error in run completion callback: {e}"

@@ -15,6 +15,10 @@
         "type": "object",
         "properties": {}
       },
+      "output_schema": {
+        "type": "object",
+        "properties": {}
+      },
       "credentials_input_schema": {
         "type": "object",
         "properties": {}
@@ -37,6 +41,10 @@
       "name": "Test Agent 2",
       "description": "Test Description 2",
       "input_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "output_schema": {
         "type": "object",
         "properties": {}
       },

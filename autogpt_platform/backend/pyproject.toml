@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "autogpt-platform-backend"
-version = "0.4.9"
+version = "0.6.22"
 description = "A platform for building AI-powered agentic workflows"
 authors = ["AutoGPT <info@agpt.co>"]
 readme = "README.md"
@@ -8,7 +8,7 @@ packages = [{ include = "backend", format = "sdist" }]
 
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.13"
+python = ">=3.10,<3.14"
 aio-pika = "^9.5.5"
 aiohttp = "^3.10.0"
 aiodns = "^3.5.0"
@@ -77,6 +77,8 @@ gcloud-aio-storage = "^9.5.0"
 pandas = "^2.3.1"
 firecrawl-py = "^2.16.3"
 exa-py = "^1.14.20"
+croniter = "^6.0.0"
+stagehand = "^0.5.1"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"

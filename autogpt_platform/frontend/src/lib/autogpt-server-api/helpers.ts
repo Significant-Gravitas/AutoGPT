@@ -261,13 +261,7 @@ export async function makeAuthenticatedRequest(
           "Authentication request failed during logout, ignoring:",
           errorDetail,
         );
-        return null;
       }
-
-      // For authentication errors outside logout, log but don't throw
-      // This prevents crashes when session expires naturally
-      console.warn("Authentication failed:", errorDetail);
-      return null;
     }
 
     // For other errors, throw ApiError with proper status code

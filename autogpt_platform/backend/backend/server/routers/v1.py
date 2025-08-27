@@ -15,6 +15,7 @@ from fastapi import (
     File,
     HTTPException,
     Path,
+    Query,
     Request,
     Response,
     UploadFile,
@@ -60,9 +61,11 @@ from backend.data.onboarding import (
 )
 from backend.data.user import (
     get_or_create_user,
+    get_user_by_id,
     get_user_notification_preference,
     update_user_email,
     update_user_notification_preference,
+    update_user_timezone,
 )
 from backend.executor import scheduler
 from backend.executor import utils as execution_utils
@@ -77,15 +80,21 @@ from backend.server.model import (
     ExecuteGraphResponse,
     RequestTopUp,
     SetGraphActiveVersion,
+    TimezoneResponse,
     UpdatePermissionsRequest,
+    UpdateTimezoneRequest,
     UploadFileResponse,
 )
 from backend.server.utils import get_user_id
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.exceptions import GraphValidationError, NotFoundError
-from backend.util.feature_flag import feature_flag
 from backend.util.settings import Settings
+from backend.util.timezone_utils import (
+    convert_cron_to_utc,
+    convert_utc_time_to_user_timezone,
+    get_user_timezone_or_utc,
+)
 from backend.util.virus_scanner import scan_content_safe
 
 
@@ -147,6 +156,35 @@ async def update_user_email_route(
     await update_user_email(user_id, email)
 
     return {"email": email}
+
+
+@v1_router.get(
+    "/auth/user/timezone",
+    summary="Get user timezone",
+    tags=["auth"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def get_user_timezone_route(
+    user_data: dict = Depends(auth_middleware),
+) -> TimezoneResponse:
+    """Get user timezone setting."""
+    user = await get_or_create_user(user_data)
+    return TimezoneResponse(timezone=user.timezone)
+
+
+@v1_router.post(
+    "/auth/user/timezone",
+    summary="Update user timezone",
+    tags=["auth"],
+    dependencies=[Depends(auth_middleware)],
+    response_model=TimezoneResponse,
+)
+async def update_user_timezone_route(
+    user_id: Annotated[str, Depends(get_user_id)], request: UpdateTimezoneRequest
+) -> TimezoneResponse:
+    """Update user timezone. The timezone should be a valid IANA timezone identifier."""
+    user = await update_user_timezone(user_id, str(request.timezone))
+    return TimezoneResponse(timezone=user.timezone)
 
 
 @v1_router.get(
@@ -820,11 +858,11 @@ async def _stop_graph_run(
 
 @v1_router.get(
     path="/executions",
-    summary="Get all executions",
+    summary="List all executions",
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
-async def get_graphs_executions(
+async def list_graphs_executions(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> list[execution_db.GraphExecutionMeta]:
     return await execution_db.get_graph_executions(user_id=user_id)
@@ -832,15 +870,24 @@ async def get_graphs_executions(
 
 @v1_router.get(
     path="/graphs/{graph_id}/executions",
-    summary="Get graph executions",
+    summary="List graph executions",
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
-async def get_graph_executions(
+async def list_graph_executions(
     graph_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
-) -> list[execution_db.GraphExecutionMeta]:
-    return await execution_db.get_graph_executions(graph_id=graph_id, user_id=user_id)
+    page: int = Query(1, ge=1, description="Page number (1-indexed)"),
+    page_size: int = Query(
+        25, ge=1, le=100, description="Number of executions per page"
+    ),
+) -> execution_db.GraphExecutionsPaginated:
+    return await execution_db.get_graph_executions_paginated(
+        graph_id=graph_id,
+        user_id=user_id,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @v1_router.get(
@@ -924,15 +971,35 @@ async def create_graph_execution_schedule(
             detail=f"Graph #{graph_id} v{schedule_params.graph_version} not found.",
         )
 
-    return await get_scheduler_client().add_execution_schedule(
+    user = await get_user_by_id(user_id)
+    user_timezone = get_user_timezone_or_utc(user.timezone if user else None)
+
+    # Convert cron expression from user timezone to UTC
+    try:
+        utc_cron = convert_cron_to_utc(schedule_params.cron, user_timezone)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid cron expression for timezone {user_timezone}: {e}",
+        )
+
+    result = await get_scheduler_client().add_execution_schedule(
         user_id=user_id,
         graph_id=graph_id,
         graph_version=graph.version,
         name=schedule_params.name,
-        cron=schedule_params.cron,
+        cron=utc_cron,  # Send UTC cron to scheduler
         input_data=schedule_params.inputs,
         input_credentials=schedule_params.credentials,
     )
+
+    # Convert the next_run_time back to user timezone for display
+    if result.next_run_time:
+        result.next_run_time = convert_utc_time_to_user_timezone(
+            result.next_run_time, user_timezone
+        )
+
+    return result
 
 
 @v1_router.get(
@@ -945,10 +1012,23 @@ async def list_graph_execution_schedules(
     user_id: Annotated[str, Depends(get_user_id)],
     graph_id: str = Path(),
 ) -> list[scheduler.GraphExecutionJobInfo]:
-    return await get_scheduler_client().get_execution_schedules(
+    schedules = await get_scheduler_client().get_execution_schedules(
         user_id=user_id,
         graph_id=graph_id,
     )
+
+    # Get user timezone for conversion
+    user = await get_user_by_id(user_id)
+    user_timezone = get_user_timezone_or_utc(user.timezone if user else None)
+
+    # Convert next_run_time to user timezone for display
+    for schedule in schedules:
+        if schedule.next_run_time:
+            schedule.next_run_time = convert_utc_time_to_user_timezone(
+                schedule.next_run_time, user_timezone
+            )
+
+    return schedules
 
 
 @v1_router.get(
@@ -960,7 +1040,20 @@ async def list_graph_execution_schedules(
 async def list_all_graphs_execution_schedules(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> list[scheduler.GraphExecutionJobInfo]:
-    return await get_scheduler_client().get_execution_schedules(user_id=user_id)
+    schedules = await get_scheduler_client().get_execution_schedules(user_id=user_id)
+
+    # Get user timezone for conversion
+    user = await get_user_by_id(user_id)
+    user_timezone = get_user_timezone_or_utc(user.timezone if user else None)
+
+    # Convert UTC next_run_time to user timezone for display
+    for schedule in schedules:
+        if schedule.next_run_time:
+            schedule.next_run_time = convert_utc_time_to_user_timezone(
+                schedule.next_run_time, user_timezone
+            )
+
+    return schedules
 
 
 @v1_router.delete(
