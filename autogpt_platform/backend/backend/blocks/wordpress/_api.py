@@ -382,9 +382,6 @@ class CreatePostRequest(BaseModel):
     # Advanced
     metadata: List[Dict[str, Any]] | None = None
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
-
 
 class PostAuthor(BaseModel):
     """Author information in post response."""
