@@ -307,7 +307,18 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                     "type": ideogram_credentials.type,
                 }
             },
-        )
+        ),
+        BlockCost(
+            cost_amount=18,
+            cost_filter={
+                "ideogram_model_name": "V_3",
+                "credentials": {
+                    "id": ideogram_credentials.id,
+                    "provider": ideogram_credentials.provider,
+                    "type": ideogram_credentials.type,
+                },
+            },
+        ),
     ],
     AIShortformVideoCreatorBlock: [
         BlockCost(
