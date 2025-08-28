@@ -2,7 +2,7 @@ import uuid
 from typing import TYPE_CHECKING, Any, Dict, List
 
 if TYPE_CHECKING:
-    from httpx import Response
+    pass
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -141,16 +141,16 @@ class BannerbearTextOverlayBlock(Block):
             "Content-Type": "application/json",
         }
 
-        response: Response = await Requests().post(  # type: ignore
+        response = await Requests().post(
             "https://sync.api.bannerbear.com/v2/images",
             headers=headers,
             json=payload,
         )
 
-        if response.status_code in [200, 201, 202]:
+        if response.status in [200, 201, 202]:
             return response.json()
         else:
-            error_msg = f"API request failed with status {response.status_code}"
+            error_msg = f"API request failed with status {response.status}"
             if response.text:
                 try:
                     error_data = response.json()
@@ -164,63 +164,57 @@ class BannerbearTextOverlayBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        try:
-            # Build the modifications array
-            modifications = []
+        # Build the modifications array
+        modifications = []
 
-            # Add text modifications
-            for text_mod in input_data.text_modifications:
-                mod_data: Dict[str, Any] = {
-                    "name": text_mod.name,
-                    "text": text_mod.text,
-                }
-
-                # Add optional text styling parameters only if they have values
-                if text_mod.color and text_mod.color.strip():
-                    mod_data["color"] = text_mod.color
-                if text_mod.font_family and text_mod.font_family.strip():
-                    mod_data["font_family"] = text_mod.font_family
-                if text_mod.font_size and text_mod.font_size > 0:
-                    mod_data["font_size"] = text_mod.font_size
-                if text_mod.font_weight and text_mod.font_weight.strip():
-                    mod_data["font_weight"] = text_mod.font_weight
-                if text_mod.text_align and text_mod.text_align.strip():
-                    mod_data["text_align"] = text_mod.text_align
-
-                modifications.append(mod_data)
-
-            # Add image modification if provided and not empty
-            if input_data.image_url and input_data.image_url.strip():
-                modifications.append(
-                    {
-                        "name": input_data.image_layer_name,
-                        "image_url": input_data.image_url,
-                    }
-                )
-
-            # Build the request payload - only include non-empty optional fields
-            payload = {
-                "template": input_data.template_id,
-                "modifications": modifications,
+        # Add text modifications
+        for text_mod in input_data.text_modifications:
+            mod_data: Dict[str, Any] = {
+                "name": text_mod.name,
+                "text": text_mod.text,
             }
 
-            if input_data.webhook_url and input_data.webhook_url.strip():
-                payload["webhook_url"] = input_data.webhook_url
-            if input_data.metadata and input_data.metadata.strip():
-                payload["metadata"] = input_data.metadata
+            # Add optional text styling parameters only if they have values
+            if text_mod.color and text_mod.color.strip():
+                mod_data["color"] = text_mod.color
+            if text_mod.font_family and text_mod.font_family.strip():
+                mod_data["font_family"] = text_mod.font_family
+            if text_mod.font_size and text_mod.font_size > 0:
+                mod_data["font_size"] = text_mod.font_size
+            if text_mod.font_weight and text_mod.font_weight.strip():
+                mod_data["font_weight"] = text_mod.font_weight
+            if text_mod.text_align and text_mod.text_align.strip():
+                mod_data["text_align"] = text_mod.text_align
 
-            # Make the API request using the private method
-            data = await self._make_api_request(
-                payload, credentials.api_key.get_secret_value()
+            modifications.append(mod_data)
+
+        # Add image modification if provided and not empty
+        if input_data.image_url and input_data.image_url.strip():
+            modifications.append(
+                {
+                    "name": input_data.image_layer_name,
+                    "image_url": input_data.image_url,
+                }
             )
 
-            # Synchronous request - image should be ready
-            yield "success", True
-            yield "image_url", data.get("image_url", "")
-            yield "uid", data.get("uid", "")
-            yield "status", data.get("status", "completed")
+        # Build the request payload - only include non-empty optional fields
+        payload = {
+            "template": input_data.template_id,
+            "modifications": modifications,
+        }
 
-        except Exception as e:
-            yield "success", False
-            yield "error", f"Error generating image: {str(e)}"
-            yield "status", "failed"
+        if input_data.webhook_url and input_data.webhook_url.strip():
+            payload["webhook_url"] = input_data.webhook_url
+        if input_data.metadata and input_data.metadata.strip():
+            payload["metadata"] = input_data.metadata
+
+        # Make the API request using the private method
+        data = await self._make_api_request(
+            payload, credentials.api_key.get_secret_value()
+        )
+
+        # Synchronous request - image should be ready
+        yield "success", True
+        yield "image_url", data.get("image_url", "")
+        yield "uid", data.get("uid", "")
+        yield "status", data.get("status", "completed")
