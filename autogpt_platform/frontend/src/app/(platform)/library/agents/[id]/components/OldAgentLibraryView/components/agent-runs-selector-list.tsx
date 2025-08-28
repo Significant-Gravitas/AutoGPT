@@ -21,7 +21,7 @@ import { Separator } from "@/components/ui/separator";
 
 import { agentRunStatusMap } from "@/components/agents/agent-run-status-chip";
 import AgentRunSummaryCard from "@/components/agents/agent-run-summary-card";
-import { AgentRunsQuery } from "../../use-agent-runs";
+import { AgentRunsQuery } from "../use-agent-runs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { RunAgentModal } from "../../AgentRunsView/components/RunAgentModal/RunAgentModal";
