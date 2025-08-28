@@ -7,6 +7,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectSeparator,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { ReactNode } from "react";
@@ -15,6 +16,10 @@ import { Text } from "../Text/Text";
 export interface SelectOption {
   value: string;
   label: string;
+  icon?: ReactNode;
+  disabled?: boolean;
+  separator?: boolean;
+  onSelect?: () => void; // optional action handler
 }
 
 export interface SelectFieldProps {
@@ -30,6 +35,7 @@ export interface SelectFieldProps {
   onValueChange?: (value: string) => void;
   options: SelectOption[];
   size?: "small" | "medium";
+  renderItem?: (option: SelectOption) => React.ReactNode;
 }
 
 export function Select({
@@ -45,6 +51,7 @@ export function Select({
   onValueChange,
   options,
   size = "medium",
+  renderItem,
 }: SelectFieldProps) {
   const triggerStyles = cn(
     // Base styles matching Input
@@ -79,11 +86,32 @@ export function Select({
         <SelectValue placeholder={placeholder || label} />
       </SelectTrigger>
       <SelectContent>
-        {options.map((option) => (
-          <SelectItem key={option.value} value={option.value}>
-            {option.label}
-          </SelectItem>
-        ))}
+        {options.map((option, idx) => {
+          if (option.separator) return <SelectSeparator key={`sep-${idx}`} />;
+          const content = renderItem ? (
+            renderItem(option)
+          ) : (
+            <div className="flex items-center gap-2">
+              {option.icon}
+              <span>{option.label}</span>
+            </div>
+          );
+          return (
+            <SelectItem
+              key={option.value}
+              value={option.value}
+              disabled={option.disabled}
+              onMouseDown={(e) => {
+                if (option.onSelect) {
+                  e.preventDefault();
+                  option.onSelect();
+                }
+              }}
+            >
+              {content}
+            </SelectItem>
+          );
+        })}
       </SelectContent>
     </BaseSelect>
   );

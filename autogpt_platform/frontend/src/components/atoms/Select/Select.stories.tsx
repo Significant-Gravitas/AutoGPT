@@ -134,6 +134,82 @@ export const Medium: Story = {
   },
 };
 
+export const WithIconsAndSeparators: Story = {
+  render: function IconsStory() {
+    const opts = [
+      { value: "oauth", label: "Your Google account", icon: <span>✅</span> },
+      { separator: true, value: "sep1", label: "" } as any,
+      {
+        value: "signin",
+        label: "Sign in with Google",
+        icon: <span>🔐</span>,
+        onSelect: () => alert("Sign in"),
+      },
+      {
+        value: "add-key",
+        label: "Add API key",
+        onSelect: () => alert("Add key"),
+      },
+    ];
+    return (
+      <div className="w-[320px]">
+        <Select
+          id="rich"
+          label="Rich"
+          hideLabel
+          options={opts as any}
+          placeholder="Choose"
+        />
+      </div>
+    );
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Demonstrates icons, separators, and actionable rows via onSelect. onSelect prevents value change and triggers the action.",
+      },
+    },
+  },
+};
+
+export const WithRenderItem: Story = {
+  render: function RenderItemStory() {
+    const opts = [
+      { value: "opt1", label: "Option 1" },
+      { value: "opt2", label: "Option 2", disabled: true },
+      { value: "opt3", label: "Option 3" },
+    ];
+    return (
+      <div className="w-[320px]">
+        <Select
+          id="render"
+          label="Custom"
+          hideLabel
+          options={opts}
+          placeholder="Pick one"
+          renderItem={(o) => (
+            <div className="flex items-center gap-2">
+              <span className="font-medium">{o.label}</span>
+              {o.disabled && (
+                <span className="text-xs text-zinc-400">(disabled)</span>
+              )}
+            </div>
+          )}
+        />
+      </div>
+    );
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Custom rendering for options via renderItem prop; disabled items are styled and non-selectable.",
+      },
+    },
+  },
+};
+
 export const WithoutLabel: Story = {
   args: {
     label: "Country",

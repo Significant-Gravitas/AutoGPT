@@ -51,7 +51,7 @@ import {
 } from "./ui/multiselect";
 import { LocalValuedInput } from "./ui/input";
 import NodeHandle from "./NodeHandle";
-import { CredentialsInput } from "@/components/integrations/credentials-input";
+import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
 import { Switch } from "./atoms/Switch/Switch";
 
 type NodeObjectInputTreeProps = {

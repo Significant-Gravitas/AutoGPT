@@ -19,7 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { IconCross, IconPlay, IconSave } from "@/components/ui/icons";
 import { CalendarClockIcon, Trash2Icon } from "lucide-react";
 import { CronSchedulerDialog } from "@/components/cron-scheduler-dialog";
-import { CredentialsInput } from "@/components/integrations/credentials-input";
+import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
 import { RunAgentInputs } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/RunAgentInputs/RunAgentInputs";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 import { cn, isEmpty } from "@/lib/utils";

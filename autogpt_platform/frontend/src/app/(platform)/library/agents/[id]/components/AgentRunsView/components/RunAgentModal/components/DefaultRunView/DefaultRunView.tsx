@@ -1,7 +1,7 @@
 import { WebhookTriggerBanner } from "../WebhookTriggerBanner/WebhookTriggerBanner";
 import { Input } from "@/components/atoms/Input/Input";
 import SchemaTooltip from "@/components/SchemaTooltip";
-import { CredentialsInput } from "@/components/integrations/credentials-input";
+import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
 import { useRunAgentModalContext } from "../../context";
 import { RunAgentInputs } from "../../../RunAgentInputs/RunAgentInputs";
 
