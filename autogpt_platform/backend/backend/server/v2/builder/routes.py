@@ -2,7 +2,7 @@ import logging
 from typing import Annotated, Sequence
 
 import fastapi
-from autogpt_libs.auth.depends import auth_middleware, get_user_id
+from autogpt_libs.auth.dependencies import get_user_id, requires_user
 
 import backend.server.v2.builder.db as builder_db
 import backend.server.v2.builder.model as builder_model
@@ -15,7 +15,9 @@ from backend.util.models import Pagination
 
 logger = logging.getLogger(__name__)
 
-router = fastapi.APIRouter()
+router = fastapi.APIRouter(
+    dependencies=[fastapi.Security(requires_user)],
+)
 
 
 # Taken from backend/server/v2/store/db.py
@@ -41,12 +43,9 @@ def sanitize_query(query: str | None) -> str | None:
 @router.get(
     "/suggestions",
     summary="Get Builder suggestions",
-    dependencies=[fastapi.Depends(auth_middleware)],
     response_model=builder_model.SuggestionsResponse,
 )
-async def get_suggestions(
-    user_id: Annotated[str, fastapi.Depends(get_user_id)],
-) -> builder_model.SuggestionsResponse:
+async def get_suggestions() -> builder_model.SuggestionsResponse:
     """
     Get all suggestions for the Blocks Menu.
     """
@@ -76,7 +75,6 @@ async def get_suggestions(
 @router.get(
     "/categories",
     summary="Get Builder block categories",
-    dependencies=[fastapi.Depends(auth_middleware)],
     response_model=Sequence[builder_model.BlockCategoryResponse],
 )
 async def get_block_categories(
@@ -91,7 +89,6 @@ async def get_block_categories(
 @router.get(
     "/blocks",
     summary="Get Builder blocks",
-    dependencies=[fastapi.Depends(auth_middleware)],
     response_model=builder_model.BlockResponse,
 )
 async def get_blocks(
@@ -116,7 +113,6 @@ async def get_blocks(
 @router.get(
     "/providers",
     summary="Get Builder integration providers",
-    dependencies=[fastapi.Depends(auth_middleware)],
     response_model=builder_model.ProviderResponse,
 )
 async def get_providers(
@@ -136,12 +132,11 @@ async def get_providers(
     "/search",
     summary="Builder search",
     tags=["store", "private"],
-    dependencies=[fastapi.Depends(auth_middleware)],
     response_model=builder_model.SearchResponse,
 )
 async def search(
     options: builder_model.SearchRequest,
-    user_id: Annotated[str, fastapi.Depends(get_user_id)],
+    user_id: Annotated[str, fastapi.Security(get_user_id)],
 ) -> builder_model.SearchResponse:
     """
     Search for blocks (including integrations), marketplace agents, and user library agents.
@@ -227,11 +222,10 @@ async def search(
 @router.get(
     "/counts",
     summary="Get Builder item counts",
-    dependencies=[fastapi.Depends(auth_middleware)],
     response_model=builder_model.CountResponse,
 )
 async def get_counts(
-    user_id: Annotated[str, fastapi.Depends(get_user_id)],
+    user_id: Annotated[str, fastapi.Security(get_user_id)],
 ) -> builder_model.CountResponse:
     """
     Get item counts for the menu categories in the Blocks Menu.
