@@ -52,3 +52,39 @@ The block uses a Discord bot to log into a server, locate the specified channel,
 
 ### Possible use case
 This block could be used as part of an automated notification system. For example, it could send alerts to a Discord channel when certain events occur in another system, such as when a new user signs up or when a critical error is detected.
+
+---
+
+## Create Discord Thread
+
+### What it is
+A block that creates threads in Discord channels using a bot token.
+
+### What it does
+This block connects to Discord using a bot token and creates a new thread in a specified channel. It can create both public and private threads with customizable settings.
+
+### How it works
+The block uses a Discord bot to authenticate with Discord, find the specified channel, and create a new thread with the provided settings. It can optionally send an initial message to the newly created thread.
+
+### Inputs
+| Input | Description |
+|-------|-------------|
+| Discord Bot Token | A secret token used to authenticate the bot with Discord |
+| Channel ID | The ID of the channel where the thread will be created |
+| Thread Name | The name of the thread to create (1-100 characters) |
+| Thread Type | The type of thread to create (public or private) |
+| Auto Archive Duration | Minutes of inactivity before the thread is automatically archived (60, 1440, 4320, or 10080) |
+| Initial Message | An optional initial message to send in the thread |
+| Server ID | The ID of the server (optional, helps ensure correct channel) |
+
+### Outputs
+| Output | Description |
+|--------|-------------|
+| Status | The status of the operation |
+| Thread ID | The ID of the created thread |
+| Thread Name | The name of the created thread |
+| Channel ID | The ID of the channel where the thread was created |
+| Server ID | The ID of the server where the thread was created |
+
+### Possible use case
+This block could be used to automatically create discussion threads for specific topics, organize conversations around support tickets, or set up dedicated spaces for project collaborations. For example, when a new project is initiated, the system could automatically create a dedicated thread for team discussions.

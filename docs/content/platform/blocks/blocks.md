@@ -56,6 +56,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Publish to Medium](medium.md#publish-to-medium) | Publishes content directly to Medium |
 | [Read Discord Messages](discord.md#read-discord-messages) | Retrieves messages from Discord channels |
 | [Send Discord Message](discord.md#send-discord-message) | Sends messages to Discord channels |
+| [Create Discord Thread](discord.md#create-discord-thread) | Creates threads in Discord channels |
 
 ## Search and Information Retrieval
 | Block Name | Description |

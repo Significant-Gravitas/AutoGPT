@@ -1138,3 +1138,186 @@ class DiscordChannelInfoBlock(Block):
             raise ValueError(f"Login error occurred: {login_err}")
         except Exception as e:
             raise ValueError(f"An error occurred: {e}")
+
+
+class CreateDiscordThreadBlock(Block):
+    class Input(BlockSchema):
+        credentials: DiscordCredentials = DiscordCredentialsField()
+        channel_id: str = SchemaField(
+            description="The ID of the channel where the thread will be created"
+        )
+        thread_name: str = SchemaField(
+            description="The name of the thread to create (1-100 characters)"
+        )
+        thread_type: str = SchemaField(
+            description="The type of thread to create",
+            enum=["public", "private"],
+            default="public"
+        )
+        auto_archive_duration: int = SchemaField(
+            description="Minutes of inactivity before the thread is automatically archived",
+            enum=[60, 1440, 4320, 10080],
+            default=1440
+        )
+        initial_message: str = SchemaField(
+            description="The initial message to send in the thread (optional)",
+            default="",
+            advanced=True
+        )
+        server_id: str = SchemaField(
+            description="The ID of the server (guild) - optional, helps ensure correct channel",
+            default="",
+            advanced=True
+        )
+
+    class Output(BlockSchema):
+        status: str = SchemaField(
+            description="The status of the operation"
+        )
+        thread_id: str = SchemaField(
+            description="The ID of the created thread"
+        )
+        thread_name: str = SchemaField(
+            description="The name of the created thread"
+        )
+        channel_id: str = SchemaField(
+            description="The ID of the channel where the thread was created"
+        )
+        server_id: str = SchemaField(
+            description="The ID of the server where the thread was created"
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="c9d5f1a2-7b8e-4c3d-9f2a-1b8e7c3d9f2a",
+            input_schema=CreateDiscordThreadBlock.Input,
+            output_schema=CreateDiscordThreadBlock.Output,
+            description="Creates a new thread in a Discord channel.",
+            categories={BlockCategory.SOCIAL},
+            test_input={
+                "channel_id": "987654321098765432",
+                "thread_name": "Test Thread",
+                "thread_type": "public",
+                "auto_archive_duration": 1440,
+                "initial_message": "This is the first message in the thread!",
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_output=[
+                ("status", "Thread created successfully"),
+                ("thread_id", "123456789012345678"),
+                ("thread_name", "Test Thread"),
+                ("channel_id", "987654321098765432"),
+                ("server_id", "111222333444555666"),
+            ],
+            test_mock={
+                "create_thread": lambda *args, **kwargs: {
+                    "status": "Thread created successfully",
+                    "thread_id": "123456789012345678",
+                    "thread_name": "Test Thread",
+                    "channel_id": "987654321098765432",
+                    "server_id": "111222333444555666",
+                }
+            },
+            test_credentials=TEST_CREDENTIALS,
+        )
+
+    async def create_thread(
+        self,
+        token: str,
+        channel_id: str,
+        thread_name: str,
+        thread_type: str,
+        auto_archive_duration: int,
+        initial_message: str,
+        server_id: str = None
+    ) -> dict:
+        intents = discord.Intents.default()
+        intents.guilds = True
+        intents.messages = True
+        client = discord.Client(intents=intents)
+
+        result = {}
+
+        @client.event
+        async def on_ready():
+            print(f"Logged in as {client.user}")
+            
+            # Get the channel
+            try:
+                channel = await client.fetch_channel(int(channel_id))
+            except Exception as e:
+                result["status"] = f"Failed to fetch channel: {str(e)}"
+                await client.close()
+                return
+            
+            # Verify it's a text channel
+            if not hasattr(channel, 'create_thread'):
+                result["status"] = "Channel does not support thread creation"
+                await client.close()
+                return
+            
+            # Verify server ID if provided
+            if server_id and str(channel.guild.id) != server_id:
+                result["status"] = "Channel is not in the specified server"
+                await client.close()
+                return
+            
+            # Create the thread
+            try:
+                thread_type_value = discord.ChannelType.public_thread if thread_type == "public" else discord.ChannelType.private_thread
+                
+                thread = await channel.create_thread(
+                    name=thread_name,
+                    type=thread_type_value,
+                    auto_archive_duration=auto_archive_duration
+                )
+                
+                result["status"] = "Thread created successfully"
+                result["thread_id"] = str(thread.id)
+                result["thread_name"] = thread.name
+                result["channel_id"] = str(channel.id)
+                result["server_id"] = str(channel.guild.id)
+                
+                # Send initial message if provided
+                if initial_message:
+                    try:
+                        await thread.send(initial_message)
+                        result["status"] = "Thread created successfully with initial message"
+                    except Exception as e:
+                        result["status"] = f"Thread created but failed to send initial message: {str(e)}"
+                
+            except Exception as e:
+                result["status"] = f"Failed to create thread: {str(e)}"
+            
+            await client.close()
+
+        await client.start(token)
+        return result
+
+    async def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
+        try:
+            result = await self.create_thread(
+                token=credentials.api_key.get_secret_value(),
+                channel_id=input_data.channel_id,
+                thread_name=input_data.thread_name,
+                thread_type=input_data.thread_type,
+                auto_archive_duration=input_data.auto_archive_duration,
+                initial_message=input_data.initial_message,
+                server_id=input_data.server_id if input_data.server_id else None
+            )
+
+            if result.get("status", "").startswith("Failed") or "error" in result.get("status", "").lower():
+                raise ValueError(result["status"])
+
+            yield "status", result["status"]
+            yield "thread_id", result["thread_id"]
+            yield "thread_name", result["thread_name"]
+            yield "channel_id", result["channel_id"]
+            yield "server_id", result["server_id"]
+
+        except discord.errors.LoginFailure as login_err:
+            raise ValueError(f"Login error occurred: {login_err}")
+        except Exception as e:
+            raise ValueError(f"An error occurred: {e}")
