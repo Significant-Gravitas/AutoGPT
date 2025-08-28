@@ -17,7 +17,16 @@ const meta: Meta<typeof Input> = {
   argTypes: {
     type: {
       control: "select",
-      options: ["text", "email", "password", "number", "amount", "tel", "url"],
+      options: [
+        "text",
+        "email",
+        "password",
+        "number",
+        "amount",
+        "tel",
+        "url",
+        "textarea",
+      ],
       description: "Input type",
     },
     placeholder: {
@@ -50,6 +59,10 @@ const meta: Meta<typeof Input> = {
       control: "text",
       description: "Error message to display below the input",
     },
+    rows: {
+      control: "number",
+      description: "Number of rows for textarea type. Default is 3.",
+    },
   },
   args: {
     placeholder: "Enter text...",
@@ -58,6 +71,7 @@ const meta: Meta<typeof Input> = {
     disabled: false,
     hideLabel: false,
     decimalCount: 4,
+    rows: 3,
   },
 };
 
@@ -96,6 +110,15 @@ export const WithError: Story = {
   },
 };
 
+export const TextareaInput: Story = {
+  args: {
+    label: "Description",
+    type: "textarea",
+    placeholder: "Enter your description",
+    rows: 4,
+  },
+};
+
 export const InputTypes: Story = {
   render: renderInputTypes,
   parameters: {
@@ -115,19 +138,35 @@ export const InputTypes: Story = {
 function renderInputTypes() {
   return (
     <div className="w-full max-w-md space-y-8">
-      <Input label="Full Name" type="text" placeholder="Enter your full name" />
-      <Input label="Email" type="email" placeholder="your.email@example.com" />
+      <Input
+        label="Full Name"
+        type="text"
+        placeholder="Enter your full name"
+        id="full-name"
+      />
+      <Input
+        label="Email"
+        type="email"
+        placeholder="your.email@example.com"
+        id="email"
+      />
       <Input
         label="Password"
         type="password"
         placeholder="Enter your password"
+        id="password"
       />
       <div className="flex flex-col gap-4">
         <p className="font-mono text-sm">
           If type=&quot;number&quot; prop is provided, the input will allow only
           positive or negative numbers. No decimal limiting.
         </p>
-        <Input label="Age" type="number" placeholder="Enter your age" />
+        <Input
+          label="Age"
+          type="number"
+          placeholder="Enter your age"
+          id="age"
+        />
       </div>
       <div className="flex flex-col gap-4">
         <p className="font-mono text-sm">
@@ -139,6 +178,7 @@ function renderInputTypes() {
           type="amount"
           placeholder="Enter amount"
           decimalCount={2}
+          id="price"
         />
       </div>
       <div className="flex flex-col gap-4">
@@ -146,9 +186,32 @@ function renderInputTypes() {
           If type=&quot;tel&quot; prop is provided, the input will allow only
           numbers, spaces, parentheses (), plus +, and brackets [].
         </p>
-        <Input label="Phone" type="tel" placeholder="+1 (555) 123-4567" />
+        <Input
+          label="Phone"
+          type="tel"
+          placeholder="+1 (555) 123-4567"
+          id="phone"
+        />
       </div>
-      <Input label="Website" type="url" placeholder="https://example.com" />
+      <Input
+        label="Website"
+        type="url"
+        placeholder="https://example.com"
+        id="website"
+      />
+      <div className="flex flex-col gap-4">
+        <p className="font-mono text-sm">
+          If type=&quot;textarea&quot; prop is provided, it renders a multi-line
+          text area with specified rows.
+        </p>
+        <Input
+          label="Description"
+          type="textarea"
+          placeholder="Enter your description"
+          id="description"
+          rows={4}
+        />
+      </div>
     </div>
   );
 }

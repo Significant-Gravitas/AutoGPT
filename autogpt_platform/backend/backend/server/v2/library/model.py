@@ -8,9 +8,8 @@ import pydantic
 
 import backend.data.block as block_model
 import backend.data.graph as graph_model
-import backend.server.model as server_model
 from backend.data.model import CredentialsMetaInput, is_credentials_field_name
-from backend.integrations.providers import ProviderName
+from backend.util.models import Pagination
 
 if TYPE_CHECKING:
     from backend.data.integrations import Webhook
@@ -21,14 +20,6 @@ class LibraryAgentStatus(str, Enum):
     HEALTHY = "HEALTHY"  # Agent is running (not all runs have completed)
     WAITING = "WAITING"  # Agent is queued or waiting to start
     ERROR = "ERROR"  # Agent is in an error state
-
-
-class LibraryAgentTriggerInfo(pydantic.BaseModel):
-    provider: ProviderName
-    config_schema: dict[str, Any] = pydantic.Field(
-        description="Input schema for the trigger block"
-    )
-    credentials_input_name: Optional[str]
 
 
 class LibraryAgent(pydantic.BaseModel):
@@ -54,6 +45,7 @@ class LibraryAgent(pydantic.BaseModel):
     description: str
 
     input_schema: dict[str, Any]  # Should be BlockIOObjectSubSchema in frontend
+    output_schema: dict[str, Any]
     credentials_input_schema: dict[str, Any] | None = pydantic.Field(
         description="Input schema for credentials required by the agent",
     )
@@ -61,7 +53,7 @@ class LibraryAgent(pydantic.BaseModel):
     has_external_trigger: bool = pydantic.Field(
         description="Whether the agent has an external trigger (e.g. webhook) node"
     )
-    trigger_setup_info: Optional[LibraryAgentTriggerInfo] = None
+    trigger_setup_info: Optional[graph_model.GraphTriggerInfo] = None
 
     # Indicates whether there's a new output (based on recent runs)
     new_output: bool
@@ -129,34 +121,12 @@ class LibraryAgent(pydantic.BaseModel):
             name=graph.name,
             description=graph.description,
             input_schema=graph.input_schema,
+            output_schema=graph.output_schema,
             credentials_input_schema=(
-                graph.credentials_input_schema if sub_graphs else None
+                graph.credentials_input_schema if sub_graphs is not None else None
             ),
-            has_external_trigger=graph.has_webhook_trigger,
-            trigger_setup_info=(
-                LibraryAgentTriggerInfo(
-                    provider=trigger_block.webhook_config.provider,
-                    config_schema={
-                        **(json_schema := trigger_block.input_schema.jsonschema()),
-                        "properties": {
-                            pn: sub_schema
-                            for pn, sub_schema in json_schema["properties"].items()
-                            if not is_credentials_field_name(pn)
-                        },
-                        "required": [
-                            pn
-                            for pn in json_schema.get("required", [])
-                            if not is_credentials_field_name(pn)
-                        ],
-                    },
-                    credentials_input_name=next(
-                        iter(trigger_block.input_schema.get_credentials_fields()), None
-                    ),
-                )
-                if graph.webhook_input_node
-                and (trigger_block := graph.webhook_input_node.block).webhook_config
-                else None
-            ),
+            has_external_trigger=graph.has_external_trigger,
+            trigger_setup_info=graph.trigger_setup_info,
             new_output=new_output,
             can_access_graph=can_access_graph,
             is_latest_version=is_latest_version,
@@ -216,7 +186,7 @@ class LibraryAgentResponse(pydantic.BaseModel):
     """Response schema for a list of library agents and pagination info."""
 
     agents: list[LibraryAgent]
-    pagination: server_model.Pagination
+    pagination: Pagination
 
 
 class LibraryAgentPresetCreatable(pydantic.BaseModel):
@@ -263,6 +233,19 @@ class LibraryAgentPresetUpdatable(pydantic.BaseModel):
     description: Optional[str] = None
 
     is_active: Optional[bool] = None
+
+
+class TriggeredPresetSetupRequest(pydantic.BaseModel):
+    name: str
+    description: str = ""
+
+    graph_id: str
+    graph_version: int
+
+    trigger_config: dict[str, Any]
+    agent_credentials: dict[str, CredentialsMetaInput] = pydantic.Field(
+        default_factory=dict
+    )
 
 
 class LibraryAgentPreset(LibraryAgentPresetCreatable):
@@ -316,7 +299,7 @@ class LibraryAgentPresetResponse(pydantic.BaseModel):
     """Response schema for a list of agent presets and pagination info."""
 
     presets: list[LibraryAgentPreset]
-    pagination: server_model.Pagination
+    pagination: Pagination
 
 
 class LibraryAgentFilter(str, Enum):

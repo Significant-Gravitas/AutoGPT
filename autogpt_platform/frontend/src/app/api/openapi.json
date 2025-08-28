@@ -18,8 +18,9 @@
             "in": "path",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/ProviderName",
-              "title": "The provider to initiate an OAuth flow for"
+              "type": "string",
+              "title": "The provider to initiate an OAuth flow for",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
             }
           },
           {
@@ -64,8 +65,9 @@
             "in": "path",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/ProviderName",
-              "title": "The target provider for this OAuth exchange"
+              "type": "string",
+              "title": "The target provider for this OAuth exchange",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
             }
           }
         ],
@@ -133,8 +135,9 @@
             "in": "path",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/ProviderName",
-              "title": "The provider to list credentials for"
+              "type": "string",
+              "title": "The provider to list credentials for",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
             }
           }
         ],
@@ -173,8 +176,9 @@
             "in": "path",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/ProviderName",
-              "title": "The provider to create credentials for"
+              "type": "string",
+              "title": "The provider to create credentials for",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
             }
           }
         ],
@@ -253,8 +257,9 @@
             "in": "path",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/ProviderName",
-              "title": "The provider to retrieve credentials for"
+              "type": "string",
+              "title": "The provider to retrieve credentials for",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
             }
           },
           {
@@ -315,8 +320,9 @@
             "in": "path",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/ProviderName",
-              "title": "The provider to delete credentials for"
+              "type": "string",
+              "title": "The provider to delete credentials for",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
             }
           },
           {
@@ -380,8 +386,9 @@
             "in": "path",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/ProviderName",
-              "title": "Provider where the webhook was registered"
+              "type": "string",
+              "title": "Provider where the webhook was registered",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
             }
           },
           {
@@ -430,6 +437,104 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/integrations/ayrshare/sso_url": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "Get Ayrshare Sso Url",
+        "description": "Generate an SSO URL for Ayrshare social media integration.\n\nReturns:\n    dict: Contains the SSO URL for Ayrshare integration",
+        "operationId": "getV1GetAyrshareSsoUrl",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AyrshareSSOResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/integrations/providers": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "List Providers",
+        "description": "Get a list of all available provider names.\n\nReturns both statically defined providers (from ProviderName enum)\nand dynamically registered providers (from SDK decorators).\n\nNote: The complete list of provider names is also available as a constant\nin the generated TypeScript client via PROVIDER_NAMES.",
+        "operationId": "getV1ListProviders",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "type": "string" },
+                  "type": "array",
+                  "title": "Response Getv1Listproviders"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/integrations/providers/names": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "Get Provider Names",
+        "description": "Get all provider names in a structured format.\n\nThis endpoint is specifically designed to expose the provider names\nin the OpenAPI schema so that code generators like Orval can create\nappropriate TypeScript constants.",
+        "operationId": "getV1GetProviderNames",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderNamesResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/integrations/providers/constants": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "Get Provider Constants",
+        "description": "Get provider names as constants.\n\nThis endpoint returns a model with provider names as constants,\nspecifically designed for OpenAPI code generation tools to create\nTypeScript constants.",
+        "operationId": "getV1GetProviderConstants",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProviderConstants" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/integrations/providers/enum-example": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "Get Provider Enum Example",
+        "description": "Example endpoint that uses the CompleteProviderNames enum.\n\nThis endpoint exists to ensure that the CompleteProviderNames enum is included\nin the OpenAPI schema, which will cause Orval to generate it as a\nTypeScript enum/constant.",
+        "operationId": "getV1GetProviderEnumExample",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderEnumResponse"
+                }
               }
             }
           }
@@ -532,6 +637,56 @@
                   "type": "object",
                   "title": "Response Postv1Update User Email"
                 }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/user/timezone": {
+      "get": {
+        "tags": ["v1", "auth"],
+        "summary": "Get user timezone",
+        "description": "Get user timezone setting.",
+        "operationId": "getV1Get user timezone",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TimezoneResponse" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v1", "auth"],
+        "summary": "Update user timezone",
+        "description": "Update user timezone. The timezone should be a valid IANA timezone identifier.",
+        "operationId": "postV1Update user timezone",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateTimezoneRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TimezoneResponse" }
               }
             }
           },
@@ -722,6 +877,64 @@
                   "additionalProperties": { "type": "array", "items": {} },
                   "title": "Response Postv1Execute Graph Block"
                 }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/files/upload": {
+      "post": {
+        "tags": ["v1", "files"],
+        "summary": "Upload file to cloud storage",
+        "description": "Upload a file to cloud storage and return a storage key that can be used\nwith FileStoreBlock and AgentFileInputBlock.\n\nArgs:\n    file: The file to upload\n    user_id: The user ID\n    provider: Cloud storage provider (\"gcs\", \"s3\", \"azure\")\n    expiration_hours: Hours until file expires (1-48)\n\nReturns:\n    Dict containing the cloud storage path and signed URL",
+        "operationId": "postV1Upload file to cloud storage",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "gcs",
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "expiration_hours",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 24,
+              "title": "Expiration Hours"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postV1Upload_file_to_cloud_storage"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UploadFileResponse" }
               }
             }
           },
@@ -1018,7 +1231,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": { "$ref": "#/components/schemas/GraphModel" },
+                  "items": { "$ref": "#/components/schemas/GraphMeta" },
                   "type": "array",
                   "title": "Response Getv1List User Graphs"
                 }
@@ -1393,7 +1606,13 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/GraphExecution" }
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/GraphExecutionMeta" },
+                    { "type": "null" }
+                  ],
+                  "title": "Response Postv1Stop Graph Execution"
+                }
               }
             }
           },
@@ -1411,8 +1630,8 @@
     "/api/executions": {
       "get": {
         "tags": ["v1", "graphs"],
-        "summary": "Get all executions",
-        "operationId": "getV1Get all executions",
+        "summary": "List all executions",
+        "operationId": "getV1List all executions",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1423,7 +1642,7 @@
                     "$ref": "#/components/schemas/GraphExecutionMeta"
                   },
                   "type": "array",
-                  "title": "Response Getv1Get All Executions"
+                  "title": "Response Getv1List All Executions"
                 }
               }
             }
@@ -1434,14 +1653,41 @@
     "/api/graphs/{graph_id}/executions": {
       "get": {
         "tags": ["v1", "graphs"],
-        "summary": "Get graph executions",
-        "operationId": "getV1Get graph executions",
+        "summary": "List graph executions",
+        "operationId": "getV1List graph executions",
         "parameters": [
           {
             "name": "graph_id",
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "Graph Id" }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Page number (1-indexed)",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "Page number (1-indexed)"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Number of executions per page",
+              "default": 25,
+              "title": "Page Size"
+            },
+            "description": "Number of executions per page"
           }
         ],
         "responses": {
@@ -1450,11 +1696,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/GraphExecutionMeta"
-                  },
-                  "title": "Response Getv1Get Graph Executions"
+                  "$ref": "#/components/schemas/GraphExecutionsPaginated"
                 }
               }
             }
@@ -2298,12 +2540,44 @@
         "tags": ["v2", "store", "private"],
         "summary": "Get my agents",
         "operationId": "getV2Get my agents",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/MyAgentsResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
           }
@@ -2423,6 +2697,50 @@
         }
       }
     },
+    "/api/store/submissions/{store_listing_version_id}": {
+      "put": {
+        "tags": ["v2", "store", "private"],
+        "summary": "Edit store submission",
+        "description": "Edit an existing store listing submission.\n\nArgs:\n    store_listing_version_id (str): ID of the store listing version to edit\n    submission_request (StoreSubmissionRequest): The updated submission details\n    user_id (str): ID of the authenticated user editing the listing\n\nReturns:\n    StoreSubmission: The updated store submission\n\nRaises:\n    HTTPException: If there is an error editing the submission",
+        "operationId": "putV2Edit store submission",
+        "parameters": [
+          {
+            "name": "store_listing_version_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Store Listing Version Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreSubmissionEditRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StoreSubmission" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/submissions/media": {
       "post": {
         "tags": ["v2", "store", "private"],
@@ -2514,6 +2832,239 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/builder/suggestions": {
+      "get": {
+        "tags": ["v2"],
+        "summary": "Get Builder suggestions",
+        "description": "Get all suggestions for the Blocks Menu.",
+        "operationId": "getV2Get builder suggestions",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SuggestionsResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/builder/categories": {
+      "get": {
+        "tags": ["v2"],
+        "summary": "Get Builder block categories",
+        "description": "Get all block categories with a specified number of blocks per category.",
+        "operationId": "getV2Get builder block categories",
+        "parameters": [
+          {
+            "name": "blocks_per_category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 3,
+              "title": "Blocks Per Category"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BlockCategoryResponse"
+                  },
+                  "title": "Response Getv2Get Builder Block Categories"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/builder/blocks": {
+      "get": {
+        "tags": ["v2"],
+        "summary": "Get Builder blocks",
+        "description": "Get blocks based on either category, type, or provider.",
+        "operationId": "getV2Get builder blocks",
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Category"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": ["all", "input", "action", "output"],
+                  "type": "string"
+                },
+                { "type": "null" }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "description": "Provider name for integrations. Can be any string value, including custom provider names."
+                },
+                { "type": "null" }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 1, "title": "Page" }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 50, "title": "Page Size" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BlockResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/builder/providers": {
+      "get": {
+        "tags": ["v2"],
+        "summary": "Get Builder integration providers",
+        "description": "Get all integration providers with their block counts.",
+        "operationId": "getV2Get builder integration providers",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 1, "title": "Page" }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 50, "title": "Page Size" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProviderResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/builder/search": {
+      "post": {
+        "tags": ["v2", "store", "private"],
+        "summary": "Builder search",
+        "description": "Search for blocks (including integrations), marketplace agents, and user library agents.",
+        "operationId": "postV2Builder search",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SearchRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SearchResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/builder/counts": {
+      "get": {
+        "tags": ["v2"],
+        "summary": "Get Builder item counts",
+        "description": "Get item counts for the menu categories in the Blocks Menu.",
+        "operationId": "getV2Get builder item counts",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CountResponse" }
               }
             }
           }
@@ -2965,6 +3516,42 @@
         }
       }
     },
+    "/api/library/presets/setup-trigger": {
+      "post": {
+        "tags": ["v2", "presets"],
+        "summary": "Setup Trigger",
+        "description": "Sets up a webhook-triggered `LibraryAgentPreset` for a `LibraryAgent`.\nReturns the correspondingly created `LibraryAgentPreset` with `webhook_id` set.",
+        "operationId": "postV2SetupTrigger",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriggeredPresetSetupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryAgentPreset" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/library/presets/{preset_id}/execute": {
       "post": {
         "tags": ["v2", "presets", "presets"],
@@ -3352,55 +3939,6 @@
         }
       }
     },
-    "/api/library/agents/{library_agent_id}/setup-trigger": {
-      "post": {
-        "tags": ["v2", "library", "private"],
-        "summary": "Setup Trigger",
-        "description": "Sets up a webhook-triggered `LibraryAgentPreset` for a `LibraryAgent`.\nReturns the correspondingly created `LibraryAgentPreset` with `webhook_id` set.",
-        "operationId": "postV2SetupTrigger",
-        "parameters": [
-          {
-            "name": "library_agent_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "ID of the library agent",
-              "title": "Library Agent Id"
-            },
-            "description": "ID of the library agent"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TriggeredPresetSetupParams"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/LibraryAgentPreset" }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/otto/ask": {
       "post": {
         "tags": ["v2", "otto"],
@@ -3710,6 +4248,24 @@
         "required": ["amount", "threshold"],
         "title": "AutoTopUpConfig"
       },
+      "AyrshareSSOResponse": {
+        "properties": {
+          "sso_url": {
+            "type": "string",
+            "title": "Sso Url",
+            "description": "The SSO URL for Ayrshare integration"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At",
+            "description": "ISO timestamp when the URL expires"
+          }
+        },
+        "type": "object",
+        "required": ["sso_url", "expires_at"],
+        "title": "AyrshareSSOResponse"
+      },
       "BaseGraph-Input": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -3788,11 +4344,57 @@
             "type": "object",
             "title": "Output Schema",
             "readOnly": true
+          },
+          "has_external_trigger": {
+            "type": "boolean",
+            "title": "Has External Trigger",
+            "readOnly": true
+          },
+          "trigger_setup_info": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/GraphTriggerInfo" },
+              { "type": "null" }
+            ],
+            "readOnly": true
           }
         },
         "type": "object",
-        "required": ["name", "description", "input_schema", "output_schema"],
+        "required": [
+          "name",
+          "description",
+          "input_schema",
+          "output_schema",
+          "has_external_trigger",
+          "trigger_setup_info"
+        ],
         "title": "BaseGraph"
+      },
+      "BlockCategoryResponse": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "total_blocks": { "type": "integer", "title": "Total Blocks" },
+          "blocks": {
+            "items": { "additionalProperties": true, "type": "object" },
+            "type": "array",
+            "title": "Blocks"
+          }
+        },
+        "type": "object",
+        "required": ["name", "total_blocks", "blocks"],
+        "title": "BlockCategoryResponse"
+      },
+      "BlockResponse": {
+        "properties": {
+          "blocks": {
+            "items": { "additionalProperties": true, "type": "object" },
+            "type": "array",
+            "title": "Blocks"
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        },
+        "type": "object",
+        "required": ["blocks", "pagination"],
+        "title": "BlockResponse"
       },
       "Body_postV1Callback": {
         "properties": {
@@ -3842,6 +4444,14 @@
         "type": "object",
         "required": ["type", "data", "data_index"],
         "title": "Body_postV1LogRawAnalytics"
+      },
+      "Body_postV1Upload_file_to_cloud_storage": {
+        "properties": {
+          "file": { "type": "string", "format": "binary", "title": "File" }
+        },
+        "type": "object",
+        "required": ["file"],
+        "title": "Body_postV1Upload file to cloud storage"
       },
       "Body_postV2Add_credits_to_user": {
         "properties": {
@@ -3905,6 +4515,31 @@
         "type": "object",
         "required": ["query", "conversation_history", "message_id"],
         "title": "ChatRequest"
+      },
+      "CountResponse": {
+        "properties": {
+          "all_blocks": { "type": "integer", "title": "All Blocks" },
+          "input_blocks": { "type": "integer", "title": "Input Blocks" },
+          "action_blocks": { "type": "integer", "title": "Action Blocks" },
+          "output_blocks": { "type": "integer", "title": "Output Blocks" },
+          "integrations": { "type": "integer", "title": "Integrations" },
+          "marketplace_agents": {
+            "type": "integer",
+            "title": "Marketplace Agents"
+          },
+          "my_agents": { "type": "integer", "title": "My Agents" }
+        },
+        "type": "object",
+        "required": [
+          "all_blocks",
+          "input_blocks",
+          "action_blocks",
+          "output_blocks",
+          "integrations",
+          "marketplace_agents",
+          "my_agents"
+        ],
+        "title": "CountResponse"
       },
       "CreateAPIKeyRequest": {
         "properties": {
@@ -4052,7 +4687,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
           },
-          "provider": { "$ref": "#/components/schemas/ProviderName" },
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "Provider name for integrations. Can be any string value, including custom provider names."
+          },
           "type": {
             "type": "string",
             "enum": ["api_key", "oauth2", "user_password", "host_scoped"],
@@ -4211,6 +4850,7 @@
         },
         "type": "object",
         "required": [
+          "id",
           "user_id",
           "graph_id",
           "graph_version",
@@ -4288,6 +4928,7 @@
         },
         "type": "object",
         "required": [
+          "id",
           "user_id",
           "graph_id",
           "graph_version",
@@ -4343,6 +4984,7 @@
         },
         "type": "object",
         "required": [
+          "id",
           "user_id",
           "graph_id",
           "graph_version",
@@ -4355,6 +4997,90 @@
           "node_executions"
         ],
         "title": "GraphExecutionWithNodes"
+      },
+      "GraphExecutionsPaginated": {
+        "properties": {
+          "executions": {
+            "items": { "$ref": "#/components/schemas/GraphExecutionMeta" },
+            "type": "array",
+            "title": "Executions"
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        },
+        "type": "object",
+        "required": ["executions", "pagination"],
+        "title": "GraphExecutionsPaginated",
+        "description": "Response schema for paginated graph executions."
+      },
+      "GraphMeta": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "version": { "type": "integer", "title": "Version", "default": 1 },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "forked_from_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Forked From Id"
+          },
+          "forked_from_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Forked From Version"
+          },
+          "sub_graphs": {
+            "items": { "$ref": "#/components/schemas/BaseGraph-Output" },
+            "type": "array",
+            "title": "Sub Graphs",
+            "default": []
+          },
+          "user_id": { "type": "string", "title": "User Id" },
+          "input_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input Schema",
+            "readOnly": true
+          },
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Output Schema",
+            "readOnly": true
+          },
+          "has_external_trigger": {
+            "type": "boolean",
+            "title": "Has External Trigger",
+            "readOnly": true
+          },
+          "trigger_setup_info": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/GraphTriggerInfo" },
+              { "type": "null" }
+            ],
+            "readOnly": true
+          },
+          "credentials_input_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Credentials Input Schema",
+            "readOnly": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "description",
+          "user_id",
+          "input_schema",
+          "output_schema",
+          "has_external_trigger",
+          "trigger_setup_info",
+          "credentials_input_schema"
+        ],
+        "title": "GraphMeta"
       },
       "GraphModel": {
         "properties": {
@@ -4406,15 +5132,22 @@
             "title": "Output Schema",
             "readOnly": true
           },
+          "has_external_trigger": {
+            "type": "boolean",
+            "title": "Has External Trigger",
+            "readOnly": true
+          },
+          "trigger_setup_info": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/GraphTriggerInfo" },
+              { "type": "null" }
+            ],
+            "readOnly": true
+          },
           "credentials_input_schema": {
             "additionalProperties": true,
             "type": "object",
             "title": "Credentials Input Schema",
-            "readOnly": true
-          },
-          "has_webhook_trigger": {
-            "type": "boolean",
-            "title": "Has Webhook Trigger",
             "readOnly": true
           }
         },
@@ -4425,10 +5158,33 @@
           "user_id",
           "input_schema",
           "output_schema",
-          "credentials_input_schema",
-          "has_webhook_trigger"
+          "has_external_trigger",
+          "trigger_setup_info",
+          "credentials_input_schema"
         ],
         "title": "GraphModel"
+      },
+      "GraphTriggerInfo": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "Provider name for integrations. Can be any string value, including custom provider names."
+          },
+          "config_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Config Schema",
+            "description": "Input schema for the trigger block"
+          },
+          "credentials_input_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credentials Input Name"
+          }
+        },
+        "type": "object",
+        "required": ["provider", "config_schema", "credentials_input_name"],
+        "title": "GraphTriggerInfo"
       },
       "HTTPValidationError": {
         "properties": {
@@ -4532,9 +5288,16 @@
             "type": "object",
             "title": "Input Schema"
           },
-          "credentials_input_schema": {
+          "output_schema": {
             "additionalProperties": true,
             "type": "object",
+            "title": "Output Schema"
+          },
+          "credentials_input_schema": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
             "title": "Credentials Input Schema",
             "description": "Input schema for credentials required by the agent"
           },
@@ -4545,7 +5308,7 @@
           },
           "trigger_setup_info": {
             "anyOf": [
-              { "$ref": "#/components/schemas/LibraryAgentTriggerInfo" },
+              { "$ref": "#/components/schemas/GraphTriggerInfo" },
               { "type": "null" }
             ]
           },
@@ -4572,6 +5335,7 @@
           "name",
           "description",
           "input_schema",
+          "output_schema",
           "credentials_input_schema",
           "has_external_trigger",
           "new_output",
@@ -4773,24 +5537,6 @@
         "type": "string",
         "enum": ["COMPLETED", "HEALTHY", "WAITING", "ERROR"],
         "title": "LibraryAgentStatus"
-      },
-      "LibraryAgentTriggerInfo": {
-        "properties": {
-          "provider": { "$ref": "#/components/schemas/ProviderName" },
-          "config_schema": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Config Schema",
-            "description": "Input schema for the trigger block"
-          },
-          "credentials_input_name": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Credentials Input Name"
-          }
-        },
-        "type": "object",
-        "required": ["provider", "config_schema", "credentials_input_name"],
-        "title": "LibraryAgentTriggerInfo"
       },
       "LibraryAgentUpdateRequest": {
         "properties": {
@@ -5122,7 +5868,9 @@
           "WEEKLY_SUMMARY",
           "MONTHLY_SUMMARY",
           "REFUND_REQUEST",
-          "REFUND_PROCESSED"
+          "REFUND_PROCESSED",
+          "AGENT_APPROVED",
+          "AGENT_REJECTED"
         ],
         "title": "NotificationType"
       },
@@ -5579,51 +6327,83 @@
         "required": ["name", "username", "description", "links"],
         "title": "ProfileDetails"
       },
-      "ProviderName": {
-        "type": "string",
-        "enum": [
-          "aiml_api",
-          "anthropic",
-          "apollo",
-          "compass",
-          "discord",
-          "d_id",
-          "e2b",
-          "exa",
-          "fal",
-          "generic_webhook",
-          "github",
-          "google",
-          "google_maps",
-          "groq",
-          "http",
-          "hubspot",
-          "ideogram",
-          "jina",
-          "linear",
-          "llama_api",
-          "medium",
-          "mem0",
-          "notion",
-          "nvidia",
-          "ollama",
-          "openai",
-          "openweathermap",
-          "open_router",
-          "pinecone",
-          "reddit",
-          "replicate",
-          "revid",
-          "screenshotone",
-          "slant3d",
-          "smartlead",
-          "smtp",
-          "twitter",
-          "todoist",
-          "unreal_speech",
-          "zerobounce"
-        ],
-        "title": "ProviderName"
+      "Provider": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Provider name for integrations. Can be any string value, including custom provider names."
+          },
+          "description": { "type": "string", "title": "Description" },
+          "integration_count": {
+            "type": "integer",
+            "title": "Integration Count"
+          }
+        },
+        "type": "object",
+        "required": ["name", "description", "integration_count"],
+        "title": "Provider"
+      },
+      "ProviderConstants": {
+        "properties": {
+          "PROVIDER_NAMES": {
+            "additionalProperties": { "type": "string" },
+            "type": "object",
+            "title": "Provider Names",
+            "description": "All available provider names as a constant mapping",
+            "examples": [
+              {
+                "ANTHROPIC": "anthropic",
+                "EXA": "exa",
+                "EXAMPLE_SERVICE": "example-service",
+                "GEM": "gem",
+                "OPENAI": "openai"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "ProviderConstants",
+        "description": "Model that exposes all provider names as a constant in the OpenAPI schema.\nThis is designed to be converted by Orval into a TypeScript constant."
+      },
+      "ProviderEnumResponse": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "A provider name from the complete list of providers"
+          }
+        },
+        "type": "object",
+        "required": ["provider"],
+        "title": "ProviderEnumResponse",
+        "description": "Response containing a provider from the enum."
+      },
+      "ProviderNamesResponse": {
+        "properties": {
+          "providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Providers",
+            "description": "List of all available provider names"
+          }
+        },
+        "type": "object",
+        "title": "ProviderNamesResponse",
+        "description": "Response containing list of all provider names."
+      },
+      "ProviderResponse": {
+        "properties": {
+          "providers": {
+            "items": { "$ref": "#/components/schemas/Provider" },
+            "type": "array",
+            "title": "Providers"
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        },
+        "type": "object",
+        "required": ["providers", "pagination"],
+        "title": "ProviderResponse"
       },
       "RefundRequest": {
         "properties": {
@@ -5711,6 +6491,86 @@
         "required": ["name", "cron", "inputs"],
         "title": "ScheduleCreationRequest"
       },
+      "SearchRequest": {
+        "properties": {
+          "search_query": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Search Query"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "blocks",
+                    "integrations",
+                    "marketplace_agents",
+                    "my_agents"
+                  ]
+                },
+                "type": "array"
+              },
+              { "type": "null" }
+            ],
+            "title": "Filter"
+          },
+          "by_creator": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "By Creator"
+          },
+          "search_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Search Id"
+          },
+          "page": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Page"
+          },
+          "page_size": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "title": "SearchRequest"
+      },
+      "SearchResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "anyOf": [
+                { "additionalProperties": true, "type": "object" },
+                { "$ref": "#/components/schemas/LibraryAgent" },
+                { "$ref": "#/components/schemas/StoreAgent" }
+              ]
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total_items": {
+            "additionalProperties": { "type": "integer" },
+            "propertyNames": {
+              "enum": [
+                "blocks",
+                "integrations",
+                "marketplace_agents",
+                "my_agents"
+              ]
+            },
+            "type": "object",
+            "title": "Total Items"
+          },
+          "page": { "type": "integer", "title": "Page" },
+          "more_pages": { "type": "boolean", "title": "More Pages" }
+        },
+        "type": "object",
+        "required": ["items", "total_items", "page", "more_pages"],
+        "title": "SearchResponse"
+      },
       "SetGraphActiveVersion": {
         "properties": {
           "active_graph_version": {
@@ -5770,6 +6630,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error",
             "description": "Error message if any"
+          },
+          "activity_status": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Activity Status",
+            "description": "AI-generated summary of what the agent did"
           }
         },
         "additionalProperties": true,
@@ -6011,6 +6876,16 @@
           "changes_summary": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Changes Summary"
+          },
+          "video_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Video Url"
+          },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories",
+            "default": []
           }
         },
         "type": "object",
@@ -6028,6 +6903,40 @@
           "rating"
         ],
         "title": "StoreSubmission"
+      },
+      "StoreSubmissionEditRequest": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "sub_heading": { "type": "string", "title": "Sub Heading" },
+          "video_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Video Url"
+          },
+          "image_urls": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Image Urls",
+            "default": []
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories",
+            "default": []
+          },
+          "changes_summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Changes Summary"
+          }
+        },
+        "type": "object",
+        "required": ["name", "sub_heading"],
+        "title": "StoreSubmissionEditRequest"
       },
       "StoreSubmissionRequest": {
         "properties": {
@@ -6090,6 +6999,657 @@
         "enum": ["DRAFT", "PENDING", "APPROVED", "REJECTED"],
         "title": "SubmissionStatus"
       },
+      "SuggestionsResponse": {
+        "properties": {
+          "otto_suggestions": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Otto Suggestions"
+          },
+          "recent_searches": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Recent Searches"
+          },
+          "providers": {
+            "items": {
+              "type": "string",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
+            },
+            "type": "array",
+            "title": "Providers"
+          },
+          "top_blocks": {
+            "items": { "additionalProperties": true, "type": "object" },
+            "type": "array",
+            "title": "Top Blocks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "otto_suggestions",
+          "recent_searches",
+          "providers",
+          "top_blocks"
+        ],
+        "title": "SuggestionsResponse"
+      },
+      "TimezoneResponse": {
+        "properties": {
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "Africa/Abidjan",
+                  "Africa/Accra",
+                  "Africa/Addis_Ababa",
+                  "Africa/Algiers",
+                  "Africa/Asmara",
+                  "Africa/Asmera",
+                  "Africa/Bamako",
+                  "Africa/Bangui",
+                  "Africa/Banjul",
+                  "Africa/Bissau",
+                  "Africa/Blantyre",
+                  "Africa/Brazzaville",
+                  "Africa/Bujumbura",
+                  "Africa/Cairo",
+                  "Africa/Casablanca",
+                  "Africa/Ceuta",
+                  "Africa/Conakry",
+                  "Africa/Dakar",
+                  "Africa/Dar_es_Salaam",
+                  "Africa/Djibouti",
+                  "Africa/Douala",
+                  "Africa/El_Aaiun",
+                  "Africa/Freetown",
+                  "Africa/Gaborone",
+                  "Africa/Harare",
+                  "Africa/Johannesburg",
+                  "Africa/Juba",
+                  "Africa/Kampala",
+                  "Africa/Khartoum",
+                  "Africa/Kigali",
+                  "Africa/Kinshasa",
+                  "Africa/Lagos",
+                  "Africa/Libreville",
+                  "Africa/Lome",
+                  "Africa/Luanda",
+                  "Africa/Lubumbashi",
+                  "Africa/Lusaka",
+                  "Africa/Malabo",
+                  "Africa/Maputo",
+                  "Africa/Maseru",
+                  "Africa/Mbabane",
+                  "Africa/Mogadishu",
+                  "Africa/Monrovia",
+                  "Africa/Nairobi",
+                  "Africa/Ndjamena",
+                  "Africa/Niamey",
+                  "Africa/Nouakchott",
+                  "Africa/Ouagadougou",
+                  "Africa/Porto-Novo",
+                  "Africa/Sao_Tome",
+                  "Africa/Timbuktu",
+                  "Africa/Tripoli",
+                  "Africa/Tunis",
+                  "Africa/Windhoek",
+                  "America/Adak",
+                  "America/Anchorage",
+                  "America/Anguilla",
+                  "America/Antigua",
+                  "America/Araguaina",
+                  "America/Argentina/Buenos_Aires",
+                  "America/Argentina/Catamarca",
+                  "America/Argentina/ComodRivadavia",
+                  "America/Argentina/Cordoba",
+                  "America/Argentina/Jujuy",
+                  "America/Argentina/La_Rioja",
+                  "America/Argentina/Mendoza",
+                  "America/Argentina/Rio_Gallegos",
+                  "America/Argentina/Salta",
+                  "America/Argentina/San_Juan",
+                  "America/Argentina/San_Luis",
+                  "America/Argentina/Tucuman",
+                  "America/Argentina/Ushuaia",
+                  "America/Aruba",
+                  "America/Asuncion",
+                  "America/Atikokan",
+                  "America/Atka",
+                  "America/Bahia",
+                  "America/Bahia_Banderas",
+                  "America/Barbados",
+                  "America/Belem",
+                  "America/Belize",
+                  "America/Blanc-Sablon",
+                  "America/Boa_Vista",
+                  "America/Bogota",
+                  "America/Boise",
+                  "America/Buenos_Aires",
+                  "America/Cambridge_Bay",
+                  "America/Campo_Grande",
+                  "America/Cancun",
+                  "America/Caracas",
+                  "America/Catamarca",
+                  "America/Cayenne",
+                  "America/Cayman",
+                  "America/Chicago",
+                  "America/Chihuahua",
+                  "America/Ciudad_Juarez",
+                  "America/Coral_Harbour",
+                  "America/Cordoba",
+                  "America/Costa_Rica",
+                  "America/Coyhaique",
+                  "America/Creston",
+                  "America/Cuiaba",
+                  "America/Curacao",
+                  "America/Danmarkshavn",
+                  "America/Dawson",
+                  "America/Dawson_Creek",
+                  "America/Denver",
+                  "America/Detroit",
+                  "America/Dominica",
+                  "America/Edmonton",
+                  "America/Eirunepe",
+                  "America/El_Salvador",
+                  "America/Ensenada",
+                  "America/Fort_Nelson",
+                  "America/Fort_Wayne",
+                  "America/Fortaleza",
+                  "America/Glace_Bay",
+                  "America/Godthab",
+                  "America/Goose_Bay",
+                  "America/Grand_Turk",
+                  "America/Grenada",
+                  "America/Guadeloupe",
+                  "America/Guatemala",
+                  "America/Guayaquil",
+                  "America/Guyana",
+                  "America/Halifax",
+                  "America/Havana",
+                  "America/Hermosillo",
+                  "America/Indiana/Indianapolis",
+                  "America/Indiana/Knox",
+                  "America/Indiana/Marengo",
+                  "America/Indiana/Petersburg",
+                  "America/Indiana/Tell_City",
+                  "America/Indiana/Vevay",
+                  "America/Indiana/Vincennes",
+                  "America/Indiana/Winamac",
+                  "America/Indianapolis",
+                  "America/Inuvik",
+                  "America/Iqaluit",
+                  "America/Jamaica",
+                  "America/Jujuy",
+                  "America/Juneau",
+                  "America/Kentucky/Louisville",
+                  "America/Kentucky/Monticello",
+                  "America/Knox_IN",
+                  "America/Kralendijk",
+                  "America/La_Paz",
+                  "America/Lima",
+                  "America/Los_Angeles",
+                  "America/Louisville",
+                  "America/Lower_Princes",
+                  "America/Maceio",
+                  "America/Managua",
+                  "America/Manaus",
+                  "America/Marigot",
+                  "America/Martinique",
+                  "America/Matamoros",
+                  "America/Mazatlan",
+                  "America/Mendoza",
+                  "America/Menominee",
+                  "America/Merida",
+                  "America/Metlakatla",
+                  "America/Mexico_City",
+                  "America/Miquelon",
+                  "America/Moncton",
+                  "America/Monterrey",
+                  "America/Montevideo",
+                  "America/Montreal",
+                  "America/Montserrat",
+                  "America/Nassau",
+                  "America/New_York",
+                  "America/Nipigon",
+                  "America/Nome",
+                  "America/Noronha",
+                  "America/North_Dakota/Beulah",
+                  "America/North_Dakota/Center",
+                  "America/North_Dakota/New_Salem",
+                  "America/Nuuk",
+                  "America/Ojinaga",
+                  "America/Panama",
+                  "America/Pangnirtung",
+                  "America/Paramaribo",
+                  "America/Phoenix",
+                  "America/Port-au-Prince",
+                  "America/Port_of_Spain",
+                  "America/Porto_Acre",
+                  "America/Porto_Velho",
+                  "America/Puerto_Rico",
+                  "America/Punta_Arenas",
+                  "America/Rainy_River",
+                  "America/Rankin_Inlet",
+                  "America/Recife",
+                  "America/Regina",
+                  "America/Resolute",
+                  "America/Rio_Branco",
+                  "America/Rosario",
+                  "America/Santa_Isabel",
+                  "America/Santarem",
+                  "America/Santiago",
+                  "America/Santo_Domingo",
+                  "America/Sao_Paulo",
+                  "America/Scoresbysund",
+                  "America/Shiprock",
+                  "America/Sitka",
+                  "America/St_Barthelemy",
+                  "America/St_Johns",
+                  "America/St_Kitts",
+                  "America/St_Lucia",
+                  "America/St_Thomas",
+                  "America/St_Vincent",
+                  "America/Swift_Current",
+                  "America/Tegucigalpa",
+                  "America/Thule",
+                  "America/Thunder_Bay",
+                  "America/Tijuana",
+                  "America/Toronto",
+                  "America/Tortola",
+                  "America/Vancouver",
+                  "America/Virgin",
+                  "America/Whitehorse",
+                  "America/Winnipeg",
+                  "America/Yakutat",
+                  "America/Yellowknife",
+                  "Antarctica/Casey",
+                  "Antarctica/Davis",
+                  "Antarctica/DumontDUrville",
+                  "Antarctica/Macquarie",
+                  "Antarctica/Mawson",
+                  "Antarctica/McMurdo",
+                  "Antarctica/Palmer",
+                  "Antarctica/Rothera",
+                  "Antarctica/South_Pole",
+                  "Antarctica/Syowa",
+                  "Antarctica/Troll",
+                  "Antarctica/Vostok",
+                  "Arctic/Longyearbyen",
+                  "Asia/Aden",
+                  "Asia/Almaty",
+                  "Asia/Amman",
+                  "Asia/Anadyr",
+                  "Asia/Aqtau",
+                  "Asia/Aqtobe",
+                  "Asia/Ashgabat",
+                  "Asia/Ashkhabad",
+                  "Asia/Atyrau",
+                  "Asia/Baghdad",
+                  "Asia/Bahrain",
+                  "Asia/Baku",
+                  "Asia/Bangkok",
+                  "Asia/Barnaul",
+                  "Asia/Beirut",
+                  "Asia/Bishkek",
+                  "Asia/Brunei",
+                  "Asia/Calcutta",
+                  "Asia/Chita",
+                  "Asia/Choibalsan",
+                  "Asia/Chongqing",
+                  "Asia/Chungking",
+                  "Asia/Colombo",
+                  "Asia/Dacca",
+                  "Asia/Damascus",
+                  "Asia/Dhaka",
+                  "Asia/Dili",
+                  "Asia/Dubai",
+                  "Asia/Dushanbe",
+                  "Asia/Famagusta",
+                  "Asia/Gaza",
+                  "Asia/Harbin",
+                  "Asia/Hebron",
+                  "Asia/Ho_Chi_Minh",
+                  "Asia/Hong_Kong",
+                  "Asia/Hovd",
+                  "Asia/Irkutsk",
+                  "Asia/Istanbul",
+                  "Asia/Jakarta",
+                  "Asia/Jayapura",
+                  "Asia/Jerusalem",
+                  "Asia/Kabul",
+                  "Asia/Kamchatka",
+                  "Asia/Karachi",
+                  "Asia/Kashgar",
+                  "Asia/Kathmandu",
+                  "Asia/Katmandu",
+                  "Asia/Khandyga",
+                  "Asia/Kolkata",
+                  "Asia/Krasnoyarsk",
+                  "Asia/Kuala_Lumpur",
+                  "Asia/Kuching",
+                  "Asia/Kuwait",
+                  "Asia/Macao",
+                  "Asia/Macau",
+                  "Asia/Magadan",
+                  "Asia/Makassar",
+                  "Asia/Manila",
+                  "Asia/Muscat",
+                  "Asia/Nicosia",
+                  "Asia/Novokuznetsk",
+                  "Asia/Novosibirsk",
+                  "Asia/Omsk",
+                  "Asia/Oral",
+                  "Asia/Phnom_Penh",
+                  "Asia/Pontianak",
+                  "Asia/Pyongyang",
+                  "Asia/Qatar",
+                  "Asia/Qostanay",
+                  "Asia/Qyzylorda",
+                  "Asia/Rangoon",
+                  "Asia/Riyadh",
+                  "Asia/Saigon",
+                  "Asia/Sakhalin",
+                  "Asia/Samarkand",
+                  "Asia/Seoul",
+                  "Asia/Shanghai",
+                  "Asia/Singapore",
+                  "Asia/Srednekolymsk",
+                  "Asia/Taipei",
+                  "Asia/Tashkent",
+                  "Asia/Tbilisi",
+                  "Asia/Tehran",
+                  "Asia/Tel_Aviv",
+                  "Asia/Thimbu",
+                  "Asia/Thimphu",
+                  "Asia/Tokyo",
+                  "Asia/Tomsk",
+                  "Asia/Ujung_Pandang",
+                  "Asia/Ulaanbaatar",
+                  "Asia/Ulan_Bator",
+                  "Asia/Urumqi",
+                  "Asia/Ust-Nera",
+                  "Asia/Vientiane",
+                  "Asia/Vladivostok",
+                  "Asia/Yakutsk",
+                  "Asia/Yangon",
+                  "Asia/Yekaterinburg",
+                  "Asia/Yerevan",
+                  "Atlantic/Azores",
+                  "Atlantic/Bermuda",
+                  "Atlantic/Canary",
+                  "Atlantic/Cape_Verde",
+                  "Atlantic/Faeroe",
+                  "Atlantic/Faroe",
+                  "Atlantic/Jan_Mayen",
+                  "Atlantic/Madeira",
+                  "Atlantic/Reykjavik",
+                  "Atlantic/South_Georgia",
+                  "Atlantic/St_Helena",
+                  "Atlantic/Stanley",
+                  "Australia/ACT",
+                  "Australia/Adelaide",
+                  "Australia/Brisbane",
+                  "Australia/Broken_Hill",
+                  "Australia/Canberra",
+                  "Australia/Currie",
+                  "Australia/Darwin",
+                  "Australia/Eucla",
+                  "Australia/Hobart",
+                  "Australia/LHI",
+                  "Australia/Lindeman",
+                  "Australia/Lord_Howe",
+                  "Australia/Melbourne",
+                  "Australia/NSW",
+                  "Australia/North",
+                  "Australia/Perth",
+                  "Australia/Queensland",
+                  "Australia/South",
+                  "Australia/Sydney",
+                  "Australia/Tasmania",
+                  "Australia/Victoria",
+                  "Australia/West",
+                  "Australia/Yancowinna",
+                  "Brazil/Acre",
+                  "Brazil/DeNoronha",
+                  "Brazil/East",
+                  "Brazil/West",
+                  "CET",
+                  "CST6CDT",
+                  "Canada/Atlantic",
+                  "Canada/Central",
+                  "Canada/Eastern",
+                  "Canada/Mountain",
+                  "Canada/Newfoundland",
+                  "Canada/Pacific",
+                  "Canada/Saskatchewan",
+                  "Canada/Yukon",
+                  "Chile/Continental",
+                  "Chile/EasterIsland",
+                  "Cuba",
+                  "EET",
+                  "EST",
+                  "EST5EDT",
+                  "Egypt",
+                  "Eire",
+                  "Etc/GMT",
+                  "Etc/GMT+0",
+                  "Etc/GMT+1",
+                  "Etc/GMT+10",
+                  "Etc/GMT+11",
+                  "Etc/GMT+12",
+                  "Etc/GMT+2",
+                  "Etc/GMT+3",
+                  "Etc/GMT+4",
+                  "Etc/GMT+5",
+                  "Etc/GMT+6",
+                  "Etc/GMT+7",
+                  "Etc/GMT+8",
+                  "Etc/GMT+9",
+                  "Etc/GMT-0",
+                  "Etc/GMT-1",
+                  "Etc/GMT-10",
+                  "Etc/GMT-11",
+                  "Etc/GMT-12",
+                  "Etc/GMT-13",
+                  "Etc/GMT-14",
+                  "Etc/GMT-2",
+                  "Etc/GMT-3",
+                  "Etc/GMT-4",
+                  "Etc/GMT-5",
+                  "Etc/GMT-6",
+                  "Etc/GMT-7",
+                  "Etc/GMT-8",
+                  "Etc/GMT-9",
+                  "Etc/GMT0",
+                  "Etc/Greenwich",
+                  "Etc/UCT",
+                  "Etc/UTC",
+                  "Etc/Universal",
+                  "Etc/Zulu",
+                  "Europe/Amsterdam",
+                  "Europe/Andorra",
+                  "Europe/Astrakhan",
+                  "Europe/Athens",
+                  "Europe/Belfast",
+                  "Europe/Belgrade",
+                  "Europe/Berlin",
+                  "Europe/Bratislava",
+                  "Europe/Brussels",
+                  "Europe/Bucharest",
+                  "Europe/Budapest",
+                  "Europe/Busingen",
+                  "Europe/Chisinau",
+                  "Europe/Copenhagen",
+                  "Europe/Dublin",
+                  "Europe/Gibraltar",
+                  "Europe/Guernsey",
+                  "Europe/Helsinki",
+                  "Europe/Isle_of_Man",
+                  "Europe/Istanbul",
+                  "Europe/Jersey",
+                  "Europe/Kaliningrad",
+                  "Europe/Kiev",
+                  "Europe/Kirov",
+                  "Europe/Kyiv",
+                  "Europe/Lisbon",
+                  "Europe/Ljubljana",
+                  "Europe/London",
+                  "Europe/Luxembourg",
+                  "Europe/Madrid",
+                  "Europe/Malta",
+                  "Europe/Mariehamn",
+                  "Europe/Minsk",
+                  "Europe/Monaco",
+                  "Europe/Moscow",
+                  "Europe/Nicosia",
+                  "Europe/Oslo",
+                  "Europe/Paris",
+                  "Europe/Podgorica",
+                  "Europe/Prague",
+                  "Europe/Riga",
+                  "Europe/Rome",
+                  "Europe/Samara",
+                  "Europe/San_Marino",
+                  "Europe/Sarajevo",
+                  "Europe/Saratov",
+                  "Europe/Simferopol",
+                  "Europe/Skopje",
+                  "Europe/Sofia",
+                  "Europe/Stockholm",
+                  "Europe/Tallinn",
+                  "Europe/Tirane",
+                  "Europe/Tiraspol",
+                  "Europe/Ulyanovsk",
+                  "Europe/Uzhgorod",
+                  "Europe/Vaduz",
+                  "Europe/Vatican",
+                  "Europe/Vienna",
+                  "Europe/Vilnius",
+                  "Europe/Volgograd",
+                  "Europe/Warsaw",
+                  "Europe/Zagreb",
+                  "Europe/Zaporozhye",
+                  "Europe/Zurich",
+                  "GB",
+                  "GB-Eire",
+                  "GMT",
+                  "GMT+0",
+                  "GMT-0",
+                  "GMT0",
+                  "Greenwich",
+                  "HST",
+                  "Hongkong",
+                  "Iceland",
+                  "Indian/Antananarivo",
+                  "Indian/Chagos",
+                  "Indian/Christmas",
+                  "Indian/Cocos",
+                  "Indian/Comoro",
+                  "Indian/Kerguelen",
+                  "Indian/Mahe",
+                  "Indian/Maldives",
+                  "Indian/Mauritius",
+                  "Indian/Mayotte",
+                  "Indian/Reunion",
+                  "Iran",
+                  "Israel",
+                  "Jamaica",
+                  "Japan",
+                  "Kwajalein",
+                  "Libya",
+                  "MET",
+                  "MST",
+                  "MST7MDT",
+                  "Mexico/BajaNorte",
+                  "Mexico/BajaSur",
+                  "Mexico/General",
+                  "NZ",
+                  "NZ-CHAT",
+                  "Navajo",
+                  "PRC",
+                  "PST8PDT",
+                  "Pacific/Apia",
+                  "Pacific/Auckland",
+                  "Pacific/Bougainville",
+                  "Pacific/Chatham",
+                  "Pacific/Chuuk",
+                  "Pacific/Easter",
+                  "Pacific/Efate",
+                  "Pacific/Enderbury",
+                  "Pacific/Fakaofo",
+                  "Pacific/Fiji",
+                  "Pacific/Funafuti",
+                  "Pacific/Galapagos",
+                  "Pacific/Gambier",
+                  "Pacific/Guadalcanal",
+                  "Pacific/Guam",
+                  "Pacific/Honolulu",
+                  "Pacific/Johnston",
+                  "Pacific/Kanton",
+                  "Pacific/Kiritimati",
+                  "Pacific/Kosrae",
+                  "Pacific/Kwajalein",
+                  "Pacific/Majuro",
+                  "Pacific/Marquesas",
+                  "Pacific/Midway",
+                  "Pacific/Nauru",
+                  "Pacific/Niue",
+                  "Pacific/Norfolk",
+                  "Pacific/Noumea",
+                  "Pacific/Pago_Pago",
+                  "Pacific/Palau",
+                  "Pacific/Pitcairn",
+                  "Pacific/Pohnpei",
+                  "Pacific/Ponape",
+                  "Pacific/Port_Moresby",
+                  "Pacific/Rarotonga",
+                  "Pacific/Saipan",
+                  "Pacific/Samoa",
+                  "Pacific/Tahiti",
+                  "Pacific/Tarawa",
+                  "Pacific/Tongatapu",
+                  "Pacific/Truk",
+                  "Pacific/Wake",
+                  "Pacific/Wallis",
+                  "Pacific/Yap",
+                  "Poland",
+                  "Portugal",
+                  "ROC",
+                  "ROK",
+                  "Singapore",
+                  "Turkey",
+                  "UCT",
+                  "US/Alaska",
+                  "US/Aleutian",
+                  "US/Arizona",
+                  "US/Central",
+                  "US/East-Indiana",
+                  "US/Eastern",
+                  "US/Hawaii",
+                  "US/Indiana-Starke",
+                  "US/Michigan",
+                  "US/Mountain",
+                  "US/Pacific",
+                  "US/Samoa",
+                  "UTC",
+                  "Universal",
+                  "W-SU",
+                  "WET",
+                  "Zulu"
+                ],
+                "minLength": 1
+              },
+              { "type": "string" }
+            ],
+            "title": "Timezone"
+          }
+        },
+        "type": "object",
+        "required": ["timezone"],
+        "title": "TimezoneResponse"
+      },
       "TransactionHistory": {
         "properties": {
           "transactions": {
@@ -6109,7 +7669,7 @@
         "required": ["transactions", "next_transaction_time"],
         "title": "TransactionHistory"
       },
-      "TriggeredPresetSetupParams": {
+      "TriggeredPresetSetupRequest": {
         "properties": {
           "name": { "type": "string", "title": "Name" },
           "description": {
@@ -6117,6 +7677,8 @@
             "title": "Description",
             "default": ""
           },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
           "trigger_config": {
             "additionalProperties": true,
             "type": "object",
@@ -6131,8 +7693,8 @@
           }
         },
         "type": "object",
-        "required": ["name", "trigger_config"],
-        "title": "TriggeredPresetSetupParams"
+        "required": ["name", "graph_id", "graph_version", "trigger_config"],
+        "title": "TriggeredPresetSetupRequest"
       },
       "TurnstileVerifyRequest": {
         "properties": {
@@ -6196,6 +7758,635 @@
         "type": "object",
         "required": ["permissions"],
         "title": "UpdatePermissionsRequest"
+      },
+      "UpdateTimezoneRequest": {
+        "properties": {
+          "timezone": {
+            "type": "string",
+            "enum": [
+              "Africa/Abidjan",
+              "Africa/Accra",
+              "Africa/Addis_Ababa",
+              "Africa/Algiers",
+              "Africa/Asmara",
+              "Africa/Asmera",
+              "Africa/Bamako",
+              "Africa/Bangui",
+              "Africa/Banjul",
+              "Africa/Bissau",
+              "Africa/Blantyre",
+              "Africa/Brazzaville",
+              "Africa/Bujumbura",
+              "Africa/Cairo",
+              "Africa/Casablanca",
+              "Africa/Ceuta",
+              "Africa/Conakry",
+              "Africa/Dakar",
+              "Africa/Dar_es_Salaam",
+              "Africa/Djibouti",
+              "Africa/Douala",
+              "Africa/El_Aaiun",
+              "Africa/Freetown",
+              "Africa/Gaborone",
+              "Africa/Harare",
+              "Africa/Johannesburg",
+              "Africa/Juba",
+              "Africa/Kampala",
+              "Africa/Khartoum",
+              "Africa/Kigali",
+              "Africa/Kinshasa",
+              "Africa/Lagos",
+              "Africa/Libreville",
+              "Africa/Lome",
+              "Africa/Luanda",
+              "Africa/Lubumbashi",
+              "Africa/Lusaka",
+              "Africa/Malabo",
+              "Africa/Maputo",
+              "Africa/Maseru",
+              "Africa/Mbabane",
+              "Africa/Mogadishu",
+              "Africa/Monrovia",
+              "Africa/Nairobi",
+              "Africa/Ndjamena",
+              "Africa/Niamey",
+              "Africa/Nouakchott",
+              "Africa/Ouagadougou",
+              "Africa/Porto-Novo",
+              "Africa/Sao_Tome",
+              "Africa/Timbuktu",
+              "Africa/Tripoli",
+              "Africa/Tunis",
+              "Africa/Windhoek",
+              "America/Adak",
+              "America/Anchorage",
+              "America/Anguilla",
+              "America/Antigua",
+              "America/Araguaina",
+              "America/Argentina/Buenos_Aires",
+              "America/Argentina/Catamarca",
+              "America/Argentina/ComodRivadavia",
+              "America/Argentina/Cordoba",
+              "America/Argentina/Jujuy",
+              "America/Argentina/La_Rioja",
+              "America/Argentina/Mendoza",
+              "America/Argentina/Rio_Gallegos",
+              "America/Argentina/Salta",
+              "America/Argentina/San_Juan",
+              "America/Argentina/San_Luis",
+              "America/Argentina/Tucuman",
+              "America/Argentina/Ushuaia",
+              "America/Aruba",
+              "America/Asuncion",
+              "America/Atikokan",
+              "America/Atka",
+              "America/Bahia",
+              "America/Bahia_Banderas",
+              "America/Barbados",
+              "America/Belem",
+              "America/Belize",
+              "America/Blanc-Sablon",
+              "America/Boa_Vista",
+              "America/Bogota",
+              "America/Boise",
+              "America/Buenos_Aires",
+              "America/Cambridge_Bay",
+              "America/Campo_Grande",
+              "America/Cancun",
+              "America/Caracas",
+              "America/Catamarca",
+              "America/Cayenne",
+              "America/Cayman",
+              "America/Chicago",
+              "America/Chihuahua",
+              "America/Ciudad_Juarez",
+              "America/Coral_Harbour",
+              "America/Cordoba",
+              "America/Costa_Rica",
+              "America/Coyhaique",
+              "America/Creston",
+              "America/Cuiaba",
+              "America/Curacao",
+              "America/Danmarkshavn",
+              "America/Dawson",
+              "America/Dawson_Creek",
+              "America/Denver",
+              "America/Detroit",
+              "America/Dominica",
+              "America/Edmonton",
+              "America/Eirunepe",
+              "America/El_Salvador",
+              "America/Ensenada",
+              "America/Fort_Nelson",
+              "America/Fort_Wayne",
+              "America/Fortaleza",
+              "America/Glace_Bay",
+              "America/Godthab",
+              "America/Goose_Bay",
+              "America/Grand_Turk",
+              "America/Grenada",
+              "America/Guadeloupe",
+              "America/Guatemala",
+              "America/Guayaquil",
+              "America/Guyana",
+              "America/Halifax",
+              "America/Havana",
+              "America/Hermosillo",
+              "America/Indiana/Indianapolis",
+              "America/Indiana/Knox",
+              "America/Indiana/Marengo",
+              "America/Indiana/Petersburg",
+              "America/Indiana/Tell_City",
+              "America/Indiana/Vevay",
+              "America/Indiana/Vincennes",
+              "America/Indiana/Winamac",
+              "America/Indianapolis",
+              "America/Inuvik",
+              "America/Iqaluit",
+              "America/Jamaica",
+              "America/Jujuy",
+              "America/Juneau",
+              "America/Kentucky/Louisville",
+              "America/Kentucky/Monticello",
+              "America/Knox_IN",
+              "America/Kralendijk",
+              "America/La_Paz",
+              "America/Lima",
+              "America/Los_Angeles",
+              "America/Louisville",
+              "America/Lower_Princes",
+              "America/Maceio",
+              "America/Managua",
+              "America/Manaus",
+              "America/Marigot",
+              "America/Martinique",
+              "America/Matamoros",
+              "America/Mazatlan",
+              "America/Mendoza",
+              "America/Menominee",
+              "America/Merida",
+              "America/Metlakatla",
+              "America/Mexico_City",
+              "America/Miquelon",
+              "America/Moncton",
+              "America/Monterrey",
+              "America/Montevideo",
+              "America/Montreal",
+              "America/Montserrat",
+              "America/Nassau",
+              "America/New_York",
+              "America/Nipigon",
+              "America/Nome",
+              "America/Noronha",
+              "America/North_Dakota/Beulah",
+              "America/North_Dakota/Center",
+              "America/North_Dakota/New_Salem",
+              "America/Nuuk",
+              "America/Ojinaga",
+              "America/Panama",
+              "America/Pangnirtung",
+              "America/Paramaribo",
+              "America/Phoenix",
+              "America/Port-au-Prince",
+              "America/Port_of_Spain",
+              "America/Porto_Acre",
+              "America/Porto_Velho",
+              "America/Puerto_Rico",
+              "America/Punta_Arenas",
+              "America/Rainy_River",
+              "America/Rankin_Inlet",
+              "America/Recife",
+              "America/Regina",
+              "America/Resolute",
+              "America/Rio_Branco",
+              "America/Rosario",
+              "America/Santa_Isabel",
+              "America/Santarem",
+              "America/Santiago",
+              "America/Santo_Domingo",
+              "America/Sao_Paulo",
+              "America/Scoresbysund",
+              "America/Shiprock",
+              "America/Sitka",
+              "America/St_Barthelemy",
+              "America/St_Johns",
+              "America/St_Kitts",
+              "America/St_Lucia",
+              "America/St_Thomas",
+              "America/St_Vincent",
+              "America/Swift_Current",
+              "America/Tegucigalpa",
+              "America/Thule",
+              "America/Thunder_Bay",
+              "America/Tijuana",
+              "America/Toronto",
+              "America/Tortola",
+              "America/Vancouver",
+              "America/Virgin",
+              "America/Whitehorse",
+              "America/Winnipeg",
+              "America/Yakutat",
+              "America/Yellowknife",
+              "Antarctica/Casey",
+              "Antarctica/Davis",
+              "Antarctica/DumontDUrville",
+              "Antarctica/Macquarie",
+              "Antarctica/Mawson",
+              "Antarctica/McMurdo",
+              "Antarctica/Palmer",
+              "Antarctica/Rothera",
+              "Antarctica/South_Pole",
+              "Antarctica/Syowa",
+              "Antarctica/Troll",
+              "Antarctica/Vostok",
+              "Arctic/Longyearbyen",
+              "Asia/Aden",
+              "Asia/Almaty",
+              "Asia/Amman",
+              "Asia/Anadyr",
+              "Asia/Aqtau",
+              "Asia/Aqtobe",
+              "Asia/Ashgabat",
+              "Asia/Ashkhabad",
+              "Asia/Atyrau",
+              "Asia/Baghdad",
+              "Asia/Bahrain",
+              "Asia/Baku",
+              "Asia/Bangkok",
+              "Asia/Barnaul",
+              "Asia/Beirut",
+              "Asia/Bishkek",
+              "Asia/Brunei",
+              "Asia/Calcutta",
+              "Asia/Chita",
+              "Asia/Choibalsan",
+              "Asia/Chongqing",
+              "Asia/Chungking",
+              "Asia/Colombo",
+              "Asia/Dacca",
+              "Asia/Damascus",
+              "Asia/Dhaka",
+              "Asia/Dili",
+              "Asia/Dubai",
+              "Asia/Dushanbe",
+              "Asia/Famagusta",
+              "Asia/Gaza",
+              "Asia/Harbin",
+              "Asia/Hebron",
+              "Asia/Ho_Chi_Minh",
+              "Asia/Hong_Kong",
+              "Asia/Hovd",
+              "Asia/Irkutsk",
+              "Asia/Istanbul",
+              "Asia/Jakarta",
+              "Asia/Jayapura",
+              "Asia/Jerusalem",
+              "Asia/Kabul",
+              "Asia/Kamchatka",
+              "Asia/Karachi",
+              "Asia/Kashgar",
+              "Asia/Kathmandu",
+              "Asia/Katmandu",
+              "Asia/Khandyga",
+              "Asia/Kolkata",
+              "Asia/Krasnoyarsk",
+              "Asia/Kuala_Lumpur",
+              "Asia/Kuching",
+              "Asia/Kuwait",
+              "Asia/Macao",
+              "Asia/Macau",
+              "Asia/Magadan",
+              "Asia/Makassar",
+              "Asia/Manila",
+              "Asia/Muscat",
+              "Asia/Nicosia",
+              "Asia/Novokuznetsk",
+              "Asia/Novosibirsk",
+              "Asia/Omsk",
+              "Asia/Oral",
+              "Asia/Phnom_Penh",
+              "Asia/Pontianak",
+              "Asia/Pyongyang",
+              "Asia/Qatar",
+              "Asia/Qostanay",
+              "Asia/Qyzylorda",
+              "Asia/Rangoon",
+              "Asia/Riyadh",
+              "Asia/Saigon",
+              "Asia/Sakhalin",
+              "Asia/Samarkand",
+              "Asia/Seoul",
+              "Asia/Shanghai",
+              "Asia/Singapore",
+              "Asia/Srednekolymsk",
+              "Asia/Taipei",
+              "Asia/Tashkent",
+              "Asia/Tbilisi",
+              "Asia/Tehran",
+              "Asia/Tel_Aviv",
+              "Asia/Thimbu",
+              "Asia/Thimphu",
+              "Asia/Tokyo",
+              "Asia/Tomsk",
+              "Asia/Ujung_Pandang",
+              "Asia/Ulaanbaatar",
+              "Asia/Ulan_Bator",
+              "Asia/Urumqi",
+              "Asia/Ust-Nera",
+              "Asia/Vientiane",
+              "Asia/Vladivostok",
+              "Asia/Yakutsk",
+              "Asia/Yangon",
+              "Asia/Yekaterinburg",
+              "Asia/Yerevan",
+              "Atlantic/Azores",
+              "Atlantic/Bermuda",
+              "Atlantic/Canary",
+              "Atlantic/Cape_Verde",
+              "Atlantic/Faeroe",
+              "Atlantic/Faroe",
+              "Atlantic/Jan_Mayen",
+              "Atlantic/Madeira",
+              "Atlantic/Reykjavik",
+              "Atlantic/South_Georgia",
+              "Atlantic/St_Helena",
+              "Atlantic/Stanley",
+              "Australia/ACT",
+              "Australia/Adelaide",
+              "Australia/Brisbane",
+              "Australia/Broken_Hill",
+              "Australia/Canberra",
+              "Australia/Currie",
+              "Australia/Darwin",
+              "Australia/Eucla",
+              "Australia/Hobart",
+              "Australia/LHI",
+              "Australia/Lindeman",
+              "Australia/Lord_Howe",
+              "Australia/Melbourne",
+              "Australia/NSW",
+              "Australia/North",
+              "Australia/Perth",
+              "Australia/Queensland",
+              "Australia/South",
+              "Australia/Sydney",
+              "Australia/Tasmania",
+              "Australia/Victoria",
+              "Australia/West",
+              "Australia/Yancowinna",
+              "Brazil/Acre",
+              "Brazil/DeNoronha",
+              "Brazil/East",
+              "Brazil/West",
+              "CET",
+              "CST6CDT",
+              "Canada/Atlantic",
+              "Canada/Central",
+              "Canada/Eastern",
+              "Canada/Mountain",
+              "Canada/Newfoundland",
+              "Canada/Pacific",
+              "Canada/Saskatchewan",
+              "Canada/Yukon",
+              "Chile/Continental",
+              "Chile/EasterIsland",
+              "Cuba",
+              "EET",
+              "EST",
+              "EST5EDT",
+              "Egypt",
+              "Eire",
+              "Etc/GMT",
+              "Etc/GMT+0",
+              "Etc/GMT+1",
+              "Etc/GMT+10",
+              "Etc/GMT+11",
+              "Etc/GMT+12",
+              "Etc/GMT+2",
+              "Etc/GMT+3",
+              "Etc/GMT+4",
+              "Etc/GMT+5",
+              "Etc/GMT+6",
+              "Etc/GMT+7",
+              "Etc/GMT+8",
+              "Etc/GMT+9",
+              "Etc/GMT-0",
+              "Etc/GMT-1",
+              "Etc/GMT-10",
+              "Etc/GMT-11",
+              "Etc/GMT-12",
+              "Etc/GMT-13",
+              "Etc/GMT-14",
+              "Etc/GMT-2",
+              "Etc/GMT-3",
+              "Etc/GMT-4",
+              "Etc/GMT-5",
+              "Etc/GMT-6",
+              "Etc/GMT-7",
+              "Etc/GMT-8",
+              "Etc/GMT-9",
+              "Etc/GMT0",
+              "Etc/Greenwich",
+              "Etc/UCT",
+              "Etc/UTC",
+              "Etc/Universal",
+              "Etc/Zulu",
+              "Europe/Amsterdam",
+              "Europe/Andorra",
+              "Europe/Astrakhan",
+              "Europe/Athens",
+              "Europe/Belfast",
+              "Europe/Belgrade",
+              "Europe/Berlin",
+              "Europe/Bratislava",
+              "Europe/Brussels",
+              "Europe/Bucharest",
+              "Europe/Budapest",
+              "Europe/Busingen",
+              "Europe/Chisinau",
+              "Europe/Copenhagen",
+              "Europe/Dublin",
+              "Europe/Gibraltar",
+              "Europe/Guernsey",
+              "Europe/Helsinki",
+              "Europe/Isle_of_Man",
+              "Europe/Istanbul",
+              "Europe/Jersey",
+              "Europe/Kaliningrad",
+              "Europe/Kiev",
+              "Europe/Kirov",
+              "Europe/Kyiv",
+              "Europe/Lisbon",
+              "Europe/Ljubljana",
+              "Europe/London",
+              "Europe/Luxembourg",
+              "Europe/Madrid",
+              "Europe/Malta",
+              "Europe/Mariehamn",
+              "Europe/Minsk",
+              "Europe/Monaco",
+              "Europe/Moscow",
+              "Europe/Nicosia",
+              "Europe/Oslo",
+              "Europe/Paris",
+              "Europe/Podgorica",
+              "Europe/Prague",
+              "Europe/Riga",
+              "Europe/Rome",
+              "Europe/Samara",
+              "Europe/San_Marino",
+              "Europe/Sarajevo",
+              "Europe/Saratov",
+              "Europe/Simferopol",
+              "Europe/Skopje",
+              "Europe/Sofia",
+              "Europe/Stockholm",
+              "Europe/Tallinn",
+              "Europe/Tirane",
+              "Europe/Tiraspol",
+              "Europe/Ulyanovsk",
+              "Europe/Uzhgorod",
+              "Europe/Vaduz",
+              "Europe/Vatican",
+              "Europe/Vienna",
+              "Europe/Vilnius",
+              "Europe/Volgograd",
+              "Europe/Warsaw",
+              "Europe/Zagreb",
+              "Europe/Zaporozhye",
+              "Europe/Zurich",
+              "GB",
+              "GB-Eire",
+              "GMT",
+              "GMT+0",
+              "GMT-0",
+              "GMT0",
+              "Greenwich",
+              "HST",
+              "Hongkong",
+              "Iceland",
+              "Indian/Antananarivo",
+              "Indian/Chagos",
+              "Indian/Christmas",
+              "Indian/Cocos",
+              "Indian/Comoro",
+              "Indian/Kerguelen",
+              "Indian/Mahe",
+              "Indian/Maldives",
+              "Indian/Mauritius",
+              "Indian/Mayotte",
+              "Indian/Reunion",
+              "Iran",
+              "Israel",
+              "Jamaica",
+              "Japan",
+              "Kwajalein",
+              "Libya",
+              "MET",
+              "MST",
+              "MST7MDT",
+              "Mexico/BajaNorte",
+              "Mexico/BajaSur",
+              "Mexico/General",
+              "NZ",
+              "NZ-CHAT",
+              "Navajo",
+              "PRC",
+              "PST8PDT",
+              "Pacific/Apia",
+              "Pacific/Auckland",
+              "Pacific/Bougainville",
+              "Pacific/Chatham",
+              "Pacific/Chuuk",
+              "Pacific/Easter",
+              "Pacific/Efate",
+              "Pacific/Enderbury",
+              "Pacific/Fakaofo",
+              "Pacific/Fiji",
+              "Pacific/Funafuti",
+              "Pacific/Galapagos",
+              "Pacific/Gambier",
+              "Pacific/Guadalcanal",
+              "Pacific/Guam",
+              "Pacific/Honolulu",
+              "Pacific/Johnston",
+              "Pacific/Kanton",
+              "Pacific/Kiritimati",
+              "Pacific/Kosrae",
+              "Pacific/Kwajalein",
+              "Pacific/Majuro",
+              "Pacific/Marquesas",
+              "Pacific/Midway",
+              "Pacific/Nauru",
+              "Pacific/Niue",
+              "Pacific/Norfolk",
+              "Pacific/Noumea",
+              "Pacific/Pago_Pago",
+              "Pacific/Palau",
+              "Pacific/Pitcairn",
+              "Pacific/Pohnpei",
+              "Pacific/Ponape",
+              "Pacific/Port_Moresby",
+              "Pacific/Rarotonga",
+              "Pacific/Saipan",
+              "Pacific/Samoa",
+              "Pacific/Tahiti",
+              "Pacific/Tarawa",
+              "Pacific/Tongatapu",
+              "Pacific/Truk",
+              "Pacific/Wake",
+              "Pacific/Wallis",
+              "Pacific/Yap",
+              "Poland",
+              "Portugal",
+              "ROC",
+              "ROK",
+              "Singapore",
+              "Turkey",
+              "UCT",
+              "US/Alaska",
+              "US/Aleutian",
+              "US/Arizona",
+              "US/Central",
+              "US/East-Indiana",
+              "US/Eastern",
+              "US/Hawaii",
+              "US/Indiana-Starke",
+              "US/Michigan",
+              "US/Mountain",
+              "US/Pacific",
+              "US/Samoa",
+              "UTC",
+              "Universal",
+              "W-SU",
+              "WET",
+              "Zulu"
+            ],
+            "minLength": 1,
+            "title": "Timezone"
+          }
+        },
+        "type": "object",
+        "required": ["timezone"],
+        "title": "UpdateTimezoneRequest"
+      },
+      "UploadFileResponse": {
+        "properties": {
+          "file_uri": { "type": "string", "title": "File Uri" },
+          "file_name": { "type": "string", "title": "File Name" },
+          "size": { "type": "integer", "title": "Size" },
+          "content_type": { "type": "string", "title": "Content Type" },
+          "expires_in_hours": { "type": "integer", "title": "Expires In Hours" }
+        },
+        "type": "object",
+        "required": [
+          "file_uri",
+          "file_name",
+          "size",
+          "content_type",
+          "expires_in_hours"
+        ],
+        "title": "UploadFileResponse"
       },
       "UserHistoryResponse": {
         "properties": {
@@ -6397,7 +8588,11 @@
         "properties": {
           "id": { "type": "string", "title": "Id" },
           "user_id": { "type": "string", "title": "User Id" },
-          "provider": { "$ref": "#/components/schemas/ProviderName" },
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "Provider name for integrations. Can be any string value, including custom provider names."
+          },
           "credentials_id": { "type": "string", "title": "Credentials Id" },
           "webhook_type": { "type": "string", "title": "Webhook Type" },
           "resource": { "type": "string", "title": "Resource" },

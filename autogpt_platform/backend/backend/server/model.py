@@ -5,6 +5,7 @@ import pydantic
 
 from backend.data.api_key import APIKeyPermission, APIKeyWithoutHash
 from backend.data.graph import Graph
+from backend.util.timezone_name import TimeZoneName
 
 
 class WSMethod(enum.Enum):
@@ -60,20 +61,22 @@ class UpdatePermissionsRequest(pydantic.BaseModel):
     permissions: list[APIKeyPermission]
 
 
-class Pagination(pydantic.BaseModel):
-    total_items: int = pydantic.Field(
-        description="Total number of items.", examples=[42]
-    )
-    total_pages: int = pydantic.Field(
-        description="Total number of pages.", examples=[2]
-    )
-    current_page: int = pydantic.Field(
-        description="Current_page page number.", examples=[1]
-    )
-    page_size: int = pydantic.Field(
-        description="Number of items per page.", examples=[25]
-    )
-
-
 class RequestTopUp(pydantic.BaseModel):
     credit_amount: int
+
+
+class UploadFileResponse(pydantic.BaseModel):
+    file_uri: str
+    file_name: str
+    size: int
+    content_type: str
+    expires_in_hours: int
+
+
+class TimezoneResponse(pydantic.BaseModel):
+    # Allow "not-set" as a special value, or any valid IANA timezone
+    timezone: TimeZoneName | str
+
+
+class UpdateTimezoneRequest(pydantic.BaseModel):
+    timezone: TimeZoneName

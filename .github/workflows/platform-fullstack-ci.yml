@@ -1,0 +1,132 @@
+name: AutoGPT Platform - Frontend CI
+
+on:
+  push:
+    branches: [master, dev]
+    paths:
+      - ".github/workflows/platform-fullstack-ci.yml"
+      - "autogpt_platform/**"
+  pull_request:
+    paths:
+      - ".github/workflows/platform-fullstack-ci.yml"
+      - "autogpt_platform/**"
+  merge_group:
+
+defaults:
+  run:
+    shell: bash
+    working-directory: autogpt_platform/frontend
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      cache-key: ${{ steps.cache-key.outputs.key }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "21"
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Generate cache key
+        id: cache-key
+        run: echo "key=${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/package.json') }}" >> $GITHUB_OUTPUT
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: ${{ steps.cache-key.outputs.key }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
+            ${{ runner.os }}-pnpm-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+  types:
+    runs-on: ubuntu-latest
+    needs: setup
+    strategy:
+      fail-fast: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "21"
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Copy default supabase .env
+        run: |
+          cp ../.env.default ../.env
+
+      - name: Copy backend .env
+        run: |
+          cp ../backend/.env.default ../backend/.env
+
+      - name: Run docker compose
+        run: |
+          docker compose -f ../docker-compose.yml --profile local --profile deps_backend up -d
+
+      - name: Restore dependencies cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: ${{ needs.setup.outputs.cache-key }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup .env
+        run: cp .env.default .env
+
+      - name: Wait for services to be ready
+        run: |
+          echo "Waiting for rest_server to be ready..."
+          timeout 60 sh -c 'until curl -f http://localhost:8006/health 2>/dev/null; do sleep 2; done' || echo "Rest server health check timeout, continuing..."
+          echo "Waiting for database to be ready..."
+          timeout 60 sh -c 'until docker compose -f ../docker-compose.yml exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done' || echo "Database ready check timeout, continuing..."
+
+      - name: Generate API queries
+        run: pnpm generate:api:force
+
+      - name: Check for API schema changes
+        run: |
+          if ! git diff --exit-code src/app/api/openapi.json; then
+            echo "❌ API schema changes detected in src/app/api/openapi.json"
+            echo ""
+            echo "The openapi.json file has been modified after running 'pnpm generate:api-all'."
+            echo "This usually means changes have been made in the BE endpoints without updating the Frontend."
+            echo "The API schema is now out of sync with the Front-end queries."
+            echo ""
+            echo "To fix this:"
+            echo "1. Pull the backend 'docker compose pull && docker compose up -d --build --force-recreate'"
+            echo "2. Run 'pnpm generate:api' locally"
+            echo "3. Run 'pnpm types' locally"
+            echo "4. Fix any TypeScript errors that may have been introduced"
+            echo "5. Commit and push your changes"
+            echo ""
+            exit 1
+          else
+            echo "✅ No API schema changes detected"
+          fi
+
+      - name: Run Typescript checks
+        run: pnpm types

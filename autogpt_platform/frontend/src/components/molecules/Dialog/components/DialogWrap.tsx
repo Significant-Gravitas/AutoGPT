@@ -4,6 +4,8 @@ import * as RXDialog from "@radix-ui/react-dialog";
 import { CSSProperties, PropsWithChildren } from "react";
 import { DialogCtx } from "../useDialogCtx";
 import { modalStyles } from "./styles";
+import styles from "./styles.module.css";
+import { Button } from "@/components/atoms/Button/Button";
 
 type BaseProps = DialogCtx & PropsWithChildren;
 
@@ -49,17 +51,19 @@ export function DialogWrap({
           )}
 
           {isForceOpen && !handleClose ? null : (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
               onClick={handleClose}
               aria-label="Close"
-              className={`${modalStyles.iconWrap} transition-colors duration-200 hover:bg-gray-200 dark:hover:bg-stone-900`}
+              className="absolute -right-2 top-2 z-50 hover:border-transparent hover:bg-transparent"
             >
               <X className={modalStyles.icon} />
-            </button>
+            </Button>
           )}
         </div>
-        <div className="overflow-y-auto">{children}</div>
+        <div className={`overflow-y-auto ${styles.scrollableContent}`}>
+          {children}
+        </div>
       </RXDialog.Content>
     </RXDialog.Portal>
   );

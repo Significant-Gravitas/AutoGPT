@@ -6,7 +6,6 @@ from typing import Protocol
 import pydantic
 import uvicorn
 from autogpt_libs.auth import parse_jwt_token
-from autogpt_libs.logging.utils import generate_uvicorn_config
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
 
@@ -19,6 +18,7 @@ from backend.server.model import (
     WSSubscribeGraphExecutionRequest,
     WSSubscribeGraphExecutionsRequest,
 )
+from backend.util.retry import continuous_retry
 from backend.util.service import AppProcess
 from backend.util.settings import AppEnvironment, Config, Settings
 
@@ -46,18 +46,11 @@ def get_connection_manager():
     return _connection_manager
 
 
+@continuous_retry()
 async def event_broadcaster(manager: ConnectionManager):
-    try:
-        event_queue = AsyncRedisExecutionEventBus()
-        async for event in event_queue.listen("*"):
-            await manager.send_execution_update(event)
-    except Exception as e:
-        logger.exception(
-            "Event broadcaster stopped due to error: %s. "
-            "Verify the Redis connection and restart the service.",
-            e,
-        )
-        raise
+    event_queue = AsyncRedisExecutionEventBus()
+    async for event in event_queue.listen("*"):
+        await manager.send_execution_update(event)
 
 
 async def authenticate_websocket(websocket: WebSocket) -> str:
@@ -315,7 +308,7 @@ class WebsocketServer(AppProcess):
             server_app,
             host=Config().websocket_server_host,
             port=Config().websocket_server_port,
-            log_config=generate_uvicorn_config(),
+            log_config=None,
         )
 
     def cleanup(self):

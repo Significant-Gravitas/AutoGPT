@@ -9,11 +9,6 @@ import fastapi.responses
 import pydantic
 import starlette.middleware.cors
 import uvicorn
-from autogpt_libs.feature_flag.client import (
-    initialize_launchdarkly,
-    shutdown_launchdarkly,
-)
-from autogpt_libs.logging.utils import generate_uvicorn_config
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 
@@ -25,6 +20,8 @@ import backend.server.routers.postmark.postmark
 import backend.server.routers.v1
 import backend.server.v2.admin.credit_admin_routes
 import backend.server.v2.admin.store_admin_routes
+import backend.server.v2.builder
+import backend.server.v2.builder.routes
 import backend.server.v2.library.db
 import backend.server.v2.library.model
 import backend.server.v2.library.routes
@@ -39,6 +36,10 @@ from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.server.external.api import external_app
 from backend.server.middleware.security import SecurityHeadersMiddleware
+from backend.util import json
+from backend.util.cloud_storage import shutdown_cloud_storage_handler
+from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
+from backend.util.service import UnhealthyServiceError
 
 settings = backend.util.settings.Settings()
 logger = logging.getLogger(__name__)
@@ -61,12 +62,25 @@ def launch_darkly_context():
 @contextlib.asynccontextmanager
 async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.db.connect()
+
+    # Ensure SDK auto-registration is patched before initializing blocks
+    from backend.sdk.registry import AutoRegistry
+
+    AutoRegistry.patch_integrations()
+
     await backend.data.block.initialize_blocks()
+
     await backend.data.user.migrate_and_encrypt_user_integrations()
     await backend.data.graph.fix_llm_provider_credentials()
     await backend.data.graph.migrate_llm_models(LlmModel.GPT4O)
     with launch_darkly_context():
         yield
+
+    try:
+        await shutdown_cloud_storage_handler()
+    except Exception as e:
+        logger.warning(f"Error shutting down cloud storage handler: {e}")
+
     await backend.data.db.disconnect()
 
 
@@ -147,7 +161,7 @@ def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
 
 async def validation_error_handler(
     request: fastapi.Request, exc: Exception
-) -> fastapi.responses.JSONResponse:
+) -> fastapi.responses.Response:
     logger.error(
         "Validation failed for %s %s: %s. Fix the request payload and try again.",
         request.method,
@@ -159,13 +173,19 @@ async def validation_error_handler(
         errors = exc.errors()  # type: ignore[call-arg]
     else:
         errors = str(exc)
-    return fastapi.responses.JSONResponse(
+
+    response_content = {
+        "message": f"Invalid data for {request.method} {request.url.path}",
+        "detail": errors,
+        "hint": "Ensure the request matches the API schema.",
+    }
+
+    content_json = json.dumps(response_content)
+
+    return fastapi.responses.Response(
+        content=content_json,
         status_code=422,
-        content={
-            "message": f"Invalid data for {request.method} {request.url.path}",
-            "detail": errors,
-            "hint": "Ensure the request matches the API schema.",
-        },
+        media_type="application/json",
     )
 
 
@@ -176,6 +196,9 @@ app.add_exception_handler(Exception, handle_internal_http_error(500))
 app.include_router(backend.server.routers.v1.v1_router, tags=["v1"], prefix="/api")
 app.include_router(
     backend.server.v2.store.routes.router, tags=["v2"], prefix="/api/store"
+)
+app.include_router(
+    backend.server.v2.builder.routes.router, tags=["v2"], prefix="/api/builder"
 )
 app.include_router(
     backend.server.v2.admin.store_admin_routes.router,
@@ -210,6 +233,8 @@ app.mount("/external-api", external_app)
 
 @app.get(path="/health", tags=["health"], dependencies=[])
 async def health():
+    if not backend.data.db.is_connected():
+        raise UnhealthyServiceError("Database is not connected")
     return {"status": "healthy"}
 
 
@@ -226,7 +251,7 @@ class AgentServer(backend.util.service.AppProcess):
             server_app,
             host=backend.util.settings.Config().agent_api_host,
             port=backend.util.settings.Config().agent_api_port,
-            log_config=generate_uvicorn_config(),
+            log_config=None,
         )
 
     def cleanup(self):

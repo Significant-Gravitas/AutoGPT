@@ -4,7 +4,7 @@ import { z } from "zod";
 import { uploadAgentFormSchema } from "./LibraryUploadAgentDialog";
 import { usePostV1CreateNewGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { GraphModel } from "@/app/api/__generated__/models/graphModel";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useState } from "react";
 import { Graph } from "@/app/api/__generated__/models/graph";
 import { sanitizeImportedGraph } from "@/lib/autogpt-server-api";
@@ -102,6 +102,22 @@ export const useLibraryUploadAgentDialog = () => {
     setisDroped(false);
   };
 
+  const clearAgentFile = () => {
+    const currentName = form.getValues("agentName");
+    const currentDescription = form.getValues("agentDescription");
+    const prevAgent = agentObject;
+
+    form.setValue("agentFile", undefined as any);
+    if (prevAgent && currentName === prevAgent.name) {
+      form.setValue("agentName", "");
+    }
+    if (prevAgent && currentDescription === prevAgent.description) {
+      form.setValue("agentDescription", "");
+    }
+
+    setAgentObject(null);
+  };
+
   return {
     onSubmit,
     isUploading,
@@ -112,5 +128,6 @@ export const useLibraryUploadAgentDialog = () => {
     isDroped,
     handleChange,
     setisDroped,
+    clearAgentFile,
   };
 };

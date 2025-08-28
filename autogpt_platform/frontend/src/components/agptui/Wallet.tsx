@@ -20,12 +20,15 @@ export default function Wallet() {
   const { credits, formatCredits, fetchCredits } = useCredits({
     fetchInitialCredits: true,
   });
+
   const { state, updateState } = useOnboarding();
   const [prevCredits, setPrevCredits] = useState<number | null>(credits);
   const [flash, setFlash] = useState(false);
+
   const [stepsLength, setStepsLength] = useState<number | null>(
     state?.completedSteps?.length || null,
   );
+
   const walletRef = useRef<HTMLButtonElement | null>(null);
 
   const onWalletOpen = useCallback(async () => {
@@ -109,7 +112,7 @@ export default function Wallet() {
           <button
             ref={walletRef}
             className={cn(
-              "relative flex items-center gap-1 rounded-md bg-zinc-200 px-3 py-2 text-sm transition-colors duration-200 hover:bg-zinc-300",
+              "relative flex items-center gap-1 rounded-md bg-zinc-50 px-3 py-2 text-sm",
             )}
             onClick={onWalletOpen}
           >

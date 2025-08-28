@@ -24,10 +24,18 @@ export default defineConfig({
         query: {
           useQuery: true,
           useMutation: true,
+          usePrefetch: true,
           // Will add more as their use cases arise
         },
+        useDates: true,
         operations: {
           "getV2List library agents": {
+            query: {
+              useInfinite: true,
+              useInfiniteQueryParam: "page",
+            },
+          },
+          "getV1List graph executions": {
             query: {
               useInfinite: true,
               useInfiniteQueryParam: "page",
