@@ -34,7 +34,6 @@ import React, {
   useRef,
 } from "react";
 import { Button } from "./ui/button";
-import { Switch } from "./ui/switch";
 import {
   Select,
   SelectContent,
@@ -53,6 +52,7 @@ import {
 import { LocalValuedInput } from "./ui/input";
 import NodeHandle from "./NodeHandle";
 import { CredentialsInput } from "@/components/integrations/credentials-input";
+import { Switch } from "./atoms/Switch/Switch";
 
 type NodeObjectInputTreeProps = {
   nodeId: string;

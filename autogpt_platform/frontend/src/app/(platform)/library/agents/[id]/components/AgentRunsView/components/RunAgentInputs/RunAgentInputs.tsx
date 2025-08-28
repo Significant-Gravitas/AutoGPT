@@ -4,7 +4,6 @@ import { format } from "date-fns";
 import { Input as DSInput } from "@/components/atoms/Input/Input";
 import { Select as DSSelect } from "@/components/atoms/Select/Select";
 import { MultiToggle } from "@/components/molecules/MultiToggle/MultiToggle";
-import { Switch } from "@/components/ui/switch";
 // Removed shadcn Select usage in favor of DS Select for time picker
 import {
   BlockIOObjectSubSchema,
@@ -15,6 +14,7 @@ import {
 import { TimePicker } from "@/components/molecules/TimePicker/TimePicker";
 import { FileInput } from "@/components/atoms/FileInput/FileInput";
 import { useRunAgentInputs } from "./useRunAgentInputs";
+import { Switch } from "@/components/atoms/Switch/Switch";
 
 /**
  * A generic prop structure for the TypeBasedInput.
