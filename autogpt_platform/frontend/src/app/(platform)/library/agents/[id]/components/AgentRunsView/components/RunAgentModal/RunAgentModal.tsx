@@ -8,6 +8,7 @@ import { ModalHeader } from "./components/ModalHeader/ModalHeader";
 import { AgentCostSection } from "./components/AgentCostSection/AgentCostSection";
 import { AgentSectionHeader } from "./components/AgentSectionHeader/AgentSectionHeader";
 import { DefaultRunView } from "./components/DefaultRunView/DefaultRunView";
+import { RunAgentModalContextProvider } from "./context";
 import { ScheduleView } from "./components/ScheduleView/ScheduleView";
 import { AgentDetails } from "./components/AgentDetails/AgentDetails";
 import { RunActions } from "./components/RunActions/RunActions";
@@ -28,10 +29,18 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
     defaultRunType,
     inputValues,
     setInputValues,
+    inputCredentials,
+    setInputCredentials,
+    presetName,
+    presetDescription,
+    setPresetName,
+    setPresetDescription,
     scheduleName,
     cronExpression,
     allRequiredInputsAreSet,
     // agentInputFields, // Available if needed for future use
+    agentInputFields,
+    agentCredentialsInputFields,
     hasInputFields,
     isExecuting,
     isCreatingSchedule,
@@ -51,6 +60,18 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
       ...prev,
       [key]: value,
     }));
+  }
+
+  function handleCredentialsChange(key: string, value: any | undefined) {
+    setInputCredentials((prev) => {
+      const next = { ...prev } as Record<string, any>;
+      if (value === undefined) {
+        delete next[key];
+        return next;
+      }
+      next[key] = value;
+      return next;
+    });
   }
 
   function handleSetOpen(open: boolean) {
@@ -97,23 +118,35 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
                   </div>
                 </>
               ) : hasInputFields ? (
-                <>
-                  <AgentSectionHeader
-                    title={
-                      defaultRunType === "automatic-trigger"
-                        ? "Trigger Setup"
-                        : "Agent Setup"
-                    }
-                  />
-                  <div>
-                    <DefaultRunView
-                      agent={agent}
-                      defaultRunType={defaultRunType}
-                      inputValues={inputValues}
-                      onInputChange={handleInputChange}
+                <RunAgentModalContextProvider
+                  value={{
+                    agent,
+                    defaultRunType,
+                    presetName,
+                    setPresetName,
+                    presetDescription,
+                    setPresetDescription,
+                    inputValues,
+                    setInputValue: handleInputChange,
+                    agentInputFields,
+                    inputCredentials,
+                    setInputCredentialsValue: handleCredentialsChange,
+                    agentCredentialsInputFields,
+                  }}
+                >
+                  <>
+                    <AgentSectionHeader
+                      title={
+                        defaultRunType === "automatic-trigger"
+                          ? "Trigger Setup"
+                          : "Agent Setup"
+                      }
                     />
-                  </div>
-                </>
+                    <div>
+                      <DefaultRunView />
+                    </div>
+                  </>
+                </RunAgentModalContextProvider>
               ) : null}
             </div>
 

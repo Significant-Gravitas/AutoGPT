@@ -9,7 +9,7 @@ import {
 import { OnboardingText } from "@/components/onboarding/OnboardingText";
 import StarRating from "@/components/onboarding/StarRating";
 import SchemaTooltip from "@/components/SchemaTooltip";
-import { TypeBasedInput } from "@/components/type-based-input";
+import { TypeBasedInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/RunAgentInputs/RunAgentInputs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { GraphMeta, StoreAgentDetails } from "@/lib/autogpt-server-api";

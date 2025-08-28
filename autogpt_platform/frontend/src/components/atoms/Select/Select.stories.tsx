@@ -10,7 +10,7 @@ const meta: Meta<typeof Select> = {
     docs: {
       description: {
         component:
-          "Select component based on our design system. Built on top of shadcn/ui select with custom styling matching Figma designs and consistent with the Input component.",
+          "Select component based on our design system. Built on shadcn/ui with styling that matches our Input. Supports size variants (small | medium) and optional hidden label.",
       },
     },
   },
@@ -43,6 +43,12 @@ const meta: Meta<typeof Select> = {
     options: {
       control: "object",
       description: "Array of options with value and label properties",
+    },
+    size: {
+      control: { type: "radio" },
+      options: ["small", "medium"],
+      description:
+        "Visual size variant. small = compact trigger (22px line-height), medium = default (46px height).",
     },
   },
   args: {
@@ -87,6 +93,43 @@ export const WithValue: Story = {
       { value: "uk", label: "United Kingdom" },
       { value: "de", label: "Germany" },
       { value: "fr", label: "France" },
+    ],
+  },
+};
+
+export const Small: Story = {
+  args: {
+    id: "select-small",
+    label: "Compact",
+    hideLabel: true,
+    size: "small",
+    placeholder: "Choose option",
+    options: [
+      { value: "opt1", label: "Option 1" },
+      { value: "opt2", label: "Option 2" },
+      { value: "opt3", label: "Option 3" },
+    ],
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Small size is ideal for dense UIs (e.g., inline controls like TimePicker).",
+      },
+    },
+  },
+};
+
+export const Medium: Story = {
+  args: {
+    id: "select-medium",
+    label: "Medium",
+    size: "medium",
+    placeholder: "Choose option",
+    options: [
+      { value: "opt1", label: "Option 1" },
+      { value: "opt2", label: "Option 2" },
+      { value: "opt3", label: "Option 3" },
     ],
   },
 };

@@ -1,30 +1,100 @@
-import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { RunVariant } from "../../useAgentRunModal";
 import { WebhookTriggerBanner } from "../WebhookTriggerBanner/WebhookTriggerBanner";
-import { AgentInputFields } from "../AgentInputFields/AgentInputFields";
+import { Input } from "@/components/atoms/Input/Input";
+import SchemaTooltip from "@/components/SchemaTooltip";
+import { CredentialsInput } from "@/components/integrations/credentials-input";
+import { useRunAgentModalContext } from "../../context";
+import { RunAgentInputs } from "../../../RunAgentInputs/RunAgentInputs";
 
-interface Props {
-  agent: LibraryAgent;
-  defaultRunType: RunVariant;
-  inputValues: Record<string, any>;
-  onInputChange: (key: string, value: string) => void;
-}
+export function DefaultRunView() {
+  const {
+    agent,
+    defaultRunType,
+    presetName,
+    setPresetName,
+    presetDescription,
+    setPresetDescription,
+    inputValues,
+    setInputValue,
+    agentInputFields,
+    inputCredentials,
+    setInputCredentialsValue,
+    agentCredentialsInputFields,
+  } = useRunAgentModalContext();
 
-export function DefaultRunView({
-  agent,
-  defaultRunType,
-  inputValues,
-  onInputChange,
-}: Props) {
   return (
-    <div className="mt-6">
+    <div className="mb-12 mt-6">
       {defaultRunType === "automatic-trigger" && <WebhookTriggerBanner />}
 
-      <AgentInputFields
-        agent={agent}
-        inputValues={inputValues}
-        onInputChange={onInputChange}
-      />
+      {/* Preset/Trigger fields */}
+      {defaultRunType === "automatic-trigger" && (
+        <div className="mt-4 flex flex-col gap-4">
+          <div className="flex flex-col space-y-2">
+            <label className="flex items-center gap-1 text-sm font-medium">
+              Trigger Name
+              <SchemaTooltip description="Name of the trigger you are setting up" />
+            </label>
+            <Input
+              id="trigger_name"
+              label="Trigger Name"
+              hideLabel
+              value={presetName}
+              placeholder="Enter trigger name"
+              onChange={(e) => setPresetName(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col space-y-2">
+            <label className="flex items-center gap-1 text-sm font-medium">
+              Trigger Description
+              <SchemaTooltip description="Description of the trigger you are setting up" />
+            </label>
+            <Input
+              id="trigger_description"
+              label="Trigger Description"
+              hideLabel
+              value={presetDescription}
+              placeholder="Enter trigger description"
+              onChange={(e) => setPresetDescription(e.target.value)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Credentials inputs */}
+      {Object.entries(agentCredentialsInputFields || {}).map(
+        ([key, inputSubSchema]) => (
+          <CredentialsInput
+            key={key}
+            schema={{ ...inputSubSchema, discriminator: undefined } as any}
+            selectedCredentials={
+              (inputCredentials && inputCredentials[key]) ??
+              inputSubSchema.default
+            }
+            onSelectCredentials={(value) =>
+              setInputCredentialsValue(key, value)
+            }
+            siblingInputs={inputValues}
+            hideIfSingleCredentialAvailable={!agent.has_external_trigger}
+          />
+        ),
+      )}
+
+      {/* Regular inputs */}
+      {Object.entries(agentInputFields || {}).map(([key, inputSubSchema]) => (
+        <div key={key} className="mt-4 flex flex-col space-y-2">
+          <label className="flex items-center gap-1 text-sm font-medium">
+            {inputSubSchema.title || key}
+            <SchemaTooltip description={inputSubSchema.description} />
+          </label>
+
+          <RunAgentInputs
+            schema={inputSubSchema}
+            value={inputValues[key] ?? inputSubSchema.default}
+            placeholder={inputSubSchema.description}
+            onChange={(value) => setInputValue(key, value)}
+            data-testid={`agent-input-${key}`}
+          />
+        </div>
+      ))}
     </div>
   );
 }

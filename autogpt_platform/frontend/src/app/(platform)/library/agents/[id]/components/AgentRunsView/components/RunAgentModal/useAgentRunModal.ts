@@ -29,6 +29,11 @@ export function useAgentRunModal(
   const [isOpen, setIsOpen] = useState(false);
   const [showScheduleView, setShowScheduleView] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
+  const [inputCredentials, setInputCredentials] = useState<Record<string, any>>(
+    {},
+  );
+  const [presetName, setPresetName] = useState<string>("");
+  const [presetDescription, setPresetDescription] = useState<string>("");
   const defaultScheduleName = useMemo(() => `Run ${agent.name}`, [agent.name]);
   const [scheduleName, setScheduleName] = useState(defaultScheduleName);
   const [cronExpression, setCronExpression] = useState("0 9 * * 1");
@@ -128,6 +133,18 @@ export function useAgentRunModal(
     );
   }, [agentInputSchema]);
 
+  const agentCredentialsInputFields = useMemo(() => {
+    if (
+      !agent.credentials_input_schema ||
+      typeof agent.credentials_input_schema !== "object" ||
+      !("properties" in agent.credentials_input_schema) ||
+      !agent.credentials_input_schema.properties
+    ) {
+      return {} as Record<string, any>;
+    }
+    return agent.credentials_input_schema.properties as Record<string, any>;
+  }, [agent.credentials_input_schema]);
+
   // Validation logic
   const [allRequiredInputsAreSet, missingInputs] = useMemo(() => {
     const nonEmptyInputs = new Set(
@@ -141,6 +158,17 @@ export function useAgentRunModal(
     );
     return [missing.length === 0, missing];
   }, [agentInputSchema.required, inputValues]);
+
+  const [allCredentialsAreSet, missingCredentials] = useMemo(() => {
+    const availableCredentials = new Set(Object.keys(inputCredentials));
+    const allCredentials = new Set(
+      Object.keys(agentCredentialsInputFields || {}) ?? [],
+    );
+    const missing = [...allCredentials].filter(
+      (key) => !availableCredentials.has(key),
+    );
+    return [missing.length === 0, missing];
+  }, [agentCredentialsInputFields, inputCredentials]);
 
   const notifyMissingInputs = useCallback(
     (needScheduleName: boolean = false) => {
@@ -177,12 +205,12 @@ export function useAgentRunModal(
 
       setupTriggerMutation.mutate({
         data: {
-          name: scheduleName,
-          description: `Trigger for ${agent.name}`,
+          name: presetName || scheduleName,
+          description: presetDescription || `Trigger for ${agent.name}`,
           graph_id: agent.graph_id,
           graph_version: agent.graph_version,
           trigger_config: inputValues,
-          agent_credentials: {}, // TODO: Add credentials handling if needed
+          agent_credentials: inputCredentials,
         },
       });
     } else {
@@ -192,7 +220,7 @@ export function useAgentRunModal(
         graphVersion: agent.graph_version,
         data: {
           inputs: inputValues,
-          credentials_inputs: {}, // TODO: Add credentials handling if needed
+          credentials_inputs: inputCredentials,
         },
       });
     }
@@ -201,7 +229,10 @@ export function useAgentRunModal(
     defaultRunType,
     scheduleName,
     inputValues,
+    inputCredentials,
     agent,
+    presetName,
+    presetDescription,
     notifyMissingInputs,
     setupTriggerMutation,
     executeGraphMutation,
@@ -226,11 +257,11 @@ export function useAgentRunModal(
     createScheduleMutation.mutate({
       graphId: agent.graph_id,
       data: {
-        name: scheduleName,
+        name: presetName || scheduleName,
         cron: cronExpression,
         inputs: inputValues,
         graph_version: agent.graph_version,
-        credentials: {}, // TODO: Add credentials handling if needed
+        credentials: inputCredentials,
       },
     });
   }, [
@@ -238,6 +269,7 @@ export function useAgentRunModal(
     scheduleName,
     cronExpression,
     inputValues,
+    inputCredentials,
     agent,
     notifyMissingInputs,
     createScheduleMutation,
@@ -277,11 +309,18 @@ export function useAgentRunModal(
     defaultRunType,
     inputValues,
     setInputValues,
+    inputCredentials,
+    setInputCredentials,
+    presetName,
+    presetDescription,
+    setPresetName,
+    setPresetDescription,
     scheduleName,
     cronExpression,
     allRequiredInputsAreSet,
     missingInputs,
     agentInputFields,
+    agentCredentialsInputFields,
     hasInputFields,
     isExecuting: executeGraphMutation.isPending,
     isCreatingSchedule: createScheduleMutation.isPending,

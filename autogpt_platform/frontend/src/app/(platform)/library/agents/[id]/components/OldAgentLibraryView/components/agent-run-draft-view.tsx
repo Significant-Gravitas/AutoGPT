@@ -20,7 +20,7 @@ import { IconCross, IconPlay, IconSave } from "@/components/ui/icons";
 import { CalendarClockIcon, Trash2Icon } from "lucide-react";
 import { CronSchedulerDialog } from "@/components/cron-scheduler-dialog";
 import { CredentialsInput } from "@/components/integrations/credentials-input";
-import { TypeBasedInput } from "@/components/type-based-input";
+import { RunAgentInputs } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/RunAgentInputs/RunAgentInputs";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 import { cn, isEmpty } from "@/lib/utils";
 import SchemaTooltip from "@/components/SchemaTooltip";
@@ -596,7 +596,7 @@ export function AgentRunDraftView({
                   <SchemaTooltip description={inputSubSchema.description} />
                 </label>
 
-                <TypeBasedInput
+                <RunAgentInputs
                   schema={inputSubSchema}
                   value={inputValues[key] ?? inputSubSchema.default}
                   placeholder={inputSubSchema.description}
