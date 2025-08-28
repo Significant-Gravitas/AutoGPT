@@ -1,11 +1,4 @@
-"""
-Test execution creation with proper ID generation and persistence.
-
-This test specifically addresses the user requirement:
-"seriously we should have a test that test this, trigger creation case of
-upsert and check the persisted db using the id being generated from the cache
-and all the id are valid"
-"""
+"""Test execution creation with proper ID generation and persistence."""
 
 import asyncio
 import threading
@@ -20,7 +13,6 @@ from backend.executor.execution_data import ExecutionDataClient
 
 @pytest.fixture
 def event_loop():
-    """Create an event loop for the ExecutionDataClient."""
     loop = asyncio.new_event_loop()
     yield loop
     loop.close()
@@ -118,11 +110,8 @@ def execution_client_with_mock_db(event_loop):
         lambda *args, **kwargs: mock_graph_update
     )
 
-    # Run the event loop in background thread for async operations
     thread = threading.Thread(target=event_loop.run_forever, daemon=True)
     thread.start()
-
-    # Patch the module-level client getters used by ExecutionDataClient
     with patch(
         "backend.executor.execution_data.get_database_manager_async_client",
         return_value=async_mock_client,

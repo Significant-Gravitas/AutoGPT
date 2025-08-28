@@ -175,8 +175,6 @@ class ExecutionDataClient:
 
         # CREATE: No suitable execution found, create new one
         node_exec_id = str(uuid.uuid4())
-
-        # Log the creation for debugging purposes
         logger.debug(
             f"Creating new execution {node_exec_id} for node {node_id} "
             f"in graph execution {self._graph_exec_id}"
@@ -306,7 +304,7 @@ class ExecutionDataClient:
 
     @non_blocking_persist
     def _send_execution_update(self, execution: NodeExecutionResult):
-        """Send execution update to event bus (equivalent to removed send_execution_update)."""
+        """Send execution update to event bus."""
         try:
             self.event_bus.publish(execution)
         except Exception as e:
@@ -316,7 +314,6 @@ class ExecutionDataClient:
     def _persist_new_node_execution_to_db(
         self, node_exec_id: str, node_id: str, input_name: str, input_data: Any
     ):
-        """Persist new node execution to database (non-blocking)."""
         try:
             self.db_client_sync.create_node_execution(
                 node_exec_id=node_exec_id,
@@ -326,12 +323,10 @@ class ExecutionDataClient:
                 input_data=input_data,
             )
         except Exception as e:
-            # Log the error with context for debugging foreign key issues
             logger.error(
                 f"Failed to create node execution {node_exec_id} for node {node_id} "
                 f"in graph execution {self._graph_exec_id}: {e}"
             )
-            # Re-raise the exception since this is a critical error that should not be silenced
             raise
 
     def increment_execution_count(self, user_id: str) -> int:

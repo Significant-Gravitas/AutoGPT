@@ -1,12 +1,4 @@
-"""
-Clean, comprehensive test suite for ExecutionDataClient.
-
-Tests the complete behavior including:
-1. Cache-first execution operations
-2. Background DB persistence
-3. Immediate consistency for reads after writes
-4. Integration with manager.py patterns
-"""
+"""Test suite for ExecutionDataClient."""
 
 import asyncio
 import threading
@@ -19,7 +11,6 @@ from backend.executor.execution_data import ExecutionDataClient
 
 @pytest.fixture
 def event_loop():
-    """Create an event loop for the ExecutionDataClient."""
     loop = asyncio.new_event_loop()
     yield loop
     loop.close()
@@ -27,12 +18,10 @@ def event_loop():
 
 @pytest.fixture
 def execution_client(event_loop):
-    """Create an ExecutionDataClient instance with background event loop."""
     from datetime import datetime, timezone
 
     from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 
-    # Mock the graph execution metadata
     mock_graph_meta = GraphExecutionMeta(
         id="test_graph_exec_id",
         user_id="test_user_id",
@@ -44,25 +33,21 @@ def execution_client(event_loop):
         stats=None,
     )
 
-    # Create client with ThreadPoolExecutor and graph metadata
     from concurrent.futures import ThreadPoolExecutor
 
     executor = ThreadPoolExecutor(max_workers=1)
     client = ExecutionDataClient(executor, "test_graph_exec_id", mock_graph_meta)
 
-    # Run the event loop in a background thread for async operations
     thread = threading.Thread(target=event_loop.run_forever, daemon=True)
     thread.start()
 
     yield client
 
-    # Cleanup
     event_loop.call_soon_threadsafe(event_loop.stop)
     thread.join(timeout=1)
 
 
 class TestExecutionDataClient:
-    """Test the complete ExecutionDataClient behavior."""
 
     async def test_update_node_status_writes_to_cache_immediately(
         self, execution_client
@@ -633,24 +618,17 @@ class TestExecutionDataClient:
         cached_stats = execution_client._cache._graph_stats
         assert cached_stats.walltime == 10.5
 
-        # Test update_graph_start_time_and_publish - this primarily updates the database
-        # The cache doesn't need to store start_time since it's metadata, not stats
         execution_client.update_graph_start_time_and_publish()
-
-        # The cache should still have the stats we set earlier
         cached_stats = execution_client._cache._graph_stats
         assert cached_stats.walltime == 10.5
 
     def test_public_methods_accessible(self, execution_client):
         """Test that public methods are accessible."""
-        # Public methods should be accessible on cache
         assert hasattr(execution_client._cache, "update_node_execution_status")
         assert hasattr(execution_client._cache, "upsert_execution_output")
         assert hasattr(execution_client._cache, "add_node_execution")
         assert hasattr(execution_client._cache, "find_incomplete_execution_for_input")
         assert hasattr(execution_client._cache, "update_execution_input")
-
-        # And on the client
         assert hasattr(execution_client, "upsert_execution_input")
         assert hasattr(execution_client, "update_node_status_and_publish")
 
