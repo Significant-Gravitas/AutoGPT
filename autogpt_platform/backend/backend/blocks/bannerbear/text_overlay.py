@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING, Any, Dict, List
 if TYPE_CHECKING:
     pass
 
+from pydantic import SecretStr
+
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -16,6 +18,13 @@ from backend.sdk import (
 )
 
 from ._config import bannerbear
+
+TEST_CREDENTIALS = APIKeyCredentials(
+    id="01234567-89ab-cdef-0123-456789abcdef",
+    provider="bannerbear",
+    api_key=SecretStr("mock-bannerbear-api-key"),
+    title="Mock Bannerbear API Key",
+)
 
 
 class TextModification(BlockSchema):
@@ -137,6 +146,7 @@ class BannerbearTextOverlayBlock(Block):
                     "image_url": "https://cdn.bannerbear.com/test-image.jpg",
                 }
             },
+            test_credentials=TEST_CREDENTIALS,
         )
 
     async def _make_api_request(self, payload: dict, api_key: str) -> dict:
@@ -211,7 +221,7 @@ class BannerbearTextOverlayBlock(Block):
         # Add project_id if provided (required for Master API keys)
         if input_data.project_id and input_data.project_id.strip():
             payload["project_id"] = input_data.project_id
-            
+
         if input_data.webhook_url and input_data.webhook_url.strip():
             payload["webhook_url"] = input_data.webhook_url
         if input_data.metadata and input_data.metadata.strip():
