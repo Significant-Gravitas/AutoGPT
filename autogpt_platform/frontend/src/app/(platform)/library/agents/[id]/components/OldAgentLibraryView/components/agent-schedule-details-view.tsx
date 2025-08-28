@@ -42,8 +42,11 @@ export function AgentScheduleDetailsView({
   const toastOnFail = useToastOnFail();
 
   // Get user's timezone for displaying schedule times
-  const { data: timezoneData } = useGetV1GetUserTimezone();
-  const userTimezone = timezoneData?.data?.timezone || "UTC";
+  const { data: userTimezone } = useGetV1GetUserTimezone({
+    query: {
+      select: (res) => (res.status === 200 ? res.data.timezone : undefined),
+    },
+  });
 
   const infoStats: { label: string; value: React.ReactNode }[] = useMemo(() => {
     return [
