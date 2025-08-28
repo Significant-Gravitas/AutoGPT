@@ -58,6 +58,11 @@ class BannerbearTextOverlayBlock(Block):
         template_id: str = SchemaField(
             description="The unique ID of your Bannerbear template"
         )
+        project_id: str = SchemaField(
+            description="Optional: Project ID (required when using Master API Key)",
+            default="",
+            advanced=True,
+        )
         text_modifications: List[TextModification] = SchemaField(
             description="List of text layers to modify in the template"
         )
@@ -95,7 +100,7 @@ class BannerbearTextOverlayBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id=str(uuid.uuid4()),
+            id="c7d3a5c2-05fc-450e-8dce-3b0e04626009",
             description="Add text overlay to images using Bannerbear templates. Perfect for creating social media graphics, marketing materials, and dynamic image content.",
             categories={BlockCategory.PRODUCTIVITY, BlockCategory.AI},
             input_schema=self.Input,
@@ -203,6 +208,10 @@ class BannerbearTextOverlayBlock(Block):
             "modifications": modifications,
         }
 
+        # Add project_id if provided (required for Master API keys)
+        if input_data.project_id and input_data.project_id.strip():
+            payload["project_id"] = input_data.project_id
+            
         if input_data.webhook_url and input_data.webhook_url.strip():
             payload["webhook_url"] = input_data.webhook_url
         if input_data.metadata and input_data.metadata.strip():
