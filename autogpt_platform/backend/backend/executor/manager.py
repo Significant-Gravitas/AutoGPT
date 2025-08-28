@@ -5,38 +5,15 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
-from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
+from typing import Any, Optional, TypeVar, cast
 
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
-from pydantic import JsonValue
-from redis.asyncio.lock import Lock as RedisLock
-
-from backend.blocks.io import AgentOutputBlock
-from backend.data.model import GraphExecutionStats, NodeExecutionStats
-from backend.data.notifications import (
-    AgentRunData,
-    LowBalanceData,
-    NotificationEventModel,
-    NotificationType,
-    ZeroBalanceData,
-)
-from backend.data.rabbitmq import SyncRabbitMQ
-from backend.executor.activity_status_generator import (
-    generate_activity_status_for_execution,
-)
-from backend.executor.utils import LogMetadata
-from backend.notifications.notifications import queue_notification
-from backend.util.exceptions import InsufficientBalanceError, ModerationError
-
-if TYPE_CHECKING:
-    from backend.executor import DatabaseManagerClient, DatabaseManagerAsyncClient
-
 from prometheus_client import Gauge, start_http_server
+from pydantic import JsonValue
 
 from backend.blocks.agent import AgentExecutorBlock
-from backend.data import redis_client as redis
+from backend.blocks.io import AgentOutputBlock
 from backend.data.block import (
     BlockData,
     BlockInput,
@@ -48,19 +25,28 @@ from backend.data.credit import UsageTransactionMetadata
 from backend.data.execution import (
     ExecutionQueue,
     ExecutionStatus,
-    GraphExecution,
     GraphExecutionEntry,
     NodeExecutionEntry,
-    NodeExecutionResult,
     UserContext,
 )
 from backend.data.graph import Link, Node
+from backend.data.model import GraphExecutionStats, NodeExecutionStats
+from backend.data.notifications import (
+    AgentRunData,
+    LowBalanceData,
+    NotificationEventModel,
+    NotificationType,
+    ZeroBalanceData,
+)
+from backend.data.rabbitmq import SyncRabbitMQ
+from backend.executor.execution_data import ExecutionDataClient
 from backend.executor.utils import (
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
     GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
     GRAPH_EXECUTION_QUEUE_NAME,
     CancelExecutionEvent,
     ExecutionOutputEntry,
+    LogMetadata,
     NodeExecutionProgress,
     block_usage_cost,
     create_execution_queue_config,
@@ -69,21 +55,17 @@ from backend.executor.utils import (
     validate_exec,
 )
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.notifications.notifications import queue_notification
 from backend.server.v2.AutoMod.manager import automod_manager
 from backend.util import json
-from backend.util.clients import (
-    get_async_execution_event_bus,
-    get_database_manager_async_client,
-    get_database_manager_client,
-    get_execution_event_bus,
-    get_notification_manager_client,
-)
+from backend.util.clients import get_notification_manager_client
 from backend.util.decorator import (
     async_error_logged,
     async_time_measured,
     error_logged,
     time_measured,
 )
+from backend.util.exceptions import InsufficientBalanceError, ModerationError
 from backend.util.file import clean_exec_files
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.metrics import DiscordChannel
@@ -138,7 +120,6 @@ async def execute_node(
     persist the execution result, and return the subsequent node to be executed.
 
     Args:
-        db_client: The client to send execution updates to the server.
         creds_manager: The manager to acquire and release credentials.
         data: The execution data for executing the current node.
         execution_stats: The execution statistics to be updated.
@@ -235,7 +216,7 @@ async def execute_node(
 
 
 async def _enqueue_next_nodes(
-    db_client: "DatabaseManagerAsyncClient",
+    execution_data_client: ExecutionDataClient,
     node: Node,
     output: BlockData,
     user_id: str,
@@ -248,8 +229,7 @@ async def _enqueue_next_nodes(
     async def add_enqueued_execution(
         node_exec_id: str, node_id: str, block_id: str, data: BlockInput
     ) -> NodeExecutionEntry:
-        await async_update_node_execution_status(
-            db_client=db_client,
+        execution_data_client.update_node_status_and_publish(
             exec_id=node_exec_id,
             status=ExecutionStatus.QUEUED,
             execution_data=data,
@@ -282,21 +262,22 @@ async def _enqueue_next_nodes(
         next_data = parse_execution_output(output, next_output_name)
         if next_data is None and output_name != next_output_name:
             return enqueued_executions
-        next_node = await db_client.get_node(next_node_id)
+        next_node = await execution_data_client.get_node(next_node_id)
 
         # Multiple node can register the same next node, we need this to be atomic
         # To avoid same execution to be enqueued multiple times,
         # Or the same input to be consumed multiple times.
-        async with synchronized(f"upsert_input-{next_node_id}-{graph_exec_id}"):
+        with execution_data_client.graph_lock:
             # Add output data to the earliest incomplete execution, or create a new one.
-            next_node_exec_id, next_node_input = await db_client.upsert_execution_input(
-                node_id=next_node_id,
-                graph_exec_id=graph_exec_id,
-                input_name=next_input_name,
-                input_data=next_data,
+            next_node_exec_id, next_node_input = (
+                execution_data_client.upsert_execution_input(
+                    node_id=next_node_id,
+                    input_name=next_input_name,
+                    input_data=next_data,
+                    block_id=next_node.block_id,
+                )
             )
-            await async_update_node_execution_status(
-                db_client=db_client,
+            execution_data_client.update_node_status_and_publish(
                 exec_id=next_node_exec_id,
                 status=ExecutionStatus.INCOMPLETE,
             )
@@ -308,8 +289,8 @@ async def _enqueue_next_nodes(
                 if link.is_static and link.sink_name not in next_node_input
             }
             if static_link_names and (
-                latest_execution := await db_client.get_latest_node_execution(
-                    next_node_id, graph_exec_id
+                latest_execution := execution_data_client.get_latest_node_execution(
+                    next_node_id
                 )
             ):
                 for name in static_link_names:
@@ -348,9 +329,8 @@ async def _enqueue_next_nodes(
 
             # If link is static, there could be some incomplete executions waiting for it.
             # Load and complete the input missing input data, and try to re-enqueue them.
-            for iexec in await db_client.get_node_executions(
+            for iexec in execution_data_client.get_node_executions(
                 node_id=next_node_id,
-                graph_exec_id=graph_exec_id,
                 statuses=[ExecutionStatus.INCOMPLETE],
             ):
                 idata = iexec.input_data
@@ -414,6 +394,9 @@ class ExecutionProcessor:
         9. Node executor enqueues the next executed nodes to the node execution queue.
     """
 
+    # Current execution data client (scoped to current graph execution)
+    execution_data: ExecutionDataClient
+
     @async_error_logged(swallow=True)
     async def on_node_execution(
         self,
@@ -431,8 +414,7 @@ class ExecutionProcessor:
             node_id=node_exec.node_id,
             block_name="-",
         )
-        db_client = get_db_async_client()
-        node = await db_client.get_node(node_exec.node_id)
+        node = await self.execution_data.get_node(node_exec.node_id)
         execution_stats = NodeExecutionStats()
 
         timing_info, status = await self._on_node_execution(
@@ -440,7 +422,6 @@ class ExecutionProcessor:
             node_exec=node_exec,
             node_exec_progress=node_exec_progress,
             stats=execution_stats,
-            db_client=db_client,
             log_metadata=log_metadata,
             nodes_input_masks=nodes_input_masks,
         )
@@ -464,15 +445,12 @@ class ExecutionProcessor:
         if node_error and not isinstance(node_error, str):
             node_stats["error"] = str(node_error) or node_stats.__class__.__name__
 
-        await async_update_node_execution_status(
-            db_client=db_client,
+        self.execution_data.update_node_status_and_publish(
             exec_id=node_exec.node_exec_id,
             status=status,
             stats=node_stats,
         )
-        await async_update_graph_execution_state(
-            db_client=db_client,
-            graph_exec_id=node_exec.graph_exec_id,
+        self.execution_data.update_graph_stats_and_publish(
             stats=graph_stats,
         )
 
@@ -485,22 +463,17 @@ class ExecutionProcessor:
         node_exec: NodeExecutionEntry,
         node_exec_progress: NodeExecutionProgress,
         stats: NodeExecutionStats,
-        db_client: "DatabaseManagerAsyncClient",
         log_metadata: LogMetadata,
         nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
     ) -> ExecutionStatus:
         status = ExecutionStatus.RUNNING
 
         async def persist_output(output_name: str, output_data: Any) -> None:
-            await db_client.upsert_execution_output(
+            self.execution_data.upsert_execution_output(
                 node_exec_id=node_exec.node_exec_id,
                 output_name=output_name,
                 output_data=output_data,
             )
-            if exec_update := await db_client.get_node_execution(
-                node_exec.node_exec_id
-            ):
-                await send_async_execution_update(exec_update)
 
             node_exec_progress.add_output(
                 ExecutionOutputEntry(
@@ -512,8 +485,7 @@ class ExecutionProcessor:
 
         try:
             log_metadata.info(f"Start node execution {node_exec.node_exec_id}")
-            await async_update_node_execution_status(
-                db_client=db_client,
+            self.execution_data.update_node_status_and_publish(
                 exec_id=node_exec.node_exec_id,
                 status=ExecutionStatus.RUNNING,
             )
@@ -574,6 +546,8 @@ class ExecutionProcessor:
         self.node_evaluation_thread = threading.Thread(
             target=self.node_evaluation_loop.run_forever, daemon=True
         )
+        # single thread executor
+        self.execution_data_executor = ThreadPoolExecutor(max_workers=1)
         self.node_execution_thread.start()
         self.node_evaluation_thread.start()
         logger.info(f"[GraphExecutor] {self.tid} started")
@@ -593,9 +567,13 @@ class ExecutionProcessor:
             node_eid="*",
             block_name="-",
         )
-        db_client = get_db_client()
 
-        exec_meta = db_client.get_graph_execution_meta(
+        # Get graph execution metadata first via sync client
+        from backend.util.clients import get_database_manager_client
+
+        db_client_sync = get_database_manager_client()
+
+        exec_meta = db_client_sync.get_graph_execution_meta(
             user_id=graph_exec.user_id,
             execution_id=graph_exec.graph_exec_id,
         )
@@ -605,12 +583,15 @@ class ExecutionProcessor:
             )
             return
 
+        # Create scoped ExecutionDataClient for this graph execution with metadata
+        self.execution_data = ExecutionDataClient(
+            self.execution_data_executor, graph_exec.graph_exec_id, exec_meta
+        )
+
         if exec_meta.status == ExecutionStatus.QUEUED:
             log_metadata.info(f"⚙️ Starting graph execution #{graph_exec.graph_exec_id}")
             exec_meta.status = ExecutionStatus.RUNNING
-            send_execution_update(
-                db_client.update_graph_execution_start_time(graph_exec.graph_exec_id)
-            )
+            self.execution_data.update_graph_start_time_and_publish()
         elif exec_meta.status == ExecutionStatus.RUNNING:
             log_metadata.info(
                 f"⚙️ Graph execution #{graph_exec.graph_exec_id} is already running, continuing where it left off."
@@ -620,9 +601,7 @@ class ExecutionProcessor:
             log_metadata.info(
                 f"⚙️ Graph execution #{graph_exec.graph_exec_id} was disturbed, continuing where it left off."
             )
-            update_graph_execution_state(
-                db_client=db_client,
-                graph_exec_id=graph_exec.graph_exec_id,
+            self.execution_data.update_graph_stats_and_publish(
                 status=ExecutionStatus.RUNNING,
             )
         else:
@@ -653,12 +632,10 @@ class ExecutionProcessor:
 
             # Activity status handling
             activity_status = asyncio.run_coroutine_threadsafe(
-                generate_activity_status_for_execution(
-                    graph_exec_id=graph_exec.graph_exec_id,
+                self.execution_data.generate_activity_status(
                     graph_id=graph_exec.graph_id,
                     graph_version=graph_exec.graph_version,
                     execution_stats=exec_stats,
-                    db_client=get_db_async_client(),
                     user_id=graph_exec.user_id,
                     execution_status=status,
                 ),
@@ -673,15 +650,14 @@ class ExecutionProcessor:
                 )
 
             # Communication handling
-            self._handle_agent_run_notif(db_client, graph_exec, exec_stats)
+            self._handle_agent_run_notif(graph_exec, exec_stats)
 
         finally:
-            update_graph_execution_state(
-                db_client=db_client,
-                graph_exec_id=graph_exec.graph_exec_id,
+            self.execution_data.update_graph_stats_and_publish(
                 status=exec_meta.status,
                 stats=exec_stats,
             )
+            self.execution_data.finalize_execution()
 
     def _charge_usage(
         self,
@@ -690,7 +666,6 @@ class ExecutionProcessor:
     ) -> tuple[int, int]:
         total_cost = 0
         remaining_balance = 0
-        db_client = get_db_client()
         block = get_block(node_exec.block_id)
         if not block:
             logger.error(f"Block {node_exec.block_id} not found.")
@@ -700,7 +675,7 @@ class ExecutionProcessor:
             block=block, input_data=node_exec.inputs
         )
         if cost > 0:
-            remaining_balance = db_client.spend_credits(
+            remaining_balance = self.execution_data.spend_credits(
                 user_id=node_exec.user_id,
                 cost=cost,
                 metadata=UsageTransactionMetadata(
@@ -718,7 +693,7 @@ class ExecutionProcessor:
 
         cost, usage_count = execution_usage_cost(execution_count)
         if cost > 0:
-            remaining_balance = db_client.spend_credits(
+            remaining_balance = self.execution_data.spend_credits(
                 user_id=node_exec.user_id,
                 cost=cost,
                 metadata=UsageTransactionMetadata(
@@ -751,7 +726,6 @@ class ExecutionProcessor:
         """
         execution_status: ExecutionStatus = ExecutionStatus.RUNNING
         error: Exception | None = None
-        db_client = get_db_client()
         execution_stats_lock = threading.Lock()
 
         # State holders ----------------------------------------------------
@@ -762,7 +736,7 @@ class ExecutionProcessor:
         execution_queue = ExecutionQueue[NodeExecutionEntry]()
 
         try:
-            if db_client.get_credits(graph_exec.user_id) <= 0:
+            if self.execution_data.get_credits(graph_exec.user_id) <= 0:
                 raise InsufficientBalanceError(
                     user_id=graph_exec.user_id,
                     message="You have no credits left to run an agent.",
@@ -774,7 +748,7 @@ class ExecutionProcessor:
             try:
                 if moderation_error := asyncio.run_coroutine_threadsafe(
                     automod_manager.moderate_graph_execution_inputs(
-                        db_client=get_db_async_client(),
+                        db_client=self.execution_data.db_client_async,
                         graph_exec=graph_exec,
                     ),
                     self.node_evaluation_loop,
@@ -789,16 +763,34 @@ class ExecutionProcessor:
             # ------------------------------------------------------------
             # Pre‑populate queue ---------------------------------------
             # ------------------------------------------------------------
-            for node_exec in db_client.get_node_executions(
-                graph_exec.graph_exec_id,
+
+            queued_executions = self.execution_data.get_node_executions(
                 statuses=[
                     ExecutionStatus.RUNNING,
                     ExecutionStatus.QUEUED,
                     ExecutionStatus.TERMINATED,
                 ],
-            ):
-                node_entry = node_exec.to_node_execution_entry(graph_exec.user_context)
-                execution_queue.add(node_entry)
+            )
+            log_metadata.info(
+                f"Pre-populating queue with {len(queued_executions)} executions from cache"
+            )
+
+            for i, node_exec in enumerate(queued_executions):
+                log_metadata.info(
+                    f"  [{i}] {node_exec.node_exec_id}: status={node_exec.status}, node={node_exec.node_id}"
+                )
+                try:
+                    node_entry = node_exec.to_node_execution_entry(
+                        graph_exec.user_context
+                    )
+                    execution_queue.add(node_entry)
+                    log_metadata.info("    Added to execution queue successfully")
+                except Exception as e:
+                    log_metadata.error(f"    Failed to add to execution queue: {e}")
+
+            log_metadata.info(
+                f"Execution queue populated with {len(queued_executions)} executions"
+            )
 
             # ------------------------------------------------------------
             # Main dispatch / polling loop -----------------------------
@@ -818,13 +810,14 @@ class ExecutionProcessor:
                 try:
                     cost, remaining_balance = self._charge_usage(
                         node_exec=queued_node_exec,
-                        execution_count=increment_execution_count(graph_exec.user_id),
+                        execution_count=self.execution_data.increment_execution_count(
+                            graph_exec.user_id
+                        ),
                     )
                     with execution_stats_lock:
                         execution_stats.cost += cost
                     # Check if we crossed the low balance threshold
                     self._handle_low_balance(
-                        db_client=db_client,
                         user_id=graph_exec.user_id,
                         current_balance=remaining_balance,
                         transaction_cost=cost,
@@ -832,19 +825,17 @@ class ExecutionProcessor:
                 except InsufficientBalanceError as balance_error:
                     error = balance_error  # Set error to trigger FAILED status
                     node_exec_id = queued_node_exec.node_exec_id
-                    db_client.upsert_execution_output(
+                    self.execution_data.upsert_execution_output(
                         node_exec_id=node_exec_id,
                         output_name="error",
                         output_data=str(error),
                     )
-                    update_node_execution_status(
-                        db_client=db_client,
+                    self.execution_data.update_node_status_and_publish(
                         exec_id=node_exec_id,
                         status=ExecutionStatus.FAILED,
                     )
 
                     self._handle_insufficient_funds_notif(
-                        db_client,
                         graph_exec.user_id,
                         graph_exec.graph_id,
                         error,
@@ -931,12 +922,13 @@ class ExecutionProcessor:
                         time.sleep(0.1)
 
             # loop done --------------------------------------------------
+            # Background task finalization moved to finally block
 
             # Output moderation
             try:
                 if moderation_error := asyncio.run_coroutine_threadsafe(
                     automod_manager.moderate_graph_execution_outputs(
-                        db_client=get_db_async_client(),
+                        db_client=self.execution_data.db_client_async,
                         graph_exec_id=graph_exec.graph_exec_id,
                         user_id=graph_exec.user_id,
                         graph_id=graph_exec.graph_id,
@@ -990,7 +982,6 @@ class ExecutionProcessor:
                 error=error,
                 graph_exec_id=graph_exec.graph_exec_id,
                 log_metadata=log_metadata,
-                db_client=db_client,
             )
 
     @error_logged(swallow=True)
@@ -1003,7 +994,6 @@ class ExecutionProcessor:
         error: Exception | None,
         graph_exec_id: str,
         log_metadata: LogMetadata,
-        db_client: "DatabaseManagerClient",
     ) -> None:
         """
         Clean up running node executions and evaluations when graph execution ends.
@@ -1037,8 +1027,7 @@ class ExecutionProcessor:
                 )
 
         while queued_execution := execution_queue.get_or_none():
-            update_node_execution_status(
-                db_client=db_client,
+            self.execution_data.update_node_status_and_publish(
                 exec_id=queued_execution.node_exec_id,
                 status=execution_status,
                 stats={"error": str(error)} if error else None,
@@ -1066,12 +1055,10 @@ class ExecutionProcessor:
             nodes_input_masks: Optional map of node input overrides
             execution_queue: Queue to add next executions to
         """
-        db_client = get_db_async_client()
-
         log_metadata.debug(f"Enqueue nodes for {node_id}: {output}")
 
         for next_execution in await _enqueue_next_nodes(
-            db_client=db_client,
+            execution_data_client=self.execution_data,
             node=output.node,
             output=output.data,
             user_id=graph_exec.user_id,
@@ -1085,15 +1072,13 @@ class ExecutionProcessor:
 
     def _handle_agent_run_notif(
         self,
-        db_client: "DatabaseManagerClient",
         graph_exec: GraphExecutionEntry,
         exec_stats: GraphExecutionStats,
     ):
-        metadata = db_client.get_graph_metadata(
+        metadata = self.execution_data.get_graph_metadata(
             graph_exec.graph_id, graph_exec.graph_version
         )
-        outputs = db_client.get_node_executions(
-            graph_exec.graph_exec_id,
+        outputs = self.execution_data.get_node_executions(
             block_ids=[AgentOutputBlock().id],
         )
 
@@ -1122,13 +1107,12 @@ class ExecutionProcessor:
 
     def _handle_insufficient_funds_notif(
         self,
-        db_client: "DatabaseManagerClient",
         user_id: str,
         graph_id: str,
         e: InsufficientBalanceError,
     ):
         shortfall = abs(e.amount) - e.balance
-        metadata = db_client.get_graph_metadata(graph_id)
+        metadata = self.execution_data.get_graph_metadata(graph_id)
         base_url = (
             settings.config.frontend_base_url or settings.config.platform_base_url
         )
@@ -1147,7 +1131,7 @@ class ExecutionProcessor:
         )
 
         try:
-            user_email = db_client.get_user_email_by_id(user_id)
+            user_email = self.execution_data.get_user_email_by_id(user_id)
 
             alert_message = (
                 f"❌ **Insufficient Funds Alert**\n"
@@ -1169,7 +1153,6 @@ class ExecutionProcessor:
 
     def _handle_low_balance(
         self,
-        db_client: "DatabaseManagerClient",
         user_id: str,
         current_balance: int,
         transaction_cost: int,
@@ -1198,7 +1181,7 @@ class ExecutionProcessor:
             )
 
             try:
-                user_email = db_client.get_user_email_by_id(user_id)
+                user_email = self.execution_data.get_user_email_by_id(user_id)
                 alert_message = (
                     f"⚠️ **Low Balance Alert**\n"
                     f"User: {user_email or user_id}\n"
@@ -1576,117 +1559,3 @@ class ExecutionManager(AppProcess):
         )
 
         logger.info(f"{prefix} ✅ Finished GraphExec cleanup")
-
-
-# ------- UTILITIES ------- #
-
-
-def get_db_client() -> "DatabaseManagerClient":
-    return get_database_manager_client()
-
-
-def get_db_async_client() -> "DatabaseManagerAsyncClient":
-    return get_database_manager_async_client()
-
-
-@func_retry
-async def send_async_execution_update(
-    entry: GraphExecution | NodeExecutionResult | None,
-) -> None:
-    if entry is None:
-        return
-    await get_async_execution_event_bus().publish(entry)
-
-
-@func_retry
-def send_execution_update(entry: GraphExecution | NodeExecutionResult | None):
-    if entry is None:
-        return
-    return get_execution_event_bus().publish(entry)
-
-
-async def async_update_node_execution_status(
-    db_client: "DatabaseManagerAsyncClient",
-    exec_id: str,
-    status: ExecutionStatus,
-    execution_data: BlockInput | None = None,
-    stats: dict[str, Any] | None = None,
-) -> NodeExecutionResult:
-    """Sets status and fetches+broadcasts the latest state of the node execution"""
-    exec_update = await db_client.update_node_execution_status(
-        exec_id, status, execution_data, stats
-    )
-    await send_async_execution_update(exec_update)
-    return exec_update
-
-
-def update_node_execution_status(
-    db_client: "DatabaseManagerClient",
-    exec_id: str,
-    status: ExecutionStatus,
-    execution_data: BlockInput | None = None,
-    stats: dict[str, Any] | None = None,
-) -> NodeExecutionResult:
-    """Sets status and fetches+broadcasts the latest state of the node execution"""
-    exec_update = db_client.update_node_execution_status(
-        exec_id, status, execution_data, stats
-    )
-    send_execution_update(exec_update)
-    return exec_update
-
-
-async def async_update_graph_execution_state(
-    db_client: "DatabaseManagerAsyncClient",
-    graph_exec_id: str,
-    status: ExecutionStatus | None = None,
-    stats: GraphExecutionStats | None = None,
-) -> GraphExecution | None:
-    """Sets status and fetches+broadcasts the latest state of the graph execution"""
-    graph_update = await db_client.update_graph_execution_stats(
-        graph_exec_id, status, stats
-    )
-    if graph_update:
-        await send_async_execution_update(graph_update)
-    else:
-        logger.error(f"Failed to update graph execution stats for {graph_exec_id}")
-    return graph_update
-
-
-def update_graph_execution_state(
-    db_client: "DatabaseManagerClient",
-    graph_exec_id: str,
-    status: ExecutionStatus | None = None,
-    stats: GraphExecutionStats | None = None,
-) -> GraphExecution | None:
-    """Sets status and fetches+broadcasts the latest state of the graph execution"""
-    graph_update = db_client.update_graph_execution_stats(graph_exec_id, status, stats)
-    if graph_update:
-        send_execution_update(graph_update)
-    else:
-        logger.error(f"Failed to update graph execution stats for {graph_exec_id}")
-    return graph_update
-
-
-@asynccontextmanager
-async def synchronized(key: str, timeout: int = 60):
-    r = await redis.get_redis_async()
-    lock: RedisLock = r.lock(f"lock:{key}", timeout=timeout)
-    try:
-        await lock.acquire()
-        yield
-    finally:
-        if await lock.locked() and await lock.owned():
-            await lock.release()
-
-
-def increment_execution_count(user_id: str) -> int:
-    """
-    Increment the execution count for a given user,
-    this will be used to charge the user for the execution cost.
-    """
-    r = redis.get_redis()
-    k = f"uec:{user_id}"  # User Execution Count global key
-    counter = cast(int, r.incr(k))
-    if counter == 1:
-        r.expire(k, settings.config.execution_counter_expiration_time)
-    return counter

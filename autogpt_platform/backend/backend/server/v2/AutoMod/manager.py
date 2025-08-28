@@ -147,8 +147,10 @@ class AutoModManager:
             return None
 
         # Get completed executions and collect outputs
-        completed_executions = await db_client.get_node_executions(
-            graph_exec_id, statuses=[ExecutionStatus.COMPLETED], include_exec_data=True
+        completed_executions = await db_client.get_node_executions(  # type: ignore
+            graph_exec_id=graph_exec_id,
+            statuses=[ExecutionStatus.COMPLETED],
+            include_exec_data=True,
         )
 
         if not completed_executions:
@@ -218,7 +220,7 @@ class AutoModManager:
     ):
         """Update node execution statuses for frontend display when moderation fails"""
         # Import here to avoid circular imports
-        from backend.executor.manager import send_async_execution_update
+        from backend.util.clients import get_async_execution_event_bus
 
         if moderation_type == "input":
             # For input moderation, mark queued/running/incomplete nodes as failed
@@ -232,8 +234,10 @@ class AutoModManager:
             target_statuses = [ExecutionStatus.COMPLETED]
 
         # Get the executions that need to be updated
-        executions_to_update = await db_client.get_node_executions(
-            graph_exec_id, statuses=target_statuses, include_exec_data=True
+        executions_to_update = await db_client.get_node_executions(  # type: ignore
+            graph_exec_id=graph_exec_id,
+            statuses=target_statuses,
+            include_exec_data=True,
         )
 
         if not executions_to_update:
@@ -276,10 +280,12 @@ class AutoModManager:
         updated_execs = await asyncio.gather(*exec_updates)
 
         # Send all websocket updates in parallel
+        event_bus = get_async_execution_event_bus()
         await asyncio.gather(
             *[
-                send_async_execution_update(updated_exec)
+                event_bus.publish(updated_exec)
                 for updated_exec in updated_execs
+                if updated_exec is not None
             ]
         )
 

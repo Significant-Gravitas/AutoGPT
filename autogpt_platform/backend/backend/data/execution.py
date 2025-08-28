@@ -315,9 +315,10 @@ class NodeExecutionResult(BaseModel):
     input_data: BlockInput
     output_data: CompletedBlockOutput
     add_time: datetime
-    queue_time: datetime | None
-    start_time: datetime | None
-    end_time: datetime | None
+    queue_time: datetime | None = None
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+    stats: NodeExecutionStats | None = None
 
     @staticmethod
     def from_db(_node_exec: AgentNodeExecution, user_id: Optional[str] = None):
@@ -369,6 +370,7 @@ class NodeExecutionResult(BaseModel):
             queue_time=_node_exec.queuedTime,
             start_time=_node_exec.startedTime,
             end_time=_node_exec.endedTime,
+            stats=stats,
         )
 
     def to_node_execution_entry(
@@ -652,6 +654,42 @@ async def upsert_execution_input(
         raise ValueError(
             f"NodeExecution {node_exec_id} not found or already has input {input_name}."
         )
+
+
+async def create_node_execution(
+    node_exec_id: str,
+    node_id: str,
+    graph_exec_id: str,
+    input_name: str,
+    input_data: Any,
+) -> None:
+    """Create a new node execution with the first input."""
+    json_input_data = SafeJson(input_data)
+    await AgentNodeExecution.prisma().create(
+        data=AgentNodeExecutionCreateInput(
+            id=node_exec_id,
+            agentNodeId=node_id,
+            agentGraphExecutionId=graph_exec_id,
+            executionStatus=ExecutionStatus.INCOMPLETE,
+            Input={"create": {"name": input_name, "data": json_input_data}},
+        )
+    )
+
+
+async def add_input_to_node_execution(
+    node_exec_id: str,
+    input_name: str,
+    input_data: Any,
+) -> None:
+    """Add an input to an existing node execution."""
+    json_input_data = SafeJson(input_data)
+    await AgentNodeExecutionInputOutput.prisma().create(
+        data=AgentNodeExecutionInputOutputCreateInput(
+            name=input_name,
+            data=json_input_data,
+            referencedByInputExecId=node_exec_id,
+        )
+    )
 
 
 async def upsert_execution_output(

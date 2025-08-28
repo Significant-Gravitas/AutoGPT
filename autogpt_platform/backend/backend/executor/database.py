@@ -4,12 +4,13 @@ from typing import Callable, Concatenate, ParamSpec, TypeVar, cast
 from backend.data import db
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
+    add_input_to_node_execution,
     create_graph_execution,
+    create_node_execution,
     get_block_error_stats,
     get_execution_kv_data,
     get_graph_execution_meta,
     get_graph_executions,
-    get_latest_node_execution,
     get_node_execution,
     get_node_executions,
     set_execution_kv_data,
@@ -17,7 +18,6 @@ from backend.data.execution import (
     update_graph_execution_stats,
     update_node_execution_status,
     update_node_execution_status_batch,
-    upsert_execution_input,
     upsert_execution_output,
 )
 from backend.data.generate_data import get_user_execution_summary_data
@@ -105,13 +105,13 @@ class DatabaseManager(AppService):
     create_graph_execution = _(create_graph_execution)
     get_node_execution = _(get_node_execution)
     get_node_executions = _(get_node_executions)
-    get_latest_node_execution = _(get_latest_node_execution)
     update_node_execution_status = _(update_node_execution_status)
     update_node_execution_status_batch = _(update_node_execution_status_batch)
     update_graph_execution_start_time = _(update_graph_execution_start_time)
     update_graph_execution_stats = _(update_graph_execution_stats)
-    upsert_execution_input = _(upsert_execution_input)
     upsert_execution_output = _(upsert_execution_output)
+    create_node_execution = _(create_node_execution)
+    add_input_to_node_execution = _(add_input_to_node_execution)
     get_execution_kv_data = _(get_execution_kv_data)
     set_execution_kv_data = _(set_execution_kv_data)
     get_block_error_stats = _(get_block_error_stats)
@@ -171,10 +171,12 @@ class DatabaseManagerClient(AppServiceClient):
     get_graph_executions = _(d.get_graph_executions)
     get_graph_execution_meta = _(d.get_graph_execution_meta)
     get_node_executions = _(d.get_node_executions)
+    create_node_execution = _(d.create_node_execution)
     update_node_execution_status = _(d.update_node_execution_status)
     update_graph_execution_start_time = _(d.update_graph_execution_start_time)
     update_graph_execution_stats = _(d.update_graph_execution_stats)
     upsert_execution_output = _(d.upsert_execution_output)
+    add_input_to_node_execution = _(d.add_input_to_node_execution)
 
     # Graphs
     get_graph_metadata = _(d.get_graph_metadata)
@@ -189,14 +191,6 @@ class DatabaseManagerClient(AppServiceClient):
     # User Emails
     get_user_email_by_id = _(d.get_user_email_by_id)
 
-    # Library
-    list_library_agents = _(d.list_library_agents)
-    add_store_agent_to_library = _(d.add_store_agent_to_library)
-
-    # Store
-    get_store_agents = _(d.get_store_agents)
-    get_store_agent_details = _(d.get_store_agent_details)
-
 
 class DatabaseManagerAsyncClient(AppServiceClient):
     d = DatabaseManager
@@ -207,16 +201,12 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     create_graph_execution = d.create_graph_execution
     get_connected_output_nodes = d.get_connected_output_nodes
-    get_latest_node_execution = d.get_latest_node_execution
     get_graph = d.get_graph
     get_graph_metadata = d.get_graph_metadata
     get_graph_execution_meta = d.get_graph_execution_meta
     get_node = d.get_node
-    get_node_execution = d.get_node_execution
     get_node_executions = d.get_node_executions
     get_user_integrations = d.get_user_integrations
-    upsert_execution_input = d.upsert_execution_input
-    upsert_execution_output = d.upsert_execution_output
     update_graph_execution_stats = d.update_graph_execution_stats
     update_node_execution_status = d.update_node_execution_status
     update_node_execution_status_batch = d.update_node_execution_status_batch
