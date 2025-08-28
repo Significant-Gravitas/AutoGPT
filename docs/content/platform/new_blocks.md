@@ -2,6 +2,9 @@
 
 This guide will walk you through the process of creating and testing a new block for the AutoGPT Agent Server, using the WikipediaSummaryBlock as an example.
 
+!!! tip "New SDK-Based Approach"
+    For a more comprehensive guide using the new SDK pattern with ProviderBuilder and advanced features like OAuth and webhooks, see the [Block SDK Guide](block-sdk-guide.md).
+
 ## Understanding Blocks and Testing
 
 Blocks are reusable components that can be connected to form a graph representing an agent's behavior. Each block has inputs, outputs, and a specific function. Proper testing is crucial to ensure blocks work correctly and consistently.
