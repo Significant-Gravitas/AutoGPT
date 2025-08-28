@@ -119,8 +119,12 @@ class ExecutionCache:
 
     @with_lock
     def update_graph_start_time(self):
-        # We don't cache the start time since it's not used in execution logic.
-        # But adding here for future needs and conssistency with the DB model signature.d is a placeholder for now - the actual start time is handled in the database
+        """Update graph start time - this is primarily handled by database persistence.
+
+        The cache doesn't need to store start_time since it's metadata (GraphExecutionMeta),
+        not execution statistics (GraphExecutionStats). The actual start_time update
+        happens in the database via _persist_graph_start_time_to_db.
+        """
         pass
 
     @with_lock
@@ -128,12 +132,21 @@ class ExecutionCache:
         self, node_id: str, input_name: str
     ) -> tuple[str, NodeExecutionResult] | None:
         for exec_id, execution in self._node_executions.items():
+            # Debug logging to understand what's happening
+            if execution.node_id == node_id:
+                print(
+                    f"DEBUG: Found execution {exec_id} for node {node_id}, status={execution.status}, input_name={input_name}, input_data={execution.input_data}"
+                )
             if (
                 execution.node_id == node_id
                 and execution.status == ExecutionStatus.INCOMPLETE
                 and input_name not in execution.input_data  # Only if input missing
             ):
+                print(f"DEBUG: Returning existing execution {exec_id}")
                 return exec_id, execution
+        print(
+            f"DEBUG: No incomplete execution found for node {node_id}, input {input_name}"
+        )
         return None
 
     @with_lock

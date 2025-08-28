@@ -154,6 +154,14 @@ class ExecutionDataClient:
     def upsert_execution_input(
         self, node_id: str, input_name: str, input_data: Any, block_id: str
     ) -> tuple[str, dict]:
+        # Validate input parameters to prevent foreign key constraint errors
+        if not node_id or not isinstance(node_id, str):
+            raise ValueError(f"Invalid node_id: {node_id}")
+        if not self._graph_exec_id or not isinstance(self._graph_exec_id, str):
+            raise ValueError(f"Invalid graph_exec_id: {self._graph_exec_id}")
+        if not block_id or not isinstance(block_id, str):
+            raise ValueError(f"Invalid block_id: {block_id}")
+
         # UPDATE: Try to find an existing incomplete execution for this node and input
         if result := self._cache.find_incomplete_execution_for_input(
             node_id, input_name
@@ -167,6 +175,13 @@ class ExecutionDataClient:
 
         # CREATE: No suitable execution found, create new one
         node_exec_id = str(uuid.uuid4())
+
+        # Log the creation for debugging purposes
+        logger.debug(
+            f"Creating new execution {node_exec_id} for node {node_id} "
+            f"in graph execution {self._graph_exec_id}"
+        )
+
         new_execution = NodeExecutionResult(
             user_id=self._graph_metadata.user_id,
             graph_id=self._graph_metadata.graph_id,
@@ -302,13 +317,22 @@ class ExecutionDataClient:
         self, node_exec_id: str, node_id: str, input_name: str, input_data: Any
     ):
         """Persist new node execution to database (non-blocking)."""
-        self.db_client_sync.create_node_execution(
-            node_exec_id=node_exec_id,
-            node_id=node_id,
-            graph_exec_id=self._graph_exec_id,
-            input_name=input_name,
-            input_data=input_data,
-        )
+        try:
+            self.db_client_sync.create_node_execution(
+                node_exec_id=node_exec_id,
+                node_id=node_id,
+                graph_exec_id=self._graph_exec_id,
+                input_name=input_name,
+                input_data=input_data,
+            )
+        except Exception as e:
+            # Log the error with context for debugging foreign key issues
+            logger.error(
+                f"Failed to create node execution {node_exec_id} for node {node_id} "
+                f"in graph execution {self._graph_exec_id}: {e}"
+            )
+            # Re-raise the exception since this is a critical error that should not be silenced
+            raise
 
     def increment_execution_count(self, user_id: str) -> int:
         r = redis.get_redis()
