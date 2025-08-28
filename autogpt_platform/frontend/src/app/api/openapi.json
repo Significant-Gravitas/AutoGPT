@@ -6319,7 +6319,16 @@
             "additionalProperties": { "type": "string" },
             "type": "object",
             "title": "Provider Names",
-            "description": "All available provider names as a constant mapping"
+            "description": "All available provider names as a constant mapping",
+            "examples": [
+              {
+                "ANTHROPIC": "anthropic",
+                "EXA": "exa",
+                "EXAMPLE_SERVICE": "example-service",
+                "GEM": "gem",
+                "OPENAI": "openai"
+              }
+            ]
           }
         },
         "type": "object",
