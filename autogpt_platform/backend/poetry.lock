@@ -1122,14 +1122,14 @@ pgp = ["gpg"]
 
 [[package]]
 name = "e2b"
-version = "1.6.0"
+version = "2.0.0"
 description = "E2B SDK that give agents cloud environments"
 optional = false
 python-versions = "<4.0,>=3.9"
 groups = ["main"]
 files = [
-    {file = "e2b-1.6.0-py3-none-any.whl", hash = "sha256:c4606ed0a3d4e45412ce81e2e8ee224b2d81b927fd8d6519a1a81437d8d4a22a"},
-    {file = "e2b-1.6.0.tar.gz", hash = "sha256:0552115ee0a18c4e5a5aa97290d4a454478c547371386cabb76e367b8e914753"},
+    {file = "e2b-2.0.0-py3-none-any.whl", hash = "sha256:a6621b905cb2a883a9c520736ae98343a6184fc90c29b4f2f079d720294a0df0"},
+    {file = "e2b-2.0.0.tar.gz", hash = "sha256:4d033d937b0a09b8428e73233321a913cbaef8e7299fc731579c656e9d53a144"},
 ]
 
 [package.dependencies]
@@ -1137,25 +1137,25 @@ attrs = ">=23.2.0"
 httpcore = ">=1.0.5,<2.0.0"
 httpx = ">=0.27.0,<1.0.0"
 packaging = ">=24.1"
-protobuf = ">=5.29.4,<6.0.0"
+protobuf = ">=4.21.0"
 python-dateutil = ">=2.8.2"
 typing-extensions = ">=4.1.0"
 
 [[package]]
 name = "e2b-code-interpreter"
-version = "1.5.2"
+version = "2.0.0"
 description = "E2B Code Interpreter - Stateful code execution"
 optional = false
 python-versions = "<4.0,>=3.9"
 groups = ["main"]
 files = [
-    {file = "e2b_code_interpreter-1.5.2-py3-none-any.whl", hash = "sha256:5c3188d8f25226b28fef4b255447cc6a4c36afb748bdd5180b45be486d5169f3"},
-    {file = "e2b_code_interpreter-1.5.2.tar.gz", hash = "sha256:3bd6ea70596290e85aaf0a2f19f28bf37a5e73d13086f5e6a0080bb591c5a547"},
+    {file = "e2b_code_interpreter-2.0.0-py3-none-any.whl", hash = "sha256:273642d4dd78f09327fb1553fe4f7ddcf17892b78f98236e038d29985e42dca5"},
+    {file = "e2b_code_interpreter-2.0.0.tar.gz", hash = "sha256:19136916be8de60bfd0a678742501d1d0335442bb6e86405c7dd6f98059b73c4"},
 ]
 
 [package.dependencies]
 attrs = ">=21.3.0"
-e2b = ">=1.5.4,<2.0.0"
+e2b = ">=2.0.0,<3.0.0"
 httpx = ">=0.20.0,<1.0.0"
 
 [[package]]
@@ -7131,4 +7131,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "06ca298144a75656a31df830153013cc372f47bed0fd04c8cb02373a4f40c38b"
+content-hash = "ea906a047ef91a35e469a78c59f6ab158e54a0d06c7ddbd24e33c77db1ff2c39"

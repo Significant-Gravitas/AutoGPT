@@ -19,7 +19,7 @@ bleach = { extras = ["css"], version = "^6.2.0" }
 click = "^8.2.0"
 cryptography = "^43.0"
 discord-py = "^2.5.2"
-e2b-code-interpreter = "^1.5.2"
+e2b-code-interpreter = "^2.0.0"
 fastapi = "^0.116.1"
 feedparser = "^6.0.11"
 flake8 = "^7.3.0"
