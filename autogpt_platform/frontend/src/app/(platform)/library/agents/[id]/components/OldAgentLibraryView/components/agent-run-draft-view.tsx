@@ -292,16 +292,6 @@ export function AgentRunDraftView({
       return;
     }
 
-    if (!graph.trigger_setup_info.credentials_input_name) {
-      // FIXME: implement support for manual-setup webhooks
-      toast({
-        variant: "destructive",
-        title: "🚧 Feature under construction",
-        description: "Setting up non-auto-setup triggers is not yet supported.",
-      });
-      return;
-    }
-
     await api
       .setupAgentTrigger({
         name: presetName,
@@ -542,7 +532,7 @@ export function AgentRunDraftView({
                     to set up the trigger connection with the service of your
                     choosing.
                   </p>
-                  <div className="nodrag mr-5 flex flex-col gap-1">
+                  <div className="nodrag mt-5 flex flex-col gap-1">
                     Webhook URL:
                     <div className="flex gap-2 rounded-md bg-gray-50 p-2">
                       <code className="select-all text-sm">
@@ -551,7 +541,7 @@ export function AgentRunDraftView({
                       <Button
                         variant="outline"
                         size="icon"
-                        className="size-7 flex-none"
+                        className="size-7 flex-none p-1"
                         onClick={() =>
                           agentPreset.webhook &&
                           navigator.clipboard.writeText(agentPreset.webhook.url)

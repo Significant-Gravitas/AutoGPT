@@ -339,7 +339,7 @@ export type CredentialsInputSchema = {
 export type GraphTriggerInfo = {
   provider: CredentialsProviderName;
   config_schema: BlockIORootSchema;
-  credentials_input_name?: string;
+  credentials_input_name: string | null;
 };
 
 /* Mirror of backend/data/graph.py:Graph */
@@ -435,7 +435,7 @@ export type LibraryAgent = {
     }
   | {
       has_external_trigger: false;
-      trigger_setup_info?: undefined;
+      trigger_setup_info: null;
     }
 );
 
