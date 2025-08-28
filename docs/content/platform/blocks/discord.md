@@ -70,12 +70,12 @@ The block uses a Discord bot to authenticate with Discord, find the specified ch
 | Input | Description |
 |-------|-------------|
 | Discord Bot Token | A secret token used to authenticate the bot with Discord |
-| Channel ID | The ID of the channel where the thread will be created |
+| Channel Identifier | Channel name or channel ID where the thread will be created |
 | Thread Name | The name of the thread to create (1-100 characters) |
 | Thread Type | The type of thread to create (public or private) |
 | Auto Archive Duration | Minutes of inactivity before the thread is automatically archived (60, 1440, 4320, or 10080) |
 | Initial Message | An optional initial message to send in the thread |
-| Server ID | The ID of the server (optional, helps ensure correct channel) |
+| Server Name | Server name (optional, helps narrow down the channel search) |
 
 ### Outputs
 | Output | Description |

@@ -1,6 +1,7 @@
 import base64
 import io
 import mimetypes
+from logging import getLogger
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,8 @@ from ._auth import (
     DiscordBotCredentialsField,
     DiscordBotCredentialsInput,
 )
+
+logger = getLogger(__name__)
 
 # Keep backward compatibility alias
 DiscordCredentials = DiscordBotCredentialsInput
@@ -1143,8 +1146,8 @@ class DiscordChannelInfoBlock(Block):
 class CreateDiscordThreadBlock(Block):
     class Input(BlockSchema):
         credentials: DiscordCredentials = DiscordCredentialsField()
-        channel_id: str = SchemaField(
-            description="The ID of the channel where the thread will be created"
+        channel_identifier: str = SchemaField(
+            description="Channel name or channel ID where the thread will be created"
         )
         thread_name: str = SchemaField(
             description="The name of the thread to create (1-100 characters)"
@@ -1164,8 +1167,8 @@ class CreateDiscordThreadBlock(Block):
             default="",
             advanced=True
         )
-        server_id: str = SchemaField(
-            description="The ID of the server (guild) - optional, helps ensure correct channel",
+        server_name: str = SchemaField(
+            description="Server name (optional, helps narrow down the channel search)",
             default="",
             advanced=True
         )
@@ -1195,11 +1198,12 @@ class CreateDiscordThreadBlock(Block):
             description="Creates a new thread in a Discord channel.",
             categories={BlockCategory.SOCIAL},
             test_input={
-                "channel_id": "987654321098765432",
+                "channel_identifier": "general",
                 "thread_name": "Test Thread",
                 "thread_type": "public",
                 "auto_archive_duration": 1440,
                 "initial_message": "This is the first message in the thread!",
+                "server_name": "Test Server",
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_output=[
@@ -1224,12 +1228,12 @@ class CreateDiscordThreadBlock(Block):
     async def create_thread(
         self,
         token: str,
-        channel_id: str,
+        channel_identifier: str,
         thread_name: str,
         thread_type: str,
         auto_archive_duration: int,
         initial_message: str,
-        server_id: str = None
+        server_name: str = None
     ) -> dict:
         intents = discord.Intents.default()
         intents.guilds = True
@@ -1240,13 +1244,35 @@ class CreateDiscordThreadBlock(Block):
 
         @client.event
         async def on_ready():
-            print(f"Logged in as {client.user}")
+            logger.debug(f"Logged in as {client.user}")
             
-            # Get the channel
+            # Find the channel by name or ID
+            channel = None
+            
+            # Try to parse as channel ID first
             try:
-                channel = await client.fetch_channel(int(channel_id))
-            except Exception as e:
-                result["status"] = f"Failed to fetch channel: {str(e)}"
+                channel_id_int = int(channel_identifier)
+                try:
+                    channel = await client.fetch_channel(channel_id_int)
+                except Exception:
+                    pass
+            except ValueError:
+                pass
+            
+            # If not found by ID, search by name
+            if channel is None:
+                for guild in client.guilds:
+                    if server_name and guild.name != server_name:
+                        continue
+                    for ch in guild.text_channels:
+                        if ch.name == channel_identifier or str(ch.id) == channel_identifier:
+                            channel = ch
+                            break
+                    if channel:
+                        break
+            
+            if channel is None:
+                result["status"] = f"Channel not found: {channel_identifier}"
                 await client.close()
                 return
             
@@ -1256,9 +1282,9 @@ class CreateDiscordThreadBlock(Block):
                 await client.close()
                 return
             
-            # Verify server ID if provided
-            if server_id and str(channel.guild.id) != server_id:
-                result["status"] = "Channel is not in the specified server"
+            # Verify server name if provided
+            if server_name and channel.guild.name != server_name:
+                result["status"] = f"Channel is not in the specified server: {server_name}"
                 await client.close()
                 return
             
@@ -1300,12 +1326,12 @@ class CreateDiscordThreadBlock(Block):
         try:
             result = await self.create_thread(
                 token=credentials.api_key.get_secret_value(),
-                channel_id=input_data.channel_id,
+                channel_identifier=input_data.channel_identifier,
                 thread_name=input_data.thread_name,
                 thread_type=input_data.thread_type,
                 auto_archive_duration=input_data.auto_archive_duration,
                 initial_message=input_data.initial_message,
-                server_id=input_data.server_id if input_data.server_id else None
+                server_name=input_data.server_name if input_data.server_name else None
             )
 
             if result.get("status", "").startswith("Failed") or "error" in result.get("status", "").lower():
