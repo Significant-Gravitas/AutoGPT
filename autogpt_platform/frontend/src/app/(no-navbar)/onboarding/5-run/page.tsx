@@ -9,7 +9,6 @@ import {
 import { OnboardingText } from "@/components/onboarding/OnboardingText";
 import StarRating from "@/components/onboarding/StarRating";
 import SchemaTooltip from "@/components/SchemaTooltip";
-import { TypeBasedInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/RunAgentInputs/RunAgentInputs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { GraphMeta, StoreAgentDetails } from "@/lib/autogpt-server-api";
@@ -18,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { Play } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { RunAgentInputs } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/RunAgentInputs/RunAgentInputs";
 
 export default function Page() {
   const { state, updateState, setStep } = useOnboarding(
@@ -233,7 +233,7 @@ export default function Page() {
                             description={inputSubSchema.description}
                           />
                         </label>
-                        <TypeBasedInput
+                        <RunAgentInputs
                           schema={inputSubSchema}
                           value={state?.agentInput?.[key]}
                           placeholder={inputSubSchema.description}

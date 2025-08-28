@@ -49,8 +49,7 @@ export function useAgentRunModal(
       onSuccess: (response) => {
         if (response.status === 200) {
           toast({
-            title: "✅ Agent execution started",
-            description: "Your agent is now running.",
+            title: "Agent execution started",
           });
           callbacks?.onRun?.(response.data);
           setIsOpen(false);
@@ -71,8 +70,7 @@ export function useAgentRunModal(
       onSuccess: (response) => {
         if (response.status === 200) {
           toast({
-            title: "✅ Schedule created",
-            description: `Agent scheduled to run: ${scheduleName}`,
+            title: "Schedule created",
           });
           callbacks?.onCreateSchedule?.(response.data);
           setIsOpen(false);
@@ -93,8 +91,7 @@ export function useAgentRunModal(
       onSuccess: (response: any) => {
         if (response.status === 200) {
           toast({
-            title: "✅ Trigger setup complete",
-            description: "Your webhook trigger is now active.",
+            title: "Trigger setup complete",
           });
           callbacks?.onSetupTrigger?.(response.data);
           setIsOpen(false);
@@ -146,7 +143,7 @@ export function useAgentRunModal(
   }, [agent.credentials_input_schema]);
 
   // Validation logic
-  const [allRequiredInputsAreSet, missingInputs] = useMemo(() => {
+  const [allRequiredInputsAreSetRaw, missingInputs] = useMemo(() => {
     const nonEmptyInputs = new Set(
       Object.keys(inputValues).filter((k) => !isEmpty(inputValues[k])),
     );
@@ -170,11 +167,30 @@ export function useAgentRunModal(
     return [missing.length === 0, missing];
   }, [agentCredentialsInputFields, inputCredentials]);
 
-  const notifyMissingInputs = useCallback(
+  const credentialsRequired = useMemo(
+    () => Object.keys(agentCredentialsInputFields || {}).length > 0,
+    [agentCredentialsInputFields],
+  );
+
+  // Final readiness flag combining inputs + credentials when credentials are shown
+  const allRequiredInputsAreSet = useMemo(
+    () =>
+      allRequiredInputsAreSetRaw &&
+      (!credentialsRequired || allCredentialsAreSet),
+    [allRequiredInputsAreSetRaw, credentialsRequired, allCredentialsAreSet],
+  );
+
+  const notifyMissingRequirements = useCallback(
     (needScheduleName: boolean = false) => {
       const allMissingFields = (
         needScheduleName && !scheduleName ? ["schedule_name"] : []
-      ).concat(missingInputs);
+      )
+        .concat(missingInputs)
+        .concat(
+          credentialsRequired && !allCredentialsAreSet
+            ? missingCredentials.map((k) => `credentials:${k}`)
+            : [],
+        );
 
       toast({
         title: "⚠️ Missing required inputs",
@@ -182,13 +198,20 @@ export function useAgentRunModal(
         variant: "destructive",
       });
     },
-    [missingInputs, scheduleName, toast],
+    [
+      missingInputs,
+      scheduleName,
+      toast,
+      credentialsRequired,
+      allCredentialsAreSet,
+      missingCredentials,
+    ],
   );
 
   // Action handlers
   const handleRun = useCallback(() => {
     if (!allRequiredInputsAreSet) {
-      notifyMissingInputs();
+      notifyMissingRequirements();
       return;
     }
 
@@ -233,7 +256,7 @@ export function useAgentRunModal(
     agent,
     presetName,
     presetDescription,
-    notifyMissingInputs,
+    notifyMissingRequirements,
     setupTriggerMutation,
     executeGraphMutation,
     toast,
@@ -241,7 +264,7 @@ export function useAgentRunModal(
 
   const handleSchedule = useCallback(() => {
     if (!allRequiredInputsAreSet) {
-      notifyMissingInputs(true);
+      notifyMissingRequirements(true);
       return;
     }
 
@@ -271,7 +294,7 @@ export function useAgentRunModal(
     inputValues,
     inputCredentials,
     agent,
-    notifyMissingInputs,
+    notifyMissingRequirements,
     createScheduleMutation,
     toast,
   ]);
@@ -319,6 +342,10 @@ export function useAgentRunModal(
     cronExpression,
     allRequiredInputsAreSet,
     missingInputs,
+    // Expose credential readiness for any UI hints if needed
+    // but enforcement is already applied in allRequiredInputsAreSet
+    // allCredentialsAreSet,
+    // missingCredentials,
     agentInputFields,
     agentCredentialsInputFields,
     hasInputFields,

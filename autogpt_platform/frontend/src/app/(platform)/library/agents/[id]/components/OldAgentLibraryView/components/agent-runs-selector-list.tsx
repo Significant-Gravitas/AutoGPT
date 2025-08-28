@@ -26,6 +26,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { RunAgentModal } from "../../AgentRunsView/components/RunAgentModal/RunAgentModal";
 import { PlusIcon } from "@phosphor-icons/react";
+import { LibraryAgent as GeneratedLibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 
 interface AgentRunsSelectorListProps {
   agent: LibraryAgent;
@@ -84,14 +85,14 @@ export function AgentRunsSelectorList({
 
   return (
     <aside className={cn("flex flex-col gap-4", className)}>
-      {true ? (
+      {isNewAgentRunsEnabled ? (
         <RunAgentModal
           triggerSlot={
             <Button variant="primary" size="large" className="w-full">
               <PlusIcon size={20} /> New Run
             </Button>
           }
-          agent={agent}
+          agent={agent as unknown as GeneratedLibraryAgent}
           agentId={agent.id.toString()}
         />
       ) : allowDraftNewRun ? (

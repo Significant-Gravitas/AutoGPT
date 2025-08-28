@@ -30,7 +30,7 @@ import {
 } from "react-icons/fa";
 import { APIKeyCredentialsModal } from "../APIKeyCredentialsModal/APIKeyCredentialsModal";
 import { HostScopedCredentialsModal } from "../HotScopedCredentialsModal/HotScopedCredentialsModal";
-import { OAuthFlowWaitingModal } from "../OAuthWaitingModal/oauth-flow-waiting-modal";
+import { OAuthFlowWaitingModal } from "../OAuthWaitingModal/OAuthWaitingModal";
 import { PasswordCredentialsModal } from "../PasswordCredentialsModal/PasswordCredentialsModal";
 
 const fallbackIcon = FaKey;

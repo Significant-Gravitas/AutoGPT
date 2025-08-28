@@ -27,7 +27,7 @@ export function DefaultRunView() {
 
       {/* Preset/Trigger fields */}
       {defaultRunType === "automatic-trigger" && (
-        <div className="mt-4 flex flex-col gap-4">
+        <div className="flex flex-col gap-4">
           <div className="flex flex-col space-y-2">
             <label className="flex items-center gap-1 text-sm font-medium">
               Trigger Name
@@ -80,7 +80,7 @@ export function DefaultRunView() {
 
       {/* Regular inputs */}
       {Object.entries(agentInputFields || {}).map(([key, inputSubSchema]) => (
-        <div key={key} className="mt-4 flex flex-col space-y-2">
+        <div key={key} className="flex flex-col gap-0 space-y-2">
           <label className="flex items-center gap-1 text-sm font-medium">
             {inputSubSchema.title || key}
             <SchemaTooltip description={inputSubSchema.description} />
