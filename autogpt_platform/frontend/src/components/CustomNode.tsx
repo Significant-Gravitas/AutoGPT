@@ -53,11 +53,19 @@ import {
   TrashIcon,
   CopyIcon,
   ExitIcon,
+  Pencil1Icon,
 } from "@radix-ui/react-icons";
 import { Key } from "@phosphor-icons/react";
 import useCredits from "@/hooks/useCredits";
 import { getV1GetAyrshareSsoUrl } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { Input } from "@/components/ui/input";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export type ConnectionData = Array<{
   edge_id: string;
@@ -92,6 +100,9 @@ export type CustomNodeData = {
   errors?: { [key: string]: string };
   isOutputStatic?: boolean;
   uiType: BlockUIType;
+  metadata?: { [key: string]: any };
+  dynamicArrayConnections?: { [key: string]: boolean };
+  dynamicArrayIndices?: { [key: string]: number[] };
 };
 
 export type CustomNode = XYNode<CustomNodeData, "custom">;
@@ -106,6 +117,12 @@ export const CustomNode = React.memo(
     const [activeKey, setActiveKey] = useState<string | null>(null);
     const [inputModalValue, setInputModalValue] = useState<string>("");
     const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
+    const [isEditingTitle, setIsEditingTitle] = useState(false);
+    const [customTitle, setCustomTitle] = useState(
+      data.metadata?.customized_name || "",
+    );
+    const [isTitleHovered, setIsTitleHovered] = useState(false);
+    const titleInputRef = useRef<HTMLInputElement>(null);
     const { updateNodeData, deleteElements, addNodes, getNode, getNodes } =
       useReactFlow<CustomNode, Edge>();
     const isInitialSetup = useRef(true);
@@ -182,6 +199,39 @@ export const CustomNode = React.memo(
       },
       [id, updateNodeData],
     );
+
+    const handleTitleEdit = useCallback(() => {
+      setIsEditingTitle(true);
+      setTimeout(() => {
+        titleInputRef.current?.focus();
+        titleInputRef.current?.select();
+      }, 0);
+    }, []);
+
+    const handleTitleSave = useCallback(() => {
+      setIsEditingTitle(false);
+      const newMetadata = {
+        ...data.metadata,
+        customized_name: customTitle.trim() || undefined,
+      };
+      updateNodeData(id, { metadata: newMetadata });
+    }, [customTitle, data.metadata, id, updateNodeData]);
+
+    const handleTitleKeyDown = useCallback(
+      (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === "Enter") {
+          handleTitleSave();
+        } else if (e.key === "Escape") {
+          setCustomTitle(data.metadata?.customized_name || "");
+          setIsEditingTitle(false);
+        }
+      },
+      [handleTitleSave, data.metadata],
+    );
+
+    const displayTitle =
+      customTitle ||
+      beautifyString(data.blockType?.replace(/Block$/, "") || data.title);
 
     useEffect(() => {
       isInitialSetup.current = false;
@@ -704,6 +754,10 @@ export const CustomNode = React.memo(
           block_id: data.block_id,
           connections: [],
           isOutputOpen: false,
+          metadata: {
+            ...data.metadata,
+            customized_name: undefined, // Don't copy the custom name
+          },
         },
       };
 
@@ -970,14 +1024,58 @@ export const CustomNode = React.memo(
 
           <div className="flex w-full flex-col justify-start space-y-2.5 px-4 pt-4">
             <div className="flex flex-row items-center space-x-2 font-semibold">
-              <h3 className="font-roboto text-lg">
-                <TextRenderer
-                  value={beautifyString(
-                    data.blockType?.replace(/Block$/, "") || data.title,
-                  )}
-                  truncateLengthLimit={80}
-                />
-              </h3>
+              <div
+                className="group flex items-center gap-1"
+                onMouseEnter={() => setIsTitleHovered(true)}
+                onMouseLeave={() => setIsTitleHovered(false)}
+              >
+                {isEditingTitle ? (
+                  <Input
+                    ref={titleInputRef}
+                    value={customTitle}
+                    onChange={(e) => setCustomTitle(e.target.value)}
+                    onBlur={handleTitleSave}
+                    onKeyDown={handleTitleKeyDown}
+                    className="h-7 w-auto min-w-[100px] max-w-[200px] px-2 py-1 text-lg font-semibold"
+                    placeholder={beautifyString(
+                      data.blockType?.replace(/Block$/, "") || data.title,
+                    )}
+                  />
+                ) : (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <h3 className="font-roboto cursor-default text-lg">
+                          <TextRenderer
+                            value={displayTitle}
+                            truncateLengthLimit={80}
+                          />
+                        </h3>
+                      </TooltipTrigger>
+                      {customTitle && (
+                        <TooltipContent>
+                          <p>
+                            Type:{" "}
+                            {beautifyString(
+                              data.blockType?.replace(/Block$/, "") ||
+                                data.title,
+                            )}
+                          </p>
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+                {isTitleHovered && !isEditingTitle && (
+                  <button
+                    onClick={handleTitleEdit}
+                    className="cursor-pointer rounded p-1 opacity-0 transition-opacity hover:bg-gray-100 group-hover:opacity-100"
+                    aria-label="Edit title"
+                  >
+                    <Pencil1Icon className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
               <span className="text-xs text-gray-500">#{id.split("-")[0]}</span>
 
               <div className="w-auto grow" />
