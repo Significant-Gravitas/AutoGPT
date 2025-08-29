@@ -750,7 +750,16 @@ const FlowEditor: React.FC<{
         console.error("Failed to drop block:", error);
       }
     },
-    [nodeId, availableBlocks, nodes, edges, addNodes, screenToFlowPosition, deleteElements, clearNodesStatusAndOutput],
+    [
+      nodeId,
+      availableBlocks,
+      nodes,
+      edges,
+      addNodes,
+      screenToFlowPosition,
+      deleteElements,
+      clearNodesStatusAndOutput,
+    ],
   );
 
   return (
