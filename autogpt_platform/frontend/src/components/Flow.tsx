@@ -44,6 +44,7 @@ import ConnectionLine from "./ConnectionLine";
 import { Control, ControlPanel } from "@/components/edit/control/ControlPanel";
 import { SaveControl } from "@/components/edit/control/SaveControl";
 import { BlocksControl } from "@/components/edit/control/BlocksControl";
+import { GraphSearchControl } from "@/components/edit/control/GraphSearchControl";
 import { IconUndo2, IconRedo2 } from "@/components/ui/icons";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { startTutorial } from "./tutorial";
@@ -483,6 +484,74 @@ const FlowEditor: React.FC<{
     });
   }, [nodes, getViewport, setViewport]);
 
+  const navigateToNode = useCallback(
+    (nodeId: string) => {
+      const node = getNode(nodeId);
+      if (!node) return;
+
+      // Center the viewport on the selected node
+      const zoom = 1.2; // Slightly zoom in for better visibility
+      const nodeX = node.position.x + (node.width || 500) / 2;
+      const nodeY = node.position.y + (node.height || 400) / 2;
+
+      setViewport({
+        x: window.innerWidth / 2 - nodeX * zoom,
+        y: window.innerHeight / 2 - nodeY * zoom,
+        zoom: zoom,
+      });
+
+      // Add a temporary highlight effect to the node
+      updateNode(nodeId, {
+        style: {
+          ...node.style,
+          boxShadow: "0 0 20px 5px rgba(59, 130, 246, 0.8)",
+          transition: "box-shadow 0.3s ease-in-out",
+        },
+      });
+
+      // Remove highlight after a delay
+      setTimeout(() => {
+        updateNode(nodeId, {
+          style: {
+            ...node.style,
+            boxShadow: undefined,
+          },
+        });
+      }, 2000);
+    },
+    [getNode, setViewport, updateNode],
+  );
+
+  const highlightNode = useCallback(
+    (nodeId: string | null) => {
+      if (!nodeId) {
+        // Clear all highlights
+        nodes.forEach((node) => {
+          updateNode(node.id, {
+            style: {
+              ...node.style,
+              boxShadow: undefined,
+            },
+          });
+        });
+        return;
+      }
+
+      const node = getNode(nodeId);
+      if (!node) return;
+
+      // Add highlight effect without moving view
+      updateNode(nodeId, {
+        style: {
+          ...node.style,
+          boxShadow: "0 0 15px 3px rgba(59, 130, 246, 0.6)",
+          transition: "box-shadow 0.2s ease-in-out",
+        },
+      });
+    },
+    [getNode, updateNode, nodes],
+  );
+
   const addNode = useCallback(
     (blockId: string, nodeType: string, hardcodedValues: any = {}) => {
       const nodeSchema = availableBlocks.find((node) => node.id === blockId);
@@ -708,19 +777,29 @@ const FlowEditor: React.FC<{
               visualizeBeads={visualizeBeads}
               pinSavePopover={pinSavePopover}
               pinBlocksPopover={pinBlocksPopover}
+              nodes={nodes}
+              onNodeSelect={navigateToNode}
+              onNodeHover={highlightNode}
             />
           ) : (
             <ControlPanel
               className="absolute z-20"
               controls={editorControls}
               topChildren={
-                <BlocksControl
-                  pinBlocksPopover={pinBlocksPopover} // Pass the state to BlocksControl
-                  blocks={availableBlocks}
-                  addBlock={addNode}
-                  flows={availableFlows}
-                  nodes={nodes}
-                />
+                <>
+                  <BlocksControl
+                    pinBlocksPopover={pinBlocksPopover} // Pass the state to BlocksControl
+                    blocks={availableBlocks}
+                    addBlock={addNode}
+                    flows={availableFlows}
+                    nodes={nodes}
+                  />
+                  <GraphSearchControl
+                    nodes={nodes}
+                    onNodeSelect={navigateToNode}
+                    onNodeHover={highlightNode}
+                  />
+                </>
               }
               botChildren={
                 <SaveControl

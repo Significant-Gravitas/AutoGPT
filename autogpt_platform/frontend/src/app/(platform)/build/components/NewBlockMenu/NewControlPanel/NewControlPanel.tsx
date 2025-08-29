@@ -8,6 +8,8 @@ import { GraphExecutionID } from "@/lib/autogpt-server-api";
 import { history } from "@/components/history";
 import { ControlPanelButton } from "../ControlPanelButton";
 import { ArrowUUpLeftIcon, ArrowUUpRightIcon } from "@phosphor-icons/react";
+import { GraphSearchMenu } from "../GraphSearchMenu/GraphSearchMenu";
+import { CustomNode } from "@/components/CustomNode";
 
 export type Control = {
   icon: React.ReactNode;
@@ -22,6 +24,9 @@ interface ControlPanelProps {
   visualizeBeads: "no" | "static" | "animate";
   pinSavePopover: boolean;
   pinBlocksPopover: boolean;
+  nodes: CustomNode[];
+  onNodeSelect: (nodeId: string) => void;
+  onNodeHover?: (nodeId: string | null) => void;
 }
 
 export const NewControlPanel = ({
@@ -29,6 +34,9 @@ export const NewControlPanel = ({
   visualizeBeads,
   pinSavePopover,
   pinBlocksPopover,
+  nodes,
+  onNodeSelect,
+  onNodeHover,
   className,
 }: ControlPanelProps) => {
   const {
@@ -75,6 +83,14 @@ export const NewControlPanel = ({
           pinBlocksPopover={pinBlocksPopover}
           blockMenuSelected={blockMenuSelected}
           setBlockMenuSelected={setBlockMenuSelected}
+        />
+        <Separator className="text-[#E1E1E1]" />
+        <GraphSearchMenu
+          nodes={nodes}
+          blockMenuSelected={blockMenuSelected}
+          setBlockMenuSelected={setBlockMenuSelected}
+          onNodeSelect={onNodeSelect}
+          onNodeHover={onNodeHover}
         />
         <Separator className="text-[#E1E1E1]" />
         {controls.map((control, index) => (

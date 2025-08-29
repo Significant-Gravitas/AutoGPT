@@ -11,9 +11,9 @@ import { useBlockMenu } from "./useBlockMenu";
 
 interface BlockMenuProps {
   pinBlocksPopover: boolean;
-  blockMenuSelected: "save" | "block" | "";
+  blockMenuSelected: "save" | "block" | "search" | "";
   setBlockMenuSelected: React.Dispatch<
-    React.SetStateAction<"" | "save" | "block">
+    React.SetStateAction<"" | "save" | "block" | "search">
   >;
 }
 
