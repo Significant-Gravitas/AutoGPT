@@ -196,6 +196,7 @@ export default function useAgentGraph(
             hardcodedValues: node.input_default,
             webhook: node.webhook,
             uiType: block.uiType,
+            metadata: node.metadata,
             connections: graph.links
               .filter((l) => [l.source_id, l.sink_id].includes(node.id))
               .map((link) => ({
@@ -601,7 +602,10 @@ export default function useAgentGraph(
           id: node.id,
           block_id: node.data.block_id,
           input_default: prepareNodeInputData(node),
-          metadata: { position: node.position },
+          metadata: {
+            position: node.position,
+            ...(node.data.metadata || {}),
+          },
         }),
       ),
       links: links,
@@ -680,6 +684,7 @@ export default function useAgentGraph(
                   backend_id: backendNode.id,
                   webhook: backendNode.webhook,
                   executionResults: [],
+                  metadata: backendNode.metadata,
                 },
               }
             : null;
