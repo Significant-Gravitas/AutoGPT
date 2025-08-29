@@ -1,5 +1,5 @@
 import SchemaTooltip from "@/components/SchemaTooltip";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { IconKey, IconKeyPlus, IconUserPlus } from "@/components/ui/icons";
 import {
   Select,
@@ -28,10 +28,10 @@ import {
   FaMedium,
   FaTwitter,
 } from "react-icons/fa";
-import { APIKeyCredentialsModal } from "./api-key-credentials-modal";
-import { HostScopedCredentialsModal } from "./host-scoped-credentials-modal";
-import { OAuth2FlowWaitingModal } from "./oauth2-flow-waiting-modal";
-import { UserPasswordCredentialsModal } from "./user-password-credentials-modal";
+import { APIKeyCredentialsModal } from "../APIKeyCredentialsModal/APIKeyCredentialsModal";
+import { HostScopedCredentialsModal } from "../HotScopedCredentialsModal/HotScopedCredentialsModal";
+import { OAuthFlowWaitingModal } from "../OAuthWaitingModal/OAuthWaitingModal";
+import { PasswordCredentialsModal } from "../PasswordCredentialsModal/PasswordCredentialsModal";
 
 const fallbackIcon = FaKey;
 
@@ -290,14 +290,14 @@ export const CredentialsInput: FC<{
         />
       )}
       {supportsOAuth2 && (
-        <OAuth2FlowWaitingModal
+        <OAuthFlowWaitingModal
           open={isOAuth2FlowInProgress}
           onClose={() => oAuthPopupController?.abort("canceled")}
           providerName={providerName}
         />
       )}
       {supportsUserPassword && (
-        <UserPasswordCredentialsModal
+        <PasswordCredentialsModal
           schema={schema}
           open={isUserPasswordCredentialsModalOpen}
           onClose={() => setUserPasswordCredentialsModalOpen(false)}

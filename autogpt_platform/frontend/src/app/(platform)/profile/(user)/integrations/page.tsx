@@ -6,7 +6,7 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { IconKey, IconUser } from "@/components/ui/icons";
 import { Trash2Icon } from "lucide-react";
 import { KeyIcon } from "@phosphor-icons/react/dist/ssr";
-import { providerIcons } from "@/components/integrations/credentials-input";
+import { providerIcons } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
 import { CredentialsProvidersContext } from "@/components/integrations/credentials-provider";
 import {
   Table,

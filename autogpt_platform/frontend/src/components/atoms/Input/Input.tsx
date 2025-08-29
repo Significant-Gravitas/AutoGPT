@@ -22,7 +22,9 @@ export interface TextFieldProps extends Omit<InputProps, "size"> {
     | "amount"
     | "tel"
     | "url"
-    | "textarea";
+    | "textarea"
+    | "date"
+    | "datetime-local";
   // Textarea-specific props
   rows?: number;
 }
