@@ -106,10 +106,8 @@ export const CustomNode = React.memo(
     const [activeKey, setActiveKey] = useState<string | null>(null);
     const [inputModalValue, setInputModalValue] = useState<string>("");
     const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
-    const { updateNodeData, deleteElements, addNodes, getNode } = useReactFlow<
-      CustomNode,
-      Edge
-    >();
+    const { updateNodeData, deleteElements, addNodes, getNode, getNodes } =
+      useReactFlow<CustomNode, Edge>();
     const isInitialSetup = useRef(true);
     const flowContext = useContext(FlowContext);
     const api = useBackendAPI();
@@ -357,6 +355,89 @@ export const CustomNode = React.memo(
               // For OUTPUT blocks, only show the 'value' (hides 'name') input connection handle
               !(nodeType == BlockUIType.OUTPUT && propKey == "name");
             const isConnected = isInputHandleConnected(propKey);
+
+            // Check if this is a dict or array that might have dynamic connections
+            const isDynamicDict =
+              propSchema.type === "object" &&
+              "additionalProperties" in propSchema;
+            const isDynamicArray = propSchema.type === "array";
+
+            // Find all connections to this property (including dynamic keys for dicts)
+            const allConnections =
+              data.connections?.filter((conn) => {
+                if (typeof conn === "string") return false;
+                // Check for connections with dot notation (dict keys) or array notation
+                return (
+                  conn.target === id &&
+                  conn.targetHandle &&
+                  (conn.targetHandle.startsWith(`${propKey}.`) ||
+                    conn.targetHandle === propKey)
+                );
+              }) || [];
+
+            // Separate direct connections from dynamic connections
+            const directConnections = allConnections.filter(
+              (conn) => conn.targetHandle === propKey,
+            );
+
+            // Dynamic connections have dot notation (for dicts)
+            // These are actual dynamic dict key connections (not direct dict-to-dict)
+            const dynamicDictConnections = allConnections.filter(
+              (conn) =>
+                conn.targetHandle &&
+                conn.targetHandle.startsWith(`${propKey}.`),
+            );
+
+            // For arrays, check if connections are from non-array sources (dynamic append)
+            // We need to check the source node's output type
+            const nodes = getNodes();
+
+            // Check if this array has been marked for dynamic connections
+            const hasDynamicArrayMarker =
+              data.dynamicArrayConnections &&
+              data.dynamicArrayConnections[propKey];
+            const dynamicIndices =
+              (data.dynamicArrayIndices && data.dynamicArrayIndices[propKey]) ||
+              [];
+
+            const dynamicArrayConnections = isDynamicArray
+              ? directConnections.filter((conn) => {
+                  // First check if this was explicitly marked as a dynamic array connection
+                  if (hasDynamicArrayMarker) {
+                    return true;
+                  }
+
+                  const sourceNode = nodes?.find((n) => n.id === conn.source);
+                  if (!sourceNode) return false;
+                  const sourceSchema =
+                    sourceNode.data.outputSchema?.properties?.[
+                      conn.sourceHandle || ""
+                    ];
+                  // It's a dynamic append if source is NOT an array (and not 'any' or undefined)
+                  return (
+                    sourceSchema?.type !== "array" &&
+                    sourceSchema?.type !== "any" &&
+                    sourceSchema?.type !== undefined
+                  );
+                })
+              : [];
+
+            // Extract unique dict keys from connections
+            const dictKeys = isDynamicDict
+              ? [
+                  ...new Set(
+                    dynamicDictConnections
+                      .map((conn) => {
+                        const match = conn.targetHandle?.match(
+                          new RegExp(`^${propKey}\\.(.+)$`),
+                        );
+                        return match ? match[1] : null;
+                      })
+                      .filter((key) => key !== null),
+                  ),
+                ]
+              : [];
+
             return (
               !isHidden &&
               (isRequired || isAdvancedOpen || isConnected || !isAdvanced) && (
@@ -368,13 +449,82 @@ export const CustomNode = React.memo(
                     "discriminator" in propSchema &&
                     propSchema.discriminator
                   ) ? (
-                    <NodeHandle
-                      keyName={propKey}
-                      isConnected={isConnected}
-                      isRequired={isRequired}
-                      schema={propSchema}
-                      side="left"
-                    />
+                    <>
+                      {/* Main handle for direct connections or new dict/array entries */}
+                      <NodeHandle
+                        keyName={propKey}
+                        isConnected={
+                          isConnected &&
+                          !dictKeys.length &&
+                          !(
+                            hasDynamicArrayMarker ||
+                            dynamicArrayConnections.length > 0
+                          )
+                        }
+                        isRequired={isRequired}
+                        schema={propSchema}
+                        side="left"
+                      />
+
+                      {/* Dynamic handles for dict keys */}
+                      {isDynamicDict &&
+                        dictKeys.map((key) => (
+                          <div key={`${propKey}.${key}`} className="ml-4">
+                            <NodeHandle
+                              keyName={`${propKey}.${key}`}
+                              isConnected={true}
+                              schema={
+                                propSchema.additionalProperties || {
+                                  type: "any",
+                                }
+                              }
+                              side="left"
+                              title={`${propSchema.title || beautifyString(propKey)}[${key}]`}
+                              className="text-sm"
+                            />
+                          </div>
+                        ))}
+
+                      {/* Dynamic handles for array elements - only for non-array sources */}
+                      {isDynamicArray &&
+                        (hasDynamicArrayMarker ||
+                          dynamicArrayConnections.length > 0) && (
+                          <div className="ml-4">
+                            {/* Use tracked indices if available, otherwise use connection count */}
+                            {dynamicIndices.length > 0
+                              ? dynamicIndices.map((index) => (
+                                  <NodeHandle
+                                    key={`${propKey}[${index}]`}
+                                    keyName={`${propKey}[${index}]`}
+                                    isConnected={true}
+                                    schema={
+                                      "items" in propSchema
+                                        ? propSchema.items
+                                        : { type: "any" }
+                                    }
+                                    side="left"
+                                    title={`${propSchema.title || beautifyString(propKey)}[${index}]`}
+                                    className="text-sm"
+                                  />
+                                ))
+                              : dynamicArrayConnections.map((conn, index) => (
+                                  <NodeHandle
+                                    key={`${propKey}[${index}]`}
+                                    keyName={`${propKey}[${index}]`}
+                                    isConnected={true}
+                                    schema={
+                                      "items" in propSchema
+                                        ? propSchema.items
+                                        : { type: "any" }
+                                    }
+                                    side="left"
+                                    title={`${propSchema.title || beautifyString(propKey)}[${index}]`}
+                                    className="text-sm"
+                                  />
+                                ))}
+                          </div>
+                        )}
+                    </>
                   ) : (
                     propKey !== "credentials" &&
                     !propKey.endsWith("_credentials") && (
@@ -460,7 +610,12 @@ export const CustomNode = React.memo(
             const [_source, target] = conn.split(" -> ");
             return target.includes(key) && target.includes(data.title);
           }
-          return conn.target === id && conn.targetHandle === key;
+          // Check for exact match or dynamic connections (dict keys or array elements)
+          return (
+            conn.target === id &&
+            (conn.targetHandle === key ||
+              conn.targetHandle?.startsWith(`${key}.`))
+          ); // Dict keys with dot notation
         })
       );
     };
