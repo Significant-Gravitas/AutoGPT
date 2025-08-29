@@ -1,6 +1,5 @@
 import logging
 
-import autogpt_libs.auth.models
 import fastapi.responses
 import pytest
 
@@ -521,12 +520,7 @@ async def test_store_listing_graph(server: SpinTestServer):
             is_approved=True,
             comments="Test comments",
         ),
-        autogpt_libs.auth.models.User(
-            user_id=admin_user.id,
-            role="admin",
-            email=admin_user.email,
-            phone_number="1234567890",
-        ),
+        user_id=admin_user.id,
     )
     alt_test_user = admin_user
 
