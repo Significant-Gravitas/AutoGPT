@@ -53,6 +53,7 @@ function calculateNodeScore(
   const nodeDescription = (node.data.description || "").toLowerCase();
   const blockType = (node.data.blockType || "").toLowerCase();
   const beautifiedBlockType = beautifyString(blockType).toLowerCase();
+  const customizedName = (node.data.metadata?.customized_name || "").toLowerCase();
   
   // Get input and output names
   const inputNames = Object.keys(node.data.inputSchema?.properties || {})
@@ -60,14 +61,14 @@ function calculateNodeScore(
   const outputNames = Object.keys(node.data.outputSchema?.properties || {})
     .map(key => key.toLowerCase());
   
-  // 1. Check exact match in title (includes ID), node ID, or block type (highest priority)
-  if (nodeTitle.includes(query) || nodeId.includes(query) || blockType.includes(query) || beautifiedBlockType.includes(query)) {
+  // 1. Check exact match in customized name, title (includes ID), node ID, or block type (highest priority)
+  if (customizedName.includes(query) || nodeTitle.includes(query) || nodeId.includes(query) || blockType.includes(query) || beautifiedBlockType.includes(query)) {
     score = 4;
     matchedFields.push("title");
   }
   
-  // 2. Check all query words in title or block type
-  else if (queryWords.every(word => nodeTitle.includes(word) || beautifiedBlockType.includes(word))) {
+  // 2. Check all query words in customized name, title or block type
+  else if (queryWords.every(word => customizedName.includes(word) || nodeTitle.includes(word) || beautifiedBlockType.includes(word))) {
     score = 3.5;
     matchedFields.push("title");
   }
@@ -95,6 +96,7 @@ function calculateNodeScore(
   // 5. Similarity matching using Jaro-Winkler
   else {
     const titleSimilarity = Math.max(
+      jaro(customizedName, query),
       jaro(nodeTitle, query),
       jaro(nodeId, query),
       jaro(beautifiedBlockType, query)

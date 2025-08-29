@@ -7,6 +7,12 @@ import { MagnifyingGlass } from "@phosphor-icons/react";
 import { beautifyString, getPrimaryCategoryColor } from "@/lib/utils";
 import { SearchableNode } from "./useGraphSearch";
 import { TextRenderer } from "@/components/ui/render";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  TooltipProvider,
+} from "@/components/ui/tooltip";
 
 interface GraphSearchContentProps {
   searchQuery: string;
@@ -101,42 +107,61 @@ export const GraphSearchContent: React.FC<GraphSearchContentProps> = ({
               {searchQuery ? "No nodes found matching your search" : "Start typing to search nodes"}
             </div>
           ) : (
-            filteredNodes.map((node, index) => (
-              <Card
-                key={node.id}
-                className={`m-2 my-4 flex h-20 cursor-pointer shadow-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 ${
-                  index === selectedIndex 
-                    ? "shadow-lg dark:bg-slate-700" 
-                    : "hover:shadow-lg dark:hover:bg-slate-700"
-                }`}
-                onClick={() => onNodeSelect(node.id)}
-                onMouseEnter={() => {
-                  setSelectedIndex(index);
-                  onNodeHover?.(node.id);
-                }}
-                onMouseLeave={() => onNodeHover?.(null)}
-              >
-                <div
-                  className={`-ml-px h-full w-3 rounded-l-xl ${getPrimaryCategoryColor(node.data.categories)}`}
-                />
-                <div className="mx-3 flex flex-1 items-center justify-between">
-                  <div className="mr-2 min-w-0">
-                    <span className="block truncate pb-1 text-sm font-semibold dark:text-white">
-                      <TextRenderer
-                        value={beautifyString(node.data.blockType).replace(/ Block$/, "")}
-                        truncateLengthLimit={45}
-                      />
-                    </span>
-                    <span className="block break-all text-xs font-normal text-gray-500 dark:text-gray-400">
-                      <TextRenderer
-                        value={getNodeInputOutputSummary(node) || node.data.description}
-                        truncateLengthLimit={165}
-                      />
-                    </span>
-                  </div>
-                </div>
-              </Card>
-            ))
+            filteredNodes.map((node, index) => {
+              const nodeTitle = node.data.metadata?.customized_name || 
+                               beautifyString(node.data.blockType).replace(/ Block$/, "");
+              const nodeType = beautifyString(node.data.blockType).replace(/ Block$/, "");
+              
+              return (
+                <TooltipProvider key={node.id}>
+                  <Tooltip delayDuration={300}>
+                    <TooltipTrigger asChild>
+                      <Card
+                        className={`m-2 my-4 flex h-20 cursor-pointer shadow-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 ${
+                          index === selectedIndex 
+                            ? "shadow-lg dark:bg-slate-700" 
+                            : "hover:shadow-lg dark:hover:bg-slate-700"
+                        }`}
+                        onClick={() => onNodeSelect(node.id)}
+                        onMouseEnter={() => {
+                          setSelectedIndex(index);
+                          onNodeHover?.(node.id);
+                        }}
+                        onMouseLeave={() => onNodeHover?.(null)}
+                      >
+                        <div
+                          className={`-ml-px h-full w-3 rounded-l-xl ${getPrimaryCategoryColor(node.data.categories)}`}
+                        />
+                        <div className="mx-3 flex flex-1 items-center justify-between">
+                          <div className="mr-2 min-w-0">
+                            <span className="block truncate pb-1 text-sm font-semibold dark:text-white">
+                              <TextRenderer
+                                value={nodeTitle}
+                                truncateLengthLimit={45}
+                              />
+                            </span>
+                            <span className="block break-all text-xs font-normal text-gray-500 dark:text-gray-400">
+                              <TextRenderer
+                                value={getNodeInputOutputSummary(node) || node.data.description}
+                                truncateLengthLimit={165}
+                              />
+                            </span>
+                          </div>
+                        </div>
+                      </Card>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="max-w-xs">
+                      <div className="space-y-1">
+                        <div className="font-semibold">Node Type: {nodeType}</div>
+                        {node.data.metadata?.customized_name && (
+                          <div className="text-xs text-gray-500">Custom Name: {node.data.metadata.customized_name}</div>
+                        )}
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              );
+            })
           )}
         </ScrollArea>
       </CardContent>
