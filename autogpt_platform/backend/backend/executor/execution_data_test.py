@@ -19,6 +19,7 @@ def event_loop():
 @pytest.fixture
 def execution_client(event_loop):
     from datetime import datetime, timezone
+    from unittest.mock import AsyncMock, MagicMock, patch
 
     from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 
@@ -36,12 +37,42 @@ def execution_client(event_loop):
     from concurrent.futures import ThreadPoolExecutor
 
     executor = ThreadPoolExecutor(max_workers=1)
-    client = ExecutionDataClient(executor, "test_graph_exec_id", mock_graph_meta)
+
+    # Mock all database operations to prevent connection attempts
+    async_mock_client = AsyncMock()
+    sync_mock_client = MagicMock()
+
+    # Mock all database methods to return None or empty results
+    sync_mock_client.get_node_executions.return_value = []
+    sync_mock_client.create_node_execution.return_value = None
+    sync_mock_client.add_input_to_node_execution.return_value = None
+    sync_mock_client.update_node_execution_status.return_value = None
+    sync_mock_client.upsert_execution_output.return_value = None
+    sync_mock_client.update_graph_execution_stats.return_value = mock_graph_meta
+    sync_mock_client.update_graph_execution_start_time.return_value = mock_graph_meta
+
+    # Mock event bus to prevent connection attempts
+    mock_event_bus = MagicMock()
+    mock_event_bus.publish.return_value = None
 
     thread = threading.Thread(target=event_loop.run_forever, daemon=True)
     thread.start()
 
-    yield client
+    with patch(
+        "backend.executor.execution_data.get_database_manager_async_client",
+        return_value=async_mock_client,
+    ), patch(
+        "backend.executor.execution_data.get_database_manager_client",
+        return_value=sync_mock_client,
+    ), patch(
+        "backend.executor.execution_data.get_execution_event_bus",
+        return_value=mock_event_bus,
+    ), patch(
+        "backend.executor.execution_data.non_blocking_persist", lambda func: func
+    ):
+
+        client = ExecutionDataClient(executor, "test_graph_exec_id", mock_graph_meta)
+        yield client
 
     event_loop.call_soon_threadsafe(event_loop.stop)
     thread.join(timeout=1)

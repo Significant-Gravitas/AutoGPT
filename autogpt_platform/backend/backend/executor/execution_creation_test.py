@@ -19,13 +19,49 @@ def event_loop():
 
 
 @pytest.fixture
-def execution_client_with_mock_db(event_loop):
-    """Create an ExecutionDataClient with mocked database operations."""
-    # Mock the database methods to avoid external service dependencies
+async def execution_client_with_mock_db(event_loop):
+    """Create an ExecutionDataClient with proper database records."""
     from datetime import datetime, timezone
     from unittest.mock import AsyncMock, MagicMock, patch
 
+    from prisma.models import AgentGraph, AgentGraphExecution, User
+
     from backend.data.execution import ExecutionStatus, GraphExecutionMeta
+
+    # Create test database records to satisfy foreign key constraints
+    try:
+        await User.prisma().create(
+            data={
+                "id": "test_user_123",
+                "email": "test@example.com",
+                "name": "Test User",
+            }
+        )
+
+        await AgentGraph.prisma().create(
+            data={
+                "id": "test_graph_456",
+                "version": 1,
+                "userId": "test_user_123",
+                "name": "Test Graph",
+                "description": "Test graph for execution tests",
+            }
+        )
+
+        from prisma.enums import AgentExecutionStatus
+
+        await AgentGraphExecution.prisma().create(
+            data={
+                "id": "test_graph_exec_id",
+                "userId": "test_user_123",
+                "agentGraphId": "test_graph_456",
+                "agentGraphVersion": 1,
+                "executionStatus": AgentExecutionStatus.RUNNING,
+            }
+        )
+    except Exception:
+        # Records might already exist, that's fine
+        pass
 
     # Mock the graph execution metadata - align with assertions below
     mock_graph_meta = GraphExecutionMeta(
@@ -118,6 +154,10 @@ def execution_client_with_mock_db(event_loop):
     ), patch(
         "backend.executor.execution_data.get_database_manager_client",
         return_value=sync_mock_client,
+    ), patch(
+        "backend.executor.execution_data.get_execution_event_bus"
+    ), patch(
+        "backend.executor.execution_data.non_blocking_persist", lambda func: func
     ):
         # Now construct the client under the patch so it captures the mocked clients
         client = ExecutionDataClient(executor, "test_graph_exec_id", mock_graph_meta)
@@ -126,6 +166,17 @@ def execution_client_with_mock_db(event_loop):
         setattr(client, "_test_sync_client", sync_mock_client)
         setattr(client, "_created_executions", created_executions)
         yield client
+
+    # Cleanup test database records
+    try:
+        await AgentGraphExecution.prisma().delete_many(
+            where={"id": "test_graph_exec_id"}
+        )
+        await AgentGraph.prisma().delete_many(where={"id": "test_graph_456"})
+        await User.prisma().delete_many(where={"id": "test_user_123"})
+    except Exception:
+        # Cleanup may fail if records don't exist
+        pass
 
     # Cleanup
     event_loop.call_soon_threadsafe(event_loop.stop)
