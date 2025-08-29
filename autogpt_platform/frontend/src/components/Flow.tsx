@@ -405,13 +405,6 @@ const FlowEditor: React.FC<{
 
   const onConnect: OnConnect = useCallback(
     (connection: Connection) => {
-      console.log("[onConnect] Connection attempt:", {
-        source: connection.source,
-        sourceHandle: connection.sourceHandle,
-        target: connection.target,
-        targetHandle: connection.targetHandle,
-      });
-
       // Check if this exact connection already exists
       const existingConnection = edges.find(
         (edge) =>
@@ -434,25 +427,10 @@ const FlowEditor: React.FC<{
         connection.source!,
         connection.sourceHandle!,
       );
-      console.log("[onConnect] Output type from source:", outputType);
 
       const edgeColor = getTypeColor(outputType);
       const sourceNode = getNode(connection.source!);
       const targetNode = getNode(connection.target!);
-
-      console.log("[onConnect] Source node:", {
-        id: sourceNode?.id,
-        type: sourceNode?.data.blockType,
-        outputSchema:
-          sourceNode?.data.outputSchema?.properties?.[connection.sourceHandle!],
-      });
-
-      console.log("[onConnect] Target node:", {
-        id: targetNode?.id,
-        type: targetNode?.data.blockType,
-        inputSchema:
-          targetNode?.data.inputSchema?.properties?.[connection.targetHandle!],
-      });
 
       // Check if both nodes exist
       if (!sourceNode || !targetNode) {
@@ -484,7 +462,6 @@ const FlowEditor: React.FC<{
         target: connection.target!,
       };
 
-      console.log("[onConnect] ✅ Creating new edge:", newEdge);
       addEdges(newEdge);
       history.push({
         type: "ADD_EDGE",
@@ -511,7 +488,6 @@ const FlowEditor: React.FC<{
   );
 
   const onConnectStart: OnConnectStart = useCallback((event, params) => {
-    console.log("onConnectStart - params:", params);
     // Track the source of the connection drag
     if (params?.nodeId && params?.handleId && params?.handleType) {
       // Update ref immediately
@@ -528,12 +504,6 @@ const FlowEditor: React.FC<{
         sourceHandleType: params.handleType,
         dropPosition: null,
       });
-      console.log(
-        "Connection drag started from:",
-        params.nodeId,
-        params.handleId,
-        params.handleType,
-      );
     }
   }, []);
 
@@ -542,13 +512,6 @@ const FlowEditor: React.FC<{
       // Use the ref to check if we were dragging a connection
       const isDraggingConnection =
         connectionDragRef.current.sourceNodeId !== null;
-
-      console.log(
-        "onConnectEnd - isDraggingConnection:",
-        isDraggingConnection,
-        "ref:",
-        connectionDragRef.current,
-      );
 
       if (!isDraggingConnection) {
         // Not dragging a connection, ignore
@@ -568,17 +531,6 @@ const FlowEditor: React.FC<{
       const isOverHandle = target.closest(".react-flow__handle");
       const isOverNode = target.closest(".react-flow__node");
 
-      console.log(
-        "onConnectEnd - target:",
-        target.className,
-        "isPane:",
-        isPane,
-        "isOverHandle:",
-        isOverHandle,
-        "isOverNode:",
-        isOverNode,
-      );
-
       if (isPane && !isOverHandle && !isOverNode) {
         // Get the drop position in screen coordinates (for the menu)
         const mouseEvent = event as unknown as MouseEvent;
@@ -586,11 +538,6 @@ const FlowEditor: React.FC<{
           x: mouseEvent.clientX,
           y: mouseEvent.clientY,
         };
-
-        console.log(
-          "Opening floating menu at screen position:",
-          screenPosition,
-        );
 
         // Update state to show the floating menu
         setConnectionDragState({
@@ -834,12 +781,6 @@ const FlowEditor: React.FC<{
       blockName: string,
       hardcodedValues: Record<string, any>,
     ) => {
-      console.log("[handleBlockSelectFromFloatingMenu] Block selected:", {
-        blockId,
-        blockName,
-        connectionDragState,
-      });
-
       // Mark that we're selecting a block
       isSelectingBlockRef.current = true;
 
@@ -861,24 +802,11 @@ const FlowEditor: React.FC<{
         flowPosition,
       );
 
-      console.log(
-        "[handleBlockSelectFromFloatingMenu] New node created:",
-        newNodeId,
-      );
-
       if (
         !newNodeId ||
         !connectionDragState.sourceNodeId ||
         !connectionDragState.sourceHandle
       ) {
-        console.log(
-          "[handleBlockSelectFromFloatingMenu] ❌ Missing required data:",
-          {
-            newNodeId,
-            sourceNodeId: connectionDragState.sourceNodeId,
-            sourceHandle: connectionDragState.sourceHandle,
-          },
-        );
         setShowFloatingMenu(false);
         setConnectionDragState({
           sourceNodeId: null,
@@ -892,9 +820,6 @@ const FlowEditor: React.FC<{
       // Get the new node's schema to check compatible connections
       const newNodeSchema = availableBlocks.find((b) => b.id === blockId);
       if (!newNodeSchema) {
-        console.log(
-          "[handleBlockSelectFromFloatingMenu] ❌ Block schema not found",
-        );
         setShowFloatingMenu(false);
         return;
       }
@@ -904,9 +829,6 @@ const FlowEditor: React.FC<{
         (n) => n.id === connectionDragState.sourceNodeId,
       );
       if (!sourceNode) {
-        console.log(
-          "[handleBlockSelectFromFloatingMenu] ❌ Source node not found",
-        );
         setShowFloatingMenu(false);
         return;
       }
@@ -916,6 +838,7 @@ const FlowEditor: React.FC<{
         schema: any;
         isRequired?: boolean;
         isDynamic?: boolean;
+        needsUserChoice?: boolean;
       }> = [];
       let connectionDirection: "source-to-target" | "target-to-source";
 
@@ -926,50 +849,52 @@ const FlowEditor: React.FC<{
             connectionDragState.sourceHandle
           ];
         const sourceType = sourceSchema?.type;
-        console.log(
-          "[handleBlockSelectFromFloatingMenu] Dragging from output:",
-          {
-            sourceHandle: connectionDragState.sourceHandle,
-            sourceType,
-          },
-        );
 
         // Include dynamic connections (dict/array)
         compatibleConnections = getCompatibleInputs(
           newNodeSchema,
           sourceType,
           true,
-        ).map((inputKey) => {
-          const inputSchema = newNodeSchema.inputSchema.properties[inputKey];
-          // Only mark as dynamic if:
-          // 1. Target is array AND source is NOT array (and source is not 'any' or undefined)
-          // 2. Target is dict AND source is NOT dict (and source is not 'any' or undefined)
-          const isDynamic =
-            (inputSchema.type === "array" &&
-              sourceType !== "array" &&
-              sourceType !== "any" &&
-              sourceType !== undefined) ||
-            (inputSchema.type === "object" &&
-              "additionalProperties" in inputSchema &&
-              sourceType !== "object" &&
-              sourceType !== "any" &&
-              sourceType !== undefined);
-
-          // Special case: if source is 'any' or undefined connecting to array/dict, we need user choice
-          const needsUserChoice =
-            (sourceType === "any" || sourceType === undefined) &&
-            (inputSchema.type === "array" ||
+        )
+          .filter((inputKey) => {
+            // Exclude credential fields from connection selector
+            const inputSchema = newNodeSchema.inputSchema.properties[inputKey];
+            return !("credentials_provider" in inputSchema);
+          })
+          .map((inputKey) => {
+            const inputSchema = newNodeSchema.inputSchema.properties[inputKey];
+            // Only mark as dynamic if:
+            // 1. Target is array AND source is NOT array (and source is not 'any' or undefined)
+            // 2. Target is dict AND source is NOT dict (and source is not 'any' or undefined)
+            const isDynamic =
+              (inputSchema.type === "array" &&
+                sourceType !== "array" &&
+                (sourceType as string) !== "any" &&
+                sourceType !== undefined) ||
               (inputSchema.type === "object" &&
-                "additionalProperties" in inputSchema));
+                "additionalProperties" in inputSchema &&
+                inputSchema.additionalProperties &&
+                sourceType !== "object" &&
+                (sourceType as string) !== "any" &&
+                sourceType !== undefined);
 
-          return {
-            handleId: inputKey,
-            schema: inputSchema,
-            isRequired: newNodeSchema.inputSchema.required?.includes(inputKey),
-            isDynamic,
-            needsUserChoice,
-          };
-        });
+            // Special case: if source is 'any' or undefined connecting to array/dict, we need user choice
+            const needsUserChoice =
+              ((sourceType as string) === "any" || sourceType === undefined) &&
+              (inputSchema.type === "array" ||
+                (inputSchema.type === "object" &&
+                  "additionalProperties" in inputSchema &&
+                  inputSchema.additionalProperties));
+
+            return {
+              handleId: inputKey,
+              schema: inputSchema,
+              isRequired:
+                newNodeSchema.inputSchema.required?.includes(inputKey),
+              isDynamic,
+              needsUserChoice,
+            };
+          });
         connectionDirection = "source-to-target";
       } else {
         // Dragging from input to output
@@ -978,38 +903,22 @@ const FlowEditor: React.FC<{
             connectionDragState.sourceHandle
           ];
         const sourceType = sourceSchema?.type;
-        console.log(
-          "[handleBlockSelectFromFloatingMenu] Dragging from input:",
-          {
-            sourceHandle: connectionDragState.sourceHandle,
-            sourceType,
-          },
-        );
 
-        compatibleConnections = getCompatibleOutputs(
-          newNodeSchema,
-          sourceType,
-        ).map((outputKey) => ({
-          handleId: outputKey,
-          schema: newNodeSchema.outputSchema.properties[outputKey],
-          isDynamic: false,
-          needsUserChoice: false,
-        }));
+        compatibleConnections = getCompatibleOutputs(newNodeSchema, sourceType)
+          .filter((outputKey) => {
+            // Exclude credential fields from connection selector
+            const outputSchema =
+              newNodeSchema.outputSchema.properties[outputKey];
+            return !("credentials_provider" in outputSchema);
+          })
+          .map((outputKey) => ({
+            handleId: outputKey,
+            schema: newNodeSchema.outputSchema.properties[outputKey],
+            isDynamic: false,
+            needsUserChoice: false,
+          }));
         connectionDirection = "target-to-source";
       }
-
-      console.log(
-        "[handleBlockSelectFromFloatingMenu] Compatible connections found:",
-        {
-          count: compatibleConnections.length,
-          connections: compatibleConnections.map((c) => ({
-            handleId: c.handleId,
-            type: c.schema?.type,
-            isDynamic: c.isDynamic,
-            needsUserChoice: c.needsUserChoice,
-          })),
-        },
-      );
 
       // Separate connections by type
       const directConnections = compatibleConnections.filter(
@@ -1022,25 +931,8 @@ const FlowEditor: React.FC<{
         (c) => c.needsUserChoice,
       );
 
-      console.log("[handleBlockSelectFromFloatingMenu] Connection types:", {
-        direct: directConnections.length,
-        dynamic: dynamicConnections.length,
-        userChoice: userChoiceConnections.length,
-        sourceType:
-          connectionDragState.sourceHandleType === "source"
-            ? sourceNode.data.outputSchema?.properties?.[
-                connectionDragState.sourceHandle
-              ]?.type
-            : sourceNode.data.inputSchema?.properties?.[
-                connectionDragState.sourceHandle
-              ]?.type,
-      });
-
       if (compatibleConnections.length === 0) {
         // No compatible connections
-        console.log(
-          "[handleBlockSelectFromFloatingMenu] ❌ No compatible connections found",
-        );
         setShowFloatingMenu(false);
         toast({
           title: "No compatible connections",
@@ -1052,9 +944,6 @@ const FlowEditor: React.FC<{
         directConnections.length === 1 &&
         dynamicConnections.length === 0
       ) {
-        console.log(
-          "[handleBlockSelectFromFloatingMenu] Single direct connection - auto-connecting",
-        );
         // Single direct connection - auto-connect
         const connection: Connection =
           connectionDirection === "source-to-target"
@@ -1073,9 +962,6 @@ const FlowEditor: React.FC<{
 
         // Delay the connection to ensure the new node is in the state
         setTimeout(() => {
-          console.log(
-            "[handleBlockSelectFromFloatingMenu] Attempting delayed connection",
-          );
           onConnect(connection);
         }, 50);
 
@@ -1097,15 +983,6 @@ const FlowEditor: React.FC<{
         const conn = userChoiceConnections[0];
         const isArray = conn.schema.type === "array";
 
-        console.log(
-          "[handleBlockSelectFromFloatingMenu] Any type connection needs user choice:",
-          {
-            handleId: conn.handleId,
-            type: conn.schema.type,
-            isArray,
-          },
-        );
-
         // Show connection selector with both direct and dynamic options
         setConnectionSelectorState({
           isOpen: true,
@@ -1121,7 +998,8 @@ const FlowEditor: React.FC<{
             // Dynamic connection option (if applicable)
             ...(isArray ||
             (conn.schema.type === "object" &&
-              "additionalProperties" in conn.schema)
+              "additionalProperties" in conn.schema &&
+              conn.schema.additionalProperties)
               ? [
                   {
                     handleId: conn.handleId,
@@ -1136,9 +1014,8 @@ const FlowEditor: React.FC<{
               : []),
           ],
           title: isArray ? "Connect to Array" : "Connect to Dictionary",
-          description: isArray
-            ? "Choose whether to connect to the array itself or append a new element"
-            : "Choose whether to connect to the dictionary itself or add a new key-value pair",
+          allowDynamicKey: false,
+          dynamicKeyType: undefined,
         });
         setShowFloatingMenu(false);
       } else if (
@@ -1150,19 +1027,7 @@ const FlowEditor: React.FC<{
         const dynamicConn = dynamicConnections[0];
         const isArray = dynamicConn.schema.type === "array";
 
-        console.log(
-          "[handleBlockSelectFromFloatingMenu] Single dynamic connection:",
-          {
-            handleId: dynamicConn.handleId,
-            type: dynamicConn.schema.type,
-            isArray,
-          },
-        );
-
         if (isArray) {
-          console.log(
-            "[handleBlockSelectFromFloatingMenu] Auto-connecting to array with append marker",
-          );
           // For arrays, append to the base handle with [] notation
           // The backend will interpret this as an array append operation
           const connection: Connection =
@@ -1182,9 +1047,6 @@ const FlowEditor: React.FC<{
 
           // Delay the connection to ensure the new node is in the state
           setTimeout(() => {
-            console.log(
-              "[handleBlockSelectFromFloatingMenu] Attempting delayed array connection",
-            );
             onConnect(connection);
           }, 50);
 
@@ -1245,10 +1107,11 @@ const FlowEditor: React.FC<{
             // 2. For 'any' or undefined type, we provide both options
             const allowDynamic =
               c.isDynamic ||
-              ((sourceType === "any" || sourceType === undefined) &&
+              (((sourceType as string) === "any" || sourceType === undefined) &&
                 (c.schema.type === "array" ||
                   (c.schema.type === "object" &&
-                    "additionalProperties" in c.schema)));
+                    "additionalProperties" in c.schema &&
+                    c.schema.additionalProperties)));
 
             return {
               handleId: c.handleId,
@@ -1294,7 +1157,7 @@ const FlowEditor: React.FC<{
   );
 
   const handleDictConnection = useCallback(
-    (key: string, connectToValue: boolean, _staticValue?: string) => {
+    (key: string, _connectToValue: boolean, _staticValue?: string) => {
       if (
         !dictConnectionState.newNodeId ||
         !dictConnectionState.handleId ||
@@ -1322,13 +1185,6 @@ const FlowEditor: React.FC<{
               targetHandle: connectionDragState.sourceHandle!,
             };
 
-      console.log("[handleDictConnection] Creating dict connection:", {
-        connection,
-        key,
-        connectToValue,
-        baseHandle: dictConnectionState.handleId,
-      });
-
       // First, update the node's connections to trigger handle creation
       const targetNode = getNode(dictConnectionState.newNodeId);
       if (targetNode) {
@@ -1347,9 +1203,6 @@ const FlowEditor: React.FC<{
 
         // Then create the actual edge after a delay to ensure the handle exists
         setTimeout(() => {
-          console.log(
-            "[handleDictConnection] Creating edge after handle update",
-          );
           onConnect(connection);
         }, 100);
       } else {
@@ -1394,15 +1247,6 @@ const FlowEditor: React.FC<{
 
   const handleConnectionSelect = useCallback(
     (handleId: string, dynamicKey?: string) => {
-      console.log("handleConnectionSelect called with:", {
-        handleId,
-        dynamicKey,
-        newNodeId: connectionSelectorState.newNodeId,
-        sourceNodeId: connectionDragState.sourceNodeId,
-        sourceHandle: connectionDragState.sourceHandle,
-        sourceHandleType: connectionDragState.sourceHandleType,
-      });
-
       if (
         !connectionSelectorState.newNodeId ||
         !connectionDragState.sourceNodeId
@@ -1425,7 +1269,6 @@ const FlowEditor: React.FC<{
           // Special marker for array append
           // We need to create a unique handle for this dynamic element
           isDynamicArrayAppend = true;
-          console.log("Array append operation detected");
 
           // Get the target node to find the next index
           const targetNodeId =
@@ -1436,12 +1279,11 @@ const FlowEditor: React.FC<{
 
           if (targetNode) {
             const dynamicArrayIndices =
-              targetNode.data.dynamicArrayIndices || {};
+              targetNode.data.metadata?.dynamicArrayIndices || {};
             const currentIndices = dynamicArrayIndices[handleId] || [];
             arrayIndex = currentIndices.length;
             // We'll use indexed handle for the connection
             targetHandle = `${handleId}[${arrayIndex}]`;
-            console.log("Using indexed handle:", targetHandle);
           }
         } else if (!handleId.endsWith("[]")) {
           // Dict key - append with dot notation
@@ -1464,8 +1306,6 @@ const FlowEditor: React.FC<{
               targetHandle: connectionDragState.sourceHandle!,
             };
 
-      console.log("Creating connection:", connection);
-
       // If this is an array append, we need to mark it and update the node first
       if (isDynamicArrayAppend && arrayIndex >= 0) {
         const targetNodeId =
@@ -1477,8 +1317,9 @@ const FlowEditor: React.FC<{
         if (targetNode) {
           // Add metadata to track this as a dynamic array append
           const dynamicArrayConnections =
-            targetNode.data.dynamicArrayConnections || {};
-          const dynamicArrayIndices = targetNode.data.dynamicArrayIndices || {};
+            targetNode.data.metadata?.dynamicArrayConnections || {};
+          const dynamicArrayIndices =
+            targetNode.data.metadata?.dynamicArrayIndices || {};
 
           // Track this connection as dynamic
           dynamicArrayConnections[handleId] = true;
@@ -1488,18 +1329,18 @@ const FlowEditor: React.FC<{
           }
           dynamicArrayIndices[handleId] = currentIndices;
 
-          // Update node data to trigger re-render with new handle
+          // Update node metadata to trigger re-render with new handle
+          // Store in metadata to avoid sending to backend
           updateNodeData(targetNodeId, {
-            dynamicArrayConnections,
-            dynamicArrayIndices,
+            metadata: {
+              ...targetNode.data.metadata,
+              dynamicArrayConnections,
+              dynamicArrayIndices,
+            },
           });
 
           // Delay the connection to ensure the handle exists in the DOM
           setTimeout(() => {
-            console.log(
-              "Creating delayed connection to indexed handle:",
-              targetHandle,
-            );
             onConnect(connection);
 
             // Reset states after delayed connection
@@ -1508,7 +1349,6 @@ const FlowEditor: React.FC<{
               newNodeId: null,
               options: [],
               title: "",
-              description: undefined,
               allowDynamicKey: false,
               dynamicKeyType: undefined,
             });
@@ -1976,15 +1816,6 @@ const FlowEditor: React.FC<{
               const targetHandle = dynamicKeyDialogState.isArray
                 ? dynamicKeyDialogState.handleId // Arrays auto-append, no index needed
                 : `${dynamicKeyDialogState.handleId}.${key}`; // Dict with key
-
-              console.log("Creating dynamic connection:", {
-                isArray: dynamicKeyDialogState.isArray,
-                handleId: dynamicKeyDialogState.handleId,
-                key,
-                targetHandle,
-                sourceNodeId: connectionDragState.sourceNodeId,
-                sourceHandle: connectionDragState.sourceHandle,
-              });
 
               const connection: Connection =
                 connectionDragState.sourceHandleType === "source"

@@ -101,8 +101,7 @@ export type CustomNodeData = {
   isOutputStatic?: boolean;
   uiType: BlockUIType;
   metadata?: { [key: string]: any };
-  dynamicArrayConnections?: { [key: string]: boolean };
-  dynamicArrayIndices?: { [key: string]: number[] };
+  // These fields are now stored in metadata to avoid backend errors
 };
 
 export type CustomNode = XYNode<CustomNodeData, "custom">;
@@ -444,10 +443,11 @@ export const CustomNode = React.memo(
 
             // Check if this array has been marked for dynamic connections
             const hasDynamicArrayMarker =
-              data.dynamicArrayConnections &&
-              data.dynamicArrayConnections[propKey];
+              data.metadata?.dynamicArrayConnections &&
+              data.metadata.dynamicArrayConnections[propKey];
             const dynamicIndices =
-              (data.dynamicArrayIndices && data.dynamicArrayIndices[propKey]) ||
+              (data.metadata?.dynamicArrayIndices &&
+                data.metadata.dynamicArrayIndices[propKey]) ||
               [];
 
             const dynamicArrayConnections = isDynamicArray

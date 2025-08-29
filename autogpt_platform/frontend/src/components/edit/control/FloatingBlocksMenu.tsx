@@ -8,7 +8,6 @@ import React, {
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { TextRenderer } from "@/components/ui/render";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { beautifyString } from "@/lib/utils";
 import { Block, BlockUIType, SpecialBlockID } from "@/lib/autogpt-server-api";
@@ -52,10 +51,10 @@ export function FloatingBlocksMenu({
   onSelectBlock,
   onClose,
   flows,
-  nodes,
+  _nodes,
   connectionType,
   handleType,
-  sourceNodeId,
+  _sourceNodeId,
   sourceHandle,
 }: FloatingBlocksMenuProps) {
   const [searchQuery, setSearchQuery] = useState("");
@@ -63,13 +62,6 @@ export function FloatingBlocksMenu({
 
   // Filter blocks based on connection compatibility
   const compatibleBlocks = useMemo(() => {
-    console.log("[FloatingBlocksMenu] Filtering blocks:", {
-      totalBlocks: _blocks.length,
-      connectionType,
-      handleType,
-      sourceHandle,
-    });
-
     const dragDirection = connectionType === "source" ? "output" : "input";
     const filtered = filterBlocksByConnectionType(
       _blocks.filter((b) => b.uiType !== BlockUIType.AGENT),
@@ -77,11 +69,6 @@ export function FloatingBlocksMenu({
       handleType,
       sourceHandle,
     );
-
-    console.log("[FloatingBlocksMenu] Compatible blocks:", {
-      count: filtered.length,
-      names: filtered.map((b) => b.name).slice(0, 10), // Show first 10 for brevity
-    });
 
     return filtered;
   }, [_blocks, connectionType, handleType, sourceHandle]);
@@ -158,8 +145,18 @@ export function FloatingBlocksMenu({
       }
     };
 
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    // Small delay to ensure the menu is fully rendered
+    const timer = setTimeout(() => {
+      // Use capture phase to catch events before React Flow
+      document.addEventListener("mousedown", handleClickOutside, true);
+      document.addEventListener("click", handleClickOutside, true);
+    }, 100);
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("mousedown", handleClickOutside, true);
+      document.removeEventListener("click", handleClickOutside, true);
+    };
   }, [onClose]);
 
   // Close on Escape key
@@ -176,18 +173,6 @@ export function FloatingBlocksMenu({
 
   const handleBlockSelect = useCallback(
     (block: _Block) => {
-      console.log("[FloatingBlocksMenu] Block selected:", {
-        id: block.id,
-        name: block.name,
-        type: block.uiType,
-        inputSchema: block.inputSchema?.properties
-          ? Object.keys(block.inputSchema.properties)
-          : [],
-        outputSchema: block.outputSchema?.properties
-          ? Object.keys(block.outputSchema.properties)
-          : [],
-      });
-
       // Call onSelectBlock first, then close
       // This ensures the parent knows a selection was made
       onSelectBlock(block.id, block.name, block.hardcodedValues || {});
@@ -206,6 +191,8 @@ export function FloatingBlocksMenu({
         top: `${position.y}px`,
         transform: "translate(-50%, -50%)",
       }}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
     >
       <Card className="w-[20rem] p-3 pb-0 shadow-lg dark:bg-slate-900">
         <CardHeader className="flex flex-col gap-x-8 gap-y-1 p-3 px-2">
@@ -232,9 +219,9 @@ export function FloatingBlocksMenu({
                 No compatible blocks found
               </div>
             ) : (
-              filteredBlocks.map((block) => (
+              filteredBlocks.map((block, index) => (
                 <Card
-                  key={block.uiKey || block.id}
+                  key={`${block.id}-${index}`}
                   className="group m-2 my-4 flex h-20 cursor-pointer overflow-hidden shadow-none hover:shadow-md dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
                   onClick={() => handleBlockSelect(block)}
                   title={`${beautifyString(block.name).replace(/ Block$/, "")}\n${block.description}`}

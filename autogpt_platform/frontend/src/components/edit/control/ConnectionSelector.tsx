@@ -39,8 +39,6 @@ export function ConnectionSelector({
   options,
   title,
   description,
-  allowDynamicKey = false,
-  dynamicKeyType,
 }: ConnectionSelectorProps) {
   const [selectedOption, setSelectedOption] = useState<string>(
     options[0]?.handleId || "",
@@ -56,7 +54,8 @@ export function ConnectionSelector({
     currentOption?.allowDynamicKey &&
     (currentOption.schema.type === "array" ||
       (currentOption.schema.type === "object" &&
-        "additionalProperties" in currentOption.schema));
+        "additionalProperties" in currentOption.schema &&
+        currentOption.schema.additionalProperties));
 
   const handleConfirm = useCallback(() => {
     const currentOpt = options.find((opt) => opt.handleId === selectedOption);
@@ -69,7 +68,8 @@ export function ConnectionSelector({
       } else if (
         dynamicKey &&
         currentOpt?.schema.type === "object" &&
-        "additionalProperties" in currentOpt.schema
+        "additionalProperties" in currentOpt.schema &&
+        currentOpt.schema.additionalProperties
       ) {
         // For dicts with additionalProperties, pass the key with dot notation
         onSelect(selectedOption, dynamicKey);
@@ -102,60 +102,69 @@ export function ConnectionSelector({
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
         <div className="space-y-4">
-          <RadioGroup
-            value={selectedOption}
-            onValueChange={setSelectedOption}
-            className="space-y-2"
-          >
-            {options.map((option) => (
-              <div
-                key={option.handleId}
-                className="flex items-center space-x-2 rounded-lg border p-3 hover:bg-gray-50 dark:border-slate-700 dark:hover:bg-slate-800"
-              >
-                <RadioGroupItem value={option.handleId} />
+          <div className="max-h-[40vh] overflow-y-auto">
+            <RadioGroup
+              value={selectedOption}
+              onValueChange={setSelectedOption}
+              className="space-y-2 p-1"
+            >
+              {options.map((option) => (
                 <Label
+                  key={option.handleId}
                   htmlFor={option.handleId}
-                  className="flex-1 cursor-pointer"
+                  className="flex cursor-pointer items-center space-x-2 rounded-lg border p-3 hover:bg-gray-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                  onClick={() => setSelectedOption(option.handleId)}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">
-                      {option.schema.title ||
-                        beautifyString(option.handleId.toLowerCase())}
-                      {option.isRequired && "*"}
-                    </span>
-                    <span
-                      className={`text-sm ${getTypeTextColor(
-                        option.schema.type || "any",
-                      )}`}
-                    >
-                      (
-                      {TYPE_NAME[
-                        option.schema.type as keyof typeof TYPE_NAME
-                      ] || "any"}
-                      )
-                    </span>
+                  <RadioGroupItem
+                    value={option.handleId}
+                    id={option.handleId}
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">
+                        {option.schema.title ||
+                          beautifyString(option.handleId.toLowerCase())}
+                        {option.isRequired && "*"}
+                      </span>
+                      <span
+                        className={`text-sm ${getTypeTextColor(
+                          option.schema.type || "any",
+                        )}`}
+                      >
+                        (
+                        {TYPE_NAME[
+                          option.schema.type as keyof typeof TYPE_NAME
+                        ] || "any"}
+                        )
+                      </span>
+                    </div>
+                    {option.schema.description && (
+                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        {option.schema.description}
+                      </p>
+                    )}
                   </div>
-                  {option.schema.description && (
-                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                      {option.schema.description}
-                    </p>
-                  )}
                 </Label>
-              </div>
-            ))}
-          </RadioGroup>
+              ))}
+            </RadioGroup>
+          </div>
 
           {supportsDynamic && (
-            <div className="space-y-2">
-              <div className="flex items-center space-x-2">
+            <div className="space-y-2 border-t pt-2">
+              <Label
+                htmlFor="dynamic-key"
+                className="flex cursor-pointer items-center space-x-2 rounded p-2 hover:bg-gray-50 dark:hover:bg-slate-800"
+                onClick={() => setUseDynamicKey(!useDynamicKey)}
+              >
                 <input
                   type="checkbox"
                   id="dynamic-key"
                   checked={useDynamicKey}
                   onChange={(e) => setUseDynamicKey(e.target.checked)}
                   className="h-4 w-4"
+                  onClick={(e) => e.stopPropagation()}
                 />
-                <Label htmlFor="dynamic-key" className="cursor-pointer">
+                <span>
                   {currentOption.schema.type === "array"
                     ? "Append to list"
                     : "Add as new dictionary key"}
@@ -170,8 +179,8 @@ export function ConnectionSelector({
                       )
                     </span>
                   )}
-                </Label>
-              </div>
+                </span>
+              </Label>
               {useDynamicKey && currentOption.schema.type !== "array" && (
                 <Input
                   type="text"

@@ -597,17 +597,24 @@ export default function useAgentGraph(
     return {
       name: agentName || `New Agent ${new Date().toISOString()}`,
       description: agentDescription || "",
-      nodes: xyNodes.map(
-        (node): NodeCreatable => ({
+      nodes: xyNodes.map((node): NodeCreatable => {
+        // Filter out frontend-only fields from metadata
+        const {
+          dynamicArrayConnections: _dynamicArrayConnections,
+          dynamicArrayIndices: _dynamicArrayIndices,
+          ...cleanMetadata
+        } = node.data.metadata || {};
+
+        return {
           id: node.id,
           block_id: node.data.block_id,
           input_default: prepareNodeInputData(node),
           metadata: {
             position: node.position,
-            ...(node.data.metadata || {}),
+            ...cleanMetadata,
           },
-        }),
-      ),
+        };
+      }),
       links: links,
     };
   }, [
