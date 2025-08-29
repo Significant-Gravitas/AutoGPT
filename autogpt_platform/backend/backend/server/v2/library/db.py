@@ -16,7 +16,7 @@ import backend.server.v2.store.media as store_media
 from backend.data.block import BlockInput
 from backend.data.db import transaction
 from backend.data.execution import get_graph_execution
-from backend.data.includes import library_agent_include
+from backend.data.includes import AGENT_PRESET_INCLUDE, library_agent_include
 from backend.data.model import CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import on_graph_activate
@@ -617,7 +617,7 @@ async def list_presets(
             where=query_filter,
             skip=(page - 1) * page_size,
             take=page_size,
-            include={"InputPresets": True},
+            include=AGENT_PRESET_INCLUDE,
         )
         total_items = await prisma.models.AgentPreset.prisma().count(where=query_filter)
         total_pages = (total_items + page_size - 1) // page_size
@@ -662,7 +662,7 @@ async def get_preset(
     try:
         preset = await prisma.models.AgentPreset.prisma().find_unique(
             where={"id": preset_id},
-            include={"InputPresets": True},
+            include=AGENT_PRESET_INCLUDE,
         )
         if not preset or preset.userId != user_id or preset.isDeleted:
             return None
@@ -717,7 +717,7 @@ async def create_preset(
                     ]
                 },
             ),
-            include={"InputPresets": True},
+            include=AGENT_PRESET_INCLUDE,
         )
         return library_model.LibraryAgentPreset.from_db(new_preset)
     except prisma.errors.PrismaError as e:
@@ -834,7 +834,7 @@ async def update_preset(
             updated = await prisma.models.AgentPreset.prisma(tx).update(
                 where={"id": preset_id},
                 data=update_data,
-                include={"InputPresets": True},
+                include=AGENT_PRESET_INCLUDE,
             )
         if not updated:
             raise RuntimeError(f"AgentPreset #{preset_id} vanished while updating")
@@ -849,7 +849,7 @@ async def set_preset_webhook(
 ) -> library_model.LibraryAgentPreset:
     current = await prisma.models.AgentPreset.prisma().find_unique(
         where={"id": preset_id},
-        include={"InputPresets": True},
+        include=AGENT_PRESET_INCLUDE,
     )
     if not current or current.userId != user_id:
         raise NotFoundError(f"Preset #{preset_id} not found")
@@ -861,7 +861,7 @@ async def set_preset_webhook(
             if webhook_id
             else {"Webhook": {"disconnect": True}}
         ),
-        include={"InputPresets": True},
+        include=AGENT_PRESET_INCLUDE,
     )
     if not updated:
         raise RuntimeError(f"AgentPreset #{preset_id} vanished while updating")

@@ -519,7 +519,6 @@ export function OldAgentLibraryView() {
           /* Draft new runs / Create new presets */
           <AgentRunDraftView
             graph={graph}
-            triggerSetupInfo={agent.trigger_setup_info}
             onRun={selectRun}
             onCreateSchedule={onCreateSchedule}
             onCreatePreset={onCreatePreset}
@@ -529,7 +528,6 @@ export function OldAgentLibraryView() {
           /* Edit & update presets */
           <AgentRunDraftView
             graph={graph}
-            triggerSetupInfo={agent.trigger_setup_info}
             agentPreset={
               agentPresets.find((preset) => preset.id == selectedView.id)!
             }

@@ -13,12 +13,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-import AgentRunStatusChip, {
-  AgentRunStatus,
-} from "@/components/agents/agent-run-status-chip";
-import AgentStatusChip, {
-  AgentStatus,
-} from "@/components/agents/agent-status-chip";
+import { AgentStatus, AgentStatusChip } from "./agent-status-chip";
+import { AgentRunStatus, AgentRunStatusChip } from "./agent-run-status-chip";
 
 export type AgentRunSummaryProps = (
   | {
@@ -43,7 +39,7 @@ export type AgentRunSummaryProps = (
   className?: string;
 };
 
-export default function AgentRunSummaryCard({
+export function AgentRunSummaryCard({
   type,
   status,
   title,
