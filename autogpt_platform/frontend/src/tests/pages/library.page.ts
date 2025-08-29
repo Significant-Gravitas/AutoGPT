@@ -206,6 +206,7 @@ export class LibraryPage extends BasePage {
   async clickAgent(agent: Agent): Promise<void> {
     await this.page
       .getByRole("heading", { name: agent.name, level: 3 })
+      .first()
       .click();
   }
 

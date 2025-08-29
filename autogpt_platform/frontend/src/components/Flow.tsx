@@ -37,7 +37,11 @@ import {
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { Key, storage } from "@/services/storage/local-storage";
-import { getTypeColor, findNewlyAddedBlockCoordinates } from "@/lib/utils";
+import {
+  getTypeColor,
+  findNewlyAddedBlockCoordinates,
+  beautifyString,
+} from "@/lib/utils";
 import { history } from "./history";
 import { CustomEdge } from "./CustomEdge";
 import ConnectionLine from "./ConnectionLine";
@@ -95,6 +99,7 @@ const FlowEditor: React.FC<{
     updateNode,
     getViewport,
     setViewport,
+    screenToFlowPosition,
   } = useReactFlow<CustomNode, CustomEdge>();
   const [nodeId, setNodeId] = useState<number>(1);
   const [isAnyModalOpen, setIsAnyModalOpen] = useState(false);
@@ -747,6 +752,85 @@ const FlowEditor: React.FC<{
 
   const isNewBlockEnabled = useGetFlag(Flag.NEW_BLOCK_MENU);
 
+  const onDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  }, []);
+
+  const onDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+
+      const blockData = event.dataTransfer.getData("application/reactflow");
+      if (!blockData) return;
+
+      try {
+        const { blockId, blockName, hardcodedValues } = JSON.parse(blockData);
+
+        // Convert screen coordinates to flow coordinates
+        const position = screenToFlowPosition({
+          x: event.clientX,
+          y: event.clientY,
+        });
+
+        // Find the block schema
+        const nodeSchema = availableBlocks.find((node) => node.id === blockId);
+        if (!nodeSchema) {
+          console.error(`Schema not found for block ID: ${blockId}`);
+          return;
+        }
+
+        // Create the new node at the drop position
+        const newNode: CustomNode = {
+          id: nodeId.toString(),
+          type: "custom",
+          position,
+          data: {
+            blockType: blockName,
+            blockCosts: nodeSchema.costs || [],
+            title: `${beautifyString(blockName)} ${nodeId}`,
+            description: nodeSchema.description,
+            categories: nodeSchema.categories,
+            inputSchema: nodeSchema.inputSchema,
+            outputSchema: nodeSchema.outputSchema,
+            hardcodedValues: hardcodedValues,
+            connections: [],
+            isOutputOpen: false,
+            block_id: blockId,
+            uiType: nodeSchema.uiType,
+          },
+        };
+
+        history.push({
+          type: "ADD_NODE",
+          payload: { node: { ...newNode, ...newNode.data } },
+          undo: () => {
+            deleteElements({ nodes: [{ id: newNode.id } as any], edges: [] });
+          },
+          redo: () => {
+            addNodes([newNode]);
+          },
+        });
+        addNodes([newNode]);
+        clearNodesStatusAndOutput();
+
+        setNodeId((prevId) => prevId + 1);
+      } catch (error) {
+        console.error("Failed to drop block:", error);
+      }
+    },
+    [
+      nodeId,
+      availableBlocks,
+      nodes,
+      edges,
+      addNodes,
+      screenToFlowPosition,
+      deleteElements,
+      clearNodesStatusAndOutput,
+    ],
+  );
+
   return (
     <FlowContext.Provider
       value={{ visualizeBeads, setIsAnyModalOpen, getNextNodeId }}
@@ -764,6 +848,8 @@ const FlowEditor: React.FC<{
           onEdgesChange={onEdgesChange}
           onNodeDragStop={onNodeDragEnd}
           onNodeDragStart={onNodeDragStart}
+          onDrop={onDrop}
+          onDragOver={onDragOver}
           deleteKeyCode={["Backspace", "Delete"]}
           minZoom={0.1}
           maxZoom={2}
