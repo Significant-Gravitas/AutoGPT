@@ -7,6 +7,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectSeparator,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { ReactNode } from "react";
@@ -15,6 +16,10 @@ import { Text } from "../Text/Text";
 export interface SelectOption {
   value: string;
   label: string;
+  icon?: ReactNode;
+  disabled?: boolean;
+  separator?: boolean;
+  onSelect?: () => void; // optional action handler
 }
 
 export interface SelectFieldProps {
@@ -29,6 +34,8 @@ export interface SelectFieldProps {
   value?: string;
   onValueChange?: (value: string) => void;
   options: SelectOption[];
+  size?: "small" | "medium";
+  renderItem?: (option: SelectOption) => React.ReactNode;
 }
 
 export function Select({
@@ -43,14 +50,24 @@ export function Select({
   value,
   onValueChange,
   options,
+  size = "medium",
+  renderItem,
 }: SelectFieldProps) {
   const triggerStyles = cn(
-    // Override the default select styles with Figma design matching Input
-    "h-[2.875rem] rounded-3xl border border-zinc-200 bg-white px-4 py-2.5 shadow-none",
-    "font-normal text-black text-sm w-full",
+    // Base styles matching Input
+    "rounded-3xl border border-zinc-200 bg-white px-4 shadow-none",
+    "font-normal text-black w-full",
     "placeholder:font-normal !placeholder:text-zinc-400",
     // Focus and hover states
     "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
+    // Size variants
+    size === "small" && [
+      "h-[2.25rem]",
+      "py-2",
+      "text-sm leading-[22px]",
+      "placeholder:text-sm placeholder:leading-[22px]",
+    ],
+    size === "medium" && ["h-[2.875rem]", "py-2.5", "text-sm"],
     // Error state
     error &&
       "border-1.5 border-red-500 focus:border-red-500 focus:ring-red-500",
@@ -69,11 +86,32 @@ export function Select({
         <SelectValue placeholder={placeholder || label} />
       </SelectTrigger>
       <SelectContent>
-        {options.map((option) => (
-          <SelectItem key={option.value} value={option.value}>
-            {option.label}
-          </SelectItem>
-        ))}
+        {options.map((option, idx) => {
+          if (option.separator) return <SelectSeparator key={`sep-${idx}`} />;
+          const content = renderItem ? (
+            renderItem(option)
+          ) : (
+            <div className="flex items-center gap-2">
+              {option.icon}
+              <span>{option.label}</span>
+            </div>
+          );
+          return (
+            <SelectItem
+              key={option.value}
+              value={option.value}
+              disabled={option.disabled}
+              onMouseDown={(e) => {
+                if (option.onSelect) {
+                  e.preventDefault();
+                  option.onSelect();
+                }
+              }}
+            >
+              {content}
+            </SelectItem>
+          );
+        })}
       </SelectContent>
     </BaseSelect>
   );
