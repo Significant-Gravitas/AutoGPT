@@ -1,13 +1,19 @@
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useState, useCallback, useMemo } from "react";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { isEmpty } from "@/lib/utils";
 import { usePostV1ExecuteGraphAgent } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { usePostV1CreateExecutionSchedule as useCreateSchedule } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { usePostV2SetupTrigger } from "@/app/api/__generated__/endpoints/presets/presets";
 import { ExecuteGraphResponse } from "@/app/api/__generated__/models/executeGraphResponse";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
+import {
+  collectMissingFields,
+  getErrorMessage,
+  deriveReadiness,
+  getVisibleInputFields,
+  getCredentialFields,
+} from "./helpers";
 
 export type RunVariant =
   | "manual"
@@ -44,68 +50,9 @@ export function useAgentRunModal(
     : "manual";
 
   // API mutations
-  const executeGraphMutation = usePostV1ExecuteGraphAgent({
-    mutation: {
-      onSuccess: (response) => {
-        if (response.status === 200) {
-          toast({
-            title: "Agent execution started",
-          });
-          callbacks?.onRun?.(response.data);
-          setIsOpen(false);
-        }
-      },
-      onError: (error: any) => {
-        toast({
-          title: "❌ Failed to execute agent",
-          description: error.message || "An unexpected error occurred.",
-          variant: "destructive",
-        });
-      },
-    },
-  });
-
-  const createScheduleMutation = useCreateSchedule({
-    mutation: {
-      onSuccess: (response) => {
-        if (response.status === 200) {
-          toast({
-            title: "Schedule created",
-          });
-          callbacks?.onCreateSchedule?.(response.data);
-          setIsOpen(false);
-        }
-      },
-      onError: (error: any) => {
-        toast({
-          title: "❌ Failed to create schedule",
-          description: error.message || "An unexpected error occurred.",
-          variant: "destructive",
-        });
-      },
-    },
-  });
-
-  const setupTriggerMutation = usePostV2SetupTrigger({
-    mutation: {
-      onSuccess: (response: any) => {
-        if (response.status === 200) {
-          toast({
-            title: "Trigger setup complete",
-          });
-          callbacks?.onSetupTrigger?.(response.data);
-          setIsOpen(false);
-        }
-      },
-      onError: (error: any) => {
-        toast({
-          title: "❌ Failed to setup trigger",
-          description: error.message || "An unexpected error occurred.",
-          variant: "destructive",
-        });
-      },
-    },
-  });
+  const executeGraphMutation = usePostV1ExecuteGraphAgent();
+  const createScheduleMutation = useCreateSchedule();
+  const setupTriggerMutation = usePostV2SetupTrigger();
 
   // Input schema validation
   const agentInputSchema = useMemo(
@@ -113,84 +60,48 @@ export function useAgentRunModal(
     [agent.input_schema],
   );
 
-  const agentInputFields = useMemo(() => {
-    if (
-      !agentInputSchema ||
-      typeof agentInputSchema !== "object" ||
-      !("properties" in agentInputSchema) ||
-      !agentInputSchema.properties
-    ) {
-      return {};
-    }
-    const properties = agentInputSchema.properties as Record<string, any>;
-    return Object.fromEntries(
-      Object.entries(properties).filter(
-        ([_, subSchema]: [string, any]) => !subSchema.hidden,
-      ),
-    );
-  }, [agentInputSchema]);
-
-  const agentCredentialsInputFields = useMemo(() => {
-    if (
-      !agent.credentials_input_schema ||
-      typeof agent.credentials_input_schema !== "object" ||
-      !("properties" in agent.credentials_input_schema) ||
-      !agent.credentials_input_schema.properties
-    ) {
-      return {} as Record<string, any>;
-    }
-    return agent.credentials_input_schema.properties as Record<string, any>;
-  }, [agent.credentials_input_schema]);
-
-  // Validation logic
-  const [allRequiredInputsAreSetRaw, missingInputs] = useMemo(() => {
-    const nonEmptyInputs = new Set(
-      Object.keys(inputValues).filter((k) => !isEmpty(inputValues[k])),
-    );
-    const requiredInputs = new Set(
-      (agentInputSchema.required as string[]) || [],
-    );
-    const missing = [...requiredInputs].filter(
-      (input) => !nonEmptyInputs.has(input),
-    );
-    return [missing.length === 0, missing];
-  }, [agentInputSchema.required, inputValues]);
-
-  const [allCredentialsAreSet, missingCredentials] = useMemo(() => {
-    const availableCredentials = new Set(Object.keys(inputCredentials));
-    const allCredentials = new Set(
-      Object.keys(agentCredentialsInputFields || {}) ?? [],
-    );
-    const missing = [...allCredentials].filter(
-      (key) => !availableCredentials.has(key),
-    );
-    return [missing.length === 0, missing];
-  }, [agentCredentialsInputFields, inputCredentials]);
-
-  const credentialsRequired = useMemo(
-    () => Object.keys(agentCredentialsInputFields || {}).length > 0,
-    [agentCredentialsInputFields],
+  const agentInputFields = useMemo(
+    () => getVisibleInputFields(agentInputSchema),
+    [agentInputSchema],
   );
 
-  // Final readiness flag combining inputs + credentials when credentials are shown
-  const allRequiredInputsAreSet = useMemo(
+  const agentCredentialsInputFields = useMemo(
+    () => getCredentialFields(agent.credentials_input_schema),
+    [agent.credentials_input_schema],
+  );
+
+  // Validation logic (presence checks derived from schemas)
+  const {
+    missingInputs,
+    missingCredentials,
+    credentialsRequired,
+    allRequiredInputsAreSet,
+  } = useMemo(
     () =>
-      allRequiredInputsAreSetRaw &&
-      (!credentialsRequired || allCredentialsAreSet),
-    [allRequiredInputsAreSetRaw, credentialsRequired, allCredentialsAreSet],
+      deriveReadiness({
+        inputSchema: agentInputSchema,
+        credentialsProperties: agentCredentialsInputFields,
+        values: inputValues,
+        credentialsValues: inputCredentials,
+      }),
+    [
+      agentInputSchema,
+      agentCredentialsInputFields,
+      inputValues,
+      inputCredentials,
+    ],
   );
 
   const notifyMissingRequirements = useCallback(
     (needScheduleName: boolean = false) => {
-      const allMissingFields = (
-        needScheduleName && !scheduleName ? ["schedule_name"] : []
-      )
-        .concat(missingInputs)
-        .concat(
-          credentialsRequired && !allCredentialsAreSet
-            ? missingCredentials.map((k) => `credentials:${k}`)
-            : [],
-        );
+      const allMissingFields = collectMissingFields({
+        needScheduleName,
+        scheduleName,
+        missingInputs,
+        credentialsRequired,
+        allCredentialsAreSet: missingCredentials.length === 0,
+        missingCredentials,
+      });
 
       toast({
         title: "⚠️ Missing required inputs",
@@ -203,21 +114,30 @@ export function useAgentRunModal(
       scheduleName,
       toast,
       credentialsRequired,
-      allCredentialsAreSet,
       missingCredentials,
     ],
   );
 
-  // Action handlers
-  const handleRun = useCallback(() => {
+  function showError(title: string, error: unknown) {
+    toast({
+      title,
+      description: getErrorMessage(error),
+      variant: "destructive",
+    });
+  }
+
+  async function handleRun() {
     if (!allRequiredInputsAreSet) {
       notifyMissingRequirements();
       return;
     }
 
-    if (defaultRunType === "automatic-trigger") {
+    const shouldUseTrigger = defaultRunType === "automatic-trigger";
+
+    if (shouldUseTrigger) {
       // Setup trigger
-      if (!scheduleName.trim()) {
+      const hasScheduleName = scheduleName.trim().length > 0;
+      if (!hasScheduleName) {
         toast({
           title: "⚠️ Trigger name required",
           description: "Please provide a name for your trigger.",
@@ -225,50 +145,63 @@ export function useAgentRunModal(
         });
         return;
       }
-
-      setupTriggerMutation.mutate({
-        data: {
-          name: presetName || scheduleName,
-          description: presetDescription || `Trigger for ${agent.name}`,
-          graph_id: agent.graph_id,
-          graph_version: agent.graph_version,
-          trigger_config: inputValues,
-          agent_credentials: inputCredentials,
-        },
-      });
+      try {
+        const nameToUse = presetName || scheduleName;
+        const descriptionToUse =
+          presetDescription || `Trigger for ${agent.name}`;
+        const response = await setupTriggerMutation.mutateAsync({
+          data: {
+            name: nameToUse,
+            description: descriptionToUse,
+            graph_id: agent.graph_id,
+            graph_version: agent.graph_version,
+            trigger_config: inputValues,
+            agent_credentials: inputCredentials,
+          },
+        });
+        if (response.status === 200) {
+          toast({ title: "Trigger setup complete" });
+          callbacks?.onSetupTrigger?.(response.data);
+          setIsOpen(false);
+        } else {
+          throw new Error(JSON.stringify(response?.data?.detail));
+        }
+      } catch (error: any) {
+        showError("❌ Failed to setup trigger", error);
+      }
     } else {
       // Manual execution
-      executeGraphMutation.mutate({
-        graphId: agent.graph_id,
-        graphVersion: agent.graph_version,
-        data: {
-          inputs: inputValues,
-          credentials_inputs: inputCredentials,
-        },
-      });
-    }
-  }, [
-    allRequiredInputsAreSet,
-    defaultRunType,
-    scheduleName,
-    inputValues,
-    inputCredentials,
-    agent,
-    presetName,
-    presetDescription,
-    notifyMissingRequirements,
-    setupTriggerMutation,
-    executeGraphMutation,
-    toast,
-  ]);
+      try {
+        const response = await executeGraphMutation.mutateAsync({
+          graphId: agent.graph_id,
+          graphVersion: agent.graph_version,
+          data: {
+            inputs: inputValues,
+            credentials_inputs: inputCredentials,
+          },
+        });
 
-  const handleSchedule = useCallback(() => {
+        if (response.status === 200) {
+          toast({ title: "Agent execution started" });
+          callbacks?.onRun?.(response.data);
+          setIsOpen(false);
+        } else {
+          throw new Error(JSON.stringify(response?.data?.detail));
+        }
+      } catch (error: any) {
+        showError("Failed to execute agent", error);
+      }
+    }
+  }
+
+  async function handleSchedule() {
     if (!allRequiredInputsAreSet) {
       notifyMissingRequirements(true);
       return;
     }
 
-    if (!scheduleName.trim()) {
+    const hasScheduleName = scheduleName.trim().length > 0;
+    if (!hasScheduleName) {
       toast({
         title: "⚠️ Schedule name required",
         description: "Please provide a name for your schedule.",
@@ -276,28 +209,27 @@ export function useAgentRunModal(
       });
       return;
     }
-
-    createScheduleMutation.mutate({
-      graphId: agent.graph_id,
-      data: {
-        name: presetName || scheduleName,
-        cron: cronExpression,
-        inputs: inputValues,
-        graph_version: agent.graph_version,
-        credentials: inputCredentials,
-      },
-    });
-  }, [
-    allRequiredInputsAreSet,
-    scheduleName,
-    cronExpression,
-    inputValues,
-    inputCredentials,
-    agent,
-    notifyMissingRequirements,
-    createScheduleMutation,
-    toast,
-  ]);
+    try {
+      const nameToUse = presetName || scheduleName;
+      const response = await createScheduleMutation.mutateAsync({
+        graphId: agent.graph_id,
+        data: {
+          name: nameToUse,
+          cron: cronExpression,
+          inputs: inputValues,
+          graph_version: agent.graph_version,
+          credentials: inputCredentials,
+        },
+      });
+      if (response.status === 200) {
+        toast({ title: "Schedule created" });
+        callbacks?.onCreateSchedule?.(response.data);
+        setIsOpen(false);
+      }
+    } catch (error: any) {
+      showError("❌ Failed to create schedule", error);
+    }
+  }
 
   function handleShowSchedule() {
     // Initialize with sensible defaults when entering schedule view
@@ -342,10 +274,6 @@ export function useAgentRunModal(
     cronExpression,
     allRequiredInputsAreSet,
     missingInputs,
-    // Expose credential readiness for any UI hints if needed
-    // but enforcement is already applied in allRequiredInputsAreSet
-    // allCredentialsAreSet,
-    // missingCredentials,
     agentInputFields,
     agentCredentialsInputFields,
     hasInputFields,

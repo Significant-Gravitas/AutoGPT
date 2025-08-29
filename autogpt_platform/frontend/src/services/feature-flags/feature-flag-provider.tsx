@@ -11,8 +11,15 @@ const envEnabled = process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true";
 
 export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
   const { user, isUserLoading } = useSupabase();
-  const isCloud = getBehaveAs() === BehaveAs.CLOUD;
+  const isCloud = true;
   const isLaunchDarklyConfigured = isCloud && envEnabled && clientId;
+
+  console.log({
+    clientId,
+    envEnabled,
+    isCloud,
+    isLaunchDarklyConfigured,
+  });
 
   const context = useMemo(() => {
     if (isUserLoading || !user) {
