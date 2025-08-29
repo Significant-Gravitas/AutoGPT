@@ -93,11 +93,11 @@ class Webset(BaseModel):
     """
     Set of key-value pairs you want to associate with this object.
     """
-    created_at: Annotated[datetime, Field(alias="createdAt")] | None = None
+    created_at: Annotated[datetime | None, Field(alias="createdAt")] = None
     """
     The date and time the webset was created
     """
-    updated_at: Annotated[datetime, Field(alias="updatedAt")] | None = None
+    updated_at: Annotated[datetime | None, Field(alias="updatedAt")] = None
     """
     The date and time the webset was last updated
     """

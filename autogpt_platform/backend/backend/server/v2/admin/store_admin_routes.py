@@ -2,26 +2,28 @@ import logging
 import tempfile
 import typing
 
-import autogpt_libs.auth.depends
+import autogpt_libs.auth
 import fastapi
 import fastapi.responses
 import prisma.enums
 
 import backend.server.v2.store.db
-import backend.server.v2.store.exceptions
 import backend.server.v2.store.model
 import backend.util.json
 
 logger = logging.getLogger(__name__)
 
-router = fastapi.APIRouter(prefix="/admin", tags=["store", "admin"])
+router = fastapi.APIRouter(
+    prefix="/admin",
+    tags=["store", "admin"],
+    dependencies=[fastapi.Security(autogpt_libs.auth.requires_admin_user)],
+)
 
 
 @router.get(
     "/listings",
     summary="Get Admin Listings History",
     response_model=backend.server.v2.store.model.StoreListingsWithVersionsResponse,
-    dependencies=[fastapi.Depends(autogpt_libs.auth.depends.requires_admin_user)],
 )
 async def get_admin_listings_with_versions(
     status: typing.Optional[prisma.enums.SubmissionStatus] = None,
@@ -66,15 +68,11 @@ async def get_admin_listings_with_versions(
     "/submissions/{store_listing_version_id}/review",
     summary="Review Store Submission",
     response_model=backend.server.v2.store.model.StoreSubmission,
-    dependencies=[fastapi.Depends(autogpt_libs.auth.depends.requires_admin_user)],
 )
 async def review_submission(
     store_listing_version_id: str,
     request: backend.server.v2.store.model.ReviewSubmissionRequest,
-    user: typing.Annotated[
-        autogpt_libs.auth.models.User,
-        fastapi.Depends(autogpt_libs.auth.depends.requires_admin_user),
-    ],
+    user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
 ):
     """
     Review a store listing submission.
@@ -82,7 +80,7 @@ async def review_submission(
     Args:
         store_listing_version_id: ID of the submission to review
         request: Review details including approval status and comments
-        user: Authenticated admin user performing the review
+        user_id: Authenticated admin user performing the review
 
     Returns:
         StoreSubmission with updated review information
@@ -93,7 +91,7 @@ async def review_submission(
             is_approved=request.is_approved,
             external_comments=request.comments,
             internal_comments=request.internal_comments or "",
-            reviewer_id=user.user_id,
+            reviewer_id=user_id,
         )
         return submission
     except Exception as e:
@@ -108,13 +106,9 @@ async def review_submission(
     "/submissions/download/{store_listing_version_id}",
     summary="Admin Download Agent File",
     tags=["store", "admin"],
-    dependencies=[fastapi.Depends(autogpt_libs.auth.depends.requires_admin_user)],
 )
 async def admin_download_agent_file(
-    user: typing.Annotated[
-        autogpt_libs.auth.models.User,
-        fastapi.Depends(autogpt_libs.auth.depends.requires_admin_user),
-    ],
+    user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
     store_listing_version_id: str = fastapi.Path(
         ..., description="The ID of the agent to download"
     ),
@@ -132,7 +126,7 @@ async def admin_download_agent_file(
         HTTPException: If the agent is not found or an unexpected error occurs.
     """
     graph_data = await backend.server.v2.store.db.get_agent_as_admin(
-        user_id=user.user_id,
+        user_id=user_id,
         store_listing_version_id=store_listing_version_id,
     )
     file_name = f"agent_{graph_data.id}_v{graph_data.version or 'latest'}.json"
