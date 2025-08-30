@@ -2,7 +2,7 @@ import logging
 from collections import defaultdict
 from typing import Annotated, Any, Optional, Sequence
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, HTTPException, Security
 from prisma.enums import AgentExecutionStatus, APIKeyPermission
 from typing_extensions import TypedDict
 
@@ -47,7 +47,7 @@ class GraphExecutionResult(TypedDict):
 @v1_router.get(
     path="/blocks",
     tags=["blocks"],
-    dependencies=[Depends(require_permission(APIKeyPermission.READ_BLOCK))],
+    dependencies=[Security(require_permission(APIKeyPermission.READ_BLOCK))],
 )
 def get_graph_blocks() -> Sequence[dict[Any, Any]]:
     blocks = [block() for block in backend.data.block.get_blocks().values()]
@@ -57,12 +57,12 @@ def get_graph_blocks() -> Sequence[dict[Any, Any]]:
 @v1_router.post(
     path="/blocks/{block_id}/execute",
     tags=["blocks"],
-    dependencies=[Depends(require_permission(APIKeyPermission.EXECUTE_BLOCK))],
+    dependencies=[Security(require_permission(APIKeyPermission.EXECUTE_BLOCK))],
 )
 async def execute_graph_block(
     block_id: str,
     data: BlockInput,
-    api_key: APIKey = Depends(require_permission(APIKeyPermission.EXECUTE_BLOCK)),
+    api_key: APIKey = Security(require_permission(APIKeyPermission.EXECUTE_BLOCK)),
 ) -> CompletedBlockOutput:
     obj = backend.data.block.get_block(block_id)
     if not obj:
@@ -82,7 +82,7 @@ async def execute_graph(
     graph_id: str,
     graph_version: int,
     node_input: Annotated[dict[str, Any], Body(..., embed=True, default_factory=dict)],
-    api_key: APIKey = Depends(require_permission(APIKeyPermission.EXECUTE_GRAPH)),
+    api_key: APIKey = Security(require_permission(APIKeyPermission.EXECUTE_GRAPH)),
 ) -> dict[str, Any]:
     try:
         graph_exec = await add_graph_execution(
@@ -104,7 +104,7 @@ async def execute_graph(
 async def get_graph_execution_results(
     graph_id: str,
     graph_exec_id: str,
-    api_key: APIKey = Depends(require_permission(APIKeyPermission.READ_GRAPH)),
+    api_key: APIKey = Security(require_permission(APIKeyPermission.READ_GRAPH)),
 ) -> GraphExecutionResult:
     graph = await graph_db.get_graph(graph_id, user_id=api_key.user_id)
     if not graph:
