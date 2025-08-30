@@ -2,7 +2,7 @@ import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import stripe
 from prisma import Json
@@ -23,7 +23,6 @@ from pydantic import BaseModel
 
 from backend.data import db
 from backend.data.block_cost_config import BLOCK_COSTS
-from backend.data.cost import BlockCost
 from backend.data.model import (
     AutoTopUpConfig,
     RefundRequest,
@@ -40,6 +39,9 @@ from backend.util.json import SafeJson
 from backend.util.models import Pagination
 from backend.util.retry import func_retry
 from backend.util.settings import Settings
+
+if TYPE_CHECKING:
+    from backend.data.block import Block, BlockCost
 
 settings = Settings()
 stripe.api_key = settings.secrets.stripe_api_key
@@ -997,8 +999,12 @@ def get_user_credit_model() -> UserCreditBase:
     return UserCredit()
 
 
-def get_block_costs() -> dict[str, list[BlockCost]]:
+def get_block_costs() -> dict[str, list["BlockCost"]]:
     return {block().id: costs for block, costs in BLOCK_COSTS.items()}
+
+
+def get_block_cost(block: "Block") -> list["BlockCost"]:
+    return BLOCK_COSTS.get(block.__class__, [])
 
 
 async def get_stripe_customer_id(user_id: str) -> str:

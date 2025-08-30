@@ -29,8 +29,7 @@ from backend.blocks.replicate.replicate_block import ReplicateModelBlock
 from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
 from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.blocks.text_to_speech_block import UnrealTextToSpeechBlock
-from backend.data.block import Block
-from backend.data.cost import BlockCost, BlockCostType
+from backend.data.block import Block, BlockCost, BlockCostType
 from backend.integrations.credentials_store import (
     aiml_api_credentials,
     anthropic_credentials,

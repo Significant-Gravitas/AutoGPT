@@ -63,7 +63,7 @@ except ImportError:
 
 # Cost System
 try:
-    from backend.data.cost import BlockCost, BlockCostType
+    from backend.data.block import BlockCost, BlockCostType
 except ImportError:
     from backend.data.block_cost_config import BlockCost, BlockCostType
 
