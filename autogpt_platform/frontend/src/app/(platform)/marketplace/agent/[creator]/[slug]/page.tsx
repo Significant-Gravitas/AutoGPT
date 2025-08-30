@@ -51,20 +51,22 @@ export default async function MarketplaceAgentPage({
   ]);
 
   const { user } = await getServerUser();
-  const { data: creator_agent } = await getV2GetSpecificAgent(
+  const { data: creator_agent, status} = await getV2GetSpecificAgent(
     creator_lower,
     params.slug,
   ); // Already cached in above prefetch
+  if (status === 200) {
   await prefetchGetV2GetAgentByStoreIdQuery(
     queryClient,
-    (creator_agent as StoreAgentDetails)?.active_version_id ?? "",
+    creator_agent.active_version_id ?? "",
     {
       query: {
         enabled:
-          !!user && !!(creator_agent as StoreAgentDetails)?.active_version_id,
+          !!user && !!creator_agent.active_version_id,
+        },
       },
-    },
-  );
+    );
+  }
 
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
