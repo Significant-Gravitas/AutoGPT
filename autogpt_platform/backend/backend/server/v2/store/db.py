@@ -1280,6 +1280,7 @@ async def review_store_submission(
                     name=sub_graph.name or heading,
                     submissionStatus=prisma.enums.SubmissionStatus.APPROVED,
                     subHeading=heading,
+                    imageUrls=sub_graph.imageUrls or [],
                     description=f"{heading}: {sub_graph.description}",
                     changesSummary=f"This listing is added as a {heading} / #{store_listing_version.agentGraphId}.",
                     isAvailable=False,  # Hide sub-graphs from the store by default.
