@@ -23,9 +23,9 @@ interface SaveControlProps {
   onDescriptionChange: (description: string) => void;
   pinSavePopover: boolean;
 
-  blockMenuSelected: "save" | "block" | "";
+  blockMenuSelected: "save" | "block" | "search" | "";
   setBlockMenuSelected: React.Dispatch<
-    React.SetStateAction<"" | "save" | "block">
+    React.SetStateAction<"" | "save" | "block" | "search">
   >;
 }
 

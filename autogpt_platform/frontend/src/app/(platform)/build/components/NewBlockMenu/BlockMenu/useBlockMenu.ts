@@ -3,7 +3,7 @@ import { useState } from "react";
 interface useBlockMenuProps {
     pinBlocksPopover: boolean;
     setBlockMenuSelected: React.Dispatch<
-    React.SetStateAction<"" | "save" | "block">
+    React.SetStateAction<"" | "save" | "block" | "search">
   >;
 }
 

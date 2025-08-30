@@ -1,0 +1,76 @@
+import React from "react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { MagnifyingGlassIcon } from "@phosphor-icons/react";
+import { GraphSearchContent } from "./GraphSearchContent";
+import { ControlPanelButton } from "../ControlPanelButton";
+import { useGraphSearch } from "./useGraphSearch";
+import { CustomNode } from "@/components/CustomNode";
+
+interface GraphSearchMenuProps {
+  nodes: CustomNode[];
+  blockMenuSelected: "save" | "block" | "search" | "";
+  setBlockMenuSelected: React.Dispatch<
+    React.SetStateAction<"" | "save" | "block" | "search">
+  >;
+  onNodeSelect: (nodeId: string) => void;
+  onNodeHover?: (nodeId: string | null) => void;
+}
+
+export const GraphSearchMenu: React.FC<GraphSearchMenuProps> = ({
+  nodes,
+  blockMenuSelected,
+  setBlockMenuSelected,
+  onNodeSelect,
+  onNodeHover,
+}) => {
+  const { open, setOpen, searchQuery, setSearchQuery, filteredNodes } = 
+    useGraphSearch(nodes);
+
+  const handleNodeSelect = (nodeId: string) => {
+    onNodeSelect(nodeId);
+    setOpen(false);
+    setSearchQuery("");
+    setBlockMenuSelected("");
+  };
+
+  const handleOpenChange = (newOpen: boolean) => {
+    setOpen(newOpen);
+    setBlockMenuSelected(newOpen ? "search" : "");
+  };
+
+  return (
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger className="hover:cursor-pointer">
+        <ControlPanelButton
+          data-id="graph-search-control-popover-trigger"
+          data-testid="graph-search-control-button"
+          selected={blockMenuSelected === "search"}
+          className="rounded-none"
+        >
+          <MagnifyingGlassIcon className="h-5 w-5" weight="bold" />
+        </ControlPanelButton>
+      </PopoverTrigger>
+
+      <PopoverContent
+        side="right"
+        align="start"
+        alignOffset={-70}  // Offset upward to align with control panel top
+        sideOffset={16}
+        className="absolute h-[75vh] w-[46.625rem] overflow-hidden rounded-[1rem] border-none p-0 shadow-[0_2px_6px_0_rgba(0,0,0,0.05)]"
+        data-id="graph-search-popover-content"
+      >
+        <GraphSearchContent
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          filteredNodes={filteredNodes}
+          onNodeSelect={handleNodeSelect}
+          onNodeHover={onNodeHover}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+};
