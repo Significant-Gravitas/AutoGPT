@@ -115,7 +115,7 @@ async def generate_activity_status_for_execution(
 
         # Get all node executions for this graph execution
         node_executions = await db_client.get_node_executions(
-            graph_exec_id, include_exec_data=True
+            graph_exec_id=graph_exec_id, include_exec_data=True
         )
 
         # Get graph metadata and full graph structure for name, description, and links
