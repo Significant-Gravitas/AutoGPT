@@ -395,7 +395,9 @@ export function isEmpty(value: any): boolean {
   return (
     value === undefined ||
     value === "" ||
-    (typeof value === "object" && _isEmpty(value))
+    (typeof value === "object" &&
+      (value instanceof Date ? isNaN(value.getTime()) : _isEmpty(value))) ||
+    (typeof value === "number" && isNaN(value))
   );
 }
 

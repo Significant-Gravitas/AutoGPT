@@ -149,12 +149,21 @@ Key models (defined in `/backend/schema.prisma`):
 
 **Adding a new block:**
 
+Follow the comprehensive [Block SDK Guide](../../../docs/content/platform/block-sdk-guide.md) which covers:
+- Provider configuration with `ProviderBuilder`
+- Block schema definition
+- Authentication (API keys, OAuth, webhooks)
+- Testing and validation
+- File organization
+
+Quick steps:
 1. Create new file in `/backend/backend/blocks/`
-2. Inherit from `Block` base class
-3. Define input/output schemas
-4. Implement `run` method
-5. Register in block registry
-6. Generate the block uuid using `uuid.uuid4()`
+2. Configure provider using `ProviderBuilder` in `_config.py`
+3. Inherit from `Block` base class
+4. Define input/output schemas using `BlockSchema`
+5. Implement async `run` method
+6. Generate unique block ID using `uuid.uuid4()`
+7. Test with `poetry run pytest backend/blocks/test/test_block.py`
 
 Note: when making many new blocks analyze the interfaces for each of these blocks and picture if they would go well together in a graph based editor or would they struggle to connect productively?
 ex: do the inputs and outputs tie well together?

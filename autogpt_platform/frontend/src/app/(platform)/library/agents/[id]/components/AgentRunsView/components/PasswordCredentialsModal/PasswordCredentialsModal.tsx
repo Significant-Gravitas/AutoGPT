@@ -1,4 +1,3 @@
-import { FC } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -24,13 +23,21 @@ import {
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
 
-export const UserPasswordCredentialsModal: FC<{
+type Props = {
   schema: BlockIOCredentialsSubSchema;
   open: boolean;
   onClose: () => void;
   onCredentialsCreate: (creds: CredentialsMetaInput) => void;
   siblingInputs?: Record<string, any>;
-}> = ({ schema, open, onClose, onCredentialsCreate, siblingInputs }) => {
+};
+
+export function PasswordCredentialsModal({
+  schema,
+  open,
+  onClose,
+  onCredentialsCreate,
+  siblingInputs,
+}: Props) {
   const credentials = useCredentials(schema, siblingInputs);
 
   const formSchema = z.object({
@@ -146,4 +153,4 @@ export const UserPasswordCredentialsModal: FC<{
       </DialogContent>
     </Dialog>
   );
-};
+}

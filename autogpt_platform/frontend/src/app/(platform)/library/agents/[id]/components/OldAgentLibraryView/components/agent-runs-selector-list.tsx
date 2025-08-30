@@ -21,8 +21,12 @@ import { Separator } from "@/components/ui/separator";
 
 import { agentRunStatusMap } from "@/components/agents/agent-run-status-chip";
 import AgentRunSummaryCard from "@/components/agents/agent-run-summary-card";
-import { AgentRunsQuery } from "../../use-agent-runs";
+import { AgentRunsQuery } from "../use-agent-runs";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { RunAgentModal } from "../../AgentRunsView/components/RunAgentModal/RunAgentModal";
+import { PlusIcon } from "@phosphor-icons/react";
+import { LibraryAgent as GeneratedLibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 
 interface AgentRunsSelectorListProps {
   agent: LibraryAgent;
@@ -67,6 +71,8 @@ export function AgentRunsSelectorList({
     "runs",
   );
 
+  const isNewAgentRunsEnabled = useGetFlag(Flag.NEW_AGENT_RUNS);
+
   useEffect(() => {
     if (selectedView.type === "schedule") {
       setActiveListTab("scheduled");
@@ -79,7 +85,17 @@ export function AgentRunsSelectorList({
 
   return (
     <aside className={cn("flex flex-col gap-4", className)}>
-      {allowDraftNewRun && (
+      {isNewAgentRunsEnabled ? (
+        <RunAgentModal
+          triggerSlot={
+            <Button variant="primary" size="large" className="w-full">
+              <PlusIcon size={20} /> New Run
+            </Button>
+          }
+          agent={agent as unknown as GeneratedLibraryAgent}
+          agentId={agent.id.toString()}
+        />
+      ) : allowDraftNewRun ? (
         <Button
           className={"mb-4 hidden lg:flex"}
           onClick={onSelectDraftNewRun}
@@ -87,7 +103,7 @@ export function AgentRunsSelectorList({
         >
           New {agent.has_external_trigger ? "trigger" : "run"}
         </Button>
-      )}
+      ) : null}
 
       <div className="flex gap-2">
         <Badge

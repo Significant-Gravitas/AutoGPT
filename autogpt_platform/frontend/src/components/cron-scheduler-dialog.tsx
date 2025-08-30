@@ -27,9 +27,12 @@ export function CronSchedulerDialog({
   const [scheduleName, setScheduleName] = useState<string>(defaultScheduleName);
 
   // Get user's timezone
-  const { data: timezoneData } = useGetV1GetUserTimezone();
-  const userTimezone = timezoneData?.data?.timezone || "UTC";
-  const timezoneDisplay = getTimezoneDisplayName(userTimezone);
+  const { data: userTimezone } = useGetV1GetUserTimezone({
+    query: {
+      select: (res) => (res.status === 200 ? res.data.timezone : undefined),
+    },
+  });
+  const timezoneDisplay = getTimezoneDisplayName(userTimezone || "UTC");
 
   // Reset state when dialog opens
   useEffect(() => {
