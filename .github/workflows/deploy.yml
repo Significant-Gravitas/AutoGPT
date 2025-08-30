@@ -1,0 +1,47 @@
+name: Deploy Auto-GPT to Oracle Cloud
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Connect to server and deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ORACLE_SERVER_IP }}
+          username: ${{ secrets.ORACLE_SSH_USER }}
+          key: ${{ secrets.ORACLE_SSH_PRIVATE_KEY }}
+          script: |
+            # Update and install Docker prerequisites
+            sudo apt-get update -y
+            sudo apt-get install -y ca-certificates curl gnupg
+
+            # Add Docker's official GPG key
+            sudo install -m 0755 -d /etc/apt/keyrings
+            curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+            sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+            # Set up the repository
+            echo \
+              "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+              $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+              sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+            # Install Docker Engine
+            sudo apt-get update -y
+            sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+            # Clone the repository if it doesn't exist, or pull the latest changes if it does
+            if [ ! -d "AutoGPT" ]; then
+              git clone https://github.com/Significant-Gravitas/AutoGPT.git
+            else
+              cd AutoGPT
+              git pull
+              cd ..
+            fi
+
+            # Run the platform
+            cd AutoGPT/autogpt_platform
+            sudo docker compose up -d --build
