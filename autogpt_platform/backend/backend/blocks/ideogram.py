@@ -30,6 +30,7 @@ TEST_CREDENTIALS_INPUT = {
 
 
 class IdeogramModelName(str, Enum):
+    V3 = "V_3"
     V2 = "V_2"
     V1 = "V_1"
     V1_TURBO = "V_1_TURBO"
@@ -95,8 +96,8 @@ class IdeogramModelBlock(Block):
             title="Prompt",
         )
         ideogram_model_name: IdeogramModelName = SchemaField(
-            description="The name of the Image Generation Model, e.g., V_2",
-            default=IdeogramModelName.V2,
+            description="The name of the Image Generation Model, e.g., V_3",
+            default=IdeogramModelName.V3,
             title="Image Generation Model",
             advanced=False,
         )
@@ -237,6 +238,111 @@ class IdeogramModelBlock(Block):
         color_palette_name: str,
         custom_colors: Optional[list[str]],
     ):
+        # Use V3 endpoint for V3 model, legacy endpoint for others
+        if model_name == "V_3":
+            return await self._run_model_v3(
+                api_key,
+                prompt,
+                seed,
+                aspect_ratio,
+                magic_prompt_option,
+                style_type,
+                negative_prompt,
+                color_palette_name,
+                custom_colors,
+            )
+        else:
+            return await self._run_model_legacy(
+                api_key,
+                model_name,
+                prompt,
+                seed,
+                aspect_ratio,
+                magic_prompt_option,
+                style_type,
+                negative_prompt,
+                color_palette_name,
+                custom_colors,
+            )
+
+    async def _run_model_v3(
+        self,
+        api_key: SecretStr,
+        prompt: str,
+        seed: Optional[int],
+        aspect_ratio: str,
+        magic_prompt_option: str,
+        style_type: str,
+        negative_prompt: Optional[str],
+        color_palette_name: str,
+        custom_colors: Optional[list[str]],
+    ):
+        url = "https://api.ideogram.ai/v1/ideogram-v3/generate"
+        headers = {
+            "Api-Key": api_key.get_secret_value(),
+            "Content-Type": "application/json",
+        }
+
+        # Map legacy aspect ratio values to V3 format
+        aspect_ratio_map = {
+            "ASPECT_10_16": "10x16",
+            "ASPECT_16_10": "16x10",
+            "ASPECT_9_16": "9x16",
+            "ASPECT_16_9": "16x9",
+            "ASPECT_3_2": "3x2",
+            "ASPECT_2_3": "2x3",
+            "ASPECT_4_3": "4x3",
+            "ASPECT_3_4": "3x4",
+            "ASPECT_1_1": "1x1",
+            "ASPECT_1_3": "1x3",
+            "ASPECT_3_1": "3x1",
+            # Additional V3 supported ratios
+            "ASPECT_1_2": "1x2",
+            "ASPECT_2_1": "2x1",
+            "ASPECT_4_5": "4x5",
+            "ASPECT_5_4": "5x4",
+        }
+
+        v3_aspect_ratio = aspect_ratio_map.get(
+            aspect_ratio, "1x1"
+        )  # Default to 1x1 if not found
+
+        # Use JSON for V3 endpoint (simpler than multipart/form-data)
+        data: Dict[str, Any] = {
+            "prompt": prompt,
+            "aspect_ratio": v3_aspect_ratio,
+            "magic_prompt": magic_prompt_option,
+            "style_type": style_type,
+        }
+
+        if seed is not None:
+            data["seed"] = seed
+
+        if negative_prompt:
+            data["negative_prompt"] = negative_prompt
+
+        # Note: V3 endpoint may have different color palette support
+        # For now, we'll omit color palettes for V3 to avoid errors
+
+        try:
+            response = await Requests().post(url, headers=headers, json=data)
+            return response.json()["data"][0]["url"]
+        except RequestException as e:
+            raise Exception(f"Failed to fetch image with V3 endpoint: {str(e)}")
+
+    async def _run_model_legacy(
+        self,
+        api_key: SecretStr,
+        model_name: str,
+        prompt: str,
+        seed: Optional[int],
+        aspect_ratio: str,
+        magic_prompt_option: str,
+        style_type: str,
+        negative_prompt: Optional[str],
+        color_palette_name: str,
+        custom_colors: Optional[list[str]],
+    ):
         url = "https://api.ideogram.ai/generate"
         headers = {
             "Api-Key": api_key.get_secret_value(),
@@ -249,9 +355,12 @@ class IdeogramModelBlock(Block):
                 "model": model_name,
                 "aspect_ratio": aspect_ratio,
                 "magic_prompt_option": magic_prompt_option,
-                "style_type": style_type,
             }
         }
+
+        # Only add style_type for V2, V2_TURBO, and V3 models (V1 models don't support it)
+        if model_name in ["V_2", "V_2_TURBO", "V_3"]:
+            data["image_request"]["style_type"] = style_type
 
         if seed is not None:
             data["image_request"]["seed"] = seed
@@ -259,18 +368,20 @@ class IdeogramModelBlock(Block):
         if negative_prompt:
             data["image_request"]["negative_prompt"] = negative_prompt
 
-        if color_palette_name != "NONE":
-            data["color_palette"] = {"name": color_palette_name}
-        elif custom_colors:
-            data["color_palette"] = {
-                "members": [{"color_hex": color} for color in custom_colors]
-            }
+        # Only add color palette for V2 and V2_TURBO models (V1 models don't support it)
+        if model_name in ["V_2", "V_2_TURBO"]:
+            if color_palette_name != "NONE":
+                data["color_palette"] = {"name": color_palette_name}
+            elif custom_colors:
+                data["color_palette"] = {
+                    "members": [{"color_hex": color} for color in custom_colors]
+                }
 
         try:
             response = await Requests().post(url, headers=headers, json=data)
             return response.json()["data"][0]["url"]
         except RequestException as e:
-            raise Exception(f"Failed to fetch image: {str(e)}")
+            raise Exception(f"Failed to fetch image with legacy endpoint: {str(e)}")
 
     async def upscale_image(self, api_key: SecretStr, image_url: str):
         url = "https://api.ideogram.ai/upscale"
