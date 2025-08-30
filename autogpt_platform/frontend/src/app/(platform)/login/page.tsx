@@ -86,16 +86,29 @@ export default function LoginPage() {
 
             {/* Turnstile CAPTCHA Component */}
             {isCloudEnv && !turnstile.verified ? (
-              <Turnstile
-                key={captchaKey}
-                siteKey={turnstile.siteKey}
-                onVerify={turnstile.handleVerify}
-                onExpire={turnstile.handleExpire}
-                onError={turnstile.handleError}
-                setWidgetId={turnstile.setWidgetId}
-                action="login"
-                shouldRender={turnstile.shouldRender}
-              />
+              turnstile.shouldRender ? (
+                <Turnstile
+                  key={captchaKey}
+                  siteKey={turnstile.siteKey}
+                  onVerify={turnstile.handleVerify}
+                  onExpire={turnstile.handleExpire}
+                  onError={turnstile.handleError}
+                  setWidgetId={turnstile.setWidgetId}
+                  action="login"
+                  shouldRender={turnstile.shouldRender}
+                />
+              ) : (
+                <div className="my-4 rounded-md border border-yellow-200 bg-yellow-50 p-4">
+                  <div className="flex">
+                    <WarningOctagonIcon className="h-5 w-5 text-yellow-400" />
+                    <div className="ml-3">
+                      <Text variant="small-medium" className="text-yellow-800">
+                        CAPTCHA verification is currently unavailable. Please try again later or contact support.
+                      </Text>
+                    </div>
+                  </div>
+                </div>
+              )
             ) : null}
 
             <Button
