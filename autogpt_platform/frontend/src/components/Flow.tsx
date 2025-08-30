@@ -17,6 +17,8 @@ import {
   Background,
   Node,
   OnConnect,
+  OnConnectStart,
+  OnConnectEnd,
   Connection,
   MarkerType,
   NodeChange,
@@ -48,6 +50,18 @@ import ConnectionLine from "./ConnectionLine";
 import { Control, ControlPanel } from "@/components/edit/control/ControlPanel";
 import { SaveControl } from "@/components/edit/control/SaveControl";
 import { BlocksControl } from "@/components/edit/control/BlocksControl";
+import { FloatingBlocksMenu } from "@/components/edit/control/FloatingBlocksMenu";
+import {
+  ConnectionSelector,
+  DynamicKeyDialog,
+} from "@/components/edit/control/ConnectionSelector";
+import { DictConnectionDialog } from "@/components/edit/control/DictConnectionDialog";
+import {
+  getCompatibleInputs,
+  getCompatibleOutputs,
+  getAdditionalPropertiesType,
+  getArrayItemsType,
+} from "@/lib/utils/connectionUtils";
 import { IconUndo2, IconRedo2 } from "@/components/ui/icons";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { startTutorial } from "./tutorial";
@@ -96,6 +110,7 @@ const FlowEditor: React.FC<{
     getNode,
     deleteElements,
     updateNode,
+    updateNodeData,
     getViewport,
     setViewport,
     screenToFlowPosition,
@@ -110,6 +125,81 @@ const FlowEditor: React.FC<{
   const [pinBlocksPopover, setPinBlocksPopover] = useState(false);
   // State to control if save popover should be pinned open
   const [pinSavePopover, setPinSavePopover] = useState(false);
+
+  // Connection drag state
+  const [connectionDragState, setConnectionDragState] = useState<{
+    sourceNodeId: string | null;
+    sourceHandle: string | null;
+    sourceHandleType: "source" | "target" | null;
+    dropPosition: { x: number; y: number } | null;
+  }>({
+    sourceNodeId: null,
+    sourceHandle: null,
+    sourceHandleType: null,
+    dropPosition: null,
+  });
+  const [showFloatingMenu, setShowFloatingMenu] = useState(false);
+  const isSelectingBlockRef = useRef(false); // Track if we're in the process of selecting a block
+
+  // Use a ref to track connection state immediately (state updates are async)
+  const connectionDragRef = useRef<{
+    sourceNodeId: string | null;
+    sourceHandle: string | null;
+    sourceHandleType: "source" | "target" | null;
+  }>({
+    sourceNodeId: null,
+    sourceHandle: null,
+    sourceHandleType: null,
+  });
+  const [connectionSelectorState, setConnectionSelectorState] = useState<{
+    isOpen: boolean;
+    newNodeId: string | null;
+    options: Array<{
+      handleId: string;
+      schema: any;
+      isRequired?: boolean;
+      allowDynamicKey?: boolean;
+      dynamicKeyType?: string;
+      isDynamic?: boolean;
+    }>;
+    title: string;
+    allowDynamicKey: boolean;
+    dynamicKeyType?: string;
+  }>({
+    isOpen: false,
+    newNodeId: null,
+    options: [],
+    title: "",
+    allowDynamicKey: false,
+  });
+  const [dynamicKeyDialogState, setDynamicKeyDialogState] = useState<{
+    isOpen: boolean;
+    nodeId: string | null;
+    handleId: string | null;
+    isArray: boolean;
+    keyType?: string;
+  }>({
+    isOpen: false,
+    nodeId: null,
+    handleId: null,
+    isArray: false,
+  });
+
+  const [dictConnectionState, setDictConnectionState] = useState<{
+    isOpen: boolean;
+    newNodeId: string | null;
+    handleId: string | null;
+    keyType: string;
+    valueType: string;
+    sourceType: string;
+  }>({
+    isOpen: false,
+    newNodeId: null,
+    handleId: null,
+    keyType: "string",
+    valueType: "any",
+    sourceType: "any",
+  });
 
   const {
     agentName,
@@ -325,14 +415,33 @@ const FlowEditor: React.FC<{
       );
 
       if (existingConnection) {
-        console.warn("This exact connection already exists.");
+        console.warn(
+          "[onConnect] ❌ This exact connection already exists:",
+          existingConnection,
+        );
         return;
       }
 
-      const edgeColor = getTypeColor(
-        getOutputType(nodes, connection.source!, connection.sourceHandle!),
+      const outputType = getOutputType(
+        nodes,
+        connection.source!,
+        connection.sourceHandle!,
       );
+
+      const edgeColor = getTypeColor(outputType);
       const sourceNode = getNode(connection.source!);
+      const targetNode = getNode(connection.target!);
+
+      // Check if both nodes exist
+      if (!sourceNode || !targetNode) {
+        console.error("[onConnect] ❌ Source or target node not found:", {
+          sourceNode: sourceNode?.id,
+          targetNode: targetNode?.id,
+          connection,
+        });
+        return;
+      }
+
       const newEdge: CustomEdge = {
         id: formatEdgeID(connection),
         type: "custom",
@@ -343,8 +452,8 @@ const FlowEditor: React.FC<{
         },
         data: {
           edgeColor,
-          sourcePos: sourceNode!.position,
-          isStatic: sourceNode!.data.isOutputStatic,
+          sourcePos: sourceNode.position,
+          isStatic: sourceNode.data.isOutputStatic,
           beadUp: 0,
           beadDown: 0,
         },
@@ -376,6 +485,86 @@ const FlowEditor: React.FC<{
       formatEdgeID,
       getOutputType,
     ],
+  );
+
+  const onConnectStart: OnConnectStart = useCallback((event, params) => {
+    // Track the source of the connection drag
+    if (params?.nodeId && params?.handleId && params?.handleType) {
+      // Update ref immediately
+      connectionDragRef.current = {
+        sourceNodeId: params.nodeId,
+        sourceHandle: params.handleId,
+        sourceHandleType: params.handleType,
+      };
+
+      // Also update state for other components
+      setConnectionDragState({
+        sourceNodeId: params.nodeId,
+        sourceHandle: params.handleId,
+        sourceHandleType: params.handleType,
+        dropPosition: null,
+      });
+    }
+  }, []);
+
+  const onConnectEnd: OnConnectEnd = useCallback(
+    (event) => {
+      // Use the ref to check if we were dragging a connection
+      const isDraggingConnection =
+        connectionDragRef.current.sourceNodeId !== null;
+
+      if (!isDraggingConnection) {
+        // Not dragging a connection, ignore
+        return;
+      }
+
+      // Check if the connection was dropped without connecting
+      const target = event.target as HTMLElement;
+
+      // Check if the target is the pane or its child elements
+      const isPane =
+        target.classList.contains("react-flow__pane") ||
+        target.classList.contains("react-flow__background") ||
+        target.closest(".react-flow__pane");
+
+      // Also check if we're not over a handle or node
+      const isOverHandle = target.closest(".react-flow__handle");
+      const isOverNode = target.closest(".react-flow__node");
+
+      if (isPane && !isOverHandle && !isOverNode) {
+        // Get the drop position in screen coordinates (for the menu)
+        const mouseEvent = event as unknown as MouseEvent;
+        const screenPosition = {
+          x: mouseEvent.clientX,
+          y: mouseEvent.clientY,
+        };
+
+        // Update state to show the floating menu
+        setConnectionDragState({
+          ...connectionDragRef.current,
+          dropPosition: screenPosition, // Use screen coordinates for menu positioning
+        });
+        setShowFloatingMenu(true);
+        // DON'T reset the ref here - we need it for the floating menu selection
+      } else {
+        // Reset state if connected or cancelled
+        setConnectionDragState({
+          sourceNodeId: null,
+          sourceHandle: null,
+          sourceHandleType: null,
+          dropPosition: null,
+        });
+        setShowFloatingMenu(false);
+
+        // Reset the ref only when not showing the floating menu
+        connectionDragRef.current = {
+          sourceNodeId: null,
+          sourceHandle: null,
+          sourceHandleType: null,
+        };
+      }
+    },
+    [screenToFlowPosition],
   );
 
   const onEdgesChange = useCallback(
@@ -489,7 +678,12 @@ const FlowEditor: React.FC<{
   }, [nodes, getViewport, setViewport]);
 
   const addNode = useCallback(
-    (blockId: string, nodeType: string, hardcodedValues: any = {}) => {
+    (
+      blockId: string,
+      nodeType: string,
+      hardcodedValues: any = {},
+      position?: { x: number; y: number },
+    ) => {
       const nodeSchema = availableBlocks.find((node) => node.id === blockId);
       if (!nodeSchema) {
         console.error(`Schema not found for block ID: ${blockId}`);
@@ -509,7 +703,8 @@ const FlowEditor: React.FC<{
 
       const { x, y } = getViewport();
       const viewportCoordinates =
-        nodeDimensions && Object.keys(nodeDimensions).length > 0
+        position ||
+        (nodeDimensions && Object.keys(nodeDimensions).length > 0
           ? // we will get all the dimension of nodes, then store
             findNewlyAddedBlockCoordinates(
               nodeDimensions,
@@ -521,7 +716,7 @@ const FlowEditor: React.FC<{
             {
               x: window.innerWidth / 2 - x,
               y: window.innerHeight / 2 - y,
-            };
+            });
 
       const newNode: CustomNode = {
         id: nodeId.toString(),
@@ -565,6 +760,8 @@ const FlowEditor: React.FC<{
         undo: () => deleteElements({ nodes: [{ id: newNode.id }] }),
         redo: () => addNodes(newNode),
       });
+
+      return newNode.id; // Return the new node ID for connection handling
     },
     [
       nodeId,
@@ -576,6 +773,631 @@ const FlowEditor: React.FC<{
       deleteElements,
       clearNodesStatusAndOutput,
     ],
+  );
+
+  const handleBlockSelectFromFloatingMenu = useCallback(
+    (
+      blockId: string,
+      blockName: string,
+      hardcodedValues: Record<string, any>,
+    ) => {
+      // Mark that we're selecting a block
+      isSelectingBlockRef.current = true;
+
+      // Close the floating menu immediately
+      setShowFloatingMenu(false);
+      // Convert screen position back to flow coordinates for node placement
+      const flowPosition = connectionDragState.dropPosition
+        ? screenToFlowPosition({
+            x: connectionDragState.dropPosition.x,
+            y: connectionDragState.dropPosition.y,
+          })
+        : undefined;
+
+      // Add the new node at the drop position
+      const newNodeId = addNode(
+        blockId,
+        blockName,
+        hardcodedValues,
+        flowPosition,
+      );
+
+      if (
+        !newNodeId ||
+        !connectionDragState.sourceNodeId ||
+        !connectionDragState.sourceHandle
+      ) {
+        setShowFloatingMenu(false);
+        setConnectionDragState({
+          sourceNodeId: null,
+          sourceHandle: null,
+          sourceHandleType: null,
+          dropPosition: null,
+        });
+        return;
+      }
+
+      // Get the new node's schema to check compatible connections
+      const newNodeSchema = availableBlocks.find((b) => b.id === blockId);
+      if (!newNodeSchema) {
+        setShowFloatingMenu(false);
+        return;
+      }
+
+      // Determine compatible connections
+      const sourceNode = nodes.find(
+        (n) => n.id === connectionDragState.sourceNodeId,
+      );
+      if (!sourceNode) {
+        setShowFloatingMenu(false);
+        return;
+      }
+
+      let compatibleConnections: Array<{
+        handleId: string;
+        schema: any;
+        isRequired?: boolean;
+        isDynamic?: boolean;
+        needsUserChoice?: boolean;
+      }> = [];
+      let connectionDirection: "source-to-target" | "target-to-source";
+
+      if (connectionDragState.sourceHandleType === "source") {
+        // Dragging from output to input
+        const sourceSchema =
+          sourceNode.data.outputSchema?.properties?.[
+            connectionDragState.sourceHandle
+          ];
+        const sourceType = sourceSchema?.type;
+
+        // Include dynamic connections (dict/array)
+        compatibleConnections = getCompatibleInputs(
+          newNodeSchema,
+          sourceType,
+          true,
+        )
+          .filter((inputKey) => {
+            // Exclude credential fields from connection selector
+            const inputSchema = newNodeSchema.inputSchema.properties[inputKey];
+            return !("credentials_provider" in inputSchema);
+          })
+          .map((inputKey) => {
+            const inputSchema = newNodeSchema.inputSchema.properties[inputKey];
+            // Only mark as dynamic if:
+            // 1. Target is array AND source is NOT array (and source is not 'any' or undefined)
+            // 2. Target is dict AND source is NOT dict (and source is not 'any' or undefined)
+            const isDynamic =
+              (inputSchema.type === "array" &&
+                sourceType !== "array" &&
+                (sourceType as string) !== "any" &&
+                sourceType !== undefined) ||
+              (inputSchema.type === "object" &&
+                "additionalProperties" in inputSchema &&
+                inputSchema.additionalProperties &&
+                sourceType !== "object" &&
+                (sourceType as string) !== "any" &&
+                sourceType !== undefined);
+
+            // Special case: if source is 'any' or undefined connecting to array/dict, we need user choice
+            const needsUserChoice =
+              ((sourceType as string) === "any" || sourceType === undefined) &&
+              (inputSchema.type === "array" ||
+                (inputSchema.type === "object" &&
+                  "additionalProperties" in inputSchema &&
+                  inputSchema.additionalProperties));
+
+            return {
+              handleId: inputKey,
+              schema: inputSchema,
+              isRequired:
+                newNodeSchema.inputSchema.required?.includes(inputKey),
+              isDynamic,
+              needsUserChoice,
+            };
+          });
+        connectionDirection = "source-to-target";
+      } else {
+        // Dragging from input to output
+        const sourceSchema =
+          sourceNode.data.inputSchema?.properties?.[
+            connectionDragState.sourceHandle
+          ];
+        const sourceType = sourceSchema?.type;
+
+        compatibleConnections = getCompatibleOutputs(newNodeSchema, sourceType)
+          .filter((outputKey) => {
+            // Exclude credential fields from connection selector
+            const outputSchema =
+              newNodeSchema.outputSchema.properties[outputKey];
+            return !("credentials_provider" in outputSchema);
+          })
+          .map((outputKey) => ({
+            handleId: outputKey,
+            schema: newNodeSchema.outputSchema.properties[outputKey],
+            isDynamic: false,
+            needsUserChoice: false,
+          }));
+        connectionDirection = "target-to-source";
+      }
+
+      // Separate connections by type
+      const directConnections = compatibleConnections.filter(
+        (c) => !c.isDynamic && !c.needsUserChoice,
+      );
+      const dynamicConnections = compatibleConnections.filter(
+        (c) => c.isDynamic,
+      );
+      const userChoiceConnections = compatibleConnections.filter(
+        (c) => c.needsUserChoice,
+      );
+
+      if (compatibleConnections.length === 0) {
+        // No compatible connections
+        setShowFloatingMenu(false);
+        toast({
+          title: "No compatible connections",
+          description:
+            "The selected block has no compatible inputs/outputs for this connection.",
+          variant: "destructive",
+        });
+      } else if (
+        directConnections.length === 1 &&
+        dynamicConnections.length === 0
+      ) {
+        // Single direct connection - auto-connect
+        const connection: Connection =
+          connectionDirection === "source-to-target"
+            ? {
+                source: connectionDragState.sourceNodeId,
+                sourceHandle: connectionDragState.sourceHandle,
+                target: newNodeId,
+                targetHandle: directConnections[0].handleId,
+              }
+            : {
+                source: newNodeId,
+                sourceHandle: directConnections[0].handleId,
+                target: connectionDragState.sourceNodeId,
+                targetHandle: connectionDragState.sourceHandle,
+              };
+
+        // Delay the connection to ensure the new node is in the state
+        setTimeout(() => {
+          onConnect(connection);
+        }, 50);
+
+        setShowFloatingMenu(false);
+
+        // Reset connection drag state after successful connection
+        setConnectionDragState({
+          sourceNodeId: null,
+          sourceHandle: null,
+          sourceHandleType: null,
+          dropPosition: null,
+        });
+      } else if (
+        userChoiceConnections.length > 0 &&
+        directConnections.length === 0 &&
+        dynamicConnections.length === 0
+      ) {
+        // Any type connecting to list/dict - need user choice
+        const conn = userChoiceConnections[0];
+        const isArray = conn.schema.type === "array";
+
+        // Show connection selector with both direct and dynamic options
+        setConnectionSelectorState({
+          isOpen: true,
+          newNodeId,
+          options: [
+            // Direct connection option
+            {
+              handleId: conn.handleId,
+              schema: conn.schema,
+              isRequired: conn.isRequired,
+              allowDynamicKey: false,
+            },
+            // Dynamic connection option (if applicable)
+            ...(isArray ||
+            (conn.schema.type === "object" &&
+              "additionalProperties" in conn.schema &&
+              conn.schema.additionalProperties)
+              ? [
+                  {
+                    handleId: conn.handleId,
+                    schema: conn.schema,
+                    isRequired: conn.isRequired,
+                    allowDynamicKey: true,
+                    dynamicKeyType: isArray
+                      ? getArrayItemsType(conn.schema)
+                      : getAdditionalPropertiesType(conn.schema),
+                  },
+                ]
+              : []),
+          ],
+          title: isArray ? "Connect to Array" : "Connect to Dictionary",
+          allowDynamicKey: false,
+          dynamicKeyType: undefined,
+        });
+        setShowFloatingMenu(false);
+      } else if (
+        dynamicConnections.length === 1 &&
+        directConnections.length === 0 &&
+        userChoiceConnections.length === 0
+      ) {
+        // Single dynamic connection (non-list to list or non-dict to dict)
+        const dynamicConn = dynamicConnections[0];
+        const isArray = dynamicConn.schema.type === "array";
+
+        if (isArray) {
+          // For arrays, append to the base handle with [] notation
+          // The backend will interpret this as an array append operation
+          const connection: Connection =
+            connectionDirection === "source-to-target"
+              ? {
+                  source: connectionDragState.sourceNodeId,
+                  sourceHandle: connectionDragState.sourceHandle,
+                  target: newNodeId,
+                  targetHandle: dynamicConn.handleId, // Just use base handle, backend handles the append
+                }
+              : {
+                  source: newNodeId,
+                  sourceHandle: dynamicConn.handleId, // Just use base handle
+                  target: connectionDragState.sourceNodeId,
+                  targetHandle: connectionDragState.sourceHandle,
+                };
+
+          // Delay the connection to ensure the new node is in the state
+          setTimeout(() => {
+            onConnect(connection);
+          }, 50);
+
+          setShowFloatingMenu(false);
+
+          // Reset connection drag state after successful connection
+          setConnectionDragState({
+            sourceNodeId: null,
+            sourceHandle: null,
+            sourceHandleType: null,
+            dropPosition: null,
+          });
+
+          // Reset the ref as well
+          connectionDragRef.current = {
+            sourceNodeId: null,
+            sourceHandle: null,
+            sourceHandleType: null,
+          };
+        } else {
+          // For dicts, show enhanced dialog for key-value connection
+          const valueType = getAdditionalPropertiesType(dynamicConn.schema);
+          const sourceSchema =
+            sourceNode.data.outputSchema?.properties?.[
+              connectionDragState.sourceHandle
+            ];
+          const sourceType = sourceSchema?.type || "any";
+
+          setDictConnectionState({
+            isOpen: true,
+            newNodeId,
+            handleId: dynamicConn.handleId,
+            keyType: "string", // Dictionary keys are always strings
+            valueType: valueType || "any",
+            sourceType,
+          });
+          setShowFloatingMenu(false);
+        }
+      } else {
+        // Multiple connections - show selector
+        // For each connection, determine if it should allow dynamic keys
+        const sourceSchema =
+          connectionDragState.sourceHandleType === "source"
+            ? sourceNode.data.outputSchema?.properties?.[
+                connectionDragState.sourceHandle
+              ]
+            : sourceNode.data.inputSchema?.properties?.[
+                connectionDragState.sourceHandle
+              ];
+        const sourceType = sourceSchema?.type;
+
+        setConnectionSelectorState({
+          isOpen: true,
+          newNodeId,
+          options: compatibleConnections.map((c) => {
+            // Only allow dynamic key if:
+            // 1. Target is array/dict AND source is not the same type (unless 'any' or undefined)
+            // 2. For 'any' or undefined type, we provide both options
+            const allowDynamic =
+              c.isDynamic ||
+              (((sourceType as string) === "any" || sourceType === undefined) &&
+                (c.schema.type === "array" ||
+                  (c.schema.type === "object" &&
+                    "additionalProperties" in c.schema &&
+                    c.schema.additionalProperties)));
+
+            return {
+              handleId: c.handleId,
+              schema: c.schema,
+              isRequired: c.isRequired,
+              allowDynamicKey: allowDynamic,
+              dynamicKeyType: allowDynamic
+                ? c.schema.type === "array"
+                  ? getArrayItemsType(c.schema)
+                  : getAdditionalPropertiesType(c.schema)
+                : undefined,
+            };
+          }),
+          title: "Select Connection",
+          allowDynamicKey: false, // This is now per-option
+          dynamicKeyType: undefined,
+        });
+        setShowFloatingMenu(false);
+        // Don't reset connection drag state yet - we need it for the selector
+      }
+
+      // Reset the selecting flag and connection ref after processing
+      // Use a longer delay to ensure connections complete first
+      setTimeout(() => {
+        isSelectingBlockRef.current = false;
+        // Reset the connection ref now that we're done with it
+        connectionDragRef.current = {
+          sourceNodeId: null,
+          sourceHandle: null,
+          sourceHandleType: null,
+        };
+      }, 200); // Increased delay to ensure connection completes
+    },
+    [
+      addNode,
+      connectionDragState,
+      availableBlocks,
+      nodes,
+      onConnect,
+      toast,
+      screenToFlowPosition,
+    ],
+  );
+
+  const handleDictConnection = useCallback(
+    (key: string, _connectToValue: boolean, _staticValue?: string) => {
+      if (
+        !dictConnectionState.newNodeId ||
+        !dictConnectionState.handleId ||
+        !connectionDragState.sourceNodeId
+      ) {
+        return;
+      }
+
+      // For dict connections, we need to first update the node to create the dynamic handle
+      const targetHandle = `${dictConnectionState.handleId}.${key}`;
+
+      // Create connection with dict key appended to handle ID
+      const connection: Connection =
+        connectionDragState.sourceHandleType === "source"
+          ? {
+              source: connectionDragState.sourceNodeId,
+              sourceHandle: connectionDragState.sourceHandle!,
+              target: dictConnectionState.newNodeId,
+              targetHandle: targetHandle,
+            }
+          : {
+              source: dictConnectionState.newNodeId,
+              sourceHandle: targetHandle,
+              target: connectionDragState.sourceNodeId,
+              targetHandle: connectionDragState.sourceHandle!,
+            };
+
+      // First, update the node's connections to trigger handle creation
+      const targetNode = getNode(dictConnectionState.newNodeId);
+      if (targetNode) {
+        const newConnection = {
+          edge_id: formatEdgeID(connection),
+          source: connection.source!,
+          sourceHandle: connection.sourceHandle!,
+          target: connection.target!,
+          targetHandle: connection.targetHandle!,
+        };
+
+        // Add the connection to the node's data to trigger handle creation
+        updateNodeData(dictConnectionState.newNodeId, {
+          connections: [...(targetNode.data.connections || []), newConnection],
+        });
+
+        // Then create the actual edge after a delay to ensure the handle exists
+        setTimeout(() => {
+          onConnect(connection);
+        }, 100);
+      } else {
+        // Fallback if node not found
+        setTimeout(() => {
+          onConnect(connection);
+        }, 50);
+      }
+
+      // Reset states
+      setDictConnectionState({
+        isOpen: false,
+        newNodeId: null,
+        handleId: null,
+        keyType: "string",
+        valueType: "any",
+        sourceType: "any",
+      });
+
+      setConnectionDragState({
+        sourceNodeId: null,
+        sourceHandle: null,
+        sourceHandleType: null,
+        dropPosition: null,
+      });
+
+      connectionDragRef.current = {
+        sourceNodeId: null,
+        sourceHandle: null,
+        sourceHandleType: null,
+      };
+    },
+    [
+      dictConnectionState,
+      connectionDragState,
+      onConnect,
+      getNode,
+      updateNodeData,
+      formatEdgeID,
+    ],
+  );
+
+  const handleConnectionSelect = useCallback(
+    (handleId: string, dynamicKey?: string) => {
+      if (
+        !connectionSelectorState.newNodeId ||
+        !connectionDragState.sourceNodeId
+      ) {
+        console.error("Missing node IDs:", {
+          newNodeId: connectionSelectorState.newNodeId,
+          sourceNodeId: connectionDragState.sourceNodeId,
+        });
+        return;
+      }
+
+      // Note: handleId might already have [] notation for arrays
+      let targetHandle = handleId;
+
+      // Handle dynamic connections
+      let isDynamicArrayAppend = false;
+      let arrayIndex = -1;
+      if (dynamicKey) {
+        if (dynamicKey === "__append__") {
+          // Special marker for array append
+          // We need to create a unique handle for this dynamic element
+          isDynamicArrayAppend = true;
+
+          // Get the target node to find the next index
+          const targetNodeId =
+            connectionDragState.sourceHandleType === "source"
+              ? connectionSelectorState.newNodeId
+              : connectionDragState.sourceNodeId;
+          const targetNode = getNode(targetNodeId);
+
+          if (targetNode) {
+            const dynamicArrayIndices =
+              targetNode.data.metadata?.dynamicArrayIndices || {};
+            const currentIndices = dynamicArrayIndices[handleId] || [];
+            arrayIndex = currentIndices.length;
+            // We'll use indexed handle for the connection
+            targetHandle = `${handleId}[${arrayIndex}]`;
+          }
+        } else if (!handleId.endsWith("[]")) {
+          // Dict key - append with dot notation
+          targetHandle = `${handleId}.${dynamicKey}`;
+        }
+      }
+
+      const connection: Connection =
+        connectionDragState.sourceHandleType === "source"
+          ? {
+              source: connectionDragState.sourceNodeId,
+              sourceHandle: connectionDragState.sourceHandle!,
+              target: connectionSelectorState.newNodeId,
+              targetHandle,
+            }
+          : {
+              source: connectionSelectorState.newNodeId,
+              sourceHandle: targetHandle, // Use the modified handle for both source and target
+              target: connectionDragState.sourceNodeId,
+              targetHandle: connectionDragState.sourceHandle!,
+            };
+
+      // If this is an array append, we need to mark it and update the node first
+      if (isDynamicArrayAppend && arrayIndex >= 0) {
+        const targetNodeId =
+          connectionDragState.sourceHandleType === "source"
+            ? connectionSelectorState.newNodeId
+            : connectionDragState.sourceNodeId;
+        const targetNode = getNode(targetNodeId);
+
+        if (targetNode) {
+          // Add metadata to track this as a dynamic array append
+          const dynamicArrayConnections =
+            targetNode.data.metadata?.dynamicArrayConnections || {};
+          const dynamicArrayIndices =
+            targetNode.data.metadata?.dynamicArrayIndices || {};
+
+          // Track this connection as dynamic
+          dynamicArrayConnections[handleId] = true;
+          const currentIndices = dynamicArrayIndices[handleId] || [];
+          if (!currentIndices.includes(arrayIndex)) {
+            currentIndices.push(arrayIndex);
+          }
+          dynamicArrayIndices[handleId] = currentIndices;
+
+          // Update node metadata to trigger re-render with new handle
+          // Store in metadata to avoid sending to backend
+          updateNodeData(targetNodeId, {
+            metadata: {
+              ...targetNode.data.metadata,
+              dynamicArrayConnections,
+              dynamicArrayIndices,
+            },
+          });
+
+          // Delay the connection to ensure the handle exists in the DOM
+          setTimeout(() => {
+            onConnect(connection);
+
+            // Reset states after delayed connection
+            setConnectionSelectorState({
+              isOpen: false,
+              newNodeId: null,
+              options: [],
+              title: "",
+              allowDynamicKey: false,
+              dynamicKeyType: undefined,
+            });
+
+            setConnectionDragState({
+              sourceNodeId: null,
+              sourceHandle: null,
+              sourceHandleType: null,
+              dropPosition: null,
+            });
+
+            connectionDragRef.current = {
+              sourceNodeId: null,
+              sourceHandle: null,
+              sourceHandleType: null,
+            };
+          }, 100);
+
+          // Don't create the connection immediately or reset states
+          return;
+        }
+      }
+
+      onConnect(connection);
+
+      // Now reset both states
+      setConnectionSelectorState({
+        isOpen: false,
+        newNodeId: null,
+        options: [],
+        title: "",
+        allowDynamicKey: false,
+      });
+
+      // Reset connection drag state after connection is made
+      setConnectionDragState({
+        sourceNodeId: null,
+        sourceHandle: null,
+        sourceHandleType: null,
+        dropPosition: null,
+      });
+      // Reset the ref as well
+      connectionDragRef.current = {
+        sourceNodeId: null,
+        sourceHandle: null,
+        sourceHandleType: null,
+      };
+    },
+    [connectionSelectorState, connectionDragState, onConnect],
   );
 
   const findNodeDimensions = useCallback(() => {
@@ -774,6 +1596,8 @@ const FlowEditor: React.FC<{
           edgeTypes={{ custom: CustomEdge }}
           connectionLineComponent={ConnectionLine}
           onConnect={onConnect}
+          onConnectStart={onConnectStart}
+          onConnectEnd={onConnectEnd}
           onNodesChange={onNodesChange}
           onNodesDelete={onNodesDelete}
           onEdgesChange={onEdgesChange}
@@ -859,6 +1683,181 @@ const FlowEditor: React.FC<{
             </Alert>
           )}
         </ReactFlow>
+
+        {/* Floating Blocks Menu */}
+        {showFloatingMenu && connectionDragState.dropPosition && (
+          <FloatingBlocksMenu
+            blocks={availableBlocks}
+            position={connectionDragState.dropPosition}
+            onSelectBlock={handleBlockSelectFromFloatingMenu}
+            onClose={() => {
+              setShowFloatingMenu(false);
+              // Only reset connection state if we're not in the process of selecting a block
+              if (!isSelectingBlockRef.current) {
+                setConnectionDragState({
+                  sourceNodeId: null,
+                  sourceHandle: null,
+                  sourceHandleType: null,
+                  dropPosition: null,
+                });
+                // Reset the ref when closing without selection
+                connectionDragRef.current = {
+                  sourceNodeId: null,
+                  sourceHandle: null,
+                  sourceHandleType: null,
+                };
+              }
+            }}
+            flows={availableFlows}
+            nodes={nodes}
+            connectionType={connectionDragState.sourceHandleType!}
+            handleType={
+              connectionDragState.sourceHandleType === "source"
+                ? nodes.find((n) => n.id === connectionDragState.sourceNodeId)
+                    ?.data.outputSchema?.properties?.[
+                    connectionDragState.sourceHandle!
+                  ]?.type
+                : nodes.find((n) => n.id === connectionDragState.sourceNodeId)
+                    ?.data.inputSchema?.properties?.[
+                    connectionDragState.sourceHandle!
+                  ]?.type
+            }
+            sourceNodeId={connectionDragState.sourceNodeId!}
+            sourceHandle={connectionDragState.sourceHandle!}
+          />
+        )}
+
+        {/* Connection Selector Dialog */}
+        <ConnectionSelector
+          isOpen={connectionSelectorState.isOpen}
+          onClose={() => {
+            // Reset selector state
+            setConnectionSelectorState({
+              isOpen: false,
+              newNodeId: null,
+              options: [],
+              title: "",
+              allowDynamicKey: false,
+            });
+            // Also reset connection drag state when dialog is cancelled
+            setConnectionDragState({
+              sourceNodeId: null,
+              sourceHandle: null,
+              sourceHandleType: null,
+              dropPosition: null,
+            });
+            // Reset the ref as well
+            connectionDragRef.current = {
+              sourceNodeId: null,
+              sourceHandle: null,
+              sourceHandleType: null,
+            };
+          }}
+          onSelect={handleConnectionSelect}
+          options={connectionSelectorState.options}
+          title={connectionSelectorState.title}
+          description="Choose which handle to connect to"
+          allowDynamicKey={connectionSelectorState.allowDynamicKey}
+          dynamicKeyType={connectionSelectorState.dynamicKeyType}
+        />
+
+        {/* Dict Connection Dialog */}
+        <DictConnectionDialog
+          isOpen={dictConnectionState.isOpen}
+          onClose={() => {
+            setDictConnectionState({
+              isOpen: false,
+              newNodeId: null,
+              handleId: null,
+              keyType: "string",
+              valueType: "any",
+              sourceType: "any",
+            });
+            // Also reset connection state
+            setConnectionDragState({
+              sourceNodeId: null,
+              sourceHandle: null,
+              sourceHandleType: null,
+              dropPosition: null,
+            });
+            connectionDragRef.current = {
+              sourceNodeId: null,
+              sourceHandle: null,
+              sourceHandleType: null,
+            };
+          }}
+          onConfirm={handleDictConnection}
+          title="Add Dictionary Entry"
+          description="Choose how to connect to the dictionary"
+          keyType={dictConnectionState.keyType}
+          valueType={dictConnectionState.valueType}
+          sourceType={dictConnectionState.sourceType}
+        />
+
+        {/* Dynamic Key Dialog */}
+        <DynamicKeyDialog
+          isOpen={dynamicKeyDialogState.isOpen}
+          onClose={() =>
+            setDynamicKeyDialogState({
+              isOpen: false,
+              nodeId: null,
+              handleId: null,
+              isArray: false,
+            })
+          }
+          onConfirm={(key) => {
+            if (
+              dynamicKeyDialogState.handleId &&
+              dynamicKeyDialogState.nodeId
+            ) {
+              // Create connection with dynamic key
+              // For arrays, append without index (backend handles appending)
+              // For dicts, add the key with dot notation
+              const targetHandle = dynamicKeyDialogState.isArray
+                ? dynamicKeyDialogState.handleId // Arrays auto-append, no index needed
+                : `${dynamicKeyDialogState.handleId}.${key}`; // Dict with key
+
+              const connection: Connection =
+                connectionDragState.sourceHandleType === "source"
+                  ? {
+                      source: connectionDragState.sourceNodeId!,
+                      sourceHandle: connectionDragState.sourceHandle!,
+                      target: dynamicKeyDialogState.nodeId,
+                      targetHandle,
+                    }
+                  : {
+                      source: dynamicKeyDialogState.nodeId,
+                      sourceHandle: targetHandle,
+                      target: connectionDragState.sourceNodeId!,
+                      targetHandle: connectionDragState.sourceHandle!,
+                    };
+
+              onConnect(connection);
+
+              // Reset states
+              setConnectionDragState({
+                sourceNodeId: null,
+                sourceHandle: null,
+                sourceHandleType: null,
+                dropPosition: null,
+              });
+            }
+            setDynamicKeyDialogState({
+              isOpen: false,
+              nodeId: null,
+              handleId: null,
+              isArray: false,
+            });
+          }}
+          title={
+            dynamicKeyDialogState.isArray
+              ? "Add Array Index"
+              : "Add Dictionary Key"
+          }
+          description={`Enter a ${dynamicKeyDialogState.isArray ? "index" : "key"} for the new connection`}
+          keyType={dynamicKeyDialogState.keyType}
+          isArray={dynamicKeyDialogState.isArray}
+        />
       </div>
       {savedAgent && (
         <RunnerUIWrapper
