@@ -1836,6 +1836,7 @@ export enum IconType {
   Settings,
   LogOut,
   AutoGPTLogo,
+  Sliders,
 }
 
 export function getIconForSocial(

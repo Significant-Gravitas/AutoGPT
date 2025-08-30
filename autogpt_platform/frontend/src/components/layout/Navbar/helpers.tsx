@@ -7,6 +7,7 @@ import {
   IconMarketplace,
   IconRefresh,
   IconSettings,
+  IconSliders,
   IconType,
   IconUploadCloud,
 } from "@/components/ui/icons";
@@ -90,6 +91,69 @@ export const accountMenuItems: MenuItemGroup[] = [
   },
 ];
 
+export function getAccountMenuItems(userRole?: string): MenuItemGroup[] {
+  const baseMenuItems: MenuItemGroup[] = [
+    {
+      items: [
+        {
+          icon: IconType.Edit,
+          text: "Edit profile",
+          href: "/profile",
+        },
+      ],
+    },
+    {
+      items: [
+        {
+          icon: IconType.LayoutDashboard,
+          text: "Creator Dashboard",
+          href: "/profile/dashboard",
+        },
+        {
+          icon: IconType.UploadCloud,
+          text: "Publish an agent",
+        },
+      ],
+    },
+  ];
+
+  // Add admin menu item for admin users
+  if (userRole === "admin") {
+    baseMenuItems.push({
+      items: [
+        {
+          icon: IconType.Sliders,
+          text: "Admin",
+          href: "/admin/marketplace",
+        },
+      ],
+    });
+  }
+
+  // Add settings and logout
+  baseMenuItems.push(
+    {
+      items: [
+        {
+          icon: IconType.Settings,
+          text: "Settings",
+          href: "/profile/settings",
+        },
+      ],
+    },
+    {
+      items: [
+        {
+          icon: IconType.LogOut,
+          text: "Log out",
+        },
+      ],
+    },
+  );
+
+  return baseMenuItems;
+}
+
 export function getAccountMenuOptionIcon(icon: IconType) {
   const iconClass = "w-6 h-6";
   switch (icon) {
@@ -109,6 +173,8 @@ export function getAccountMenuOptionIcon(icon: IconType) {
       return <IconLibrary className={iconClass} />;
     case IconType.Builder:
       return <IconBuilder className={iconClass} />;
+    case IconType.Sliders:
+      return <IconSliders className={iconClass} />;
     default:
       return <IconRefresh className={iconClass} />;
   }
