@@ -4,7 +4,7 @@ import * as RXDialog from "@radix-ui/react-dialog";
 import { CSSProperties, PropsWithChildren } from "react";
 import { DialogCtx } from "../useDialogCtx";
 import { modalStyles } from "./styles";
-import styles from "./styles.module.css";
+// Removed custom scrollbar styles in favor of Tailwind scrollbar utilities
 import { Button } from "@/components/atoms/Button/Button";
 
 type BaseProps = DialogCtx & PropsWithChildren;
@@ -55,15 +55,13 @@ export function DialogWrap({
               variant="ghost"
               onClick={handleClose}
               aria-label="Close"
-              className="absolute -right-2 top-2 z-50 hover:border-transparent hover:bg-transparent"
+              className="absolute right-2 top-2 z-50 hover:border-transparent hover:bg-transparent focus:border-none focus:outline-none"
             >
               <X className={modalStyles.icon} />
             </Button>
           )}
         </div>
-        <div className={`overflow-y-auto ${styles.scrollableContent}`}>
-          {children}
-        </div>
+        <div>{children}</div>
       </RXDialog.Content>
     </RXDialog.Portal>
   );

@@ -1,15 +1,7 @@
 import { Input } from "@/components/atoms/Input/Input";
 import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
+import { Form, FormDescription, FormField } from "@/components/ui/form";
 import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
@@ -54,6 +46,9 @@ export function APIKeyCredentialsModal({
         },
       }}
       onClose={onClose}
+      styling={{
+        maxWidth: "25rem",
+      }}
     >
       <Dialog.Content>
         {schemaDescription && (
@@ -61,79 +56,65 @@ export function APIKeyCredentialsModal({
         )}
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-2">
             <FormField
               control={form.control}
               name="apiKey"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>API Key</FormLabel>
-                  {schema.credentials_scopes && (
-                    <FormDescription>
-                      Required scope(s) for this block:{" "}
-                      {schema.credentials_scopes?.map((s, i, a) => (
-                        <span key={i}>
-                          <code>{s}</code>
-                          {i < a.length - 1 && ", "}
-                        </span>
-                      ))}
-                    </FormDescription>
-                  )}
-                  <FormControl>
-                    <Input
-                      id="apiKey"
-                      label="API Key"
-                      hideLabel
-                      type="password"
-                      placeholder="Enter API key..."
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+                <>
+                  <Input
+                    id="apiKey"
+                    label="API Key"
+                    type="password"
+                    placeholder="Enter API key..."
+                    size="small"
+                    hint={
+                      schema.credentials_scopes ? (
+                        <FormDescription>
+                          Required scope(s) for this block:{" "}
+                          {schema.credentials_scopes?.map((s, i, a) => (
+                            <span key={i}>
+                              <code className="text-xs font-bold">{s}</code>
+                              {i < a.length - 1 && ", "}
+                            </span>
+                          ))}
+                        </FormDescription>
+                      ) : null
+                    }
+                    {...field}
+                  />
+                </>
               )}
             />
             <FormField
               control={form.control}
               name="title"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Name</FormLabel>
-                  <FormControl>
-                    <Input
-                      id="title"
-                      label="Name"
-                      hideLabel
-                      type="text"
-                      placeholder="Enter a name for this API key..."
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+                <Input
+                  id="title"
+                  label="Name"
+                  type="text"
+                  placeholder="Enter a name for this API key..."
+                  size="small"
+                  {...field}
+                />
               )}
             />
             <FormField
               control={form.control}
               name="expiresAt"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Expiration Date (Optional)</FormLabel>
-                  <FormControl>
-                    <Input
-                      id="expiresAt"
-                      label="Expiration Date"
-                      hideLabel
-                      type="datetime-local"
-                      placeholder="Select expiration date..."
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+                <Input
+                  id="expiresAt"
+                  label="Expiration Date"
+                  type="datetime-local"
+                  placeholder="Select expiration date..."
+                  size="small"
+                  {...field}
+                />
               )}
             />
-            <Button type="submit" className="w-full">
+            <Button type="submit" size="small" className="min-w-68">
               Save & use this API key
             </Button>
           </form>

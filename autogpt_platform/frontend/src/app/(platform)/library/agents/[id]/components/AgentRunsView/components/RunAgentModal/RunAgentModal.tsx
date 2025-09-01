@@ -44,7 +44,7 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
     // agentInputFields, // Available if needed for future use
     agentInputFields,
     agentCredentialsInputFields,
-    hasInputFields,
+    // hasInputFields,
     isExecuting,
     isCreatingSchedule,
     isSettingUpTrigger,
@@ -57,6 +57,10 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
   } = useAgentRunModal(agent);
 
   const [isScheduleFormValid, setIsScheduleFormValid] = useState(true);
+
+  const hasAnySetupFields =
+    Object.keys(agentInputFields || {}).length > 0 ||
+    Object.keys(agentCredentialsInputFields || {}).length > 0;
 
   function handleInputChange(key: string, value: string) {
     setInputValues((prev) => ({
@@ -111,7 +115,7 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
             >
               {/* Setup Section */}
               <div className="mt-10">
-                {hasInputFields ? (
+                {hasAnySetupFields ? (
                   <RunAgentModalContextProvider
                     value={{
                       agent,

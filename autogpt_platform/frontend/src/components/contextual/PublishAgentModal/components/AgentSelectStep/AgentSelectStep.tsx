@@ -110,7 +110,7 @@ export function AgentSelectStep({
           <div className="flex-grow overflow-hidden p-4 sm:p-6">
             <h3 className="sr-only">List of agents</h3>
             <div
-              className="h-[300px] overflow-y-auto pr-2 sm:h-[400px] md:h-[500px]"
+              className="scrollbar-thin scrollbar-thumb-zinc-300 scrollbar-track-transparent h-[300px] overflow-y-auto pr-2 sm:h-[400px] md:h-[500px]"
               role="region"
               aria-labelledby="agentListHeading"
             >
