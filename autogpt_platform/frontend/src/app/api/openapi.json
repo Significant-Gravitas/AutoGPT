@@ -4580,9 +4580,6 @@
           "status",
           "permissions",
           "created_at",
-          "last_used_at",
-          "revoked_at",
-          "description",
           "user_id"
         ],
         "title": "APIKeyWithoutHash"

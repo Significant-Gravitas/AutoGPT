@@ -8,8 +8,7 @@ from prisma.enums import APIKeyPermission, APIKeyStatus
 from prisma.errors import PrismaError
 from prisma.models import APIKey as PrismaAPIKey
 from prisma.types import APIKeyWhereUniqueInput
-
-from backend.data.db import BaseDbModel
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 keysmith = APIKeySmith()
@@ -40,12 +39,13 @@ class APIKeyValidationError(APIKeyError):
     pass
 
 
-class APIKeyWithoutHash(BaseDbModel):
+class APIKeyWithoutHash(BaseModel):
+    id: str
     name: str
     prefix: str
-    status: APIKeyStatus = APIKeyStatus.ACTIVE
-    permissions: list[APIKeyPermission]
     postfix: str
+    status: APIKeyStatus
+    permissions: list[APIKeyPermission]
     created_at: datetime
     last_used_at: Optional[datetime] = None
     revoked_at: Optional[datetime] = None
