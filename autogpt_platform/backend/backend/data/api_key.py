@@ -7,7 +7,7 @@ from autogpt_libs.api_key.keysmith import APIKeySmith
 from prisma.enums import APIKeyPermission, APIKeyStatus
 from prisma.models import APIKey as PrismaAPIKey
 from prisma.types import APIKeyWhereUniqueInput
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
@@ -18,8 +18,12 @@ keysmith = APIKeySmith()
 class APIKeyInfo(BaseModel):
     id: str
     name: str
-    prefix: str
-    postfix: str
+    head: str = Field(
+        description=f"The first {APIKeySmith.HEAD_LENGTH} characters of the key"
+    )
+    tail: str = Field(
+        description=f"The last {APIKeySmith.TAIL_LENGTH} characters of the key"
+    )
     status: APIKeyStatus
     permissions: list[APIKeyPermission]
     created_at: datetime
@@ -33,8 +37,8 @@ class APIKeyInfo(BaseModel):
         return APIKeyInfo(
             id=api_key.id,
             name=api_key.name,
-            prefix=api_key.head,
-            postfix=api_key.tail,
+            head=api_key.head,
+            tail=api_key.tail,
             status=APIKeyStatus(api_key.status),
             permissions=[APIKeyPermission(p) for p in api_key.permissions],
             created_at=api_key.createdAt,

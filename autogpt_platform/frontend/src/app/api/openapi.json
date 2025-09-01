@@ -4518,8 +4518,16 @@
         "properties": {
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
-          "prefix": { "type": "string", "title": "Prefix" },
-          "postfix": { "type": "string", "title": "Postfix" },
+          "head": {
+            "type": "string",
+            "title": "Head",
+            "description": "The first 8 characters of the key"
+          },
+          "tail": {
+            "type": "string",
+            "title": "Tail",
+            "description": "The last 8 characters of the key"
+          },
           "status": { "$ref": "#/components/schemas/APIKeyStatus" },
           "permissions": {
             "items": { "$ref": "#/components/schemas/APIKeyPermission" },
@@ -4555,8 +4563,8 @@
         "required": [
           "id",
           "name",
-          "prefix",
-          "postfix",
+          "head",
+          "tail",
           "status",
           "permissions",
           "created_at",
