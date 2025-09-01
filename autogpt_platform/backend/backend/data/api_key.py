@@ -7,20 +7,21 @@ from autogpt_libs.api_key.keysmith import APIKeySmith
 from prisma.enums import APIKeyPermission, APIKeyStatus
 from prisma.models import APIKey as PrismaAPIKey
 from prisma.types import APIKeyWhereUniqueInput
+from pydantic import BaseModel
 
-from backend.data.db import BaseDbModel
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 logger = logging.getLogger(__name__)
 keysmith = APIKeySmith()
 
 
-class APIKeyInfo(BaseDbModel):
+class APIKeyInfo(BaseModel):
+    id: str
     name: str
     prefix: str
-    status: APIKeyStatus = APIKeyStatus.ACTIVE
-    permissions: list[APIKeyPermission]
     postfix: str
+    status: APIKeyStatus
+    permissions: list[APIKeyPermission]
     created_at: datetime
     last_used_at: Optional[datetime] = None
     revoked_at: Optional[datetime] = None
