@@ -36,7 +36,7 @@ model User {
   notifyOnAgentApproved        Boolean @default(true)
   notifyOnAgentRejected        Boolean @default(true)
 
-  timezone                     String  @default("not-set")
+  timezone String @default("not-set")
 
   // Relations
 
@@ -822,11 +822,13 @@ enum APIKeyPermission {
 }
 
 model APIKey {
-  id          String             @id @default(uuid())
-  name        String
-  prefix      String // First 8 chars for identification
-  postfix     String
-  key         String             @unique // Hashed key
+  id   String  @id @default(uuid())
+  name String
+  head String // First few chars for identification
+  tail String
+  hash String  @unique
+  salt String? // null for legacy unsalted keys
+
   status      APIKeyStatus       @default(ACTIVE)
   permissions APIKeyPermission[]
 
@@ -840,7 +842,7 @@ model APIKey {
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([prefix, name])
+  @@index([head, name])
   @@index([userId, status])
 }
 
