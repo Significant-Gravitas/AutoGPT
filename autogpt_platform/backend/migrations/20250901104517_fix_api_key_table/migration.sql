@@ -7,4 +7,4 @@ ALTER TABLE "APIKey" ADD COLUMN     "salt" TEXT;
 -- Rename columns for clarity
 ALTER TABLE "APIKey" RENAME COLUMN "key" TO "hash";
 ALTER TABLE "APIKey" RENAME COLUMN "prefix" TO "head";
-ALTER TABLE "APIKey" RENAME COLUMN "suffix" TO "tail";
+ALTER TABLE "APIKey" RENAME COLUMN "postfix" TO "tail";
