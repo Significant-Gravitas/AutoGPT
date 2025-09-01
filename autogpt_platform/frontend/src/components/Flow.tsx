@@ -751,6 +751,7 @@ const FlowEditor: React.FC<{
   }, [isScheduling, savedAgent, toast, saveAgent]);
 
   const isNewBlockEnabled = useGetFlag(Flag.NEW_BLOCK_MENU);
+  const isGraphSearchEnabled = useGetFlag(Flag.GRAPH_SEARCH);
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
@@ -880,11 +881,13 @@ const FlowEditor: React.FC<{
                     flows={availableFlows}
                     nodes={nodes}
                   />
-                  <GraphSearchControl
-                    nodes={nodes}
-                    onNodeSelect={navigateToNode}
-                    onNodeHover={highlightNode}
-                  />
+                  {isGraphSearchEnabled && (
+                    <GraphSearchControl
+                      nodes={nodes}
+                      onNodeSelect={navigateToNode}
+                      onNodeHover={highlightNode}
+                    />
+                  )}
                 </>
               }
               botChildren={

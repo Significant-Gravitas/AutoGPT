@@ -10,6 +10,7 @@ import { ControlPanelButton } from "../ControlPanelButton";
 import { ArrowUUpLeftIcon, ArrowUUpRightIcon } from "@phosphor-icons/react";
 import { GraphSearchMenu } from "../GraphMenu/GraphMenu";
 import { CustomNode } from "@/components/CustomNode";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 export type Control = {
   icon: React.ReactNode;
@@ -39,6 +40,8 @@ export const NewControlPanel = ({
   onNodeHover,
   className,
 }: ControlPanelProps) => {
+  const isGraphSearchEnabled = useGetFlag(Flag.GRAPH_SEARCH);
+  
   const {
     blockMenuSelected,
     setBlockMenuSelected,
@@ -85,14 +88,18 @@ export const NewControlPanel = ({
           setBlockMenuSelected={setBlockMenuSelected}
         />
         <Separator className="text-[#E1E1E1]" />
-        <GraphSearchMenu
-          nodes={nodes}
-          blockMenuSelected={blockMenuSelected}
-          setBlockMenuSelected={setBlockMenuSelected}
-          onNodeSelect={onNodeSelect}
-          onNodeHover={onNodeHover}
-        />
-        <Separator className="text-[#E1E1E1]" />
+        {isGraphSearchEnabled && (
+          <>
+            <GraphSearchMenu
+              nodes={nodes}
+              blockMenuSelected={blockMenuSelected}
+              setBlockMenuSelected={setBlockMenuSelected}
+              onNodeSelect={onNodeSelect}
+              onNodeHover={onNodeHover}
+            />
+            <Separator className="text-[#E1E1E1]" />
+          </>
+        )}
         {controls.map((control, index) => (
           <ControlPanelButton
             key={index}
