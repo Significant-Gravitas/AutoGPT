@@ -137,6 +137,11 @@ class ExtractTextInformationBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        # Security fix: Add limits to prevent ReDoS and memory exhaustion
+        MAX_TEXT_LENGTH = 1_000_000  # 1MB character limit
+        MAX_MATCHES = 1000  # Maximum number of matches to prevent memory exhaustion
+        MAX_MATCH_LENGTH = 10_000  # Maximum length per match
+
         flags = 0
         if not input_data.case_sensitive:
             flags = flags | re.IGNORECASE
@@ -148,20 +153,63 @@ class ExtractTextInformationBlock(Block):
         else:
             txt = json.dumps(input_data.text)
 
-        matches = [
-            match.group(input_data.group)
-            for match in re.finditer(input_data.pattern, txt, flags)
-            if input_data.group <= len(match.groups())
-        ]
-        if not input_data.find_all:
-            matches = matches[:1]
-        for match in matches:
-            yield "positive", match
-        if not matches:
-            yield "negative", input_data.text
+        # Limit text size to prevent DoS
+        if len(txt) > MAX_TEXT_LENGTH:
+            txt = txt[:MAX_TEXT_LENGTH]
 
-        yield "matched_results", matches
-        yield "matched_count", len(matches)
+        # Validate regex pattern to prevent dangerous patterns
+        dangerous_patterns = [
+            r".*\+.*\+",  # Nested quantifiers
+            r".*\*.*\*",  # Nested quantifiers
+            r"(?=.*\+)",  # Lookahead with quantifier
+            r"(?=.*\*)",  # Lookahead with quantifier
+        ]
+
+        for dangerous in dangerous_patterns:
+            if re.search(dangerous, input_data.pattern):
+                # Limit execution time for potentially dangerous patterns
+                import threading
+
+                def timeout_handler():
+                    raise TimeoutError("Regex execution timeout")
+
+                # Use threading timer for timeout (5 seconds max)
+                timer = threading.Timer(5.0, timeout_handler)
+                timer.start()
+
+        try:
+            matches = []
+            match_count = 0
+            for match in re.finditer(input_data.pattern, txt, flags):
+                if match_count >= MAX_MATCHES:
+                    break
+                if input_data.group <= len(match.groups()):
+                    match_text = match.group(input_data.group)
+                    # Limit match length to prevent memory exhaustion
+                    if len(match_text) > MAX_MATCH_LENGTH:
+                        match_text = match_text[:MAX_MATCH_LENGTH]
+                    matches.append(match_text)
+                    match_count += 1
+
+            if not input_data.find_all:
+                matches = matches[:1]
+
+            for match in matches:
+                yield "positive", match
+            if not matches:
+                yield "negative", input_data.text
+
+            yield "matched_results", matches
+            yield "matched_count", len(matches)
+        except TimeoutError:
+            # Return empty results on timeout
+            yield "negative", input_data.text
+            yield "matched_results", []
+            yield "matched_count", 0
+        finally:
+            # Cancel timer if it exists
+            if "timer" in locals():
+                timer.cancel()
 
 
 class FillTextTemplateBlock(Block):

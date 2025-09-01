@@ -66,6 +66,29 @@ async def store_media_file(
     base_path = Path(get_exec_file_path(graph_exec_id, ""))
     base_path.mkdir(parents=True, exist_ok=True)
 
+    # Security fix: Add disk space limits to prevent DoS
+    MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB per file
+    MAX_TOTAL_DISK_USAGE = 1024 * 1024 * 1024  # 1GB total per execution directory
+
+    # Check total disk usage in base_path
+    def get_dir_size(path: Path) -> int:
+        """Get total size of directory."""
+        total = 0
+        try:
+            for entry in path.glob("**/*"):
+                if entry.is_file():
+                    total += entry.stat().st_size
+        except Exception:
+            pass
+        return total
+
+    if base_path.exists():
+        current_usage = get_dir_size(base_path)
+        if current_usage > MAX_TOTAL_DISK_USAGE:
+            raise ValueError(
+                f"Disk usage limit exceeded: {current_usage} bytes > {MAX_TOTAL_DISK_USAGE} bytes"
+            )
+
     # Helper functions
     def _extension_from_mime(mime: str) -> str:
         ext = mimetypes.guess_extension(mime, strict=False)
@@ -108,6 +131,12 @@ async def store_media_file(
         filename = Path(path_part).name or f"{uuid.uuid4()}.bin"
         target_path = _ensure_inside_base(base_path / filename, base_path)
 
+        # Check file size limit
+        if len(cloud_content) > MAX_FILE_SIZE:
+            raise ValueError(
+                f"File too large: {len(cloud_content)} bytes > {MAX_FILE_SIZE} bytes"
+            )
+
         # Virus scan the cloud content before writing locally
         await scan_content_safe(cloud_content, filename=filename)
         target_path.write_bytes(cloud_content)
@@ -129,6 +158,12 @@ async def store_media_file(
         target_path = _ensure_inside_base(base_path / filename, base_path)
         content = base64.b64decode(b64_content)
 
+        # Check file size limit
+        if len(content) > MAX_FILE_SIZE:
+            raise ValueError(
+                f"File too large: {len(content)} bytes > {MAX_FILE_SIZE} bytes"
+            )
+
         # Virus scan the base64 content before writing
         await scan_content_safe(content, filename=filename)
         target_path.write_bytes(content)
@@ -141,6 +176,12 @@ async def store_media_file(
 
         # Download and save
         resp = await Requests().get(file)
+
+        # Check file size limit
+        if len(resp.content) > MAX_FILE_SIZE:
+            raise ValueError(
+                f"File too large: {len(resp.content)} bytes > {MAX_FILE_SIZE} bytes"
+            )
 
         # Virus scan the downloaded content before writing
         await scan_content_safe(resp.content, filename=filename)

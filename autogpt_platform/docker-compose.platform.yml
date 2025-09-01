@@ -114,6 +114,11 @@ services:
       - "8006:8006"
     networks:
       - app-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   executor:
     build:
@@ -147,6 +152,11 @@ services:
       - "8002:8002"
     networks:
       - app-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   websocket_server:
     build:
@@ -178,6 +188,11 @@ services:
       - "8001:8001"
     networks:
       - app-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   database_manager:
     build:
@@ -205,6 +220,11 @@ services:
       - "8005:8005"
     networks:
       - app-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   scheduler_server:
     build:
@@ -251,6 +271,11 @@ services:
       - "8003:8003"
     networks:
       - app-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   notification_server:
     build:
@@ -279,6 +304,11 @@ services:
       - "8007:8007"
     networks:
       - app-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
   frontend:
     build:
       context: ../
@@ -293,6 +323,11 @@ services:
       - "3000:3000"
     networks:
       - app-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     # Load environment variables in order (later overrides earlier)
     env_file:
       - path: ./frontend/.env.default # Base defaults (always exists)
