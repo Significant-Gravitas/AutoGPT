@@ -48,8 +48,6 @@ export function AgentRunsView() {
 
   const agent = response.data;
 
-  console.log(agent.input_schema);
-
   return (
     <div className="grid h-screen grid-cols-[25%_85%] gap-4 pt-8">
       {/* Left Sidebar - 30% */}
