@@ -4,7 +4,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { MagnifyingGlassIcon } from "@radix-ui/react-icons";
 import { CustomNode } from "@/components/CustomNode";
 import { GraphSearchContent } from "../../../app/(platform)/build/components/NewBlockMenu/GraphMenuContent/GraphContent";
