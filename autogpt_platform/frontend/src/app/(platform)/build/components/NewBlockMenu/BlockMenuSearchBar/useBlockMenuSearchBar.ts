@@ -1,5 +1,5 @@
 import { debounce } from "lodash";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useBlockMenuContext } from "../block-menu-provider";
 
 const SEARCH_DEBOUNCE_MS = 300;
