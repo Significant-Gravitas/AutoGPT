@@ -3,8 +3,7 @@ import React from "react";
 import { Input } from "@/components/ui/input";
 import { useBlockMenuSearchBar } from "./useBlockMenuSearchBar";
 import { Button } from "@/components/ui/button";
-import { MagnifyingGlassIcon } from "@radix-ui/react-icons";
-import { XIcon } from "@phosphor-icons/react";
+import { MagnifyingGlassIcon, XIcon } from "@phosphor-icons/react";
 
 interface BlockMenuSearchBarProps {
   className?: string;
