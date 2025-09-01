@@ -21,7 +21,7 @@ import random
 from datetime import datetime
 
 import prisma.enums
-from autogpt_libs.api_key.api_key_smith import APIKeySmith
+from autogpt_libs.api_key.keysmith import APIKeySmith
 from faker import Faker
 from prisma import Json, Prisma
 from prisma.types import (
