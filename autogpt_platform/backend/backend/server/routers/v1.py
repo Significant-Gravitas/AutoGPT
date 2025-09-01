@@ -27,20 +27,9 @@ from typing_extensions import Optional, TypedDict
 import backend.server.integrations.router
 import backend.server.routers.analytics
 import backend.server.v2.library.db as library_db
+from backend.data import api_key as api_key_db
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
-from backend.data.api_key import (
-    APIKeyError,
-    APIKeyNotFoundError,
-    APIKeyPermissionError,
-    APIKeyWithoutHash,
-    generate_api_key,
-    get_api_key_by_id,
-    list_user_api_keys,
-    revoke_api_key,
-    suspend_api_key,
-    update_api_key_permissions,
-)
 from backend.data.block import BlockInput, CompletedBlockOutput, get_block, get_blocks
 from backend.data.credit import (
     AutoTopUpConfig,
@@ -88,7 +77,11 @@ from backend.server.model import (
 )
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
-from backend.util.exceptions import GraphValidationError, NotFoundError
+from backend.util.exceptions import (
+    GraphValidationError,
+    NotAuthorizedError,
+    NotFoundError,
+)
 from backend.util.settings import Settings
 from backend.util.timezone_utils import (
     convert_cron_to_utc,
@@ -1084,7 +1077,6 @@ async def delete_graph_execution_schedule(
 @v1_router.post(
     "/api-keys",
     summary="Create new API key",
-    response_model=CreateAPIKeyResponse,
     tags=["api-keys"],
     dependencies=[Security(requires_user)],
 )
@@ -1093,14 +1085,14 @@ async def create_api_key(
 ) -> CreateAPIKeyResponse:
     """Create a new API key"""
     try:
-        api_key, plain_text = await generate_api_key(
+        api_key_info, plain_text_key = await api_key_db.create_api_key(
             name=request.name,
             user_id=user_id,
             permissions=request.permissions,
             description=request.description,
         )
-        return CreateAPIKeyResponse(api_key=api_key, plain_text_key=plain_text)
-    except APIKeyError as e:
+        return CreateAPIKeyResponse(api_key=api_key_info, plain_text_key=plain_text_key)
+    except api_key_db.APIKeyError as e:
         logger.error(
             "Could not create API key for user %s: %s. Review input and permissions.",
             user_id,
@@ -1115,17 +1107,16 @@ async def create_api_key(
 @v1_router.get(
     "/api-keys",
     summary="List user API keys",
-    response_model=list[APIKeyWithoutHash] | dict[str, str],
     tags=["api-keys"],
     dependencies=[Security(requires_user)],
 )
 async def get_api_keys(
     user_id: Annotated[str, Security(get_user_id)],
-) -> list[APIKeyWithoutHash]:
+) -> list[api_key_db.APIKeyInfo]:
     """List all API keys for the user"""
     try:
-        return await list_user_api_keys(user_id)
-    except APIKeyError as e:
+        return await api_key_db.list_user_api_keys(user_id)
+    except api_key_db.APIKeyError as e:
         logger.error("Failed to list API keys for user %s: %s", user_id, e)
         raise HTTPException(
             status_code=400,
@@ -1136,20 +1127,20 @@ async def get_api_keys(
 @v1_router.get(
     "/api-keys/{key_id}",
     summary="Get specific API key",
-    response_model=APIKeyWithoutHash,
+    response_model=api_key_db.APIKeyInfo,
     tags=["api-keys"],
     dependencies=[Security(requires_user)],
 )
 async def get_api_key(
     key_id: str, user_id: Annotated[str, Security(get_user_id)]
-) -> APIKeyWithoutHash:
+) -> api_key_db.APIKeyInfo:
     """Get a specific API key"""
     try:
-        api_key = await get_api_key_by_id(key_id, user_id)
+        api_key = await api_key_db.get_api_key_by_id(key_id, user_id)
         if not api_key:
             raise HTTPException(status_code=404, detail="API key not found")
         return api_key
-    except APIKeyError as e:
+    except api_key_db.APIKeyError as e:
         logger.error("Error retrieving API key %s for user %s: %s", key_id, user_id, e)
         raise HTTPException(
             status_code=400,
@@ -1160,21 +1151,21 @@ async def get_api_key(
 @v1_router.delete(
     "/api-keys/{key_id}",
     summary="Revoke API key",
-    response_model=APIKeyWithoutHash,
+    response_model=api_key_db.APIKeyInfo,
     tags=["api-keys"],
     dependencies=[Security(requires_user)],
 )
 async def delete_api_key(
     key_id: str, user_id: Annotated[str, Security(get_user_id)]
-) -> Optional[APIKeyWithoutHash]:
+) -> Optional[api_key_db.APIKeyInfo]:
     """Revoke an API key"""
     try:
-        return await revoke_api_key(key_id, user_id)
-    except APIKeyNotFoundError:
+        return await api_key_db.revoke_api_key(key_id, user_id)
+    except NotFoundError:
         raise HTTPException(status_code=404, detail="API key not found")
-    except APIKeyPermissionError:
+    except NotAuthorizedError:
         raise HTTPException(status_code=403, detail="Permission denied")
-    except APIKeyError as e:
+    except api_key_db.APIKeyError as e:
         logger.error("Failed to revoke API key %s for user %s: %s", key_id, user_id, e)
         raise HTTPException(
             status_code=400,
@@ -1188,21 +1179,20 @@ async def delete_api_key(
 @v1_router.post(
     "/api-keys/{key_id}/suspend",
     summary="Suspend API key",
-    response_model=APIKeyWithoutHash,
     tags=["api-keys"],
     dependencies=[Security(requires_user)],
 )
 async def suspend_key(
     key_id: str, user_id: Annotated[str, Security(get_user_id)]
-) -> Optional[APIKeyWithoutHash]:
+) -> api_key_db.APIKeyInfo:
     """Suspend an API key"""
     try:
-        return await suspend_api_key(key_id, user_id)
-    except APIKeyNotFoundError:
+        return await api_key_db.suspend_api_key(key_id, user_id)
+    except NotFoundError:
         raise HTTPException(status_code=404, detail="API key not found")
-    except APIKeyPermissionError:
+    except NotAuthorizedError:
         raise HTTPException(status_code=403, detail="Permission denied")
-    except APIKeyError as e:
+    except api_key_db.APIKeyError as e:
         logger.error("Failed to suspend API key %s for user %s: %s", key_id, user_id, e)
         raise HTTPException(
             status_code=400,
@@ -1213,7 +1203,6 @@ async def suspend_key(
 @v1_router.put(
     "/api-keys/{key_id}/permissions",
     summary="Update key permissions",
-    response_model=APIKeyWithoutHash,
     tags=["api-keys"],
     dependencies=[Security(requires_user)],
 )
@@ -1221,15 +1210,17 @@ async def update_permissions(
     key_id: str,
     request: UpdatePermissionsRequest,
     user_id: Annotated[str, Security(get_user_id)],
-) -> Optional[APIKeyWithoutHash]:
+) -> api_key_db.APIKeyInfo:
     """Update API key permissions"""
     try:
-        return await update_api_key_permissions(key_id, user_id, request.permissions)
-    except APIKeyNotFoundError:
+        return await api_key_db.update_api_key_permissions(
+            key_id, user_id, request.permissions
+        )
+    except NotFoundError:
         raise HTTPException(status_code=404, detail="API key not found")
-    except APIKeyPermissionError:
+    except NotAuthorizedError:
         raise HTTPException(status_code=403, detail="Permission denied")
-    except APIKeyError as e:
+    except api_key_db.APIKeyError as e:
         logger.error(
             "Failed to update permissions for API key %s of user %s: %s",
             key_id,

@@ -10,6 +10,7 @@ from prisma.models import APIKey as PrismaAPIKey
 from prisma.types import APIKeyWhereUniqueInput
 
 from backend.data.db import BaseDbModel
+from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 logger = logging.getLogger(__name__)
 keysmith = APIKeySmith()
@@ -22,25 +23,7 @@ class APIKeyError(Exception):
     pass
 
 
-class APIKeyNotFoundError(APIKeyError):
-    """Raised when an API key is not found"""
-
-    pass
-
-
-class APIKeyPermissionError(APIKeyError):
-    """Raised when there are permission issues with API key operations"""
-
-    pass
-
-
-class APIKeyValidationError(APIKeyError):
-    """Raised when API key validation fails"""
-
-    pass
-
-
-class APIKeyWithoutHash(BaseDbModel):
+class APIKeyInfo(BaseDbModel):
     name: str
     prefix: str
     status: APIKeyStatus = APIKeyStatus.ACTIVE
@@ -54,7 +37,7 @@ class APIKeyWithoutHash(BaseDbModel):
 
     @staticmethod
     def from_db(api_key: PrismaAPIKey):
-        return APIKeyWithoutHash(
+        return APIKeyInfo(
             id=api_key.id,
             name=api_key.name,
             prefix=api_key.head,
@@ -69,23 +52,23 @@ class APIKeyWithoutHash(BaseDbModel):
         )
 
 
-class APIKey(APIKeyWithoutHash):
-    key: str
+class APIKeyWithHash(APIKeyInfo):
+    hash: str
 
     @staticmethod
     def from_db(api_key: PrismaAPIKey):
-        return APIKey(
-            **APIKeyWithoutHash.from_db(api_key).model_dump(),
-            key=api_key.hash,
+        return APIKeyWithHash(
+            **APIKeyInfo.from_db(api_key).model_dump(),
+            hash=api_key.hash,
         )
 
 
-async def generate_api_key(
+async def create_api_key(
     name: str,
     user_id: str,
     permissions: list[APIKeyPermission],
     description: Optional[str] = None,
-) -> tuple[APIKeyWithoutHash, str]:
+) -> tuple[APIKeyInfo, str]:
     """
     Generate a new API key and store it in the database.
     Returns the API key object (without hash) and the plain text key.
@@ -107,8 +90,7 @@ async def generate_api_key(
             }
         )
 
-        api_key_without_hash = APIKeyWithoutHash.from_db(saved_key_obj)
-        return api_key_without_hash, generated_key.key
+        return APIKeyInfo.from_db(saved_key_obj), generated_key.key
     except PrismaError as e:
         logger.error(f"Database error while generating API key: {str(e)}")
         raise APIKeyError(f"Failed to generate API key: {str(e)}")
@@ -117,7 +99,7 @@ async def generate_api_key(
         raise APIKeyError(f"Failed to generate API key: {str(e)}")
 
 
-async def validate_api_key(raw_key: str) -> Optional[APIKey]:
+async def validate_api_key(raw_key: str) -> Optional[APIKeyInfo]:
     """
     Validate an API key and return the API key object if valid.
     """
@@ -132,26 +114,26 @@ async def validate_api_key(raw_key: str) -> Optional[APIKey]:
             where={"head": head, "status": APIKeyStatus.ACTIVE}
         )
 
-        known_api_key = next(
+        found_api_key = next(
             (
-                key
-                for key in possible_matches
-                if keysmith.verify_key(raw_key, key.hash, key.salt)
+                known_key
+                for known_key in possible_matches
+                if keysmith.verify_key(raw_key, known_key.hash, known_key.salt)
             ),
             None,
         )
-        if not known_api_key:
+        if not found_api_key:
             # API key not found or invalid
             return None
 
         # Migrate legacy keys to secure format on successful validation
-        if known_api_key.salt is None:
-            known_api_key = await _migrate_key_to_secure_hash(raw_key, known_api_key)
+        if found_api_key.salt is None:
+            found_api_key = await _migrate_key_to_secure_hash(raw_key, found_api_key)
 
-        return APIKey.from_db(known_api_key)
+        return APIKeyInfo.from_db(found_api_key)
     except Exception as e:
         logger.error(f"Error validating API key: {e}")
-        raise APIKeyValidationError(f"Failed to validate API key: {e}")
+        raise RuntimeError("Failed to validate API key") from e
 
 
 async def _migrate_key_to_secure_hash(
@@ -173,15 +155,15 @@ async def _migrate_key_to_secure_hash(
     return key_obj
 
 
-async def revoke_api_key(key_id: str, user_id: str) -> Optional[APIKeyWithoutHash]:
+async def revoke_api_key(key_id: str, user_id: str) -> APIKeyInfo:
     try:
         api_key = await PrismaAPIKey.prisma().find_unique(where={"id": key_id})
 
         if not api_key:
-            raise APIKeyNotFoundError(f"API key with id {key_id} not found")
+            raise NotFoundError(f"API key with id {key_id} not found")
 
         if api_key.userId != user_id:
-            raise APIKeyPermissionError(
+            raise NotAuthorizedError(
                 "You do not have permission to revoke this API key."
             )
 
@@ -192,11 +174,11 @@ async def revoke_api_key(key_id: str, user_id: str) -> Optional[APIKeyWithoutHas
                 "revokedAt": datetime.now(timezone.utc),
             },
         )
+        if not updated_api_key:
+            raise NotFoundError(f"API key #{key_id} vanished while trying to revoke.")
 
-        if updated_api_key:
-            return APIKeyWithoutHash.from_db(updated_api_key)
-        return None
-    except (APIKeyNotFoundError, APIKeyPermissionError) as e:
+        return APIKeyInfo.from_db(updated_api_key)
+    except (NotFoundError, NotAuthorizedError) as e:
         raise e
     except PrismaError as e:
         logger.error(f"Database error while revoking API key: {str(e)}")
@@ -206,13 +188,13 @@ async def revoke_api_key(key_id: str, user_id: str) -> Optional[APIKeyWithoutHas
         raise APIKeyError(f"Failed to revoke API key: {str(e)}")
 
 
-async def list_user_api_keys(user_id: str) -> list[APIKeyWithoutHash]:
+async def list_user_api_keys(user_id: str) -> list[APIKeyInfo]:
     try:
         api_keys = await PrismaAPIKey.prisma().find_many(
             where={"userId": user_id}, order={"createdAt": "desc"}
         )
 
-        return [APIKeyWithoutHash.from_db(key) for key in api_keys]
+        return [APIKeyInfo.from_db(key) for key in api_keys]
     except PrismaError as e:
         logger.error(f"Database error while listing API keys: {str(e)}")
         raise APIKeyError(f"Failed to list API keys: {str(e)}")
@@ -221,27 +203,27 @@ async def list_user_api_keys(user_id: str) -> list[APIKeyWithoutHash]:
         raise APIKeyError(f"Failed to list API keys: {str(e)}")
 
 
-async def suspend_api_key(key_id: str, user_id: str) -> Optional[APIKeyWithoutHash]:
+async def suspend_api_key(key_id: str, user_id: str) -> APIKeyInfo:
     selector: APIKeyWhereUniqueInput = {"id": key_id}
     try:
         api_key = await PrismaAPIKey.prisma().find_unique(where=selector)
 
         if not api_key:
-            raise APIKeyNotFoundError(f"API key with id {key_id} not found")
+            raise NotFoundError(f"API key with id {key_id} not found")
 
         if api_key.userId != user_id:
-            raise APIKeyPermissionError(
+            raise NotAuthorizedError(
                 "You do not have permission to suspend this API key."
             )
 
         updated_api_key = await PrismaAPIKey.prisma().update(
             where=selector, data={"status": APIKeyStatus.SUSPENDED}
         )
+        if not updated_api_key:
+            raise NotFoundError(f"API key #{key_id} vanished while trying to suspend.")
 
-        if updated_api_key:
-            return APIKeyWithoutHash.from_db(updated_api_key)
-        return None
-    except (APIKeyNotFoundError, APIKeyPermissionError) as e:
+        return APIKeyInfo.from_db(updated_api_key)
+    except (NotFoundError, NotAuthorizedError) as e:
         raise e
     except PrismaError as e:
         logger.error(f"Database error while suspending API key: {str(e)}")
@@ -251,7 +233,7 @@ async def suspend_api_key(key_id: str, user_id: str) -> Optional[APIKeyWithoutHa
         raise APIKeyError(f"Failed to suspend API key: {str(e)}")
 
 
-def has_permission(api_key: APIKey, required_permission: APIKeyPermission) -> bool:
+def has_permission(api_key: APIKeyInfo, required_permission: APIKeyPermission) -> bool:
     try:
         return required_permission in api_key.permissions
     except Exception as e:
@@ -259,7 +241,7 @@ def has_permission(api_key: APIKey, required_permission: APIKeyPermission) -> bo
         return False
 
 
-async def get_api_key_by_id(key_id: str, user_id: str) -> Optional[APIKeyWithoutHash]:
+async def get_api_key_by_id(key_id: str, user_id: str) -> Optional[APIKeyInfo]:
     try:
         api_key = await PrismaAPIKey.prisma().find_first(
             where={"id": key_id, "userId": user_id}
@@ -268,7 +250,7 @@ async def get_api_key_by_id(key_id: str, user_id: str) -> Optional[APIKeyWithout
         if not api_key:
             return None
 
-        return APIKeyWithoutHash.from_db(api_key)
+        return APIKeyInfo.from_db(api_key)
     except PrismaError as e:
         logger.error(f"Database error while getting API key: {str(e)}")
         raise APIKeyError(f"Failed to get API key: {str(e)}")
@@ -279,7 +261,7 @@ async def get_api_key_by_id(key_id: str, user_id: str) -> Optional[APIKeyWithout
 
 async def update_api_key_permissions(
     key_id: str, user_id: str, permissions: list[APIKeyPermission]
-) -> Optional[APIKeyWithoutHash]:
+) -> APIKeyInfo:
     """
     Update the permissions of an API key.
     """
@@ -287,10 +269,10 @@ async def update_api_key_permissions(
         api_key = await PrismaAPIKey.prisma().find_unique(where={"id": key_id})
 
         if api_key is None:
-            raise APIKeyNotFoundError("No such API key found.")
+            raise NotFoundError("No such API key found.")
 
         if api_key.userId != user_id:
-            raise APIKeyPermissionError(
+            raise NotAuthorizedError(
                 "You do not have permission to update this API key."
             )
 
@@ -298,11 +280,11 @@ async def update_api_key_permissions(
             where={"id": key_id},
             data={"permissions": permissions},
         )
+        if not updated_api_key:
+            raise NotFoundError(f"API key #{key_id} vanished while trying to update.")
 
-        if updated_api_key:
-            return APIKeyWithoutHash.from_db(updated_api_key)
-        return None
-    except (APIKeyNotFoundError, APIKeyPermissionError) as e:
+        return APIKeyInfo.from_db(updated_api_key)
+    except (NotFoundError, NotAuthorizedError) as e:
         raise e
     except PrismaError as e:
         logger.error(f"Database error while updating API key permissions: {str(e)}")
