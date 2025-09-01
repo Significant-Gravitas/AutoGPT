@@ -43,7 +43,7 @@ export const MainCreatorPage = ({ params }: MainCreatorPageProps) => {
         <main className="mt-5 px-4">
           <Breadcrumbs
             items={[
-              { name: "Store", link: "/marketplace" },
+              { name: "Marketplace", link: "/marketplace" },
               { name: creator.name, link: "#" },
             ]}
           />
