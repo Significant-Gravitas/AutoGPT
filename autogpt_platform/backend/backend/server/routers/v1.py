@@ -77,11 +77,7 @@ from backend.server.model import (
 )
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
-from backend.util.exceptions import (
-    GraphValidationError,
-    NotAuthorizedError,
-    NotFoundError,
-)
+from backend.util.exceptions import GraphValidationError, NotFoundError
 from backend.util.settings import Settings
 from backend.util.timezone_utils import (
     convert_cron_to_utc,
@@ -1084,24 +1080,13 @@ async def create_api_key(
     request: CreateAPIKeyRequest, user_id: Annotated[str, Security(get_user_id)]
 ) -> CreateAPIKeyResponse:
     """Create a new API key"""
-    try:
-        api_key_info, plain_text_key = await api_key_db.create_api_key(
-            name=request.name,
-            user_id=user_id,
-            permissions=request.permissions,
-            description=request.description,
-        )
-        return CreateAPIKeyResponse(api_key=api_key_info, plain_text_key=plain_text_key)
-    except api_key_db.APIKeyError as e:
-        logger.error(
-            "Could not create API key for user %s: %s. Review input and permissions.",
-            user_id,
-            e,
-        )
-        raise HTTPException(
-            status_code=400,
-            detail={"message": str(e), "hint": "Verify request payload and try again."},
-        )
+    api_key_info, plain_text_key = await api_key_db.create_api_key(
+        name=request.name,
+        user_id=user_id,
+        permissions=request.permissions,
+        description=request.description,
+    )
+    return CreateAPIKeyResponse(api_key=api_key_info, plain_text_key=plain_text_key)
 
 
 @v1_router.get(
@@ -1114,14 +1099,7 @@ async def get_api_keys(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[api_key_db.APIKeyInfo]:
     """List all API keys for the user"""
-    try:
-        return await api_key_db.list_user_api_keys(user_id)
-    except api_key_db.APIKeyError as e:
-        logger.error("Failed to list API keys for user %s: %s", user_id, e)
-        raise HTTPException(
-            status_code=400,
-            detail={"message": str(e), "hint": "Check API key service availability."},
-        )
+    return await api_key_db.list_user_api_keys(user_id)
 
 
 @v1_router.get(
@@ -1135,17 +1113,10 @@ async def get_api_key(
     key_id: str, user_id: Annotated[str, Security(get_user_id)]
 ) -> api_key_db.APIKeyInfo:
     """Get a specific API key"""
-    try:
-        api_key = await api_key_db.get_api_key_by_id(key_id, user_id)
-        if not api_key:
-            raise HTTPException(status_code=404, detail="API key not found")
-        return api_key
-    except api_key_db.APIKeyError as e:
-        logger.error("Error retrieving API key %s for user %s: %s", key_id, user_id, e)
-        raise HTTPException(
-            status_code=400,
-            detail={"message": str(e), "hint": "Ensure the key ID is correct."},
-        )
+    api_key = await api_key_db.get_api_key_by_id(key_id, user_id)
+    if not api_key:
+        raise HTTPException(status_code=404, detail="API key not found")
+    return api_key
 
 
 @v1_router.delete(
@@ -1159,21 +1130,7 @@ async def delete_api_key(
     key_id: str, user_id: Annotated[str, Security(get_user_id)]
 ) -> Optional[api_key_db.APIKeyInfo]:
     """Revoke an API key"""
-    try:
-        return await api_key_db.revoke_api_key(key_id, user_id)
-    except NotFoundError:
-        raise HTTPException(status_code=404, detail="API key not found")
-    except NotAuthorizedError:
-        raise HTTPException(status_code=403, detail="Permission denied")
-    except api_key_db.APIKeyError as e:
-        logger.error("Failed to revoke API key %s for user %s: %s", key_id, user_id, e)
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "message": str(e),
-                "hint": "Verify permissions or try again later.",
-            },
-        )
+    return await api_key_db.revoke_api_key(key_id, user_id)
 
 
 @v1_router.post(
@@ -1186,18 +1143,7 @@ async def suspend_key(
     key_id: str, user_id: Annotated[str, Security(get_user_id)]
 ) -> api_key_db.APIKeyInfo:
     """Suspend an API key"""
-    try:
-        return await api_key_db.suspend_api_key(key_id, user_id)
-    except NotFoundError:
-        raise HTTPException(status_code=404, detail="API key not found")
-    except NotAuthorizedError:
-        raise HTTPException(status_code=403, detail="Permission denied")
-    except api_key_db.APIKeyError as e:
-        logger.error("Failed to suspend API key %s for user %s: %s", key_id, user_id, e)
-        raise HTTPException(
-            status_code=400,
-            detail={"message": str(e), "hint": "Check user permissions and retry."},
-        )
+    return await api_key_db.suspend_api_key(key_id, user_id)
 
 
 @v1_router.put(
@@ -1212,22 +1158,6 @@ async def update_permissions(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> api_key_db.APIKeyInfo:
     """Update API key permissions"""
-    try:
-        return await api_key_db.update_api_key_permissions(
-            key_id, user_id, request.permissions
-        )
-    except NotFoundError:
-        raise HTTPException(status_code=404, detail="API key not found")
-    except NotAuthorizedError:
-        raise HTTPException(status_code=403, detail="Permission denied")
-    except api_key_db.APIKeyError as e:
-        logger.error(
-            "Failed to update permissions for API key %s of user %s: %s",
-            key_id,
-            user_id,
-            e,
-        )
-        raise HTTPException(
-            status_code=400,
-            detail={"message": str(e), "hint": "Ensure permissions list is valid."},
-        )
+    return await api_key_db.update_api_key_permissions(
+        key_id, user_id, request.permissions
+    )
