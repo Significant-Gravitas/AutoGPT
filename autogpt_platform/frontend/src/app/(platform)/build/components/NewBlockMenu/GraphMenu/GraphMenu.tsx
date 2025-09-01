@@ -5,9 +5,9 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { MagnifyingGlassIcon } from "@phosphor-icons/react";
-import { GraphSearchContent } from "./GraphSearchContent";
+import { GraphSearchContent } from "../GraphMenuContent/GraphContent";
 import { ControlPanelButton } from "../ControlPanelButton";
-import { useGraphSearch } from "./useGraphSearch";
+import { useGraphSearch } from "../GraphMenuSearchBar/useGraphMenuSearchBar";
 import { CustomNode } from "@/components/CustomNode";
 
 interface GraphSearchMenuProps {
@@ -51,14 +51,13 @@ export const GraphSearchMenu: React.FC<GraphSearchMenuProps> = ({
           selected={blockMenuSelected === "search"}
           className="rounded-none"
         >
-          <MagnifyingGlassIcon className="h-5 w-5" weight="bold" />
+          <MagnifyingGlassIcon className="h-5 w-6" strokeWidth={2} />
         </ControlPanelButton>
       </PopoverTrigger>
 
       <PopoverContent
         side="right"
         align="start"
-        alignOffset={-70}  // Offset upward to align with control panel top
         sideOffset={16}
         className="absolute h-[75vh] w-[46.625rem] overflow-hidden rounded-[1rem] border-none p-0 shadow-[0_2px_6px_0_rgba(0,0,0,0.05)]"
         data-id="graph-search-popover-content"

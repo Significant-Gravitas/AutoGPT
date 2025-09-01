@@ -7,8 +7,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { MagnifyingGlassIcon } from "@radix-ui/react-icons";
 import { CustomNode } from "@/components/CustomNode";
-import { GraphSearchContent } from "../../../app/(platform)/build/components/NewBlockMenu/GraphSearchMenu/GraphSearchContent";
-import { useGraphSearch } from "../../../app/(platform)/build/components/NewBlockMenu/GraphSearchMenu/useGraphSearch";
+import { GraphSearchContent } from "../../../app/(platform)/build/components/NewBlockMenu/GraphMenuContent/GraphContent";
+import { useGraphSearch } from "../../../app/(platform)/build/components/NewBlockMenu/GraphMenuSearchBar/useGraphMenuSearchBar";
 import {
   Tooltip,
   TooltipContent,

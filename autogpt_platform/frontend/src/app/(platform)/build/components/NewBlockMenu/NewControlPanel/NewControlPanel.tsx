@@ -8,7 +8,7 @@ import { GraphExecutionID } from "@/lib/autogpt-server-api";
 import { history } from "@/components/history";
 import { ControlPanelButton } from "../ControlPanelButton";
 import { ArrowUUpLeftIcon, ArrowUUpRightIcon } from "@phosphor-icons/react";
-import { GraphSearchMenu } from "../GraphSearchMenu/GraphSearchMenu";
+import { GraphSearchMenu } from "../GraphMenu/GraphMenu";
 import { CustomNode } from "@/components/CustomNode";
 
 export type Control = {

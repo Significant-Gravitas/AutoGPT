@@ -61,23 +61,26 @@ poetry run pytest path/to/test.py --snapshot-update
 
 ```bash
 # Install dependencies
-cd frontend && npm install
+cd frontend && pnpm i
 
 # Start development server
-npm run dev
+pnpm dev
 
 # Run E2E tests
-npm run test
+pnpm test
 
 # Run Storybook for component development
-npm run storybook
+pnpm storybook
 
 # Build production
-npm run build
+pnpm build
 
 # Type checking
-npm run types
+pnpm types
 ```
+
+We have a components library in autogpt_platform/frontend/src/components/atoms that should be used when adding new pages and components. 
+
 
 ## Architecture Overview
 

@@ -1,11 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
+import React, { useEffect, useState } from "react";
+import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MagnifyingGlass } from "@phosphor-icons/react";
 import { beautifyString, getPrimaryCategoryColor } from "@/lib/utils";
-import { SearchableNode } from "./useGraphSearch";
+import { SearchableNode } from "../GraphMenuSearchBar/useGraphMenuSearchBar";
 import { TextRenderer } from "@/components/ui/render";
 import {
   Tooltip,
@@ -13,6 +10,7 @@ import {
   TooltipTrigger,
   TooltipProvider,
 } from "@/components/ui/tooltip";
+import { GraphMenuSearchBar } from "../GraphMenuSearchBar/GraphMenuSearchBar";
 
 interface GraphSearchContentProps {
   searchQuery: string;
@@ -30,11 +28,6 @@ export const GraphSearchContent: React.FC<GraphSearchContentProps> = ({
   onNodeHover,
 }) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    searchInputRef.current?.focus();
-  }, []);
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -69,39 +62,24 @@ export const GraphSearchContent: React.FC<GraphSearchContentProps> = ({
   };
 
   return (
-    <Card className="p-3 pb-0 dark:bg-slate-900">
-      <CardHeader className="flex flex-col gap-x-8 gap-y-1 p-3 px-2">
-        <div className="items-center justify-between">
-          <Label
-            htmlFor="search-nodes"
-            className="whitespace-nowrap text-base font-bold text-black dark:text-white 2xl:text-xl"
-          >
-            Search Graph
-          </Label>
-        </div>
-        <div className="relative flex items-center">
-          <MagnifyingGlass className="absolute m-2 h-5 w-5 text-gray-500 dark:text-gray-400" weight="regular" />
-          <Input
-            ref={searchInputRef}
-            id="search-nodes"
-            type="text"
-            placeholder="Search nodes, inputs, outputs..."
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            className="rounded-lg px-8 py-5 dark:bg-slate-800 dark:text-white"
-            autoComplete="off"
-          />
-        </div>
+    <div className="flex h-full w-full flex-col">
+      {/* Search Bar */}
+      <GraphMenuSearchBar 
+        searchQuery={searchQuery}
+        onSearchChange={onSearchChange}
+        onKeyDown={handleKeyDown}
+      />
+      
+      <Separator className="h-[1px] w-full text-zinc-300" />
+      
+      {/* Search Results */}
+      <div className="flex-1 overflow-hidden">
         {searchQuery && (
-          <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          <div className="px-4 py-2 text-xs text-gray-500">
             Found {filteredNodes.length} node{filteredNodes.length !== 1 ? "s" : ""}
           </div>
         )}
-      </CardHeader>
-      
-      <CardContent className="overflow-scroll border-t border-t-gray-200 p-0 dark:border-t-slate-700">
-        <ScrollArea className="h-[60vh] w-full">
+        <ScrollArea className="h-full w-full">
           {filteredNodes.length === 0 ? (
             <div className="flex h-32 items-center justify-center text-sm text-gray-500 dark:text-gray-400">
               {searchQuery ? "No nodes found matching your search" : "Start typing to search nodes"}
@@ -116,11 +94,11 @@ export const GraphSearchContent: React.FC<GraphSearchContentProps> = ({
                 <TooltipProvider key={node.id}>
                   <Tooltip delayDuration={300}>
                     <TooltipTrigger asChild>
-                      <Card
-                        className={`m-2 my-4 flex h-20 cursor-pointer shadow-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 ${
+                      <div
+                        className={`mx-4 my-2 flex h-20 cursor-pointer rounded-lg border border-zinc-200 bg-white ${
                           index === selectedIndex 
-                            ? "shadow-lg dark:bg-slate-700" 
-                            : "hover:shadow-lg dark:hover:bg-slate-700"
+                            ? "border-zinc-400 shadow-md" 
+                            : "hover:border-zinc-300 hover:shadow-sm"
                         }`}
                         onClick={() => onNodeSelect(node.id)}
                         onMouseEnter={() => {
@@ -130,17 +108,17 @@ export const GraphSearchContent: React.FC<GraphSearchContentProps> = ({
                         onMouseLeave={() => onNodeHover?.(null)}
                       >
                         <div
-                          className={`-ml-px h-full w-3 rounded-l-xl ${getPrimaryCategoryColor(node.data.categories)}`}
+                          className={`h-full w-3 rounded-l-[7px] ${getPrimaryCategoryColor(node.data.categories)}`}
                         />
                         <div className="mx-3 flex flex-1 items-center justify-between">
                           <div className="mr-2 min-w-0">
-                            <span className="block truncate pb-1 text-sm font-semibold dark:text-white">
+                            <span className="block truncate pb-1 text-sm font-semibold text-zinc-800">
                               <TextRenderer
                                 value={nodeTitle}
                                 truncateLengthLimit={45}
                               />
                             </span>
-                            <span className="block break-all text-xs font-normal text-gray-500 dark:text-gray-400">
+                            <span className="block break-all text-xs font-normal text-zinc-500">
                               <TextRenderer
                                 value={getNodeInputOutputSummary(node) || node.data.description}
                                 truncateLengthLimit={165}
@@ -148,7 +126,7 @@ export const GraphSearchContent: React.FC<GraphSearchContentProps> = ({
                             </span>
                           </div>
                         </div>
-                      </Card>
+                      </div>
                     </TooltipTrigger>
                     <TooltipContent side="right" className="max-w-xs">
                       <div className="space-y-1">
@@ -164,7 +142,7 @@ export const GraphSearchContent: React.FC<GraphSearchContentProps> = ({
             })
           )}
         </ScrollArea>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 };
