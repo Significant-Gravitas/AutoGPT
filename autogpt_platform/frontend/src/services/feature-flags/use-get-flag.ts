@@ -31,7 +31,6 @@ export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] | null {
   const flagValue = currentFlags[flag];
   const isCloud = getBehaveAs() === BehaveAs.CLOUD;
 
-
   if (isPwMockEnabled && !isCloud) return mockFlags[flag];
 
   return flagValue;
