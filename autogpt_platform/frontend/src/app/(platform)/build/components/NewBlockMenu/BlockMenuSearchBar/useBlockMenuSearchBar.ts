@@ -14,18 +14,14 @@ export const useBlockMenuSearchBar = () => {
       searchIdRef.current = searchId;
     }, [searchId]);
 
-    const debouncedSetSearchQuery = useMemo(
-      () =>
-        debounce((value: string) => {
+    const debouncedSetSearchQuery = debounce((value: string) => {
           setSearchQuery(value);
           if (value.length === 0) {
             setSearchId(undefined);
           } else if (!searchIdRef.current) {
             setSearchId(crypto.randomUUID());
           }
-        }, SEARCH_DEBOUNCE_MS),
-      [setSearchQuery, setSearchId],
-    );
+        }, SEARCH_DEBOUNCE_MS);
   
     useEffect(() => {
       return () => {

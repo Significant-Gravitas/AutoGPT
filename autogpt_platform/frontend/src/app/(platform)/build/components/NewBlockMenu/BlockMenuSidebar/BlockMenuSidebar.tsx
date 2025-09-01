@@ -2,9 +2,29 @@ import React from "react";
 import { MenuItem } from "../MenuItem";
 import { DefaultStateType } from "../block-menu-provider";
 import { useBlockMenuSidebar } from "./useBlockMenuSidebar";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
 export const BlockMenuSidebar = () => {
-  const { blockCounts, setDefaultState, defaultState } = useBlockMenuSidebar();
+  const { blockCounts, setDefaultState, defaultState, isLoading, isError, error } = useBlockMenuSidebar();
+
+  if (isLoading) {
+    return (
+      <div className="w-fit space-y-2 px-4 pt-4">
+        <Skeleton className="h-12 w-[12.875rem]" />
+        <Skeleton className="h-12 w-[12.875rem]" />
+        <Skeleton className="h-12 w-[12.875rem]" />
+        <Skeleton className="h-12 w-[12.875rem]" />
+        <Skeleton className="h-12 w-[12.875rem]" />
+        <Skeleton className="h-12 w-[12.875rem]" />
+      </div>
+    );
+  }
+  if (isError) {
+    return <div className="w-fit space-y-2 px-4 pt-4">
+      <ErrorCard className="w-[12.875rem]" httpError={{status: 500, statusText: "Internal Server Error", message: error?.detail || 'An error occurred'}} />
+      </div>
+  }
 
   const topLevelMenuItems = [
     {
