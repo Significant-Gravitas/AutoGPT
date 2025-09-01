@@ -33,5 +33,5 @@ export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] | null {
 
   if (isPwMockEnabled && !isCloud) return mockFlags[flag];
 
-  return flagValue as FlagValues[T];
+  return flagValue;
 }
