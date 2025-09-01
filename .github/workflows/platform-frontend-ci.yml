@@ -126,8 +126,6 @@ jobs:
   test:
     runs-on: big-boi
     needs: setup
-    env:
-      NEXT_PUBLIC_PW_TEST: "true"
     strategy:
       fail-fast: false
 
