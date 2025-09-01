@@ -7,8 +7,8 @@ import {
 import { MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { GraphSearchContent } from "../GraphMenuContent/GraphContent";
 import { ControlPanelButton } from "../ControlPanelButton";
-import { useGraphSearch } from "../GraphMenuSearchBar/useGraphMenuSearchBar";
 import { CustomNode } from "@/components/CustomNode";
+import { useGraphMenu } from "./useGraphMenu";
 
 interface GraphSearchMenuProps {
   nodes: CustomNode[];
@@ -27,20 +27,19 @@ export const GraphSearchMenu: React.FC<GraphSearchMenuProps> = ({
   onNodeSelect,
   onNodeHover,
 }) => {
-  const { open, setOpen, searchQuery, setSearchQuery, filteredNodes } = 
-    useGraphSearch(nodes);
-
-  const handleNodeSelect = (nodeId: string) => {
-    onNodeSelect(nodeId);
-    setOpen(false);
-    setSearchQuery("");
-    setBlockMenuSelected("");
-  };
-
-  const handleOpenChange = (newOpen: boolean) => {
-    setOpen(newOpen);
-    setBlockMenuSelected(newOpen ? "search" : "");
-  };
+  const {
+    open,
+    searchQuery,
+    setSearchQuery,
+    filteredNodes,
+    handleNodeSelect,
+    handleOpenChange,
+  } = useGraphMenu({
+    nodes,
+    blockMenuSelected,
+    setBlockMenuSelected,
+    onNodeSelect,
+  });
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>

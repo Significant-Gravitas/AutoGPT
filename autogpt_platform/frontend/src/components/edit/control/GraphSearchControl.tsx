@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import {
   Popover,
   PopoverContent,
@@ -8,12 +8,12 @@ import { Button } from "@/components/atoms/Button/Button";
 import { MagnifyingGlassIcon } from "@radix-ui/react-icons";
 import { CustomNode } from "@/components/CustomNode";
 import { GraphSearchContent } from "../../../app/(platform)/build/components/NewBlockMenu/GraphMenuContent/GraphContent";
-import { useGraphSearch } from "../../../app/(platform)/build/components/NewBlockMenu/GraphMenuSearchBar/useGraphMenuSearchBar";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useGraphMenu } from "../../../app/(platform)/build/components/NewBlockMenu/GraphMenu/useGraphMenu";
 
 interface GraphSearchControlProps {
   nodes: CustomNode[];
@@ -26,19 +26,23 @@ export function GraphSearchControl({
   onNodeSelect,
   onNodeHover,
 }: GraphSearchControlProps) {
-  const [open, setOpen] = useState(false);
-  const { searchQuery, setSearchQuery, filteredNodes } = useGraphSearch(
-    nodes || [],
-  );
-
-  const handleNodeSelect = (nodeId: string) => {
-    onNodeSelect(nodeId);
-    setOpen(false);
-    setSearchQuery("");
-  };
+  // Use the same hook as GraphSearchMenu for consistency
+  const {
+    open,
+    searchQuery,
+    setSearchQuery,
+    filteredNodes,
+    handleNodeSelect,
+    handleOpenChange,
+  } = useGraphMenu({
+    nodes,
+    blockMenuSelected: "", // We don't need to track this in the old control panel
+    setBlockMenuSelected: () => {}, // Not needed in this context
+    onNodeSelect,
+  });
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <Tooltip delayDuration={500}>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>

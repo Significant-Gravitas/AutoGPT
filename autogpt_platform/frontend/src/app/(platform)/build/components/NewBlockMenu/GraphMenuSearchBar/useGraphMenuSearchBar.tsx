@@ -14,14 +14,17 @@ export const useGraphSearch = (nodes: CustomNode[]) => {
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
   const filteredNodes = useMemo(() => {
+    // Filter out invalid nodes
+    const validNodes = (nodes || []).filter(node => node && node.data);
+    
     if (!deferredSearchQuery.trim()) {
-      return nodes.map(node => ({ ...node, searchScore: 1, matchedFields: [] }));
+      return validNodes.map(node => ({ ...node, searchScore: 1, matchedFields: [] }));
     }
 
     const query = deferredSearchQuery.toLowerCase().trim();
     const queryWords = query.split(/\s+/);
 
-    return nodes
+    return validNodes
       .map((node): SearchableNode => {
         const { score, matchedFields } = calculateNodeScore(node, query, queryWords);
         return { ...node, searchScore: score, matchedFields };
@@ -47,18 +50,23 @@ function calculateNodeScore(
   const matchedFields: string[] = [];
   let score = 0;
 
-  // Prepare searchable text
-  const nodeTitle = (node.data.title || "").toLowerCase(); // This includes the ID
+  // Safety check for node data
+  if (!node || !node.data) {
+    return { score: 0, matchedFields: [] };
+  }
+
+  // Prepare searchable text with defensive checks
+  const nodeTitle = (node.data?.title || "").toLowerCase(); // This includes the ID
   const nodeId = (node.id || "").toLowerCase();
-  const nodeDescription = (node.data.description || "").toLowerCase();
-  const blockType = (node.data.blockType || "").toLowerCase();
+  const nodeDescription = (node.data?.description || "").toLowerCase();
+  const blockType = (node.data?.blockType || "").toLowerCase();
   const beautifiedBlockType = beautifyString(blockType).toLowerCase();
-  const customizedName = (node.data.metadata?.customized_name || "").toLowerCase();
+  const customizedName = (node.data?.metadata?.customized_name || "").toLowerCase();
   
-  // Get input and output names
-  const inputNames = Object.keys(node.data.inputSchema?.properties || {})
+  // Get input and output names with defensive checks
+  const inputNames = Object.keys(node.data?.inputSchema?.properties || {})
     .map(key => key.toLowerCase());
-  const outputNames = Object.keys(node.data.outputSchema?.properties || {})
+  const outputNames = Object.keys(node.data?.outputSchema?.properties || {})
     .map(key => key.toLowerCase());
   
   // 1. Check exact match in customized name, title (includes ID), node ID, or block type (highest priority)

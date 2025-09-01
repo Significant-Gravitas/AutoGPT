@@ -1,8 +1,9 @@
 import { cn } from "@/lib/utils";
-import React, { useRef } from "react";
+import React from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { MagnifyingGlassIcon, XIcon } from "@phosphor-icons/react";
+import { useGraphMenuSearchBarComponent } from "./useGraphMenuSearchBarComponent";
 
 interface GraphMenuSearchBarProps {
   className?: string;
@@ -17,12 +18,9 @@ export const GraphMenuSearchBar: React.FC<GraphMenuSearchBarProps> = ({
   onSearchChange,
   onKeyDown,
 }) => {
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const handleClear = () => {
-    onSearchChange("");
-    inputRef.current?.focus();
-  };
+  const { inputRef, handleClear } = useGraphMenuSearchBarComponent({
+    onSearchChange,
+  });
 
   return (
     <div
