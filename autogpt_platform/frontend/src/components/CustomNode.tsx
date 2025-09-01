@@ -32,7 +32,6 @@ import {
   setNestedProperty,
 } from "@/lib/utils";
 import { Button } from "@/components/atoms/Button/Button";
-import { Switch } from "@/components/ui/switch";
 import { TextRenderer } from "@/components/ui/render";
 import { history } from "./history";
 import NodeHandle from "./NodeHandle";
@@ -60,6 +59,7 @@ import useCredits from "@/hooks/useCredits";
 import { getV1GetAyrshareSsoUrl } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { Input } from "@/components/ui/input";
+import { Switch } from "./atoms/Switch/Switch";
 import {
   Tooltip,
   TooltipContent,
