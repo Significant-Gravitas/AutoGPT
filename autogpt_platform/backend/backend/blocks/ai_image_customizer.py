@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import SecretStr
 from replicate.client import Client as ReplicateClient
@@ -126,7 +126,7 @@ class AIImageCustomizerBlock(Block):
     ) -> str:
         client = ReplicateClient(api_token=api_key.get_secret_value())
 
-        input_params = {
+        input_params: Dict[str, Any] = {
             "prompt": prompt,
             "output_format": output_format,
         }
