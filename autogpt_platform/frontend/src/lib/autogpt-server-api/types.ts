@@ -415,7 +415,7 @@ export type LibraryAgent = {
   id: LibraryAgentID;
   graph_id: GraphID;
   graph_version: number;
-  image_url?: string;
+  image_url: string | null;
   creator_name: string;
   creator_image_url: string;
   status: AgentStatus;

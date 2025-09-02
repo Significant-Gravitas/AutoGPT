@@ -8,6 +8,7 @@ interface ModalHeaderProps {
 }
 
 export function ModalHeader({ agent }: ModalHeaderProps) {
+  const isUnknownCreator = agent.creator_name === "Unknown";
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
@@ -15,9 +16,9 @@ export function ModalHeader({ agent }: ModalHeaderProps) {
       </div>
       <div>
         <Text variant="h3">{agent.name}</Text>
-        <Text variant="body-medium">
-          by {agent.creator_name === "Unknown" ? "–" : agent.creator_name}
-        </Text>
+        {!isUnknownCreator ? (
+          <Text variant="body-medium">by {agent.creator_name}</Text>
+        ) : null}
         <ShowMoreText
           previewLimit={80}
           variant="small"
