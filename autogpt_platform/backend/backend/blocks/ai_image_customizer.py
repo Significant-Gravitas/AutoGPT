@@ -76,7 +76,7 @@ class AIImageCustomizerBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="f47ac10b-58cc-4372-a567-0e02b2c3d479",
+            id="8b3e9f2a-4d7c-4a1b-9e5f-6c8d2a9b3e7f",
             description="Generate images using Google's Gemini 2.5 Flash Image model via Replicate API",
             categories={BlockCategory.AI, BlockCategory.MULTIMEDIA},
             input_schema=AIImageCustomizerBlock.Input,
