@@ -42,8 +42,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-          submodules: true
+          fetch-depth: 1
 
       # Backend Python/Poetry setup (mirrors platform-backend-ci.yml)
       - name: Set up Python
