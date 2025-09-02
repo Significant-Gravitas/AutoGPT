@@ -88,6 +88,7 @@ async def test_send_graph_execution_result(
         user_id="user-1",
         graph_id="test_graph",
         graph_version=1,
+        preset_id=None,
         status=ExecutionStatus.COMPLETED,
         started_at=datetime.now(tz=timezone.utc),
         ended_at=datetime.now(tz=timezone.utc),
@@ -101,6 +102,8 @@ async def test_send_graph_execution_result(
             "input_1": "some input value :)",
             "input_2": "some *other* input value",
         },
+        credential_inputs=None,
+        nodes_input_masks=None,
         outputs={
             "the_output": ["some output value"],
             "other_output": ["sike there was another output"],

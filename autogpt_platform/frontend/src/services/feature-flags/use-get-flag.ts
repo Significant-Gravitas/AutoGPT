@@ -1,5 +1,6 @@
 "use client";
 
+import { BehaveAs, getBehaveAs } from "@/lib/utils";
 import { useFlags } from "launchdarkly-react-client-sdk";
 
 export enum Flag {
@@ -18,7 +19,7 @@ export type FlagValues = {
   [Flag.GRAPH_SEARCH]: boolean;
 };
 
-const isTest = process.env.NEXT_PUBLIC_PW_TEST === "true";
+const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
 
 const mockFlags = {
   [Flag.BETA_BLOCKS]: [],
@@ -31,9 +32,9 @@ const mockFlags = {
 export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] | null {
   const currentFlags = useFlags<FlagValues>();
   const flagValue = currentFlags[flag];
+  const isCloud = getBehaveAs() === BehaveAs.CLOUD;
 
-  if (isTest) return mockFlags[flag];
-  if (!flagValue) return null;
+  if (isPwMockEnabled && !isCloud) return mockFlags[flag];
 
   return flagValue;
 }

@@ -355,15 +355,20 @@ model AgentGraphExecution {
   agentGraphVersion Int        @default(1)
   AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
 
+  agentPresetId String?
+  AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
+
+  inputs           Json?
+  credentialInputs Json?
+  nodesInputMasks  Json?
+
   NodeExecutions AgentNodeExecution[]
 
   // Link to User model -- Executed by this user
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  stats         Json?
-  agentPresetId String?
-  AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
+  stats Json?
 
   @@index([agentGraphId, agentGraphVersion])
   @@index([userId])
@@ -725,6 +730,7 @@ model StoreListing {
 
   // Relations
   Versions StoreListingVersion[] @relation("ListingVersions")
+  SearchIndexes StoreAgentSearch[] @relation("SearchIndexes")
 
   // Unique index on agentId to ensure only one listing per agent, regardless of number of versions the agent has.
   @@unique([agentGraphId])
@@ -782,12 +788,64 @@ model StoreListingVersion {
 
   // Reviews for this specific version
   Reviews StoreListingReview[]
+  
+  // Search index entries for vector search
+  SearchIndexes StoreAgentSearch[] @relation("SearchIndexes")
 
   @@unique([storeListingId, version])
   @@index([storeListingId, submissionStatus, isAvailable])
   @@index([submissionStatus])
   @@index([reviewerId])
   @@index([agentGraphId, agentGraphVersion]) // Non-unique index for efficient lookups
+}
+
+model StoreAgentSearch {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relation to StoreListingVersion
+  storeListingVersionId String
+  StoreListingVersion   StoreListingVersion @relation("SearchIndexes", fields: [storeListingVersionId], references: [id], onDelete: Cascade)
+
+  // Direct relation to StoreListing for easier joins
+  storeListingId String
+  StoreListing   StoreListing @relation("SearchIndexes", fields: [storeListingId], references: [id], onDelete: Cascade)
+
+  // Searchable fields that will be embedded
+  fieldName String // The field being indexed (name, description, categories, subheading)
+  fieldValue String // The actual text content for this field
+  
+  // Vector embedding for similarity search using pgvector
+  // text-embedding-3-small produces 1536-dimensional embeddings
+  embedding Float[] // pgvector field for storing 1536-dimensional embeddings
+  
+  // Metadata for search optimization
+  fieldType SearchFieldType // Type of field for filtering
+  
+  // Denormalized fields for filtering without joins
+  submissionStatus SubmissionStatus // Copy from StoreListingVersion for filtering approved content
+  isAvailable      Boolean          // Copy from StoreListingVersion for filtering available content
+  
+  // Unique constraint to prevent duplicate indexing of the same field
+  @@unique([storeListingVersionId, fieldName])
+  
+  // Indexes for performance
+  @@index([storeListingVersionId])
+  @@index([storeListingId])
+  @@index([fieldName])
+  @@index([fieldType])
+  @@index([submissionStatus, isAvailable]) // For filtering approved and available content
+  
+  // Note: pgvector index will be created manually in migration for vector similarity search
+}
+
+// Enum for searchable field types
+enum SearchFieldType {
+  NAME        // Agent name
+  DESCRIPTION // Agent description
+  CATEGORIES  // Agent categories
+  SUBHEADING  // Agent subheading
 }
 
 model StoreListingReview {

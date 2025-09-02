@@ -79,6 +79,8 @@ firecrawl-py = "^2.16.3"
 exa-py = "^1.14.20"
 croniter = "^6.0.0"
 stagehand = "^0.5.1"
+pgvector = "^0.4.1"
+asyncpg = "^0.30.0"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"
