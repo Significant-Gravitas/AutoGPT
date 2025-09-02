@@ -17,7 +17,16 @@ export async function downloadOutputs(items: DownloadItem[]) {
         item.metadata,
       );
       if (copyContent) {
-        concatenableTexts.push(copyContent);
+        // Extract text from CopyContent
+        let text: string;
+        if (typeof copyContent.data === "string") {
+          text = copyContent.data;
+        } else if (copyContent.fallbackText) {
+          text = copyContent.fallbackText;
+        } else {
+          continue;
+        }
+        concatenableTexts.push(text);
       }
     } else {
       const downloadContent = item.renderer.getDownloadContent(

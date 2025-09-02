@@ -1,5 +1,10 @@
 import React from "react";
-import { OutputRenderer, OutputMetadata, DownloadContent } from "../types";
+import {
+  OutputRenderer,
+  OutputMetadata,
+  DownloadContent,
+  CopyContent,
+} from "../types";
 
 export class CodeRenderer implements OutputRenderer {
   name = "CodeRenderer";
@@ -11,6 +16,27 @@ export class CodeRenderer implements OutputRenderer {
     }
 
     if (typeof value !== "string") return false;
+
+    // Don't render as code if it looks like markdown
+    const markdownIndicators = [
+      /^#{1,6}\s+/m, // Headers
+      /\*\*[^*]+\*\*/, // Bold
+      /\[([^\]]+)\]\(([^)]+)\)/, // Links
+      /^>\s+/m, // Blockquotes
+      /^\s*[-*+]\s+\w+/m, // Lists with text
+      /!\[([^\]]*)\]\(([^)]+)\)/, // Images
+    ];
+
+    let markdownMatches = 0;
+    for (const pattern of markdownIndicators) {
+      if (pattern.test(value)) {
+        markdownMatches++;
+        if (markdownMatches >= 2) {
+          // Looks like markdown, don't render as code
+          return false;
+        }
+      }
+    }
 
     const codeIndicators = [
       /^(function|const|let|var|class|import|export|if|for|while)\s/m,
@@ -42,8 +68,13 @@ export class CodeRenderer implements OutputRenderer {
     );
   }
 
-  getCopyContent(value: any, metadata?: OutputMetadata): string | null {
-    return String(value);
+  getCopyContent(value: any, metadata?: OutputMetadata): CopyContent | null {
+    const codeValue = String(value);
+    return {
+      mimeType: "text/plain",
+      data: codeValue,
+      fallbackText: codeValue,
+    };
   }
 
   getDownloadContent(

@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { CopyIcon, CheckIcon } from "lucide-react";
 import { OutputRenderer, OutputMetadata } from "../types";
+import { copyToClipboard } from "../utils/copy";
 
 interface OutputItemProps {
   value: any;
@@ -24,7 +25,7 @@ export function OutputItem({
     const copyContent = renderer.getCopyContent(value, metadata);
     if (copyContent) {
       try {
-        await navigator.clipboard.writeText(copyContent);
+        await copyToClipboard(copyContent);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       } catch (error) {

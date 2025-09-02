@@ -42,12 +42,33 @@ export function AgentRunOutputView({
 
     Object.entries(agentRunOutputs).forEach(([key, { title, values }]) => {
       values.forEach((value, index) => {
-        const metadata: OutputMetadata = {
-          // You can add metadata extraction logic here based on value type
-        };
+        // Enhanced metadata extraction
+        const metadata: OutputMetadata = {};
+
+        // Type guard to safely access properties
+        if (
+          typeof value === "object" &&
+          value !== null &&
+          !React.isValidElement(value)
+        ) {
+          const objValue = value as any;
+          if (objValue.type) metadata.type = objValue.type;
+          if (objValue.mimeType) metadata.mimeType = objValue.mimeType;
+          if (objValue.filename) metadata.filename = objValue.filename;
+        }
+
+        // Log what we're trying to render for debugging
+        console.log(`Attempting to render output ${key}-${index}:`, {
+          value,
+          metadata,
+          valueType: typeof value,
+          isObject: typeof value === "object",
+          isValidElement: React.isValidElement(value),
+        });
 
         const renderer = globalRegistry.getRenderer(value, metadata);
         if (renderer) {
+          console.log(`Found renderer: ${renderer.name} for ${key}-${index}`);
           items.push({
             key: `${key}-${index}`,
             label: index === 0 ? title || key : "",
@@ -55,6 +76,21 @@ export function AgentRunOutputView({
             metadata,
             renderer,
           });
+        } else {
+          // Always push with TextRenderer as fallback
+          console.warn(`No renderer found for ${key}-${index}, using fallback`);
+          const textRenderer = globalRegistry
+            .getAllRenderers()
+            .find((r) => r.name === "TextRenderer");
+          if (textRenderer) {
+            items.push({
+              key: `${key}-${index}`,
+              label: index === 0 ? title || key : "",
+              value: JSON.stringify(value, null, 2),
+              metadata,
+              renderer: textRenderer,
+            });
+          }
         }
       });
     });
@@ -65,7 +101,7 @@ export function AgentRunOutputView({
   return (
     <>
       {enableEnhancedOutputHandling ? (
-        <Card className="agpt-box">
+        <Card className="agpt-box" style={{ maxWidth: "950px" }}>
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="font-poppins text-lg">Output</CardTitle>
@@ -81,7 +117,10 @@ export function AgentRunOutputView({
             </div>
           </CardHeader>
 
-          <CardContent className="flex flex-col gap-4">
+          <CardContent
+            className="flex flex-col gap-4"
+            style={{ maxWidth: "660px" }}
+          >
             {agentRunOutputs !== undefined ? (
               outputItems.length > 0 ? (
                 outputItems.map((item) => (
@@ -104,12 +143,15 @@ export function AgentRunOutputView({
           </CardContent>
         </Card>
       ) : (
-        <Card className="agpt-box">
+        <Card className="agpt-box" style={{ maxWidth: "950px" }}>
           <CardHeader>
             <CardTitle className="font-poppins text-lg">Output</CardTitle>
           </CardHeader>
 
-          <CardContent className="flex flex-col gap-4">
+          <CardContent
+            className="flex flex-col gap-4"
+            style={{ maxWidth: "660px" }}
+          >
             {agentRunOutputs !== undefined ? (
               Object.entries(agentRunOutputs).map(
                 ([key, { title, values }]) => (

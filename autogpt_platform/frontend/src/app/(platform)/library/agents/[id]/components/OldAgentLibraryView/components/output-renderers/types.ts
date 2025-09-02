@@ -14,12 +14,19 @@ export interface DownloadContent {
   mimeType: string;
 }
 
+export interface CopyContent {
+  mimeType: string; // Primary MIME type to try
+  data: Blob | string | (() => Promise<Blob | string>); // Data or async function to get data
+  fallbackText?: string; // Optional fallback text if rich copy fails
+  alternativeMimeTypes?: string[]; // Alternative MIME types to try if primary isn't supported
+}
+
 export interface OutputRenderer {
   name: string;
   priority: number;
   canRender(value: any, metadata?: OutputMetadata): boolean;
   render(value: any, metadata?: OutputMetadata): ReactNode;
-  getCopyContent(value: any, metadata?: OutputMetadata): string | null;
+  getCopyContent(value: any, metadata?: OutputMetadata): CopyContent | null;
   getDownloadContent(
     value: any,
     metadata?: OutputMetadata,

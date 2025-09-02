@@ -1,5 +1,10 @@
 import React from "react";
-import { OutputRenderer, OutputMetadata, DownloadContent } from "../types";
+import {
+  OutputRenderer,
+  OutputMetadata,
+  DownloadContent,
+  CopyContent,
+} from "../types";
 
 export class VideoRenderer implements OutputRenderer {
   name = "VideoRenderer";
@@ -70,8 +75,50 @@ export class VideoRenderer implements OutputRenderer {
     );
   }
 
-  getCopyContent(value: any, metadata?: OutputMetadata): string | null {
-    return null;
+  getCopyContent(value: any, metadata?: OutputMetadata): CopyContent | null {
+    const videoUrl = String(value);
+
+    // For data URLs, extract the MIME type
+    if (videoUrl.startsWith("data:")) {
+      const mimeMatch = videoUrl.match(/data:([^;]+)/);
+      const mimeType = mimeMatch?.[1] || "video/mp4";
+
+      return {
+        mimeType: mimeType,
+        data: videoUrl,
+        alternativeMimeTypes: ["text/plain"],
+        fallbackText: videoUrl,
+      };
+    }
+
+    // For URLs, use the metadata MIME type or guess from extension
+    const mimeType =
+      metadata?.mimeType || this.guessMimeType(videoUrl) || "video/mp4";
+
+    return {
+      mimeType: mimeType,
+      data: async () => {
+        // Fetch the video for copying
+        const response = await fetch(videoUrl);
+        return await response.blob();
+      },
+      alternativeMimeTypes: ["text/plain"],
+      fallbackText: videoUrl,
+    };
+  }
+
+  private guessMimeType(url: string): string | null {
+    const extension = url.split(".").pop()?.toLowerCase();
+    const mimeMap: Record<string, string> = {
+      mp4: "video/mp4",
+      webm: "video/webm",
+      ogg: "video/ogg",
+      mov: "video/quicktime",
+      avi: "video/x-msvideo",
+      mkv: "video/x-matroska",
+      m4v: "video/mp4",
+    };
+    return extension ? mimeMap[extension] || null : null;
   }
 
   getDownloadContent(

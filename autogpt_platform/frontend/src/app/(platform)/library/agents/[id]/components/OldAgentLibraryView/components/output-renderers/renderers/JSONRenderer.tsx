@@ -2,7 +2,12 @@
 
 import React, { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { OutputRenderer, OutputMetadata, DownloadContent } from "../types";
+import {
+  OutputRenderer,
+  OutputMetadata,
+  DownloadContent,
+  CopyContent,
+} from "../types";
 
 export class JSONRenderer implements OutputRenderer {
   name = "JSONRenderer";
@@ -43,11 +48,16 @@ export class JSONRenderer implements OutputRenderer {
     return <JSONViewer data={jsonData} />;
   }
 
-  getCopyContent(value: any, metadata?: OutputMetadata): string | null {
-    if (typeof value === "string") {
-      return value;
-    }
-    return JSON.stringify(value, null, 2);
+  getCopyContent(value: any, metadata?: OutputMetadata): CopyContent | null {
+    const jsonString =
+      typeof value === "string" ? value : JSON.stringify(value, null, 2);
+
+    return {
+      mimeType: "application/json",
+      data: jsonString,
+      alternativeMimeTypes: ["text/plain"],
+      fallbackText: jsonString,
+    };
   }
 
   getDownloadContent(

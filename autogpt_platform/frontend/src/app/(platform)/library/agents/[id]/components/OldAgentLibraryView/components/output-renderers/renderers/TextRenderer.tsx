@@ -1,5 +1,10 @@
 import React from "react";
-import { OutputRenderer, OutputMetadata, DownloadContent } from "../types";
+import {
+  OutputRenderer,
+  OutputMetadata,
+  DownloadContent,
+  CopyContent,
+} from "../types";
 
 export class TextRenderer implements OutputRenderer {
   name = "TextRenderer";
@@ -23,8 +28,13 @@ export class TextRenderer implements OutputRenderer {
     );
   }
 
-  getCopyContent(value: any, metadata?: OutputMetadata): string | null {
-    return String(value);
+  getCopyContent(value: any, metadata?: OutputMetadata): CopyContent | null {
+    const textValue = String(value);
+    return {
+      mimeType: "text/plain",
+      data: textValue,
+      fallbackText: textValue,
+    };
   }
 
   getDownloadContent(

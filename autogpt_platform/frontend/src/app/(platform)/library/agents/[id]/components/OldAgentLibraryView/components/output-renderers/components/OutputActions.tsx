@@ -24,8 +24,20 @@ export function OutputActions({ items }: OutputActionsProps) {
         item.value,
         item.metadata,
       );
-      if (copyContent) {
-        textContents.push(copyContent);
+      if (
+        copyContent &&
+        item.renderer.isConcatenable(item.value, item.metadata)
+      ) {
+        // For concatenable items, extract the text
+        let text: string;
+        if (typeof copyContent.data === "string") {
+          text = copyContent.data;
+        } else if (copyContent.fallbackText) {
+          text = copyContent.fallbackText;
+        } else {
+          continue;
+        }
+        textContents.push(text);
       }
     }
 

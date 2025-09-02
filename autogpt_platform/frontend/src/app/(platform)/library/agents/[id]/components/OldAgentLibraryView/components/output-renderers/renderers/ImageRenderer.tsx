@@ -1,5 +1,10 @@
 import React from "react";
-import { OutputRenderer, OutputMetadata, DownloadContent } from "../types";
+import {
+  OutputRenderer,
+  OutputMetadata,
+  DownloadContent,
+  CopyContent,
+} from "../types";
 
 export class ImageRenderer implements OutputRenderer {
   name = "ImageRenderer";
@@ -27,31 +32,91 @@ export class ImageRenderer implements OutputRenderer {
   ];
 
   canRender(value: any, metadata?: OutputMetadata): boolean {
+    console.log("ImageRenderer.canRender checking:", {
+      value,
+      metadata,
+      valueType: typeof value,
+    });
+
     if (
       metadata?.type === "image" ||
       (metadata?.mimeType && this.imageMimeTypes.includes(metadata.mimeType))
     ) {
+      console.log("ImageRenderer: Matched by metadata type/mimeType");
       return true;
+    }
+
+    // Check if value is an object with url/data property (common for file uploads)
+    if (typeof value === "object" && value !== null) {
+      if (value.url || value.data || value.path) {
+        const urlOrData = value.url || value.data || value.path;
+        console.log(
+          "ImageRenderer: Found object with url/data/path:",
+          urlOrData,
+        );
+
+        if (typeof urlOrData === "string") {
+          if (urlOrData.startsWith("data:image/")) {
+            console.log("ImageRenderer: Matched data URL");
+            return true;
+          }
+
+          if (
+            urlOrData.startsWith("http://") ||
+            urlOrData.startsWith("https://")
+          ) {
+            const hasImageExt = this.imageExtensions.some((ext) =>
+              urlOrData.toLowerCase().includes(ext),
+            );
+            console.log("ImageRenderer: URL has image extension:", hasImageExt);
+            return hasImageExt;
+          }
+        }
+      }
+
+      // Check filename in object
+      if (value.filename) {
+        const hasImageExt = this.imageExtensions.some((ext) =>
+          value.filename.toLowerCase().endsWith(ext),
+        );
+        console.log(
+          "ImageRenderer: Object filename has image extension:",
+          hasImageExt,
+        );
+        return hasImageExt;
+      }
     }
 
     if (typeof value === "string") {
       if (value.startsWith("data:image/")) {
+        console.log("ImageRenderer: String is data URL");
         return true;
       }
 
       if (value.startsWith("http://") || value.startsWith("https://")) {
-        return this.imageExtensions.some((ext) =>
+        const hasImageExt = this.imageExtensions.some((ext) =>
           value.toLowerCase().includes(ext),
         );
+        console.log(
+          "ImageRenderer: String URL has image extension:",
+          hasImageExt,
+        );
+        return hasImageExt;
       }
 
       if (metadata?.filename) {
-        return this.imageExtensions.some((ext) =>
+        const hasImageExt = this.imageExtensions.some((ext) =>
           metadata.filename!.toLowerCase().endsWith(ext),
         );
+        console.log(
+          "ImageRenderer: Metadata filename has image extension:",
+          hasImageExt,
+        );
+        return hasImageExt;
       }
     }
 
+    console.log("ImageRenderer: No match found");
     return false;
   }
 
@@ -71,8 +136,55 @@ export class ImageRenderer implements OutputRenderer {
     );
   }
 
-  getCopyContent(value: any, metadata?: OutputMetadata): string | null {
-    return null;
+  getCopyContent(value: any, metadata?: OutputMetadata): CopyContent | null {
+    const imageUrl = String(value);
+
+    // For data URLs, extract the actual MIME type
+    if (imageUrl.startsWith("data:")) {
+      const mimeMatch = imageUrl.match(/data:([^;]+)/);
+      const mimeType = mimeMatch?.[1] || "image/png";
+
+      return {
+        mimeType: mimeType,
+        data: async () => {
+          // Convert data URL to blob
+          const response = await fetch(imageUrl);
+          return await response.blob();
+        },
+        alternativeMimeTypes: ["image/png", "text/plain"],
+        fallbackText: imageUrl,
+      };
+    }
+
+    // For URLs, determine MIME type from metadata or extension
+    const mimeType =
+      metadata?.mimeType || this.guessMimeType(imageUrl) || "image/png";
+
+    return {
+      mimeType: mimeType,
+      data: async () => {
+        // Fetch the image
+        const response = await fetch(imageUrl);
+        return await response.blob();
+      },
+      alternativeMimeTypes: ["image/png", "text/plain"],
+      fallbackText: imageUrl,
+    };
+  }
+
+  private guessMimeType(url: string): string | null {
+    const extension = url.split(".").pop()?.toLowerCase();
+    const mimeMap: Record<string, string> = {
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      png: "image/png",
+      gif: "image/gif",
+      bmp: "image/bmp",
+      svg: "image/svg+xml",
+      webp: "image/webp",
+      ico: "image/x-icon",
+    };
+    return extension ? mimeMap[extension] || null : null;
   }
 
   getDownloadContent(
