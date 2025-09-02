@@ -15,6 +15,7 @@ import {
 
 import { AgentStatus, AgentStatusChip } from "./agent-status-chip";
 import { AgentRunStatus, AgentRunStatusChip } from "./agent-run-status-chip";
+import { PushPinSimpleIcon } from "@phosphor-icons/react";
 
 export type AgentRunSummaryProps = (
   | {
@@ -23,6 +24,10 @@ export type AgentRunSummaryProps = (
     }
   | {
       type: "preset";
+      status?: undefined;
+    }
+  | {
+      type: "preset.triggered";
       status: AgentStatus;
     }
   | {
@@ -66,14 +71,19 @@ export function AgentRunSummaryCard({
           <AgentRunStatusChip status={status} />
         )}
         {type == "preset" && (
+          <div className="flex items-center text-sm font-medium text-neutral-700">
+            <PushPinSimpleIcon className="mr-1 size-4 text-foreground" /> Preset
+          </div>
+        )}
+        {type == "preset.triggered" && (
           <div className="flex items-center justify-between">
             <AgentStatusChip status={status} />
 
-            <div className="flex items-center text-sm text-zinc-400">
+            <div className="flex items-center text-sm font-medium text-neutral-700">
               {status == "inactive" ? (
-                <Link2OffIcon className="mr-1 size-4" />
+                <Link2OffIcon className="mr-1 size-4 text-foreground" />
               ) : (
-                <Link2Icon className="mr-1 size-4" />
+                <Link2Icon className="mr-1 size-4 text-foreground" />
               )}{" "}
               Trigger
             </div>
