@@ -1,0 +1,136 @@
+# Global configuration for AutoGPT Platform on Kubernetes
+# This file works with .env.local for secrets management
+
+global:
+  # Update this to your domain
+  domain: "autogpt.yourdomain.com"
+  
+  # GCP specific settings
+  project_id: "your-gcp-project-id"
+  
+  # Image registry - update to your registry
+  image_registry: "autogpt"
+  
+# AutoGPT Server configuration
+autogpt-server:
+  enabled: true
+  replicaCount: 2
+  
+  image:
+    repository: "autogpt/autogpt-server"
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 8006
+  
+  ingress:
+    enabled: true
+    className: "gce"
+    annotations:
+      kubernetes.io/ingress.global-static-ip-name: "autogpt-cluster-server-ip"
+      kubernetes.io/ingress.allow-http: "true"
+    hosts:
+      - host: api.autogpt.yourdomain.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - hosts:
+          - api.autogpt.yourdomain.com
+        secretName: autogpt-server-tls
+  
+  resources:
+    requests:
+      cpu: 500m
+      memory: 2Gi
+    limits:
+      cpu: 4
+      memory: 16Gi
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetMemoryUtilizationPercentage: 80
+
+# AutoGPT Builder (Frontend)
+autogpt-builder:
+  enabled: true
+  replicaCount: 2
+  
+  image:
+    repository: "autogpt/autogpt-builder"
+    tag: "latest"
+  
+  service:
+    type: ClusterIP
+    port: 8000
+    targetPort: 3000
+  
+  ingress:
+    enabled: true
+    className: "gce"
+    annotations:
+      kubernetes.io/ingress.global-static-ip-name: "autogpt-cluster-builder-ip"
+      kubernetes.io/ingress.allow-http: "true"
+    hosts:
+      - host: autogpt.yourdomain.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - hosts:
+          - autogpt.yourdomain.com
+        secretName: autogpt-builder-tls
+
+# WebSocket Server
+autogpt-websocket:
+  enabled: true
+  replicaCount: 2
+  
+  image:
+    repository: "autogpt/autogpt-websocket"
+    tag: "latest"
+  
+  service:
+    type: ClusterIP
+    port: 8001
+  
+  ingress:
+    enabled: true
+    className: "gce"
+    annotations:
+      kubernetes.io/ingress.global-static-ip-name: "autogpt-cluster-websocket-ip"
+      kubernetes.io/ingress.allow-http: "true"
+    hosts:
+      - host: ws.autogpt.yourdomain.com
+        paths:
+          - path: /
+            pathType: Prefix
+
+# Other services
+autogpt-scheduler:
+  enabled: true
+  replicaCount: 1
+
+autogpt-notification:
+  enabled: true
+  replicaCount: 1
+
+autogpt-database-manager:
+  enabled: true
+  replicaCount: 1
+
+# Infrastructure services
+redis:
+  enabled: true
+  auth:
+    password: "autogpt-redis-password"  # Will be overridden by secret
+    
+rabbit-mq:
+  enabled: true
+  auth:
+    username: "autogpt"
+    password: "autogpt-rabbitmq-password"  # Will be overridden by secret

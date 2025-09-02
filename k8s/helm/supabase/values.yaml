@@ -1,0 +1,238 @@
+# Default values for supabase.
+nameOverride: ""
+fullnameOverride: ""
+
+# Global configuration (passed from parent chart or command line)
+global:
+  domain: "yourdomain.com"
+  database:
+    user: "supabase"
+    name: "supabase"
+
+# PostgreSQL database configuration
+postgresql:
+  enabled: true
+  auth:
+    database: "{{ .Values.global.database.name }}"
+    username: "{{ .Values.global.database.user }}"
+    existingSecret: "supabase-secrets"
+    secretKeys:
+      adminPasswordKey: "SUPABASE_DB_PASS"
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "250m"
+      limits:
+        memory: "1Gi"
+        cpu: "1000m"
+
+# Kong API Gateway configuration
+kong:
+  enabled: true
+  replicas: 1
+  image:
+    repository: kong
+    tag: "3.2"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+# Auth (GoTrue) configuration
+auth:
+  enabled: true
+  replicas: 1
+  image:
+    repository: supabase/gotrue
+    tag: "v2.151.0"
+    pullPolicy: IfNotPresent
+  smtp:
+    enabled: false
+  environment:
+    DB_HOST: "supabase-postgresql"
+    DB_USER: "{{ .Values.global.database.user }}"
+    DB_NAME: "{{ .Values.global.database.name }}"
+    DB_NAMESPACE: "auth"
+    API_EXTERNAL_URL: "https://auth.{{ .Values.global.domain }}"
+    GOTRUE_SITE_URL: "https://auth.{{ .Values.global.domain }}"
+    GOTRUE_URI_ALLOW_LIST: "*"
+    GOTRUE_DISABLE_SIGNUP: "false"
+    GOTRUE_JWT_EXP: "3600"
+    GOTRUE_EXTERNAL_EMAIL_ENABLED: "false"
+    GOTRUE_MAILER_AUTOCONFIRM: "true"
+    GOTRUE_SMTP_HOST: ""
+    GOTRUE_SMTP_PORT: "587"
+    GOTRUE_SMTP_SENDER_NAME: ""
+  extraEnv: {}
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+
+# PostgREST configuration
+rest:
+  enabled: true
+  replicas: 1
+  image:
+    repository: postgrest/postgrest
+    tag: "v12.0.2"
+    pullPolicy: IfNotPresent
+  environment:
+    DB_HOST: "supabase-postgresql"
+    DB_USER: "{{ .Values.global.database.user }}"
+    DB_NAME: "{{ .Values.global.database.name }}"
+    DB_SCHEMA: "public,storage,graphql_public"
+    DB_ANON_ROLE: "anon"
+    DB_SSL: "disable"
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+
+storage:
+  enabled: false
+  replicas: 1
+  image:
+    repository: supabase/storage-api
+    tag: "v0.46.4"
+    pullPolicy: IfNotPresent
+  environment:
+    DB_HOST: "supabase-postgresql"
+    DB_USER: "supabase"
+    DB_NAME: "supabase"
+    FILE_SIZE_LIMIT: "52428800"
+    STORAGE_BACKEND: "file"
+    FILE_STORAGE_BACKEND_PATH: "/var/lib/storage"
+    TENANT_ID: "stub"
+    REGION: "us-east-1"
+    GLOBAL_S3_BUCKET: "stub"
+  persistence:
+    enabled: true
+    size: 10Gi
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+
+# Realtime configuration
+realtime:
+  enabled: true
+  replicas: 1
+  image:
+    repository: supabase/realtime
+    tag: "v2.27.5"
+    pullPolicy: IfNotPresent
+  environment:
+    DB_HOST: "supabase-postgresql"
+    DB_USER: "supabase"
+    DB_NAME: "supabase"
+    DB_SSL: "false"
+    PORT: "4000"
+    REPLICATION_MODE: "RLS"
+    REPLICATION_POLL_INTERVAL: "100"
+    SECURE_CHANNELS: "true"
+    SLOT_NAME: "supabase_realtime_rls"
+    TEMPORARY_SLOT: "true"
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+
+# Meta service configuration
+meta:
+  enabled: true
+  replicas: 1
+  image:
+    repository: supabase/postgres-meta
+    tag: "v0.80.0"
+    pullPolicy: IfNotPresent
+  environment:
+    DB_HOST: "supabase-postgresql"
+    DB_USER: "{{ .Values.global.database.user }}"
+    DB_NAME: "{{ .Values.global.database.name }}"
+    DB_SSL: "disable"
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+
+# Secret configuration
+secret:
+  jwt:
+    secretRef: "supabase-secrets"
+    secretRefKey:
+      anonKey: "SUPABASE_JWT_ANON_KEY"
+      serviceKey: "SUPABASE_SERVICE_ROLE_KEY"
+      secret: "SUPABASE_JWT_SECRET"
+  db:
+    secretRef: "supabase-secrets"
+    secretRefKey:
+      username: "SUPABASE_DB_USER"
+      password: "SUPABASE_DB_PASS"
+      database: "SUPABASE_DB_NAME"
+  smtp:
+    secretRef: "supabase-secrets"
+    secretRefKey:
+      username: "SMTP_USERNAME"
+      password: "SMTP_PASSWORD"
+  dashboard:
+    secretRef: "supabase-secrets"
+    secretRefKey:
+      username: "DASHBOARD_USERNAME"
+      password: "DASHBOARD_PASSWORD"
+
+# Ingress configuration
+ingress:
+  enabled: false
+  className: "nginx"
+  annotations: {}
+  hosts:
+    - host: dev-supabase.agpt.co
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Studio/Dashboard configuration
+studio:
+  enabled: false
+
+# Vector/Analytics configuration
+vector:
+  enabled: false
+
+analytics:
+  enabled: false
+
+# Certificate management
+certManager:
+  enabled: false
+
+# Sealed Secrets (disabled - using regular secrets)
+sealedSecrets:
+  enabled: false

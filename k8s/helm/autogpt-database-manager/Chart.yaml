@@ -1,0 +1,6 @@
+apiVersion: v2
+name: autogpt-database-manager
+description: A Helm chart for AutoGPT Database Manager service
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

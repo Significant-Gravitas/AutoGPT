@@ -1,0 +1,26 @@
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: {{ include "autogpt-websocket-server.fullname" . }}-backend-config
+spec:
+  customRequestHeaders:
+    headers:
+      - "Access-Control-Allow-Origin:{{ .Values.cors.allowOrigin }}"
+      - "Access-Control-Allow-Methods:{{ .Values.cors.allowMethods | join "," }}"
+      - "Access-Control-Allow-Headers:{{ .Values.cors.allowHeaders | join "," }}"
+      - "Access-Control-Max-Age:{{ .Values.cors.maxAge }}"
+    {{- if .Values.cors.allowCredentials }}
+      - "Access-Control-Allow-Credentials:true"
+    {{- end }}
+  customResponseHeaders:
+    headers:
+      - "Access-Control-Allow-Origin:https://dev-builder.agpt.co"
+      - "Access-Control-Allow-Methods:{{ .Values.cors.allowMethods | join "," }}"
+      - "Access-Control-Allow-Headers:{{ .Values.cors.allowHeaders | join "," }}"
+      - "Access-Control-Max-Age:{{ .Values.cors.maxAge }}"
+    {{- if .Values.cors.allowCredentials }}
+      - "Access-Control-Allow-Credentials:true"
+    {{- end }}
+  timeoutSec: 1800
+  connectionDraining:
+    drainingTimeoutSec: 1800
