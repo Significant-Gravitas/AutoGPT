@@ -32,13 +32,17 @@ async def test_handle_low_balance_threshold_crossing(server: SpinTestServer):
         mock_settings.config.low_balance_threshold = 500  # $5 threshold
         mock_settings.config.frontend_base_url = "https://test.com"
 
-        # Create mock database client
-        mock_db_client = MagicMock()
-        mock_db_client.get_user_email_by_id.return_value = "test@example.com"
+        # Initialize the execution processor and mock its execution_data
+        execution_processor.on_graph_executor_start()
+
+        # Mock the execution_data attribute since it's created in on_graph_execution
+        mock_execution_data = MagicMock()
+        execution_processor.execution_data = mock_execution_data
+
+        mock_execution_data.get_user_email_by_id.return_value = "test@example.com"
 
         # Test the low balance handler
         execution_processor._handle_low_balance(
-            db_client=mock_db_client,
             user_id=user_id,
             current_balance=current_balance,
             transaction_cost=transaction_cost,
@@ -61,6 +65,19 @@ async def test_handle_low_balance_threshold_crossing(server: SpinTestServer):
         assert "test@example.com" in discord_message
         assert "$4.00" in discord_message
         assert "$6.00" in discord_message
+
+    # Cleanup execution processor threads
+    try:
+        execution_processor.node_execution_loop.call_soon_threadsafe(
+            execution_processor.node_execution_loop.stop
+        )
+        execution_processor.node_evaluation_loop.call_soon_threadsafe(
+            execution_processor.node_evaluation_loop.stop
+        )
+        execution_processor.node_execution_thread.join(timeout=1)
+        execution_processor.node_evaluation_thread.join(timeout=1)
+    except Exception:
+        pass  # Ignore cleanup errors
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -90,12 +107,17 @@ async def test_handle_low_balance_no_notification_when_not_crossing(
         mock_get_client.return_value = mock_client
         mock_settings.config.low_balance_threshold = 500  # $5 threshold
 
-        # Create mock database client
-        mock_db_client = MagicMock()
+        # Initialize the execution processor and mock its execution_data
+        execution_processor.on_graph_executor_start()
+
+        # Mock the execution_data attribute since it's created in on_graph_execution
+        mock_execution_data = MagicMock()
+        execution_processor.execution_data = mock_execution_data
+
+        mock_execution_data.get_user_email_by_id.return_value = "test@example.com"
 
         # Test the low balance handler
         execution_processor._handle_low_balance(
-            db_client=mock_db_client,
             user_id=user_id,
             current_balance=current_balance,
             transaction_cost=transaction_cost,
@@ -104,6 +126,19 @@ async def test_handle_low_balance_no_notification_when_not_crossing(
         # Verify no notification was sent
         mock_queue_notif.assert_not_called()
         mock_client.discord_system_alert.assert_not_called()
+
+    # Cleanup execution processor threads
+    try:
+        execution_processor.node_execution_loop.call_soon_threadsafe(
+            execution_processor.node_execution_loop.stop
+        )
+        execution_processor.node_evaluation_loop.call_soon_threadsafe(
+            execution_processor.node_evaluation_loop.stop
+        )
+        execution_processor.node_execution_thread.join(timeout=1)
+        execution_processor.node_evaluation_thread.join(timeout=1)
+    except Exception:
+        pass  # Ignore cleanup errors
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -133,12 +168,17 @@ async def test_handle_low_balance_no_duplicate_when_already_below(
         mock_get_client.return_value = mock_client
         mock_settings.config.low_balance_threshold = 500  # $5 threshold
 
-        # Create mock database client
-        mock_db_client = MagicMock()
+        # Initialize the execution processor and mock its execution_data
+        execution_processor.on_graph_executor_start()
+
+        # Mock the execution_data attribute since it's created in on_graph_execution
+        mock_execution_data = MagicMock()
+        execution_processor.execution_data = mock_execution_data
+
+        mock_execution_data.get_user_email_by_id.return_value = "test@example.com"
 
         # Test the low balance handler
         execution_processor._handle_low_balance(
-            db_client=mock_db_client,
             user_id=user_id,
             current_balance=current_balance,
             transaction_cost=transaction_cost,
@@ -147,3 +187,16 @@ async def test_handle_low_balance_no_duplicate_when_already_below(
         # Verify no notification was sent (user was already below threshold)
         mock_queue_notif.assert_not_called()
         mock_client.discord_system_alert.assert_not_called()
+
+    # Cleanup execution processor threads
+    try:
+        execution_processor.node_execution_loop.call_soon_threadsafe(
+            execution_processor.node_execution_loop.stop
+        )
+        execution_processor.node_evaluation_loop.call_soon_threadsafe(
+            execution_processor.node_evaluation_loop.stop
+        )
+        execution_processor.node_execution_thread.join(timeout=1)
+        execution_processor.node_evaluation_thread.join(timeout=1)
+    except Exception:
+        pass  # Ignore cleanup errors
