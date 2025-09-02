@@ -358,8 +358,8 @@ model AgentGraphExecution {
   AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
 
   inputs           Json?
-  credentialInputs Json @default("{}")
-  nodesInputMasks  Json @default("{}")
+  credentialInputs Json?
+  nodesInputMasks  Json?
 
   NodeExecutions AgentNodeExecution[]
 

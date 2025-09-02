@@ -98,10 +98,10 @@ class GraphExecutionMeta(BaseDbModel):
     user_id: str
     graph_id: str
     graph_version: int
-    inputs: Optional[BlockInput] = None
-    credential_inputs: dict[str, CredentialsMetaInput] = Field(default_factory=dict)
-    nodes_input_masks: dict[str, BlockInput] = Field(default_factory=dict)
-    preset_id: Optional[str] = None
+    inputs: Optional[BlockInput]  # no default -> required in the OpenAPI spec
+    credential_inputs: Optional[dict[str, CredentialsMetaInput]]
+    nodes_input_masks: Optional[dict[str, BlockInput]]
+    preset_id: Optional[str]
     status: ExecutionStatus
     started_at: datetime
     ended_at: datetime
@@ -187,11 +187,17 @@ class GraphExecutionMeta(BaseDbModel):
             graph_id=_graph_exec.agentGraphId,
             graph_version=_graph_exec.agentGraphVersion,
             inputs=cast(BlockInput | None, _graph_exec.inputs),
-            credential_inputs={
-                name: CredentialsMetaInput.model_validate(cmi)
-                for name, cmi in cast(dict, _graph_exec.credentialInputs).items()
-            },
-            nodes_input_masks=cast(dict[str, BlockInput], _graph_exec.nodesInputMasks),
+            credential_inputs=(
+                {
+                    name: CredentialsMetaInput.model_validate(cmi)
+                    for name, cmi in cast(dict, _graph_exec.credentialInputs).items()
+                }
+                if _graph_exec.credentialInputs
+                else None
+            ),
+            nodes_input_masks=cast(
+                dict[str, BlockInput] | None, _graph_exec.nodesInputMasks
+            ),
             preset_id=_graph_exec.agentPresetId,
             status=ExecutionStatus(_graph_exec.executionStatus),
             started_at=start_time,

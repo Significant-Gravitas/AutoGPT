@@ -92,7 +92,7 @@ export function AgentRunDetailsView({
         }
       >
     | undefined = useMemo(() => {
-    if (!("inputs" in run)) return undefined;
+    if (!run.inputs) return undefined;
     // TODO: show (link to) preset - https://github.com/Significant-Gravitas/AutoGPT/issues/9168
 
     // Add type info from agent input schema
@@ -176,8 +176,7 @@ export function AgentRunDetailsView({
           ] satisfies ButtonAction[])
         : []),
       ...(["success", "failed", "stopped"].includes(runStatus) &&
-      !graph.has_external_trigger &&
-      isEmpty(graph.credentials_input_schema.required) // TODO: enable re-run with credentials - https://linear.app/autogpt/issue/SECRT-1243
+      !graph.has_external_trigger
         ? [
             {
               label: (
