@@ -63,6 +63,10 @@ class AIImageCustomizerBlock(Block):
             description="List of image URLs (optional)",
             default=None,
             title="Images",
+            json_schema_extra={
+                "type": "array",
+                "items": {"type": "string", "format": "uri"},
+            },
         )
         output_format: OutputFormat = SchemaField(
             description="Format of the output image",
