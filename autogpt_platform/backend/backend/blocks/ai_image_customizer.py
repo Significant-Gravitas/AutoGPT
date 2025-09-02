@@ -125,12 +125,12 @@ class AIImageCustomizerBlock(Block):
         output_format: str,
     ) -> str:
         client = ReplicateClient(api_token=api_key.get_secret_value())
-        
+
         input_params = {
             "prompt": prompt,
             "output_format": output_format,
         }
-        
+
         # Add images to input if provided
         if images:
             input_params["images"] = images
@@ -138,7 +138,7 @@ class AIImageCustomizerBlock(Block):
         output = await client.async_run(
             model_name,
             input=input_params,
-            wait=False,
+            wait=True,
         )
 
         # Handle different output types
