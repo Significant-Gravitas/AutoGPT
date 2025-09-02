@@ -50,7 +50,7 @@ const statusStyles = {
     "bg-slate-100 text-slate-800 hover:bg-slate-100 hover:text-slate-800",
 };
 
-export default function AgentRunStatusChip({
+export function AgentRunStatusChip({
   status,
 }: {
   status: AgentRunStatus;
