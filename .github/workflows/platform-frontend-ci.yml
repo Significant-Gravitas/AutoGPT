@@ -51,9 +51,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build frontend with PW flags
-        run: NEXT_PUBLIC_PW_TEST=true pnpm build --turbo
-
   lint:
     runs-on: ubuntu-latest
     needs: setup
@@ -163,7 +160,7 @@ jobs:
 
       - name: Run docker compose
         run: |
-          docker compose -f ../docker-compose.yml up -d
+          NEXT_PUBLIC_PW_TEST=true docker compose -f ../docker-compose.yml up -d
         env:
           DOCKER_BUILDKIT: 1
           BUILDX_CACHE_FROM: type=local,src=/tmp/.buildx-cache
