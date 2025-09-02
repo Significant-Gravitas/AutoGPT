@@ -10,7 +10,7 @@ export interface NewControlPanelProps {
 
 export const useNewControlPanel = ({flowExecutionID, visualizeBeads}: NewControlPanelProps) => {
   const [blockMenuSelected, setBlockMenuSelected] = useState<
-    "save" | "block" | ""
+    "save" | "block" | "search" | ""
   >("");
   const query = useSearchParams();
   const _graphVersion = query.get("flowVersion");
