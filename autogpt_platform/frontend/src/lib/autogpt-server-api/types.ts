@@ -493,7 +493,7 @@ export type LibraryAgentPresetCreatable = Omit<
 
 export type LibraryAgentPresetCreatableFromGraphExecution = Omit<
   LibraryAgentPresetCreatable,
-  "graph_id" | "graph_version" | "inputs"
+  "graph_id" | "graph_version" | "inputs" | "credentials"
 > & {
   graph_execution_id: GraphExecutionID;
 };

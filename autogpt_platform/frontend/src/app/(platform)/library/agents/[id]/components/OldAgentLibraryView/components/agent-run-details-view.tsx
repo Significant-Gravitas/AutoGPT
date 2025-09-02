@@ -39,14 +39,16 @@ export function AgentRunDetailsView({
   run,
   agentActions,
   onRun,
-  deleteRun,
+  doDeleteRun,
+  doCreatePresetFromRun,
 }: {
   agent: LibraryAgent;
   graph: Graph;
   run: GraphExecution | GraphExecutionMeta;
   agentActions: ButtonAction[];
   onRun: (runID: GraphExecutionID) => void;
-  deleteRun: () => void;
+  doDeleteRun: () => void;
+  doCreatePresetFromRun: () => void;
 }): React.ReactNode {
   const api = useBackendAPI();
   const { formatCredits } = useCredits();
@@ -199,13 +201,15 @@ export function AgentRunDetailsView({
             },
           ]
         : []),
-      { label: "Delete run", variant: "secondary", callback: deleteRun },
+      { label: "Create preset from run", callback: doCreatePresetFromRun },
+      { label: "Delete run", variant: "secondary", callback: doDeleteRun },
     ],
     [
       runStatus,
       runAgain,
       stopRun,
-      deleteRun,
+      doDeleteRun,
+      doCreatePresetFromRun,
       graph.has_external_trigger,
       graph.credentials_input_schema.required,
       agent.can_access_graph,

@@ -36,6 +36,7 @@ export type AgentRunSummaryProps = (
   onClick?: () => void;
   // onRename: () => void;
   onDelete: () => void;
+  onPinAsPreset?: () => void;
   className?: string;
 };
 
@@ -48,6 +49,7 @@ export function AgentRunSummaryCard({
   onClick,
   // onRename,
   onDelete,
+  onPinAsPreset,
   className,
 }: AgentRunSummaryProps): React.ReactElement {
   return (
@@ -90,11 +92,11 @@ export function AgentRunSummaryCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              {/* {onPinAsPreset && (
+              {onPinAsPreset && (
                 <DropdownMenuItem onClick={onPinAsPreset}>
                   Pin as a preset
-              </DropdownMenuItem>
-              )} */}
+                </DropdownMenuItem>
+              )}
 
               {/* <DropdownMenuItem onClick={onRename}>Rename</DropdownMenuItem> */}
 

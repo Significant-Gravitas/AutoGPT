@@ -41,6 +41,7 @@ interface AgentRunsSelectorListProps {
   doDeleteRun: (id: GraphExecutionMeta) => void;
   doDeletePreset: (id: LibraryAgentPresetID) => void;
   doDeleteSchedule: (id: ScheduleID) => void;
+  doCreatePresetFromRun?: (id: GraphExecutionID) => void;
   className?: string;
 }
 
@@ -64,6 +65,7 @@ export function AgentRunsSelectorList({
   doDeleteRun,
   doDeletePreset,
   doDeleteSchedule,
+  doCreatePresetFromRun,
   className,
 }: AgentRunsSelectorListProps): React.ReactElement {
   const [activeListTab, setActiveListTab] = useState<"runs" | "scheduled">(
@@ -196,6 +198,11 @@ export function AgentRunsSelectorList({
                         selected={selectedView.id === run.id}
                         onClick={() => onSelectRun(run.id)}
                         onDelete={() => doDeleteRun(run)}
+                        onPinAsPreset={
+                          doCreatePresetFromRun
+                            ? () => doCreatePresetFromRun(run.id)
+                            : undefined
+                        }
                       />
                     ))}
                 </>
