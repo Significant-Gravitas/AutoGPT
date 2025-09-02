@@ -3,7 +3,7 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { BehaveAs, getBehaveAs } from "@/lib/utils";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
@@ -15,6 +15,7 @@ export function useLoginPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [captchaKey, setCaptchaKey] = useState(0);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
@@ -42,8 +43,22 @@ export function useLoginPage() {
   }, [turnstile]);
 
   useEffect(() => {
-    if (user) router.push("/");
-  }, [user]);
+    if (user) {
+      // Check for return URL from query params
+      const returnUrl = searchParams.get("returnUrl");
+      if (returnUrl) {
+        router.push(decodeURIComponent(returnUrl));
+      } else {
+        // Check for pending chat session
+        const pendingSession = localStorage.getItem("pending_chat_session");
+        if (pendingSession) {
+          router.push("/marketplace/discover");
+        } else {
+          router.push("/");
+        }
+      }
+    }
+  }, [user, searchParams, router]);
 
   async function handleProviderLogin(provider: LoginProvider) {
     setIsGoogleLoading(true);

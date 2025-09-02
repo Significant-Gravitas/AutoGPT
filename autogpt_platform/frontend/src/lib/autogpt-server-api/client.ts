@@ -10,6 +10,7 @@ import {
   getSupabaseAnonKey,
 } from "@/lib/env-config";
 import * as Sentry from "@sentry/nextjs";
+import { ChatAPI } from "./chat";
 import type {
   AddUserCreditsResponse,
   AnalyticsDetails,
@@ -86,6 +87,7 @@ export default class BackendAPI {
   private wsOnDisconnectHandlers: Set<() => void> = new Set();
   private wsMessageHandlers: Record<string, Set<(data: any) => void>> = {};
   private isIntentionallyDisconnected: boolean = false;
+  public chat: ChatAPI;
 
   readonly HEARTBEAT_INTERVAL = 100_000; // 100 seconds
   readonly HEARTBEAT_TIMEOUT = 10_000; // 10 seconds
@@ -98,6 +100,7 @@ export default class BackendAPI {
   ) {
     this.baseUrl = baseUrl;
     this.wsUrl = wsUrl;
+    this.chat = new ChatAPI(this);
   }
 
   private async getSupabaseClient(): Promise<SupabaseClient | null> {

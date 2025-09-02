@@ -23,6 +23,7 @@ import backend.server.v2.admin.credit_admin_routes
 import backend.server.v2.admin.store_admin_routes
 import backend.server.v2.builder
 import backend.server.v2.builder.routes
+import backend.server.v2.chat.routes
 import backend.server.v2.library.db
 import backend.server.v2.library.model
 import backend.server.v2.library.routes
@@ -226,6 +227,11 @@ app.include_router(
     backend.server.v2.turnstile.routes.router,
     tags=["v2", "turnstile"],
     prefix="/api/turnstile",
+)
+app.include_router(
+    backend.server.v2.chat.routes.router,
+    tags=["v2", "chat"],
+    prefix="/api/v2/chat",
 )
 
 app.include_router(

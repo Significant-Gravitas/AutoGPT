@@ -36,7 +36,7 @@ model User {
   notifyOnAgentApproved        Boolean @default(true)
   notifyOnAgentRejected        Boolean @default(true)
 
-  timezone                     String  @default("not-set")
+  timezone String @default("not-set")
 
   // Relations
 
@@ -57,6 +57,7 @@ model User {
   APIKeys               APIKey[]
   IntegrationWebhooks   IntegrationWebhook[]
   NotificationBatches   UserNotificationBatch[]
+  ChatSessions          ChatSession[]
 }
 
 enum OnboardingStep {
@@ -625,8 +626,8 @@ view StoreAgent {
   agent_image String[]
 
   featured         Boolean  @default(false)
-  creator_username String
-  creator_avatar   String
+  creator_username String?
+  creator_avatar   String?
   sub_heading      String
   description      String
   categories       String[]
@@ -848,4 +849,68 @@ enum APIKeyStatus {
   ACTIVE
   REVOKED
   SUSPENDED
+}
+
+// Chat Session models for tracking conversations
+model ChatSession {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  userId   String
+  User     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  @@index([userId, createdAt])
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Message content
+  content String @db.Text
+
+  // Role: user, assistant, system, tool
+  role ChatMessageRole
+
+  // For tool messages
+  toolCallId String?
+  toolCalls  Json? // Array of tool calls if role is assistant
+
+  // Token usage for this message
+  promptTokens     Int?
+  completionTokens Int?
+  totalTokens      Int?
+
+  // Response metadata (timing, model used, etc)
+  metadata Json? @default("{}")
+
+  // Order in conversation
+  sequence Int
+
+  // Error tracking
+  error String?
+
+  // Relations
+  sessionId   String
+  ChatSession ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  // Parent message for threading/branching conversations
+  parentId String?
+  parent   ChatMessage?  @relation("MessageThread", fields: [parentId], references: [id])
+  children ChatMessage[] @relation("MessageThread")
+
+  @@index([sessionId, sequence])
+  @@index([role])
+  @@index([createdAt])
+}
+
+enum ChatMessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+  TOOL
 }
