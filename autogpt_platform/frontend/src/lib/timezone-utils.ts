@@ -71,14 +71,13 @@ export function getTimezoneAbbreviation(timezone: string): string {
  */
 export function formatScheduleTime(
   nextRunTime: string | Date,
-  displayTimezone: string,
+  displayTimezone: string = "UTC",
 ): string {
   const date =
     typeof nextRunTime === "string" ? new Date(nextRunTime) : nextRunTime;
 
   // Use provided timezone for display, fallback to UTC
-  const timezone = displayTimezone || "UTC";
-  const formatted = formatInTimezone(date, timezone, {
+  const formatted = formatInTimezone(date, displayTimezone, {
     month: "short",
     day: "numeric",
     hour: "2-digit",

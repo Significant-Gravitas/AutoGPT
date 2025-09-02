@@ -17,29 +17,20 @@ export default function SettingsPage() {
     isError: preferencesError,
     isLoading: preferencesLoading,
   } = useGetV1GetNotificationPreferences({
-    query: {
-      select: (res) => {
-        return res.data;
-      },
-    },
+    query: { select: (res) => (res.status === 200 ? res.data : null) },
   });
 
-  const { data: timezoneData, isLoading: timezoneLoading } =
+  const { data: timezone, isLoading: timezoneLoading } =
     useGetV1GetUserTimezone({
       query: {
         select: (res) => {
-          return res.data;
+          return res.status === 200 ? String(res.data.timezone) : "not-set";
         },
       },
     });
+  useTimezoneDetection(timezone);
 
   const { user, isUserLoading } = useSupabase();
-
-  // Auto-detect timezone if it's not set
-  const timezone = timezoneData?.timezone
-    ? String(timezoneData.timezone)
-    : "not-set";
-  useTimezoneDetection(timezone);
 
   if (preferencesLoading || isUserLoading || timezoneLoading) {
     return <SettingsLoading />;
@@ -50,7 +41,7 @@ export default function SettingsPage() {
   }
 
   if (preferencesError || !preferences || !preferences.preferences) {
-    return "Errror..."; // TODO: Will use a Error reusable components from Block Menu redesign
+    return "Error..."; // TODO: Will use a Error reusable components from Block Menu redesign
   }
 
   return (
