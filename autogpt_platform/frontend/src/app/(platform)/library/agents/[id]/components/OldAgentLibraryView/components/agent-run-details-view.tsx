@@ -117,6 +117,7 @@ export function AgentRunDetailsView({
       )
     )
       return;
+
     if (run.preset_id) {
       return api
         .executeLibraryAgentPreset(
@@ -127,6 +128,7 @@ export function AgentRunDetailsView({
         .then(({ id }) => onRun(id))
         .catch(toastOnFail("execute agent preset"));
     }
+
     return api
       .executeGraph(
         graph.id,
