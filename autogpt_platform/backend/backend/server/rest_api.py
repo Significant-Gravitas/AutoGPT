@@ -12,6 +12,7 @@ from autogpt_libs.auth import add_auth_responses_to_openapi
 from autogpt_libs.auth import verify_settings as verify_auth_settings
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
+from prisma.errors import PrismaError
 
 import backend.data.block
 import backend.data.db
@@ -39,6 +40,7 @@ from backend.server.external.api import external_app
 from backend.server.middleware.security import SecurityHeadersMiddleware
 from backend.util import json
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
+from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
 from backend.util.service import UnhealthyServiceError
 
@@ -195,10 +197,14 @@ async def validation_error_handler(
     )
 
 
+app.add_exception_handler(PrismaError, handle_internal_http_error(500))
+app.add_exception_handler(NotFoundError, handle_internal_http_error(404, False))
+app.add_exception_handler(NotAuthorizedError, handle_internal_http_error(403, False))
 app.add_exception_handler(RequestValidationError, validation_error_handler)
 app.add_exception_handler(pydantic.ValidationError, validation_error_handler)
 app.add_exception_handler(ValueError, handle_internal_http_error(400))
 app.add_exception_handler(Exception, handle_internal_http_error(500))
+
 app.include_router(backend.server.routers.v1.v1_router, tags=["v1"], prefix="/api")
 app.include_router(
     backend.server.v2.store.routes.router, tags=["v2"], prefix="/api/store"
