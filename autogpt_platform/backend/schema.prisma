@@ -110,6 +110,7 @@ model AgentGraph {
 
   name        String?
   description String?
+  recommendedScheduleCron String?
 
   isActive Boolean @default(true)
 
@@ -778,6 +779,8 @@ model StoreListingVersion {
   internalComments String? // Private notes for admin use only
   reviewComments   String? // Comments visible to creator
   reviewedAt       DateTime?
+
+  recommendedScheduleCron String? // cron expression like "0 9 * * *"
 
   // Reviews for this specific version
   Reviews StoreListingReview[]

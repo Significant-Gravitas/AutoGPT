@@ -4660,6 +4660,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
+          },
           "nodes": {
             "items": { "$ref": "#/components/schemas/Node" },
             "type": "array",
@@ -4696,6 +4700,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
+          },
           "nodes": {
             "items": { "$ref": "#/components/schemas/Node" },
             "type": "array",
@@ -5162,6 +5170,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
+          },
           "nodes": {
             "items": { "$ref": "#/components/schemas/Node" },
             "type": "array",
@@ -5406,6 +5418,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
+          },
           "forked_from_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Forked From Id"
@@ -5476,6 +5492,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
+          },
           "nodes": {
             "items": { "$ref": "#/components/schemas/NodeModel" },
             "type": "array",
@@ -5703,6 +5723,10 @@
           "is_latest_version": {
             "type": "boolean",
             "title": "Is Latest Version"
+          },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
           }
         },
         "type": "object",
@@ -6010,6 +6034,10 @@
             "type": "string",
             "format": "date-time",
             "title": "Last Edited"
+          },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
           }
         },
         "type": "object",
@@ -7085,6 +7113,10 @@
             "format": "date-time",
             "title": "Last Updated"
           },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
+          },
           "active_version_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Active Version Id"
@@ -7315,6 +7347,10 @@
           "changes_summary": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Changes Summary"
+          },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
           }
         },
         "type": "object",
@@ -7352,6 +7388,10 @@
           "changes_summary": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Changes Summary"
+          },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
           }
         },
         "type": "object",

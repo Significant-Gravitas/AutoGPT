@@ -295,6 +295,7 @@ export type GraphMeta = {
   is_active: boolean;
   name: string;
   description: string;
+  recommended_schedule_cron: string | null;
   forked_from_id?: GraphID | null;
   forked_from_version?: number | null;
   input_schema: GraphIOSchema;
@@ -428,6 +429,7 @@ export type LibraryAgent = {
   new_output: boolean;
   can_access_graph: boolean;
   is_latest_version: boolean;
+  recommended_schedule_cron: string | null;
 } & (
   | {
       has_external_trigger: true;
@@ -770,6 +772,7 @@ export type StoreSubmissionRequest = {
   description: string;
   categories: string[];
   changes_summary?: string;
+  recommended_schedule_cron?: string | null;
 };
 
 export type ProfileDetails = {
@@ -812,6 +815,7 @@ export type MyAgent = {
   agent_image: string | null;
   last_edited: string;
   description: string;
+  recommended_schedule_cron: string | null;
 };
 
 export type MyAgentsResponse = {
