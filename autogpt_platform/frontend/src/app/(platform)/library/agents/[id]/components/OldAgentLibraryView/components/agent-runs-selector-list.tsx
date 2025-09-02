@@ -16,17 +16,16 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/atoms/Button/Button";
 import LoadingBox from "@/components/ui/loading";
-import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
-import { Separator } from "@/components/ui/separator";
-
-import { agentRunStatusMap } from "@/components/agents/agent-run-status-chip";
-import AgentRunSummaryCard from "@/components/agents/agent-run-summary-card";
-import { AgentRunsQuery } from "../use-agent-runs";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { RunAgentModal } from "../../AgentRunsView/components/RunAgentModal/RunAgentModal";
 import { PlusIcon } from "@phosphor-icons/react";
-import { LibraryAgent as GeneratedLibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+
+import { RunAgentModal } from "../../AgentRunsView/components/RunAgentModal/RunAgentModal";
+import { AgentRunsQuery } from "../use-agent-runs";
+import { agentRunStatusMap } from "./agent-run-status-chip";
+import { AgentRunSummaryCard } from "./agent-run-summary-card";
 
 interface AgentRunsSelectorListProps {
   agent: LibraryAgent;
@@ -92,7 +91,7 @@ export function AgentRunsSelectorList({
               <PlusIcon size={20} /> New Run
             </Button>
           }
-          agent={agent as unknown as GeneratedLibraryAgent}
+          agent={agent}
           agentId={agent.id.toString()}
         />
       ) : allowDraftNewRun ? (
