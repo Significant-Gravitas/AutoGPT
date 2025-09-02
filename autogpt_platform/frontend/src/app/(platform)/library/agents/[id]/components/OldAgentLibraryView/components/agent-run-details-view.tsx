@@ -1,5 +1,4 @@
 "use client";
-import { isEmpty } from "lodash";
 import moment from "moment";
 import React, { useCallback, useMemo } from "react";
 
@@ -110,14 +109,16 @@ export function AgentRunDetailsView({
 
   const runAgain = useCallback(
     () =>
-      agentRunInputs &&
+      run.inputs &&
+      graph.credentials_input_schema.required.every(
+        (k) => k in (run.credential_inputs ?? {}),
+      ) &&
       api
         .executeGraph(
           graph.id,
           graph.version,
-          Object.fromEntries(
-            Object.entries(agentRunInputs).map(([k, v]) => [k, v.value]),
-          ),
+          run.inputs,
+          run.credential_inputs ?? undefined,
         )
         .then(({ graph_exec_id }) => onRun(graph_exec_id))
         .catch(toastOnFail("execute agent")),
@@ -177,7 +178,9 @@ export function AgentRunDetailsView({
         : []),
       ...(["success", "failed", "stopped"].includes(runStatus) &&
       !graph.has_external_trigger &&
-      isEmpty(graph.credentials_input_schema.required) // TODO: enable re-run with credentials - https://linear.app/autogpt/issue/SECRT-1243
+      graph.credentials_input_schema.required.every(
+        (k) => k in (run.credential_inputs ?? {}),
+      )
         ? [
             {
               label: (
