@@ -1,9 +1,6 @@
 import logging
 import os
 from datetime import datetime, timezone
-from typing import List, Dict, Any, Tuple
-import re
-from difflib import SequenceMatcher
 
 import fastapi
 import prisma.enums
@@ -79,13 +76,36 @@ async def search_store_agents(
     search_query: str,
 ) -> backend.server.v2.store.model.StoreAgentsResponse:
     """
-    Search for store agents using embeddings with SQLAlchemy
+    Search for store agents using embeddings with SQLAlchemy.
+    Falls back to text search if embedding creation fails.
     """
-    query_embedding = create_embedding(search_query)
+    try:
+        # Try to create embedding for semantic search
+        query_embedding = await create_embedding(search_query)
 
-    # Use SQLAlchemy service for search
-    service = get_search_service()
-    results = await service.search_by_embedding(query_embedding, limit=30)
+        if query_embedding is None:
+            # Fallback to text-based search if embedding fails
+            logger.warning(
+                f"Failed to create embedding for query: {search_query}. "
+                "Falling back to text search."
+            )
+            return await get_store_agents(
+                search_query=search_query,
+                page=1,
+                page_size=30,
+            )
+
+        # Use SQLAlchemy service for vector search
+        service = get_search_service()
+        results = await service.search_by_embedding(query_embedding, limit=30)
+    except Exception as e:
+        logger.error(f"Error during vector search: {e}. Falling back to text search.")
+        # Fallback to regular text search on any error
+        return await get_store_agents(
+            search_query=search_query,
+            page=1,
+            page_size=30,
+        )
 
     # Convert raw results to StoreAgent models
     agents = []
@@ -140,11 +160,23 @@ async def search_agents(
     page_size: int = 20,
 ) -> backend.server.v2.store.model.StoreAgentsResponse:
     """
-    Search for store agents using embeddings with optional filters
+    Search for store agents using embeddings with optional filters.
+    Falls back to text search if embedding service is unavailable.
     """
-    # For now, just use the search_store_agents function
-    # In the future, we can add filtering logic here
-    return await search_store_agents(search_query)
+    try:
+        # Try vector search first
+        return await search_store_agents(search_query)
+    except Exception as e:
+        logger.error(f"Vector search failed: {e}. Using text search fallback.")
+        # Fallback to text search with filters
+        return await get_store_agents(
+            featured=featured or False,
+            creators=creators,
+            search_query=search_query,
+            category=category,
+            page=page,
+            page_size=page_size,
+        )
 
 
 async def get_store_agents(
@@ -157,25 +189,12 @@ async def get_store_agents(
     page_size: int = 20,
 ) -> backend.server.v2.store.model.StoreAgentsResponse:
     """
-    Get PUBLIC store agents from the StoreAgent view with advanced search capabilities
-
-    Features:
-    - Fuzzy matching with typo tolerance
-    - Token-based search across multiple fields
-    - Relevance scoring and ranking
-    - Category and creator filtering
-    - Popularity boosting for high-rated/popular agents
-
-    Note: For production deployments with Supabase, you can enable PostgreSQL extensions
-    for even better search performance:
-    - pg_trgm: For trigram-based fuzzy matching (available in Supabase)
-    - Full-text search: Built into PostgreSQL
-
-    These can be enabled via Supabase dashboard or raw SQL queries if needed.
+    Get PUBLIC store agents from the StoreAgent view
     """
     logger.debug(
         f"Getting store agents. featured={featured}, creators={creators}, sorted_by={sorted_by}, search={search_query}, category={category}, page={page}"
     )
+    sanitized_query = sanitize_query(search_query)
 
     where_clause = {}
     if featured:
@@ -185,88 +204,35 @@ async def get_store_agents(
     if category:
         where_clause["categories"] = {"has": category}
 
-    # Use advanced search if query is provided
-    if search_query:
-        # Build advanced search conditions
-        search_conditions = AdvancedSearchEngine.build_advanced_search_query(
-            search_query, use_fuzzy=True
-        )
+    if sanitized_query:
+        where_clause["OR"] = [
+            {"agent_name": {"contains": sanitized_query, "mode": "insensitive"}},
+            {"description": {"contains": sanitized_query, "mode": "insensitive"}},
+        ]
 
-        if search_conditions:
-            where_clause["OR"] = search_conditions
-
-    # Define search relevance fields and their weights
-    search_fields = {
-        "agent_name": 3.0,  # Highest weight for name matches
-        "description": 2.0,  # High weight for description
-        "sub_heading": 1.5,  # Medium weight for sub-heading
-        "categories": 1.0,  # Lower weight for categories
-        "creator_username": 0.5,  # Lower weight for creator name
-    }
+    order_by = []
+    if sorted_by == "rating":
+        order_by.append({"rating": "desc"})
+    elif sorted_by == "runs":
+        order_by.append({"runs": "desc"})
+    elif sorted_by == "name":
+        order_by.append({"agent_name": "asc"})
 
     try:
-        # Fetch more results initially for relevance scoring if searching
-        fetch_limit = page_size * 3 if search_query else page_size
-
-        # Build order_by clause
-        order_by = []
-        if sorted_by == "rating":
-            order_by.append({"rating": "desc"})
-        elif sorted_by == "runs":
-            order_by.append({"runs": "desc"})
-        elif sorted_by == "name":
-            order_by.append({"agent_name": "asc"})
-        # Default to rating for better UX when no sort specified
-        elif not sorted_by and not search_query:
-            order_by.append({"rating": "desc"})
-
-        # Fetch agents from database
         agents = await prisma.models.StoreAgent.prisma().find_many(
             where=prisma.types.StoreAgentWhereInput(**where_clause),
-            order=order_by if order_by else None,
-            skip=0 if search_query else (page - 1) * page_size,
-            take=fetch_limit,
+            order=order_by,
+            skip=(page - 1) * page_size,
+            take=page_size,
         )
 
-        # Apply relevance scoring and re-ranking if search query exists
-        if search_query and agents:
-            # Calculate relevance scores
-            scored_agents: List[Tuple[float, prisma.models.StoreAgent]] = []
-            for agent in agents:
-                score = AdvancedSearchEngine.calculate_relevance_score(
-                    agent, search_query, search_fields
-                )
-                if score > 0:  # Only include agents with positive scores
-                    scored_agents.append((score, agent))
-
-            # Sort by relevance score (highest first)
-            scored_agents.sort(key=lambda x: x[0], reverse=True)
-
-            # Apply secondary sorting if specified
-            if sorted_by == "rating":
-                scored_agents.sort(key=lambda x: (x[0], x[1].rating), reverse=True)
-            elif sorted_by == "runs":
-                scored_agents.sort(key=lambda x: (x[0], x[1].runs), reverse=True)
-
-            # Extract agents for the requested page
-            start_idx = (page - 1) * page_size
-            end_idx = start_idx + page_size
-            page_agents = [agent for _, agent in scored_agents[start_idx:end_idx]]
-
-            # Update total count for pagination
-            total = len(scored_agents)
-        else:
-            # No search query, use original pagination
-            page_agents = agents
-            total = await prisma.models.StoreAgent.prisma().count(
-                where=prisma.types.StoreAgentWhereInput(**where_clause)
-            )
-
+        total = await prisma.models.StoreAgent.prisma().count(
+            where=prisma.types.StoreAgentWhereInput(**where_clause)
+        )
         total_pages = (total + page_size - 1) // page_size
 
-        # Convert to response models
         store_agents: list[backend.server.v2.store.model.StoreAgent] = []
-        for agent in page_agents:
+        for agent in agents:
             try:
                 # Create the StoreAgent object safely
                 store_agent = backend.server.v2.store.model.StoreAgent(
@@ -350,7 +316,7 @@ async def get_store_agent_details(
             agent_video=agent.agent_video or "",
             agent_image=agent.agent_image,
             creator=agent.creator_username,
-            creator_avatar=agent.creator_avatar,
+            creator_avatar=agent.creator_avatar or "",
             sub_heading=agent.sub_heading,
             description=agent.description,
             categories=agent.categories,
@@ -423,7 +389,7 @@ async def get_store_agent_by_version_id(
             agent_video=agent.agent_video or "",
             agent_image=agent.agent_image,
             creator=agent.creator_username,
-            creator_avatar=agent.creator_avatar,
+            creator_avatar=agent.creator_avatar or "",
             sub_heading=agent.sub_heading,
             description=agent.description,
             categories=agent.categories,
@@ -1519,36 +1485,60 @@ async def review_store_submission(
 
         # Create embeddings if approved
         if is_approved and submission.StoreListing:
-            service = get_search_service()
+            try:
+                service = get_search_service()
 
-            # Create embeddings for the approved listing
-            fields_to_embed = [
-                ("name", submission.name, SearchFieldType.NAME),
-                ("description", submission.description, SearchFieldType.DESCRIPTION),
-            ]
+                # Create embeddings for the approved listing
+                fields_to_embed = [
+                    ("name", submission.name, SearchFieldType.NAME),
+                    (
+                        "description",
+                        submission.description,
+                        SearchFieldType.DESCRIPTION,
+                    ),
+                ]
 
-            if submission.subHeading:
-                fields_to_embed.append(
-                    ("subHeading", submission.subHeading, SearchFieldType.SUBHEADING)
-                )
+                if submission.subHeading:
+                    fields_to_embed.append(
+                        (
+                            "subHeading",
+                            submission.subHeading,
+                            SearchFieldType.SUBHEADING,
+                        )
+                    )
 
-            if submission.categories:
-                categories_text = ", ".join(submission.categories)
-                fields_to_embed.append(
-                    ("categories", categories_text, SearchFieldType.CATEGORIES)
-                )
+                if submission.categories:
+                    categories_text = ", ".join(submission.categories)
+                    fields_to_embed.append(
+                        ("categories", categories_text, SearchFieldType.CATEGORIES)
+                    )
 
-            for field_name, field_value, field_type in fields_to_embed:
-                embedding = create_embedding(field_value)
-                await service.upsert_search_record(
-                    store_listing_version_id=store_listing_version_id,
-                    store_listing_id=submission.StoreListing.id,
-                    field_name=field_name,
-                    field_value=field_value,
-                    embedding=embedding,
-                    field_type=field_type,
-                    submission_status=SearchSubmissionStatus.APPROVED,
-                    is_available=submission.isAvailable,
+                for field_name, field_value, field_type in fields_to_embed:
+                    # Create embedding asynchronously
+                    embedding = await create_embedding(field_value)
+
+                    # Only store if embedding was created successfully
+                    if embedding:
+                        await service.upsert_search_record(
+                            store_listing_version_id=store_listing_version_id,
+                            store_listing_id=submission.StoreListing.id,
+                            field_name=field_name,
+                            field_value=field_value,
+                            embedding=embedding,
+                            field_type=field_type,
+                            submission_status=SearchSubmissionStatus.APPROVED,
+                            is_available=submission.isAvailable,
+                        )
+                    else:
+                        logger.warning(
+                            f"Failed to create embedding for {field_name} in listing {store_listing_version_id}. "
+                            "Search indexing skipped for this field."
+                        )
+            except Exception as e:
+                # Log error but don't fail the approval process
+                logger.error(
+                    f"Error creating search embeddings for listing {store_listing_version_id}: {e}. "
+                    "Approval will continue without search indexing."
                 )
 
         # Send email notification to the agent creator
