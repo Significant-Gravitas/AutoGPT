@@ -1272,15 +1272,16 @@ async def review_store_submission(
         # If approving, update the listing to indicate it has an approved version
         if is_approved and store_listing_version.AgentGraph:
             heading = f"Sub-graph of {store_listing_version.name}v{store_listing_version.agentGraphVersion}"
-            
-            # Temporary fix
-            latest_version = await prisma.models.StoreListingVersion.prisma().find_first(
-                where={"storeListingId": store_listing_version.StoreListing.id},
-                order={"version": "desc"}
-            )
-            
-            next_version = (latest_version.version + 1) if latest_version else 1
 
+            # Temporary fix
+            latest_version = (
+                await prisma.models.StoreListingVersion.prisma().find_first(
+                    where={"storeListingId": store_listing_version.StoreListing.id},
+                    order={"version": "desc"},
+                )
+            )
+
+            next_version = (latest_version.version + 1) if latest_version else 1
 
             sub_store_listing_versions = [
                 prisma.types.StoreListingVersionCreateWithoutRelationsInput(
@@ -1290,16 +1291,18 @@ async def review_store_submission(
                     version=next_version + i,  # Unique version for each sub-graph
                     submissionStatus=prisma.enums.SubmissionStatus.APPROVED,
                     subHeading=heading,
-                    imageUrls= store_listing_version.imageUrls or [],
-                    categories= store_listing_version.categories or [],
+                    imageUrls=store_listing_version.imageUrls or [],
+                    categories=store_listing_version.categories or [],
                     description=f"{heading}: {sub_graph.description}",
                     changesSummary=f"This listing is added as a {heading} / #{store_listing_version.agentGraphId}.",
                     isAvailable=False,  # Hide sub-graphs from the store by default.
                     submittedAt=datetime.now(tz=timezone.utc),
                 )
-                for i, sub_graph in enumerate(await _get_missing_sub_store_listing(
-                    store_listing_version.AgentGraph
-                ))
+                for i, sub_graph in enumerate(
+                    await _get_missing_sub_store_listing(
+                        store_listing_version.AgentGraph
+                    )
+                )
             ]
 
             await prisma.models.StoreListing.prisma().update(
