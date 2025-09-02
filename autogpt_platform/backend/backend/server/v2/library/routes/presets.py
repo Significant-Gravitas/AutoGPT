@@ -8,6 +8,7 @@ import backend.server.v2.library.db as db
 import backend.server.v2.library.model as models
 from backend.data.graph import get_graph
 from backend.data.integrations import get_webhook
+from backend.data.model import CredentialsMetaInput
 from backend.executor.utils import add_graph_execution, make_node_credentials_input_map
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks import get_webhook_manager
@@ -369,6 +370,7 @@ async def execute_preset(
     preset_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
     inputs: dict[str, Any] = Body(..., embed=True, default_factory=dict),
+    credential_inputs: dict[str, CredentialsMetaInput] = Body(..., embed=True, default_factory=dict),
 ) -> dict[str, Any]:  # FIXME: add proper return type
     """
     Execute a preset given graph parameters, returning the execution ID on success.
@@ -394,6 +396,7 @@ async def execute_preset(
 
         # Merge input overrides with preset inputs
         merged_node_input = preset.inputs | inputs
+        merged_credential_inputs = preset.credentials | credential_inputs
 
         execution = await add_graph_execution(
             user_id=user_id,
@@ -401,6 +404,7 @@ async def execute_preset(
             graph_version=preset.graph_version,
             preset_id=preset_id,
             inputs=merged_node_input,
+            graph_credentials_inputs=merged_credential_inputs,
         )
 
         logger.debug(f"Execution added: {execution} with input: {merged_node_input}")

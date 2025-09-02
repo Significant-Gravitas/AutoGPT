@@ -4863,6 +4863,13 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Inputs"
+          },
+          "credential_inputs": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CredentialsMetaInput"
+            },
+            "type": "object",
+            "title": "Credentials Inputs"
           }
         },
         "type": "object",
