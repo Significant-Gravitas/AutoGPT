@@ -3,7 +3,7 @@
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Button } from "@/components/atoms/Button/Button";
 import { useState } from "react";
-import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { LibraryAgent } from "@/lib/autogpt-server-api/types";
 import { useAgentRunModal } from "./useAgentRunModal";
 import { ModalHeader } from "./components/ModalHeader/ModalHeader";
 import { AgentCostSection } from "./components/AgentCostSection/AgentCostSection";

@@ -1,5 +1,5 @@
 import { Badge } from "@/components/atoms/Badge/Badge";
-import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { LibraryAgent } from "@/lib/autogpt-server-api/types";
 import { Text } from "@/components/atoms/Text/Text";
 import { ShowMoreText } from "@/components/molecules/ShowMoreText/ShowMoreText";
 

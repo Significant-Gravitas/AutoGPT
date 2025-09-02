@@ -1,10 +1,17 @@
-import { useGetV2GetLibraryAgent } from "@/app/api/__generated__/endpoints/library/library";
+import { useQuery } from "@tanstack/react-query";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useParams } from "next/navigation";
 
 export function useAgentRunsView() {
   const { id } = useParams();
   const agentId = id as string;
-  const { data: response, isSuccess, error } = useGetV2GetLibraryAgent(agentId);
+  const api = useBackendAPI();
+  
+  const { data: response, isSuccess, error } = useQuery({
+    queryKey: ["v2", "get", "library", "agent", agentId],
+    queryFn: () => api.getLibraryAgent(agentId),
+    enabled: !!agentId,
+  });
 
   return {
     agentId: id,

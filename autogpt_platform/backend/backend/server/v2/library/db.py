@@ -91,12 +91,15 @@ async def list_library_agents(
         ]
 
     # Determine sorting
-    order_by: prisma.types.LibraryAgentOrderByInput | None = None
+    order_by: list[prisma.types.LibraryAgentOrderByInput] | prisma.types.LibraryAgentOrderByInput | None = None
 
     if sort_by == library_model.LibraryAgentSort.CREATED_AT:
         order_by = {"createdAt": "asc"}
     elif sort_by == library_model.LibraryAgentSort.UPDATED_AT:
         order_by = {"updatedAt": "desc"}
+    elif sort_by == library_model.LibraryAgentSort.FAVORITES_FIRST:
+        # Sort by favorites first, then by updated date
+        order_by = [{"isFavorite": "desc"}, {"updatedAt": "desc"}]
 
     try:
         library_agents = await prisma.models.LibraryAgent.prisma().find_many(

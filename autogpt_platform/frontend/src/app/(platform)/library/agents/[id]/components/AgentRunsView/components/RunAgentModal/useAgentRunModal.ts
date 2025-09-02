@@ -1,4 +1,4 @@
-import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { LibraryAgent } from "@/lib/autogpt-server-api/types";
 import { useState, useCallback, useMemo } from "react";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { isEmpty } from "@/lib/utils";
@@ -7,7 +7,7 @@ import { usePostV1CreateExecutionSchedule as useCreateSchedule } from "@/app/api
 import { usePostV2SetupTrigger } from "@/app/api/__generated__/endpoints/presets/presets";
 import { ExecuteGraphResponse } from "@/app/api/__generated__/models/executeGraphResponse";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
-import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
+import { LibraryAgentPreset } from "@/lib/autogpt-server-api/types";
 
 export type RunVariant =
   | "manual"

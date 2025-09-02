@@ -1,44 +1,46 @@
-import { useGetV2ListLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
-import { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgentResponse";
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { LibraryAgentResponse } from "@/lib/autogpt-server-api/types";
 import { useLibraryPageContext } from "../state-provider";
 
 export const useLibraryAgentList = () => {
   const { searchTerm, librarySort } = useLibraryPageContext();
+  const api = useBackendAPI();
+  
   const {
     data: agents,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
     isLoading: agentLoading,
-  } = useGetV2ListLibraryAgentsInfinite(
-    {
-      page: 1,
-      page_size: 8,
-      search_term: searchTerm || undefined,
-      sort_by: librarySort,
+  } = useInfiniteQuery({
+    queryKey: ["v2", "list", "library", "agents", searchTerm, librarySort],
+    queryFn: async ({ pageParam = 1 }) => {
+      return await api.listLibraryAgents({
+        page: pageParam,
+        page_size: 8,
+        search_term: searchTerm || undefined,
+        sort_by: librarySort,
+      });
     },
-    {
-      query: {
-        getNextPageParam: (lastPage) => {
-          const pagination = (lastPage.data as LibraryAgentResponse).pagination;
-          const isMore =
-            pagination.current_page * pagination.page_size <
-            pagination.total_items;
+    getNextPageParam: (lastPage) => {
+      const pagination = lastPage.pagination;
+      const isMore =
+        pagination.current_page * pagination.page_size <
+        pagination.total_items;
 
-          return isMore ? pagination.current_page + 1 : undefined;
-        },
-      },
+      return isMore ? pagination.current_page + 1 : undefined;
     },
-  );
+    initialPageParam: 1,
+  });
 
   const allAgents =
     agents?.pages?.flatMap((page) => {
-      const response = page.data as LibraryAgentResponse;
-      return response.agents;
+      return page.agents;
     }) ?? [];
 
   const agentCount = agents?.pages?.[0]
-    ? (agents.pages[0].data as LibraryAgentResponse).pagination.total_items
+    ? agents.pages[0].pagination.total_items
     : 0;
 
   return {

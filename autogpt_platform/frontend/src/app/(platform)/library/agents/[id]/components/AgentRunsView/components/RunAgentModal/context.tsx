@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext } from "react";
-import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { LibraryAgent } from "@/lib/autogpt-server-api/types";
 import { RunVariant } from "./useAgentRunModal";
 
 export interface RunAgentModalContextValue {

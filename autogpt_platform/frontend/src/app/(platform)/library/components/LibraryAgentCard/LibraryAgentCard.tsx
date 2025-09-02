@@ -1,8 +1,11 @@
 import Link from "next/link";
 import Image from "next/image";
+import { Heart } from "@phosphor-icons/react";
+import { useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { LibraryAgent } from "@/lib/autogpt-server-api/types";
+import { useFavoriteAgent } from "./useFavoriteAgent";
 
 interface LibraryAgentCardProps {
   agent: LibraryAgent;
@@ -17,8 +20,23 @@ export default function LibraryAgentCard({
     can_access_graph,
     creator_image_url,
     image_url,
+    is_favorite,
   },
 }: LibraryAgentCardProps) {
+  const [isFavorite, setIsFavorite] = useState(is_favorite);
+  const { toggleFavorite } = useFavoriteAgent();
+
+  const handleFavoriteClick = async (e: React.MouseEvent) => {
+    e.preventDefault(); // Prevent navigation to agent page
+    e.stopPropagation();
+    
+    try {
+      const newFavoriteStatus = await toggleFavorite(id, isFavorite);
+      setIsFavorite(newFavoriteStatus);
+    } catch (error) {
+      // Error is already handled in the hook
+    }
+  };
   return (
     <div
       data-testid="library-agent-card"
@@ -67,6 +85,19 @@ export default function LibraryAgentCard({
             <AvatarFallback size={64}>{name.charAt(0)}</AvatarFallback>
           </Avatar>
         </div>
+        
+        {/* Favorite heart icon */}
+        <button
+          onClick={handleFavoriteClick}
+          className="absolute top-4 right-4 rounded-full bg-white/90 p-2 shadow-sm transition-all duration-200 hover:bg-white hover:scale-110 dark:bg-gray-800/90 dark:hover:bg-gray-700"
+          aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+        >
+          <Heart 
+            size={20} 
+            weight={isFavorite ? "fill" : "regular"} 
+            className={isFavorite ? "text-red-500" : "text-gray-400 hover:text-red-500"} 
+          />
+        </button>
       </Link>
 
       <div className="flex w-full flex-1 flex-col px-4 py-4">

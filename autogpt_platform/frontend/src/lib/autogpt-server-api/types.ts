@@ -428,6 +428,7 @@ export type LibraryAgent = {
   new_output: boolean;
   can_access_graph: boolean;
   is_latest_version: boolean;
+  is_favorite: boolean;
 } & (
   | {
       has_external_trigger: true;
@@ -502,6 +503,7 @@ export type LibraryAgentPresetUpdatable = Partial<
 export enum LibraryAgentSortEnum {
   CREATED_AT = "createdAt",
   UPDATED_AT = "updatedAt",
+  FAVORITES_FIRST = "favoritesFirst",
 }
 
 /* *** CREDENTIALS *** */

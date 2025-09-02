@@ -1,4 +1,4 @@
-import { LibraryAgentSort } from "@/app/api/__generated__/models/libraryAgentSort";
+import { LibraryAgentSortEnum as LibraryAgentSort } from "@/lib/autogpt-server-api/types";
 import { useLibraryPageContext } from "../state-provider";
 
 export const useLibrarySortMenu = () => {
@@ -11,12 +11,14 @@ export const useLibrarySortMenu = () => {
 
   const getSortLabel = (sort: LibraryAgentSort) => {
     switch (sort) {
-      case LibraryAgentSort.createdAt:
+      case LibraryAgentSort.CREATED_AT:
         return "Creation Date";
-      case LibraryAgentSort.updatedAt:
+      case LibraryAgentSort.UPDATED_AT:
         return "Last Modified";
+      case LibraryAgentSort.FAVORITES_FIRST:
+        return "Favorites First";
       default:
-        return "Last Modified";
+        return "Favorites First";
     }
   };
 

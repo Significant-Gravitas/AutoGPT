@@ -1,5 +1,5 @@
 import { Input } from "@/components/atoms/Input/Input";
-import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { LibraryAgent } from "@/lib/autogpt-server-api/types";
 
 interface Props {
   agent: LibraryAgent;

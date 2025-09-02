@@ -1,6 +1,6 @@
 "use client";
 
-import { LibraryAgentSort } from "@/app/api/__generated__/models/libraryAgentSort";
+import { LibraryAgentSortEnum as LibraryAgentSort } from "@/lib/autogpt-server-api/types";
 import {
   createContext,
   useState,
@@ -31,7 +31,7 @@ export function LibraryPageStateProvider({
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [librarySort, setLibrarySort] = useState<LibraryAgentSort>(
-    LibraryAgentSort.updatedAt,
+    LibraryAgentSort.FAVORITES_FIRST,
   );
 
   return (
