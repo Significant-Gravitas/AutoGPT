@@ -155,7 +155,7 @@ export class VideoRenderer implements OutputRenderer {
     };
   }
 
-  isConcatenable(value: any, metadata?: OutputMetadata): boolean {
+  isConcatenable(_value: any, _metadata?: OutputMetadata): boolean {
     return false;
   }
 }

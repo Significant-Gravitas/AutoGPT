@@ -10,7 +10,7 @@ export class TextRenderer implements OutputRenderer {
   name = "TextRenderer";
   priority = 0;
 
-  canRender(value: any, metadata?: OutputMetadata): boolean {
+  canRender(value: any, _metadata?: OutputMetadata): boolean {
     return (
       typeof value === "string" ||
       typeof value === "number" ||
@@ -18,7 +18,7 @@ export class TextRenderer implements OutputRenderer {
     );
   }
 
-  render(value: any, metadata?: OutputMetadata): React.ReactNode {
+  render(value: any, _metadata?: OutputMetadata): React.ReactNode {
     const textValue = String(value);
 
     return (
@@ -28,7 +28,7 @@ export class TextRenderer implements OutputRenderer {
     );
   }
 
-  getCopyContent(value: any, metadata?: OutputMetadata): CopyContent | null {
+  getCopyContent(value: any, _metadata?: OutputMetadata): CopyContent | null {
     const textValue = String(value);
     return {
       mimeType: "text/plain",
@@ -39,19 +39,19 @@ export class TextRenderer implements OutputRenderer {
 
   getDownloadContent(
     value: any,
-    metadata?: OutputMetadata,
+    _metadata?: OutputMetadata,
   ): DownloadContent | null {
     const textValue = String(value);
     const blob = new Blob([textValue], { type: "text/plain" });
 
     return {
       data: blob,
-      filename: metadata?.filename || "output.txt",
+      filename: _metadata?.filename || "output.txt",
       mimeType: "text/plain",
     };
   }
 
-  isConcatenable(value: any, metadata?: OutputMetadata): boolean {
+  isConcatenable(_value: any, _metadata?: OutputMetadata): boolean {
     return true;
   }
 }

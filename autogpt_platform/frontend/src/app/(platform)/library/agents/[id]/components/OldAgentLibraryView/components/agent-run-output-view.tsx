@@ -1,12 +1,11 @@
 "use client";
 
-import React, { useCallback, useMemo } from "react";
+import React, { useMemo } from "react";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import LoadingBox from "@/components/ui/loading";
-import { CopyIcon, DownloadIcon, ShareIcon } from "lucide-react";
 import { globalRegistry, OutputItem, OutputActions } from "./output-renderers";
 import type { OutputMetadata } from "./output-renderers";
 

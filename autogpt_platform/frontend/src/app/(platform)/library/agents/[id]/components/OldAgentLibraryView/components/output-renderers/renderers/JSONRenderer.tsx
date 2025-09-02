@@ -13,8 +13,8 @@ export class JSONRenderer implements OutputRenderer {
   name = "JSONRenderer";
   priority = 20;
 
-  canRender(value: any, metadata?: OutputMetadata): boolean {
-    if (metadata?.type === "json") {
+  canRender(value: any, _metadata?: OutputMetadata): boolean {
+    if (_metadata?.type === "json") {
       return true;
     }
 
@@ -34,7 +34,7 @@ export class JSONRenderer implements OutputRenderer {
     return false;
   }
 
-  render(value: any, metadata?: OutputMetadata): React.ReactNode {
+  render(value: any, _metadata?: OutputMetadata): React.ReactNode {
     let jsonData = value;
 
     if (typeof value === "string") {
@@ -48,7 +48,7 @@ export class JSONRenderer implements OutputRenderer {
     return <JSONViewer data={jsonData} />;
   }
 
-  getCopyContent(value: any, metadata?: OutputMetadata): CopyContent | null {
+  getCopyContent(value: any, _metadata?: OutputMetadata): CopyContent | null {
     const jsonString =
       typeof value === "string" ? value : JSON.stringify(value, null, 2);
 
@@ -62,7 +62,7 @@ export class JSONRenderer implements OutputRenderer {
 
   getDownloadContent(
     value: any,
-    metadata?: OutputMetadata,
+    _metadata?: OutputMetadata,
   ): DownloadContent | null {
     const jsonString =
       typeof value === "string" ? value : JSON.stringify(value, null, 2);
@@ -70,17 +70,17 @@ export class JSONRenderer implements OutputRenderer {
 
     return {
       data: blob,
-      filename: metadata?.filename || "output.json",
+      filename: _metadata?.filename || "output.json",
       mimeType: "application/json",
     };
   }
 
-  isConcatenable(value: any, metadata?: OutputMetadata): boolean {
+  isConcatenable(_value: any, _metadata?: OutputMetadata): boolean {
     return true;
   }
 }
 
-function JSONViewer({ data, depth = 0 }: { data: any; depth?: number }) {
+function JSONViewer({ data }: { data: any }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const toggleCollapse = (key: string) => {
@@ -102,7 +102,7 @@ function JSONViewer({ data, depth = 0 }: { data: any; depth?: number }) {
     }
 
     if (typeof value === "string") {
-      return <span className="text-orange-600">"{value}"</span>;
+      return <span className="text-orange-600">&quot;{value}&quot;</span>;
     }
 
     if (Array.isArray(value)) {
@@ -167,7 +167,9 @@ function JSONViewer({ data, depth = 0 }: { data: any; depth?: number }) {
             <div className="ml-4 mt-1">
               {keys.map((objKey) => (
                 <div key={objKey} className="flex">
-                  <span className="mr-2 text-purple-600">"{objKey}":</span>
+                  <span className="mr-2 text-purple-600">
+                    &quot;{objKey}&quot;:
+                  </span>
                   {renderValue(value[objKey], `${key}.${objKey}`)}
                 </div>
               ))}

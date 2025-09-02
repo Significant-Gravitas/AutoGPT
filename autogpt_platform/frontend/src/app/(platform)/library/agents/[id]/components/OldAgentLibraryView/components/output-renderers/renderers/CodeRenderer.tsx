@@ -68,7 +68,7 @@ export class CodeRenderer implements OutputRenderer {
     );
   }
 
-  getCopyContent(value: any, metadata?: OutputMetadata): CopyContent | null {
+  getCopyContent(value: any, _metadata?: OutputMetadata): CopyContent | null {
     const codeValue = String(value);
     return {
       mimeType: "text/plain",
@@ -93,7 +93,7 @@ export class CodeRenderer implements OutputRenderer {
     };
   }
 
-  isConcatenable(value: any, metadata?: OutputMetadata): boolean {
+  isConcatenable(_value: any, _metadata?: OutputMetadata): boolean {
     return true;
   }
 

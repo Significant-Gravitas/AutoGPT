@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { CopyIcon, DownloadIcon, ShareIcon, CheckIcon } from "lucide-react";
 import { OutputRenderer, OutputMetadata } from "../types";
-import { downloadOutputs, DownloadItem } from "../utils/download";
+import { downloadOutputs } from "../utils/download";
 
 interface OutputActionsProps {
   items: Array<{

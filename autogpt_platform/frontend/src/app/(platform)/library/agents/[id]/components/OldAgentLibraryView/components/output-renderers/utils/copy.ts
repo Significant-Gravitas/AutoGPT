@@ -87,7 +87,7 @@ export async function copyToClipboard(copyContent: CopyContent): Promise<void> {
         }),
       ]);
     }
-  } catch (error) {
+  } catch (_error) {
     // If rich copy fails and we have fallback text, try that
     if (copyContent.fallbackText) {
       try {
@@ -98,7 +98,7 @@ export async function copyToClipboard(copyContent: CopyContent): Promise<void> {
         // toast.error("Failed to copy content please report this via ");
       }
     }
-    throw error;
+    throw _error;
   }
 }
 
@@ -115,7 +115,7 @@ export async function fetchAndCopyImage(imageUrl: string): Promise<void> {
         [mimeType]: blob,
       }),
     ]);
-  } catch (error) {
+  } catch (_error) {
     // If fetching fails (e.g., CORS), fall back to copying the URL
     await navigator.clipboard.writeText(imageUrl);
   }

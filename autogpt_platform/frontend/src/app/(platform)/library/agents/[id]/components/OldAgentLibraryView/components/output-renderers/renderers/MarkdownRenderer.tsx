@@ -127,7 +127,7 @@ export class MarkdownRenderer implements OutputRenderer {
                 href={href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-blue-600 underline decoration-1 underline-offset-2 transition-colors hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                className="text-black underline decoration-1 underline-offset-2 transition-colors"
                 {...props}
               >
                 {children}
