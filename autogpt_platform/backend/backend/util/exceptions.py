@@ -1,3 +1,6 @@
+from typing import Mapping
+
+
 class MissingConfigError(Exception):
     """The attempted operation requires configuration which is not available"""
 
@@ -69,7 +72,7 @@ class GraphValidationError(ValueError):
     """Structured validation error for graph validation failures"""
 
     def __init__(
-        self, message: str, node_errors: dict[str, dict[str, str]] | None = None
+        self, message: str, node_errors: Mapping[str, Mapping[str, str]] | None = None
     ):
         super().__init__(message)
         self.message = message
