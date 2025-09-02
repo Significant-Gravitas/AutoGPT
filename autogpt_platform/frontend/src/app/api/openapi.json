@@ -4732,6 +4732,13 @@
             "type": "boolean",
             "title": "Has External Trigger",
             "readOnly": true
+          },
+          "trigger_setup_info": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/GraphTriggerInfo" },
+              { "type": "null" }
+            ],
+            "readOnly": true
           }
         },
         "type": "object",
@@ -4740,7 +4747,8 @@
           "description",
           "input_schema",
           "output_schema",
-          "has_external_trigger"
+          "has_external_trigger",
+          "trigger_setup_info"
         ],
         "title": "BaseGraph"
       },
@@ -5430,6 +5438,13 @@
             "title": "Has External Trigger",
             "readOnly": true
           },
+          "trigger_setup_info": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/GraphTriggerInfo" },
+              { "type": "null" }
+            ],
+            "readOnly": true
+          },
           "credentials_input_schema": {
             "additionalProperties": true,
             "type": "object",
@@ -5445,6 +5460,7 @@
           "input_schema",
           "output_schema",
           "has_external_trigger",
+          "trigger_setup_info",
           "credentials_input_schema"
         ],
         "title": "GraphMeta"
@@ -5504,6 +5520,13 @@
             "title": "Has External Trigger",
             "readOnly": true
           },
+          "trigger_setup_info": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/GraphTriggerInfo" },
+              { "type": "null" }
+            ],
+            "readOnly": true
+          },
           "credentials_input_schema": {
             "additionalProperties": true,
             "type": "object",
@@ -5519,9 +5542,32 @@
           "input_schema",
           "output_schema",
           "has_external_trigger",
+          "trigger_setup_info",
           "credentials_input_schema"
         ],
         "title": "GraphModel"
+      },
+      "GraphTriggerInfo": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "Provider name for integrations. Can be any string value, including custom provider names."
+          },
+          "config_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Config Schema",
+            "description": "Input schema for the trigger block"
+          },
+          "credentials_input_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credentials Input Name"
+          }
+        },
+        "type": "object",
+        "required": ["provider", "config_schema", "credentials_input_name"],
+        "title": "GraphTriggerInfo"
       },
       "HTTPValidationError": {
         "properties": {
@@ -5645,7 +5691,7 @@
           },
           "trigger_setup_info": {
             "anyOf": [
-              { "$ref": "#/components/schemas/LibraryAgentTriggerInfo" },
+              { "$ref": "#/components/schemas/GraphTriggerInfo" },
               { "type": "null" }
             ]
           },
@@ -5715,6 +5761,12 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "webhook": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/Webhook" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -5727,7 +5779,8 @@
           "description",
           "id",
           "user_id",
-          "updated_at"
+          "updated_at",
+          "webhook"
         ],
         "title": "LibraryAgentPreset",
         "description": "Represents a preset configuration for a library agent."
@@ -5867,28 +5920,6 @@
         "type": "string",
         "enum": ["COMPLETED", "HEALTHY", "WAITING", "ERROR"],
         "title": "LibraryAgentStatus"
-      },
-      "LibraryAgentTriggerInfo": {
-        "properties": {
-          "provider": {
-            "type": "string",
-            "title": "Provider",
-            "description": "Provider name for integrations. Can be any string value, including custom provider names."
-          },
-          "config_schema": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Config Schema",
-            "description": "Input schema for the trigger block"
-          },
-          "credentials_input_name": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Credentials Input Name"
-          }
-        },
-        "type": "object",
-        "required": ["provider", "config_schema", "credentials_input_name"],
-        "title": "LibraryAgentTriggerInfo"
       },
       "LibraryAgentUpdateRequest": {
         "properties": {
