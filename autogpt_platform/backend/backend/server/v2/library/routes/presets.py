@@ -379,12 +379,13 @@ async def execute_preset(
     Execute a preset given graph parameters, returning the execution ID on success.
 
     Args:
-        preset_id (str): ID of the preset to execute.
-        user_id (str): ID of the authenticated user.
-        inputs (dict[str, Any]): Optionally, additional input data for the graph execution.
+        preset_id: ID of the preset to execute.
+        user_id: ID of the authenticated user.
+        inputs: Optionally, inputs to override the preset for execution.
+        credential_inputs: Optionally, credentials to override the preset for execution.
 
     Returns:
-        {id: graph_exec_id}: A response containing the execution ID.
+        GraphExecutionMeta: Object representing the created execution.
 
     Raises:
         HTTPException: If the preset is not found or an error occurs while executing the preset.
