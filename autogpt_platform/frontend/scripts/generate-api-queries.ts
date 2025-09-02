@@ -4,6 +4,7 @@ import { getAgptServerBaseUrl } from "@/lib/env-config";
 import { execSync } from "child_process";
 import * as path from "path";
 import * as fs from "fs";
+import * as os from "os";
 
 function fetchOpenApiSpec(): void {
   const args = process.argv.slice(2);
@@ -42,15 +43,30 @@ function fetchOpenApiSpec(): void {
 
   console.log(`Fetching OpenAPI spec from: ${openApiUrl}`);
 
+  // Write to a temporary file first to avoid clearing the real file on failure
+  const tmpOutputPath = path.join(
+    os.tmpdir(),
+    `openapi-fetch-${Date.now()}.json`,
+  );
+
   try {
-    // Fetch the OpenAPI spec
-    execSync(`curl "${openApiUrl}" > "${outputPath}"`, { stdio: "inherit" });
+    // Fetch the OpenAPI spec to a temp file
+    execSync(`curl "${openApiUrl}" -o "${tmpOutputPath}"`, {
+      stdio: "inherit",
+    });
 
     // Format with prettier
-    execSync(`prettier --write "${outputPath}"`, { stdio: "inherit" });
+    execSync(`prettier --write "${tmpOutputPath}"`, { stdio: "inherit" });
+
+    // Move temp file to final output path
+    fs.copyFileSync(tmpOutputPath, outputPath);
+    fs.unlinkSync(tmpOutputPath);
 
     console.log("✅ OpenAPI spec fetched and formatted successfully");
   } catch (error) {
+    if (fs.existsSync(tmpOutputPath)) {
+      fs.unlinkSync(tmpOutputPath);
+    }
     console.error("❌ Failed to fetch OpenAPI spec:", error);
     process.exit(1);
   }
