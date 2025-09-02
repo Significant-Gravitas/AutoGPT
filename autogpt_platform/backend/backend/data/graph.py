@@ -12,7 +12,7 @@ from prisma.types import (
     AgentNodeLinkCreateInput,
     StoreListingVersionWhereInput,
 )
-from pydantic import BaseModel, Field, JsonValue, create_model
+from pydantic import BaseModel, Field, create_model
 from pydantic.fields import computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
@@ -34,6 +34,7 @@ from .db import BaseDbModel, query_raw_with_schema, transaction
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE
 
 if TYPE_CHECKING:
+    from .execution import NodesInputMasks
     from .integrations import Webhook
 
 logger = logging.getLogger(__name__)
@@ -452,7 +453,7 @@ class GraphModel(Graph):
     def validate_graph(
         self,
         for_run: bool = False,
-        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+        nodes_input_masks: Optional["NodesInputMasks"] = None,
     ):
         """
         Validate graph structure and raise `ValueError` on issues.
@@ -466,7 +467,7 @@ class GraphModel(Graph):
     def _validate_graph(
         graph: BaseGraph,
         for_run: bool = False,
-        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+        nodes_input_masks: Optional["NodesInputMasks"] = None,
     ) -> None:
         errors = GraphModel._validate_graph_get_errors(
             graph, for_run, nodes_input_masks
@@ -480,7 +481,7 @@ class GraphModel(Graph):
     def validate_graph_get_errors(
         self,
         for_run: bool = False,
-        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+        nodes_input_masks: Optional["NodesInputMasks"] = None,
     ) -> dict[str, dict[str, str]]:
         """
         Validate graph and return structured errors per node.
@@ -502,7 +503,7 @@ class GraphModel(Graph):
     def _validate_graph_get_errors(
         graph: BaseGraph,
         for_run: bool = False,
-        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+        nodes_input_masks: Optional["NodesInputMasks"] = None,
     ) -> dict[str, dict[str, str]]:
         """
         Validate graph and return structured errors per node.
