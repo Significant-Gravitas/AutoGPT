@@ -50,7 +50,11 @@ services:
       - app-network
     restart: on-failure
     healthcheck:
-      test: ["CMD-SHELL", "poetry run prisma migrate status | grep -q 'No pending migrations' || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "poetry run prisma migrate status | grep -q 'No pending migrations' || exit 1",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -284,6 +288,8 @@ services:
       context: ../
       dockerfile: autogpt_platform/frontend/Dockerfile
       target: prod
+      args:
+        NEXT_PUBLIC_PW_TEST: ${NEXT_PUBLIC_PW_TEST:-false}
     depends_on:
       db:
         condition: service_healthy
