@@ -335,7 +335,7 @@ export type GraphIOSubSchema = Omit<
 export type CredentialsInputSchema = {
   type: "object";
   properties: Record<string, BlockIOCredentialsSubSchema>;
-  required: (keyof CredentialsInputSchema["properties"])[];
+  required?: (keyof CredentialsInputSchema["properties"])[];
 };
 
 /* Mirror of backend/data/graph.py:GraphTriggerInfo */
