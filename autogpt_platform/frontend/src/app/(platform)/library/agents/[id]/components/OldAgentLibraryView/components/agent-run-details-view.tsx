@@ -110,21 +110,28 @@ export function AgentRunDetailsView({
     );
   }, [graph, run]);
 
-  const runAgain = useCallback(
-    () =>
-      agentRunInputs &&
-      api
-        .executeGraph(
-          graph.id,
-          graph.version,
-          Object.fromEntries(
-            Object.entries(agentRunInputs).map(([k, v]) => [k, v.value]),
-          ),
+  const runAgain = useCallback(() => {
+    if (!run.inputs) return;
+    if (run.preset_id) {
+      return api
+        .executeLibraryAgentPreset(
+          run.preset_id,
+          run.inputs!,
+          run.credential_inputs!,
         )
         .then(({ id }) => onRun(id))
-        .catch(toastOnFail("execute agent")),
-    [api, graph, agentRunInputs, onRun, toastOnFail],
-  );
+        .catch(toastOnFail("execute agent preset"));
+    }
+    api
+      .executeGraph(
+        graph.id,
+        graph.version,
+        run.inputs!,
+        run.credential_inputs!,
+      )
+      .then(({ id }) => onRun(id))
+      .catch(toastOnFail("execute agent"));
+  }, [api, graph, run, onRun, toastOnFail]);
 
   const stopRun = useCallback(
     () => api.stopGraphExecution(graph.id, run.id),
