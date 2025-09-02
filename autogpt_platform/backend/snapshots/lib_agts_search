@@ -25,6 +25,7 @@
       },
       "has_external_trigger": false,
       "trigger_setup_info": null,
+      "recommended_schedule_cron": null,
       "new_output": false,
       "can_access_graph": true,
       "is_latest_version": true
@@ -54,6 +55,7 @@
       },
       "has_external_trigger": false,
       "trigger_setup_info": null,
+      "recommended_schedule_cron": null,
       "new_output": false,
       "can_access_graph": false,
       "is_latest_version": true
