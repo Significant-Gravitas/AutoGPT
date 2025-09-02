@@ -3,6 +3,8 @@
 import React from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 import rehypeHighlight from "rehype-highlight";
 import rehypeSlug from "rehype-slug";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
@@ -13,6 +15,7 @@ import {
   CopyContent,
 } from "../types";
 import "highlight.js/styles/github-dark.css";
+import "katex/dist/katex.min.css";
 
 export class MarkdownRenderer implements OutputRenderer {
   name = "MarkdownRenderer";
@@ -32,6 +35,8 @@ export class MarkdownRenderer implements OutputRenderer {
     /^>\s+/m, // Blockquotes
     /\|.+\|/, // Tables
     /!\[([^\]]*)\]\(([^)]+)\)/, // Images
+    /\$\$[\s\S]+?\$\$/, // Display math
+    /\$[^$]+\$/, // Inline math
   ];
 
   canRender(value: any, metadata?: OutputMetadata): boolean {
@@ -79,8 +84,10 @@ export class MarkdownRenderer implements OutputRenderer {
           className="prose prose-sm dark:prose-invert max-w-none"
           remarkPlugins={[
             remarkGfm, // GitHub Flavored Markdown (tables, task lists, strikethrough)
+            remarkMath, // Math support for LaTeX
           ]}
           rehypePlugins={[
+            rehypeKatex, // Render math with KaTeX
             rehypeHighlight, // Syntax highlighting for code blocks
             rehypeSlug, // Add IDs to headings
             [rehypeAutolinkHeadings, { behavior: "wrap" }], // Make headings clickable
@@ -260,15 +267,6 @@ export class MarkdownRenderer implements OutputRenderer {
                 {...props}
               />
             ),
-            // Better paragraph spacing
-            p: ({ children, ...props }) => (
-              <p
-                className="my-3 leading-relaxed text-gray-700 dark:text-gray-300"
-                {...props}
-              >
-                {children}
-              </p>
-            ),
             // Strikethrough (GFM)
             del: ({ children, ...props }) => (
               <del
@@ -279,15 +277,52 @@ export class MarkdownRenderer implements OutputRenderer {
               </del>
             ),
             // Image handling
-            img: ({ src, alt, ...props }) => (
-              <img
-                src={src}
-                alt={alt}
-                className="my-4 h-auto max-w-full rounded-lg shadow-md"
-                loading="lazy"
-                {...props}
-              />
-            ),
+            img: ({ src, alt, ...props }) => {
+              // Check if it's a video URL pattern
+              if (src && this.isVideoUrl(src)) {
+                return this.renderVideoEmbed(src);
+              }
+
+              return (
+                <img
+                  src={src}
+                  alt={alt}
+                  className="my-4 h-auto max-w-full rounded-lg shadow-md"
+                  loading="lazy"
+                  {...props}
+                />
+              );
+            },
+            // Custom paragraph to handle standalone video URLs
+            p: ({ children, ...props }) => {
+              // Check if paragraph contains just a video URL
+              if (
+                typeof children === "string" &&
+                this.isVideoUrl(children.trim())
+              ) {
+                return this.renderVideoEmbed(children.trim());
+              }
+
+              // Check for video URLs in link children
+              if (React.Children.count(children) === 1) {
+                const child = React.Children.toArray(children)[0];
+                if (React.isValidElement(child) && child.type === "a") {
+                  const href = child.props.href;
+                  if (href && this.isVideoUrl(href)) {
+                    return this.renderVideoEmbed(href);
+                  }
+                }
+              }
+
+              return (
+                <p
+                  className="my-3 leading-relaxed text-gray-700 dark:text-gray-300"
+                  {...props}
+                >
+                  {children}
+                </p>
+              );
+            },
           }}
         >
           {markdownContent}
@@ -322,5 +357,93 @@ export class MarkdownRenderer implements OutputRenderer {
 
   isConcatenable(_value: any, _metadata?: OutputMetadata): boolean {
     return true;
+  }
+
+  private isVideoUrl(url: string): boolean {
+    // YouTube patterns
+    if (url.includes("youtube.com/watch") || url.includes("youtu.be/")) {
+      return true;
+    }
+    // Vimeo patterns
+    if (url.includes("vimeo.com/")) {
+      return true;
+    }
+    // Direct video file extensions
+    const videoExtensions = [".mp4", ".webm", ".ogg", ".mov", ".avi"];
+    return videoExtensions.some((ext) => url.toLowerCase().includes(ext));
+  }
+
+  private getVideoEmbedUrl(url: string): string | null {
+    // YouTube
+    const youtubeMatch = url.match(
+      /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/,
+    );
+    if (youtubeMatch) {
+      return `https://www.youtube.com/embed/${youtubeMatch[1]}`;
+    }
+
+    // Vimeo
+    const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
+    if (vimeoMatch) {
+      return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
+    }
+
+    // Direct video URL
+    const videoExtensions = [".mp4", ".webm", ".ogg", ".mov"];
+    if (videoExtensions.some((ext) => url.toLowerCase().includes(ext))) {
+      return url;
+    }
+
+    return null;
+  }
+
+  private renderVideoEmbed(url: string): React.ReactNode {
+    const embedUrl = this.getVideoEmbedUrl(url);
+
+    if (!embedUrl) {
+      // Fallback to link if we can't embed
+      return (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-600 underline"
+        >
+          {url}
+        </a>
+      );
+    }
+
+    // Check if it's a direct video file
+    const videoExtensions = [".mp4", ".webm", ".ogg", ".mov"];
+    if (videoExtensions.some((ext) => embedUrl.toLowerCase().includes(ext))) {
+      return (
+        <div className="my-4">
+          <video
+            controls
+            className="w-full max-w-2xl rounded-lg shadow-md"
+            preload="metadata"
+          >
+            <source src={embedUrl} />
+            Your browser does not support the video tag.
+          </video>
+        </div>
+      );
+    }
+
+    // YouTube or Vimeo embed
+    return (
+      <div className="my-4">
+        <div className="relative aspect-video">
+          <iframe
+            src={embedUrl}
+            title="Embedded video player"
+            className="absolute left-0 top-0 h-full w-full rounded-lg shadow-md"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        </div>
+      </div>
+    );
   }
 }
