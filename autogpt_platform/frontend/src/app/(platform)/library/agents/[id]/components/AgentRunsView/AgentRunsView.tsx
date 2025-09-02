@@ -5,9 +5,12 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useAgentRunsView } from "./useAgentRunsView";
 import { AgentRunsLoading } from "./components/AgentRunsLoading";
 import { RunsSidebar } from "./components/RunsSidebar/RunsSidebar";
+import React from "react";
+import { RunDetails } from "./components/RunDetails/RunDetails";
 
 export function AgentRunsView() {
-  const { response, ready, error, agentId } = useAgentRunsView();
+  const { response, ready, error, agentId, selectedRun, handleSelectRun } =
+    useAgentRunsView();
 
   if (!ready) {
     return <AgentRunsLoading />;
@@ -48,7 +51,11 @@ export function AgentRunsView() {
 
   return (
     <div className="grid h-screen grid-cols-[25%_70%] gap-4 pt-8">
-      <RunsSidebar agent={agent} />
+      <RunsSidebar
+        agent={agent}
+        selectedRunId={selectedRun}
+        onSelectRun={handleSelectRun}
+      />
 
       {/* Main Content - 70% */}
       <div className="p-4">
@@ -58,8 +65,15 @@ export function AgentRunsView() {
             { name: agent.name, link: `/library/agents/${agentId}` },
           ]}
         />
-        {/* Main content will go here */}
-        <div className="mt-4 text-gray-600">Main content area</div>
+        <div className="mt-2">
+          {selectedRun ? (
+            <RunDetails agent={agent} runId={selectedRun} />
+          ) : (
+            <div className="text-gray-600">
+              Select a run to view its details
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import {
   TabsLine,
   TabsLineList,
@@ -21,9 +21,15 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
 interface RunsSidebarProps {
   agent: LibraryAgent;
+  selectedRunId?: string;
+  onSelectRun?: (id: string) => void;
 }
 
-export function RunsSidebar({ agent }: RunsSidebarProps) {
+export function RunsSidebar({
+  agent,
+  selectedRunId,
+  onSelectRun,
+}: RunsSidebarProps) {
   const {
     runs,
     schedules,
@@ -44,7 +50,7 @@ export function RunsSidebar({ agent }: RunsSidebarProps) {
   }
 
   return (
-    <div className="bg-gray-50 p-4">
+    <div className="bg-gray-50 p-4 pl-5">
       <RunAgentModal
         triggerSlot={
           <Button variant="primary" size="large" className="w-full">
@@ -67,7 +73,7 @@ export function RunsSidebar({ agent }: RunsSidebarProps) {
         </TabsLineList>
 
         <ScrollArea className="h-[calc(100vh-220px)]">
-          <div className="pr-2">
+          <div className="px-[2px]">
             <TabsLineContent value="runs">
               <InfiniteList
                 items={runs}
@@ -76,7 +82,12 @@ export function RunsSidebar({ agent }: RunsSidebarProps) {
                 onEndReached={fetchMoreRuns}
                 renderItem={(run) => (
                   <div className="mb-3">
-                    <RunListItem run={run} title={agent.name} />
+                    <RunListItem
+                      run={run}
+                      title={agent.name}
+                      selected={selectedRunId === run.id}
+                      onClick={() => onSelectRun && onSelectRun(run.id)}
+                    />
                   </div>
                 )}
               />

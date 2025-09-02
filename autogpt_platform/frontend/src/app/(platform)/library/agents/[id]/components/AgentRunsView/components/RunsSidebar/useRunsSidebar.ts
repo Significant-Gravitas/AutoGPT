@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
 import { useGetV1ListGraphExecutionsInfinite } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
@@ -51,6 +51,7 @@ export function useRunsSidebar(graphId?: string) {
     schedules,
     error: schedulesQuery.error || runsQuery.error,
     loading: !schedulesQuery.isSuccess || !runsQuery.isSuccess,
+    runsQuery,
     runsCount:
       (
         runsQuery.data?.pages.at(-1)?.data as

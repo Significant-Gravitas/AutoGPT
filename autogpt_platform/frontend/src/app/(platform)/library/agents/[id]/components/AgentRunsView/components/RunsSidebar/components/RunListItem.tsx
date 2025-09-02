@@ -18,17 +18,17 @@ import { IconWrapper } from "./RunIconWrapper";
 const statusIconMap: Record<AgentExecutionStatus, React.ReactNode> = {
   INCOMPLETE: (
     <IconWrapper className="border-red-50 bg-red-50">
-      <WarningCircleIcon size={16} className="text-red-700" weight="regular" />
+      <WarningCircleIcon size={16} className="text-red-700" weight="bold" />
     </IconWrapper>
   ),
   QUEUED: (
     <IconWrapper className="border-yellow-50 bg-yellow-50">
-      <ClockIcon size={16} className="text-yellow-700" weight="regular" />
+      <ClockIcon size={16} className="text-yellow-700" weight="bold" />
     </IconWrapper>
   ),
   RUNNING: (
     <IconWrapper className="border-yellow-50 bg-yellow-50">
-      <PauseCircleIcon size={16} className="text-yellow-700" weight="regular" />
+      <PauseCircleIcon size={16} className="text-yellow-700" weight="bold" />
     </IconWrapper>
   ),
   COMPLETED: (
@@ -38,12 +38,12 @@ const statusIconMap: Record<AgentExecutionStatus, React.ReactNode> = {
   ),
   TERMINATED: (
     <IconWrapper className="border-slate-50 bg-slate-50">
-      <StopCircleIcon size={16} className="text-slate-700" weight="regular" />
+      <StopCircleIcon size={16} className="text-slate-700" weight="bold" />
     </IconWrapper>
   ),
   FAILED: (
     <IconWrapper className="border-red-50 bg-red-50">
-      <XCircleIcon size={16} className="text-red-700" weight="regular" />
+      <XCircleIcon size={16} className="text-red-700" weight="bold" />
     </IconWrapper>
   ),
 };
