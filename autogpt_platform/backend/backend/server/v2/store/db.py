@@ -1,5 +1,8 @@
 import logging
 from datetime import datetime, timezone
+from typing import List, Dict, Any, Tuple
+import re
+from difflib import SequenceMatcher
 
 import fastapi
 import prisma.enums
@@ -53,6 +56,165 @@ def sanitize_query(query: str | None) -> str | None:
     )
 
 
+class AdvancedSearchEngine:
+    """Advanced search engine with multiple search algorithms"""
+    
+    @staticmethod
+    def tokenize(text: str) -> List[str]:
+        """Tokenize text into searchable words"""
+        # Convert to lowercase and split on word boundaries
+        text = text.lower()
+        # Remove special characters but keep spaces, numbers, and letters
+        text = re.sub(r'[^\w\s-]', ' ', text)
+        # Split and filter empty tokens
+        tokens = [token.strip() for token in text.split() if token.strip()]
+        return tokens
+    
+    @staticmethod
+    def calculate_fuzzy_score(query: str, target: str, threshold: float = 0.6) -> float:
+        """Calculate fuzzy matching score using sequence matching"""
+        query_lower = query.lower()
+        target_lower = target.lower()
+        
+        # Direct substring match gets highest score
+        if query_lower in target_lower:
+            return 1.0
+        
+        # Check word-level matches
+        query_tokens = AdvancedSearchEngine.tokenize(query)
+        target_tokens = AdvancedSearchEngine.tokenize(target)
+        
+        # Calculate token overlap score
+        matching_tokens = sum(1 for qt in query_tokens if any(qt in tt for tt in target_tokens))
+        if query_tokens:
+            token_score = matching_tokens / len(query_tokens)
+        else:
+            token_score = 0
+        
+        # Use SequenceMatcher for fuzzy matching
+        sequence_score = SequenceMatcher(None, query_lower, target_lower).ratio()
+        
+        # Combine scores with weights
+        combined_score = (token_score * 0.6) + (sequence_score * 0.4)
+        
+        return combined_score if combined_score >= threshold else 0
+    
+    @staticmethod
+    def calculate_relevance_score(
+        agent: prisma.models.StoreAgent,
+        query: str,
+        search_fields: Dict[str, float]
+    ) -> float:
+        """Calculate relevance score for an agent based on search query"""
+        total_score = 0.0
+        query_lower = query.lower()
+        
+        for field_name, weight in search_fields.items():
+            field_value = getattr(agent, field_name, None)
+            if field_value is None:
+                continue
+                
+            if isinstance(field_value, list):
+                # For categories and other list fields
+                field_text = ' '.join(str(v) for v in field_value)
+            else:
+                field_text = str(field_value)
+            
+            # Calculate field score
+            field_score = AdvancedSearchEngine.calculate_fuzzy_score(query, field_text)
+            
+            # Apply weight
+            total_score += field_score * weight
+        
+        # Boost score for exact matches in important fields
+        if query_lower in agent.agent_name.lower():
+            total_score *= 1.5
+        
+        # Boost for high-rated agents
+        if agent.rating > 4.0:
+            total_score *= 1.1
+        
+        # Boost for popular agents
+        if agent.runs > 100:
+            total_score *= 1.05
+            
+        return total_score
+    
+    @staticmethod
+    def generate_search_variants(query: str) -> List[str]:
+        """Generate search variants for typo tolerance"""
+        variants = [query]
+        query_lower = query.lower()
+        
+        # Add common typo patterns
+        # Handle missing spaces (e.g., "chatgpt" -> "chat gpt")
+        for i in range(1, len(query_lower)):
+            variant = query_lower[:i] + ' ' + query_lower[i:]
+            variants.append(variant)
+        
+        # Handle extra spaces (e.g., "chat  gpt" -> "chatgpt")
+        variants.append(query_lower.replace(' ', ''))
+        
+        # Handle common letter swaps
+        for i in range(len(query_lower) - 1):
+            chars = list(query_lower)
+            chars[i], chars[i + 1] = chars[i + 1], chars[i]
+            variants.append(''.join(chars))
+        
+        return list(set(variants))[:10]  # Limit to 10 variants
+    
+    @staticmethod
+    def build_advanced_search_query(
+        query: str,
+        use_fuzzy: bool = True
+    ) -> List[Dict[str, Any]]:
+        """Build advanced search conditions for Prisma"""
+        conditions = []
+        
+        # Generate search variants for typo tolerance
+        if use_fuzzy:
+            search_variants = AdvancedSearchEngine.generate_search_variants(query)
+        else:
+            search_variants = [query]
+        
+        for variant in search_variants:
+            sanitized = sanitize_query(variant)
+            if not sanitized:
+                continue
+                
+            # Tokenize for better matching
+            tokens = AdvancedSearchEngine.tokenize(sanitized)
+            
+            # Build conditions for each token
+            for token in tokens:
+                # Search in agent name with highest priority
+                conditions.append({
+                    "agent_name": {"contains": token, "mode": "insensitive"}
+                })
+                
+                # Search in description
+                conditions.append({
+                    "description": {"contains": token, "mode": "insensitive"}
+                })
+                
+                # Search in sub_heading
+                conditions.append({
+                    "sub_heading": {"contains": token, "mode": "insensitive"}
+                })
+                
+                # Search in categories
+                conditions.append({
+                    "categories": {"has": token}
+                })
+                
+                # Search in creator username
+                conditions.append({
+                    "creator_username": {"contains": token, "mode": "insensitive"}
+                })
+        
+        return conditions
+
+
 async def get_store_agents(
     featured: bool = False,
     creators: list[str] | None = None,
@@ -63,12 +225,25 @@ async def get_store_agents(
     page_size: int = 20,
 ) -> backend.server.v2.store.model.StoreAgentsResponse:
     """
-    Get PUBLIC store agents from the StoreAgent view
+    Get PUBLIC store agents from the StoreAgent view with advanced search capabilities
+    
+    Features:
+    - Fuzzy matching with typo tolerance
+    - Token-based search across multiple fields
+    - Relevance scoring and ranking
+    - Category and creator filtering
+    - Popularity boosting for high-rated/popular agents
+    
+    Note: For production deployments with Supabase, you can enable PostgreSQL extensions
+    for even better search performance:
+    - pg_trgm: For trigram-based fuzzy matching (available in Supabase)
+    - Full-text search: Built into PostgreSQL
+    
+    These can be enabled via Supabase dashboard or raw SQL queries if needed.
     """
     logger.debug(
         f"Getting store agents. featured={featured}, creators={creators}, sorted_by={sorted_by}, search={search_query}, category={category}, page={page}"
     )
-    sanitized_query = sanitize_query(search_query)
 
     where_clause = {}
     if featured:
@@ -78,35 +253,88 @@ async def get_store_agents(
     if category:
         where_clause["categories"] = {"has": category}
 
-    if sanitized_query:
-        where_clause["OR"] = [
-            {"agent_name": {"contains": sanitized_query, "mode": "insensitive"}},
-            {"description": {"contains": sanitized_query, "mode": "insensitive"}},
-        ]
-
-    order_by = []
-    if sorted_by == "rating":
-        order_by.append({"rating": "desc"})
-    elif sorted_by == "runs":
-        order_by.append({"runs": "desc"})
-    elif sorted_by == "name":
-        order_by.append({"agent_name": "asc"})
+    # Use advanced search if query is provided
+    if search_query:
+        # Build advanced search conditions
+        search_conditions = AdvancedSearchEngine.build_advanced_search_query(
+            search_query, use_fuzzy=True
+        )
+        
+        if search_conditions:
+            where_clause["OR"] = search_conditions
+    
+    # Define search relevance fields and their weights
+    search_fields = {
+        "agent_name": 3.0,      # Highest weight for name matches
+        "description": 2.0,     # High weight for description
+        "sub_heading": 1.5,     # Medium weight for sub-heading
+        "categories": 1.0,      # Lower weight for categories
+        "creator_username": 0.5 # Lower weight for creator name
+    }
 
     try:
+        # Fetch more results initially for relevance scoring if searching
+        fetch_limit = page_size * 3 if search_query else page_size
+        
+        # Build order_by clause
+        order_by = []
+        if sorted_by == "rating":
+            order_by.append({"rating": "desc"})
+        elif sorted_by == "runs":
+            order_by.append({"runs": "desc"})
+        elif sorted_by == "name":
+            order_by.append({"agent_name": "asc"})
+        # Default to rating for better UX when no sort specified
+        elif not sorted_by and not search_query:
+            order_by.append({"rating": "desc"})
+        
+        # Fetch agents from database
         agents = await prisma.models.StoreAgent.prisma().find_many(
             where=prisma.types.StoreAgentWhereInput(**where_clause),
-            order=order_by,
-            skip=(page - 1) * page_size,
-            take=page_size,
+            order=order_by if order_by else None,
+            skip=0 if search_query else (page - 1) * page_size,
+            take=fetch_limit,
         )
 
-        total = await prisma.models.StoreAgent.prisma().count(
-            where=prisma.types.StoreAgentWhereInput(**where_clause)
-        )
+        # Apply relevance scoring and re-ranking if search query exists
+        if search_query and agents:
+            # Calculate relevance scores
+            scored_agents: List[Tuple[float, prisma.models.StoreAgent]] = []
+            for agent in agents:
+                score = AdvancedSearchEngine.calculate_relevance_score(
+                    agent, search_query, search_fields
+                )
+                if score > 0:  # Only include agents with positive scores
+                    scored_agents.append((score, agent))
+            
+            # Sort by relevance score (highest first)
+            scored_agents.sort(key=lambda x: x[0], reverse=True)
+            
+            # Apply secondary sorting if specified
+            if sorted_by == "rating":
+                scored_agents.sort(key=lambda x: (x[0], x[1].rating), reverse=True)
+            elif sorted_by == "runs":
+                scored_agents.sort(key=lambda x: (x[0], x[1].runs), reverse=True)
+            
+            # Extract agents for the requested page
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            page_agents = [agent for _, agent in scored_agents[start_idx:end_idx]]
+            
+            # Update total count for pagination
+            total = len(scored_agents)
+        else:
+            # No search query, use original pagination
+            page_agents = agents
+            total = await prisma.models.StoreAgent.prisma().count(
+                where=prisma.types.StoreAgentWhereInput(**where_clause)
+            )
+        
         total_pages = (total + page_size - 1) // page_size
 
+        # Convert to response models
         store_agents: list[backend.server.v2.store.model.StoreAgent] = []
-        for agent in agents:
+        for agent in page_agents:
             try:
                 # Create the StoreAgent object safely
                 store_agent = backend.server.v2.store.model.StoreAgent(
@@ -124,7 +352,6 @@ async def get_store_agents(
                 store_agents.append(store_agent)
             except Exception as e:
                 # Skip this agent if there was an error
-                # You could log the error here if needed
                 logger.error(
                     f"Error parsing Store agent when getting store agents from db: {e}"
                 )
