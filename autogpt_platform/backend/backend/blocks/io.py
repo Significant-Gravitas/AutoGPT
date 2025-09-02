@@ -549,6 +549,97 @@ class AgentToggleInputBlock(AgentInputBlock):
         )
 
 
+class AgentTableInputBlock(AgentInputBlock):
+    """
+    A table input block that allows users to define column headers and input data in a table format.
+    
+    The block outputs a list of dictionaries where each dictionary represents a row,
+    with keys being the column headers and values being the cell data.
+    """
+
+    class Input(AgentInputBlock.Input):
+        value: list[dict[str, Any]] = SchemaField(
+            description="Table data as a list of dictionaries (rows).",
+            default_factory=list,
+            advanced=False,
+            title="Default Table Data",
+        )
+        headers: list[str] = SchemaField(
+            description="Column headers for the table.",
+            default_factory=list,
+            advanced=False,
+            title="Table Headers",
+        )
+        allow_add_rows: bool = SchemaField(
+            description="Whether users can add new rows to the table.",
+            default=True,
+            advanced=True,
+        )
+        allow_edit_headers: bool = SchemaField(
+            description="Whether users can edit the column headers.",
+            default=True,
+            advanced=True,
+        )
+        min_rows: int = SchemaField(
+            description="Minimum number of rows in the table.",
+            default=0,
+            advanced=True,
+        )
+        max_rows: Optional[int] = SchemaField(
+            description="Maximum number of rows in the table.",
+            default=None,
+            advanced=True,
+        )
+
+    class Output(AgentInputBlock.Output):
+        result: list[dict[str, Any]] = SchemaField(
+            description="Table data as a list of dictionaries with headers as keys."
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            description="Block for table input with customizable headers and rows.",
+            disabled=not config.enable_agent_input_subtype_blocks,
+            input_schema=AgentTableInputBlock.Input,
+            output_schema=AgentTableInputBlock.Output,
+            test_input=[
+                {
+                    "value": [
+                        {"Name": "John Doe", "Age": "30", "City": "New York"},
+                        {"Name": "Jane Smith", "Age": "25", "City": "Los Angeles"},
+                    ],
+                    "headers": ["Name", "Age", "City"],
+                    "name": "table_1",
+                    "description": "Example table with user data",
+                },
+                {
+                    "value": [
+                        {"Product": "Laptop", "Price": "999", "Stock": "50"},
+                        {"Product": "Mouse", "Price": "25", "Stock": "100"},
+                    ],
+                    "headers": ["Product", "Price", "Stock"],
+                    "name": "table_2",
+                    "description": "Example table with product data",
+                },
+            ],
+            test_output=[
+                ("result", [
+                    {"Name": "John Doe", "Age": "30", "City": "New York"},
+                    {"Name": "Jane Smith", "Age": "25", "City": "Los Angeles"},
+                ]),
+                ("result", [
+                    {"Product": "Laptop", "Price": "999", "Stock": "50"},
+                    {"Product": "Mouse", "Price": "25", "Stock": "100"},
+                ]),
+            ],
+        )
+
+    async def run(self, input_data: Input, *args, **kwargs) -> BlockOutput:
+        if input_data.value is not None:
+            yield "result", input_data.value
+
+
 IO_BLOCK_IDs = [
     AgentInputBlock().id,
     AgentOutputBlock().id,
@@ -560,4 +651,5 @@ IO_BLOCK_IDs = [
     AgentFileInputBlock().id,
     AgentDropdownInputBlock().id,
     AgentToggleInputBlock().id,
+    AgentTableInputBlock().id,
 ]

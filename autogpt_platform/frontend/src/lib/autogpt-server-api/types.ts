@@ -78,6 +78,7 @@ export enum DataType {
   OBJECT = "object",
   KEY_VALUE = "key-value",
   ARRAY = "array",
+  TABLE = "table",
 }
 
 export type BlockIOSubSchemaMeta = {
@@ -1082,6 +1083,33 @@ export function determineDataType(schema: BlockIOSubSchema): DataType {
     schema = schema.allOf[0];
   }
 
+  // Table detection: Check if this is an object with both 'value' (array of objects) and 'headers' (array of strings)
+  if (
+    "type" in schema &&
+    schema.type === "object" &&
+    "properties" in schema &&
+    schema.properties &&
+    "value" in schema.properties &&
+    "headers" in schema.properties
+  ) {
+    const valueSchema = schema.properties.value;
+    const headersSchema = schema.properties.headers;
+    
+    // Check if value is array of objects and headers is array of strings
+    if (
+      valueSchema.type === "array" &&
+      "items" in valueSchema &&
+      valueSchema.items &&
+      valueSchema.items.type === "object" &&
+      headersSchema.type === "array" &&
+      "items" in headersSchema &&
+      headersSchema.items &&
+      headersSchema.items.type === "string"
+    ) {
+      return DataType.TABLE;
+    }
+  }
+
   // Credentials override
   if ("credentials_provider" in schema) {
     return DataType.CREDENTIALS;
@@ -1095,14 +1123,14 @@ export function determineDataType(schema: BlockIOSubSchema): DataType {
   // Handle anyOf => optional types (string|null, number|null, etc.)
   if ("anyOf" in schema) {
     // e.g. schema.anyOf might look like [{ type: "string", ... }, { type: "null" }]
-    const types = schema.anyOf.map((sub) =>
+    const types = (schema.anyOf as any[]).map((sub: any) =>
       "type" in sub ? sub.type : undefined,
     );
 
     // (string | null)
     if (types.includes("string") && types.includes("null")) {
-      const strSchema = schema.anyOf.find(
-        (s) => s.type === "string",
+      const strSchema = (schema.anyOf as any[]).find(
+        (s: any) => s.type === "string",
       ) as BlockIOStringSubSchema;
       return _handleStringSchema(strSchema);
     }
@@ -1113,8 +1141,8 @@ export function determineDataType(schema: BlockIOSubSchema): DataType {
       types.includes("null")
     ) {
       // Just reuse our single-type logic for whichever is not null
-      const numSchema = schema.anyOf.find(
-        (s) => s.type === "number" || s.type === "integer",
+      const numSchema = (schema.anyOf as any[]).find(
+        (s: any) => s.type === "number" || s.type === "integer",
       );
       if (numSchema) {
         return _handleSingleTypeSchema(numSchema);
@@ -1124,15 +1152,15 @@ export function determineDataType(schema: BlockIOSubSchema): DataType {
 
     // (array | null)
     if (types.includes("array") && types.includes("null")) {
-      const arrSchema = schema.anyOf.find((s) => s.type === "array");
+      const arrSchema = (schema.anyOf as any[]).find((s: any) => s.type === "array");
       if (arrSchema) return _handleSingleTypeSchema(arrSchema);
       return DataType.ARRAY;
     }
 
     // (object | null)
     if (types.includes("object") && types.includes("null")) {
-      const objSchema = schema.anyOf.find(
-        (s) => s.type === "object",
+      const objSchema = (schema.anyOf as any[]).find(
+        (s: any) => s.type === "object",
       ) as BlockIOObjectSubSchema;
       if (objSchema) return _handleSingleTypeSchema(objSchema);
       return DataType.OBJECT;

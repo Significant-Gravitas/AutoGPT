@@ -512,6 +512,22 @@ export const NodeGenericInputField: FC<{
         />
       );
 
+    case DataType.TABLE:
+      return (
+        <NodeTableInput
+          nodeId={nodeId}
+          selfKey={propKey}
+          schema={propSchema as BlockIOObjectSubSchema}
+          tableData={currentValue}
+          errors={errors}
+          connections={connections}
+          handleInputChange={handleInputChange}
+          handleInputClick={handleInputClick}
+          className={className}
+          displayName={displayName}
+        />
+      );
+
     case DataType.LONG_TEXT:
     case DataType.SHORT_TEXT:
     default:
@@ -815,12 +831,14 @@ const NodeKeyValueInput: FC<{
                   placeholder="Key"
                   value={key ?? ""}
                   onChange={(e) =>
-                    updateKeyValuePairs(
-                      keyValuePairs.toSpliced(index, 1, {
+                    updateKeyValuePairs([
+                      ...keyValuePairs.slice(0, index),
+                      {
                         key: e.target.value,
                         value: value,
-                      }),
-                    )
+                      },
+                      ...keyValuePairs.slice(index + 1),
+                    ])
                   }
                 />
                 <NodeGenericInputField
@@ -833,12 +851,14 @@ const NodeKeyValueInput: FC<{
                   connections={connections}
                   displayName={displayName || beautifyString(key)}
                   handleInputChange={(_, newValue) =>
-                    updateKeyValuePairs(
-                      keyValuePairs.toSpliced(index, 1, {
+                    updateKeyValuePairs([
+                      ...keyValuePairs.slice(0, index),
+                      {
                         key: key,
                         value: newValue,
-                      }),
-                    )
+                      },
+                      ...keyValuePairs.slice(index + 1),
+                    ])
                   }
                   handleInputClick={handleInputClick}
                 />
@@ -846,7 +866,10 @@ const NodeKeyValueInput: FC<{
                   variant="ghost"
                   className="px-2"
                   onClick={() =>
-                    updateKeyValuePairs(keyValuePairs.toSpliced(index, 1))
+                    updateKeyValuePairs([
+                      ...keyValuePairs.slice(0, index),
+                      ...keyValuePairs.slice(index + 1),
+                    ])
                   }
                 >
                   <Cross2Icon />
@@ -971,7 +994,10 @@ const NodeArrayInput: FC<{
                   variant="ghost"
                   size="icon"
                   onClick={() =>
-                    handleInputChange(selfKey, entries.toSpliced(index, 1))
+                    handleInputChange(selfKey, [
+                      ...entries.slice(0, index),
+                      ...entries.slice(index + 1),
+                    ])
                   }
                 >
                   <Cross2Icon />
@@ -1237,6 +1263,191 @@ const NodeBooleanInput: FC<{
         onCheckedChange={(v) => handleInputChange(selfKey, v)}
       />
       {error && <span className="error-message">{error}</span>}
+    </div>
+  );
+};
+
+const NodeTableInput: FC<{
+  nodeId: string;
+  selfKey: string;
+  schema: BlockIOObjectSubSchema;
+  tableData?: { value?: Array<Record<string, any>>; headers?: string[] };
+  errors: { [key: string]: string | undefined };
+  connections: NodeObjectInputTreeProps["connections"];
+  handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
+  handleInputClick: NodeObjectInputTreeProps["handleInputClick"];
+  className?: string;
+  displayName?: string;
+}> = ({
+  nodeId,
+  selfKey,
+  schema,
+  tableData,
+  errors,
+  connections,
+  handleInputChange,
+  handleInputClick,
+  className,
+  displayName,
+}) => {
+  const [headers, setHeaders] = useState<string[]>(tableData?.headers || ["Column 1"]);
+  const [rows, setRows] = useState<Array<Record<string, any>>>(
+    tableData?.value || [{}]
+  );
+
+  useEffect(() => {
+    if (tableData?.headers) setHeaders(tableData.headers);
+    if (tableData?.value) setRows(tableData.value);
+  }, [tableData]);
+
+  const updateTableData = useCallback(
+    (newHeaders: string[], newRows: Array<Record<string, any>>) => {
+      setHeaders(newHeaders);
+      setRows(newRows);
+      handleInputChange(selfKey, {
+        headers: newHeaders,
+        value: newRows,
+      });
+    },
+    [selfKey, handleInputChange]
+  );
+
+  const addHeader = () => {
+    const newHeaders = [...headers, `Column ${headers.length + 1}`];
+    const newRows = rows.map(row => ({ ...row, [newHeaders[newHeaders.length - 1]]: "" }));
+    updateTableData(newHeaders, newRows);
+  };
+
+  const updateHeader = (index: number, newHeader: string) => {
+    const oldHeader = headers[index];
+    const newHeaders = [...headers];
+    newHeaders[index] = newHeader;
+    
+    const newRows = rows.map(row => {
+      const newRow = { ...row };
+      if (oldHeader in newRow) {
+        newRow[newHeader] = newRow[oldHeader];
+        delete newRow[oldHeader];
+      }
+      return newRow;
+    });
+    
+    updateTableData(newHeaders, newRows);
+  };
+
+  const removeHeader = (index: number) => {
+    if (headers.length <= 1) return; // Keep at least one header
+    
+    const headerToRemove = headers[index];
+    const newHeaders = headers.filter((_, i) => i !== index);
+    const newRows = rows.map(row => {
+      const newRow = { ...row };
+      delete newRow[headerToRemove];
+      return newRow;
+    });
+    
+    updateTableData(newHeaders, newRows);
+  };
+
+  const addRow = () => {
+    const newRow = headers.reduce((acc, header) => ({ ...acc, [header]: "" }), {});
+    const newRows = [...rows, newRow];
+    updateTableData(headers, newRows);
+  };
+
+  const updateCell = (rowIndex: number, header: string, value: any) => {
+    const newRows = [...rows];
+    newRows[rowIndex] = { ...newRows[rowIndex], [header]: value };
+    updateTableData(headers, newRows);
+  };
+
+  const removeRow = (index: number) => {
+    if (rows.length <= 1) return; // Keep at least one row
+    
+    const newRows = rows.filter((_, i) => i !== index);
+    updateTableData(headers, newRows);
+  };
+
+  return (
+    <div className={cn(className, "flex flex-col space-y-2")}>
+      <div className="text-sm font-medium">{displayName || "Table"}</div>
+      
+      {/* Headers */}
+      <div className="flex items-center space-x-2 border-b pb-2">
+        {headers.map((header, index) => (
+          <div key={index} className="flex items-center space-x-1">
+            <LocalValuedInput
+              type="text"
+              value={header}
+              onChange={(e) => updateHeader(index, e.target.value)}
+              className="min-w-[100px] text-sm font-medium"
+              placeholder={`Column ${index + 1}`}
+            />
+            {headers.length > 1 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => removeHeader(index)}
+                className="h-6 w-6 p-0"
+              >
+                <Cross2Icon className="h-3 w-3" />
+              </Button>
+            )}
+          </div>
+        ))}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={addHeader}
+          className="h-6 w-6 p-0"
+        >
+          <PlusIcon className="h-3 w-3" />
+        </Button>
+      </div>
+
+      {/* Rows */}
+      <div className="space-y-1">
+        {rows.map((row, rowIndex) => (
+          <div key={rowIndex} className="flex items-center space-x-2">
+            {headers.map((header) => (
+              <LocalValuedInput
+                key={header}
+                type="text"
+                value={row[header] || ""}
+                onChange={(e) => updateCell(rowIndex, header, e.target.value)}
+                className="min-w-[100px] text-sm"
+                placeholder={`Enter ${header}`}
+              />
+            ))}
+            {rows.length > 1 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => removeRow(rowIndex)}
+                className="h-6 w-6 p-0"
+              >
+                <Cross2Icon className="h-3 w-3" />
+              </Button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Add Row Button */}
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={addRow}
+        className="self-start"
+      >
+        <PlusIcon className="mr-1 h-3 w-3" /> Add Row
+      </Button>
+
+      {errors[selfKey] && (
+        <span className="error-message text-sm text-red-500">
+          {errors[selfKey]}
+        </span>
+      )}
     </div>
   );
 };
