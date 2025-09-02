@@ -5199,6 +5199,36 @@
           "user_id": { "type": "string", "title": "User Id" },
           "graph_id": { "type": "string", "title": "Graph Id" },
           "graph_version": { "type": "integer", "title": "Graph Version" },
+          "inputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Inputs"
+          },
+          "credential_inputs": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/CredentialsMetaInput"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Credential Inputs"
+          },
+          "nodes_input_masks": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Nodes Input Masks"
+          },
           "preset_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Preset Id"
@@ -5220,11 +5250,6 @@
               { "type": "null" }
             ]
           },
-          "inputs": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Inputs"
-          },
           "outputs": {
             "additionalProperties": { "items": {}, "type": "array" },
             "type": "object",
@@ -5237,11 +5262,14 @@
           "user_id",
           "graph_id",
           "graph_version",
+          "inputs",
+          "credential_inputs",
+          "nodes_input_masks",
+          "preset_id",
           "status",
           "started_at",
           "ended_at",
           "stats",
-          "inputs",
           "outputs"
         ],
         "title": "GraphExecution"
@@ -5287,6 +5315,38 @@
           "user_id": { "type": "string", "title": "User Id" },
           "graph_id": { "type": "string", "title": "Graph Id" },
           "graph_version": { "type": "integer", "title": "Graph Version" },
+          "inputs": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Inputs"
+          },
+          "credential_inputs": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/CredentialsMetaInput"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Credential Inputs"
+          },
+          "nodes_input_masks": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Nodes Input Masks"
+          },
           "preset_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Preset Id"
@@ -5315,6 +5375,10 @@
           "user_id",
           "graph_id",
           "graph_version",
+          "inputs",
+          "credential_inputs",
+          "nodes_input_masks",
+          "preset_id",
           "status",
           "started_at",
           "ended_at",
@@ -5328,6 +5392,36 @@
           "user_id": { "type": "string", "title": "User Id" },
           "graph_id": { "type": "string", "title": "Graph Id" },
           "graph_version": { "type": "integer", "title": "Graph Version" },
+          "inputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Inputs"
+          },
+          "credential_inputs": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/CredentialsMetaInput"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Credential Inputs"
+          },
+          "nodes_input_masks": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Nodes Input Masks"
+          },
           "preset_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Preset Id"
@@ -5348,11 +5442,6 @@
               { "$ref": "#/components/schemas/Stats" },
               { "type": "null" }
             ]
-          },
-          "inputs": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Inputs"
           },
           "outputs": {
             "additionalProperties": { "items": {}, "type": "array" },
@@ -5371,11 +5460,14 @@
           "user_id",
           "graph_id",
           "graph_version",
+          "inputs",
+          "credential_inputs",
+          "nodes_input_masks",
+          "preset_id",
           "status",
           "started_at",
           "ended_at",
           "stats",
-          "inputs",
           "outputs",
           "node_executions"
         ],

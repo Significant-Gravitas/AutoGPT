@@ -36,7 +36,7 @@ model User {
   notifyOnAgentApproved        Boolean @default(true)
   notifyOnAgentRejected        Boolean @default(true)
 
-  timezone                     String  @default("not-set")
+  timezone String @default("not-set")
 
   // Relations
 
@@ -354,15 +354,20 @@ model AgentGraphExecution {
   agentGraphVersion Int        @default(1)
   AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
 
+  agentPresetId String?
+  AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
+
+  inputs           Json?
+  credentialInputs Json?
+  nodesInputMasks  Json?
+
   NodeExecutions AgentNodeExecution[]
 
   // Link to User model -- Executed by this user
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  stats         Json?
-  agentPresetId String?
-  AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
+  stats Json?
 
   @@index([agentGraphId, agentGraphVersion])
   @@index([userId])
