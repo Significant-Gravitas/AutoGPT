@@ -32,6 +32,7 @@ import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
 
 import { AgentRunStatus, agentRunStatusMap } from "./agent-run-status-chip";
 import useCredits from "@/hooks/useCredits";
+import { AgentRunOutputView } from "./agent-run-output-view";
 
 export function AgentRunDetailsView({
   agent,
@@ -276,35 +277,7 @@ export function AgentRunDetailsView({
         )}
 
         {agentRunOutputs !== null && (
-          <Card className="agpt-box">
-            <CardHeader>
-              <CardTitle className="font-poppins text-lg">Output</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              {agentRunOutputs !== undefined ? (
-                Object.entries(agentRunOutputs).map(
-                  ([key, { title, values }]) => (
-                    <div key={key} className="flex flex-col gap-1.5">
-                      <label className="text-sm font-medium">
-                        {title || key}
-                      </label>
-                      {values.map((value, i) => (
-                        <p
-                          className="resize-none overflow-x-auto whitespace-pre-wrap break-words border-none text-sm text-neutral-700 disabled:cursor-not-allowed"
-                          key={i}
-                        >
-                          {value}
-                        </p>
-                      ))}
-                      {/* TODO: pretty type-dependent rendering */}
-                    </div>
-                  ),
-                )
-              ) : (
-                <LoadingBox spinnerSize={12} className="h-24" />
-              )}
-            </CardContent>
-          </Card>
+          <AgentRunOutputView agentRunOutputs={agentRunOutputs} />
         )}
 
         <Card className="agpt-box">
