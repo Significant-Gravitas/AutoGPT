@@ -1,4 +1,5 @@
 import re
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -168,8 +169,6 @@ class ExtractTextInformationBlock(Block):
         for dangerous in dangerous_patterns:
             if re.search(dangerous, input_data.pattern):
                 # Limit execution time for potentially dangerous patterns
-                import threading
-
                 def timeout_handler():
                     raise TimeoutError("Regex execution timeout")
 

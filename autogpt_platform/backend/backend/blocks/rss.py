@@ -1,4 +1,7 @@
 import asyncio
+import logging
+import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -101,9 +104,6 @@ class ReadRSSFeedBlock(Block):
 
     @staticmethod
     def parse_feed(url: str) -> dict[str, Any]:
-        import urllib.parse
-        import urllib.request
-
         # Security fix: Add protection against memory exhaustion attacks
         MAX_FEED_SIZE = 10 * 1024 * 1024  # 10MB limit for RSS feeds
 
@@ -134,8 +134,6 @@ class ReadRSSFeedBlock(Block):
                 return feedparser.parse(content)  # type: ignore
         except Exception as e:
             # Log error and return empty feed
-            import logging
-
             logging.warning(f"Failed to parse RSS feed from {url}: {e}")
             return {"entries": []}
 
