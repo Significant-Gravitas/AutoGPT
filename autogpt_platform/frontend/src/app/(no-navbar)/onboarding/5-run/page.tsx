@@ -89,13 +89,13 @@ export default function Page() {
       const libraryAgent = await api.addMarketplaceAgentToLibrary(
         storeAgent?.store_listing_version_id || "",
       );
-      const { graph_exec_id } = await api.executeGraph(
+      const { id: runID } = await api.executeGraph(
         libraryAgent.graph_id,
         libraryAgent.graph_version,
         state?.agentInput || {},
       );
       updateState({
-        onboardingAgentExecutionId: graph_exec_id,
+        onboardingAgentExecutionId: runID,
         agentRuns: (state?.agentRuns || 0) + 1,
       });
       router.push("/onboarding/6-congrats");

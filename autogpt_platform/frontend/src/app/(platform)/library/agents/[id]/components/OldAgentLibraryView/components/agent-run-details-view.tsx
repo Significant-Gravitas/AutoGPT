@@ -121,7 +121,7 @@ export function AgentRunDetailsView({
             Object.entries(agentRunInputs).map(([k, v]) => [k, v.value]),
           ),
         )
-        .then(({ graph_exec_id }) => onRun(graph_exec_id))
+        .then(({ id }) => onRun(id))
         .catch(toastOnFail("execute agent")),
     [api, graph, agentRunInputs, onRun, toastOnFail],
   );
