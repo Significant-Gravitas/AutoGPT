@@ -166,7 +166,6 @@ async def get_user_timezone_route(
     summary="Update user timezone",
     tags=["auth"],
     dependencies=[Security(requires_user)],
-    response_model=TimezoneResponse,
 )
 async def update_user_timezone_route(
     user_id: Annotated[str, Security(get_user_id)], request: UpdateTimezoneRequest
@@ -1105,7 +1104,6 @@ async def get_api_keys(
 @v1_router.get(
     "/api-keys/{key_id}",
     summary="Get specific API key",
-    response_model=api_key_db.APIKeyInfo,
     tags=["api-keys"],
     dependencies=[Security(requires_user)],
 )
@@ -1122,13 +1120,12 @@ async def get_api_key(
 @v1_router.delete(
     "/api-keys/{key_id}",
     summary="Revoke API key",
-    response_model=api_key_db.APIKeyInfo,
     tags=["api-keys"],
     dependencies=[Security(requires_user)],
 )
 async def delete_api_key(
     key_id: str, user_id: Annotated[str, Security(get_user_id)]
-) -> Optional[api_key_db.APIKeyInfo]:
+) -> api_key_db.APIKeyInfo:
     """Revoke an API key"""
     return await api_key_db.revoke_api_key(key_id, user_id)
 
