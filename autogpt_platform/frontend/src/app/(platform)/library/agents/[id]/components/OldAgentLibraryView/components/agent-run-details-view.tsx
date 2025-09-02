@@ -30,10 +30,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
 
-import {
-  AgentRunStatus,
-  agentRunStatusMap,
-} from "@/components/agents/agent-run-status-chip";
+import { AgentRunStatus, agentRunStatusMap } from "./agent-run-status-chip";
 import useCredits from "@/hooks/useCredits";
 
 export function AgentRunDetailsView({
