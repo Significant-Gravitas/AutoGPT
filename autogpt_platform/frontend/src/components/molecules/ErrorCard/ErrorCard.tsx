@@ -17,7 +17,6 @@ export interface ErrorCardProps {
     message?: string;
   };
   context?: string;
-  loadingSlot?: React.ReactNode;
   onRetry?: () => void;
   className?: string;
 }

@@ -1,7 +1,7 @@
 "use client";
 
-import { OldAgentLibraryView } from "./components/OldAgentLibraryView/OldAgentLibraryView";
+import { AgentRunsView } from "./components/AgentRunsView/AgentRunsView";
 
 export default function AgentLibraryPage() {
-  return <OldAgentLibraryView />;
+  return <AgentRunsView />;
 }

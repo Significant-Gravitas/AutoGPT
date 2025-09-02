@@ -4,9 +4,7 @@ import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useAgentRunsView } from "./useAgentRunsView";
 import { AgentRunsLoading } from "./components/AgentRunsLoading";
-import { Button } from "@/components/atoms/Button/Button";
-import { RunAgentModal } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/RunAgentModal/RunAgentModal";
-import { PlusIcon } from "@phosphor-icons/react/dist/ssr";
+import { RunsSidebar } from "./components/RunsSidebar/RunsSidebar";
 
 export function AgentRunsView() {
   const { response, ready, error, agentId } = useAgentRunsView();
@@ -49,19 +47,8 @@ export function AgentRunsView() {
   const agent = response.data;
 
   return (
-    <div className="grid h-screen grid-cols-[25%_85%] gap-4 pt-8">
-      {/* Left Sidebar - 30% */}
-      <div className="bg-gray-50 p-4">
-        <RunAgentModal
-          triggerSlot={
-            <Button variant="primary" size="large" className="w-full">
-              <PlusIcon size={20} /> New Run
-            </Button>
-          }
-          agent={agent}
-          agentId={agent.id.toString()}
-        />
-      </div>
+    <div className="grid h-screen grid-cols-[25%_70%] gap-4 pt-8">
+      <RunsSidebar agent={agent} />
 
       {/* Main Content - 70% */}
       <div className="p-4">
