@@ -55,7 +55,6 @@ export function CronScheduler({
     value: number;
     unit: "minutes" | "hours" | "days";
   }>({ value: 1, unit: "minutes" });
-  const [showCustomDays, setShowCustomDays] = useState<boolean>(false);
 
   // Parse initial cron expression and set state
   useEffect(() => {
@@ -65,7 +64,6 @@ export function CronScheduler({
       setSelectedWeekDays([]);
       setSelectedMonthDays([]);
       setSelectedMonths([]);
-      setShowCustomDays(false);
       return;
     }
 
@@ -78,7 +76,6 @@ export function CronScheduler({
     setSelectedWeekDays([]);
     setSelectedMonthDays([]);
     setSelectedMonths([]);
-    setShowCustomDays(false);
 
     // Parse patterns in order of specificity
     if (
@@ -178,7 +175,6 @@ export function CronScheduler({
         .map((d) => parseInt(d))
         .filter((d) => !isNaN(d) && d >= 1 && d <= 31);
       setSelectedMonthDays(days);
-      setShowCustomDays(days.length < 31);
     } else if (dayOfMonth !== "*" && month !== "*" && dayOfWeek === "*") {
       setFrequency("yearly");
       const hourNum = parseInt(hour);
@@ -368,7 +364,6 @@ export function CronScheduler({
             <Button
               variant={selectedMonthDays.length === 31 ? "default" : "outline"}
               onClick={() => {
-                setShowCustomDays(false);
                 setSelectedMonthDays(
                   Array.from({ length: 31 }, (_, i) => i + 1),
                 );
@@ -383,7 +378,6 @@ export function CronScheduler({
                   : "outline"
               }
               onClick={() => {
-                setShowCustomDays(true);
                 setSelectedMonthDays([]);
               }}
             >

@@ -162,12 +162,12 @@ export const SaveControl = ({
                 <Button
                   variant="outline"
                   onClick={() => setCronScheduleDialogOpen(true)}
-                  className="mt-1 w-full justify-start truncate text-sm"
+                  className="mt-1 w-full min-w-0 justify-start text-sm"
                   data-id="save-control-recommended-schedule-button"
                   data-testid="save-control-recommended-schedule-button"
                 >
                   <CalendarClockIcon className="mr-2 h-4 w-4 flex-shrink-0" />
-                  <span className="truncate">
+                  <span className="min-w-0 flex-1 truncate">
                     {agentRecommendedScheduleCron
                       ? humanizeCronExpression(agentRecommendedScheduleCron)
                       : "Set schedule"}
