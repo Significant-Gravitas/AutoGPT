@@ -5,21 +5,25 @@ import { AccountMenu } from "./AccountMenu/AccountMenu";
 import { LoginButton } from "./LoginButton";
 import { MobileNavBar } from "./MobileNavbar/MobileNavBar";
 import { NavbarLink } from "./NavbarLink";
-import { accountMenuItems, loggedInLinks, loggedOutLinks } from "../helpers";
+import { getAccountMenuItems, loggedInLinks, loggedOutLinks } from "../helpers";
 import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 import { AgentActivityDropdown } from "./AgentActivityDropdown/AgentActivityDropdown";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 
 interface NavbarViewProps {
   isLoggedIn: boolean;
 }
 
 export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
+  const { user } = useSupabase();
   const { data: profile } = useGetV2GetUserProfile({
     query: {
       select: (res) => (res.status === 200 ? res.data : null),
       enabled: isLoggedIn,
     },
   });
+
+  const dynamicMenuItems = getAccountMenuItems(user?.role);
 
   return (
     <>
@@ -50,7 +54,7 @@ export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
                 userName={profile?.username}
                 userEmail={profile?.name}
                 avatarSrc={profile?.avatar_url ?? ""}
-                menuItemGroups={accountMenuItems}
+                menuItemGroups={dynamicMenuItems}
               />
             </div>
           ) : (
@@ -83,7 +87,7 @@ export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
                     href: link.href,
                   })),
                 },
-                ...accountMenuItems,
+                ...dynamicMenuItems,
               ]}
               userEmail={profile?.name}
               avatarSrc={profile?.avatar_url ?? ""}
