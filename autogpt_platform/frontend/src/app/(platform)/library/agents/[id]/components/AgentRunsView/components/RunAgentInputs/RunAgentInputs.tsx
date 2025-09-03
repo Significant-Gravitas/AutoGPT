@@ -56,6 +56,7 @@ export function RunAgentInputs({
           id={`${baseId}-number`}
           label={schema.title ?? placeholder ?? "Number"}
           hideLabel
+          size="small"
           type="number"
           value={value ?? ""}
           placeholder={placeholder || "Enter number"}
@@ -73,6 +74,7 @@ export function RunAgentInputs({
           id={`${baseId}-textarea`}
           label={schema.title ?? placeholder ?? "Text"}
           hideLabel
+          size="small"
           type="textarea"
           rows={3}
           value={value ?? ""}
@@ -105,6 +107,7 @@ export function RunAgentInputs({
           id={`${baseId}-date`}
           label={schema.title ?? placeholder ?? "Date"}
           hideLabel
+          size="small"
           type="date"
           value={value ? format(value as Date, "yyyy-MM-dd") : ""}
           onChange={(e) => {
@@ -133,6 +136,7 @@ export function RunAgentInputs({
           id={`${baseId}-datetime`}
           label={schema.title ?? placeholder ?? "Date time"}
           hideLabel
+          size="small"
           type="datetime-local"
           value={value ?? ""}
           onChange={(e) => onChange((e.target as HTMLInputElement).value)}
@@ -167,6 +171,7 @@ export function RunAgentInputs({
             label={schema.title ?? placeholder ?? "Select"}
             hideLabel
             value={value ?? ""}
+            size="small"
             onValueChange={(val: string) => onChange(val)}
             placeholder={placeholder || "Select an option"}
             options={schema.enum
@@ -189,6 +194,7 @@ export function RunAgentInputs({
           items={allKeys.map((key) => ({
             value: key,
             label: _schema.properties[key]?.title ?? key,
+            size: "small",
           }))}
           selectedValues={selectedValues}
           onChange={(values: string[]) =>
@@ -212,6 +218,7 @@ export function RunAgentInputs({
           id={`${baseId}-text`}
           label={schema.title ?? placeholder ?? "Text"}
           hideLabel
+          size="small"
           type="text"
           value={value ?? ""}
           onChange={(e) => onChange((e.target as HTMLInputElement).value)}
