@@ -5,7 +5,7 @@ import { AccountMenu } from "./AccountMenu/AccountMenu";
 import { LoginButton } from "./LoginButton";
 import { MobileNavBar } from "./MobileNavbar/MobileNavBar";
 import { NavbarLink } from "./NavbarLink";
-import { accountMenuItems, getAccountMenuItems, loggedInLinks, loggedOutLinks } from "../helpers";
+import { getAccountMenuItems, loggedInLinks, loggedOutLinks } from "../helpers";
 import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 import { AgentActivityDropdown } from "./AgentActivityDropdown/AgentActivityDropdown";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
