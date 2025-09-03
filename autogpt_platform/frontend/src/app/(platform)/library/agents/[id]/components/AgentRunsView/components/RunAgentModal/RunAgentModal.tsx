@@ -180,6 +180,7 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
                     <ScheduleView
                       scheduleName={scheduleName}
                       cronExpression={cronExpression}
+                      recommendedScheduleCron={agent.recommended_schedule_cron}
                       onScheduleNameChange={handleSetScheduleName}
                       onCronExpressionChange={handleSetCronExpression}
                       onValidityChange={setIsScheduleFormValid}
@@ -190,6 +191,11 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
                     <Text variant="body" className="mb-3 !text-zinc-500">
                       No schedule configured. Create a schedule to run this
                       agent automatically at a specific time.{" "}
+                      {agent.recommended_schedule_cron && (
+                        <span className="text-blue-600">
+                          This agent has a recommended schedule.
+                        </span>
+                      )}
                     </Text>
                     <Button
                       variant="secondary"

@@ -36,7 +36,9 @@ export function useAgentRunModal(
   const [presetDescription, setPresetDescription] = useState<string>("");
   const defaultScheduleName = useMemo(() => `Run ${agent.name}`, [agent.name]);
   const [scheduleName, setScheduleName] = useState(defaultScheduleName);
-  const [cronExpression, setCronExpression] = useState("0 9 * * 1");
+  const [cronExpression, setCronExpression] = useState(
+    agent.recommended_schedule_cron || "0 9 * * 1",
+  );
 
   // Determine the default run type based on agent capabilities
   const defaultRunType: RunVariant = agent.has_external_trigger
@@ -302,7 +304,9 @@ export function useAgentRunModal(
   function handleShowSchedule() {
     // Initialize with sensible defaults when entering schedule view
     setScheduleName((prev) => prev || defaultScheduleName);
-    setCronExpression((prev) => prev || "0 9 * * 1");
+    setCronExpression(
+      (prev) => prev || agent.recommended_schedule_cron || "0 9 * * 1",
+    );
     setShowScheduleView(true);
   }
 
@@ -310,7 +314,7 @@ export function useAgentRunModal(
     setShowScheduleView(false);
     // Reset schedule fields on exit
     setScheduleName(defaultScheduleName);
-    setCronExpression("0 9 * * 1");
+    setCronExpression(agent.recommended_schedule_cron || "0 9 * * 1");
   }
 
   function handleSetScheduleName(name: string) {
