@@ -16,7 +16,7 @@ export function AgentRunsView() {
     return <AgentRunsLoading />;
   }
 
-  if (error || (response && response.status !== 200)) {
+  if (error) {
     return (
       <ErrorCard
         isSuccess={false}
@@ -35,8 +35,7 @@ export function AgentRunsView() {
     );
   }
 
-  // Handle missing data
-  if (!response?.data) {
+  if (!response?.data || response.status !== 200) {
     return (
       <ErrorCard
         isSuccess={false}

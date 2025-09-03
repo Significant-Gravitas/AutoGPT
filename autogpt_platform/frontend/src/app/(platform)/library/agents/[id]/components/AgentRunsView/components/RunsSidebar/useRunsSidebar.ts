@@ -6,8 +6,19 @@ import { useGetV1ListGraphExecutionsInfinite } from "@/app/api/__generated__/end
 import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { GraphExecutionsPaginated } from "@/app/api/__generated__/models/graphExecutionsPaginated";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
+import { useSearchParams } from "next/navigation";
 
-export function useRunsSidebar(graphId?: string) {
+type Args = {
+  graphId?: string;
+  onSelectRun: (runId: string) => void;
+};
+
+export function useRunsSidebar({ graphId, onSelectRun }: Args) {
+  const params = useSearchParams();
+  const existingRunId = params.get("run") as string | undefined;
+
+  console.log(params);
+
   const runsQuery = useGetV1ListGraphExecutionsInfinite(
     graphId || "",
     { page: 1, page_size: 20 },
@@ -42,6 +53,16 @@ export function useRunsSidebar(graphId?: string) {
       }) || [],
     [runsQuery.data],
   );
+
+  useEffect(() => {
+    if (runs.length > 0) {
+      if (existingRunId) {
+        onSelectRun(existingRunId);
+        return;
+      }
+      onSelectRun(runs[0].id);
+    }
+  }, [runs, existingRunId]);
 
   const schedules: GraphExecutionJobInfo[] =
     schedulesQuery.data?.status === 200 ? schedulesQuery.data.data : [];
