@@ -1,16 +1,10 @@
-import { FC, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Input } from "@/components/atoms/Input/Input";
+import { Button } from "@/components/atoms/Button/Button";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import {
   Form,
   FormControl,
@@ -27,13 +21,21 @@ import {
 } from "@/lib/autogpt-server-api/types";
 import { getHostFromUrl } from "@/lib/utils/url";
 
-export const HostScopedCredentialsModal: FC<{
+type Props = {
   schema: BlockIOCredentialsSubSchema;
   open: boolean;
   onClose: () => void;
   onCredentialsCreate: (creds: CredentialsMetaInput) => void;
   siblingInputs?: Record<string, any>;
-}> = ({ schema, open, onClose, onCredentialsCreate, siblingInputs }) => {
+};
+
+export function HostScopedCredentialsModal({
+  schema,
+  open,
+  onClose,
+  onCredentialsCreate,
+  siblingInputs,
+}: Props) {
   const credentials = useCredentials(schema, siblingInputs);
 
   // Get current host from siblingInputs or discriminator_values
@@ -129,18 +131,19 @@ export const HostScopedCredentialsModal: FC<{
 
   return (
     <Dialog
-      open={open}
-      onOpenChange={(open) => {
-        if (!open) onClose();
+      title={`Add sensitive headers for ${providerName}`}
+      controlled={{
+        isOpen: open,
+        set: (isOpen) => {
+          if (!isOpen) onClose();
+        },
       }}
+      onClose={onClose}
     >
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Add sensitive headers for {providerName}</DialogTitle>
-          {schema.description && (
-            <DialogDescription>{schema.description}</DialogDescription>
-          )}
-        </DialogHeader>
+      <Dialog.Content>
+        {schema.description && (
+          <p className="mb-4 text-sm text-zinc-600">{schema.description}</p>
+        )}
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -157,6 +160,9 @@ export const HostScopedCredentialsModal: FC<{
                   </FormDescription>
                   <FormControl>
                     <Input
+                      id="host"
+                      label="Host Pattern"
+                      hideLabel
                       type="text"
                       readOnly={!!currentHost}
                       placeholder={
@@ -184,6 +190,9 @@ export const HostScopedCredentialsModal: FC<{
                 <div key={index} className="flex items-end gap-2">
                   <div className="flex-1">
                     <Input
+                      id={`header-${index}-key`}
+                      label="Header Name"
+                      hideLabel
                       placeholder="Header name (e.g., Authorization)"
                       value={pair.key}
                       onChange={(e) =>
@@ -193,6 +202,9 @@ export const HostScopedCredentialsModal: FC<{
                   </div>
                   <div className="flex-1">
                     <Input
+                      id={`header-${index}-value`}
+                      label="Header Value"
+                      hideLabel
                       type="password"
                       placeholder="Header value (e.g., Bearer token123)"
                       value={pair.value}
@@ -204,7 +216,7 @@ export const HostScopedCredentialsModal: FC<{
                   <Button
                     type="button"
                     variant="outline"
-                    size="sm"
+                    size="small"
                     onClick={() => removeHeaderPair(index)}
                     disabled={headerPairs.length === 1}
                   >
@@ -216,7 +228,7 @@ export const HostScopedCredentialsModal: FC<{
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
+                size="small"
                 onClick={addHeaderPair}
                 className="w-full"
               >
@@ -229,7 +241,7 @@ export const HostScopedCredentialsModal: FC<{
             </Button>
           </form>
         </Form>
-      </DialogContent>
+      </Dialog.Content>
     </Dialog>
   );
-};
+}

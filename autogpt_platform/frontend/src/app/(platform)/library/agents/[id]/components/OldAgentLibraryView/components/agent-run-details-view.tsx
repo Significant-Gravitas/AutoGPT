@@ -1,5 +1,4 @@
 "use client";
-import { isEmpty } from "lodash";
 import moment from "moment";
 import React, { useCallback, useMemo } from "react";
 
@@ -30,10 +29,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
 
-import {
-  AgentRunStatus,
-  agentRunStatusMap,
-} from "@/components/agents/agent-run-status-chip";
+import { AgentRunStatus, agentRunStatusMap } from "./agent-run-status-chip";
 import useCredits from "@/hooks/useCredits";
 
 export function AgentRunDetailsView({
@@ -42,14 +38,16 @@ export function AgentRunDetailsView({
   run,
   agentActions,
   onRun,
-  deleteRun,
+  doDeleteRun,
+  doCreatePresetFromRun,
 }: {
   agent: LibraryAgent;
   graph: Graph;
   run: GraphExecution | GraphExecutionMeta;
   agentActions: ButtonAction[];
   onRun: (runID: GraphExecutionID) => void;
-  deleteRun: () => void;
+  doDeleteRun: () => void;
+  doCreatePresetFromRun: () => void;
 }): React.ReactNode {
   const api = useBackendAPI();
   const { formatCredits } = useCredits();
@@ -95,7 +93,7 @@ export function AgentRunDetailsView({
         }
       >
     | undefined = useMemo(() => {
-    if (!("inputs" in run)) return undefined;
+    if (!run.inputs) return undefined;
     // TODO: show (link to) preset - https://github.com/Significant-Gravitas/AutoGPT/issues/9168
 
     // Add type info from agent input schema
@@ -111,21 +109,36 @@ export function AgentRunDetailsView({
     );
   }, [graph, run]);
 
-  const runAgain = useCallback(
-    () =>
-      agentRunInputs &&
-      api
-        .executeGraph(
-          graph.id,
-          graph.version,
-          Object.fromEntries(
-            Object.entries(agentRunInputs).map(([k, v]) => [k, v.value]),
-          ),
+  const runAgain = useCallback(() => {
+    if (
+      !run.inputs ||
+      !(graph.credentials_input_schema.required ?? []).every(
+        (k) => k in (run.credential_inputs ?? {}),
+      )
+    )
+      return;
+
+    if (run.preset_id) {
+      return api
+        .executeLibraryAgentPreset(
+          run.preset_id,
+          run.inputs!,
+          run.credential_inputs!,
         )
-        .then(({ graph_exec_id }) => onRun(graph_exec_id))
-        .catch(toastOnFail("execute agent")),
-    [api, graph, agentRunInputs, onRun, toastOnFail],
-  );
+        .then(({ id }) => onRun(id))
+        .catch(toastOnFail("execute agent preset"));
+    }
+
+    return api
+      .executeGraph(
+        graph.id,
+        graph.version,
+        run.inputs!,
+        run.credential_inputs!,
+      )
+      .then(({ id }) => onRun(id))
+      .catch(toastOnFail("execute agent"));
+  }, [api, graph, run, onRun, toastOnFail]);
 
   const stopRun = useCallback(
     () => api.stopGraphExecution(graph.id, run.id),
@@ -180,7 +193,9 @@ export function AgentRunDetailsView({
         : []),
       ...(["success", "failed", "stopped"].includes(runStatus) &&
       !graph.has_external_trigger &&
-      isEmpty(graph.credentials_input_schema.required) // TODO: enable re-run with credentials - https://linear.app/autogpt/issue/SECRT-1243
+      (graph.credentials_input_schema.required ?? []).every(
+        (k) => k in (run.credential_inputs ?? {}),
+      )
         ? [
             {
               label: (
@@ -202,13 +217,15 @@ export function AgentRunDetailsView({
             },
           ]
         : []),
-      { label: "Delete run", variant: "secondary", callback: deleteRun },
+      { label: "Create preset from run", callback: doCreatePresetFromRun },
+      { label: "Delete run", variant: "secondary", callback: doDeleteRun },
     ],
     [
       runStatus,
       runAgain,
       stopRun,
-      deleteRun,
+      doDeleteRun,
+      doCreatePresetFromRun,
       graph.has_external_trigger,
       graph.credentials_input_schema.required,
       agent.can_access_graph,

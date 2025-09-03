@@ -278,9 +278,22 @@ export function BlocksControl({
                   className={`m-2 my-4 flex h-20 shadow-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700 ${
                     block.notAvailable
                       ? "cursor-not-allowed opacity-50"
-                      : "cursor-pointer hover:shadow-lg"
+                      : "cursor-move hover:shadow-lg"
                   }`}
                   data-id={`block-card-${block.id}`}
+                  draggable={!block.notAvailable}
+                  onDragStart={(e) => {
+                    if (block.notAvailable) return;
+                    e.dataTransfer.effectAllowed = "copy";
+                    e.dataTransfer.setData(
+                      "application/reactflow",
+                      JSON.stringify({
+                        blockId: block.id,
+                        blockName: block.name,
+                        hardcodedValues: block?.hardcodedValues || {},
+                      }),
+                    );
+                  }}
                   onClick={() =>
                     !block.notAvailable &&
                     addBlock(block.id, block.name, block?.hardcodedValues || {})
