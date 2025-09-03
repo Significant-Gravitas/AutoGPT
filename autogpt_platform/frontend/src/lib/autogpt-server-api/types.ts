@@ -335,7 +335,7 @@ export type GraphIOSubSchema = Omit<
 export type CredentialsInputSchema = {
   type: "object";
   properties: Record<string, BlockIOCredentialsSubSchema>;
-  required: (keyof CredentialsInputSchema["properties"])[];
+  required?: (keyof CredentialsInputSchema["properties"])[];
 };
 
 /* Mirror of backend/data/graph.py:GraphTriggerInfo */
@@ -493,7 +493,7 @@ export type LibraryAgentPresetCreatable = Omit<
 
 export type LibraryAgentPresetCreatableFromGraphExecution = Omit<
   LibraryAgentPresetCreatable,
-  "graph_id" | "graph_version" | "inputs"
+  "graph_id" | "graph_version" | "inputs" | "credentials"
 > & {
   graph_execution_id: GraphExecutionID;
 };

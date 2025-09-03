@@ -174,7 +174,7 @@ export function AgentRunDraftView({
         .executeGraph(graph.id, graph.version, inputValues, inputCredentials)
         .catch(toastOnFail("execute agent"));
 
-      if (newRun && onRun) onRun(newRun.graph_exec_id);
+      if (newRun && onRun) onRun(newRun.id);
     } else {
       await api
         .executeLibraryAgentPreset(agentPreset.id)
