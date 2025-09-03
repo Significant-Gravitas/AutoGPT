@@ -5,7 +5,7 @@ import { isEmpty } from "@/lib/utils";
 import { usePostV1ExecuteGraphAgent } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { usePostV1CreateExecutionSchedule as useCreateSchedule } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { usePostV2SetupTrigger } from "@/app/api/__generated__/endpoints/presets/presets";
-import { ExecuteGraphResponse } from "@/app/api/__generated__/models/executeGraphResponse";
+import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 
@@ -16,7 +16,7 @@ export type RunVariant =
   | "manual-trigger";
 
 interface UseAgentRunModalCallbacks {
-  onRun?: (execution: ExecuteGraphResponse) => void;
+  onRun?: (execution: GraphExecutionMeta) => void;
   onCreateSchedule?: (schedule: GraphExecutionJobInfo) => void;
   onSetupTrigger?: (preset: LibraryAgentPreset) => void;
 }

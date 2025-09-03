@@ -782,13 +782,13 @@ export default function useAgentGraph(
           credentialsInputs,
         );
 
-        setActiveExecutionID(graphExecution.graph_exec_id);
+        setActiveExecutionID(graphExecution.id);
 
         // Update URL params
         const path = new URLSearchParams(searchParams);
         path.set("flowID", savedAgent.id);
         path.set("flowVersion", savedAgent.version.toString());
-        path.set("flowExecutionID", graphExecution.graph_exec_id);
+        path.set("flowExecutionID", graphExecution.id);
         router.push(`${pathname}?${path.toString()}`);
 
         if (state?.completedSteps.includes("BUILDER_SAVE_AGENT")) {
