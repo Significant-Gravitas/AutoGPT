@@ -96,7 +96,7 @@ export function AgentScheduleDetailsView({
           schedule.input_data,
           schedule.input_credentials,
         )
-        .then((run) => onForcedRun(run.graph_exec_id))
+        .then((run) => onForcedRun(run.id))
         .catch(toastOnFail("execute agent")),
     [api, graph, schedule, onForcedRun, toastOnFail],
   );

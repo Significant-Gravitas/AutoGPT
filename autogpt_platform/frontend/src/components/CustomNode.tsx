@@ -332,13 +332,7 @@ export const CustomNode = React.memo(
 
       return (
         <div className="flex flex-col gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full"
-            onClick={handleSSOLogin}
-            disabled={isLoading}
-          >
+          <Button type="button" onClick={handleSSOLogin} disabled={isLoading}>
             {isLoading ? (
               "Loading..."
             ) : (
