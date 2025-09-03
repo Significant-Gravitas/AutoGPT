@@ -1729,9 +1729,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ExecuteGraphResponse"
-                }
+                "schema": { "$ref": "#/components/schemas/GraphExecutionMeta" }
               }
             }
           },
@@ -3924,11 +3922,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Postv2Execute A Preset"
-                }
+                "schema": { "$ref": "#/components/schemas/GraphExecutionMeta" }
               }
             }
           },
@@ -4871,6 +4865,13 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Inputs"
+          },
+          "credential_inputs": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CredentialsMetaInput"
+            },
+            "type": "object",
+            "title": "Credential Inputs"
           }
         },
         "type": "object",
@@ -5150,14 +5151,6 @@
         "type": "object",
         "required": ["url", "relevance_score"],
         "title": "Document"
-      },
-      "ExecuteGraphResponse": {
-        "properties": {
-          "graph_exec_id": { "type": "string", "title": "Graph Exec Id" }
-        },
-        "type": "object",
-        "required": ["graph_exec_id"],
-        "title": "ExecuteGraphResponse"
       },
       "Graph": {
         "properties": {
