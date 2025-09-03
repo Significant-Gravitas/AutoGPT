@@ -1,17 +1,42 @@
 import { RunStatusBadge } from "../RunDetails/components/RunStatusBadge";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
-import { PencilSimpleIcon, TrashIcon } from "@phosphor-icons/react";
+import {
+  PencilSimpleIcon,
+  TrashIcon,
+  StopIcon,
+  PlayIcon,
+  ArrowSquareOut,
+} from "@phosphor-icons/react";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import moment from "moment";
 import { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
+import { useRunDetailHeader } from "./useRunDetailHeader";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/molecules/DropdownMenu/DropdownMenu";
+import Link from "next/link";
 
 type Props = {
   agent: LibraryAgent;
   run: GraphExecution | undefined;
+  scheduleRecurrence?: string;
 };
 
-export function RunDetailHeader({ agent, run }: Props) {
+export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
+  const {
+    stopRun,
+    canStop,
+    isStopping,
+    deleteRun,
+    isDeleting,
+    runAgain,
+    isRunningAgain,
+    openInBuilderHref,
+  } = useRunDetailHeader(agent.graph_id, run);
   return (
     <div>
       <div className="flex w-full items-center justify-between">
@@ -24,19 +49,62 @@ export function RunDetailHeader({ agent, run }: Props) {
               </Text>
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                variant="secondary"
-                size="small"
-                as="NextLink"
-                href={`/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`}
-                target="_blank"
-              >
-                <PencilSimpleIcon size={16} /> Edit agent
-              </Button>
               {run ? (
-                <Button variant="secondary" size="small">
-                  <TrashIcon size={16} /> Delete run
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    onClick={runAgain}
+                    loading={isRunningAgain}
+                  >
+                    <PlayIcon size={16} /> Run again
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    onClick={deleteRun}
+                    loading={isDeleting}
+                  >
+                    <TrashIcon size={16} /> Delete run
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="secondary" size="small">
+                        •••
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {canStop ? (
+                        <DropdownMenuItem
+                          onClick={stopRun}
+                          disabled={isStopping}
+                        >
+                          <StopIcon size={14} className="mr-2" /> Stop run
+                        </DropdownMenuItem>
+                      ) : null}
+                      {openInBuilderHref ? (
+                        <DropdownMenuItem asChild>
+                          <Link
+                            href={openInBuilderHref}
+                            target="_blank"
+                            className="flex items-center gap-2"
+                          >
+                            <ArrowSquareOut size={14} /> Open in builder
+                          </Link>
+                        </DropdownMenuItem>
+                      ) : null}
+                      <DropdownMenuItem asChild>
+                        <Link
+                          href={`/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`}
+                          target="_blank"
+                          className="flex items-center gap-2"
+                        >
+                          <PencilSimpleIcon size={16} /> Edit agent
+                        </Link>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               ) : null}
             </div>
           </div>
@@ -83,6 +151,10 @@ export function RunDetailHeader({ agent, run }: Props) {
                 </>
               )}
             </div>
+          ) : scheduleRecurrence ? (
+            <Text variant="small" className="mt-1 !text-zinc-600">
+              {scheduleRecurrence}
+            </Text>
           ) : null}
         </div>
       </div>

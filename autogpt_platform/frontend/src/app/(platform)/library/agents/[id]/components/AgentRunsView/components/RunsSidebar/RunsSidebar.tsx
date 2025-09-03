@@ -72,7 +72,16 @@ export function RunsSidebar({
 
       <TabsLine
         value={tabValue}
-        onValueChange={(v) => setTabValue(v as "runs" | "scheduled")}
+        onValueChange={(v) => {
+          const value = v as "runs" | "scheduled";
+          setTabValue(value);
+          if (value === "runs") {
+            if (runs && runs.length) onSelectRun(runs[0].id);
+          } else {
+            if (schedules && schedules.length)
+              onSelectRun(`schedule:${schedules[0].id}`);
+          }
+        }}
         className="mt-6"
       >
         <TabsLineList>
