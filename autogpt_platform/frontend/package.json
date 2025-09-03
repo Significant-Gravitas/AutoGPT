@@ -89,6 +89,7 @@
     "shepherd.js": "14.5.1",
     "sonner": "2.0.7",
     "tailwind-merge": "2.6.0",
+    "tailwind-scrollbar": "4.0.2",
     "tailwindcss-animate": "1.0.7",
     "uuid": "11.1.0",
     "vaul": "1.1.2",
