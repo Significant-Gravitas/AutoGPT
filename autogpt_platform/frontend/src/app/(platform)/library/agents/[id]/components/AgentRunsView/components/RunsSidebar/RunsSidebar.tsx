@@ -82,7 +82,7 @@ export function RunsSidebar({
               onSelectRun(`schedule:${schedules[0].id}`);
           }
         }}
-        className="mt-6"
+        className="mt-6 overflow-x-auto"
       >
         <TabsLineList>
           <TabsLineTrigger value="runs">
@@ -96,33 +96,42 @@ export function RunsSidebar({
 
         <div className="px-[2px]">
           <TabsLineContent value="runs">
-            <InfiniteList
-              items={runs}
-              hasMore={!!hasMoreRuns}
-              isFetchingMore={isFetchingMoreRuns}
-              onEndReached={fetchMoreRuns}
-              renderItem={(run) => (
-                <div className="mb-3">
-                  <RunListItem
-                    run={run}
-                    title={agent.name}
-                    selected={selectedRunId === run.id}
-                    onClick={() => onSelectRun && onSelectRun(run.id)}
-                  />
-                </div>
-              )}
-            />
-          </TabsLineContent>
-          <TabsLineContent value="scheduled">
-            {schedules.map((s: GraphExecutionJobInfo) => (
-              <div className="mb-3" key={s.id}>
-                <ScheduleListItem
-                  schedule={s}
-                  selected={selectedRunId === `schedule:${s.id}`}
-                  onClick={() => onSelectRun(`schedule:${s.id}`)}
+            <div className="-mx-1 flex gap-3 overflow-x-auto pb-1 [scrollbar-gutter:stable]">
+              <div className="flex min-w-full gap-3 sm:min-w-0">
+                <InfiniteList
+                  items={runs}
+                  hasMore={!!hasMoreRuns}
+                  isFetchingMore={isFetchingMoreRuns}
+                  onEndReached={fetchMoreRuns}
+                  renderItem={(run) => (
+                    <div className="mb-3 min-w-[320px] max-w-[360px] flex-shrink-0">
+                      <RunListItem
+                        run={run}
+                        title={agent.name}
+                        selected={selectedRunId === run.id}
+                        onClick={() => onSelectRun && onSelectRun(run.id)}
+                      />
+                    </div>
+                  )}
                 />
               </div>
-            ))}
+            </div>
+          </TabsLineContent>
+          <TabsLineContent value="scheduled">
+            <div className="-mx-1 flex gap-3 overflow-x-auto pb-1 [scrollbar-gutter:stable]">
+              {schedules.map((s: GraphExecutionJobInfo) => (
+                <div
+                  className="mb-3 min-w-[320px] max-w-[360px] flex-shrink-0"
+                  key={s.id}
+                >
+                  <ScheduleListItem
+                    schedule={s}
+                    selected={selectedRunId === `schedule:${s.id}`}
+                    onClick={() => onSelectRun(`schedule:${s.id}`)}
+                  />
+                </div>
+              ))}
+            </div>
           </TabsLineContent>
         </div>
       </TabsLine>

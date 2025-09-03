@@ -50,7 +50,7 @@ export function AgentRunsView() {
   const agent = response.data;
 
   return (
-    <div className="grid h-screen grid-cols-[25%_70%] gap-4 pt-6">
+    <div className="grid h-screen gap-4 pt-6 lg:grid-cols-[25%_70%]">
       <RunsSidebar
         agent={agent}
         selectedRunId={selectedRun}
