@@ -14,6 +14,8 @@ import { Button } from "@/components/atoms/Button/Button";
 import { PencilSimpleIcon, TrashIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { RunStatusBadge } from "./components/RunStatusBadge";
+import { ScheduleDetails } from "../ScheduleDetails/ScheduleDetails";
 
 interface RunDetailsProps {
   agent: LibraryAgent;
@@ -21,12 +23,18 @@ interface RunDetailsProps {
 }
 
 export function RunDetails({ agent, runId }: RunDetailsProps) {
-  const { run, isLoading, error, httpError } = useRunDetails(
+  const isSchedule = runId.startsWith("schedule:");
+  const scheduleId = isSchedule ? runId.replace("schedule:", "") : undefined;
+  const { run, isLoading, error } = useRunDetails(
     agent.graph_id,
-    runId,
+    isSchedule ? "" : runId,
   );
 
-  if (error || httpError) {
+  if (isSchedule && scheduleId) {
+    return <ScheduleDetails agent={agent} scheduleId={scheduleId} />;
+  }
+
+  if (error) {
     return (
       <ErrorCard
         responseError={
@@ -39,7 +47,6 @@ export function RunDetails({ agent, runId }: RunDetailsProps) {
               }
             : undefined
         }
-        httpError={httpError}
         context="run"
       />
     );
@@ -58,25 +65,37 @@ export function RunDetails({ agent, runId }: RunDetailsProps) {
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <Text variant="h3" className="!font-normal">
-            {agent.name}
-          </Text>
+      <div className="flex w-full items-center justify-between">
+        <div className="flex w-full flex-col gap-0">
+          <div className="flex w-full items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <RunStatusBadge status={run?.status ?? "FAILED"} />
+              <Text variant="h3" className="!font-normal">
+                {agent.name}
+              </Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="small"
+                as="NextLink"
+                href={`/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`}
+                target="_blank"
+              >
+                <PencilSimpleIcon size={16} /> Edit agent
+              </Button>
+              <Button variant="secondary" size="small">
+                <TrashIcon size={16} /> Delete run
+              </Button>
+            </div>
+          </div>
           {run && (
             <Text variant="small" className="mt-1 !text-zinc-600">
-              Started {moment(run.started_at).fromNow()} | Version{" "}
+              Started {moment(run.started_at).fromNow()}{" "}
+              <span className="mx-1 inline-block">|</span> version{" "}
               {run.graph_version}
             </Text>
           )}
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="secondary" size="small">
-            <PencilSimpleIcon size={16} /> Edit agent
-          </Button>
-          <Button variant="secondary" size="small">
-            <TrashIcon size={16} /> Delete run
-          </Button>
         </div>
       </div>
 

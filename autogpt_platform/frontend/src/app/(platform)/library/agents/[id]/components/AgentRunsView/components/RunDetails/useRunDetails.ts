@@ -21,7 +21,6 @@ export function useRunDetails(graphId: string, runId: string) {
   return {
     run,
     isLoading: query.isLoading,
-    error: query.error,
-    httpError,
+    error: query.error || httpError,
   } as const;
 }

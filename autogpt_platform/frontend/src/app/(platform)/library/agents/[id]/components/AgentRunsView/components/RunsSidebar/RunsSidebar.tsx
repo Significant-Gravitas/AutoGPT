@@ -40,6 +40,8 @@ export function RunsSidebar({
     fetchMoreRuns,
     hasMoreRuns,
     isFetchingMoreRuns,
+    tabValue,
+    setTabValue,
   } = useRunsSidebar({ graphId: agent.graph_id, onSelectRun });
 
   if (error) {
@@ -71,7 +73,11 @@ export function RunsSidebar({
         agentId={agent.id.toString()}
       />
 
-      <TabsLine defaultValue="runs" className="mt-6">
+      <TabsLine
+        value={tabValue}
+        onValueChange={(v) => setTabValue(v as "runs" | "scheduled")}
+        className="mt-6"
+      >
         <TabsLineList>
           <TabsLineTrigger value="runs">
             Runs <span className="ml-3 inline-block">{runsCount}</span>
@@ -104,7 +110,11 @@ export function RunsSidebar({
           <TabsLineContent value="scheduled">
             {schedules.map((s: GraphExecutionJobInfo) => (
               <div className="mb-3" key={s.id}>
-                <ScheduleListItem schedule={s} />
+                <ScheduleListItem
+                  schedule={s}
+                  selected={selectedRunId === `schedule:${s.id}`}
+                  onClick={() => onSelectRun(`schedule:${s.id}`)}
+                />
               </div>
             ))}
           </TabsLineContent>

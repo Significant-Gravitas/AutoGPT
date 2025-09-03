@@ -3,7 +3,6 @@
 import React from "react";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import moment from "moment";
-import { cn } from "@/lib/utils";
 import { RunCard } from "./RunCard";
 import { IconWrapper } from "./RunIconWrapper";
 import { ClockClockwiseIcon } from "@phosphor-icons/react";

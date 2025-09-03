@@ -49,7 +49,7 @@ export function AgentRunsView() {
   const agent = response.data;
 
   return (
-    <div className="grid h-screen grid-cols-[25%_70%] gap-4 pt-8">
+    <div className="grid h-screen grid-cols-[25%_70%] gap-4 pt-6">
       <RunsSidebar
         agent={agent}
         selectedRunId={selectedRun}
@@ -64,7 +64,7 @@ export function AgentRunsView() {
             { name: agent.name, link: `/library/agents/${agentId}` },
           ]}
         />
-        <div className="mt-2">
+        <div className="mt-1">
           {selectedRun ? (
             <RunDetails agent={agent} runId={selectedRun} />
           ) : (

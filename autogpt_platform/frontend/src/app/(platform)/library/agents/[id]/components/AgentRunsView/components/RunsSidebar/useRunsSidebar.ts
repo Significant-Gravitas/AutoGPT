@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useGetV1ListGraphExecutionsInfinite } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
@@ -18,6 +18,8 @@ export function useRunsSidebar({ graphId, onSelectRun }: Args) {
   const existingRunId = params.get("run") as string | undefined;
 
   console.log(params);
+
+  const [tabValue, setTabValue] = useState<"runs" | "scheduled">("runs");
 
   const runsQuery = useGetV1ListGraphExecutionsInfinite(
     graphId || "",
@@ -64,6 +66,12 @@ export function useRunsSidebar({ graphId, onSelectRun }: Args) {
     }
   }, [runs, existingRunId]);
 
+  useEffect(() => {
+    if (existingRunId && existingRunId.startsWith("schedule:"))
+      setTabValue("scheduled");
+    else setTabValue("runs");
+  }, [existingRunId]);
+
   const schedules: GraphExecutionJobInfo[] =
     schedulesQuery.data?.status === 200 ? schedulesQuery.data.data : [];
 
@@ -73,6 +81,8 @@ export function useRunsSidebar({ graphId, onSelectRun }: Args) {
     error: schedulesQuery.error || runsQuery.error,
     loading: !schedulesQuery.isSuccess || !runsQuery.isSuccess,
     runsQuery,
+    tabValue,
+    setTabValue,
     runsCount:
       (
         runsQuery.data?.pages.at(-1)?.data as
