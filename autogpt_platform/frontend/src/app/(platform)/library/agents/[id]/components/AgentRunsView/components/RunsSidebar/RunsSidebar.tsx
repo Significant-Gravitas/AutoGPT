@@ -50,13 +50,10 @@ export function RunsSidebar({
 
   if (loading) {
     return (
-      <div className="mt-6 flex flex-col items-start gap-4">
+      <div className="ml-6 w-80 space-y-4">
         <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-12 w-full" />
+        <Skeleton className="h-32 w-full" />
+        <Skeleton className="h-24 w-full" />
       </div>
     );
   }

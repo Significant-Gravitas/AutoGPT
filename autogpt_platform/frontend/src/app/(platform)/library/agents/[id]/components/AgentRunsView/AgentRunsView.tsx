@@ -7,6 +7,7 @@ import { AgentRunsLoading } from "./components/AgentRunsLoading";
 import { RunsSidebar } from "./components/RunsSidebar/RunsSidebar";
 import React from "react";
 import { RunDetails } from "./components/RunDetails/RunDetails";
+import { ScheduleDetails } from "./components/ScheduleDetails/ScheduleDetails";
 
 export function AgentRunsView() {
   const { response, ready, error, agentId, selectedRun, handleSelectRun } =
@@ -66,7 +67,14 @@ export function AgentRunsView() {
         />
         <div className="mt-1">
           {selectedRun ? (
-            <RunDetails agent={agent} runId={selectedRun} />
+            selectedRun.startsWith("schedule:") ? (
+              <ScheduleDetails
+                agent={agent}
+                scheduleId={selectedRun.replace("schedule:", "")}
+              />
+            ) : (
+              <RunDetails agent={agent} runId={selectedRun} />
+            )
           ) : (
             <div className="text-gray-600">
               Select a run to view its details

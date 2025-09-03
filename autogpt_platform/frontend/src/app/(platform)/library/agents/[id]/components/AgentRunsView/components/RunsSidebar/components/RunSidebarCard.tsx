@@ -12,7 +12,7 @@ interface RunListItemProps {
   onClick?: () => void;
 }
 
-export function RunCard({
+export function RunSidebarCard({
   title,
   description,
   icon,
@@ -22,7 +22,7 @@ export function RunCard({
   return (
     <button
       className={cn(
-        "w-full rounded-large border border-slate-50 bg-white p-3 text-left transition-all duration-150 hover:scale-[1.01] hover:bg-slate-50/50",
+        "w-full rounded-large border border-slate-50/70 bg-white p-3 text-left transition-all duration-150 hover:scale-[1.01] hover:bg-slate-50/50",
         selected ? "ring-2 ring-slate-800" : undefined,
       )}
       onClick={onClick}

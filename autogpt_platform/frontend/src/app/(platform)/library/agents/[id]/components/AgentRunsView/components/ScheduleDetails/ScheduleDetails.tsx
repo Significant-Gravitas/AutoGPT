@@ -2,7 +2,6 @@
 
 import React from "react";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import moment from "moment";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { Text } from "@/components/atoms/Text/Text";
 import {
@@ -12,6 +11,13 @@ import {
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
 import { useScheduleDetails } from "./useScheduleDetails";
+import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
+import { RunDetailHeader } from "../RunDetailHeader/RunDetailHeader";
+import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
+import { formatInTimezone } from "@/lib/timezone-utils";
+import { Skeleton } from "@/components/ui/skeleton";
+import { AgentInputsReadOnly } from "../AgentInputsReadOnly/AgentInputsReadOnly";
 
 interface ScheduleDetailsProps {
   agent: LibraryAgent;
@@ -23,6 +29,11 @@ export function ScheduleDetails({ agent, scheduleId }: ScheduleDetailsProps) {
     agent.graph_id,
     scheduleId,
   );
+  const { data: userTzRes } = useGetV1GetUserTimezone({
+    query: {
+      select: (res) => (res.status === 200 ? res.data.timezone : undefined),
+    },
+  });
 
   if (error) {
     return (
@@ -44,33 +55,18 @@ export function ScheduleDetails({ agent, scheduleId }: ScheduleDetailsProps) {
 
   if (isLoading && !schedule) {
     return (
-      <div className="flex flex-col gap-6">
-        <div className="h-8 w-60 animate-pulse rounded bg-zinc-200" />
-        <div className="h-6 w-40 animate-pulse rounded bg-zinc-200" />
-        <div className="h-64 w-full animate-pulse rounded bg-zinc-100" />
+      <div className="flex-1 space-y-4">
+        <Skeleton className="h-8 w-full" />
+        <Skeleton className="h-12 w-full" />
+        <Skeleton className="h-64 w-full" />
+        <Skeleton className="h-32 w-full" />
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex w-full items-center justify-between">
-        <div className="flex w-full flex-col gap-0">
-          <div className="flex w-full items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Text variant="h3" className="!font-normal">
-                {agent.name}
-              </Text>
-            </div>
-          </div>
-          {schedule && (
-            <Text variant="small" className="mt-1 !text-zinc-600">
-              Next run {moment(schedule.next_run_time).fromNow()} | version{" "}
-              {schedule.graph_version}
-            </Text>
-          )}
-        </div>
-      </div>
+      <RunDetailHeader agent={agent} run={undefined} />
 
       <TabsLine defaultValue="input">
         <TabsLineList>
@@ -79,30 +75,69 @@ export function ScheduleDetails({ agent, scheduleId }: ScheduleDetailsProps) {
         </TabsLineList>
 
         <TabsLineContent value="input">
-          <div className="text-neutral-600">Coming soon</div>
+          <RunDetailCard>
+            <div className="relative">
+              {/*                 {// TODO: re-enable edit inputs modal once the API supports it */}
+              {/* {schedule && Object.keys(schedule.input_data).length > 0 && (
+                <EditInputsModal agent={agent} schedule={schedule} />
+              )} */}
+              <AgentInputsReadOnly
+                agent={agent}
+                inputs={schedule?.input_data}
+              />
+            </div>
+          </RunDetailCard>
         </TabsLineContent>
 
         <TabsLineContent value="schedule">
-          {isLoading || !schedule ? (
-            <div className="text-neutral-500">Loading…</div>
-          ) : (
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium">Name</label>
-                <p className="text-sm text-neutral-700">{schedule.name}</p>
+          <RunDetailCard>
+            {isLoading || !schedule ? (
+              <div className="text-neutral-500">Loading…</div>
+            ) : (
+              <div className="relative flex flex-col gap-8">
+                {
+                  // TODO: re-enable edit schedule modal once the API supports it
+                  /* <EditScheduleModal
+                  graphId={agent.graph_id}
+                  schedule={schedule}
+                /> */
+                }
+                <div className="flex flex-col gap-1.5">
+                  <Text variant="body-medium" className="!text-black">
+                    Name
+                  </Text>
+                  <p className="text-sm text-zinc-600">{schedule.name}</p>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Text variant="body-medium" className="!text-black">
+                    Recurrence
+                  </Text>
+                  <p className="text-sm text-zinc-600">
+                    {humanizeCronExpression(schedule.cron, userTzRes)}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Text variant="body-medium" className="!text-black">
+                    Next run
+                  </Text>
+                  <p className="text-sm text-zinc-600">
+                    {formatInTimezone(
+                      schedule.next_run_time,
+                      userTzRes || "UTC",
+                      {
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        hour12: false,
+                      },
+                    )}
+                  </p>
+                </div>
               </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium">Cron</label>
-                <p className="text-sm text-neutral-700">{schedule.cron}</p>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium">Next run</label>
-                <p className="text-sm text-neutral-700">
-                  {moment(schedule.next_run_time).format("LLL")}
-                </p>
-              </div>
-            </div>
-          )}
+            )}
+          </RunDetailCard>
         </TabsLineContent>
       </TabsLine>
     </div>

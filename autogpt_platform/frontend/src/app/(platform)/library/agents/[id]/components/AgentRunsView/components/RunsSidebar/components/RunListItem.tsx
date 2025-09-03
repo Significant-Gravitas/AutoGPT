@@ -3,7 +3,7 @@
 import React from "react";
 import moment from "moment";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
-import { RunCard } from "./RunCard";
+import { RunSidebarCard } from "./RunSidebarCard";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import {
   CheckCircleIcon,
@@ -62,7 +62,7 @@ export function RunListItem({
   onClick,
 }: RunListItemProps) {
   return (
-    <RunCard
+    <RunSidebarCard
       icon={statusIconMap[run.status]}
       title={title}
       description={moment(run.started_at).fromNow()}

@@ -3,7 +3,7 @@
 import React from "react";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import moment from "moment";
-import { RunCard } from "./RunCard";
+import { RunSidebarCard } from "./RunSidebarCard";
 import { IconWrapper } from "./RunIconWrapper";
 import { ClockClockwiseIcon } from "@phosphor-icons/react";
 
@@ -19,7 +19,7 @@ export function ScheduleListItem({
   onClick,
 }: ScheduleListItemProps) {
   return (
-    <RunCard
+    <RunSidebarCard
       title={schedule.name}
       description={moment(schedule.next_run_time).fromNow()}
       onClick={onClick}
