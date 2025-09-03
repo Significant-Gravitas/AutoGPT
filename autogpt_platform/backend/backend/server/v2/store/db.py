@@ -608,13 +608,15 @@ async def create_store_submission(
             )
 
         # Check if listing already exists for this agent
-        existing_listing = await prisma.models.StoreListing.prisma().find_first(
-            where=prisma.types.StoreListingWhereInput(
-                agentGraphId=agent_id, owningUserId=user_id
+        existing_listing_by_agent = (
+            await prisma.models.StoreListing.prisma().find_first(
+                where=prisma.types.StoreListingWhereInput(
+                    agentGraphId=agent_id, owningUserId=user_id
+                )
             )
         )
 
-        if existing_listing is not None:
+        if existing_listing_by_agent is not None:
             logger.info(
                 f"Listing already exists for agent {agent_id}, creating new version instead"
             )
@@ -624,7 +626,7 @@ async def create_store_submission(
                 user_id=user_id,
                 agent_id=agent_id,
                 agent_version=agent_version,
-                store_listing_id=existing_listing.id,
+                store_listing_id=existing_listing_by_agent.id,
                 name=name,
                 video_url=video_url,
                 image_urls=image_urls,
@@ -633,6 +635,38 @@ async def create_store_submission(
                 categories=categories,
                 changes_summary=changes_summary,
             )
+
+        # Check if slug already exists for this user and generate unique slug if needed
+        base_slug = slug
+        counter = 1
+        while True:
+            existing_listing_by_slug = (
+                await prisma.models.StoreListing.prisma().find_first(
+                    where=prisma.types.StoreListingWhereInput(
+                        owningUserId=user_id, slug=slug
+                    )
+                )
+            )
+
+            if existing_listing_by_slug is None:
+                # Slug is available
+                break
+
+            # Generate a new slug with counter
+            slug = f"{base_slug}-{counter}"
+            counter += 1
+
+            # Prevent infinite loop - limit to 100 attempts
+            if counter > 100:
+                logger.error(
+                    f"Unable to generate unique slug for user {user_id}, base slug {base_slug}"
+                )
+                raise backend.server.v2.store.exceptions.DatabaseError(
+                    "Unable to generate unique slug for store submission"
+                )
+
+        if slug != base_slug:
+            logger.info(f"Slug collision detected, using {slug} instead of {base_slug}")
 
         # If no existing listing, create a new one
         data = prisma.types.StoreListingCreateInput(
