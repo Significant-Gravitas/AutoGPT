@@ -2,9 +2,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { RunVariant } from "../../useAgentRunModal";
 
 interface Props {
-  hasExternalTrigger: boolean;
   defaultRunType: RunVariant;
-  onShowSchedule: () => void;
   onRun: () => void;
   isExecuting?: boolean;
   isSettingUpTrigger?: boolean;
@@ -12,9 +10,7 @@ interface Props {
 }
 
 export function RunActions({
-  hasExternalTrigger,
   defaultRunType,
-  onShowSchedule,
   onRun,
   isExecuting = false,
   isSettingUpTrigger = false,
@@ -22,11 +18,6 @@ export function RunActions({
 }: Props) {
   return (
     <div className="flex justify-end gap-3">
-      {!hasExternalTrigger && (
-        <Button variant="secondary" onClick={onShowSchedule}>
-          Schedule Run
-        </Button>
-      )}
       <Button
         variant="primary"
         onClick={onRun}

@@ -1,7 +1,5 @@
 import { Input } from "@/components/atoms/Input/Input";
 import { MultiToggle } from "@/components/molecules/MultiToggle/MultiToggle";
-import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { AgentInputFields } from "../AgentInputFields/AgentInputFields";
 import { Text } from "@/components/atoms/Text/Text";
 import { Select } from "@/components/atoms/Select/Select";
 import { useScheduleView } from "./useScheduleView";
@@ -9,24 +7,18 @@ import { useCallback, useState } from "react";
 import { validateSchedule } from "./helpers";
 
 interface Props {
-  agent: LibraryAgent;
   scheduleName: string;
   cronExpression: string;
-  inputValues: Record<string, any>;
   onScheduleNameChange: (name: string) => void;
   onCronExpressionChange: (expression: string) => void;
-  onInputChange: (key: string, value: string) => void;
   onValidityChange?: (valid: boolean) => void;
 }
 
 export function ScheduleView({
-  agent,
   scheduleName,
   cronExpression: _cronExpression,
-  inputValues,
   onScheduleNameChange,
   onCronExpressionChange,
-  onInputChange,
   onValidityChange,
 }: Props) {
   const {
@@ -139,12 +131,7 @@ export function ScheduleView({
         error={errors.time}
       />
 
-      <AgentInputFields
-        agent={agent}
-        inputValues={inputValues}
-        onInputChange={onInputChange}
-        variant="schedule"
-      />
+      {/** Agent inputs are rendered in the main modal; none here. */}
     </div>
   );
 }
