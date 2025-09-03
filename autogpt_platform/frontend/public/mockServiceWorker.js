@@ -5,24 +5,23 @@
  * Mock Service Worker.
  * @see https://github.com/mswjs/msw
  * - Please do NOT modify this file.
- * - Please do NOT serve this file on production.
  */
 
-const PACKAGE_VERSION = '2.7.0'
-const INTEGRITY_CHECKSUM = '00729d72e3b82faf54ca8b9621dbb96f'
+const PACKAGE_VERSION = '2.10.4'
+const INTEGRITY_CHECKSUM = 'f5825c521429caf22a4dd13b66e243af'
 const IS_MOCKED_RESPONSE = Symbol('isMockedResponse')
 const activeClientIds = new Set()
 
-self.addEventListener('install', function () {
+addEventListener('install', function () {
   self.skipWaiting()
 })
 
-self.addEventListener('activate', function (event) {
+addEventListener('activate', function (event) {
   event.waitUntil(self.clients.claim())
 })
 
-self.addEventListener('message', async function (event) {
-  const clientId = event.source.id
+addEventListener('message', async function (event) {
+  const clientId = Reflect.get(event.source || {}, 'id')
 
   if (!clientId || !self.clients) {
     return
@@ -94,17 +93,18 @@ self.addEventListener('message', async function (event) {
   }
 })
 
-self.addEventListener('fetch', function (event) {
-  const { request } = event
-
+addEventListener('fetch', function (event) {
   // Bypass navigation requests.
-  if (request.mode === 'navigate') {
+  if (event.request.mode === 'navigate') {
     return
   }
 
   // Opening the DevTools triggers the "only-if-cached" request
   // that cannot be handled by the worker. Bypass such requests.
-  if (request.cache === 'only-if-cached' && request.mode !== 'same-origin') {
+  if (
+    event.request.cache === 'only-if-cached' &&
+    event.request.mode !== 'same-origin'
+  ) {
     return
   }
 
@@ -115,48 +115,62 @@ self.addEventListener('fetch', function (event) {
     return
   }
 
-  // Generate unique request ID.
   const requestId = crypto.randomUUID()
   event.respondWith(handleRequest(event, requestId))
 })
 
+/**
+ * @param {FetchEvent} event
+ * @param {string} requestId
+ */
 async function handleRequest(event, requestId) {
   const client = await resolveMainClient(event)
+  const requestCloneForEvents = event.request.clone()
   const response = await getResponse(event, client, requestId)
 
   // Send back the response clone for the "response:*" life-cycle events.
   // Ensure MSW is active and ready to handle the message, otherwise
   // this message will pend indefinitely.
   if (client && activeClientIds.has(client.id)) {
-    ;(async function () {
-      const responseClone = response.clone()
+    const serializedRequest = await serializeRequest(requestCloneForEvents)
 
-      sendToClient(
-        client,
-        {
-          type: 'RESPONSE',
-          payload: {
-            requestId,
-            isMockedResponse: IS_MOCKED_RESPONSE in response,
+    // Clone the response so both the client and the library could consume it.
+    const responseClone = response.clone()
+
+    sendToClient(
+      client,
+      {
+        type: 'RESPONSE',
+        payload: {
+          isMockedResponse: IS_MOCKED_RESPONSE in response,
+          request: {
+            id: requestId,
+            ...serializedRequest,
+          },
+          response: {
             type: responseClone.type,
             status: responseClone.status,
             statusText: responseClone.statusText,
-            body: responseClone.body,
             headers: Object.fromEntries(responseClone.headers.entries()),
+            body: responseClone.body,
           },
         },
-        [responseClone.body],
-      )
-    })()
+      },
+      responseClone.body ? [serializedRequest.body, responseClone.body] : [],
+    )
   }
 
   return response
 }
 
-// Resolve the main client for the given event.
-// Client that issues a request doesn't necessarily equal the client
-// that registered the worker. It's with the latter the worker should
-// communicate with during the response resolving phase.
+/**
+ * Resolve the main client for the given event.
+ * Client that issues a request doesn't necessarily equal the client
+ * that registered the worker. It's with the latter the worker should
+ * communicate with during the response resolving phase.
+ * @param {FetchEvent} event
+ * @returns {Promise<Client | undefined>}
+ */
 async function resolveMainClient(event) {
   const client = await self.clients.get(event.clientId)
 
@@ -184,12 +198,16 @@ async function resolveMainClient(event) {
     })
 }
 
+/**
+ * @param {FetchEvent} event
+ * @param {Client | undefined} client
+ * @param {string} requestId
+ * @returns {Promise<Response>}
+ */
 async function getResponse(event, client, requestId) {
-  const { request } = event
-
   // Clone the request because it might've been already used
   // (i.e. its body has been read and sent to the client).
-  const requestClone = request.clone()
+  const requestClone = event.request.clone()
 
   function passthrough() {
     // Cast the request headers to a new Headers instance
@@ -230,29 +248,17 @@ async function getResponse(event, client, requestId) {
   }
 
   // Notify the client that a request has been intercepted.
-  const requestBuffer = await request.arrayBuffer()
+  const serializedRequest = await serializeRequest(event.request)
   const clientMessage = await sendToClient(
     client,
     {
       type: 'REQUEST',
       payload: {
         id: requestId,
-        url: request.url,
-        mode: request.mode,
-        method: request.method,
-        headers: Object.fromEntries(request.headers.entries()),
-        cache: request.cache,
-        credentials: request.credentials,
-        destination: request.destination,
-        integrity: request.integrity,
-        redirect: request.redirect,
-        referrer: request.referrer,
-        referrerPolicy: request.referrerPolicy,
-        body: requestBuffer,
-        keepalive: request.keepalive,
+        ...serializedRequest,
       },
     },
-    [requestBuffer],
+    [serializedRequest.body],
   )
 
   switch (clientMessage.type) {
@@ -268,6 +274,12 @@ async function getResponse(event, client, requestId) {
   return passthrough()
 }
 
+/**
+ * @param {Client} client
+ * @param {any} message
+ * @param {Array<Transferable>} transferrables
+ * @returns {Promise<any>}
+ */
 function sendToClient(client, message, transferrables = []) {
   return new Promise((resolve, reject) => {
     const channel = new MessageChannel()
@@ -280,14 +292,18 @@ function sendToClient(client, message, transferrables = []) {
       resolve(event.data)
     }
 
-    client.postMessage(
-      message,
-      [channel.port2].concat(transferrables.filter(Boolean)),
-    )
+    client.postMessage(message, [
+      channel.port2,
+      ...transferrables.filter(Boolean),
+    ])
   })
 }
 
-async function respondWithMock(response) {
+/**
+ * @param {Response} response
+ * @returns {Response}
+ */
+function respondWithMock(response) {
   // Setting response status code to 0 is a no-op.
   // However, when responding with a "Response.error()", the produced Response
   // instance will have status code set to 0. Since it's not possible to create
@@ -304,4 +320,25 @@ async function respondWithMock(response) {
   })
 
   return mockedResponse
+}
+
+/**
+ * @param {Request} request
+ */
+async function serializeRequest(request) {
+  return {
+    url: request.url,
+    mode: request.mode,
+    method: request.method,
+    headers: Object.fromEntries(request.headers.entries()),
+    cache: request.cache,
+    credentials: request.credentials,
+    destination: request.destination,
+    integrity: request.integrity,
+    redirect: request.redirect,
+    referrer: request.referrer,
+    referrerPolicy: request.referrerPolicy,
+    body: await request.arrayBuffer(),
+    keepalive: request.keepalive,
+  }
 }

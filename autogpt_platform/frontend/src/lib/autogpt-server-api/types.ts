@@ -430,6 +430,7 @@ export type LibraryAgent = {
   credentials_input_schema: CredentialsInputSchema;
   new_output: boolean;
   can_access_graph: boolean;
+  is_favorite: boolean;
   is_latest_version: boolean;
 } & (
   | {

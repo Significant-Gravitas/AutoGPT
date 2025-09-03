@@ -64,6 +64,9 @@ class LibraryAgent(pydantic.BaseModel):
     # Indicates if this agent is the latest version
     is_latest_version: bool
 
+    # Whether the agent is marked as favorite by the user
+    is_favorite: bool
+
     @staticmethod
     def from_db(
         agent: prisma.models.LibraryAgent,
@@ -130,6 +133,7 @@ class LibraryAgent(pydantic.BaseModel):
             new_output=new_output,
             can_access_graph=can_access_graph,
             is_latest_version=is_latest_version,
+            is_favorite=agent.isFavorite,
         )
 
 

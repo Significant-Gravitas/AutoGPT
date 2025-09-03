@@ -1,8 +1,13 @@
 import Link from "next/link";
 import Image from "next/image";
+import { Heart } from "@phosphor-icons/react";
+import { useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import BackendAPI from "@/lib/autogpt-server-api";
+import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/use-toast";
 
 interface LibraryAgentCardProps {
   agent: LibraryAgent;
@@ -17,8 +22,40 @@ export default function LibraryAgentCard({
     can_access_graph,
     creator_image_url,
     image_url,
+    is_favorite,
   },
 }: LibraryAgentCardProps) {
+  const [isFavorite, setIsFavorite] = useState(is_favorite);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const { toast } = useToast();
+  const api = new BackendAPI();
+
+  const handleToggleFavorite = async (e: React.MouseEvent) => {
+    e.preventDefault(); // Prevent navigation when clicking the heart
+    e.stopPropagation();
+    
+    if (isUpdating) return;
+    
+    setIsUpdating(true);
+    try {
+      await api.updateLibraryAgent(id, { is_favorite: !isFavorite });
+      setIsFavorite(!isFavorite);
+      toast({
+        title: isFavorite ? "Removed from favorites" : "Added to favorites",
+        description: `${name} has been ${isFavorite ? "removed from" : "added to"} your favorites.`,
+      });
+    } catch (error) {
+      console.error("Failed to update favorite status:", error);
+      toast({
+        title: "Error",
+        description: "Failed to update favorite status. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   return (
     <div
       data-testid="library-agent-card"
@@ -54,6 +91,26 @@ export default function LibraryAgentCard({
             priority
           />
         )}
+        <button
+          onClick={handleToggleFavorite}
+          className={cn(
+            "absolute right-4 top-4 p-2 rounded-full bg-white/90 backdrop-blur-sm transition-all duration-200",
+            "hover:scale-110 hover:bg-white",
+            "focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2",
+            isUpdating && "opacity-50 cursor-not-allowed"
+          )}
+          disabled={isUpdating}
+          aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+        >
+          <Heart 
+            size={20} 
+            weight={isFavorite ? "fill" : "regular"}
+            className={cn(
+              "transition-colors duration-200",
+              isFavorite ? "text-red-500" : "text-gray-600 hover:text-red-500"
+            )}
+          />
+        </button>
         <div className="absolute bottom-4 left-4">
           <Avatar className="h-16 w-16">
             <AvatarImage

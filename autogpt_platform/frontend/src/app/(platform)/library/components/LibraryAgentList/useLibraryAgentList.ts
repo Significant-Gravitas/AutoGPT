@@ -37,12 +37,22 @@ export const useLibraryAgentList = () => {
       return response.agents;
     }) ?? [];
 
+  // Sort agents to put favorites first
+  const sortedAgents = [...allAgents].sort((a, b) => {
+    // First priority: favorites
+    if (a.is_favorite && !b.is_favorite) return -1;
+    if (!a.is_favorite && b.is_favorite) return 1;
+    
+    // If both are favorites or both are not favorites, maintain original order
+    return 0;
+  });
+
   const agentCount = agents?.pages?.[0]
     ? (agents.pages[0].data as LibraryAgentResponse).pagination.total_items
     : 0;
 
   return {
-    allAgents,
+    allAgents: sortedAgents,
     agentLoading,
     hasNextPage,
     agentCount,
