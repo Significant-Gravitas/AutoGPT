@@ -17,7 +17,18 @@ const meta: Meta<typeof Input> = {
   argTypes: {
     type: {
       control: "select",
-      options: ["text", "email", "password", "number", "amount", "tel", "url"],
+      options: [
+        "text",
+        "email",
+        "password",
+        "number",
+        "amount",
+        "tel",
+        "url",
+        "textarea",
+        "date",
+        "datetime-local",
+      ],
       description: "Input type",
     },
     placeholder: {
@@ -50,6 +61,10 @@ const meta: Meta<typeof Input> = {
       control: "text",
       description: "Error message to display below the input",
     },
+    rows: {
+      control: "number",
+      description: "Number of rows for textarea type. Default is 3.",
+    },
   },
   args: {
     placeholder: "Enter text...",
@@ -58,6 +73,7 @@ const meta: Meta<typeof Input> = {
     disabled: false,
     hideLabel: false,
     decimalCount: 4,
+    rows: 3,
   },
 };
 
@@ -93,6 +109,47 @@ export const WithError: Story = {
     type: "email",
     placeholder: "Enter your email",
     error: "Please enter a valid email address",
+  },
+};
+
+export const DateInput: Story = {
+  args: {
+    label: "Date",
+    type: "date",
+    placeholder: "Select a date",
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Native HTML date input integrated in the design system Input. Value format is yyyy-MM-dd.",
+      },
+    },
+  },
+};
+
+export const DateTimeLocalInput: Story = {
+  args: {
+    label: "Date & Time",
+    type: "datetime-local",
+    placeholder: "Select date and time",
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Native datetime-local input. Value is a local time string (e.g. 2025-08-28T14:30).",
+      },
+    },
+  },
+};
+
+export const TextareaInput: Story = {
+  args: {
+    label: "Description",
+    type: "textarea",
+    placeholder: "Enter your description",
+    rows: 4,
   },
 };
 
@@ -176,6 +233,34 @@ function renderInputTypes() {
         placeholder="https://example.com"
         id="website"
       />
+      <div className="flex flex-col gap-4">
+        <p className="font-mono text-sm">
+          If type=&quot;textarea&quot; prop is provided, it renders a multi-line
+          text area with specified rows.
+        </p>
+        <Input
+          label="Description"
+          type="textarea"
+          placeholder="Enter your description"
+          id="description"
+          rows={4}
+        />
+      </div>
+      <div className="flex flex-col gap-4">
+        <p className="font-mono text-sm">Native date input.</p>
+        <Input label="Date" type="date" placeholder="Select a date" id="date" />
+      </div>
+      <div className="flex flex-col gap-4">
+        <p className="font-mono text-sm">
+          Native datetime-local input (local time, no timezone).
+        </p>
+        <Input
+          label="Date & Time"
+          type="datetime-local"
+          placeholder="Select date and time"
+          id="datetime"
+        />
+      </div>
     </div>
   );
 }

@@ -166,7 +166,7 @@ class AIMusicGeneratorBlock(Block):
                     output_format=input_data.output_format,
                     normalization_strategy=input_data.normalization_strategy,
                 )
-                if result and result != "No output received":
+                if result and isinstance(result, str) and result.startswith("http"):
                     yield "result", result
                     return
                 else:

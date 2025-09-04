@@ -5,6 +5,12 @@ from backend.blocks.ai_shortform_video_block import AIShortformVideoCreatorBlock
 from backend.blocks.apollo.organization import SearchOrganizationsBlock
 from backend.blocks.apollo.people import SearchPeopleBlock
 from backend.blocks.apollo.person import GetPersonDetailBlock
+from backend.blocks.enrichlayer.linkedin import (
+    GetLinkedinProfileBlock,
+    GetLinkedinProfilePictureBlock,
+    LinkedinPersonLookupBlock,
+    LinkedinRoleLookupBlock,
+)
 from backend.blocks.flux_kontext import AIImageEditorBlock, FluxKontextModelName
 from backend.blocks.ideogram import IdeogramModelBlock
 from backend.blocks.jina.embeddings import JinaEmbeddingBlock
@@ -30,6 +36,7 @@ from backend.integrations.credentials_store import (
     anthropic_credentials,
     apollo_credentials,
     did_credentials,
+    enrichlayer_credentials,
     groq_credentials,
     ideogram_credentials,
     jina_credentials,
@@ -39,6 +46,7 @@ from backend.integrations.credentials_store import (
     replicate_credentials,
     revid_credentials,
     unreal_credentials,
+    v0_credentials,
 )
 
 # =============== Configure the cost for each LLM Model call =============== #
@@ -47,13 +55,19 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.O3: 4,
     LlmModel.O3_MINI: 2,  # $1.10 / $4.40
     LlmModel.O1: 16,  # $15 / $60
-    LlmModel.O1_PREVIEW: 16,
     LlmModel.O1_MINI: 4,
+    # GPT-5 models
+    LlmModel.GPT5: 2,
+    LlmModel.GPT5_MINI: 1,
+    LlmModel.GPT5_NANO: 1,
+    LlmModel.GPT5_CHAT: 2,
     LlmModel.GPT41: 2,
+    LlmModel.GPT41_MINI: 1,
     LlmModel.GPT4O_MINI: 1,
     LlmModel.GPT4O: 3,
     LlmModel.GPT4_TURBO: 10,
     LlmModel.GPT3_5_TURBO: 1,
+    LlmModel.CLAUDE_4_1_OPUS: 21,
     LlmModel.CLAUDE_4_OPUS: 21,
     LlmModel.CLAUDE_4_SONNET: 5,
     LlmModel.CLAUDE_3_7_SONNET: 5,
@@ -67,7 +81,6 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.AIML_API_LLAMA_3_2_3B: 1,
     LlmModel.LLAMA3_8B: 1,
     LlmModel.LLAMA3_70B: 1,
-    LlmModel.MIXTRAL_8X7B: 1,
     LlmModel.GEMMA2_9B: 1,
     LlmModel.LLAMA3_3_70B: 1,  # $0.59 / $0.79
     LlmModel.LLAMA3_1_8B: 1,
@@ -77,19 +90,17 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.OLLAMA_LLAMA3_405B: 1,
     LlmModel.DEEPSEEK_LLAMA_70B: 1,  # ? / ?
     LlmModel.OLLAMA_DOLPHIN: 1,
+    LlmModel.OPENAI_GPT_OSS_120B: 1,
+    LlmModel.OPENAI_GPT_OSS_20B: 1,
     LlmModel.GEMINI_FLASH_1_5: 1,
     LlmModel.GEMINI_2_5_PRO: 4,
-    LlmModel.GROK_BETA: 5,
     LlmModel.MISTRAL_NEMO: 1,
     LlmModel.COHERE_COMMAND_R_08_2024: 1,
     LlmModel.COHERE_COMMAND_R_PLUS_08_2024: 3,
-    LlmModel.EVA_QWEN_2_5_32B: 1,
     LlmModel.DEEPSEEK_CHAT: 2,
-    LlmModel.PERPLEXITY_LLAMA_3_1_SONAR_LARGE_128K_ONLINE: 1,
     LlmModel.PERPLEXITY_SONAR: 1,
     LlmModel.PERPLEXITY_SONAR_PRO: 5,
     LlmModel.PERPLEXITY_SONAR_DEEP_RESEARCH: 10,
-    LlmModel.QWEN_QWQ_32B_PREVIEW: 2,
     LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B: 1,
     LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B: 1,
     LlmModel.AMAZON_NOVA_LITE_V1: 1,
@@ -103,6 +114,19 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.LLAMA_API_LLAMA4_MAVERICK: 1,
     LlmModel.LLAMA_API_LLAMA3_3_8B: 1,
     LlmModel.LLAMA_API_LLAMA3_3_70B: 1,
+    LlmModel.GROK_4: 9,
+    LlmModel.KIMI_K2: 1,
+    LlmModel.QWEN3_235B_A22B_THINKING: 1,
+    LlmModel.QWEN3_CODER: 9,
+    LlmModel.GEMINI_2_5_FLASH: 1,
+    LlmModel.GEMINI_2_0_FLASH: 1,
+    LlmModel.GEMINI_2_5_FLASH_LITE_PREVIEW: 1,
+    LlmModel.GEMINI_2_0_FLASH_LITE: 1,
+    LlmModel.DEEPSEEK_R1_0528: 1,
+    # v0 by Vercel models
+    LlmModel.V0_1_5_MD: 1,
+    LlmModel.V0_1_5_LG: 2,
+    LlmModel.V0_1_0_MD: 1,
 }
 
 for model in LlmModel:
@@ -192,6 +216,23 @@ LLM_COST = (
         for model, cost in MODEL_COST.items()
         if MODEL_METADATA[model].provider == "llama_api"
     ]
+    # v0 by Vercel Models
+    + [
+        BlockCost(
+            cost_type=BlockCostType.RUN,
+            cost_filter={
+                "model": model,
+                "credentials": {
+                    "id": v0_credentials.id,
+                    "provider": v0_credentials.provider,
+                    "type": v0_credentials.type,
+                },
+            },
+            cost_amount=cost,
+        )
+        for model, cost in MODEL_COST.items()
+        if MODEL_METADATA[model].provider == "v0"
+    ]
     # AI/ML Api Models
     + [
         BlockCost(
@@ -266,7 +307,18 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                     "type": ideogram_credentials.type,
                 }
             },
-        )
+        ),
+        BlockCost(
+            cost_amount=18,
+            cost_filter={
+                "ideogram_model_name": "V_3",
+                "credentials": {
+                    "id": ideogram_credentials.id,
+                    "provider": ideogram_credentials.provider,
+                    "type": ideogram_credentials.type,
+                },
+            },
+        ),
     ],
     AIShortformVideoCreatorBlock: [
         BlockCost(
@@ -360,6 +412,54 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                     "id": unreal_credentials.id,
                     "provider": unreal_credentials.provider,
                     "type": unreal_credentials.type,
+                }
+            },
+        )
+    ],
+    GetLinkedinProfileBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "credentials": {
+                    "id": enrichlayer_credentials.id,
+                    "provider": enrichlayer_credentials.provider,
+                    "type": enrichlayer_credentials.type,
+                }
+            },
+        )
+    ],
+    LinkedinPersonLookupBlock: [
+        BlockCost(
+            cost_amount=2,
+            cost_filter={
+                "credentials": {
+                    "id": enrichlayer_credentials.id,
+                    "provider": enrichlayer_credentials.provider,
+                    "type": enrichlayer_credentials.type,
+                }
+            },
+        )
+    ],
+    LinkedinRoleLookupBlock: [
+        BlockCost(
+            cost_amount=3,
+            cost_filter={
+                "credentials": {
+                    "id": enrichlayer_credentials.id,
+                    "provider": enrichlayer_credentials.provider,
+                    "type": enrichlayer_credentials.type,
+                }
+            },
+        )
+    ],
+    GetLinkedinProfilePictureBlock: [
+        BlockCost(
+            cost_amount=3,
+            cost_filter={
+                "credentials": {
+                    "id": enrichlayer_credentials.id,
+                    "provider": enrichlayer_credentials.provider,
+                    "type": enrichlayer_credentials.type,
                 }
             },
         )

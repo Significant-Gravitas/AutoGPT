@@ -21,7 +21,12 @@ export function DrawerWrap({
   isForceOpen,
 }: Props) {
   const closeBtn = (
-    <Button variant="link" aria-label="Close" onClick={handleClose}>
+    <Button
+      variant="link"
+      aria-label="Close"
+      onClick={handleClose}
+      className="!focus-visible:ring-0 p-0"
+    >
       <X width="1.5rem" />
     </Button>
   );
@@ -56,7 +61,7 @@ export function DrawerWrap({
             )
           ) : null}
         </div>
-        <div className="overflow-auto">{children}</div>
+        <div>{children}</div>
       </Drawer.Content>
     </Drawer.Portal>
   );

@@ -250,7 +250,10 @@ export type GraphExecutionMeta = {
   user_id: UserID;
   graph_id: GraphID;
   graph_version: number;
-  preset_id?: LibraryAgentPresetID;
+  inputs: Record<string, any> | null;
+  credential_inputs: Record<string, CredentialsMetaInput> | null;
+  nodes_input_masks: Record<string, Record<string, any>> | null;
+  preset_id: LibraryAgentPresetID | null;
   status:
     | "QUEUED"
     | "RUNNING"
@@ -260,24 +263,31 @@ export type GraphExecutionMeta = {
     | "INCOMPLETE";
   started_at: Date;
   ended_at: Date;
-  stats?: {
-    error?: string;
+  stats: {
+    error: string | null;
     cost: number;
     duration: number;
     duration_cpu_only: number;
     node_exec_time: number;
     node_exec_time_cpu_only: number;
     node_exec_count: number;
-  };
+    activity_status: string | null;
+    [key: string]: any;
+  } | null;
 };
 
 export type GraphExecutionID = Brand<string, "GraphExecutionID">;
 
 /* Mirror of backend/data/execution.py:GraphExecution */
-export type GraphExecution = GraphExecutionMeta & {
+export type GraphExecution = Omit<GraphExecutionMeta, "inputs"> & {
   inputs: Record<string, any>;
   outputs: Record<string, Array<any>>;
   node_executions?: NodeExecutionResult[];
+};
+
+export type GraphExecutionsResponse = {
+  executions: GraphExecutionMeta[];
+  pagination: Pagination;
 };
 
 /* Mirror of backend/data/graph.py:GraphMeta */
@@ -292,9 +302,17 @@ export type GraphMeta = {
   forked_from_version?: number | null;
   input_schema: GraphIOSchema;
   output_schema: GraphIOSchema;
-  has_external_trigger: boolean;
   credentials_input_schema: CredentialsInputSchema;
-};
+} & (
+  | {
+      has_external_trigger: true;
+      trigger_setup_info: GraphTriggerInfo;
+    }
+  | {
+      has_external_trigger: false;
+      trigger_setup_info: null;
+    }
+);
 
 export type GraphID = Brand<string, "GraphID">;
 
@@ -317,13 +335,21 @@ export type GraphIOSubSchema = Omit<
 export type CredentialsInputSchema = {
   type: "object";
   properties: Record<string, BlockIOCredentialsSubSchema>;
-  required: (keyof CredentialsInputSchema["properties"])[];
+  required?: (keyof CredentialsInputSchema["properties"])[];
+};
+
+/* Mirror of backend/data/graph.py:GraphTriggerInfo */
+export type GraphTriggerInfo = {
+  provider: CredentialsProviderName;
+  config_schema: BlockIORootSchema;
+  credentials_input_name: string | null;
 };
 
 /* Mirror of backend/data/graph.py:Graph */
 export type Graph = GraphMeta & {
-  nodes: Array<Node>;
-  links: Array<Link>;
+  nodes: Node[];
+  links: Link[];
+  sub_graphs: Omit<Graph, "sub_graphs">[]; // Flattened sub-graphs
 };
 
 export type GraphUpdateable = Omit<
@@ -333,20 +359,25 @@ export type GraphUpdateable = Omit<
   | "is_active"
   | "nodes"
   | "links"
+  | "sub_graphs"
   | "input_schema"
   | "output_schema"
   | "credentials_input_schema"
   | "has_external_trigger"
+  | "trigger_setup_info"
 > & {
   version?: number;
   is_active?: boolean;
-  nodes: Array<NodeCreatable>;
-  links: Array<LinkCreatable>;
+  nodes: NodeCreatable[];
+  links: LinkCreatable[];
   input_schema?: GraphIOSchema;
   output_schema?: GraphIOSchema;
 };
 
-export type GraphCreatable = Omit<GraphUpdateable, "id"> & { id?: string };
+export type GraphCreatable = _GraphCreatableInner & {
+  sub_graphs?: _GraphCreatableInner[]; // Flattened sub-graphs
+};
+type _GraphCreatableInner = Omit<GraphUpdateable, "id"> & { id?: string };
 
 /* Mirror of backend/data/execution.py:NodeExecutionResult */
 export type NodeExecutionResult = {
@@ -371,6 +402,15 @@ export type NodeExecutionResult = {
   end_time?: Date;
 };
 
+/* Structured validation error types for graph execution */
+export type GraphValidationErrorResponse = {
+  detail: {
+    type: "validation_error";
+    message: string;
+    node_errors: Record<string, Record<string, string>>;
+  };
+};
+
 /* *** LIBRARY *** */
 
 /* Mirror of backend/server/v2/library/model.py:LibraryAgent */
@@ -378,7 +418,7 @@ export type LibraryAgent = {
   id: LibraryAgentID;
   graph_id: GraphID;
   graph_version: number;
-  image_url?: string;
+  image_url: string | null;
   creator_name: string;
   creator_image_url: string;
   status: AgentStatus;
@@ -386,6 +426,7 @@ export type LibraryAgent = {
   name: string;
   description: string;
   input_schema: GraphIOSchema;
+  output_schema: GraphIOSchema;
   credentials_input_schema: CredentialsInputSchema;
   new_output: boolean;
   can_access_graph: boolean;
@@ -393,21 +434,15 @@ export type LibraryAgent = {
 } & (
   | {
       has_external_trigger: true;
-      trigger_setup_info: LibraryAgentTriggerInfo;
+      trigger_setup_info: GraphTriggerInfo;
     }
   | {
       has_external_trigger: false;
-      trigger_setup_info?: undefined;
+      trigger_setup_info: null;
     }
 );
 
 export type LibraryAgentID = Brand<string, "LibraryAgentID">;
-
-export type LibraryAgentTriggerInfo = {
-  provider: CredentialsProviderName;
-  config_schema: BlockIORootSchema;
-  credentials_input_name?: string;
-};
 
 export enum AgentStatus {
   COMPLETED = "COMPLETED",
@@ -418,12 +453,7 @@ export enum AgentStatus {
 
 export type LibraryAgentResponse = {
   agents: LibraryAgent[];
-  pagination: {
-    current_page: number;
-    page_size: number;
-    total_items: number;
-    total_pages: number;
-  };
+  pagination: Pagination;
 };
 
 export type LibraryAgentPreset = {
@@ -436,18 +466,22 @@ export type LibraryAgentPreset = {
   name: string;
   description: string;
   is_active: boolean;
-  webhook_id?: string;
-};
+} & (
+  | {
+      webhook_id: string;
+      webhook: Webhook;
+    }
+  | {
+      webhook_id?: undefined;
+      webhook?: undefined;
+    }
+);
 
 export type LibraryAgentPresetID = Brand<string, "LibraryAgentPresetID">;
 
 export type LibraryAgentPresetResponse = {
   presets: LibraryAgentPreset[];
-  pagination: {
-    total: number;
-    page: number;
-    size: number;
-  };
+  pagination: Pagination;
 };
 
 export type LibraryAgentPresetCreatable = Omit<
@@ -459,7 +493,7 @@ export type LibraryAgentPresetCreatable = Omit<
 
 export type LibraryAgentPresetCreatableFromGraphExecution = Omit<
   LibraryAgentPresetCreatable,
-  "graph_id" | "graph_version" | "inputs"
+  "graph_id" | "graph_version" | "inputs" | "credentials"
 > & {
   graph_execution_id: GraphExecutionID;
 };
@@ -503,7 +537,7 @@ export type CredentialsDeleteNeedConfirmationResponse = {
 export type CredentialsMetaInput = {
   id: string;
   type: CredentialsType;
-  title?: string;
+  title?: string | null;
   provider: string;
 };
 
@@ -559,7 +593,9 @@ export type NotificationType =
   | "CONTINUOUS_AGENT_ERROR"
   | "DAILY_SUMMARY"
   | "WEEKLY_SUMMARY"
-  | "MONTHLY_SUMMARY";
+  | "MONTHLY_SUMMARY"
+  | "AGENT_APPROVED"
+  | "AGENT_REJECTED";
 
 // Mirror of backend/backend/data/notifications.py:NotificationPreference
 export type NotificationPreferenceDTO = {
@@ -579,9 +615,9 @@ export type Webhook = {
   id: string;
   url: string;
   provider: CredentialsProviderName;
-  credentials_id: string;
+  credentials_id: string; // empty string if not appicable
   webhook_type: string;
-  resource?: string;
+  resource: string; // empty string if not appicable
   events: string[];
   secret: string;
   config: Record<string, any>;
@@ -604,6 +640,7 @@ export enum BlockUIType {
   WEBHOOK_MANUAL = "Webhook (manual)",
   AGENT = "Agent",
   AI = "AI",
+  AYRSHARE = "Ayrshare",
 }
 
 export enum SpecialBlockID {

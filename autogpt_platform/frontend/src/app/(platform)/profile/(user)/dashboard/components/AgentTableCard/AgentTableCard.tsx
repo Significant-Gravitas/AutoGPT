@@ -2,8 +2,9 @@
 
 import Image from "next/image";
 import { IconStarFilled, IconMore } from "@/components/ui/icons";
-import { StoreSubmissionRequest } from "@/app/api/__generated__/models/storeSubmissionRequest";
-import { Status, StatusType } from "@/components/agptui/Status";
+import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
+import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
+import { Status } from "@/components/agptui/Status";
 
 export interface AgentTableCardProps {
   agent_id: string;
@@ -12,12 +13,12 @@ export interface AgentTableCardProps {
   sub_heading: string;
   description: string;
   imageSrc: string[];
-  dateSubmitted: string;
-  status: StatusType;
+  dateSubmitted: Date;
+  status: SubmissionStatus;
   runs: number;
   rating: number;
   id: number;
-  onEditSubmission: (submission: StoreSubmissionRequest) => void;
+  onViewSubmission: (submission: StoreSubmission) => void;
 }
 
 export const AgentTableCard = ({
@@ -31,10 +32,10 @@ export const AgentTableCard = ({
   status,
   runs,
   rating,
-  onEditSubmission,
+  onViewSubmission,
 }: AgentTableCardProps) => {
-  const onEdit = () => {
-    onEditSubmission({
+  const onView = () => {
+    onViewSubmission({
       agent_id,
       agent_version,
       slug: "",
@@ -42,14 +43,17 @@ export const AgentTableCard = ({
       sub_heading,
       description,
       image_urls: imageSrc,
-      categories: [],
+      date_submitted: dateSubmitted,
+      status: status,
+      runs,
+      rating,
     });
   };
 
   return (
     <div className="border-b border-neutral-300 p-4 dark:border-neutral-700">
       <div className="flex gap-4">
-        <div className="relative h-[56px] w-[100px] overflow-hidden rounded-lg bg-[#d9d9d9] dark:bg-neutral-800">
+        <div className="relative aspect-video w-24 shrink-0 overflow-hidden rounded-lg bg-[#d9d9d9] dark:bg-neutral-800">
           <Image
             src={imageSrc?.[0] ?? "/nada.png"}
             alt={agentName}
@@ -66,7 +70,7 @@ export const AgentTableCard = ({
           </p>
         </div>
         <button
-          onClick={onEdit}
+          onClick={onView}
           className="h-fit rounded-full p-1 hover:bg-neutral-100 dark:hover:bg-neutral-700"
         >
           <IconMore className="h-5 w-5 text-neutral-800 dark:text-neutral-200" />
@@ -76,7 +80,7 @@ export const AgentTableCard = ({
       <div className="mt-4 flex flex-wrap gap-4">
         <Status status={status} />
         <div className="text-sm text-neutral-600 dark:text-neutral-400">
-          {dateSubmitted}
+          {dateSubmitted.toLocaleDateString()}
         </div>
         <div className="text-sm text-neutral-600 dark:text-neutral-400">
           {runs.toLocaleString()} runs

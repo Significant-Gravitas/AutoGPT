@@ -2,61 +2,45 @@
 
 import * as React from "react";
 import { AgentTableCard } from "../AgentTableCard/AgentTableCard";
-import { StoreSubmissionRequest } from "@/app/api/__generated__/models/storeSubmissionRequest";
-import { useAgentTable } from "./useAgentTable";
+import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import {
   AgentTableRow,
   AgentTableRowProps,
 } from "../AgentTableRow/AgentTableRow";
+import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 
 export interface AgentTableProps {
   agents: Omit<
     AgentTableRowProps,
     | "setSelectedAgents"
     | "selectedAgents"
-    | "onEditSubmission"
+    | "onViewSubmission"
     | "onDeleteSubmission"
+    | "onEditSubmission"
   >[];
-  onEditSubmission: (submission: StoreSubmissionRequest) => void;
+  onViewSubmission: (submission: StoreSubmission) => void;
   onDeleteSubmission: (submission_id: string) => void;
+  onEditSubmission: (
+    submission: StoreSubmissionEditRequest & {
+      store_listing_version_id: string | undefined;
+      agent_id: string;
+    },
+  ) => void;
 }
 
 export const AgentTable: React.FC<AgentTableProps> = ({
   agents,
-  onEditSubmission,
+  onViewSubmission,
   onDeleteSubmission,
+  onEditSubmission,
 }) => {
-  const { selectedAgents, handleSelectAll, setSelectedAgents } = useAgentTable({
-    agents,
-  });
-
   return (
-    <div className="w-full">
+    <div className="w-full" data-testid="agent-table">
       {/* Table header - Hide on mobile */}
       <div className="hidden flex-col md:flex">
         <div className="border-t border-neutral-300 dark:border-neutral-700" />
         <div className="flex items-center px-4 py-2">
-          <div className="flex items-center">
-            <div className="flex min-w-[120px] items-center">
-              <input
-                type="checkbox"
-                id="selectAllAgents"
-                aria-label="Select all agents"
-                className="mr-4 h-5 w-5 rounded border-2 border-neutral-400 dark:border-neutral-600"
-                checked={
-                  selectedAgents.size === agents.length && agents.length > 0
-                }
-                onChange={handleSelectAll}
-              />
-              <label
-                htmlFor="selectAllAgents"
-                className="text-sm font-medium text-neutral-800 dark:text-neutral-200"
-              >
-                Select all
-              </label>
-            </div>
-          </div>
-          <div className="ml-2 grid w-full grid-cols-[400px,150px,150px,100px,100px,50px] items-center">
+          <div className="grid w-full grid-cols-[minmax(400px,1fr),180px,140px,100px,100px,40px] items-center gap-4">
             <div className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
               Agent info
             </div>
@@ -85,15 +69,14 @@ export const AgentTable: React.FC<AgentTableProps> = ({
             <div key={agent.id} className="md:block">
               <AgentTableRow
                 {...agent}
-                selectedAgents={selectedAgents}
-                setSelectedAgents={setSelectedAgents}
-                onEditSubmission={onEditSubmission}
+                onViewSubmission={onViewSubmission}
                 onDeleteSubmission={onDeleteSubmission}
+                onEditSubmission={onEditSubmission}
               />
               <div className="block md:hidden">
                 <AgentTableCard
                   {...agent}
-                  onEditSubmission={onEditSubmission}
+                  onViewSubmission={onViewSubmission}
                 />
               </div>
             </div>

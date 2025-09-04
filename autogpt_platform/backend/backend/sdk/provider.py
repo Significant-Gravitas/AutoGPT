@@ -2,12 +2,21 @@
 Provider configuration class that holds all provider-related settings.
 """
 
+import uuid
 from typing import Any, Callable, List, Optional, Set, Type
 
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretStr
 
 from backend.data.cost import BlockCost
-from backend.data.model import Credentials, CredentialsField, CredentialsMetaInput
+from backend.data.model import (
+    APIKeyCredentials,
+    Credentials,
+    CredentialsField,
+    CredentialsMetaInput,
+    CredentialsType,
+    OAuth2Credentials,
+    UserPasswordCredentials,
+)
 from backend.integrations.oauth.base import BaseOAuthHandler
 from backend.integrations.webhooks._base import BaseWebhooksManager
 
@@ -17,8 +26,8 @@ class OAuthConfig(BaseModel):
 
     oauth_handler: Type[BaseOAuthHandler]
     scopes: Optional[List[str]] = None
-    client_id_env_var: Optional[str] = None
-    client_secret_env_var: Optional[str] = None
+    client_id_env_var: str
+    client_secret_env_var: str
 
 
 class Provider:
@@ -43,7 +52,7 @@ class Provider:
         webhook_manager: Optional[Type[BaseWebhooksManager]] = None,
         default_credentials: Optional[List[Credentials]] = None,
         base_costs: Optional[List[BlockCost]] = None,
-        supported_auth_types: Optional[Set[str]] = None,
+        supported_auth_types: Optional[Set[CredentialsType]] = None,
         api_client_factory: Optional[Callable] = None,
         error_handler: Optional[Callable[[Exception], str]] = None,
         **kwargs,
@@ -59,6 +68,7 @@ class Provider:
 
         # Store any additional configuration
         self._extra_config = kwargs
+        self.test_credentials_uuid = uuid.uuid4()
 
     def credentials_field(self, **kwargs) -> CredentialsMetaInput:
         """Return a CredentialsField configured for this provider."""
@@ -74,9 +84,7 @@ class Provider:
         json_schema_extra = {
             "credentials_provider": [self.name],
             "credentials_types": (
-                list(self.supported_auth_types)
-                if self.supported_auth_types
-                else ["api_key"]
+                list(self.supported_auth_types) if self.supported_auth_types else []
             ),
         }
 
@@ -96,6 +104,41 @@ class Provider:
             description=description,
             **kwargs,
         )
+
+    def get_test_credentials(self) -> Credentials:
+        """Get test credentials for the provider based on supported auth types."""
+        test_id = str(self.test_credentials_uuid)
+
+        # Return credentials based on the first supported auth type
+        if "user_password" in self.supported_auth_types:
+            return UserPasswordCredentials(
+                id=test_id,
+                provider=self.name,
+                username=SecretStr(f"mock-{self.name}-username"),
+                password=SecretStr(f"mock-{self.name}-password"),
+                title=f"Mock {self.name.title()} credentials",
+            )
+        elif "oauth2" in self.supported_auth_types:
+            return OAuth2Credentials(
+                id=test_id,
+                provider=self.name,
+                username=f"mock-{self.name}-username",
+                access_token=SecretStr(f"mock-{self.name}-access-token"),
+                access_token_expires_at=None,
+                refresh_token=SecretStr(f"mock-{self.name}-refresh-token"),
+                refresh_token_expires_at=None,
+                scopes=[f"mock-{self.name}-scope"],
+                title=f"Mock {self.name.title()} OAuth credentials",
+            )
+        else:
+            # Default to API key credentials
+            return APIKeyCredentials(
+                id=test_id,
+                provider=self.name,
+                api_key=SecretStr(f"mock-{self.name}-api-key"),
+                title=f"Mock {self.name.title()} API key",
+                expires_at=None,
+            )
 
     def get_api(self, credentials: Credentials) -> Any:
         """Get API client instance for the given credentials."""

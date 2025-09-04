@@ -1,13 +1,12 @@
 from pathlib import Path
 
-from prisma.models import User
-
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.block import BlockInstallationBlock
 from backend.blocks.http import SendWebRequestBlock
 from backend.blocks.llm import AITextGeneratorBlock
 from backend.blocks.text import ExtractTextInformationBlock, FillTextTemplateBlock
 from backend.data.graph import Graph, Link, Node, create_graph
+from backend.data.model import User
 from backend.data.user import get_or_create_user
 from backend.util.test import SpinTestServer, wait_execution
 
@@ -252,14 +251,14 @@ async def block_autogen_agent():
         test_user = await create_test_user()
         test_graph = await create_graph(create_test_graph(), user_id=test_user.id)
         input_data = {"input": "Write me a block that writes a string into a file."}
-        response = await server.agent_server.test_execute_graph(
+        graph_exec = await server.agent_server.test_execute_graph(
             graph_id=test_graph.id,
             user_id=test_user.id,
             node_input=input_data,
         )
-        print(response)
+        print(graph_exec)
         result = await wait_execution(
-            graph_exec_id=response.graph_exec_id,
+            graph_exec_id=graph_exec.id,
             timeout=1200,
             user_id=test_user.id,
         )

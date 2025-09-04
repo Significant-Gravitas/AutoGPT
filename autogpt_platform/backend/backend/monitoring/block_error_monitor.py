@@ -8,10 +8,11 @@ from pydantic import BaseModel
 
 from backend.data.block import get_block
 from backend.data.execution import ExecutionStatus, NodeExecutionResult
-from backend.executor import utils as execution_utils
-from backend.notifications.notifications import NotificationManagerClient
+from backend.util.clients import (
+    get_database_manager_client,
+    get_notification_manager_client,
+)
 from backend.util.metrics import sentry_capture_error
-from backend.util.service import get_service_client
 from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,7 @@ class BlockErrorMonitor:
 
     def __init__(self, include_top_blocks: int | None = None):
         self.config = config
-        self.notification_client = get_service_client(NotificationManagerClient)
+        self.notification_client = get_notification_manager_client()
         self.include_top_blocks = (
             include_top_blocks
             if include_top_blocks is not None
@@ -107,7 +108,7 @@ class BlockErrorMonitor:
     ) -> dict[str, BlockStatsWithSamples]:
         """Get block execution stats using efficient SQL aggregation."""
 
-        result = execution_utils.get_db_client().get_block_error_stats(
+        result = get_database_manager_client().get_block_error_stats(
             start_time, end_time
         )
 
@@ -197,7 +198,7 @@ class BlockErrorMonitor:
     ) -> list[str]:
         """Get error samples for a specific block - just a few recent ones."""
         # Only fetch a small number of recent failed executions for this specific block
-        executions = execution_utils.get_db_client().get_node_executions(
+        executions = get_database_manager_client().get_node_executions(
             block_ids=[block_id],
             statuses=[ExecutionStatus.FAILED],
             created_time_gte=start_time,

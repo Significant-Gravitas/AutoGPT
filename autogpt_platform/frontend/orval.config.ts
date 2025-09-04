@@ -27,8 +27,15 @@ export default defineConfig({
           usePrefetch: true,
           // Will add more as their use cases arise
         },
+        useDates: true,
         operations: {
           "getV2List library agents": {
+            query: {
+              useInfinite: true,
+              useInfiniteQueryParam: "page",
+            },
+          },
+          "getV1List graph executions": {
             query: {
               useInfinite: true,
               useInfiniteQueryParam: "page",
@@ -38,7 +45,8 @@ export default defineConfig({
       },
     },
     hooks: {
-      afterAllFilesWrite: "prettier --write",
+      afterAllFilesWrite:
+        "prettier --ignore-path= --write ./src/app/api/__generated__",
     },
   },
   // autogpt_zod_schema: {

@@ -68,7 +68,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The default timeout in seconds, for Pyro client connections.",
     )
     pyro_client_comm_retry: int = Field(
-        default=3,
+        default=5,
         description="The default number of retries for Pyro client connections.",
     )
     rpc_client_call_timeout: int = Field(
@@ -94,6 +94,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     refund_credit_tolerance_threshold: int = Field(
         default=500,
         description="Maximum number of credits above the balance to be auto-approved.",
+    )
+    low_balance_threshold: int = Field(
+        default=500,
+        description="Credit threshold for low balance notifications (100 = $1, default 500 = $5)",
     )
     refund_notification_email: str = Field(
         default="refund@agpt.co",
@@ -250,6 +254,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="local-alerts",
         description="The Discord channel for the platform",
     )
+    product_alert_discord_channel: str = Field(
+        default="product-alerts",
+        description="The Discord channel for product alerts (low balance, zero balance, etc.)",
+    )
 
     clamav_service_host: str = Field(
         default="localhost",
@@ -295,6 +303,32 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum file size in MB for file uploads (1-1024 MB)",
     )
 
+    # AutoMod configuration
+    automod_enabled: bool = Field(
+        default=False,
+        description="Whether AutoMod content moderation is enabled",
+    )
+    automod_api_url: str = Field(
+        default="",
+        description="AutoMod API base URL - Make sure it ends in /api",
+    )
+    automod_timeout: int = Field(
+        default=30,
+        description="Timeout in seconds for AutoMod API requests",
+    )
+    automod_retry_attempts: int = Field(
+        default=3,
+        description="Number of retry attempts for AutoMod API requests",
+    )
+    automod_retry_delay: float = Field(
+        default=1.0,
+        description="Delay between retries for AutoMod API requests in seconds",
+    )
+    automod_fail_open: bool = Field(
+        default=False,
+        description="If True, allow execution to continue if AutoMod fails",
+    )
+
     @field_validator("platform_base_url", "frontend_base_url")
     @classmethod
     def validate_platform_base_url(cls, v: str, info: ValidationInfo) -> str:
@@ -334,7 +368,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum message size limit for communication with the message bus",
     )
 
-    backend_cors_allow_origins: List[str] = Field(default_factory=list)
+    backend_cors_allow_origins: List[str] = Field(default=["http://localhost:3000"])
 
     @field_validator("backend_cors_allow_origins")
     @classmethod
@@ -439,6 +473,10 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     twitter_client_secret: str = Field(
         default="", description="Twitter/X OAuth client secret"
     )
+    discord_client_id: str = Field(default="", description="Discord OAuth client ID")
+    discord_client_secret: str = Field(
+        default="", description="Discord OAuth client secret"
+    )
 
     openai_api_key: str = Field(default="", description="OpenAI API key")
     aiml_api_key: str = Field(default="", description="'AI/ML API' key")
@@ -446,6 +484,7 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     groq_api_key: str = Field(default="", description="Groq API key")
     open_router_api_key: str = Field(default="", description="Open Router API Key")
     llama_api_key: str = Field(default="", description="Llama API Key")
+    v0_api_key: str = Field(default="", description="v0 by Vercel API key")
 
     reddit_client_id: str = Field(default="", description="Reddit client ID")
     reddit_client_secret: str = Field(default="", description="Reddit client secret")
@@ -495,9 +534,20 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     apollo_api_key: str = Field(default="", description="Apollo API Key")
     smartlead_api_key: str = Field(default="", description="SmartLead API Key")
     zerobounce_api_key: str = Field(default="", description="ZeroBounce API Key")
+    enrichlayer_api_key: str = Field(default="", description="Enrichlayer API Key")
 
+    # AutoMod API credentials
+    automod_api_key: str = Field(default="", description="AutoMod API key")
+
+    # LaunchDarkly feature flags
+    launch_darkly_sdk_key: str = Field(
+        default="",
+        description="The LaunchDarkly SDK key for feature flag management",
+    )
+
+    ayrshare_api_key: str = Field(default="", description="Ayrshare API Key")
+    ayrshare_jwt_key: str = Field(default="", description="Ayrshare private Key")
     # Add more secret fields as needed
-
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

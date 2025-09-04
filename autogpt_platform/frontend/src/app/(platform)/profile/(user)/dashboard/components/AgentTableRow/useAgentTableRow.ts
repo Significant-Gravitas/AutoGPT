@@ -1,36 +1,52 @@
-import { StoreSubmissionRequest } from "@/app/api/__generated__/models/storeSubmissionRequest";
+import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
+import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
+import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 
 interface useAgentTableRowProps {
   id: number;
-  onEditSubmission: (submission: StoreSubmissionRequest) => void;
+  onViewSubmission: (submission: StoreSubmission) => void;
   onDeleteSubmission: (submission_id: string) => void;
+  onEditSubmission: (
+    submission: StoreSubmissionEditRequest & {
+      store_listing_version_id: string | undefined;
+      agent_id: string;
+    },
+  ) => void;
   agent_id: string;
   agent_version: number;
   agentName: string;
   sub_heading: string;
   description: string;
   imageSrc: string[];
-  selectedAgents: Set<string>;
-  setSelectedAgents: React.Dispatch<React.SetStateAction<Set<string>>>;
+  dateSubmitted: Date;
+  status: SubmissionStatus;
+  runs: number;
+  rating: number;
+  video_url?: string;
+  categories?: string[];
+  store_listing_version_id?: string;
 }
 
 export const useAgentTableRow = ({
-  id,
-  onEditSubmission,
+  onViewSubmission,
   onDeleteSubmission,
+  onEditSubmission,
   agent_id,
   agent_version,
   agentName,
   sub_heading,
   description,
   imageSrc,
-  selectedAgents,
-  setSelectedAgents,
+  dateSubmitted,
+  status,
+  runs,
+  rating,
+  video_url,
+  categories,
+  store_listing_version_id,
 }: useAgentTableRowProps) => {
-  const checkboxId = `agent-${id}-checkbox`;
-
-  const handleEdit = () => {
-    onEditSubmission({
+  const handleView = () => {
+    onViewSubmission({
       agent_id,
       agent_version,
       slug: "",
@@ -38,22 +54,33 @@ export const useAgentTableRow = ({
       sub_heading,
       description,
       image_urls: imageSrc,
-      categories: [],
-    } satisfies StoreSubmissionRequest);
+      date_submitted: dateSubmitted,
+      status: status,
+      runs,
+      rating,
+      video_url,
+      categories,
+      store_listing_version_id,
+    } satisfies StoreSubmission);
+  };
+
+  const handleEdit = () => {
+    onEditSubmission({
+      name: agentName,
+      sub_heading,
+      description,
+      image_urls: imageSrc,
+      video_url,
+      categories,
+      changes_summary: "Update Submission",
+      store_listing_version_id,
+      agent_id,
+    });
   };
 
   const handleDelete = () => {
     onDeleteSubmission(agent_id);
   };
 
-  const handleCheckboxChange = () => {
-    if (selectedAgents.has(agent_id)) {
-      selectedAgents.delete(agent_id);
-    } else {
-      selectedAgents.add(agent_id);
-    }
-    setSelectedAgents(new Set(selectedAgents));
-  };
-
-  return { checkboxId, handleEdit, handleDelete, handleCheckboxChange };
+  return { handleView, handleDelete, handleEdit };
 };

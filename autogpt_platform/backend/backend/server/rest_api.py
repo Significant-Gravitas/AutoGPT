@@ -3,18 +3,13 @@ import logging
 from enum import Enum
 from typing import Any, Optional
 
-import autogpt_libs.auth.models
 import fastapi
 import fastapi.responses
 import pydantic
 import starlette.middleware.cors
 import uvicorn
-from autogpt_libs.feature_flag.client import (
-    initialize_launchdarkly,
-    shutdown_launchdarkly,
-)
-from autogpt_libs.logging.utils import generate_uvicorn_config
-from autogpt_libs.utils.cache import thread_cached
+from autogpt_libs.auth import add_auth_responses_to_openapi
+from autogpt_libs.auth import verify_settings as verify_auth_settings
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 
@@ -26,6 +21,8 @@ import backend.server.routers.postmark.postmark
 import backend.server.routers.v1
 import backend.server.v2.admin.credit_admin_routes
 import backend.server.v2.admin.store_admin_routes
+import backend.server.v2.builder
+import backend.server.v2.builder.routes
 import backend.server.v2.library.db
 import backend.server.v2.library.model
 import backend.server.v2.library.routes
@@ -41,6 +38,9 @@ from backend.integrations.providers import ProviderName
 from backend.server.external.api import external_app
 from backend.server.middleware.security import SecurityHeadersMiddleware
 from backend.util import json
+from backend.util.cloud_storage import shutdown_cloud_storage_handler
+from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
+from backend.util.service import UnhealthyServiceError
 
 settings = backend.util.settings.Settings()
 logger = logging.getLogger(__name__)
@@ -62,17 +62,28 @@ def launch_darkly_context():
 
 @contextlib.asynccontextmanager
 async def lifespan_context(app: fastapi.FastAPI):
-    await backend.data.db.connect()
-    await backend.data.block.initialize_blocks()
+    verify_auth_settings()
 
-    # SDK auto-registration is now handled by AutoRegistry.patch_integrations()
-    # which is called when the SDK module is imported
+    await backend.data.db.connect()
+
+    # Ensure SDK auto-registration is patched before initializing blocks
+    from backend.sdk.registry import AutoRegistry
+
+    AutoRegistry.patch_integrations()
+
+    await backend.data.block.initialize_blocks()
 
     await backend.data.user.migrate_and_encrypt_user_integrations()
     await backend.data.graph.fix_llm_provider_credentials()
     await backend.data.graph.migrate_llm_models(LlmModel.GPT4O)
     with launch_darkly_context():
         yield
+
+    try:
+        await shutdown_cloud_storage_handler()
+    except Exception as e:
+        logger.warning(f"Error shutting down cloud storage handler: {e}")
+
     await backend.data.db.disconnect()
 
 
@@ -122,6 +133,9 @@ app = fastapi.FastAPI(
 )
 
 app.add_middleware(SecurityHeadersMiddleware)
+
+# Add 401 responses to authenticated endpoints in OpenAPI spec
+add_auth_responses_to_openapi(app)
 
 
 def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
@@ -190,6 +204,9 @@ app.include_router(
     backend.server.v2.store.routes.router, tags=["v2"], prefix="/api/store"
 )
 app.include_router(
+    backend.server.v2.builder.routes.router, tags=["v2"], prefix="/api/builder"
+)
+app.include_router(
     backend.server.v2.admin.store_admin_routes.router,
     tags=["v2", "admin"],
     prefix="/api/store",
@@ -220,19 +237,10 @@ app.include_router(
 app.mount("/external-api", external_app)
 
 
-@thread_cached
-def get_db_async_client():
-    from backend.executor import DatabaseManagerAsyncClient
-
-    return backend.util.service.get_service_client(
-        DatabaseManagerAsyncClient,
-        health_check=False,
-    )
-
-
 @app.get(path="/health", tags=["health"], dependencies=[])
 async def health():
-    await get_db_async_client().health_check_async()
+    if not backend.data.db.is_connected():
+        raise UnhealthyServiceError("Database is not connected")
     return {"status": "healthy"}
 
 
@@ -249,7 +257,7 @@ class AgentServer(backend.util.service.AppProcess):
             server_app,
             host=backend.util.settings.Config().agent_api_host,
             port=backend.util.settings.Config().agent_api_port,
-            log_config=generate_uvicorn_config(),
+            log_config=None,
         )
 
     def cleanup(self):
@@ -355,6 +363,7 @@ class AgentServer(backend.util.service.AppProcess):
             preset_id=preset_id,
             user_id=user_id,
             inputs=inputs or {},
+            credential_inputs={},
         )
 
     @staticmethod
@@ -368,10 +377,10 @@ class AgentServer(backend.util.service.AppProcess):
     @staticmethod
     async def test_review_store_listing(
         request: backend.server.v2.store.model.ReviewSubmissionRequest,
-        user: autogpt_libs.auth.models.User,
+        user_id: str,
     ):
         return await backend.server.v2.admin.store_admin_routes.review_submission(
-            request.store_listing_version_id, request, user
+            request.store_listing_version_id, request, user_id
         )
 
     @staticmethod

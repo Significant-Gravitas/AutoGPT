@@ -1,12 +1,18 @@
 import asyncio
 import base64
+from abc import ABC
+from email import encoders
+from email.mime.base import MIMEBase
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.policy import SMTP
 from email.utils import getaddresses, parseaddr
 from pathlib import Path
-from typing import List
+from typing import List, Literal, Optional
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
@@ -22,6 +28,107 @@ from ._auth import (
     GoogleCredentialsInput,
 )
 
+settings = Settings()
+
+# No-wrap policy for plain text emails to prevent 78-char hard-wrap
+NO_WRAP_POLICY = SMTP.clone(max_line_length=0)
+
+
+def serialize_email_recipients(recipients: list[str]) -> str:
+    """Serialize recipients list to comma-separated string."""
+    return ", ".join(recipients)
+
+
+def _make_mime_text(
+    body: str,
+    content_type: Optional[Literal["auto", "plain", "html"]] = None,
+) -> MIMEText:
+    """Create a MIMEText object with proper content type and no hard-wrap for plain text.
+
+    This function addresses the common Gmail issue where plain text emails are
+    hard-wrapped at 78 characters, creating awkward narrow columns in modern
+    email clients. It also ensures HTML emails are properly identified and sent
+    with the correct MIME type.
+
+    Args:
+        body: The email body content (plain text or HTML)
+        content_type: The content type - "auto" (default), "plain", or "html"
+                     - "auto" or None: Auto-detects based on presence of HTML tags
+                     - "plain": Forces plain text format without line wrapping
+                     - "html": Forces HTML format with standard wrapping
+
+    Returns:
+        MIMEText object configured with:
+        - Appropriate content subtype (plain or html)
+        - UTF-8 charset for proper Unicode support
+        - No-wrap policy for plain text (max_line_length=0)
+        - Standard wrapping for HTML content
+
+    Examples:
+        >>> # Plain text email without wrapping
+        >>> mime = _make_mime_text("Long paragraph...", "plain")
+        >>> # HTML email with auto-detection
+        >>> mime = _make_mime_text("<p>Hello</p>", "auto")
+    """
+    # Auto-detect content type if not specified or "auto"
+    if content_type is None or content_type == "auto":
+        # Simple heuristic: check for HTML tags in first 500 chars
+        looks_html = "<" in body[:500] and ">" in body[:500]
+        actual_type = "html" if looks_html else "plain"
+    else:
+        actual_type = content_type
+
+    # Create MIMEText with appropriate settings
+    if actual_type == "html":
+        # HTML content - normal wrapping is OK
+        return MIMEText(body, _subtype="html", _charset="utf-8")
+    else:
+        # Plain text - use no-wrap policy to prevent 78-char hard-wrap
+        return MIMEText(body, _subtype="plain", _charset="utf-8", policy=NO_WRAP_POLICY)
+
+
+async def create_mime_message(
+    input_data,
+    graph_exec_id: str,
+    user_id: str,
+) -> str:
+    """Create a MIME message with attachments and return base64-encoded raw message."""
+
+    message = MIMEMultipart()
+    message["to"] = serialize_email_recipients(input_data.to)
+    message["subject"] = input_data.subject
+
+    if input_data.cc:
+        message["cc"] = ", ".join(input_data.cc)
+    if input_data.bcc:
+        message["bcc"] = ", ".join(input_data.bcc)
+
+    # Use the new helper function with content_type if available
+    content_type = getattr(input_data, "content_type", None)
+    message.attach(_make_mime_text(input_data.body, content_type))
+
+    # Handle attachments if any
+    if input_data.attachments:
+        for attach in input_data.attachments:
+            local_path = await store_media_file(
+                user_id=user_id,
+                graph_exec_id=graph_exec_id,
+                file=attach,
+                return_content=False,
+            )
+            abs_path = get_exec_file_path(graph_exec_id, local_path)
+            part = MIMEBase("application", "octet-stream")
+            with open(abs_path, "rb") as f:
+                part.set_payload(f.read())
+            encoders.encode_base64(part)
+            part.add_header(
+                "Content-Disposition",
+                f"attachment; filename={Path(abs_path).name}",
+            )
+            message.attach(part)
+
+    return base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
+
 
 class Attachment(BaseModel):
     filename: str
@@ -32,11 +139,16 @@ class Attachment(BaseModel):
 
 class Email(BaseModel):
     threadId: str
+    labelIds: list[str]
     id: str
     subject: str
     snippet: str
     from_: str
-    to: str
+    to: list[str]  # List of recipient email addresses
+    cc: list[str] = Field(default_factory=list)  # CC recipients
+    bcc: list[str] = Field(
+        default_factory=list
+    )  # BCC recipients (rarely available in received emails)
     date: str
     body: str = ""  # Default to an empty string
     sizeEstimate: int
@@ -49,7 +161,165 @@ class Thread(BaseModel):
     historyId: str
 
 
-class GmailReadBlock(Block):
+class GmailSendResult(BaseModel):
+    id: str
+    status: str
+
+
+class GmailDraftResult(BaseModel):
+    id: str
+    message_id: str
+    status: str
+
+
+class GmailLabelResult(BaseModel):
+    label_id: str
+    status: str
+
+
+class Profile(BaseModel):
+    emailAddress: str
+    messagesTotal: int
+    threadsTotal: int
+    historyId: str
+
+
+class GmailBase(Block, ABC):
+    """Base class for Gmail blocks with common functionality."""
+
+    def _build_service(self, credentials: GoogleCredentials, **kwargs):
+        creds = Credentials(
+            token=(
+                credentials.access_token.get_secret_value()
+                if credentials.access_token
+                else None
+            ),
+            refresh_token=(
+                credentials.refresh_token.get_secret_value()
+                if credentials.refresh_token
+                else None
+            ),
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=settings.secrets.google_client_id,
+            client_secret=settings.secrets.google_client_secret,
+            scopes=credentials.scopes,
+        )
+        return build("gmail", "v1", credentials=creds)
+
+    async def _get_email_body(self, msg, service):
+        """Extract email body content with support for multipart messages and HTML conversion."""
+        text = await self._walk_for_body(msg["payload"], msg["id"], service)
+        return text or "This email does not contain a readable body."
+
+    async def _walk_for_body(self, part, msg_id, service, depth=0):
+        """Recursively walk through email parts to find readable body content."""
+        # Prevent infinite recursion by limiting depth
+        if depth > 10:
+            return None
+
+        mime_type = part.get("mimeType", "")
+        body = part.get("body", {})
+
+        # Handle text/plain content
+        if mime_type == "text/plain" and body.get("data"):
+            return self._decode_base64(body["data"])
+
+        # Handle text/html content (convert to plain text)
+        if mime_type == "text/html" and body.get("data"):
+            html_content = self._decode_base64(body["data"])
+            if html_content:
+                try:
+                    import html2text
+
+                    h = html2text.HTML2Text()
+                    h.ignore_links = False
+                    h.ignore_images = True
+                    return h.handle(html_content)
+                except ImportError:
+                    # Fallback: return raw HTML if html2text is not available
+                    return html_content
+
+        # Handle content stored as attachment
+        if body.get("attachmentId"):
+            attachment_data = await self._download_attachment_body(
+                body["attachmentId"], msg_id, service
+            )
+            if attachment_data:
+                return self._decode_base64(attachment_data)
+
+        # Recursively search in parts
+        for sub_part in part.get("parts", []):
+            text = await self._walk_for_body(sub_part, msg_id, service, depth + 1)
+            if text:
+                return text
+
+        return None
+
+    def _decode_base64(self, data):
+        """Safely decode base64 URL-safe data with proper padding."""
+        if not data:
+            return None
+        try:
+            # Add padding if necessary
+            missing_padding = len(data) % 4
+            if missing_padding:
+                data += "=" * (4 - missing_padding)
+            return base64.urlsafe_b64decode(data).decode("utf-8")
+        except Exception:
+            return None
+
+    async def _download_attachment_body(self, attachment_id, msg_id, service):
+        """Download attachment content when email body is stored as attachment."""
+        try:
+            attachment = await asyncio.to_thread(
+                lambda: service.users()
+                .messages()
+                .attachments()
+                .get(userId="me", messageId=msg_id, id=attachment_id)
+                .execute()
+            )
+            return attachment.get("data")
+        except Exception:
+            return None
+
+    async def _get_attachments(self, service, message):
+        attachments = []
+        if "parts" in message["payload"]:
+            for part in message["payload"]["parts"]:
+                if part.get("filename"):
+                    attachment = Attachment(
+                        filename=part["filename"],
+                        content_type=part["mimeType"],
+                        size=int(part["body"].get("size", 0)),
+                        attachment_id=part["body"]["attachmentId"],
+                    )
+                    attachments.append(attachment)
+        return attachments
+
+    async def download_attachment(self, service, message_id: str, attachment_id: str):
+        attachment = await asyncio.to_thread(
+            lambda: service.users()
+            .messages()
+            .attachments()
+            .get(userId="me", messageId=message_id, id=attachment_id)
+            .execute()
+        )
+        file_data = base64.urlsafe_b64decode(attachment["data"].encode("UTF-8"))
+        return file_data
+
+    async def _get_label_id(self, service, label_name: str) -> str | None:
+        """Get label ID by name from Gmail."""
+        results = await asyncio.to_thread(
+            lambda: service.users().labels().list(userId="me").execute()
+        )
+        labels = results.get("labels", [])
+        for label in labels:
+            if label["name"] == label_name:
+                return label["id"]
+        return None
+
+
+class GmailReadBlock(GmailBase):
     class Input(BlockSchema):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/gmail.readonly"]
@@ -93,11 +363,14 @@ class GmailReadBlock(Block):
                     "email",
                     {
                         "threadId": "t1",
+                        "labelIds": ["INBOX"],
                         "id": "1",
                         "subject": "Test Email",
                         "snippet": "This is a test email",
                         "from_": "test@example.com",
-                        "to": "recipient@example.com",
+                        "to": ["recipient@example.com"],
+                        "cc": [],
+                        "bcc": [],
                         "date": "2024-01-01",
                         "body": "This is a test email",
                         "sizeEstimate": 100,
@@ -109,11 +382,14 @@ class GmailReadBlock(Block):
                     [
                         {
                             "threadId": "t1",
+                            "labelIds": ["INBOX"],
                             "id": "1",
                             "subject": "Test Email",
                             "snippet": "This is a test email",
                             "from_": "test@example.com",
-                            "to": "recipient@example.com",
+                            "to": ["recipient@example.com"],
+                            "cc": [],
+                            "bcc": [],
                             "date": "2024-01-01",
                             "body": "This is a test email",
                             "sizeEstimate": 100,
@@ -126,11 +402,14 @@ class GmailReadBlock(Block):
                 "_read_emails": lambda *args, **kwargs: [
                     {
                         "threadId": "t1",
+                        "labelIds": ["INBOX"],
                         "id": "1",
                         "subject": "Test Email",
                         "snippet": "This is a test email",
                         "from_": "test@example.com",
-                        "to": "recipient@example.com",
+                        "to": ["recipient@example.com"],
+                        "cc": [],
+                        "bcc": [],
                         "date": "2024-01-01",
                         "body": "This is a test email",
                         "sizeEstimate": 100,
@@ -144,9 +423,8 @@ class GmailReadBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        service = GmailReadBlock._build_service(credentials, **kwargs)
-        messages = await asyncio.to_thread(
-            self._read_emails,
+        service = self._build_service(credentials, **kwargs)
+        messages = await self._read_emails(
             service,
             input_data.query,
             input_data.max_results,
@@ -156,27 +434,7 @@ class GmailReadBlock(Block):
             yield "email", email
         yield "emails", messages
 
-    @staticmethod
-    def _build_service(credentials: GoogleCredentials, **kwargs):
-        creds = Credentials(
-            token=(
-                credentials.access_token.get_secret_value()
-                if credentials.access_token
-                else None
-            ),
-            refresh_token=(
-                credentials.refresh_token.get_secret_value()
-                if credentials.refresh_token
-                else None
-            ),
-            token_uri="https://oauth2.googleapis.com/token",
-            client_id=Settings().secrets.google_client_id,
-            client_secret=Settings().secrets.google_client_secret,
-            scopes=credentials.scopes,
-        )
-        return build("gmail", "v1", credentials=creds)
-
-    def _read_emails(
+    async def _read_emails(
         self,
         service,
         query: str | None,
@@ -188,7 +446,10 @@ class GmailReadBlock(Block):
         if query and "https://www.googleapis.com/auth/gmail.metadata" not in scopes:
             list_kwargs["q"] = query
 
-        results = service.users().messages().list(**list_kwargs).execute()
+        results = await asyncio.to_thread(
+            lambda: service.users().messages().list(**list_kwargs).execute()
+        )
+
         messages = results.get("messages", [])
 
         email_data = []
@@ -198,8 +459,8 @@ class GmailReadBlock(Block):
                 if "https://www.googleapis.com/auth/gmail.metadata" in scopes
                 else "full"
             )
-            msg = (
-                service.users()
+            msg = await asyncio.to_thread(
+                lambda: service.users()
                 .messages()
                 .get(userId="me", id=message["id"], format=format_type)
                 .execute()
@@ -210,144 +471,77 @@ class GmailReadBlock(Block):
                 for header in msg["payload"]["headers"]
             }
 
-            attachments = self._get_attachments(service, msg)
+            attachments = await self._get_attachments(service, msg)
+
+            # Parse all recipients
+            to_recipients = [
+                addr.strip() for _, addr in getaddresses([headers.get("to", "")])
+            ]
+            cc_recipients = [
+                addr.strip() for _, addr in getaddresses([headers.get("cc", "")])
+            ]
+            bcc_recipients = [
+                addr.strip() for _, addr in getaddresses([headers.get("bcc", "")])
+            ]
 
             email = Email(
-                threadId=msg["threadId"],
+                threadId=msg.get("threadId", None),
+                labelIds=msg.get("labelIds", []),
                 id=msg["id"],
                 subject=headers.get("subject", "No Subject"),
-                snippet=msg["snippet"],
+                snippet=msg.get("snippet", ""),
                 from_=parseaddr(headers.get("from", ""))[1],
-                to=parseaddr(headers.get("to", ""))[1],
+                to=to_recipients if to_recipients else [],
+                cc=cc_recipients,
+                bcc=bcc_recipients,
                 date=headers.get("date", ""),
-                body=self._get_email_body(msg, service),
-                sizeEstimate=msg["sizeEstimate"],
+                body=await self._get_email_body(msg, service),
+                sizeEstimate=msg.get("sizeEstimate", 0),
                 attachments=attachments,
             )
             email_data.append(email)
 
         return email_data
 
-    def _get_email_body(self, msg, service):
-        """Extract email body content with support for multipart messages and HTML conversion."""
-        text = self._walk_for_body(msg["payload"], msg["id"], service)
-        return text or "This email does not contain a readable body."
 
-    def _walk_for_body(self, part, msg_id, service, depth=0):
-        """Recursively walk through email parts to find readable body content."""
-        # Prevent infinite recursion by limiting depth
-        if depth > 10:
-            return None
+class GmailSendBlock(GmailBase):
+    """
+    Sends emails through Gmail with intelligent content type detection.
 
-        mime_type = part.get("mimeType", "")
-        body = part.get("body", {})
+    Features:
+    - Automatic HTML detection: Emails containing HTML tags are sent as text/html
+    - No hard-wrap for plain text: Plain text emails preserve natural line flow
+    - Manual content type override: Use content_type parameter to force specific format
+    - Full Unicode/emoji support with UTF-8 encoding
+    - Attachment support for multiple files
+    """
 
-        # Handle text/plain content
-        if mime_type == "text/plain" and body.get("data"):
-            return self._decode_base64(body["data"])
-
-        # Handle text/html content (convert to plain text)
-        if mime_type == "text/html" and body.get("data"):
-            html_content = self._decode_base64(body["data"])
-            if html_content:
-                try:
-                    import html2text
-
-                    h = html2text.HTML2Text()
-                    h.ignore_links = False
-                    h.ignore_images = True
-                    return h.handle(html_content)
-                except ImportError:
-                    # Fallback: return raw HTML if html2text is not available
-                    return html_content
-
-        # Handle content stored as attachment
-        if body.get("attachmentId"):
-            attachment_data = self._download_attachment_body(
-                body["attachmentId"], msg_id, service
-            )
-            if attachment_data:
-                return self._decode_base64(attachment_data)
-
-        # Recursively search in parts
-        for sub_part in part.get("parts", []):
-            text = self._walk_for_body(sub_part, msg_id, service, depth + 1)
-            if text:
-                return text
-
-        return None
-
-    def _decode_base64(self, data):
-        """Safely decode base64 URL-safe data with proper padding."""
-        if not data:
-            return None
-        try:
-            # Add padding if necessary
-            missing_padding = len(data) % 4
-            if missing_padding:
-                data += "=" * (4 - missing_padding)
-            return base64.urlsafe_b64decode(data).decode("utf-8")
-        except Exception:
-            return None
-
-    def _download_attachment_body(self, attachment_id, msg_id, service):
-        """Download attachment content when email body is stored as attachment."""
-        try:
-            attachment = (
-                service.users()
-                .messages()
-                .attachments()
-                .get(userId="me", messageId=msg_id, id=attachment_id)
-                .execute()
-            )
-            return attachment.get("data")
-        except Exception:
-            return None
-
-    def _get_attachments(self, service, message):
-        attachments = []
-        if "parts" in message["payload"]:
-            for part in message["payload"]["parts"]:
-                if part["filename"]:
-                    attachment = Attachment(
-                        filename=part["filename"],
-                        content_type=part["mimeType"],
-                        size=int(part["body"].get("size", 0)),
-                        attachment_id=part["body"]["attachmentId"],
-                    )
-                    attachments.append(attachment)
-        return attachments
-
-    # Add a new method to download attachment content
-    def download_attachment(self, service, message_id: str, attachment_id: str):
-        attachment = (
-            service.users()
-            .messages()
-            .attachments()
-            .get(userId="me", messageId=message_id, id=attachment_id)
-            .execute()
-        )
-        file_data = base64.urlsafe_b64decode(attachment["data"].encode("UTF-8"))
-        return file_data
-
-
-class GmailSendBlock(Block):
     class Input(BlockSchema):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/gmail.send"]
         )
-        to: str = SchemaField(
-            description="Recipient email address",
+        to: list[str] = SchemaField(
+            description="Recipient email addresses",
         )
         subject: str = SchemaField(
             description="Email subject",
         )
         body: str = SchemaField(
-            description="Email body",
+            description="Email body (plain text or HTML)",
+        )
+        cc: list[str] = SchemaField(description="CC recipients", default_factory=list)
+        bcc: list[str] = SchemaField(description="BCC recipients", default_factory=list)
+        content_type: Optional[Literal["auto", "plain", "html"]] = SchemaField(
+            description="Content type: 'auto' (default - detects HTML), 'plain', or 'html'",
+            default=None,
+            advanced=True,
+        )
+        attachments: list[MediaFileType] = SchemaField(
+            description="Files to attach", default_factory=list, advanced=True
         )
 
     class Output(BlockSchema):
-        result: dict = SchemaField(
+        result: GmailSendResult = SchemaField(
             description="Send confirmation",
         )
         error: str = SchemaField(
@@ -357,13 +551,13 @@ class GmailSendBlock(Block):
     def __init__(self):
         super().__init__(
             id="6c27abc2-e51d-499e-a85f-5a0041ba94f0",
-            description="This block sends an email using Gmail.",
+            description="Send emails via Gmail with automatic HTML detection and proper text formatting. Plain text emails are sent without 78-character line wrapping, preserving natural paragraph flow. HTML emails are automatically detected and sent with correct MIME type.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=GmailSendBlock.Input,
             output_schema=GmailSendBlock.Output,
             disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
             test_input={
-                "to": "recipient@example.com",
+                "to": ["recipient@example.com"],
                 "subject": "Test Email",
                 "body": "This is a test email sent from GmailSendBlock.",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -378,38 +572,155 @@ class GmailSendBlock(Block):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: GoogleCredentials,
+        graph_exec_id: str,
+        user_id: str,
+        **kwargs,
     ) -> BlockOutput:
-        service = GmailReadBlock._build_service(credentials, **kwargs)
-        result = await asyncio.to_thread(
-            self._send_email,
+        service = self._build_service(credentials, **kwargs)
+        result = await self._send_email(
             service,
-            input_data.to,
-            input_data.subject,
-            input_data.body,
+            input_data,
+            graph_exec_id,
+            user_id,
         )
         yield "result", result
 
-    def _send_email(self, service, to: str, subject: str, body: str) -> dict:
-        if not to or not subject or not body:
-            raise ValueError("To, subject, and body are required for sending an email")
-        message = self._create_message(to, subject, body)
-        sent_message = (
-            service.users().messages().send(userId="me", body=message).execute()
+    async def _send_email(
+        self, service, input_data: Input, graph_exec_id: str, user_id: str
+    ) -> dict:
+        if not input_data.to or not input_data.subject or not input_data.body:
+            raise ValueError(
+                "At least one recipient, subject, and body are required for sending an email"
+            )
+        raw_message = await create_mime_message(input_data, graph_exec_id, user_id)
+        sent_message = await asyncio.to_thread(
+            lambda: service.users()
+            .messages()
+            .send(userId="me", body={"raw": raw_message})
+            .execute()
         )
         return {"id": sent_message["id"], "status": "sent"}
 
-    def _create_message(self, to: str, subject: str, body: str) -> dict:
-        from email.mime.text import MIMEText
 
-        message = MIMEText(body)
-        message["to"] = to
-        message["subject"] = subject
-        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
-        return {"raw": raw_message}
+class GmailCreateDraftBlock(GmailBase):
+    """
+    Creates draft emails in Gmail with intelligent content type detection.
+
+    Features:
+    - Automatic HTML detection: Drafts containing HTML tags are formatted as text/html
+    - No hard-wrap for plain text: Plain text drafts preserve natural line flow
+    - Manual content type override: Use content_type parameter to force specific format
+    - Full Unicode/emoji support with UTF-8 encoding
+    - Attachment support for multiple files
+    """
+
+    class Input(BlockSchema):
+        credentials: GoogleCredentialsInput = GoogleCredentialsField(
+            ["https://www.googleapis.com/auth/gmail.modify"]
+        )
+        to: list[str] = SchemaField(
+            description="Recipient email addresses",
+        )
+        subject: str = SchemaField(
+            description="Email subject",
+        )
+        body: str = SchemaField(
+            description="Email body (plain text or HTML)",
+        )
+        cc: list[str] = SchemaField(description="CC recipients", default_factory=list)
+        bcc: list[str] = SchemaField(description="BCC recipients", default_factory=list)
+        content_type: Optional[Literal["auto", "plain", "html"]] = SchemaField(
+            description="Content type: 'auto' (default - detects HTML), 'plain', or 'html'",
+            default=None,
+            advanced=True,
+        )
+        attachments: list[MediaFileType] = SchemaField(
+            description="Files to attach", default_factory=list, advanced=True
+        )
+
+    class Output(BlockSchema):
+        result: GmailDraftResult = SchemaField(
+            description="Draft creation result",
+        )
+        error: str = SchemaField(
+            description="Error message if any",
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="e1eeead4-46cb-491e-8281-17b6b9c44a55",
+            description="Create draft emails in Gmail with automatic HTML detection and proper text formatting. Plain text drafts preserve natural paragraph flow without 78-character line wrapping. HTML content is automatically detected and formatted correctly.",
+            categories={BlockCategory.COMMUNICATION},
+            input_schema=GmailCreateDraftBlock.Input,
+            output_schema=GmailCreateDraftBlock.Output,
+            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
+            test_input={
+                "to": ["recipient@example.com"],
+                "subject": "Draft Test Email",
+                "body": "This is a test draft email.",
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                (
+                    "result",
+                    GmailDraftResult(
+                        id="draft1", message_id="msg1", status="draft_created"
+                    ),
+                ),
+            ],
+            test_mock={
+                "_create_draft": lambda *args, **kwargs: {
+                    "id": "draft1",
+                    "message": {"id": "msg1"},
+                },
+            },
+        )
+
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GoogleCredentials,
+        graph_exec_id: str,
+        user_id: str,
+        **kwargs,
+    ) -> BlockOutput:
+        service = self._build_service(credentials, **kwargs)
+        result = await self._create_draft(
+            service,
+            input_data,
+            graph_exec_id,
+            user_id,
+        )
+        yield "result", GmailDraftResult(
+            id=result["id"], message_id=result["message"]["id"], status="draft_created"
+        )
+
+    async def _create_draft(
+        self, service, input_data: Input, graph_exec_id: str, user_id: str
+    ) -> dict:
+        if not input_data.to or not input_data.subject:
+            raise ValueError(
+                "At least one recipient and subject are required for creating a draft"
+            )
+
+        raw_message = await create_mime_message(input_data, graph_exec_id, user_id)
+        draft = await asyncio.to_thread(
+            lambda: service.users()
+            .drafts()
+            .create(userId="me", body={"message": {"raw": raw_message}})
+            .execute()
+        )
+
+        return draft
 
 
-class GmailListLabelsBlock(Block):
+class GmailListLabelsBlock(GmailBase):
     class Input(BlockSchema):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/gmail.labels"]
@@ -455,17 +766,19 @@ class GmailListLabelsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        service = GmailReadBlock._build_service(credentials, **kwargs)
-        result = await asyncio.to_thread(self._list_labels, service)
+        service = self._build_service(credentials, **kwargs)
+        result = await self._list_labels(service)
         yield "result", result
 
-    def _list_labels(self, service) -> list[dict]:
-        results = service.users().labels().list(userId="me").execute()
+    async def _list_labels(self, service) -> list[dict]:
+        results = await asyncio.to_thread(
+            lambda: service.users().labels().list(userId="me").execute()
+        )
         labels = results.get("labels", [])
         return [{"id": label["id"], "name": label["name"]} for label in labels]
 
 
-class GmailAddLabelBlock(Block):
+class GmailAddLabelBlock(GmailBase):
     class Input(BlockSchema):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/gmail.modify"]
@@ -478,7 +791,7 @@ class GmailAddLabelBlock(Block):
         )
 
     class Output(BlockSchema):
-        result: dict = SchemaField(
+        result: GmailLabelResult = SchemaField(
             description="Label addition result",
         )
         error: str = SchemaField(
@@ -516,24 +829,33 @@ class GmailAddLabelBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        service = GmailReadBlock._build_service(credentials, **kwargs)
-        result = await asyncio.to_thread(
-            self._add_label, service, input_data.message_id, input_data.label_name
+        service = self._build_service(credentials, **kwargs)
+        result = await self._add_label(
+            service, input_data.message_id, input_data.label_name
         )
         yield "result", result
 
-    def _add_label(self, service, message_id: str, label_name: str) -> dict:
-        label_id = self._get_or_create_label(service, label_name)
-        service.users().messages().modify(
-            userId="me", id=message_id, body={"addLabelIds": [label_id]}
-        ).execute()
+    async def _add_label(self, service, message_id: str, label_name: str) -> dict:
+        label_id = await self._get_or_create_label(service, label_name)
+        result = await asyncio.to_thread(
+            lambda: service.users()
+            .messages()
+            .modify(userId="me", id=message_id, body={"addLabelIds": [label_id]})
+            .execute()
+        )
+        if not result.get("labelIds"):
+            return {
+                "status": "Label already applied or not found",
+                "label_id": label_id,
+            }
+
         return {"status": "Label added successfully", "label_id": label_id}
 
-    def _get_or_create_label(self, service, label_name: str) -> str:
-        label_id = self._get_label_id(service, label_name)
+    async def _get_or_create_label(self, service, label_name: str) -> str:
+        label_id = await self._get_label_id(service, label_name)
         if not label_id:
-            label = (
-                service.users()
+            label = await asyncio.to_thread(
+                lambda: service.users()
                 .labels()
                 .create(userId="me", body={"name": label_name})
                 .execute()
@@ -541,16 +863,8 @@ class GmailAddLabelBlock(Block):
             label_id = label["id"]
         return label_id
 
-    def _get_label_id(self, service, label_name: str) -> str | None:
-        results = service.users().labels().list(userId="me").execute()
-        labels = results.get("labels", [])
-        for label in labels:
-            if label["name"] == label_name:
-                return label["id"]
-        return None
 
-
-class GmailRemoveLabelBlock(Block):
+class GmailRemoveLabelBlock(GmailBase):
     class Input(BlockSchema):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/gmail.modify"]
@@ -563,7 +877,7 @@ class GmailRemoveLabelBlock(Block):
         )
 
     class Output(BlockSchema):
-        result: dict = SchemaField(
+        result: GmailLabelResult = SchemaField(
             description="Label removal result",
         )
         error: str = SchemaField(
@@ -601,32 +915,32 @@ class GmailRemoveLabelBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        service = GmailReadBlock._build_service(credentials, **kwargs)
-        result = await asyncio.to_thread(
-            self._remove_label, service, input_data.message_id, input_data.label_name
+        service = self._build_service(credentials, **kwargs)
+        result = await self._remove_label(
+            service, input_data.message_id, input_data.label_name
         )
         yield "result", result
 
-    def _remove_label(self, service, message_id: str, label_name: str) -> dict:
-        label_id = self._get_label_id(service, label_name)
+    async def _remove_label(self, service, message_id: str, label_name: str) -> dict:
+        label_id = await self._get_label_id(service, label_name)
         if label_id:
-            service.users().messages().modify(
-                userId="me", id=message_id, body={"removeLabelIds": [label_id]}
-            ).execute()
+            result = await asyncio.to_thread(
+                lambda: service.users()
+                .messages()
+                .modify(userId="me", id=message_id, body={"removeLabelIds": [label_id]})
+                .execute()
+            )
+            if not result.get("labelIds"):
+                return {
+                    "status": "Label already removed or not applied",
+                    "label_id": label_id,
+                }
             return {"status": "Label removed successfully", "label_id": label_id}
         else:
             return {"status": "Label not found", "label_name": label_name}
 
-    def _get_label_id(self, service, label_name: str) -> str | None:
-        results = service.users().labels().list(userId="me").execute()
-        labels = results.get("labels", [])
-        for label in labels:
-            if label["name"] == label_name:
-                return label["id"]
-        return None
 
-
-class GmailGetThreadBlock(Block):
+class GmailGetThreadBlock(GmailBase):
     class Input(BlockSchema):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/gmail.readonly"]
@@ -657,13 +971,16 @@ class GmailGetThreadBlock(Block):
                         "messages": [
                             {
                                 "id": "188199feff9dc907",
-                                "to": "nick@example.co",
+                                "to": ["nick@example.co"],
+                                "cc": [],
+                                "bcc": [],
                                 "body": "This email does not contain a text body.",
                                 "date": "Thu, 17 Jul 2025 19:22:36 +0100",
                                 "from_": "bent@example.co",
                                 "snippet": "have a funny looking car -- Bently, Community Administrator For AutoGPT",
                                 "subject": "car",
                                 "threadId": "188199feff9dc907",
+                                "labelIds": ["INBOX"],
                                 "attachments": [
                                     {
                                         "size": 5694,
@@ -685,13 +1002,16 @@ class GmailGetThreadBlock(Block):
                     "messages": [
                         {
                             "id": "188199feff9dc907",
-                            "to": "nick@example.co",
+                            "to": ["nick@example.co"],
+                            "cc": [],
+                            "bcc": [],
                             "body": "This email does not contain a text body.",
                             "date": "Thu, 17 Jul 2025 19:22:36 +0100",
                             "from_": "bent@example.co",
                             "snippet": "have a funny looking car -- Bently, Community Administrator For AutoGPT",
                             "subject": "car",
                             "threadId": "188199feff9dc907",
+                            "labelIds": ["INBOX"],
                             "attachments": [
                                 {
                                     "size": 5694,
@@ -711,19 +1031,23 @@ class GmailGetThreadBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        service = GmailReadBlock._build_service(credentials, **kwargs)
-        thread = self._get_thread(service, input_data.threadId, credentials.scopes)
+        service = self._build_service(credentials, **kwargs)
+        thread = await self._get_thread(
+            service, input_data.threadId, credentials.scopes
+        )
         yield "thread", thread
 
-    def _get_thread(self, service, thread_id: str, scopes: list[str] | None) -> Thread:
+    async def _get_thread(
+        self, service, thread_id: str, scopes: list[str] | None
+    ) -> Thread:
         scopes = [s.lower() for s in (scopes or [])]
         format_type = (
             "metadata"
             if "https://www.googleapis.com/auth/gmail.metadata" in scopes
             else "full"
         )
-        thread = (
-            service.users()
+        thread = await asyncio.to_thread(
+            lambda: service.users()
             .threads()
             .get(userId="me", id=thread_id, format=format_type)
             .execute()
@@ -735,15 +1059,30 @@ class GmailGetThreadBlock(Block):
                 h["name"].lower(): h["value"]
                 for h in msg.get("payload", {}).get("headers", [])
             }
-            body = self._get_email_body(msg)
-            attachments = self._get_attachments(service, msg)
+            body = await self._get_email_body(msg, service)
+            attachments = await self._get_attachments(service, msg)
+
+            # Parse all recipients
+            to_recipients = [
+                addr.strip() for _, addr in getaddresses([headers.get("to", "")])
+            ]
+            cc_recipients = [
+                addr.strip() for _, addr in getaddresses([headers.get("cc", "")])
+            ]
+            bcc_recipients = [
+                addr.strip() for _, addr in getaddresses([headers.get("bcc", "")])
+            ]
+
             email = Email(
                 threadId=msg.get("threadId", thread_id),
-                id=msg["id"],
+                labelIds=msg.get("labelIds", []),
+                id=msg.get("id"),
                 subject=headers.get("subject", "No Subject"),
                 snippet=msg.get("snippet", ""),
                 from_=parseaddr(headers.get("from", ""))[1],
-                to=parseaddr(headers.get("to", ""))[1],
+                to=to_recipients if to_recipients else [],
+                cc=cc_recipients,
+                bcc=bcc_recipients,
                 date=headers.get("date", ""),
                 body=body,
                 sizeEstimate=msg.get("sizeEstimate", 0),
@@ -754,44 +1093,26 @@ class GmailGetThreadBlock(Block):
         thread["messages"] = parsed_messages
         return thread
 
-    def _get_email_body(self, msg):
-        payload = msg.get("payload")
-        if not payload:
-            return "This email does not contain a text body."
 
-        if "parts" in payload:
-            for part in payload["parts"]:
-                if part.get("mimeType") == "text/plain" and "data" in part.get(
-                    "body", {}
-                ):
-                    return base64.urlsafe_b64decode(part["body"]["data"]).decode(
-                        "utf-8"
-                    )
-        elif payload.get("mimeType") == "text/plain" and "data" in payload.get(
-            "body", {}
-        ):
-            return base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8")
-        return "This email does not contain a text body."
+class GmailReplyBlock(GmailBase):
+    """
+    Replies to Gmail threads with intelligent content type detection.
 
-    def _get_attachments(self, service, message):
-        attachments = []
-        if "parts" in message["payload"]:
-            for part in message["payload"]["parts"]:
-                if part.get("filename"):
-                    attachment = Attachment(
-                        filename=part["filename"],
-                        content_type=part["mimeType"],
-                        size=int(part["body"].get("size", 0)),
-                        attachment_id=part["body"]["attachmentId"],
-                    )
-                    attachments.append(attachment)
-        return attachments
+    Features:
+    - Automatic HTML detection: Replies containing HTML tags are sent as text/html
+    - No hard-wrap for plain text: Plain text replies preserve natural line flow
+    - Manual content type override: Use content_type parameter to force specific format
+    - Reply-all functionality: Option to reply to all original recipients
+    - Thread preservation: Maintains proper email threading with headers
+    - Full Unicode/emoji support with UTF-8 encoding
+    """
 
-
-class GmailReplyBlock(Block):
     class Input(BlockSchema):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
-            ["https://www.googleapis.com/auth/gmail.send"]
+            [
+                "https://www.googleapis.com/auth/gmail.send",
+                "https://www.googleapis.com/auth/gmail.readonly",
+            ]
         )
         threadId: str = SchemaField(description="Thread ID to reply in")
         parentMessageId: str = SchemaField(
@@ -804,7 +1125,12 @@ class GmailReplyBlock(Block):
             description="Reply to all original recipients", default=False
         )
         subject: str = SchemaField(description="Email subject", default="")
-        body: str = SchemaField(description="Email body")
+        body: str = SchemaField(description="Email body (plain text or HTML)")
+        content_type: Optional[Literal["auto", "plain", "html"]] = SchemaField(
+            description="Content type: 'auto' (default - detects HTML), 'plain', or 'html'",
+            default=None,
+            advanced=True,
+        )
         attachments: list[MediaFileType] = SchemaField(
             description="Files to attach", default_factory=list, advanced=True
         )
@@ -813,12 +1139,15 @@ class GmailReplyBlock(Block):
         messageId: str = SchemaField(description="Sent message ID")
         threadId: str = SchemaField(description="Thread ID")
         message: dict = SchemaField(description="Raw Gmail message object")
+        email: Email = SchemaField(
+            description="Parsed email object with decoded body and attachments"
+        )
         error: str = SchemaField(description="Error message if any")
 
     def __init__(self):
         super().__init__(
             id="12bf5a24-9b90-4f40-9090-4e86e6995e60",
-            description="Reply to a Gmail thread",
+            description="Reply to Gmail threads with automatic HTML detection and proper text formatting. Plain text replies maintain natural paragraph flow without 78-character line wrapping. HTML content is automatically detected and sent with correct MIME type.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=GmailReplyBlock.Input,
             output_schema=GmailReplyBlock.Output,
@@ -835,6 +1164,24 @@ class GmailReplyBlock(Block):
                 ("messageId", "m2"),
                 ("threadId", "t1"),
                 ("message", {"id": "m2", "threadId": "t1"}),
+                (
+                    "email",
+                    Email(
+                        threadId="t1",
+                        labelIds=[],
+                        id="m2",
+                        subject="",
+                        snippet="",
+                        from_="",
+                        to=[],
+                        cc=[],
+                        bcc=[],
+                        date="",
+                        body="Thanks",
+                        sizeEstimate=0,
+                        attachments=[],
+                    ),
+                ),
             ],
             test_mock={
                 "_reply": lambda *args, **kwargs: {
@@ -853,7 +1200,7 @@ class GmailReplyBlock(Block):
         user_id: str,
         **kwargs,
     ) -> BlockOutput:
-        service = GmailReadBlock._build_service(credentials, **kwargs)
+        service = self._build_service(credentials, **kwargs)
         message = await self._reply(
             service,
             input_data,
@@ -863,12 +1210,28 @@ class GmailReplyBlock(Block):
         yield "messageId", message["id"]
         yield "threadId", message.get("threadId", input_data.threadId)
         yield "message", message
+        email = Email(
+            threadId=message.get("threadId", input_data.threadId),
+            labelIds=message.get("labelIds", []),
+            id=message["id"],
+            subject=input_data.subject or "",
+            snippet=message.get("snippet", ""),
+            from_="",  # From address would need to be retrieved from the message headers
+            to=input_data.to if input_data.to else [],
+            cc=input_data.cc if input_data.cc else [],
+            bcc=input_data.bcc if input_data.bcc else [],
+            date="",  # Date would need to be retrieved from the message headers
+            body=input_data.body,
+            sizeEstimate=message.get("sizeEstimate", 0),
+            attachments=[],  # Attachments info not available from send response
+        )
+        yield "email", email
 
     async def _reply(
         self, service, input_data: Input, graph_exec_id: str, user_id: str
     ) -> dict:
-        parent = (
-            service.users()
+        parent = await asyncio.to_thread(
+            lambda: service.users()
             .messages()
             .get(
                 userId="me",
@@ -886,6 +1249,7 @@ class GmailReplyBlock(Block):
             )
             .execute()
         )
+
         headers = {
             h["name"].lower(): h["value"]
             for h in parent.get("payload", {}).get("headers", [])
@@ -912,11 +1276,6 @@ class GmailReplyBlock(Block):
         if headers.get("message-id"):
             references.append(headers["message-id"])
 
-        from email import encoders
-        from email.mime.base import MIMEBase
-        from email.mime.multipart import MIMEMultipart
-        from email.mime.text import MIMEText
-
         msg = MIMEMultipart()
         if input_data.to:
             msg["To"] = ", ".join(input_data.to)
@@ -929,9 +1288,8 @@ class GmailReplyBlock(Block):
             msg["In-Reply-To"] = headers["message-id"]
         if references:
             msg["References"] = " ".join(references)
-        msg.attach(
-            MIMEText(input_data.body, "html" if "<" in input_data.body else "plain")
-        )
+        # Use the new helper function for consistent content type handling
+        msg.attach(_make_mime_text(input_data.body, input_data.content_type))
 
         for attach in input_data.attachments:
             local_path = await store_media_file(
@@ -951,9 +1309,279 @@ class GmailReplyBlock(Block):
             msg.attach(part)
 
         raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
-        return (
-            service.users()
+        return await asyncio.to_thread(
+            lambda: service.users()
             .messages()
             .send(userId="me", body={"threadId": input_data.threadId, "raw": raw})
+            .execute()
+        )
+
+
+class GmailGetProfileBlock(GmailBase):
+    class Input(BlockSchema):
+        credentials: GoogleCredentialsInput = GoogleCredentialsField(
+            ["https://www.googleapis.com/auth/gmail.readonly"]
+        )
+
+    class Output(BlockSchema):
+        profile: Profile = SchemaField(description="Gmail user profile information")
+        error: str = SchemaField(description="Error message if any")
+
+    def __init__(self):
+        super().__init__(
+            id="04b0d996-0908-4a4b-89dd-b9697ff253d3",
+            description="Get the authenticated user's Gmail profile details including email address and message statistics.",
+            categories={BlockCategory.COMMUNICATION},
+            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
+            input_schema=GmailGetProfileBlock.Input,
+            output_schema=GmailGetProfileBlock.Output,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                (
+                    "profile",
+                    {
+                        "emailAddress": "test@example.com",
+                        "messagesTotal": 1000,
+                        "threadsTotal": 500,
+                        "historyId": "12345",
+                    },
+                ),
+            ],
+            test_mock={
+                "_get_profile": lambda *args, **kwargs: {
+                    "emailAddress": "test@example.com",
+                    "messagesTotal": 1000,
+                    "threadsTotal": 500,
+                    "historyId": "12345",
+                },
+            },
+        )
+
+    async def run(
+        self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
+    ) -> BlockOutput:
+        service = self._build_service(credentials, **kwargs)
+        profile = await self._get_profile(service)
+        yield "profile", profile
+
+    async def _get_profile(self, service) -> Profile:
+        result = await asyncio.to_thread(
+            lambda: service.users().getProfile(userId="me").execute()
+        )
+        return Profile(
+            emailAddress=result.get("emailAddress", ""),
+            messagesTotal=result.get("messagesTotal", 0),
+            threadsTotal=result.get("threadsTotal", 0),
+            historyId=result.get("historyId", ""),
+        )
+
+
+class GmailForwardBlock(GmailBase):
+    """
+    Forwards Gmail messages with intelligent content type detection.
+
+    Features:
+    - Preserves original message headers and threading
+    - Automatic HTML detection for forwarded content
+    - Optional forward message customization
+    - Full attachment support from original message
+    - Manual content type override option
+    """
+
+    class Input(BlockSchema):
+        credentials: GoogleCredentialsInput = GoogleCredentialsField(
+            [
+                "https://www.googleapis.com/auth/gmail.send",
+                "https://www.googleapis.com/auth/gmail.readonly",
+            ]
+        )
+        messageId: str = SchemaField(description="ID of the message to forward")
+        to: list[str] = SchemaField(description="Recipients to forward the message to")
+        cc: list[str] = SchemaField(description="CC recipients", default_factory=list)
+        bcc: list[str] = SchemaField(description="BCC recipients", default_factory=list)
+        subject: str = SchemaField(
+            description="Optional custom subject (defaults to 'Fwd: [original subject]')",
+            default="",
+        )
+        forwardMessage: str = SchemaField(
+            description="Optional message to include before the forwarded content",
+            default="",
+        )
+        includeAttachments: bool = SchemaField(
+            description="Include attachments from the original message",
+            default=True,
+        )
+        content_type: Optional[Literal["auto", "plain", "html"]] = SchemaField(
+            description="Content type: 'auto' (default - detects HTML), 'plain', or 'html'",
+            default=None,
+            advanced=True,
+        )
+        additionalAttachments: list[MediaFileType] = SchemaField(
+            description="Additional files to attach",
+            default_factory=list,
+            advanced=True,
+        )
+
+    class Output(BlockSchema):
+        messageId: str = SchemaField(description="Forwarded message ID")
+        threadId: str = SchemaField(description="Thread ID")
+        status: str = SchemaField(description="Forward status")
+        error: str = SchemaField(description="Error message if any")
+
+    def __init__(self):
+        super().__init__(
+            id="64d2301c-b3f5-4174-8ac0-111ca1e1a7c0",
+            description="Forward Gmail messages to other recipients with automatic HTML detection and proper formatting. Preserves original message threading and attachments.",
+            categories={BlockCategory.COMMUNICATION},
+            input_schema=GmailForwardBlock.Input,
+            output_schema=GmailForwardBlock.Output,
+            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
+            test_input={
+                "messageId": "m1",
+                "to": ["recipient@example.com"],
+                "forwardMessage": "FYI - forwarding this to you.",
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                ("messageId", "m2"),
+                ("threadId", "t1"),
+                ("status", "forwarded"),
+            ],
+            test_mock={
+                "_forward_message": lambda *args, **kwargs: {
+                    "id": "m2",
+                    "threadId": "t1",
+                },
+            },
+        )
+
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GoogleCredentials,
+        graph_exec_id: str,
+        user_id: str,
+        **kwargs,
+    ) -> BlockOutput:
+        service = self._build_service(credentials, **kwargs)
+        result = await self._forward_message(
+            service,
+            input_data,
+            graph_exec_id,
+            user_id,
+        )
+        yield "messageId", result["id"]
+        yield "threadId", result.get("threadId", "")
+        yield "status", "forwarded"
+
+    async def _forward_message(
+        self, service, input_data: Input, graph_exec_id: str, user_id: str
+    ) -> dict:
+        if not input_data.to:
+            raise ValueError("At least one recipient is required for forwarding")
+
+        # Get the original message
+        original = await asyncio.to_thread(
+            lambda: service.users()
+            .messages()
+            .get(userId="me", id=input_data.messageId, format="full")
+            .execute()
+        )
+
+        headers = {
+            h["name"].lower(): h["value"]
+            for h in original.get("payload", {}).get("headers", [])
+        }
+
+        # Create subject with Fwd: prefix if not already present
+        original_subject = headers.get("subject", "No Subject")
+        if input_data.subject:
+            subject = input_data.subject
+        elif not original_subject.lower().startswith("fwd:"):
+            subject = f"Fwd: {original_subject}"
+        else:
+            subject = original_subject
+
+        # Build forwarded message body
+        original_from = headers.get("from", "Unknown")
+        original_date = headers.get("date", "Unknown")
+        original_to = headers.get("to", "Unknown")
+
+        # Get the original body
+        original_body = await self._get_email_body(original, service)
+
+        # Construct the forward header
+        forward_header = f"""
+---------- Forwarded message ---------
+From: {original_from}
+Date: {original_date}
+Subject: {original_subject}
+To: {original_to}
+"""
+
+        # Combine optional forward message with original content
+        if input_data.forwardMessage:
+            body = f"{input_data.forwardMessage}\n\n{forward_header}\n\n{original_body}"
+        else:
+            body = f"{forward_header}\n\n{original_body}"
+
+        # Create MIME message
+        msg = MIMEMultipart()
+        msg["To"] = ", ".join(input_data.to)
+        if input_data.cc:
+            msg["Cc"] = ", ".join(input_data.cc)
+        if input_data.bcc:
+            msg["Bcc"] = ", ".join(input_data.bcc)
+        msg["Subject"] = subject
+
+        # Add body with proper content type
+        msg.attach(_make_mime_text(body, input_data.content_type))
+
+        # Include original attachments if requested
+        if input_data.includeAttachments:
+            attachments = await self._get_attachments(service, original)
+            for attachment in attachments:
+                # Download and attach each original attachment
+                attachment_data = await self.download_attachment(
+                    service, input_data.messageId, attachment.attachment_id
+                )
+                part = MIMEBase("application", "octet-stream")
+                part.set_payload(attachment_data)
+                encoders.encode_base64(part)
+                part.add_header(
+                    "Content-Disposition",
+                    f"attachment; filename={attachment.filename}",
+                )
+                msg.attach(part)
+
+        # Add any additional attachments
+        for attach in input_data.additionalAttachments:
+            local_path = await store_media_file(
+                user_id=user_id,
+                graph_exec_id=graph_exec_id,
+                file=attach,
+                return_content=False,
+            )
+            abs_path = get_exec_file_path(graph_exec_id, local_path)
+            part = MIMEBase("application", "octet-stream")
+            with open(abs_path, "rb") as f:
+                part.set_payload(f.read())
+            encoders.encode_base64(part)
+            part.add_header(
+                "Content-Disposition", f"attachment; filename={Path(abs_path).name}"
+            )
+            msg.attach(part)
+
+        # Send the forwarded message
+        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
+        return await asyncio.to_thread(
+            lambda: service.users()
+            .messages()
+            .send(userId="me", body={"raw": raw})
             .execute()
         )

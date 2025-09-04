@@ -1,10 +1,10 @@
 import base64
 import hashlib
 import secrets
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from autogpt_libs.utils.cache import thread_cached
 from autogpt_libs.utils.synchronize import AsyncRedisKeyedMutex
 from pydantic import SecretStr
 
@@ -182,11 +182,28 @@ zerobounce_credentials = APIKeyCredentials(
     expires_at=None,
 )
 
+enrichlayer_credentials = APIKeyCredentials(
+    id="d9fce73a-6c1d-4e8b-ba2e-12a456789def",
+    provider="enrichlayer",
+    api_key=SecretStr(settings.secrets.enrichlayer_api_key),
+    title="Use Credits for Enrichlayer",
+    expires_at=None,
+)
+
+
 llama_api_credentials = APIKeyCredentials(
     id="d44045af-1c33-4833-9e19-752313214de2",
     provider="llama_api",
     api_key=SecretStr(settings.secrets.llama_api_key),
     title="Use Credits for Llama API",
+    expires_at=None,
+)
+
+v0_credentials = APIKeyCredentials(
+    id="c4e6d1a0-3b5f-4789-a8e2-9b123456789f",
+    provider="v0",
+    api_key=SecretStr(settings.secrets.v0_api_key),
+    title="Use Credits for v0 by Vercel",
     expires_at=None,
 )
 
@@ -203,6 +220,7 @@ DEFAULT_CREDENTIALS = [
     jina_credentials,
     unreal_credentials,
     open_router_credentials,
+    enrichlayer_credentials,
     fal_credentials,
     exa_credentials,
     e2b_credentials,
@@ -213,6 +231,8 @@ DEFAULT_CREDENTIALS = [
     smartlead_credentials,
     zerobounce_credentials,
     google_maps_credentials,
+    llama_api_credentials,
+    v0_credentials,
 ]
 
 
@@ -228,18 +248,17 @@ class IntegrationCredentialsStore:
         return self._locks
 
     @property
-    @thread_cached
     def db_manager(self):
         if prisma.is_connected():
             from backend.data import user
 
             return user
         else:
-            from backend.executor.database import DatabaseManagerAsyncClient
-            from backend.util.service import get_service_client
+            from backend.util.clients import get_database_manager_async_client
 
-            return get_service_client(DatabaseManagerAsyncClient)
+            return get_database_manager_async_client()
 
+    # =============== USER-MANAGED CREDENTIALS =============== #
     async def add_creds(self, user_id: str, credentials: Credentials) -> None:
         async with await self.locked_user_integrations(user_id):
             if await self.get_creds_by_id(user_id, credentials.id):
@@ -280,6 +299,8 @@ class IntegrationCredentialsStore:
             all_credentials.append(unreal_credentials)
         if settings.secrets.open_router_api_key:
             all_credentials.append(open_router_credentials)
+        if settings.secrets.enrichlayer_api_key:
+            all_credentials.append(enrichlayer_credentials)
         if settings.secrets.fal_api_key:
             all_credentials.append(fal_credentials)
         if settings.secrets.exa_api_key:
@@ -359,6 +380,24 @@ class IntegrationCredentialsStore:
             ]
             await self._set_user_integration_creds(user_id, filtered_credentials)
 
+    # ============== SYSTEM-MANAGED CREDENTIALS ============== #
+
+    async def set_ayrshare_profile_key(self, user_id: str, profile_key: str) -> None:
+        """Set the Ayrshare profile key for a user.
+
+        The profile key is used to authenticate API requests to Ayrshare's social media posting service.
+        See https://www.ayrshare.com/docs/apis/profiles/overview for more details.
+
+        Args:
+            user_id: The ID of the user to set the profile key for
+            profile_key: The profile key to set
+        """
+        _profile_key = SecretStr(profile_key)
+        async with self.edit_user_integrations(user_id) as user_integrations:
+            user_integrations.managed_credentials.ayrshare_profile_key = _profile_key
+
+    # ===================== OAUTH STATES ===================== #
+
     async def store_state_token(
         self, user_id: str, provider: str, scopes: list[str], use_pkce: bool = False
     ) -> tuple[str, str]:
@@ -374,6 +413,9 @@ class IntegrationCredentialsStore:
             expires_at=int(expires_at.timestamp()),
             scopes=scopes,
         )
+
+        async with self.edit_user_integrations(user_id) as user_integrations:
+            user_integrations.oauth_states.append(state)
 
         async with await self.locked_user_integrations(user_id):
 
@@ -393,7 +435,7 @@ class IntegrationCredentialsStore:
         Generate code challenge using SHA256 from the code verifier.
         Currently only SHA256 is supported.(In future if we want to support more methods we can add them here)
         """
-        code_verifier = secrets.token_urlsafe(128)
+        code_verifier = secrets.token_urlsafe(96)
         sha256_hash = hashlib.sha256(code_verifier.encode("utf-8")).digest()
         code_challenge = base64.urlsafe_b64encode(sha256_hash).decode("utf-8")
         return code_challenge.replace("=", ""), code_verifier
@@ -427,6 +469,17 @@ class IntegrationCredentialsStore:
                 return valid_state
 
         return None
+
+    # =================== GET/SET HELPERS =================== #
+
+    @asynccontextmanager
+    async def edit_user_integrations(self, user_id: str):
+        async with await self.locked_user_integrations(user_id):
+            user_integrations = await self._get_user_integrations(user_id)
+            yield user_integrations  # yield to allow edits
+            await self.db_manager.update_user_integrations(
+                user_id=user_id, data=user_integrations
+            )
 
     async def _set_user_integration_creds(
         self, user_id: str, credentials: list[Credentials]
