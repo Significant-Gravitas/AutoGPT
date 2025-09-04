@@ -34,10 +34,6 @@ class WSSubscribeGraphExecutionsRequest(pydantic.BaseModel):
     graph_id: str
 
 
-class ExecuteGraphResponse(pydantic.BaseModel):
-    graph_exec_id: str
-
-
 class CreateGraph(pydantic.BaseModel):
     graph: Graph
 

@@ -33,7 +33,9 @@ const getBody = <T>(c: Response | Request): Promise<T> => {
   return c.text() as Promise<T>;
 };
 
-export const customMutator = async <T = any>(
+export const customMutator = async <
+  T extends { data: any; status: number; headers: Headers },
+>(
   url: string,
   options: RequestInit & {
     params?: any;
@@ -98,7 +100,7 @@ export const customMutator = async <T = any>(
     throw new Error(`Request failed with status ${response.status}`);
   }
 
-  const response_data = await getBody<T>(response);
+  const response_data = await getBody<T["data"]>(response);
 
   // Transform ISO date strings to Date objects in the response data
   const transformedData = transformDates(response_data);

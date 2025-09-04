@@ -7,17 +7,18 @@ from typing import Annotated, Any, Sequence
 
 import pydantic
 import stripe
-from autogpt_libs.auth.middleware import auth_middleware
+from autogpt_libs.auth import get_user_id, requires_user
+from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from fastapi import (
     APIRouter,
     Body,
-    Depends,
     File,
     HTTPException,
     Path,
     Query,
     Request,
     Response,
+    Security,
     UploadFile,
 )
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
@@ -77,7 +78,6 @@ from backend.server.model import (
     CreateAPIKeyRequest,
     CreateAPIKeyResponse,
     CreateGraph,
-    ExecuteGraphResponse,
     RequestTopUp,
     SetGraphActiveVersion,
     TimezoneResponse,
@@ -85,7 +85,6 @@ from backend.server.model import (
     UpdateTimezoneRequest,
     UploadFileResponse,
 )
-from backend.server.utils import get_user_id
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.exceptions import GraphValidationError, NotFoundError
@@ -124,7 +123,7 @@ v1_router.include_router(
     backend.server.routers.analytics.router,
     prefix="/analytics",
     tags=["analytics"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 
 
@@ -137,9 +136,9 @@ v1_router.include_router(
     "/auth/user",
     summary="Get or create user",
     tags=["auth"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
-async def get_or_create_user_route(user_data: dict = Depends(auth_middleware)):
+async def get_or_create_user_route(user_data: dict = Security(get_jwt_payload)):
     user = await get_or_create_user(user_data)
     return user.model_dump()
 
@@ -148,10 +147,10 @@ async def get_or_create_user_route(user_data: dict = Depends(auth_middleware)):
     "/auth/user/email",
     summary="Update user email",
     tags=["auth"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def update_user_email_route(
-    user_id: Annotated[str, Depends(get_user_id)], email: str = Body(...)
+    user_id: Annotated[str, Security(get_user_id)], email: str = Body(...)
 ) -> dict[str, str]:
     await update_user_email(user_id, email)
 
@@ -162,10 +161,10 @@ async def update_user_email_route(
     "/auth/user/timezone",
     summary="Get user timezone",
     tags=["auth"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def get_user_timezone_route(
-    user_data: dict = Depends(auth_middleware),
+    user_data: dict = Security(get_jwt_payload),
 ) -> TimezoneResponse:
     """Get user timezone setting."""
     user = await get_or_create_user(user_data)
@@ -176,11 +175,11 @@ async def get_user_timezone_route(
     "/auth/user/timezone",
     summary="Update user timezone",
     tags=["auth"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
     response_model=TimezoneResponse,
 )
 async def update_user_timezone_route(
-    user_id: Annotated[str, Depends(get_user_id)], request: UpdateTimezoneRequest
+    user_id: Annotated[str, Security(get_user_id)], request: UpdateTimezoneRequest
 ) -> TimezoneResponse:
     """Update user timezone. The timezone should be a valid IANA timezone identifier."""
     user = await update_user_timezone(user_id, str(request.timezone))
@@ -191,10 +190,10 @@ async def update_user_timezone_route(
     "/auth/user/preferences",
     summary="Get notification preferences",
     tags=["auth"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def get_preferences(
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
 ) -> NotificationPreference:
     preferences = await get_user_notification_preference(user_id)
     return preferences
@@ -204,10 +203,10 @@ async def get_preferences(
     "/auth/user/preferences",
     summary="Update notification preferences",
     tags=["auth"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def update_preferences(
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
     preferences: NotificationPreferenceDTO = Body(...),
 ) -> NotificationPreference:
     output = await update_user_notification_preference(user_id, preferences)
@@ -223,9 +222,9 @@ async def update_preferences(
     "/onboarding",
     summary="Get onboarding status",
     tags=["onboarding"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
-async def get_onboarding(user_id: Annotated[str, Depends(get_user_id)]):
+async def get_onboarding(user_id: Annotated[str, Security(get_user_id)]):
     return await get_user_onboarding(user_id)
 
 
@@ -233,10 +232,10 @@ async def get_onboarding(user_id: Annotated[str, Depends(get_user_id)]):
     "/onboarding",
     summary="Update onboarding progress",
     tags=["onboarding"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def update_onboarding(
-    user_id: Annotated[str, Depends(get_user_id)], data: UserOnboardingUpdate
+    user_id: Annotated[str, Security(get_user_id)], data: UserOnboardingUpdate
 ):
     return await update_user_onboarding(user_id, data)
 
@@ -245,10 +244,10 @@ async def update_onboarding(
     "/onboarding/agents",
     summary="Get recommended agents",
     tags=["onboarding"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def get_onboarding_agents(
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
 ):
     return await get_recommended_agents(user_id)
 
@@ -257,7 +256,7 @@ async def get_onboarding_agents(
     "/onboarding/enabled",
     summary="Check onboarding enabled",
     tags=["onboarding", "public"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def is_onboarding_enabled():
     return await onboarding_enabled()
@@ -272,7 +271,7 @@ async def is_onboarding_enabled():
     path="/blocks",
     summary="List available blocks",
     tags=["blocks"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 def get_graph_blocks() -> Sequence[dict[Any, Any]]:
     blocks = [block() for block in get_blocks().values()]
@@ -286,7 +285,7 @@ def get_graph_blocks() -> Sequence[dict[Any, Any]]:
     path="/blocks/{block_id}/execute",
     summary="Execute graph block",
     tags=["blocks"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlockOutput:
     obj = get_block(block_id)
@@ -303,10 +302,10 @@ async def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlock
     path="/files/upload",
     summary="Upload file to cloud storage",
     tags=["files"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def upload_file(
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
     file: UploadFile = File(...),
     provider: str = "gcs",
     expiration_hours: int = 24,
@@ -394,10 +393,10 @@ async def upload_file(
     path="/credits",
     tags=["credits"],
     summary="Get user credits",
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def get_user_credits(
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
 ) -> dict[str, int]:
     return {"credits": await _user_credit_model.get_credits(user_id)}
 
@@ -406,10 +405,10 @@ async def get_user_credits(
     path="/credits",
     summary="Request credit top up",
     tags=["credits"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def request_top_up(
-    request: RequestTopUp, user_id: Annotated[str, Depends(get_user_id)]
+    request: RequestTopUp, user_id: Annotated[str, Security(get_user_id)]
 ):
     checkout_url = await _user_credit_model.top_up_intent(
         user_id, request.credit_amount
@@ -421,10 +420,10 @@ async def request_top_up(
     path="/credits/{transaction_key}/refund",
     summary="Refund credit transaction",
     tags=["credits"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def refund_top_up(
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
     transaction_key: str,
     metadata: dict[str, str],
 ) -> int:
@@ -435,9 +434,9 @@ async def refund_top_up(
     path="/credits",
     summary="Fulfill checkout session",
     tags=["credits"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
-async def fulfill_checkout(user_id: Annotated[str, Depends(get_user_id)]):
+async def fulfill_checkout(user_id: Annotated[str, Security(get_user_id)]):
     await _user_credit_model.fulfill_checkout(user_id=user_id)
     return Response(status_code=200)
 
@@ -446,10 +445,10 @@ async def fulfill_checkout(user_id: Annotated[str, Depends(get_user_id)]):
     path="/credits/auto-top-up",
     summary="Configure auto top up",
     tags=["credits"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def configure_user_auto_top_up(
-    request: AutoTopUpConfig, user_id: Annotated[str, Depends(get_user_id)]
+    request: AutoTopUpConfig, user_id: Annotated[str, Security(get_user_id)]
 ) -> str:
     if request.threshold < 0:
         raise ValueError("Threshold must be greater than 0")
@@ -475,10 +474,10 @@ async def configure_user_auto_top_up(
     path="/credits/auto-top-up",
     summary="Get auto top up",
     tags=["credits"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def get_user_auto_top_up(
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
 ) -> AutoTopUpConfig:
     return await get_auto_top_up(user_id)
 
@@ -528,10 +527,10 @@ async def stripe_webhook(request: Request):
     path="/credits/manage",
     tags=["credits"],
     summary="Manage payment methods",
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def manage_payment_method(
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
 ) -> dict[str, str]:
     return {"url": await _user_credit_model.create_billing_portal_session(user_id)}
 
@@ -540,10 +539,10 @@ async def manage_payment_method(
     path="/credits/transactions",
     tags=["credits"],
     summary="Get credit history",
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def get_credit_history(
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
     transaction_time: datetime | None = None,
     transaction_type: str | None = None,
     transaction_count_limit: int = 100,
@@ -563,10 +562,10 @@ async def get_credit_history(
     path="/credits/refunds",
     tags=["credits"],
     summary="Get refund requests",
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def get_refund_requests(
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
 ) -> list[RefundRequest]:
     return await _user_credit_model.get_refund_requests(user_id)
 
@@ -584,10 +583,10 @@ class DeleteGraphResponse(TypedDict):
     path="/graphs",
     summary="List user graphs",
     tags=["graphs"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def list_graphs(
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
 ) -> Sequence[graph_db.GraphMeta]:
     return await graph_db.list_graphs(filter_by="active", user_id=user_id)
 
@@ -596,17 +595,17 @@ async def list_graphs(
     path="/graphs/{graph_id}",
     summary="Get specific graph",
     tags=["graphs"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 @v1_router.get(
     path="/graphs/{graph_id}/versions/{version}",
     summary="Get graph version",
     tags=["graphs"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def get_graph(
     graph_id: str,
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
     version: int | None = None,
     for_export: bool = False,
 ) -> graph_db.GraphModel:
@@ -626,10 +625,10 @@ async def get_graph(
     path="/graphs/{graph_id}/versions",
     summary="Get all graph versions",
     tags=["graphs"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def get_graph_all_versions(
-    graph_id: str, user_id: Annotated[str, Depends(get_user_id)]
+    graph_id: str, user_id: Annotated[str, Security(get_user_id)]
 ) -> Sequence[graph_db.GraphModel]:
     graphs = await graph_db.get_graph_all_versions(graph_id, user_id=user_id)
     if not graphs:
@@ -641,11 +640,11 @@ async def get_graph_all_versions(
     path="/graphs",
     summary="Create new graph",
     tags=["graphs"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def create_new_graph(
     create_graph: CreateGraph,
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
 ) -> graph_db.GraphModel:
     graph = graph_db.make_graph_model(create_graph.graph, user_id)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
@@ -662,10 +661,10 @@ async def create_new_graph(
     path="/graphs/{graph_id}",
     summary="Delete graph permanently",
     tags=["graphs"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def delete_graph(
-    graph_id: str, user_id: Annotated[str, Depends(get_user_id)]
+    graph_id: str, user_id: Annotated[str, Security(get_user_id)]
 ) -> DeleteGraphResponse:
     if active_version := await graph_db.get_graph(graph_id, user_id=user_id):
         await on_graph_deactivate(active_version, user_id=user_id)
@@ -677,12 +676,12 @@ async def delete_graph(
     path="/graphs/{graph_id}",
     summary="Update graph version",
     tags=["graphs"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def update_graph(
     graph_id: str,
     graph: graph_db.Graph,
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
 ) -> graph_db.GraphModel:
     # Sanity check
     if graph.id and graph.id != graph_id:
@@ -733,12 +732,12 @@ async def update_graph(
     path="/graphs/{graph_id}/versions/active",
     summary="Set active graph version",
     tags=["graphs"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def set_graph_active_version(
     graph_id: str,
     request_body: SetGraphActiveVersion,
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
 ):
     new_active_version = request_body.active_graph_version
     new_active_graph = await graph_db.get_graph(
@@ -772,18 +771,18 @@ async def set_graph_active_version(
     path="/graphs/{graph_id}/execute/{graph_version}",
     summary="Execute graph agent",
     tags=["graphs"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def execute_graph(
     graph_id: str,
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
     inputs: Annotated[dict[str, Any], Body(..., embed=True, default_factory=dict)],
     credentials_inputs: Annotated[
         dict[str, CredentialsMetaInput], Body(..., embed=True, default_factory=dict)
     ],
     graph_version: Optional[int] = None,
     preset_id: Optional[str] = None,
-) -> ExecuteGraphResponse:
+) -> execution_db.GraphExecutionMeta:
     current_balance = await _user_credit_model.get_credits(user_id)
     if current_balance <= 0:
         raise HTTPException(
@@ -792,7 +791,7 @@ async def execute_graph(
         )
 
     try:
-        graph_exec = await execution_utils.add_graph_execution(
+        return await execution_utils.add_graph_execution(
             graph_id=graph_id,
             user_id=user_id,
             inputs=inputs,
@@ -800,7 +799,6 @@ async def execute_graph(
             graph_version=graph_version,
             graph_credentials_inputs=credentials_inputs,
         )
-        return ExecuteGraphResponse(graph_exec_id=graph_exec.id)
     except GraphValidationError as e:
         # Return structured validation errors that the frontend can parse
         raise HTTPException(
@@ -818,10 +816,10 @@ async def execute_graph(
     path="/graphs/{graph_id}/executions/{graph_exec_id}/stop",
     summary="Stop graph execution",
     tags=["graphs"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def stop_graph_run(
-    graph_id: str, graph_exec_id: str, user_id: Annotated[str, Depends(get_user_id)]
+    graph_id: str, graph_exec_id: str, user_id: Annotated[str, Security(get_user_id)]
 ) -> execution_db.GraphExecutionMeta | None:
     res = await _stop_graph_run(
         user_id=user_id,
@@ -860,10 +858,10 @@ async def _stop_graph_run(
     path="/executions",
     summary="List all executions",
     tags=["graphs"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def list_graphs_executions(
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
 ) -> list[execution_db.GraphExecutionMeta]:
     return await execution_db.get_graph_executions(user_id=user_id)
 
@@ -872,11 +870,11 @@ async def list_graphs_executions(
     path="/graphs/{graph_id}/executions",
     summary="List graph executions",
     tags=["graphs"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def list_graph_executions(
     graph_id: str,
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
     page_size: int = Query(
         25, ge=1, le=100, description="Number of executions per page"
@@ -894,12 +892,12 @@ async def list_graph_executions(
     path="/graphs/{graph_id}/executions/{graph_exec_id}",
     summary="Get execution details",
     tags=["graphs"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def get_graph_execution(
     graph_id: str,
     graph_exec_id: str,
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
 ) -> execution_db.GraphExecution | execution_db.GraphExecutionWithNodes:
     graph = await graph_db.get_graph(graph_id=graph_id, user_id=user_id)
     if not graph:
@@ -924,12 +922,12 @@ async def get_graph_execution(
     path="/executions/{graph_exec_id}",
     summary="Delete graph execution",
     tags=["graphs"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
     status_code=HTTP_204_NO_CONTENT,
 )
 async def delete_graph_execution(
     graph_exec_id: str,
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
 ) -> None:
     await execution_db.delete_graph_execution(
         graph_exec_id=graph_exec_id, user_id=user_id
@@ -953,10 +951,10 @@ class ScheduleCreationRequest(pydantic.BaseModel):
     path="/graphs/{graph_id}/schedules",
     summary="Create execution schedule",
     tags=["schedules"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def create_graph_execution_schedule(
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
     graph_id: str = Path(..., description="ID of the graph to schedule"),
     schedule_params: ScheduleCreationRequest = Body(),
 ) -> scheduler.GraphExecutionJobInfo:
@@ -1006,10 +1004,10 @@ async def create_graph_execution_schedule(
     path="/graphs/{graph_id}/schedules",
     summary="List execution schedules for a graph",
     tags=["schedules"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def list_graph_execution_schedules(
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
     graph_id: str = Path(),
 ) -> list[scheduler.GraphExecutionJobInfo]:
     schedules = await get_scheduler_client().get_execution_schedules(
@@ -1035,10 +1033,10 @@ async def list_graph_execution_schedules(
     path="/schedules",
     summary="List execution schedules for a user",
     tags=["schedules"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def list_all_graphs_execution_schedules(
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
 ) -> list[scheduler.GraphExecutionJobInfo]:
     schedules = await get_scheduler_client().get_execution_schedules(user_id=user_id)
 
@@ -1060,10 +1058,10 @@ async def list_all_graphs_execution_schedules(
     path="/schedules/{schedule_id}",
     summary="Delete execution schedule",
     tags=["schedules"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def delete_graph_execution_schedule(
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
     schedule_id: str = Path(..., description="ID of the schedule to delete"),
 ) -> dict[str, Any]:
     try:
@@ -1086,10 +1084,10 @@ async def delete_graph_execution_schedule(
     summary="Create new API key",
     response_model=CreateAPIKeyResponse,
     tags=["api-keys"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def create_api_key(
-    request: CreateAPIKeyRequest, user_id: Annotated[str, Depends(get_user_id)]
+    request: CreateAPIKeyRequest, user_id: Annotated[str, Security(get_user_id)]
 ) -> CreateAPIKeyResponse:
     """Create a new API key"""
     try:
@@ -1117,10 +1115,10 @@ async def create_api_key(
     summary="List user API keys",
     response_model=list[APIKeyWithoutHash] | dict[str, str],
     tags=["api-keys"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def get_api_keys(
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
 ) -> list[APIKeyWithoutHash]:
     """List all API keys for the user"""
     try:
@@ -1138,10 +1136,10 @@ async def get_api_keys(
     summary="Get specific API key",
     response_model=APIKeyWithoutHash,
     tags=["api-keys"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def get_api_key(
-    key_id: str, user_id: Annotated[str, Depends(get_user_id)]
+    key_id: str, user_id: Annotated[str, Security(get_user_id)]
 ) -> APIKeyWithoutHash:
     """Get a specific API key"""
     try:
@@ -1162,10 +1160,10 @@ async def get_api_key(
     summary="Revoke API key",
     response_model=APIKeyWithoutHash,
     tags=["api-keys"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def delete_api_key(
-    key_id: str, user_id: Annotated[str, Depends(get_user_id)]
+    key_id: str, user_id: Annotated[str, Security(get_user_id)]
 ) -> Optional[APIKeyWithoutHash]:
     """Revoke an API key"""
     try:
@@ -1190,10 +1188,10 @@ async def delete_api_key(
     summary="Suspend API key",
     response_model=APIKeyWithoutHash,
     tags=["api-keys"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def suspend_key(
-    key_id: str, user_id: Annotated[str, Depends(get_user_id)]
+    key_id: str, user_id: Annotated[str, Security(get_user_id)]
 ) -> Optional[APIKeyWithoutHash]:
     """Suspend an API key"""
     try:
@@ -1215,12 +1213,12 @@ async def suspend_key(
     summary="Update key permissions",
     response_model=APIKeyWithoutHash,
     tags=["api-keys"],
-    dependencies=[Depends(auth_middleware)],
+    dependencies=[Security(requires_user)],
 )
 async def update_permissions(
     key_id: str,
     request: UpdatePermissionsRequest,
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Security(get_user_id)],
 ) -> Optional[APIKeyWithoutHash]:
     """Update API key permissions"""
     try:

@@ -12,7 +12,7 @@ from prisma.types import (
     AgentNodeLinkCreateInput,
     StoreListingVersionWhereInput,
 )
-from pydantic import Field, JsonValue, create_model
+from pydantic import BaseModel, Field, create_model
 from pydantic.fields import computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
@@ -34,6 +34,7 @@ from .db import BaseDbModel, query_raw_with_schema, transaction
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE
 
 if TYPE_CHECKING:
+    from .execution import NodesInputMasks
     from .integrations import Webhook
 
 logger = logging.getLogger(__name__)
@@ -205,6 +206,35 @@ class BaseGraph(BaseDbModel):
             None,
         )
 
+    @computed_field
+    @property
+    def trigger_setup_info(self) -> "GraphTriggerInfo | None":
+        if not (
+            self.webhook_input_node
+            and (trigger_block := self.webhook_input_node.block).webhook_config
+        ):
+            return None
+
+        return GraphTriggerInfo(
+            provider=trigger_block.webhook_config.provider,
+            config_schema={
+                **(json_schema := trigger_block.input_schema.jsonschema()),
+                "properties": {
+                    pn: sub_schema
+                    for pn, sub_schema in json_schema["properties"].items()
+                    if not is_credentials_field_name(pn)
+                },
+                "required": [
+                    pn
+                    for pn in json_schema.get("required", [])
+                    if not is_credentials_field_name(pn)
+                ],
+            },
+            credentials_input_name=next(
+                iter(trigger_block.input_schema.get_credentials_fields()), None
+            ),
+        )
+
     @staticmethod
     def _generate_schema(
         *props: tuple[type[AgentInputBlock.Input] | type[AgentOutputBlock.Input], dict],
@@ -236,6 +266,14 @@ class BaseGraph(BaseDbModel):
             },
             "required": [p.name for p in schema_fields if p.value is None],
         }
+
+
+class GraphTriggerInfo(BaseModel):
+    provider: ProviderName
+    config_schema: dict[str, Any] = Field(
+        description="Input schema for the trigger block"
+    )
+    credentials_input_name: Optional[str]
 
 
 class Graph(BaseGraph):
@@ -414,7 +452,7 @@ class GraphModel(Graph):
     def validate_graph(
         self,
         for_run: bool = False,
-        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+        nodes_input_masks: Optional["NodesInputMasks"] = None,
     ):
         """
         Validate graph structure and raise `ValueError` on issues.
@@ -428,7 +466,7 @@ class GraphModel(Graph):
     def _validate_graph(
         graph: BaseGraph,
         for_run: bool = False,
-        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+        nodes_input_masks: Optional["NodesInputMasks"] = None,
     ) -> None:
         errors = GraphModel._validate_graph_get_errors(
             graph, for_run, nodes_input_masks
@@ -442,7 +480,7 @@ class GraphModel(Graph):
     def validate_graph_get_errors(
         self,
         for_run: bool = False,
-        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+        nodes_input_masks: Optional["NodesInputMasks"] = None,
     ) -> dict[str, dict[str, str]]:
         """
         Validate graph and return structured errors per node.
@@ -464,7 +502,7 @@ class GraphModel(Graph):
     def _validate_graph_get_errors(
         graph: BaseGraph,
         for_run: bool = False,
-        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+        nodes_input_masks: Optional["NodesInputMasks"] = None,
     ) -> dict[str, dict[str, str]]:
         """
         Validate graph and return structured errors per node.
