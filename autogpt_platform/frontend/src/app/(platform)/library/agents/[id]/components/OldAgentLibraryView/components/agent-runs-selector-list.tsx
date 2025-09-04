@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/atoms/Button/Button";
-import LoadingBox from "@/components/ui/loading";
+import LoadingBox, { LoadingSpinner } from "@/components/ui/loading";
 import { PlusIcon } from "@phosphor-icons/react";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -49,6 +49,7 @@ export function AgentRunsSelectorList({
   agent,
   agentRunsQuery: {
     agentRuns,
+    agentRunCount,
     agentRunsLoading,
     hasMoreRuns,
     fetchMoreRuns,
@@ -113,7 +114,9 @@ export function AgentRunsSelectorList({
           onClick={() => setActiveListTab("runs")}
         >
           <span>Runs</span>
-          <span className="text-neutral-600">{agentRuns.length}</span>
+          <span className="text-neutral-600">
+            {agentRunCount ?? <LoadingSpinner className="size-4" />}
+          </span>
         </Badge>
 
         <Badge
