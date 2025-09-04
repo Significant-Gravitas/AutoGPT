@@ -24,6 +24,29 @@ export function useRunsSidebar({ graphId, onSelectRun }: Args) {
     {
       query: {
         enabled: !!graphId,
+        // Lightweight polling so statuses refresh; only poll if any run is active
+        refetchInterval: (q) => {
+          if (tabValue !== "runs") return false;
+          const pages = q.state.data?.pages as
+            | Array<{ data: unknown }>
+            | undefined;
+          if (!pages || pages.length === 0) return false;
+          try {
+            const executions = pages.flatMap((p) => {
+              const response = p.data as GraphExecutionsPaginated;
+              return response.executions || [];
+            });
+            const hasActive = executions.some(
+              (e: { status?: string }) =>
+                e.status === "RUNNING" || e.status === "QUEUED",
+            );
+            return hasActive ? 3000 : false;
+          } catch {
+            return false;
+          }
+        },
+        refetchIntervalInBackground: true,
+        refetchOnWindowFocus: false,
         getNextPageParam: (lastPage) => {
           const pagination = (lastPage.data as GraphExecutionsPaginated)
             .pagination;
