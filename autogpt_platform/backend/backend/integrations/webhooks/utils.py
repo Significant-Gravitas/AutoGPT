@@ -168,7 +168,7 @@ async def migrate_legacy_triggered_graphs():
     n_migrated_webhooks = 0
 
     for graph in triggered_graphs:
-        if not (trigger_node := graph.webhook_input_node):
+        if not ((trigger_node := graph.webhook_input_node) and trigger_node.webhook_id):
             continue
 
         # Use trigger node's inputs for the preset
