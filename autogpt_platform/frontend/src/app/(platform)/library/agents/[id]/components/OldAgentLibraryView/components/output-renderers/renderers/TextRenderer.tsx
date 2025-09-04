@@ -14,7 +14,10 @@ function canRenderText(value: unknown, _metadata?: OutputMetadata): boolean {
   );
 }
 
-function renderText(value: unknown, _metadata?: OutputMetadata): React.ReactNode {
+function renderText(
+  value: unknown,
+  _metadata?: OutputMetadata,
+): React.ReactNode {
   const textValue = String(value);
 
   return (
@@ -24,7 +27,10 @@ function renderText(value: unknown, _metadata?: OutputMetadata): React.ReactNode
   );
 }
 
-function getCopyContentText(value: unknown, _metadata?: OutputMetadata): CopyContent | null {
+function getCopyContentText(
+  value: unknown,
+  _metadata?: OutputMetadata,
+): CopyContent | null {
   const textValue = String(value);
   return {
     mimeType: "text/plain",
@@ -47,7 +53,10 @@ function getDownloadContentText(
   };
 }
 
-function isConcatenableText(_value: unknown, _metadata?: OutputMetadata): boolean {
+function isConcatenableText(
+  _value: unknown,
+  _metadata?: OutputMetadata,
+): boolean {
   return true;
 }
 

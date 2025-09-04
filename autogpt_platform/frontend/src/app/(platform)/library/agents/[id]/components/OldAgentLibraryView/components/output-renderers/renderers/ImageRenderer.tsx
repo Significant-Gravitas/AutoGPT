@@ -103,7 +103,10 @@ function canRenderImage(value: unknown, metadata?: OutputMetadata): boolean {
   return false;
 }
 
-function renderImage(value: unknown, metadata?: OutputMetadata): React.ReactNode {
+function renderImage(
+  value: unknown,
+  metadata?: OutputMetadata,
+): React.ReactNode {
   const imageUrl = String(value);
   const altText = metadata?.filename || "Output image";
 
@@ -119,7 +122,10 @@ function renderImage(value: unknown, metadata?: OutputMetadata): React.ReactNode
   );
 }
 
-function getCopyContentImage(value: unknown, metadata?: OutputMetadata): CopyContent | null {
+function getCopyContentImage(
+  value: unknown,
+  metadata?: OutputMetadata,
+): CopyContent | null {
   const imageUrl = String(value);
 
   if (imageUrl.startsWith("data:")) {
@@ -137,8 +143,7 @@ function getCopyContentImage(value: unknown, metadata?: OutputMetadata): CopyCon
     };
   }
 
-  const mimeType =
-    metadata?.mimeType || guessMimeType(imageUrl) || "image/png";
+  const mimeType = metadata?.mimeType || guessMimeType(imageUrl) || "image/png";
 
   return {
     mimeType: mimeType,
@@ -185,7 +190,10 @@ function getDownloadContentImage(
   };
 }
 
-function isConcatenableImage(_value: unknown, _metadata?: OutputMetadata): boolean {
+function isConcatenableImage(
+  _value: unknown,
+  _metadata?: OutputMetadata,
+): boolean {
   return false;
 }
 

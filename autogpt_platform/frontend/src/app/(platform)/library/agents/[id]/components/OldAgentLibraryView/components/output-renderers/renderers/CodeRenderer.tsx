@@ -68,7 +68,10 @@ function canRenderCode(value: unknown, metadata?: OutputMetadata): boolean {
   return codeIndicators.some((pattern) => pattern.test(value));
 }
 
-function renderCode(value: unknown, metadata?: OutputMetadata): React.ReactNode {
+function renderCode(
+  value: unknown,
+  metadata?: OutputMetadata,
+): React.ReactNode {
   const codeValue = String(value);
   const language = metadata?.language || "plaintext";
 
@@ -86,7 +89,10 @@ function renderCode(value: unknown, metadata?: OutputMetadata): React.ReactNode 
   );
 }
 
-function getCopyContentCode(value: unknown, _metadata?: OutputMetadata): CopyContent | null {
+function getCopyContentCode(
+  value: unknown,
+  _metadata?: OutputMetadata,
+): CopyContent | null {
   const codeValue = String(value);
   return {
     mimeType: "text/plain",
@@ -111,7 +117,10 @@ function getDownloadContentCode(
   };
 }
 
-function isConcatenableCode(_value: unknown, _metadata?: OutputMetadata): boolean {
+function isConcatenableCode(
+  _value: unknown,
+  _metadata?: OutputMetadata,
+): boolean {
   return true;
 }
 

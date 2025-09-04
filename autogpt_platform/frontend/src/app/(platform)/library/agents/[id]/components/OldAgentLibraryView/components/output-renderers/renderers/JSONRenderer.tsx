@@ -30,7 +30,10 @@ function canRenderJSON(value: unknown, _metadata?: OutputMetadata): boolean {
   return false;
 }
 
-function renderJSON(value: unknown, _metadata?: OutputMetadata): React.ReactNode {
+function renderJSON(
+  value: unknown,
+  _metadata?: OutputMetadata,
+): React.ReactNode {
   let jsonData = value;
 
   if (typeof value === "string") {
@@ -44,7 +47,10 @@ function renderJSON(value: unknown, _metadata?: OutputMetadata): React.ReactNode
   return <JSONViewer data={jsonData} />;
 }
 
-function getCopyContentJSON(value: unknown, _metadata?: OutputMetadata): CopyContent | null {
+function getCopyContentJSON(
+  value: unknown,
+  _metadata?: OutputMetadata,
+): CopyContent | null {
   const jsonString =
     typeof value === "string" ? value : JSON.stringify(value, null, 2);
 
@@ -71,7 +77,10 @@ function getDownloadContentJSON(
   };
 }
 
-function isConcatenableJSON(_value: unknown, _metadata?: OutputMetadata): boolean {
+function isConcatenableJSON(
+  _value: unknown,
+  _metadata?: OutputMetadata,
+): boolean {
   return true;
 }
 

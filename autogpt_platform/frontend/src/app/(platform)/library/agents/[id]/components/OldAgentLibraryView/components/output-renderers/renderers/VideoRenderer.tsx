@@ -53,9 +53,7 @@ function canRenderVideo(value: unknown, metadata?: OutputMetadata): boolean {
     }
 
     if (value.startsWith("http://") || value.startsWith("https://")) {
-      return videoExtensions.some((ext) =>
-        value.toLowerCase().includes(ext),
-      );
+      return videoExtensions.some((ext) => value.toLowerCase().includes(ext));
     }
 
     if (metadata?.filename) {
@@ -68,7 +66,10 @@ function canRenderVideo(value: unknown, metadata?: OutputMetadata): boolean {
   return false;
 }
 
-function renderVideo(value: unknown, metadata?: OutputMetadata): React.ReactNode {
+function renderVideo(
+  value: unknown,
+  metadata?: OutputMetadata,
+): React.ReactNode {
   const videoUrl = String(value);
 
   return (
@@ -85,7 +86,10 @@ function renderVideo(value: unknown, metadata?: OutputMetadata): React.ReactNode
   );
 }
 
-function getCopyContentVideo(value: unknown, metadata?: OutputMetadata): CopyContent | null {
+function getCopyContentVideo(
+  value: unknown,
+  metadata?: OutputMetadata,
+): CopyContent | null {
   const videoUrl = String(value);
 
   if (videoUrl.startsWith("data:")) {
@@ -100,8 +104,7 @@ function getCopyContentVideo(value: unknown, metadata?: OutputMetadata): CopyCon
     };
   }
 
-  const mimeType =
-    metadata?.mimeType || guessMimeType(videoUrl) || "video/mp4";
+  const mimeType = metadata?.mimeType || guessMimeType(videoUrl) || "video/mp4";
 
   return {
     mimeType: mimeType,
@@ -148,7 +151,10 @@ function getDownloadContentVideo(
   };
 }
 
-function isConcatenableVideo(_value: unknown, _metadata?: OutputMetadata): boolean {
+function isConcatenableVideo(
+  _value: unknown,
+  _metadata?: OutputMetadata,
+): boolean {
   return false;
 }
 

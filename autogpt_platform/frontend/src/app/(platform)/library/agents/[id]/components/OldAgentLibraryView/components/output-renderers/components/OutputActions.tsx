@@ -58,7 +58,6 @@ export function OutputActions({ items }: OutputActionsProps) {
     downloadOutputs(items);
   };
 
-
   return (
     <div className="flex items-center gap-3">
       <Button
