@@ -72,8 +72,6 @@ export function AgentRunsSelectorList({
     "runs",
   );
 
-  const isNewAgentRunsEnabled = useGetFlag(Flag.NEW_AGENT_RUNS);
-
   useEffect(() => {
     if (selectedView.type === "schedule") {
       setActiveListTab("scheduled");
@@ -86,17 +84,7 @@ export function AgentRunsSelectorList({
 
   return (
     <aside className={cn("flex flex-col gap-4", className)}>
-      {isNewAgentRunsEnabled ? (
-        <RunAgentModal
-          triggerSlot={
-            <Button variant="primary" size="large" className="w-full">
-              <PlusIcon size={20} /> New Run
-            </Button>
-          }
-          agent={agent}
-          agentId={agent.id.toString()}
-        />
-      ) : allowDraftNewRun ? (
+      {allowDraftNewRun ? (
         <Button
           className={"mb-4 hidden lg:flex"}
           onClick={onSelectDraftNewRun}

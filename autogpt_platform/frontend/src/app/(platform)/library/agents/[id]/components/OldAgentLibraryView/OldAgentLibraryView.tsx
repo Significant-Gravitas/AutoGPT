@@ -305,7 +305,7 @@ export function OldAgentLibraryView() {
     const newSelectedRun = agentRuns.find((run) => run.id == selectedView.id);
     if (selectedView.id !== selectedRun?.id) {
       // Pull partial data from "cache" while waiting for the rest to load
-      setSelectedRun(newSelectedRun ?? null);
+      setSelectedRun((newSelectedRun as GraphExecutionMeta) ?? null);
     }
   }, [api, selectedView, agentRuns, selectedRun?.id]);
 
