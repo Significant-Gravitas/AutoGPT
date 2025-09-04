@@ -1,4 +1,5 @@
 {
+  "created_at": "2025-09-04T13:37:00",
   "credentials_input_schema": {
     "properties": {},
     "title": "TestGraphCredentialsInputSchema",
