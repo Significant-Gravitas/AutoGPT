@@ -73,7 +73,7 @@ export default function DataTable({
               </TableCell>
               <TableCell className="cursor-text">
                 <div className="flex min-h-9 items-center whitespace-pre-wrap">
-                  <div className="absolute right-1 top-auto m-1 hidden group-hover:flex gap-1">
+                  <div className="absolute right-1 top-auto m-1 hidden gap-1 group-hover:flex">
                     <Button
                       variant="outline"
                       size="icon"
@@ -117,7 +117,7 @@ export default function DataTable({
           ))}
         </TableBody>
       </Table>
-      
+
       {expandedDialog && (
         <ExpandableOutputDialog
           isOpen={expandedDialog.isOpen}

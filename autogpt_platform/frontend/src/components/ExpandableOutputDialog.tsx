@@ -38,7 +38,7 @@ const ExpandableOutputDialog: FC<ExpandableOutputDialogProps> = ({
         typeof item === "object" ? JSON.stringify(item, null, 2) : String(item),
       )
       .join("\n\n");
-    
+
     navigator.clipboard.writeText(formattedData).then(() => {
       toast({
         title: `"${beautifyString(pinName)}" data copied to clipboard!`,
@@ -49,7 +49,7 @@ const ExpandableOutputDialog: FC<ExpandableOutputDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl w-[90vw] h-[90vh] flex flex-col">
+      <DialogContent className="flex h-[90vh] w-[90vw] max-w-4xl flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Maximize2 size={20} />
@@ -58,18 +58,22 @@ const ExpandableOutputDialog: FC<ExpandableOutputDialogProps> = ({
           <DialogDescription>
             Execution ID: <span className="font-mono text-xs">{execId}</span>
             <br />
-            Pin: <span className="font-semibold">{beautifyString(pinName)}</span>
+            Pin:{" "}
+            <span className="font-semibold">{beautifyString(pinName)}</span>
           </DialogDescription>
         </DialogHeader>
-        
+
         <div className="flex-1 overflow-hidden">
           <ScrollArea className="h-full">
             <div className="p-4">
               {data.length > 0 ? (
                 <div className="space-y-4">
                   {data.map((item, index) => (
-                    <div key={index} className="border rounded-lg p-4 bg-gray-50">
-                      <div className="flex items-center justify-between mb-2">
+                    <div
+                      key={index}
+                      className="rounded-lg border bg-gray-50 p-4"
+                    >
+                      <div className="mb-2 flex items-center justify-between">
                         <span className="text-sm font-medium text-gray-600">
                           Item {index + 1} of {data.length}
                         </span>
@@ -77,9 +81,10 @@ const ExpandableOutputDialog: FC<ExpandableOutputDialogProps> = ({
                           variant="outline"
                           size="sm"
                           onClick={() => {
-                            const itemData = typeof item === "object" 
-                              ? JSON.stringify(item, null, 2) 
-                              : String(item);
+                            const itemData =
+                              typeof item === "object"
+                                ? JSON.stringify(item, null, 2)
+                                : String(item);
                             navigator.clipboard.writeText(itemData).then(() => {
                               toast({
                                 title: `Item ${index + 1} copied to clipboard!`,
@@ -95,16 +100,16 @@ const ExpandableOutputDialog: FC<ExpandableOutputDialogProps> = ({
                       </div>
                       <Separator className="mb-3" />
                       <div className="whitespace-pre-wrap break-words font-mono text-sm">
-                        <ContentRenderer 
-                          value={item} 
-                          truncateLongData={false} 
+                        <ContentRenderer
+                          value={item}
+                          truncateLongData={false}
                         />
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-center text-gray-500 py-8">
+                <div className="py-8 text-center text-gray-500">
                   No data available
                 </div>
               )}
@@ -114,7 +119,7 @@ const ExpandableOutputDialog: FC<ExpandableOutputDialogProps> = ({
 
         <DialogFooter className="flex justify-between">
           <div className="text-sm text-gray-600">
-            {data.length} item{data.length !== 1 ? 's' : ''} total
+            {data.length} item{data.length !== 1 ? "s" : ""} total
           </div>
           <div className="flex gap-2">
             <Button

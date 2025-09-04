@@ -51,7 +51,7 @@ export default function NodeOutputs({
                 variant="outline"
                 size="sm"
                 onClick={() => openExpandedView(pin, dataArray)}
-                className="hidden group-hover:flex items-center gap-1"
+                className="hidden items-center gap-1 group-hover:flex"
                 title="Expand Full View"
               >
                 <Maximize2 size={14} />
@@ -84,7 +84,7 @@ export default function NodeOutputs({
           </div>
         </div>
       ))}
-      
+
       {expandedDialog && (
         <ExpandableOutputDialog
           isOpen={expandedDialog.isOpen}
