@@ -290,6 +290,10 @@ export function OldAgentLibraryView() {
         }
 
         agentRunsQuery.upsertAgentRun(data);
+        if (data.id === selectedView.id) {
+          // Update currently viewed run
+          setSelectedRun(data);
+        }
       },
     );
 
