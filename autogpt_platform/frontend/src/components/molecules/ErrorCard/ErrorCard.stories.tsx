@@ -1,6 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { ErrorCard } from "./ErrorCard";
-import { ArrowClockwise } from "@phosphor-icons/react";
 
 const meta: Meta<typeof ErrorCard> = {
   title: "Molecules/ErrorCard",
@@ -85,11 +84,6 @@ The component will automatically:
       table: {
         defaultValue: { summary: '"data"' },
       },
-    },
-    loadingSlot: {
-      control: false,
-      description:
-        "Custom loading component to show instead of default spinner",
     },
     onRetry: {
       control: false,
@@ -187,24 +181,6 @@ export const HttpError403: Story = {
 export const LoadingState: Story = {
   args: {
     isSuccess: false,
-  },
-};
-
-/**
- * You can provide a custom loading component via the loadingSlot prop.
- */
-export const CustomLoadingSlot: Story = {
-  args: {
-    loadingSlot: (
-      <div className="flex items-center gap-3">
-        <ArrowClockwise
-          size={20}
-          weight="bold"
-          className="animate-spin text-purple-500"
-        />
-        <span className="text-zinc-600">Loading your awesome data...</span>
-      </div>
-    ),
   },
 };
 

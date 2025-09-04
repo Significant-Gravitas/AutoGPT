@@ -215,7 +215,7 @@ export function AgentRunsSelectorList({
                         timestamp={run.started_at}
                         selected={selectedView.id === run.id}
                         onClick={() => onSelectRun(run.id)}
-                        onDelete={() => doDeleteRun(run)}
+                        onDelete={() => doDeleteRun(run as GraphExecutionMeta)}
                         onPinAsPreset={
                           doCreatePresetFromRun
                             ? () => doCreatePresetFromRun(run.id)
