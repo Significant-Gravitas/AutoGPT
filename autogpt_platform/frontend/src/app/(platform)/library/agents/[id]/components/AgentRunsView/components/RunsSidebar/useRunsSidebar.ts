@@ -16,9 +16,6 @@ type Args = {
 export function useRunsSidebar({ graphId, onSelectRun }: Args) {
   const params = useSearchParams();
   const existingRunId = params.get("run") as string | undefined;
-
-  console.log(params);
-
   const [tabValue, setTabValue] = useState<"runs" | "scheduled">("runs");
 
   const runsQuery = useGetV1ListGraphExecutionsInfinite(

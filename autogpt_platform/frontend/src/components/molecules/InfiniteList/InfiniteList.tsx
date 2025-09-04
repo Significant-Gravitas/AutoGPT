@@ -9,6 +9,7 @@ interface InfiniteListProps<T> {
   hasMore: boolean;
   isFetchingMore?: boolean;
   className?: string;
+  itemWrapperClassName?: string;
 }
 
 export function InfiniteList<T>(props: InfiniteListProps<T>) {
@@ -19,6 +20,7 @@ export function InfiniteList<T>(props: InfiniteListProps<T>) {
     hasMore,
     isFetchingMore,
     className,
+    itemWrapperClassName,
   } = props;
   const sentinelRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -41,7 +43,9 @@ export function InfiniteList<T>(props: InfiniteListProps<T>) {
   return (
     <div className={className}>
       {items.map((item, idx) => (
-        <div key={idx}>{renderItem(item, idx)}</div>
+        <div key={idx} className={itemWrapperClassName}>
+          {renderItem(item, idx)}
+        </div>
       ))}
       <div ref={sentinelRef} />
     </div>

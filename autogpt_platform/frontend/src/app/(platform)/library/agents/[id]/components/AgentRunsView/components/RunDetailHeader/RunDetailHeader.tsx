@@ -24,9 +24,17 @@ type Props = {
   agent: LibraryAgent;
   run: GraphExecution | undefined;
   scheduleRecurrence?: string;
+  onSelectRun?: (id: string) => void;
+  onClearSelectedRun?: () => void;
 };
 
-export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
+export function RunDetailHeader({
+  agent,
+  run,
+  scheduleRecurrence,
+  onSelectRun,
+  onClearSelectedRun,
+}: Props) {
   const {
     stopRun,
     canStop,
@@ -36,77 +44,75 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
     runAgain,
     isRunningAgain,
     openInBuilderHref,
-  } = useRunDetailHeader(agent.graph_id, run);
+  } = useRunDetailHeader(agent.graph_id, run, onSelectRun, onClearSelectedRun);
   return (
     <div>
       <div className="flex w-full items-center justify-between">
         <div className="flex w-full flex-col gap-0">
-          <div className="flex w-full items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
+          <div className="flex w-full flex-col flex-wrap items-start justify-between gap-2 md:flex-row md:items-center">
+            <div className="flex min-w-0 flex-1 flex-col items-start gap-2 md:flex-row md:items-center">
               {run?.status ? <RunStatusBadge status={run.status} /> : null}
-              <Text variant="h3" className="!font-normal">
+              <Text
+                variant="h3"
+                className="truncate text-ellipsis !font-normal"
+              >
                 {agent.name}
               </Text>
             </div>
-            <div className="flex items-center gap-2">
-              {run ? (
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="secondary"
-                    size="small"
-                    onClick={runAgain}
-                    loading={isRunningAgain}
-                  >
-                    <PlayIcon size={16} /> Run again
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="small"
-                    onClick={deleteRun}
-                    loading={isDeleting}
-                  >
-                    <TrashIcon size={16} /> Delete run
-                  </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="secondary" size="small">
-                        •••
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      {canStop ? (
-                        <DropdownMenuItem
-                          onClick={stopRun}
-                          disabled={isStopping}
-                        >
-                          <StopIcon size={14} className="mr-2" /> Stop run
-                        </DropdownMenuItem>
-                      ) : null}
-                      {openInBuilderHref ? (
-                        <DropdownMenuItem asChild>
-                          <Link
-                            href={openInBuilderHref}
-                            target="_blank"
-                            className="flex items-center gap-2"
-                          >
-                            <ArrowSquareOut size={14} /> Open in builder
-                          </Link>
-                        </DropdownMenuItem>
-                      ) : null}
+            {run ? (
+              <div className="my-4 flex flex-wrap items-center gap-2 md:my-2 lg:my-0">
+                <Button
+                  variant="secondary"
+                  size="small"
+                  onClick={runAgain}
+                  loading={isRunningAgain}
+                >
+                  <PlayIcon size={16} /> Run again
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="small"
+                  onClick={deleteRun}
+                  loading={isDeleting}
+                >
+                  <TrashIcon size={16} /> Delete run
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="secondary" size="small">
+                      •••
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {canStop ? (
+                      <DropdownMenuItem onClick={stopRun} disabled={isStopping}>
+                        <StopIcon size={14} className="mr-2" /> Stop run
+                      </DropdownMenuItem>
+                    ) : null}
+                    {openInBuilderHref ? (
                       <DropdownMenuItem asChild>
                         <Link
-                          href={`/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`}
+                          href={openInBuilderHref}
                           target="_blank"
                           className="flex items-center gap-2"
                         >
-                          <PencilSimpleIcon size={16} /> Edit agent
+                          <ArrowSquareOut size={14} /> Open in builder
                         </Link>
                       </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              ) : null}
-            </div>
+                    ) : null}
+                    <DropdownMenuItem asChild>
+                      <Link
+                        href={`/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`}
+                        target="_blank"
+                        className="flex items-center gap-2"
+                      >
+                        <PencilSimpleIcon size={16} /> Edit agent
+                      </Link>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            ) : null}
           </div>
           {run ? (
             <div className="mt-1 flex flex-wrap items-center gap-2 gap-y-1 text-zinc-600">

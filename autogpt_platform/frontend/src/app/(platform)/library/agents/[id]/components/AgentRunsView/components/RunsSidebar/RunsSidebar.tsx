@@ -59,7 +59,7 @@ export function RunsSidebar({
   }
 
   return (
-    <div className="bg-gray-50 p-4 pl-5">
+    <div className="min-w-0 bg-gray-50 p-4 pl-5">
       <RunAgentModal
         triggerSlot={
           <Button variant="primary" size="large" className="w-full">
@@ -82,7 +82,7 @@ export function RunsSidebar({
               onSelectRun(`schedule:${schedules[0].id}`);
           }
         }}
-        className="mt-6 overflow-x-auto"
+        className="mt-6 min-w-0 overflow-hidden"
       >
         <TabsLineList>
           <TabsLineTrigger value="runs">
@@ -94,36 +94,31 @@ export function RunsSidebar({
           </TabsLineTrigger>
         </TabsLineList>
 
-        <div className="px-[2px]">
+        <>
           <TabsLineContent value="runs">
-            <div className="-mx-1 flex gap-3 overflow-x-auto pb-1 [scrollbar-gutter:stable]">
-              <div className="flex min-w-full gap-3 sm:min-w-0">
-                <InfiniteList
-                  items={runs}
-                  hasMore={!!hasMoreRuns}
-                  isFetchingMore={isFetchingMoreRuns}
-                  onEndReached={fetchMoreRuns}
-                  renderItem={(run) => (
-                    <div className="mb-3 min-w-[320px] max-w-[360px] flex-shrink-0">
-                      <RunListItem
-                        run={run}
-                        title={agent.name}
-                        selected={selectedRunId === run.id}
-                        onClick={() => onSelectRun && onSelectRun(run.id)}
-                      />
-                    </div>
-                  )}
-                />
-              </div>
-            </div>
+            <InfiniteList
+              items={runs}
+              hasMore={!!hasMoreRuns}
+              isFetchingMore={isFetchingMoreRuns}
+              onEndReached={fetchMoreRuns}
+              className="flex flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 lg:flex-col lg:gap-1 lg:overflow-x-hidden"
+              itemWrapperClassName="w-auto lg:w-full"
+              renderItem={(run) => (
+                <div className="mb-3 w-[15rem] lg:w-full">
+                  <RunListItem
+                    run={run}
+                    title={agent.name}
+                    selected={selectedRunId === run.id}
+                    onClick={() => onSelectRun && onSelectRun(run.id)}
+                  />
+                </div>
+              )}
+            />
           </TabsLineContent>
           <TabsLineContent value="scheduled">
-            <div className="-mx-1 flex gap-3 overflow-x-auto pb-1 [scrollbar-gutter:stable]">
+            <div className="flex flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 lg:flex-col lg:gap-1 lg:overflow-x-hidden">
               {schedules.map((s: GraphExecutionJobInfo) => (
-                <div
-                  className="mb-3 min-w-[320px] max-w-[360px] flex-shrink-0"
-                  key={s.id}
-                >
+                <div className="mb-3 w-[15rem] lg:w-full" key={s.id}>
                   <ScheduleListItem
                     schedule={s}
                     selected={selectedRunId === `schedule:${s.id}`}
@@ -133,7 +128,7 @@ export function RunsSidebar({
               ))}
             </div>
           </TabsLineContent>
-        </div>
+        </>
       </TabsLine>
     </div>
   );

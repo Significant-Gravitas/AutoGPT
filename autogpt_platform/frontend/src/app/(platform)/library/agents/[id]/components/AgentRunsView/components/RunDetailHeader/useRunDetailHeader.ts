@@ -9,8 +9,14 @@ import {
 import { useDeleteV1DeleteGraphExecution } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { usePostV1ExecuteGraphAgent } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import type { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
+import type { ExecuteGraphResponse } from "@/app/api/__generated__/models/executeGraphResponse";
 
-export function useRunDetailHeader(agentGraphId: string, run?: GraphExecution) {
+export function useRunDetailHeader(
+  agentGraphId: string,
+  run?: GraphExecution,
+  onSelectRun?: (id: string) => void,
+  onClearSelectedRun?: () => void,
+) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -51,6 +57,7 @@ export function useRunDetailHeader(agentGraphId: string, run?: GraphExecution) {
             getGetV1ListGraphExecutionsInfiniteQueryOptions(agentGraphId)
               .queryKey,
         });
+        if (onClearSelectedRun) onClearSelectedRun();
       },
       onError: (error: any) =>
         toast({
@@ -69,13 +76,17 @@ export function useRunDetailHeader(agentGraphId: string, run?: GraphExecution) {
   // Run again (execute agent with previous inputs/credentials)
   const executeMutation = usePostV1ExecuteGraphAgent({
     mutation: {
-      onSuccess: () => {
+      onSuccess: async (res) => {
         toast({ title: "Run started" });
-        queryClient.invalidateQueries({
+        const newRunId = (res?.data as ExecuteGraphResponse | undefined)
+          ?.graph_exec_id;
+
+        await queryClient.invalidateQueries({
           queryKey:
             getGetV1ListGraphExecutionsInfiniteQueryOptions(agentGraphId)
               .queryKey,
         });
+        if (newRunId && onSelectRun) onSelectRun(newRunId);
       },
       onError: (error: any) =>
         toast({

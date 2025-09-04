@@ -10,8 +10,15 @@ import { RunDetails } from "./components/RunDetails/RunDetails";
 import { ScheduleDetails } from "./components/ScheduleDetails/ScheduleDetails";
 
 export function AgentRunsView() {
-  const { response, ready, error, agentId, selectedRun, handleSelectRun } =
-    useAgentRunsView();
+  const {
+    response,
+    ready,
+    error,
+    agentId,
+    selectedRun,
+    handleSelectRun,
+    clearSelectedRun,
+  } = useAgentRunsView();
 
   if (!ready) {
     return <AgentRunsLoading />;
@@ -50,7 +57,7 @@ export function AgentRunsView() {
   const agent = response.data;
 
   return (
-    <div className="grid h-screen gap-4 pt-6 lg:grid-cols-[25%_70%]">
+    <div className="grid h-screen grid-cols-1 gap-0 pt-6 md:gap-4 lg:grid-cols-[25%_70%]">
       <RunsSidebar
         agent={agent}
         selectedRunId={selectedRun}
@@ -73,7 +80,12 @@ export function AgentRunsView() {
                 scheduleId={selectedRun.replace("schedule:", "")}
               />
             ) : (
-              <RunDetails agent={agent} runId={selectedRun} />
+              <RunDetails
+                agent={agent}
+                runId={selectedRun}
+                onSelectRun={handleSelectRun}
+                onClearSelectedRun={clearSelectedRun}
+              />
             )
           ) : (
             <div className="text-gray-600">

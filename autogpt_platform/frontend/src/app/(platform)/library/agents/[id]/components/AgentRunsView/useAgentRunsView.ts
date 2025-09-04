@@ -14,6 +14,10 @@ export function useAgentRunsView() {
     setRunParam(id, { shallow: true });
   }
 
+  function clearSelectedRun() {
+    setRunParam(null, { shallow: true });
+  }
+
   return {
     agentId: id,
     ready: isSuccess,
@@ -21,5 +25,6 @@ export function useAgentRunsView() {
     response,
     selectedRun,
     handleSelectRun,
+    clearSelectedRun,
   };
 }

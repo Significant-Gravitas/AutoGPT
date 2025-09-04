@@ -18,24 +18,26 @@ import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
 interface RunDetailsProps {
   agent: LibraryAgent;
   runId: string;
+  onSelectRun?: (id: string) => void;
+  onClearSelectedRun?: () => void;
 }
 
-export function RunDetails({ agent, runId }: RunDetailsProps) {
-  const { run, isLoading, error } = useRunDetails(agent.graph_id, runId);
+export function RunDetails({
+  agent,
+  runId,
+  onSelectRun,
+  onClearSelectedRun,
+}: RunDetailsProps) {
+  const { run, isLoading, responseError, httpError } = useRunDetails(
+    agent.graph_id,
+    runId,
+  );
 
-  if (error) {
+  if (responseError || httpError) {
     return (
       <ErrorCard
-        responseError={
-          error
-            ? {
-                message: String(
-                  (error as unknown as { message?: string })?.message ||
-                    "Failed to load run",
-                ),
-              }
-            : undefined
-        }
+        responseError={responseError ?? undefined}
+        httpError={httpError ?? undefined}
         context="run"
       />
     );
@@ -54,7 +56,12 @@ export function RunDetails({ agent, runId }: RunDetailsProps) {
 
   return (
     <div className="flex flex-col gap-6">
-      <RunDetailHeader agent={agent} run={run} />
+      <RunDetailHeader
+        agent={agent}
+        run={run}
+        onSelectRun={onSelectRun}
+        onClearSelectedRun={onClearSelectedRun}
+      />
 
       {/* Content */}
       <TabsLine defaultValue="output">

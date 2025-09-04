@@ -8,9 +8,10 @@ import { useScheduleDetailHeader } from "../../../RunDetailHeader/useScheduleDet
 type Props = {
   agent: LibraryAgent;
   scheduleId: string;
+  onDeleted?: () => void;
 };
 
-export function DeleteScheduleButton({ agent, scheduleId }: Props) {
+export function DeleteScheduleButton({ agent, scheduleId, onDeleted }: Props) {
   const { deleteSchedule, isDeleting } = useScheduleDetailHeader(
     agent.graph_id,
     scheduleId,
@@ -21,7 +22,10 @@ export function DeleteScheduleButton({ agent, scheduleId }: Props) {
     <Button
       variant="secondary"
       size="small"
-      onClick={deleteSchedule}
+      onClick={() => {
+        deleteSchedule();
+        if (onDeleted) onDeleted();
+      }}
       loading={isDeleting}
     >
       <TrashIcon size={16} /> Delete schedule

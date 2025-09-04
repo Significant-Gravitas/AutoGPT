@@ -27,10 +27,13 @@ export function RunSidebarCard({
       )}
       onClick={onClick}
     >
-      <div className="flex items-center justify-start gap-3">
+      <div className="flex min-w-0 items-center justify-start gap-3">
         {icon}
-        <div className="flex flex-col items-start justify-between">
-          <Text variant="body-medium" className="truncate">
+        <div className="flex min-w-0 flex-1 flex-col items-start justify-between">
+          <Text
+            variant="body-medium"
+            className="block w-full truncate text-ellipsis"
+          >
             {title}
           </Text>
           <Text variant="small" className="!text-zinc-500">

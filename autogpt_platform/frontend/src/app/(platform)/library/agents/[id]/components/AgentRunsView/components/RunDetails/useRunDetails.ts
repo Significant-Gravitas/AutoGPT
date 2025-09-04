@@ -15,12 +15,13 @@ export function useRunDetails(graphId: string, runId: string) {
 
   const httpError =
     status && status !== 200
-      ? { status, statusText: "Request failed" }
+      ? { status, statusText: `Request failed: ${status}` }
       : undefined;
 
   return {
     run,
     isLoading: query.isLoading,
-    error: query.error || httpError,
+    responseError: query.error,
+    httpError,
   } as const;
 }

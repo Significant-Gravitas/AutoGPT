@@ -33,9 +33,14 @@ import { Button } from "@/components/atoms/Button/Button";
 interface ScheduleDetailsProps {
   agent: LibraryAgent;
   scheduleId: string;
+  onClearSelectedRun?: () => void;
 }
 
-export function ScheduleDetails({ agent, scheduleId }: ScheduleDetailsProps) {
+export function ScheduleDetails({
+  agent,
+  scheduleId,
+  onClearSelectedRun,
+}: ScheduleDetailsProps) {
   const { schedule, isLoading, error } = useScheduleDetails(
     agent.graph_id,
     scheduleId,
@@ -56,6 +61,14 @@ export function ScheduleDetails({ agent, scheduleId }: ScheduleDetailsProps) {
                   (error as unknown as { message?: string })?.message ||
                     "Failed to load schedule",
                 ),
+              }
+            : undefined
+        }
+        httpError={
+          (error as any)?.status
+            ? {
+                status: (error as any).status,
+                statusText: (error as any).statusText,
               }
             : undefined
         }
@@ -91,7 +104,11 @@ export function ScheduleDetails({ agent, scheduleId }: ScheduleDetailsProps) {
           </div>
           {schedule ? (
             <div className="flex items-center gap-2">
-              <DeleteScheduleButton agent={agent} scheduleId={schedule.id} />
+              <DeleteScheduleButton
+                agent={agent}
+                scheduleId={schedule.id}
+                onDeleted={onClearSelectedRun}
+              />
               <ScheduleActions agent={agent} scheduleId={schedule.id} />
             </div>
           ) : null}
