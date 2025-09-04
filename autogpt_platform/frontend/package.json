@@ -105,7 +105,6 @@
   },
   "devDependencies": {
     "@chromatic-com/storybook": "4.1.0",
-    "@orval/core": "7.11.2",
     "@playwright/test": "1.54.2",
     "@storybook/addon-a11y": "9.1.2",
     "@storybook/addon-docs": "9.1.2",
