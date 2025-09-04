@@ -1,6 +1,6 @@
 import uuid
 from enum import Enum
-from typing import List, Literal, Optional
+from typing import Literal
 
 from pydantic import SecretStr
 from replicate.client import Client as ReplicateClient
@@ -58,9 +58,9 @@ class AIImageCustomizerBlock(Block):
             default=GeminiImageModel.GEMINI_2_5_FLASH_IMAGE,
             title="Model",
         )
-        images: Optional[List[MediaFileType]] = SchemaField(
+        images: list[MediaFileType] = SchemaField(
             description="Optional list of input images to reference or modify",
-            default=None,
+            default_factory=list,
             title="Input Images",
         )
         output_format: OutputFormat = SchemaField(
@@ -125,7 +125,7 @@ class AIImageCustomizerBlock(Block):
         api_key: SecretStr,
         model_name: str,
         prompt: str,
-        images: Optional[List[MediaFileType]],
+        images: list[MediaFileType],
         output_format: str,
     ) -> MediaFileType:
         client = ReplicateClient(api_token=api_key.get_secret_value())
