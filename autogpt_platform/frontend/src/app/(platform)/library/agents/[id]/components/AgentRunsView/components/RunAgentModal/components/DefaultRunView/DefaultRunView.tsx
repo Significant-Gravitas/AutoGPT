@@ -36,6 +36,7 @@ export function DefaultRunView() {
             <Input
               id="trigger_name"
               label="Trigger Name"
+              size="small"
               hideLabel
               value={presetName}
               placeholder="Enter trigger name"
@@ -50,6 +51,7 @@ export function DefaultRunView() {
             <Input
               id="trigger_description"
               label="Trigger Description"
+              size="small"
               hideLabel
               value={presetDescription}
               placeholder="Enter trigger description"

@@ -1,6 +1,7 @@
 from typing import cast
 
 import pytest
+from pytest_mock import MockerFixture
 
 from backend.executor.utils import merge_execution_input, parse_execution_output
 from backend.util.mock import MockObject
@@ -276,3 +277,142 @@ def test_merge_execution_input():
     result = merge_execution_input(data)
     assert "mixed" in result
     assert result["mixed"].attr[0]["key"] == "value3"
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
+    """
+    Verify that calling the function with its own output creates the same execution again.
+    """
+    from backend.data.execution import GraphExecutionWithNodes
+    from backend.data.model import CredentialsMetaInput
+    from backend.executor.utils import add_graph_execution
+    from backend.integrations.providers import ProviderName
+
+    # Mock data
+    graph_id = "test-graph-id"
+    user_id = "test-user-id"
+    inputs = {"test_input": "test_value"}
+    preset_id = "test-preset-id"
+    graph_version = 1
+    graph_credentials_inputs = {
+        "cred_key": CredentialsMetaInput(
+            id="cred-id", provider=ProviderName("test_provider"), type="oauth2"
+        )
+    }
+    nodes_input_masks = {"node1": {"input1": "masked_value"}}
+
+    # Mock the graph object returned by validate_and_construct_node_execution_input
+    mock_graph = mocker.MagicMock()
+    mock_graph.version = graph_version
+
+    # Mock the starting nodes input and compiled nodes input masks
+    starting_nodes_input = [
+        ("node1", {"input1": "value1"}),
+        ("node2", {"input1": "value2"}),
+    ]
+    compiled_nodes_input_masks = {"node1": {"input1": "compiled_mask"}}
+
+    # Mock the graph execution object
+    mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec.id = "execution-id-123"
+    mock_graph_exec.to_graph_execution_entry.return_value = mocker.MagicMock()
+
+    # Mock user context
+    mock_user_context = {"user_id": user_id, "context": "test_context"}
+
+    # Mock the queue and event bus
+    mock_queue = mocker.AsyncMock()
+    mock_event_bus = mocker.MagicMock()
+    mock_event_bus.publish = mocker.AsyncMock()
+
+    # Setup mocks
+    mock_validate = mocker.patch(
+        "backend.executor.utils.validate_and_construct_node_execution_input"
+    )
+    mock_edb = mocker.patch("backend.executor.utils.execution_db")
+    mock_prisma = mocker.patch("backend.executor.utils.prisma")
+    mock_get_user_context = mocker.patch("backend.executor.utils.get_user_context")
+    mock_get_queue = mocker.patch("backend.executor.utils.get_async_execution_queue")
+    mock_get_event_bus = mocker.patch(
+        "backend.executor.utils.get_async_execution_event_bus"
+    )
+
+    # Setup mock returns
+    mock_validate.return_value = (
+        mock_graph,
+        starting_nodes_input,
+        compiled_nodes_input_masks,
+    )
+    mock_prisma.is_connected.return_value = True
+    mock_edb.create_graph_execution = mocker.AsyncMock(return_value=mock_graph_exec)
+    mock_get_user_context.return_value = mock_user_context
+    mock_get_queue.return_value = mock_queue
+    mock_get_event_bus.return_value = mock_event_bus
+
+    # Call the function - first execution
+    result1 = await add_graph_execution(
+        graph_id=graph_id,
+        user_id=user_id,
+        inputs=inputs,
+        preset_id=preset_id,
+        graph_version=graph_version,
+        graph_credentials_inputs=graph_credentials_inputs,
+        nodes_input_masks=nodes_input_masks,
+    )
+
+    # Store the parameters used in the first call to create_graph_execution
+    first_call_kwargs = mock_edb.create_graph_execution.call_args[1]
+
+    # Verify the create_graph_execution was called with correct parameters
+    mock_edb.create_graph_execution.assert_called_once_with(
+        user_id=user_id,
+        graph_id=graph_id,
+        graph_version=mock_graph.version,
+        inputs=inputs,
+        credential_inputs=graph_credentials_inputs,
+        nodes_input_masks=nodes_input_masks,
+        starting_nodes_input=starting_nodes_input,
+        preset_id=preset_id,
+    )
+
+    # Set up the graph execution mock to have properties we can extract
+    mock_graph_exec.graph_id = graph_id
+    mock_graph_exec.user_id = user_id
+    mock_graph_exec.graph_version = graph_version
+    mock_graph_exec.inputs = inputs
+    mock_graph_exec.credential_inputs = graph_credentials_inputs
+    mock_graph_exec.nodes_input_masks = nodes_input_masks
+    mock_graph_exec.preset_id = preset_id
+
+    # Create a second mock execution for the sanity check
+    mock_graph_exec_2 = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec_2.id = "execution-id-456"
+    mock_graph_exec_2.to_graph_execution_entry.return_value = mocker.MagicMock()
+
+    # Reset mocks and set up for second call
+    mock_edb.create_graph_execution.reset_mock()
+    mock_edb.create_graph_execution.return_value = mock_graph_exec_2
+    mock_validate.reset_mock()
+
+    # Sanity check: call add_graph_execution with properties from first result
+    # This should create the same execution parameters
+    result2 = await add_graph_execution(
+        graph_id=mock_graph_exec.graph_id,
+        user_id=mock_graph_exec.user_id,
+        inputs=mock_graph_exec.inputs,
+        preset_id=mock_graph_exec.preset_id,
+        graph_version=mock_graph_exec.graph_version,
+        graph_credentials_inputs=mock_graph_exec.credential_inputs,
+        nodes_input_masks=mock_graph_exec.nodes_input_masks,
+    )
+
+    # Verify that create_graph_execution was called with identical parameters
+    second_call_kwargs = mock_edb.create_graph_execution.call_args[1]
+
+    # The sanity check: both calls should use identical parameters
+    assert first_call_kwargs == second_call_kwargs
+
+    # Both executions should succeed (though they create different objects)
+    assert result1 == mock_graph_exec
+    assert result2 == mock_graph_exec_2
