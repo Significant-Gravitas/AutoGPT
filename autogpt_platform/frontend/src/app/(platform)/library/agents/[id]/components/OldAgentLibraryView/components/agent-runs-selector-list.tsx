@@ -15,14 +15,17 @@ import { cn } from "@/lib/utils";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/atoms/Button/Button";
-import LoadingBox from "@/components/ui/loading";
-import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
+import LoadingBox, { LoadingSpinner } from "@/components/ui/loading";
+import { PlusIcon } from "@phosphor-icons/react";
 import { Separator } from "@/components/ui/separator";
-
-import { agentRunStatusMap } from "@/components/agents/agent-run-status-chip";
-import AgentRunSummaryCard from "@/components/agents/agent-run-summary-card";
-import { AgentRunsQuery } from "../../use-agent-runs";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+
+import { RunAgentModal } from "../../AgentRunsView/components/RunAgentModal/RunAgentModal";
+import { AgentRunsQuery } from "../use-agent-runs";
+import { agentRunStatusMap } from "./agent-run-status-chip";
+import { AgentRunSummaryCard } from "./agent-run-summary-card";
 
 interface AgentRunsSelectorListProps {
   agent: LibraryAgent;
@@ -38,6 +41,7 @@ interface AgentRunsSelectorListProps {
   doDeleteRun: (id: GraphExecutionMeta) => void;
   doDeletePreset: (id: LibraryAgentPresetID) => void;
   doDeleteSchedule: (id: ScheduleID) => void;
+  doCreatePresetFromRun?: (id: GraphExecutionID) => void;
   className?: string;
 }
 
@@ -45,6 +49,7 @@ export function AgentRunsSelectorList({
   agent,
   agentRunsQuery: {
     agentRuns,
+    agentRunCount,
     agentRunsLoading,
     hasMoreRuns,
     fetchMoreRuns,
@@ -61,11 +66,14 @@ export function AgentRunsSelectorList({
   doDeleteRun,
   doDeletePreset,
   doDeleteSchedule,
+  doCreatePresetFromRun,
   className,
 }: AgentRunsSelectorListProps): React.ReactElement {
   const [activeListTab, setActiveListTab] = useState<"runs" | "scheduled">(
     "runs",
   );
+
+  const isNewAgentRunsEnabled = useGetFlag(Flag.NEW_AGENT_RUNS);
 
   useEffect(() => {
     if (selectedView.type === "schedule") {
@@ -79,7 +87,17 @@ export function AgentRunsSelectorList({
 
   return (
     <aside className={cn("flex flex-col gap-4", className)}>
-      {allowDraftNewRun && (
+      {isNewAgentRunsEnabled ? (
+        <RunAgentModal
+          triggerSlot={
+            <Button variant="primary" size="large" className="w-full">
+              <PlusIcon size={20} /> New Run
+            </Button>
+          }
+          agent={agent}
+          agentId={agent.id.toString()}
+        />
+      ) : allowDraftNewRun ? (
         <Button
           className={"mb-4 hidden lg:flex"}
           onClick={onSelectDraftNewRun}
@@ -87,7 +105,7 @@ export function AgentRunsSelectorList({
         >
           New {agent.has_external_trigger ? "trigger" : "run"}
         </Button>
-      )}
+      ) : null}
 
       <div className="flex gap-2">
         <Badge
@@ -96,7 +114,9 @@ export function AgentRunsSelectorList({
           onClick={() => setActiveListTab("runs")}
         >
           <span>Runs</span>
-          <span className="text-neutral-600">{agentRuns.length}</span>
+          <span className="text-neutral-600">
+            {agentRunCount ?? <LoadingSpinner className="size-4" />}
+          </span>
         </Badge>
 
         <Badge
@@ -144,6 +164,25 @@ export function AgentRunsSelectorList({
               {activeListTab === "runs" ? (
                 <>
                   {agentPresets
+                    .filter((preset) => preset.webhook) // Triggers
+                    .toSorted(
+                      (a, b) => b.updated_at.getTime() - a.updated_at.getTime(),
+                    )
+                    .map((preset) => (
+                      <AgentRunSummaryCard
+                        className={cn(listItemClasses, "lg:h-auto")}
+                        key={preset.id}
+                        type="preset.triggered"
+                        status={preset.is_active ? "active" : "inactive"}
+                        title={preset.name}
+                        // timestamp={preset.last_run_time} // TODO: implement this
+                        selected={selectedView.id === preset.id}
+                        onClick={() => onSelectPreset(preset.id)}
+                        onDelete={() => doDeletePreset(preset.id)}
+                      />
+                    ))}
+                  {agentPresets
+                    .filter((preset) => !preset.webhook) // Presets
                     .toSorted(
                       (a, b) => b.updated_at.getTime() - a.updated_at.getTime(),
                     )
@@ -152,7 +191,6 @@ export function AgentRunsSelectorList({
                         className={cn(listItemClasses, "lg:h-auto")}
                         key={preset.id}
                         type="preset"
-                        status={preset.is_active ? "active" : "inactive"}
                         title={preset.name}
                         // timestamp={preset.last_run_time} // TODO: implement this
                         selected={selectedView.id === preset.id}
@@ -181,6 +219,11 @@ export function AgentRunsSelectorList({
                         selected={selectedView.id === run.id}
                         onClick={() => onSelectRun(run.id)}
                         onDelete={() => doDeleteRun(run)}
+                        onPinAsPreset={
+                          doCreatePresetFromRun
+                            ? () => doCreatePresetFromRun(run.id)
+                            : undefined
+                        }
                       />
                     ))}
                 </>

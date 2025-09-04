@@ -1,8 +1,6 @@
 import logging
 from typing import Any, Optional
 
-from pydantic import JsonValue
-
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -12,7 +10,7 @@ from backend.data.block import (
     BlockType,
     get_block,
 )
-from backend.data.execution import ExecutionStatus
+from backend.data.execution import ExecutionStatus, NodesInputMasks
 from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util.json import validate_with_jsonschema
 from backend.util.retry import func_retry
@@ -33,7 +31,7 @@ class AgentExecutorBlock(Block):
         input_schema: dict = SchemaField(description="Input schema for the graph")
         output_schema: dict = SchemaField(description="Output schema for the graph")
 
-        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = SchemaField(
+        nodes_input_masks: Optional[NodesInputMasks] = SchemaField(
             default=None, hidden=True
         )
 

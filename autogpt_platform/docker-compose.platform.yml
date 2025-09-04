@@ -6,8 +6,7 @@
 # 5. CLI arguments - docker compose run -e VAR=value
 
 # Common backend environment - Docker service names
-x-backend-env:
-  &backend-env # Docker internal service hostnames (override localhost defaults)
+x-backend-env: &backend-env # Docker internal service hostnames (override localhost defaults)
   PYRO_HOST: "0.0.0.0"
   AGENTSERVER_HOST: rest_server
   SCHEDULER_HOST: scheduler_server
@@ -20,6 +19,10 @@ x-backend-env:
   RABBITMQ_HOST: rabbitmq
   # Override Supabase URL for Docker network
   SUPABASE_URL: http://kong:8000
+  # Database connection string for Docker network
+  # This cannot be constructed like in .env because we cannot interpolate values set here (DB_HOST)
+  DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+  DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
 
 # Common env_file configuration for backend services
 x-backend-env-files: &backend-env-files
@@ -43,14 +46,18 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    <<: *backend-env-files
     environment:
-      - DATABASE_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
-      - DIRECT_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+      <<: *backend-env
     networks:
       - app-network
     restart: on-failure
     healthcheck:
-      test: ["CMD-SHELL", "poetry run prisma migrate status | grep -q 'No pending migrations' || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "poetry run prisma migrate status | grep -q 'No pending migrations' || exit 1",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -77,9 +84,9 @@ services:
       timeout: 10s
       retries: 5
       start_period: 10s
+    <<: *backend-env-files
     environment:
-      - RABBITMQ_DEFAULT_USER=rabbitmq_user_default
-      - RABBITMQ_DEFAULT_PASS=k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7 # CHANGE THIS TO A RANDOM PASSWORD IN PRODUCTION -- everywhere lol
+      <<: *backend-env
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -107,9 +114,6 @@ services:
     <<: *backend-env-files
     environment:
       <<: *backend-env
-      # Service-specific overrides
-      DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
-      DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
     ports:
       - "8006:8006"
     networks:
@@ -140,9 +144,6 @@ services:
     <<: *backend-env-files
     environment:
       <<: *backend-env
-      # Service-specific overrides
-      DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
-      DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
     ports:
       - "8002:8002"
     networks:
@@ -171,9 +172,6 @@ services:
     <<: *backend-env-files
     environment:
       <<: *backend-env
-      # Service-specific overrides
-      DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
-      DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
     ports:
       - "8001:8001"
     networks:
@@ -198,9 +196,6 @@ services:
     <<: *backend-env-files
     environment:
       <<: *backend-env
-      # Service-specific overrides
-      DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
-      DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
     ports:
       - "8005:8005"
     networks:
@@ -244,9 +239,6 @@ services:
     <<: *backend-env-files
     environment:
       <<: *backend-env
-      # Service-specific overrides
-      DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
-      DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
     ports:
       - "8003:8003"
     networks:
@@ -284,6 +276,8 @@ services:
       context: ../
       dockerfile: autogpt_platform/frontend/Dockerfile
       target: prod
+      args:
+        NEXT_PUBLIC_PW_TEST: ${NEXT_PUBLIC_PW_TEST:-false}
     depends_on:
       db:
         condition: service_healthy

@@ -3,12 +3,13 @@ import logging
 from enum import Enum
 from typing import Any, Optional
 
-import autogpt_libs.auth.models
 import fastapi
 import fastapi.responses
 import pydantic
 import starlette.middleware.cors
 import uvicorn
+from autogpt_libs.auth import add_auth_responses_to_openapi
+from autogpt_libs.auth import verify_settings as verify_auth_settings
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 
@@ -61,6 +62,8 @@ def launch_darkly_context():
 
 @contextlib.asynccontextmanager
 async def lifespan_context(app: fastapi.FastAPI):
+    verify_auth_settings()
+
     await backend.data.db.connect()
 
     # Ensure SDK auto-registration is patched before initializing blocks
@@ -130,6 +133,9 @@ app = fastapi.FastAPI(
 )
 
 app.add_middleware(SecurityHeadersMiddleware)
+
+# Add 401 responses to authenticated endpoints in OpenAPI spec
+add_auth_responses_to_openapi(app)
 
 
 def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
@@ -357,6 +363,7 @@ class AgentServer(backend.util.service.AppProcess):
             preset_id=preset_id,
             user_id=user_id,
             inputs=inputs or {},
+            credential_inputs={},
         )
 
     @staticmethod
@@ -370,10 +377,10 @@ class AgentServer(backend.util.service.AppProcess):
     @staticmethod
     async def test_review_store_listing(
         request: backend.server.v2.store.model.ReviewSubmissionRequest,
-        user: autogpt_libs.auth.models.User,
+        user_id: str,
     ):
         return await backend.server.v2.admin.store_admin_routes.review_submission(
-            request.store_listing_version_id, request, user
+            request.store_listing_version_id, request, user_id
         )
 
     @staticmethod
