@@ -5,9 +5,11 @@ from typing import Any
 
 from backend.data import graph as graph_db
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.server.v2.store import db as store_db
+from backend.sdk.registry import AutoRegistry
 
-from .base import BaseTool
-from .models import (
+from backend.server.v2.chat.tools.base import BaseTool
+from backend.server.v2.chat.tools.models import (
     ErrorResponse,
     ExecutionModeInfo,
     InputField,
@@ -15,6 +17,7 @@ from .models import (
     SetupRequirementInfo,
     SetupRequirementsResponse,
     ToolResponseBase,
+    UserReadiness,
 )
 
 logger = logging.getLogger(__name__)
@@ -29,7 +32,9 @@ class GetRequiredSetupInfoTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Get information about required credentials, inputs, and configuration needed to set up an agent. Requires authentication."
+        return """Check if an agent can be set up with the provided input data and credentials.
+        Call this AFTER get_agent_details to validate that you have all required inputs.
+        Pass the input dictionary you plan to use with run_agent or setup_agent to verify it's complete."""
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -38,11 +43,16 @@ class GetRequiredSetupInfoTool(BaseTool):
             "properties": {
                 "agent_id": {
                     "type": "string",
-                    "description": "The agent ID (graph ID) to get setup requirements for",
+                    "description": "The marketplace agent slug (e.g., 'username/agent-name' or just 'agent-name' to search)",
                 },
                 "agent_version": {
                     "type": "integer",
-                    "description": "Optional specific version of the agent",
+                    "description": "Optional specific version of the agent (defaults to latest)",
+                },
+                "inputs": {
+                    "type": "object",
+                    "description": "The input dictionary you plan to provide. Should contain ALL required inputs from get_agent_details",
+                    "additionalProperties": True,
                 },
             },
             "required": ["agent_id"],
@@ -81,22 +91,48 @@ class GetRequiredSetupInfoTool(BaseTool):
             )
 
         try:
-            # Get the graph with subgraphs for complete analysis
-            graph = await graph_db.get_graph(
-                graph_id=agent_id,
-                version=agent_version,
-                user_id=user_id,
-                include_subgraphs=True,
-            )
-
-            if not graph:
-                # Try to get from marketplace/public
+            graph = None
+            
+            # Check if it's a marketplace slug format (username/agent_name)
+            if "/" in agent_id:
+                try:
+                    # Parse username/agent_name from slug
+                    username, agent_name = agent_id.split("/", 1)
+                    store_agent = await store_db.get_store_agent_details(
+                        username, agent_name
+                    )
+                    if store_agent:
+                        # Get graph from store listing
+                        graph_meta = await store_db.get_available_graph(
+                            store_agent.store_listing_version_id
+                        )
+                        # Now get the full graph with that ID
+                        graph = await graph_db.get_graph(
+                            graph_id=graph_meta.id,
+                            version=graph_meta.version,
+                            user_id=None,  # Public access
+                            include_subgraphs=True,
+                        )
+                        logger.info(f"Found agent {agent_id} in marketplace")
+                except Exception as e:
+                    logger.debug(f"Failed to get from marketplace: {e}")
+            else:
+                # Try direct graph ID lookup
                 graph = await graph_db.get_graph(
                     graph_id=agent_id,
                     version=agent_version,
-                    user_id=None,
+                    user_id=user_id,
                     include_subgraphs=True,
                 )
+
+                if not graph:
+                    # Try to get from marketplace/public
+                    graph = await graph_db.get_graph(
+                        graph_id=agent_id,
+                        version=agent_version,
+                        user_id=None,
+                        include_subgraphs=True,
+                    )
 
             if not graph:
                 return ErrorResponse(
@@ -119,14 +155,87 @@ class GetRequiredSetupInfoTool(BaseTool):
                 and graph.credentials_input_schema
             ):
                 user_credentials = {}
+                system_credentials = {}
+                
                 try:
                     # Get user's existing credentials
-                    user_creds_list = await creds_manager.list_credentials(user_id)
+                    if user_id:
+                        user_creds_list = await creds_manager.store.get_all_creds(
+                            user_id
+                        )
+                    else:
+                        user_creds_list = []
                     user_credentials = {c.provider: c for c in user_creds_list}
+                    logger.info(f"User has credentials for providers: {list(user_credentials.keys())}")
                 except Exception as e:
                     logger.warning(f"Failed to get user credentials: {e}")
+                
+                # Get system-provided default credentials
+                try:
+                    system_creds_list = AutoRegistry.get_all_credentials()
+                    system_credentials = {c.provider: c for c in system_creds_list}
+                    
+                    # WORKAROUND: Check for common LLM providers that don't use SDK pattern
+                    import os
+                    from backend.data.model import APIKeyCredentials
+                    from pydantic import SecretStr
+                    
+                    # Check for OpenAI
+                    if "openai" not in system_credentials:
+                        openai_key = os.getenv("OPENAI_API_KEY")
+                        if openai_key:
+                            system_credentials["openai"] = APIKeyCredentials(
+                                id="openai-system",
+                                provider="openai",
+                                api_key=SecretStr(openai_key),
+                                title="System OpenAI API Key"
+                            )
+                    
+                    # Check for Anthropic
+                    if "anthropic" not in system_credentials:
+                        anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+                        if anthropic_key:
+                            system_credentials["anthropic"] = APIKeyCredentials(
+                                id="anthropic-system",
+                                provider="anthropic", 
+                                api_key=SecretStr(anthropic_key),
+                                title="System Anthropic API Key"
+                            )
+                    
+                    # Check for other common providers
+                    provider_env_map = {
+                        "groq": "GROQ_API_KEY",
+                        "ollama": "OLLAMA_API_KEY",
+                        "open_router": "OPEN_ROUTER_API_KEY",
+                    }
+                    
+                    for provider, env_var in provider_env_map.items():
+                        if provider not in system_credentials:
+                            api_key = os.getenv(env_var)
+                            if api_key:
+                                system_credentials[provider] = APIKeyCredentials(
+                                    id=f"{provider}-system",
+                                    provider=provider,
+                                    api_key=SecretStr(api_key),
+                                    title=f"System {provider} API Key"
+                                )
+                    
+                    logger.info(f"System provides credentials for: {list(system_credentials.keys())}")
+                except Exception as e:
+                    logger.warning(f"Failed to get system credentials: {e}")
 
-                for cred_key, cred_schema in graph.credentials_input_schema.items():
+                # Handle the nested schema structure
+                credentials_to_check = {}
+                if isinstance(graph.credentials_input_schema, dict):
+                    # Check if it's a JSON schema with properties
+                    if "properties" in graph.credentials_input_schema:
+                        credentials_to_check = graph.credentials_input_schema["properties"]
+                    else:
+                        # Fallback to treating the whole schema as credentials
+                        credentials_to_check = graph.credentials_input_schema
+
+                cred_in_schema = {}
+                for cred_key, cred_schema in credentials_to_check.items():
                     cred_req = SetupRequirementInfo(
                         key=cred_key,
                         provider=cred_key,
@@ -134,10 +243,23 @@ class GetRequiredSetupInfoTool(BaseTool):
                         user_has=False,
                     )
 
-                    # Parse credential schema
+                    # Parse credential schema to extract the actual provider
+                    actual_provider = None
                     if isinstance(cred_schema, dict):
-                        if "provider" in cred_schema:
+                        # Try to extract provider from credentials_provider field
+                        if "credentials_provider" in cred_schema:
+                            providers = cred_schema["credentials_provider"]
+                            if isinstance(providers, list) and len(providers) > 0:
+                                # Extract the actual provider name from the enum
+                                actual_provider = str(providers[0])
+                                # Handle ProviderName enum format
+                                if "ProviderName." in actual_provider:
+                                    actual_provider = actual_provider.split("'")[1] if "'" in actual_provider else actual_provider.split(".")[-1].lower()
+                                cred_req.provider = actual_provider
+                        elif "provider" in cred_schema:
                             cred_req.provider = cred_schema["provider"]
+                            actual_provider = cred_schema["provider"]
+                        
                         if "type" in cred_schema:
                             cred_req.type = cred_schema["type"]  # oauth, api_key
                         if "scopes" in cred_schema:
@@ -145,17 +267,26 @@ class GetRequiredSetupInfoTool(BaseTool):
                         if "description" in cred_schema:
                             cred_req.description = cred_schema["description"]
 
-                    # Check if user has this credential
-                    provider_name = cred_req.provider
+                    # Check if user has this credential using the actual provider name
+                    provider_name = actual_provider or cred_req.provider
+                    logger.debug(f"Checking credential {cred_key}: provider={provider_name}, available={list(user_credentials.keys())}")
+                    
+                    # Check user credentials first, then system credentials
                     if provider_name in user_credentials:
                         cred_req.user_has = True
                         cred_req.credential_id = user_credentials[provider_name].id
+                        logger.info(f"User has credential for {provider_name}")
+                    elif provider_name in system_credentials:
+                        cred_req.user_has = True
+                        cred_req.credential_id = f"system-{provider_name}"
+                        logger.info(f"System provides credential for {provider_name}")
                     else:
-                        setup_info.user_readiness.missing_credentials.append(
-                            provider_name
-                        )
+                        cred_in_schema[cred_key] = cred_schema
+                        logger.info(f"User missing credential for {provider_name} (not provided by system either)")
+                
 
                     setup_info.requirements["credentials"].append(cred_req)
+                setup_info.user_readiness.missing_credentials = cred_in_schema
 
             # Analyze input requirements
             if hasattr(graph, "input_schema") and graph.input_schema:
@@ -228,9 +359,9 @@ class GetRequiredSetupInfoTool(BaseTool):
                 # Add trigger setup info if available
                 if hasattr(graph, "trigger_setup_info") and graph.trigger_setup_info:
                     webhook_mode.trigger_info = (
-                        graph.trigger_setup_info.dict()
+                        graph.trigger_setup_info.dict()  # type: ignore
                         if hasattr(graph.trigger_setup_info, "dict")
-                        else graph.trigger_setup_info
+                        else graph.trigger_setup_info  # type: ignore
                     )
 
                 execution_modes.append(webhook_mode)
@@ -267,6 +398,8 @@ class GetRequiredSetupInfoTool(BaseTool):
                 message=f"Setup requirements for '{graph.name}' retrieved successfully",
                 setup_info=setup_info,
                 session_id=session_id,
+                graph_id=graph.id,
+                graph_version=graph.version,
             )
 
         except Exception as e:
@@ -275,3 +408,63 @@ class GetRequiredSetupInfoTool(BaseTool):
                 message=f"Failed to get setup requirements: {e!s}",
                 session_id=session_id,
             )
+
+
+if __name__ == "__main__":
+    import asyncio
+    from backend.data.db import prisma
+
+    setup_tool = GetRequiredSetupInfoTool()
+    print(setup_tool.parameters)
+
+    async def main():
+        await prisma.connect()
+        
+        # Test with a logged-in user who HAS credentials
+        print("\n=== Testing with logged-in user WITH credentials ===")
+        result1 = await setup_tool._execute(
+            agent_id="autogpt-store/slug-a", 
+            user_id="c640e784-7355-4afb-bed6-299cea1e5945", 
+            session_id="session1"
+        )
+        print(f"Result type: {result1.type}")
+        if hasattr(result1, 'setup_info'):
+            print(f"User ready: {result1.setup_info.user_readiness.ready_to_run}")
+            creds = result1.setup_info.requirements.get("credentials", [])
+            print(f"Required credentials:")
+            for cred in creds:
+                print(f"  - {cred.provider}: {'✓ Has' if cred.user_has else '✗ Missing'}")
+        
+        # Test with a logged-in user WITHOUT credentials
+        print("\n=== Testing with logged-in user WITHOUT credentials ===")
+        result2 = await setup_tool._execute(
+            agent_id="autogpt-store/slug-a", 
+            user_id="3e53486c-cf57-477e-ba2a-cb02dc828e1a", 
+            session_id="session2"
+        )
+        print(f"Result type: {result2.type}")
+        if hasattr(result2, 'setup_info'):
+            print(f"User ready: {result2.setup_info.user_readiness.ready_to_run}")
+            creds = result2.setup_info.requirements.get("credentials", [])
+            print(f"Required credentials:")
+            for cred in creds:
+                print(f"  - {cred.provider}: {'✓ Has' if cred.user_has else '✗ Missing'}")
+        
+        # Test with an anonymous user  
+        print("\n=== Testing with anonymous user ===")
+        result3 = await setup_tool._execute(
+            agent_id="autogpt-store/slug-a", 
+            user_id="anon_user123", 
+            session_id="session3"
+        )
+        print(f"Result type: {result3.type}")
+        if hasattr(result3, 'setup_info'):
+            print(f"User ready: {result3.setup_info.user_readiness.ready_to_run}")
+            creds = result3.setup_info.requirements.get("credentials", [])
+            print(f"Required credentials:")
+            for cred in creds:
+                print(f"  - {cred.provider}: {'✓ Has' if cred.user_has else '✗ Missing'}")
+        
+        await prisma.disconnect()
+    
+    asyncio.run(main())

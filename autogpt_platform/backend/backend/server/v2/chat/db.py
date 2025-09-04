@@ -6,13 +6,7 @@ from typing import Any
 import prisma.errors
 import prisma.models
 import prisma.types
-from openai.types.chat import (
-    ChatCompletionAssistantMessageParam,
-    ChatCompletionMessageParam,
-    ChatCompletionSystemMessageParam,
-    ChatCompletionToolMessageParam,
-    ChatCompletionUserMessageParam,
-)
+from openai.types.chat import ChatCompletionMessageParam
 from prisma import Json
 from prisma.enums import ChatMessageRole
 
@@ -85,7 +79,7 @@ async def get_chat_session(
         where_clause["userId"] = user_id
 
     session = await prisma.models.ChatSession.prisma().find_first(
-        where=where_clause,
+        where=prisma.types.ChatSessionWhereInput(**where_clause),  # type: ignore
         include={"messages": include_messages} if include_messages else None,
     )
 
@@ -121,7 +115,7 @@ async def list_chat_sessions(
         include_clause = {"messages": {"take": 1, "order": [{"sequence": "desc"}]}}
 
     return await prisma.models.ChatSession.prisma().find_many(
-        where=where_clause,
+        where=prisma.types.ChatSessionWhereInput(**where_clause),  # type: ignore
         include=include_clause,  # type: ignore
         order=[{"updatedAt": "desc"}],
         skip=offset,
@@ -188,7 +182,7 @@ async def create_chat_message(
     if tool_call_id:
         data["toolCallId"] = tool_call_id
     if tool_calls:
-        data["toolCalls"] = Json(tool_calls)
+        data["toolCalls"] = Json(tool_calls)  # type: ignore
     if parent_id:
         data["parentId"] = parent_id
     if metadata:
@@ -202,7 +196,7 @@ async def create_chat_message(
     if error:
         data["error"] = error
 
-    message = await prisma.models.ChatMessage.prisma().create(data=data)
+    message = await prisma.models.ChatMessage.prisma().create(data=prisma.types.ChatMessageCreateInput(**data))  # type: ignore
 
     # Update session's updatedAt timestamp
     await prisma.models.ChatSession.prisma().update(where={"id": session_id}, data={})
@@ -238,7 +232,7 @@ async def get_chat_messages(
     include_clause = {"children": True} if include_children else None
 
     return await prisma.models.ChatMessage.prisma().find_many(
-        where=where_clause,
+        where=prisma.types.ChatMessageWhereInput(**where_clause),  # type: ignore
         include=include_clause,  # type: ignore
         order=[{"sequence": "asc"}],
         skip=offset,
@@ -276,40 +270,42 @@ async def get_conversation_context(
         role_value = msg.role.value if hasattr(msg.role, "value") else msg.role
         role = role_value.lower()
 
+        message: dict[str, Any]
+
         # Build the message based on role
         if role == "assistant" and msg.toolCalls:
             # Assistant message with tool calls
-            message: ChatCompletionMessageParam = {
+            message = {
                 "role": "assistant",
                 "content": msg.content if msg.content else None,
                 "tool_calls": msg.toolCalls,
             }
         elif role == "tool":
             # Tool response message
-            message: ChatCompletionToolMessageParam = {
+            message = {
                 "role": "tool",
                 "content": msg.content,
                 "tool_call_id": msg.toolCallId or "",
             }
         elif role == "system":
             # System message
-            message: ChatCompletionSystemMessageParam = {
+            message = {
                 "role": "system",
                 "content": msg.content,
             }
         elif role == "user":
             # User message
-            message: ChatCompletionUserMessageParam = {
+            message = {
                 "role": "user",
                 "content": msg.content,
             }
         else:
             # Default assistant message
-            message: ChatCompletionAssistantMessageParam = {
+            message = {
                 "role": "assistant",
                 "content": msg.content,
             }
 
-        context.append(message)
+        context.append(message)  # type: ignore
 
     return context

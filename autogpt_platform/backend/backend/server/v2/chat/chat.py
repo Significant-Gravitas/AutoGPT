@@ -9,7 +9,6 @@ from typing import Any
 
 from openai import AsyncOpenAI
 from openai.types.chat import (
-    ChatCompletionAssistantMessageParam,
     ChatCompletionChunk,
     ChatCompletionMessageParam,
     ChatCompletionToolMessageParam,
@@ -192,12 +191,12 @@ async def stream_chat_response(
                     logger.info(f"Processing {len(tool_calls)} tool call(s)")
 
                     # Add assistant message with tool calls to context
-                    assistant_msg: ChatCompletionAssistantMessageParam = {
+                    assistant_msg = {
                         "role": "assistant",
                         "content": assistant_message if assistant_message else None,
                         "tool_calls": tool_calls,
                     }
-                    messages.append(assistant_msg)
+                    messages.append(assistant_msg)  # type: ignore
 
                     # Process each tool call
                     for tool_call in tool_calls:
@@ -361,7 +360,7 @@ async def stream_chat_completion(
 
     """
     config = get_config()
-
+    logger.warn(f"Streaming chat completion for session {session_id} with user {user_id} and message {user_message}")
     # Store user message in database
     await db.create_chat_message(
         session_id=session_id,

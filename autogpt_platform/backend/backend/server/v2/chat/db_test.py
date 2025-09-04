@@ -121,6 +121,7 @@ async def test_get_chat_session_with_messages(mocker) -> None:
 
     # Verify results
     assert result.id == "session123"
+    assert result.messages is not None
     assert len(result.messages) == 1
     assert result.messages[0].content == "Hello"
 
@@ -209,6 +210,7 @@ async def test_list_chat_sessions_with_last_message(mocker) -> None:
 
     # Verify results
     assert len(result) == 1
+    assert result[0].messages is not None
     assert len(result[0].messages) == 1
     assert result[0].messages[0].content == "Last message"
 
@@ -371,7 +373,7 @@ async def test_create_chat_message_with_tool_calls(mocker) -> None:
         role=ChatMessageRole.ASSISTANT,
         sequence=1,
         toolCallId=None,
-        toolCalls=tool_calls,
+        toolCalls=prisma.Json(tool_calls),  # type: ignore
         parentId=None,
         metadata=prisma.Json({}),
         createdAt=datetime.now(),
@@ -527,16 +529,18 @@ async def test_get_conversation_context(mocker) -> None:
             role=ChatMessageRole.ASSISTANT,
             sequence=2,
             toolCallId=None,
-            toolCalls=[
-                {
-                    "id": "call123",
-                    "type": "function",
-                    "function": {
-                        "name": "get_weather",
-                        "arguments": '{"location": "SF"}',
+            toolCalls=prisma.Json(
+                [
+                    {
+                        "id": "call123",
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": '{"location": "SF"}',
+                        },
                     },
-                },
-            ],
+                ]
+            ),  # type: ignore
             createdAt=datetime.now(),
             updatedAt=datetime.now(),
         ),
@@ -575,9 +579,11 @@ async def test_get_conversation_context(mocker) -> None:
 
     # Check assistant message with tool calls
     assert result[2]["role"] == "assistant"
-    assert result[2]["content"] == ""
+    assert result[2].get("content") == ""
     assert "tool_calls" in result[2]
-    assert result[2]["tool_calls"][0]["id"] == "call123"
+    tool_calls = result[2]["tool_calls"]
+    assert isinstance(tool_calls, list) and len(tool_calls) > 0
+    assert tool_calls[0]["id"] == "call123"
 
     # Check tool response
     assert result[3]["role"] == "tool"

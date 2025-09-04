@@ -39,6 +39,49 @@ export function StreamingMessage({
   const isAssistant = role === "ASSISTANT";
   const isSystem = role === "SYSTEM";
   const isTool = role === "TOOL";
+  
+  // Helper function to parse text with ** markers for bold
+  const parseTextWithBold = (text: string): React.ReactNode[] => {
+    const parts: React.ReactNode[] = [];
+    let currentIndex = 0;
+    let isInBold = false;
+    let boldStartIndex = -1;
+    
+    while (currentIndex < text.length) {
+      const nextMarkerIndex = text.indexOf('**', currentIndex);
+      
+      if (nextMarkerIndex === -1) {
+        // No more markers, add the rest of the text
+        if (isInBold && boldStartIndex !== -1) {
+          // We're in bold but no closing marker found, treat the opening ** as regular text
+          parts.push(text.substring(boldStartIndex));
+        } else {
+          parts.push(text.substring(currentIndex));
+        }
+        break;
+      }
+      
+      if (isInBold) {
+        // This is a closing marker
+        const boldText = text.substring(currentIndex, nextMarkerIndex);
+        parts.push(<strong key={`bold-${parts.length}`}>{boldText}</strong>);
+        isInBold = false;
+        currentIndex = nextMarkerIndex + 2;
+        boldStartIndex = -1;
+      } else {
+        // This is an opening marker
+        if (nextMarkerIndex > currentIndex) {
+          // Add text before the marker
+          parts.push(text.substring(currentIndex, nextMarkerIndex));
+        }
+        isInBold = true;
+        boldStartIndex = nextMarkerIndex;
+        currentIndex = nextMarkerIndex + 2;
+      }
+    }
+    
+    return parts;
+  };
 
   // Process segments to combine consecutive text segments
   const processedSegments = useMemo(() => {
@@ -83,25 +126,25 @@ export function StreamingMessage({
                 if (line.startsWith("# ")) {
                   return (
                     <h1 key={lineKey} className="mb-2 text-xl font-bold">
-                      {line.substring(2)}
+                      {parseTextWithBold(line.substring(2))}
                     </h1>
                   );
                 } else if (line.startsWith("## ")) {
                   return (
                     <h2 key={lineKey} className="mb-2 text-lg font-bold">
-                      {line.substring(3)}
+                      {parseTextWithBold(line.substring(3))}
                     </h2>
                   );
                 } else if (line.startsWith("### ")) {
                   return (
                     <h3 key={lineKey} className="mb-2 text-base font-bold">
-                      {line.substring(4)}
+                      {parseTextWithBold(line.substring(4))}
                     </h3>
                   );
                 } else if (line.startsWith("- ")) {
                   return (
                     <li key={lineKey} className="ml-4 list-disc">
-                      {line.substring(2)}
+                      {parseTextWithBold(line.substring(2))}
                     </li>
                   );
                 } else if (line.startsWith("```")) {
@@ -118,7 +161,7 @@ export function StreamingMessage({
                 } else {
                   return (
                     <span key={lineKey}>
-                      {line}
+                      {parseTextWithBold(line)}
                       {lineIndex < segment.content.split("\n").length - 1 &&
                         "\n"}
                     </span>
@@ -160,13 +203,27 @@ export function StreamingMessage({
         return (
           <div key={segmentKey} className="my-4">
             <CredentialsSetupWidget
-              agentId={credentialsData.agent_id}
-              configuredCredentials={
-                credentialsData.configured_credentials || []
-              }
-              missingCredentials={credentialsData.missing_credentials || []}
-              totalRequired={credentialsData.total_required || 0}
-              message={credentialsData.message}
+              agentInfo={{
+                id: credentialsData.agent_id || credentialsData.agent?.id,
+                name: credentialsData.agent_name || credentialsData.agent?.name,
+                graph_id: credentialsData.graph_id || credentialsData.agent?.graph_id,
+              }}
+              credentialsSchema={credentialsData.credentials_schema || credentialsData.credentials || {}}
+              onCredentialsSubmit={async (credentials) => {
+                // After credentials are set up, retry the agent setup
+                const agentInfo = credentialsData.agent_info || credentialsData.agent;
+                if (agentInfo && onSelectAgent) {
+                  // Send a message to retry setting up the agent now that credentials are configured
+                  const message = `The credentials have been configured. Now set up the agent "${agentInfo.name || agentInfo.agent_id}" (ID: ${agentInfo.graph_id || agentInfo.agent_id})`;
+                  console.log("Retrying agent setup after credentials:", message);
+                  // Trigger the onSelectAgent callback which should send the appropriate message
+                  onSelectAgent(agentInfo);
+                }
+              }}
+              onSkip={() => {
+                console.log("User skipped credentials setup");
+                // Optionally show a message that the agent cannot be run without credentials
+              }}
             />
           </div>
         );
@@ -184,7 +241,7 @@ export function StreamingMessage({
               scheduleId={setupData.schedule_id}
               webhookUrl={setupData.webhook_url}
               cron={setupData.cron}
-              cronUtc={setupData.cron_utc}
+              _cronUtc={setupData.cron_utc}
               timezone={setupData.timezone}
               nextRun={setupData.next_run}
               addedToLibrary={setupData.added_to_library}

@@ -295,7 +295,7 @@ class StoreAgentSearchService:
                     LIMIT :limit
                 )
                 SELECT
-                    sa.listing_id as id,
+                    sa.listing_id,
                     sa.slug,
                     sa.agent_name,
                     sa.agent_image,

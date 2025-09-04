@@ -4651,7 +4651,7 @@
           {
             "name": "message",
             "in": "query",
-            "required": false,
+            "required": true,
             "schema": {
               "type": "string",
               "minLength": 1,
@@ -5331,11 +5331,6 @@
       },
       "CreateSessionRequest": {
         "properties": {
-          "system_prompt": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "System Prompt",
-            "description": "Optional system prompt for the session"
-          },
           "metadata": {
             "anyOf": [
               { "additionalProperties": true, "type": "object" },

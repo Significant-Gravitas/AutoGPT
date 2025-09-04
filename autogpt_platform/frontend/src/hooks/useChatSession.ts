@@ -35,35 +35,6 @@ export function useChatSession(
     urlSessionIdRef.current = urlSessionId;
   }, [urlSessionId]);
 
-  // Load session from localStorage or URL on mount
-  useEffect(() => {
-    // If urlSessionId is explicitly null, don't load any session (will create new one)
-    if (urlSessionId === null) {
-      // Clear stored session to start fresh
-      localStorage.removeItem("chat_session_id");
-      return;
-    }
-
-    // Priority 1: URL session ID (explicit navigation to a session)
-    if (urlSessionId) {
-      loadSession(urlSessionId, false); // Don't auto-create new session if URL session fails
-      return;
-    }
-
-    // Priority 2: Pending session (from auth redirect)
-    const pendingSessionId = localStorage.getItem("pending_chat_session");
-    if (pendingSessionId) {
-      loadSession(pendingSessionId, false); // Don't retry on failure
-      // Clear the pending session flag
-      localStorage.removeItem("pending_chat_session");
-      localStorage.setItem("chat_session_id", pendingSessionId);
-      return;
-    }
-
-    // Priority 3: Regular stored session - ONLY load if explicitly in URL
-    // Don't automatically load the last session just because it exists in localStorage
-    // This prevents unwanted session persistence across page loads
-  }, [urlSessionId]);
 
   const createSession = useCallback(
     async () => {
@@ -186,6 +157,38 @@ export function useChatSession(
       setIsLoading(false);
     }
   }, [session, chatAPI]);
+
+  // Load session from localStorage or URL on mount
+  useEffect(() => {
+    // If urlSessionId is explicitly null, don't load any session (will create new one)
+    if (urlSessionId === null) {
+      // Clear stored session to start fresh
+      localStorage.removeItem("chat_session_id");
+      return;
+    }
+
+    // Priority 1: URL session ID (explicit navigation to a session)
+    if (urlSessionId) {
+      console.log("📍 Loading session from URL:", urlSessionId);
+      loadSession(urlSessionId, false); // Don't auto-create new session if URL session fails
+      return;
+    }
+
+    // Priority 2: Pending session (from auth redirect)
+    const pendingSessionId = localStorage.getItem("pending_chat_session");
+    if (pendingSessionId) {
+      console.log("📍 Loading pending session:", pendingSessionId);
+      loadSession(pendingSessionId, false); // Don't retry on failure
+      // Clear the pending session flag
+      localStorage.removeItem("pending_chat_session");
+      localStorage.setItem("chat_session_id", pendingSessionId);
+      return;
+    }
+
+    // Priority 3: Regular stored session - ONLY load if explicitly in URL
+    // Don't automatically load the last session just because it exists in localStorage
+    // This prevents unwanted session persistence across page loads
+  }, [urlSessionId, loadSession]);
 
   const refreshSession = useCallback(async () => {
     if (!session) return;

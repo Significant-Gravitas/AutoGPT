@@ -44,16 +44,28 @@ export function AgentCarousel({
   const carouselRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  // Deduplicate agents by ID
+  const uniqueAgents = React.useMemo(() => {
+    const seen = new Set<string>();
+    return agents.filter((agent) => {
+      if (seen.has(agent.id)) {
+        return false;
+      }
+      seen.add(agent.id);
+      return true;
+    });
+  }, [agents]);
+
   // Auto-scroll effect
   useEffect(() => {
-    if (!isAutoScrolling || agents.length <= 3) return;
+    if (!isAutoScrolling || uniqueAgents.length <= 3) return;
 
     const timer = setInterval(() => {
-      setCurrentIndex((prev) => (prev + 1) % Math.max(1, agents.length - 2));
+      setCurrentIndex((prev) => (prev + 1) % Math.max(1, uniqueAgents.length - 2));
     }, 5000);
 
     return () => clearInterval(timer);
-  }, [isAutoScrolling, agents.length]);
+  }, [isAutoScrolling, uniqueAgents.length]);
 
   // Scroll to current index
   useEffect(() => {
@@ -74,7 +86,7 @@ export function AgentCarousel({
   const handleNext = () => {
     setIsAutoScrolling(false);
     setCurrentIndex((prev) =>
-      Math.min(Math.max(0, agents.length - 3), prev + 1),
+      Math.min(Math.max(0, uniqueAgents.length - 3), prev + 1),
     );
   };
 
@@ -83,11 +95,11 @@ export function AgentCarousel({
     setCurrentIndex(index);
   };
 
-  if (!agents || agents.length === 0) {
+  if (!uniqueAgents || uniqueAgents.length === 0) {
     return null;
   }
 
-  const maxVisibleIndex = Math.max(0, agents.length - 3);
+  const maxVisibleIndex = Math.max(0, uniqueAgents.length - 3);
 
   return (
     <div className={cn("my-6 space-y-4", className)} ref={carouselRef}>
@@ -96,10 +108,10 @@ export function AgentCarousel({
         <div className="flex items-center gap-2">
           <Sparkles className="h-5 w-5 text-violet-600" />
           <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
-            Found {agents.length} agents for &ldquo;{query}&rdquo;
+            Found {uniqueAgents.length} agents for &ldquo;{query}&rdquo;
           </h3>
         </div>
-        {agents.length > 3 && (
+        {uniqueAgents.length > 3 && (
           <div className="flex items-center gap-2">
             <Button
               onClick={handlePrevious}
@@ -130,7 +142,7 @@ export function AgentCarousel({
           className="scrollbar-hide flex gap-4 overflow-x-auto scroll-smooth"
           style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
-          {agents.map((agent) => (
+          {uniqueAgents.map((agent) => (
             <div
               key={agent.id}
               className={cn(

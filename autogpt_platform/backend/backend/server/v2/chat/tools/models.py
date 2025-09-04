@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
-
+from backend.data.model import CredentialsMetaInput
 
 class ResponseType(str, Enum):
     """Types of tool responses."""
@@ -12,12 +12,14 @@ class ResponseType(str, Enum):
     AGENT_CAROUSEL = "agent_carousel"
     AGENT_DETAILS = "agent_details"
     AGENT_DETAILS_NEED_LOGIN = "agent_details_need_login"
+    AGENT_DETAILS_NEED_CREDENTIALS = "agent_details_need_credentials"
     SETUP_REQUIREMENTS = "setup_requirements"
     SCHEDULE_CREATED = "schedule_created"
     WEBHOOK_CREATED = "webhook_created"
     PRESET_CREATED = "preset_created"
     EXECUTION_STARTED = "execution_started"
     NEED_LOGIN = "need_login"
+    NEED_CREDENTIALS = "need_credentials"
     INSUFFICIENT_CREDITS = "insufficient_credits"
     VALIDATION_ERROR = "validation_error"
     ERROR = "error"
@@ -84,16 +86,6 @@ class InputField(BaseModel):
     format: str | None = None
 
 
-class CredentialRequirement(BaseModel):
-    """Credential requirement specification."""
-
-    provider: str
-    required: bool = True
-    type: str | None = None  # oauth, api_key, etc
-    scopes: list[str] | None = None
-    description: str | None = None
-
-
 class ExecutionOptions(BaseModel):
     """Available execution options for an agent."""
 
@@ -113,7 +105,7 @@ class AgentDetails(BaseModel):
     in_library: bool = False
     is_marketplace: bool = False
     inputs: dict[str, Any] = {}
-    credentials: list[CredentialRequirement] = []
+    credentials: list[CredentialsMetaInput] = []
     execution_options: ExecutionOptions = Field(default_factory=ExecutionOptions)
     trigger_info: dict[str, Any] | None = None
     stats: dict[str, Any] | None = None
@@ -125,6 +117,8 @@ class AgentDetailsResponse(ToolResponseBase):
     type: ResponseType = ResponseType.AGENT_DETAILS
     agent: AgentDetails
     user_authenticated: bool = False
+    graph_id: str | None = None
+    graph_version: int | None = None
 
 
 class AgentDetailsNeedLoginResponse(ToolResponseBase):
@@ -133,6 +127,19 @@ class AgentDetailsNeedLoginResponse(ToolResponseBase):
     type: ResponseType = ResponseType.AGENT_DETAILS_NEED_LOGIN
     agent: AgentDetails
     agent_info: dict[str, Any] | None = None
+    graph_id: str | None = None
+    graph_version: int | None = None
+
+
+class AgentDetailsNeedCredentialsResponse(ToolResponseBase):
+    """Response when agent needs credentials to be configured."""
+
+    type: ResponseType = ResponseType.NEED_CREDENTIALS
+    agent: AgentDetails
+    credentials_schema: dict[str, Any]
+    agent_info: dict[str, Any] | None = None
+    graph_id: str | None = None
+    graph_version: int | None = None
 
 
 # Setup info models
@@ -163,7 +170,7 @@ class UserReadiness(BaseModel):
     """User readiness status."""
 
     has_all_credentials: bool = False
-    missing_credentials: list[str] = []
+    missing_credentials: dict[str, Any] = {}
     ready_to_run: bool = False
 
 
@@ -189,6 +196,8 @@ class SetupRequirementsResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.SETUP_REQUIREMENTS
     setup_info: SetupInfo
+    graph_id: str | None = None
+    graph_version: int | None = None
 
 
 # Setup agent models

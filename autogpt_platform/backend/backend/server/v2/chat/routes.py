@@ -191,7 +191,7 @@ async def list_sessions(
         # Format sessions for response
         session_list = []
         for session in sessions:
-            session_dict = {
+            session_dict: dict[str, str | dict[str, str]] = {
                 "id": session.id,
                 "created_at": session.createdAt.isoformat(),
                 "updated_at": session.updatedAt.isoformat(),
@@ -201,8 +201,14 @@ async def list_sessions(
             if include_last_message and session.messages:
                 last_msg = session.messages[0]
                 session_dict["last_message"] = {
-                    "content": last_msg.content[:100],  # Preview
-                    "role": last_msg.role,
+                    "content": (
+                        last_msg.content[:100] if last_msg.content else ""
+                    ),  # Preview
+                    "role": (
+                        last_msg.role.value
+                        if hasattr(last_msg.role, "value")
+                        else str(last_msg.role)
+                    ),
                     "created_at": last_msg.createdAt.isoformat(),
                 }
 
@@ -437,7 +443,7 @@ async def send_message(
 )
 async def stream_chat(
     session_id: str,
-    message: Annotated[str, Query(min_length=1, max_length=10000)] = ...,
+    message: Annotated[str, Query(min_length=1, max_length=10000)],
     model: Annotated[str, Query()] = "gpt-4o",
     max_context: Annotated[int, Query(ge=1, le=100)] = 50,
     user_id: str | None = Depends(get_optional_user_id),
@@ -558,7 +564,7 @@ async def assign_user_to_session(
         # Update the session with the real user ID
         await prisma.chatsession.update(
             where={"id": session_id},
-            data={"userId": user_id},
+            data={"userId": user_id},  # type: ignore
         )
 
         logger.info(f"Assigned user {user_id} to session {session_id}")

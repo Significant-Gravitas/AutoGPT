@@ -65,9 +65,6 @@ export class ChatAPI {
   }
 
   async createSession(request?: CreateSessionRequest): Promise<ChatSession> {
-    // For anonymous sessions, we'll make a direct request without auth
-    const baseUrl = (this.api as any).baseUrl;
-
     // Generate a unique anonymous ID for this session
     const anonId =
       typeof window !== "undefined"
@@ -99,8 +96,9 @@ export class ChatAPI {
       // Continue with anonymous session
     }
 
-    // Create anonymous session
-    const response = await fetch(`${baseUrl}/v2/chat/sessions`, {
+    // Create anonymous session through proxy
+    const proxyUrl = `/api/proxy/api/v2/chat/sessions`;
+    const response = await fetch(proxyUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -120,8 +118,12 @@ export class ChatAPI {
   }
 
   async createSessionOld(request?: CreateSessionRequest): Promise<ChatSession> {
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+    };
+    
     const response = await fetch(
-      `${(this.api as any).baseUrl}/v2/chat/sessions`,
+      `/api/proxy/api/v2/chat/sessions`,
       {
         method: "POST",
         headers,
@@ -152,7 +154,7 @@ export class ChatAPI {
     includeMessages = true,
   ): Promise<ChatSession> {
     const response = await fetch(
-      `${(this.api as any).baseUrl}/v2/chat/sessions/${sessionId}?include_messages=${includeMessages}`,
+      `/api/proxy/api/v2/chat/sessions/${sessionId}?include_messages=${includeMessages}`,
       {
         method: "GET",
         headers,
@@ -206,7 +208,7 @@ export class ChatAPI {
     });
 
     const response = await fetch(
-      `${(this.api as any).baseUrl}/v2/chat/sessions?${params}`,
+      `/api/proxy/api/v2/chat/sessions?${params}`,
       {
         method: "GET",
         headers,
@@ -227,7 +229,7 @@ export class ChatAPI {
 
   async deleteSessionOld(sessionId: string): Promise<void> {
     const response = await fetch(
-      `${(this.api as any).baseUrl}/v2/chat/sessions/${sessionId}`,
+      `/api/proxy/api/v2/chat/sessions/${sessionId}`,
       {
         method: "DELETE",
         headers,
@@ -257,7 +259,7 @@ export class ChatAPI {
     request: SendMessageRequest,
   ): Promise<ChatMessage> {
     const response = await fetch(
-      `${(this.api as any).baseUrl}/v2/chat/sessions/${sessionId}/messages`,
+      `/api/proxy/api/v2/chat/sessions/${sessionId}/messages`,
       {
         method: "POST",
         headers,
@@ -287,29 +289,14 @@ export class ChatAPI {
     });
 
     try {
-      // Try to get auth token, but allow anonymous if not available
-      const headers: HeadersInit = {};
-
-      try {
-        const supabase = await (this.api as any).getSupabaseClient();
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
-        if (session?.access_token) {
-          headers.Authorization = `Bearer ${session.access_token}`;
-        }
-      } catch (_e) {
-        // Continue without auth for anonymous sessions
-      }
-
-      const response = await fetch(
-        `${(this.api as any).baseUrl}/v2/chat/sessions/${sessionId}/stream?${params}`,
-        {
-          method: "GET",
-          headers,
-        },
-      );
+      // Use the proxy endpoint for authentication
+      // The proxy will handle adding the auth token from the server session
+      const proxyUrl = `/api/proxy/api/v2/chat/sessions/${sessionId}/stream?${params}`;
+      
+      const response = await fetch(proxyUrl, {
+        method: "GET",
+        // No need to set headers here - the proxy handles authentication
+      });
 
       if (!response.ok) {
         const error = await response.text();

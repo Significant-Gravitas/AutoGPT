@@ -98,7 +98,7 @@ async def search_store_agents(
 
         # Use SQLAlchemy service for vector search
         service = get_search_service()
-        results = await service.search_by_embedding(query_embedding, limit=30)
+        results = await service.search_by_embedding(query_embedding, limit=limit)
     except Exception as e:
         logger.error(f"Error during vector search: {e}. Falling back to text search.")
         # Fallback to regular text search on any error
@@ -316,7 +316,7 @@ async def get_store_agent_details(
             agent_name=agent.agent_name,
             agent_video=agent.agent_video or "",
             agent_image=agent.agent_image,
-            creator=agent.creator_username,
+            creator=agent.creator_username or "",
             creator_avatar=agent.creator_avatar or "",
             sub_heading=agent.sub_heading,
             description=agent.description,
@@ -389,7 +389,7 @@ async def get_store_agent_by_version_id(
             agent_name=agent.agent_name,
             agent_video=agent.agent_video or "",
             agent_image=agent.agent_image,
-            creator=agent.creator_username,
+            creator=agent.creator_username or "",
             creator_avatar=agent.creator_avatar or "",
             sub_heading=agent.sub_heading,
             description=agent.description,

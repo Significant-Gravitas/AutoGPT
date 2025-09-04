@@ -450,7 +450,7 @@ export default class BackendAPI {
 
   getStoreProfile(): Promise<ProfileDetails | null> {
     try {
-      const result = this._get("/store/profile");
+      const result = this._get("/v2/store/profile");
       return result;
     } catch (error) {
       console.error("Error fetching store profile:", error);
@@ -566,7 +566,7 @@ export default class BackendAPI {
   }
 
   updateStoreProfile(profile: ProfileDetails): Promise<ProfileDetails> {
-    return this._request("POST", "/store/profile", profile);
+    return this._request("POST", "/v2/store/profile", profile);
   }
 
   reviewAgent(
