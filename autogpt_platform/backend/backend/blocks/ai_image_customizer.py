@@ -131,7 +131,7 @@ class AIImageCustomizerBlock(Block):
     ) -> MediaFileType:
         client = ReplicateClient(api_token=api_key.get_secret_value())
 
-        input_params = {
+        input_params: dict = {
             "prompt": prompt,
             "output_format": output_format,
         }
