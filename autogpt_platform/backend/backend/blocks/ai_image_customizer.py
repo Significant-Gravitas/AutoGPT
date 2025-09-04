@@ -86,7 +86,7 @@ class AIImageCustomizerBlock(Block):
             test_input={
                 "prompt": "A golden retriever, the Dalai Lama, and Taylor Swift ring the bell at the New York stock exchange for their new company",
                 "model": GeminiImageModel.GEMINI_2_5_FLASH_IMAGE,
-                "images": None,
+                "images": [],
                 "output_format": OutputFormat.JPG,
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
@@ -94,7 +94,7 @@ class AIImageCustomizerBlock(Block):
                 ("image_url", "https://replicate.delivery/generated-image.jpg"),
             ],
             test_mock={
-                "run_model": lambda *args, **kwargs: "https://replicate.delivery/generated-image.jpg",
+                "run_model": lambda *args, **kwargs: MediaFileType("https://replicate.delivery/generated-image.jpg"),
             },
             test_credentials=TEST_CREDENTIALS,
         )
@@ -113,6 +113,7 @@ class AIImageCustomizerBlock(Block):
                 api_key=credentials.api_key,
                 model_name=input_data.model.value,
                 prompt=input_data.prompt,
+                images=input_data.images,
                 output_format=input_data.output_format.value,
             )
             yield "image_url", result
@@ -124,6 +125,7 @@ class AIImageCustomizerBlock(Block):
         api_key: SecretStr,
         model_name: str,
         prompt: str,
+        images: Optional[List[MediaFileType]],
         output_format: str,
     ) -> MediaFileType:
         client = ReplicateClient(api_token=api_key.get_secret_value())
@@ -132,6 +134,11 @@ class AIImageCustomizerBlock(Block):
             "prompt": prompt,
             "output_format": output_format,
         }
+        
+        # Add images to input if provided
+        if images:
+            # Convert MediaFileType objects to base64 strings for the API
+            input_params["images"] = [str(img) for img in images]
 
         output: FileOutput | str = await client.async_run(  # type: ignore
             model_name,
