@@ -8,7 +8,6 @@ import pydantic
 
 import backend.data.block as block_model
 import backend.data.graph as graph_model
-from backend.data.db import BaseDbModel
 from backend.data.model import CredentialsMetaInput, is_credentials_field_name
 from backend.util.models import Pagination
 
@@ -249,9 +248,10 @@ class TriggeredPresetSetupRequest(pydantic.BaseModel):
     )
 
 
-class LibraryAgentPreset(LibraryAgentPresetCreatable, BaseDbModel):
+class LibraryAgentPreset(LibraryAgentPresetCreatable):
     """Represents a preset configuration for a library agent."""
 
+    id: str
     user_id: str
     created_at: datetime.datetime
     updated_at: datetime.datetime

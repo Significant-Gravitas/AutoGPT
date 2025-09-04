@@ -3,9 +3,7 @@ from typing import TYPE_CHECKING, Optional, cast
 
 from pydantic import JsonValue
 
-from backend.data.graph import set_node_webhook
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.integrations.providers import ProviderName
 from backend.util.settings import Config
 
 from . import get_webhook_manager, supports_webhooks
@@ -14,6 +12,7 @@ if TYPE_CHECKING:
     from backend.data.block import Block, BlockSchema
     from backend.data.integrations import Webhook
     from backend.data.model import Credentials
+    from backend.integrations.providers import ProviderName
 
 logger = logging.getLogger(__name__)
 app_config = Config()
@@ -21,7 +20,7 @@ credentials_manager = IntegrationCredentialsManager()
 
 
 # TODO: add test to assert this matches the actual API route
-def webhook_ingress_url(provider_name: ProviderName, webhook_id: str) -> str:
+def webhook_ingress_url(provider_name: "ProviderName", webhook_id: str) -> str:
     return (
         f"{app_config.platform_base_url}/api/integrations/{provider_name.value}"
         f"/webhooks/{webhook_id}/ingress"
@@ -150,7 +149,8 @@ async def setup_webhook_for_block(
 async def migrate_legacy_triggered_graphs():
     from prisma.models import AgentGraph
 
-    from backend.data.graph import AGENT_GRAPH_INCLUDE, GraphModel
+    from backend.data.graph import AGENT_GRAPH_INCLUDE, GraphModel, set_node_webhook
+    from backend.data.model import is_credentials_field_name
     from backend.server.v2.library.db import create_preset
     from backend.server.v2.library.model import LibraryAgentPresetCreatable
 
@@ -169,14 +169,26 @@ async def migrate_legacy_triggered_graphs():
         if not (trigger_node := graph.webhook_input_node):
             continue
 
+        # Use trigger node's inputs for the preset
+        preset_credentials = {
+            field_name: creds_meta
+            for field_name, creds_meta in trigger_node.input_default.items()
+            if is_credentials_field_name(field_name)
+        }
+        preset_inputs = {
+            field_name: value
+            for field_name, value in trigger_node.input_default.items()
+            if not is_credentials_field_name(field_name)
+        }
+
         # Create a triggered preset for the graph
         await create_preset(
             graph.user_id,
             LibraryAgentPresetCreatable(
                 graph_id=graph.id,
                 graph_version=graph.version,
-                inputs=trigger_node.input_default,
-                credentials={},  # FIXME
+                inputs=preset_inputs,
+                credentials=preset_credentials,
                 name=graph.name,
                 description=graph.description,
                 webhook_id=trigger_node.webhook_id,

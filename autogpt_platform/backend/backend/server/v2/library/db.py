@@ -709,10 +709,7 @@ async def create_preset(
                         )
                         for name, data in {
                             **preset.inputs,
-                            **{
-                                key: creds_meta.model_dump(exclude_none=True)
-                                for key, creds_meta in preset.credentials.items()
-                            },
+                            **preset.credentials,
                         }.items()
                     ]
                 },
