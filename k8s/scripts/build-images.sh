@@ -26,7 +26,7 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 # Configuration (CLI overrides .env, .env overrides defaults)
-AUTOGPT_SOURCE_DIR="${AUTOGPT_SOURCE_DIR:-/Users/majdyz/Code/AutoGPT}"
+AUTOGPT_SOURCE_DIR="${AUTOGPT_SOURCE_DIR:-}"
 REGISTRY_TYPE="${CLI_REGISTRY_TYPE:-${REGISTRY_TYPE:-local}}" # Options: local, gcr, dockerhub
 PROJECT_ID="${CLI_PROJECT_ID:-${GCP_PROJECT_ID:-}}"
 REGION="${CLI_REGION:-${GCP_REGION:-us-central1}}"
@@ -153,11 +153,13 @@ build_image() {
     # Build the image
     if [ -n "$target" ]; then
         docker build -f "$dockerfile_path" \
+            --platform linux/amd64 \
             --target "$target" \
             -t "$image_tag" \
             "$context_path"
     else
         docker build -f "$dockerfile_path" \
+            --platform linux/amd64 \
             -t "$image_tag" \
             "$context_path"
     fi
@@ -249,14 +251,28 @@ main() {
     
     FAILED_BUILDS=""
     
-    for i in "${!SERVICES_NAMES[@]}"; do
-        service="${SERVICES_NAMES[$i]}"
-        IFS=':' read -r dockerfile target <<< "${SERVICES_CONFIGS[$i]}"
+    # If specific service requested, build only that one
+    if [ -n "${1:-}" ] && [[ " ${SERVICES_NAMES[*]} " == *" $1 "* ]]; then
+        TARGET_SERVICES=("$1")
+        for i in "${!SERVICES_NAMES[@]}"; do
+            if [[ "${SERVICES_NAMES[$i]}" == "$1" ]]; then
+                TARGET_CONFIGS=("${SERVICES_CONFIGS[$i]}")
+                break
+            fi
+        done
+    else
+        TARGET_SERVICES=("${SERVICES_NAMES[@]}")
+        TARGET_CONFIGS=("${SERVICES_CONFIGS[@]}")
+    fi
+    
+    for i in "${!TARGET_SERVICES[@]}"; do
+        service="${TARGET_SERVICES[$i]}"
+        IFS=':' read -r dockerfile target <<< "${TARGET_CONFIGS[$i]}"
         
         # Determine context path
         if [[ "$service" == "autogpt-builder" ]]; then
-            context_path="$AUTOGPT_SOURCE_DIR/autogpt_platform/frontend"
-            dockerfile_path="$context_path/Dockerfile"
+            context_path="$AUTOGPT_SOURCE_DIR"
+            dockerfile_path="$AUTOGPT_SOURCE_DIR/autogpt_platform/frontend/Dockerfile"
         else
             context_path="$AUTOGPT_SOURCE_DIR"
             dockerfile_path="$AUTOGPT_SOURCE_DIR/autogpt_platform/$dockerfile"
@@ -316,12 +332,15 @@ main() {
 # Handle script arguments
 case "${1:-}" in
     --help|-h)
-        echo "Usage: $0 [OPTIONS]"
+        echo "Usage: $0 [SERVICE_NAME] [OPTIONS]"
         echo ""
         echo "Build and push AutoGPT Docker images to a registry"
         echo ""
+        echo "Arguments:"
+        echo "  SERVICE_NAME        Optional: specific service to build (autogpt-server, autogpt-builder, etc.)"
+        echo ""
         echo "Environment Variables:"
-        echo "  AUTOGPT_SOURCE_DIR   Path to AutoGPT source code (default: /Users/majdyz/Code/AutoGPT)"
+        echo "  AUTOGPT_SOURCE_DIR   Path to AutoGPT source code (required)"
         echo "  REGISTRY_TYPE        Registry type: local, gcr, dockerhub (default: local)"
         echo "  GCP_PROJECT_ID       GCP Project ID (required for gcr)"
         echo "  GCP_REGION          GCP Region (default: us-central1)"
@@ -330,20 +349,20 @@ case "${1:-}" in
         echo "  IMAGE_TAG           Docker image tag (default: latest)"
         echo ""
         echo "Examples:"
-        echo "  # Build locally only"
+        echo "  # Build all services locally"
         echo "  $0"
         echo ""
-        echo "  # Build and push to Google Container Registry"
-        echo "  REGISTRY_TYPE=gcr GCP_PROJECT_ID=my-project $0"
+        echo "  # Build only autogpt-builder"
+        echo "  $0 autogpt-builder"
         echo ""
-        echo "  # Build and push to Docker Hub"
-        echo "  REGISTRY_TYPE=dockerhub DOCKER_HUB_ORG=myorg $0"
+        echo "  # Build and push to Google Container Registry"
+        echo "  REGISTRY_TYPE=gcr GCP_PROJECT_ID=my-project $0 autogpt-builder"
         echo ""
         echo "Options:"
         echo "  -h, --help          Show this help message"
         exit 0
         ;;
     *)
-        main
+        main "$1"
         ;;
 esac

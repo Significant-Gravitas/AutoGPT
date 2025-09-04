@@ -37,6 +37,8 @@ spec:
                 name: {{ include "autogpt-server.fullname" . }}-config
             - secretRef:
                 name: {{ include "autogpt-server.fullname" . }}-secrets
+            - secretRef:
+                name: supabase-secrets
             {{- if .Values.sharedConfig }}
             {{- if .Values.sharedConfig.env }}
             - configMapRef:

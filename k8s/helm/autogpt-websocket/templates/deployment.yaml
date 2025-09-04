@@ -35,6 +35,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "autogpt-websocket-server.fullname" . }}-config
+            - secretRef:
+                name: supabase-secrets
             {{- if .Values.sharedConfig }}
             {{- if .Values.sharedConfig.env }}
             - configMapRef:

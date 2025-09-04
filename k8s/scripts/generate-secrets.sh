@@ -15,39 +15,27 @@ echo ""
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 K8S_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-CONFIG_DIR="$K8S_ROOT/configs"
+AUTOGPT_ROOT="$(cd "$K8S_ROOT/.." && pwd)"
+PLATFORM_DIR="$AUTOGPT_ROOT/autogpt_platform"
 
-# Check if .env file exists
-if [ ! -f "$CONFIG_DIR/.env" ]; then
-    if [ -f "$CONFIG_DIR/.env.default" ]; then
-        echo -e "${YELLOW}⚠️  .env file not found${NC}"
-        echo "Copying .env.default to .env for you to customize..."
-        cp "$CONFIG_DIR/.env.default" "$CONFIG_DIR/.env"
-        echo ""
-        echo -e "${BLUE}📝 Please edit $CONFIG_DIR/.env and update:${NC}"
-        echo "  - Database passwords"
-        echo "  - Your domain name"
-        echo "  - API keys you want to use"
-        echo "  - Security keys (generate new ones)"
-        echo ""
-        read -p "Press Enter after editing .env file..."
-    else
-        echo -e "${RED}❌ Neither .env nor .env.default found${NC}"
-        exit 1
-    fi
+# Use .env.default from autogpt_platform directory
+ENV_FILE="$PLATFORM_DIR/.env.default"
+
+if [ ! -f "$ENV_FILE" ]; then
+    echo -e "${RED}❌ Environment file not found: $ENV_FILE${NC}"
+    exit 1
 fi
 
 # Load environment variables
-echo -e "${BLUE}📂 Loading environment variables...${NC}"
-export $(grep -v '^#' "$CONFIG_DIR/.env" | xargs)
+echo -e "${BLUE}📂 Loading environment variables from $ENV_FILE...${NC}"
+export $(grep -v '^#' "$ENV_FILE" | xargs)
 
 # Validate required variables
 REQUIRED_VARS=(
-    "DB_PASS"
-    "REDIS_PASSWORD" 
-    "RABBITMQ_DEFAULT_PASS"
-    "SUPABASE_JWT_SECRET"
-    "ENCRYPTION_KEY"
+    "POSTGRES_PASSWORD"
+    "JWT_SECRET"
+    "ANON_KEY"
+    "SERVICE_ROLE_KEY"
 )
 
 echo -e "${BLUE}✅ Validating required variables...${NC}"
@@ -62,33 +50,21 @@ done
 echo -e "${BLUE}🏗️  Creating namespace...${NC}"
 kubectl create namespace autogpt --dry-run=client -o yaml | kubectl apply -f -
 
-# Generate database URL
-DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}?schema=${DB_SCHEMA}&connect_timeout=${DB_CONNECT_TIMEOUT}"
-DIRECT_URL="postgresql://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}?schema=${DB_SCHEMA}&connect_timeout=${DB_CONNECT_TIMEOUT}"
-
-# Create Kubernetes secrets
-echo -e "${BLUE}🔑 Creating AutoGPT secrets...${NC}"
-kubectl create secret generic autogpt-secrets \
-    --namespace=autogpt \
-    --from-literal=database-url="$DATABASE_URL" \
-    --from-literal=direct-url="$DIRECT_URL" \
-    --from-literal=redis-password="$REDIS_PASSWORD" \
-    --from-literal=rabbitmq-password="$RABBITMQ_DEFAULT_PASS" \
-    --from-literal=supabase-jwt-secret="$SUPABASE_JWT_SECRET" \
-    --from-literal=encryption-key="$ENCRYPTION_KEY" \
-    --from-literal=unsubscribe-secret="$UNSUBSCRIBE_SECRET_KEY" \
-    --dry-run=client -o yaml | kubectl apply -f -
-
+# Create Kubernetes secrets using .env.default variables
 echo -e "${BLUE}🔑 Creating Supabase secrets...${NC}"
 kubectl create secret generic supabase-secrets \
     --namespace=autogpt \
-    --from-literal=SUPABASE_DB_USER="$SUPABASE_DB_USER" \
-    --from-literal=SUPABASE_DB_PASS="$SUPABASE_DB_PASS" \
-    --from-literal=SUPABASE_DB_NAME="$SUPABASE_DB_NAME" \
-    --from-literal=SUPABASE_JWT_SECRET="$SUPABASE_JWT_SECRET" \
-    --from-literal=SUPABASE_JWT_ANON_KEY="$SUPABASE_JWT_ANON_KEY" \
-    --from-literal=SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_ROLE_KEY" \
-    --from-literal=password="$SUPABASE_DB_PASS" \
+    --from-literal=SUPABASE_DB_USER="postgres" \
+    --from-literal=SUPABASE_DB_PASS="$POSTGRES_PASSWORD" \
+    --from-literal=SUPABASE_DB_NAME="$POSTGRES_DB" \
+    --from-literal=SUPABASE_JWT_SECRET="$JWT_SECRET" \
+    --from-literal=SUPABASE_JWT_ANON_KEY="$ANON_KEY" \
+    --from-literal=SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY" \
+    --from-literal=DASHBOARD_USERNAME="$DASHBOARD_USERNAME" \
+    --from-literal=DASHBOARD_PASSWORD="$DASHBOARD_PASSWORD" \
+    --from-literal=SMTP_USERNAME="" \
+    --from-literal=SMTP_PASSWORD="" \
+    --from-literal=password="$POSTGRES_PASSWORD" \
     --dry-run=client -o yaml | kubectl apply -f -
 
 # Create optional API keys secret (if any are provided)

@@ -5,19 +5,22 @@ fullnameOverride: ""
 # Global configuration (passed from parent chart or command line)
 global:
   domain: "yourdomain.com"
+  supabaseUrl: "http://localhost:8000"
+  frontendUrl: "http://localhost:3000"
   database:
     user: "supabase"
     name: "supabase"
+    password: "CHANGE-THIS-TO-A-SECURE-PASSWORD"
 
 # PostgreSQL database configuration
 postgresql:
   enabled: true
   auth:
-    database: "{{ .Values.global.database.name }}"
-    username: "{{ .Values.global.database.user }}"
+    database: "supabase"
+    username: "supabase"
     existingSecret: "supabase-secrets"
     secretKeys:
-      adminPasswordKey: "SUPABASE_DB_PASS"
+      adminPasswordKey: "password"
   primary:
     persistence:
       enabled: true
@@ -60,15 +63,11 @@ auth:
     enabled: false
   environment:
     DB_HOST: "supabase-postgresql"
-    DB_USER: "{{ .Values.global.database.user }}"
-    DB_NAME: "{{ .Values.global.database.name }}"
     DB_NAMESPACE: "auth"
-    API_EXTERNAL_URL: "https://auth.{{ .Values.global.domain }}"
-    GOTRUE_SITE_URL: "https://auth.{{ .Values.global.domain }}"
     GOTRUE_URI_ALLOW_LIST: "*"
     GOTRUE_DISABLE_SIGNUP: "false"
     GOTRUE_JWT_EXP: "3600"
-    GOTRUE_EXTERNAL_EMAIL_ENABLED: "false"
+    GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
     GOTRUE_MAILER_AUTOCONFIRM: "true"
     GOTRUE_SMTP_HOST: ""
     GOTRUE_SMTP_PORT: "587"

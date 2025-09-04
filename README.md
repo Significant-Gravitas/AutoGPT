@@ -15,96 +15,9 @@
 
 **AutoGPT** is a powerful platform that allows you to create, deploy, and manage continuous AI agents that automate complex workflows. 
 
-## Kubernetes Deployment
-
-This repository contains Kubernetes manifests and Helm charts for deploying AutoGPT platform components.
-
-### Quick Start
-
-```bash
-# Deploy all services
-./quick-start.sh
-
-# Run database migrations locally (required after deployment)
-kubectl port-forward svc/supabase-postgresql 5432:5432 -n autogpt &
-cd /path/to/AutoGPT/autogpt_platform/backend
-DATABASE_URL="postgresql://supabase:CHANGE-THIS-TO-A-SECURE-PASSWORD@localhost:5432/supabase?schema=platform&connect_timeout=60" poetry run prisma migrate deploy
-
-# Access services using the automated script
-./k8s/scripts/local-access.sh
-
-# Or manually port-forward individual services:
-kubectl port-forward svc/autogpt-builder 3000:3000 -n autogpt &
-kubectl port-forward svc/autogpt-server 8006:8006 -n autogpt &  
-kubectl port-forward svc/autogpt-server-executor 8002:8002 -n autogpt &
-kubectl port-forward svc/autogpt-websocket 8001:8001 -n autogpt &
-kubectl port-forward svc/autogpt-scheduler 8003:8003 -n autogpt &
-kubectl port-forward svc/autogpt-database-manager 8005:8005 -n autogpt &
-kubectl port-forward svc/autogpt-notification 8007:8007 -n autogpt &
-kubectl port-forward svc/supabase-kong 8000:8000 -n autogpt &
-kubectl port-forward svc/supabase-auth 9999:9999 -n autogpt &
-
-# All Services Access URLs:
-# Frontend:         http://localhost:3000
-# Backend API:      http://localhost:8006/api
-# Executor:         http://localhost:8002  
-# Websocket:        ws://localhost:8001
-# Scheduler:        http://localhost:8003
-# Database Manager: http://localhost:8005
-# Notifications:    http://localhost:8007
-# API Gateway:      http://localhost:8000
-# Auth Server:      http://localhost:9999
-```
-
-### Docker Build and Deployment Flow
-
-When customizing environment variables for local development:
-
-1. **Build Custom Docker Images**: Create local Docker images with proper environment configuration
-```bash
-# Build frontend with environment variables from .env.default
-cd /path/to/AutoGPT
-docker buildx build --platform linux/amd64 \
-  -f autogpt_platform/frontend/Dockerfile \
-  -t your-registry/autogpt-builder:latest \
-  --push .
-
-# Build backend (if needed)
-docker buildx build --platform linux/amd64 \
-  -f autogpt_platform/backend/Dockerfile \
-  -t your-registry/autogpt-server:latest \
-  --push .
-```
-
-2. **Update Helm Configuration**: Modify `values.yaml` to use custom images
-```yaml
-# In helm/autogpt-builder/values.yaml
-image:
-  repository: your-registry/autogpt-builder
-  tag: "latest"
-```
-
-3. **Deploy Updates**: Apply changes using Helm
-```bash
-helm upgrade autogpt-builder helm/autogpt-builder/ -n autogpt
-helm upgrade autogpt-server helm/autogpt-server/ -n autogpt  
-```
-
-### Service Components
-
-The platform consists of multiple services:
-- **autogpt-builder**: Frontend Next.js application (port 3000)
-- **autogpt-server**: Backend FastAPI server (port 8006)
-- **autogpt-server-executor**: Agent execution service (port 8002)
-- **supabase-kong**: Authentication API gateway (port 8000)
-- **supabase-postgresql**: Database service (port 5432)
-
-### Helm Charts
-
-All services use unified `values.yaml` files (no separate dev/prod configs):
-- `helm/autogpt-builder/` - Frontend application
-- `helm/autogpt-server/` - Backend API
-- `helm/supabase/` - Authentication service
+## Hosting Options 
+   - Download to self-host (Free!)
+   - [Join the Waitlist](https://bit.ly/3ZDijAI) for the cloud-hosted beta (Closed Beta - Public release Coming Soon!)
 
 ## How to Self-Host the AutoGPT Platform
 > [!NOTE]

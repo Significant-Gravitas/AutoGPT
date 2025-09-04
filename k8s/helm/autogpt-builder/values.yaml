@@ -3,10 +3,12 @@
 replicaCount: 1
 
 image:
-  # Local build with .env.k8s-local for proper environment
-  repository: us-central1-docker.pkg.dev/agpt-dev/autogpt/autogpt-builder
-  pullPolicy: Always
-  tag: "k8s-local"
+  # Default to Docker Hub for open-source users
+  # Override with your own registry:
+  # e.g., us-central1-docker.pkg.dev/YOUR_PROJECT/autogpt/autogpt-builder  
+  repository: autogpt/autogpt-builder
+  pullPolicy: IfNotPresent
+  tag: "latest"
 
 imagePullSecrets: []
 nameOverride: ""
@@ -89,8 +91,10 @@ sealedSecrets:
   enabled: false
 
 env:
-  # Server-side environment variables only
+  # Server-side environment variables only (Kubernetes service URLs)
   # NEXT_PUBLIC_* vars come from .env in locally built Docker image
-  AGPT_SERVER_URL: "http://autogpt-server:8006/api"
-  SUPABASE_URL: "http://supabase-kong:8000"
-  SUPABASE_SERVICE_ROLE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJzZXJ2aWNlX3JvbGUiLAogICAgImlzcyI6ICJzdXBhYmFzZS1kZW1vIiwKICAgICJpYXQiOiAxNjQxNzY5MjAwLAogICAgImV4cCI6IDE3OTk1MzU2MDAKfQ.DaYlNEoUrrEn2Ig7tqibS-PHK5vgusbcbo7X36XVt4Q"
+  AGPT_SERVER_URL: "http://autogpt-server.autogpt.svc.cluster.local:8006/api"
+  AGPT_WS_SERVER_URL: "ws://autogpt-websocket.autogpt.svc.cluster.local:8001/ws"
+  SUPABASE_URL: "http://supabase-kong.autogpt.svc.cluster.local:8000"
+  NEXT_PUBLIC_SUPABASE_URL: "http://supabase-kong.autogpt.svc.cluster.local:8000"
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MVc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE"

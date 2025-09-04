@@ -40,18 +40,18 @@ spec:
         - name: GOTRUE_API_PORT
           value: "9999"
         - name: API_EXTERNAL_URL
-          value: {{ .Values.auth.environment.API_EXTERNAL_URL | quote }}
+          value: "{{ .Values.global.supabaseUrl }}/auth/v1"
         - name: GOTRUE_DB_DRIVER
           value: "postgres"
         - name: GOTRUE_DB_DATABASE_URL
-          value: "postgresql://{{ .Values.auth.environment.DB_USER }}:supabase123@{{ .Values.auth.environment.DB_HOST }}:5432/{{ .Values.auth.environment.DB_NAME }}?sslmode=disable&search_path={{ .Values.auth.environment.DB_NAMESPACE }}"
+          value: "postgresql://{{ .Values.global.database.user }}:{{ .Values.global.database.password }}@{{ .Values.auth.environment.DB_HOST }}:5432/{{ .Values.global.database.name }}?sslmode=disable&search_path={{ .Values.auth.environment.DB_NAMESPACE }}"
         - name: DB_PASSWORD
           valueFrom:
             secretKeyRef:
               name: {{ .Values.secret.db.secretRef }}
               key: {{ .Values.secret.db.secretRefKey.password }}
         - name: GOTRUE_SITE_URL
-          value: {{ .Values.auth.environment.GOTRUE_SITE_URL | quote }}
+          value: "{{ .Values.global.frontendUrl }}"
         - name: GOTRUE_URI_ALLOW_LIST
           value: {{ .Values.auth.environment.GOTRUE_URI_ALLOW_LIST | default "*" | quote }}
         - name: GOTRUE_DISABLE_SIGNUP

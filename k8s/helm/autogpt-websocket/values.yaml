@@ -6,7 +6,8 @@ replicaCount: 1
 
 image:
   # All backend services use the same autogpt-server image with different entry points
-  repository: us-central1-docker.pkg.dev/agpt-dev/autogpt/autogpt-server
+  # Override with your registry: e.g., [GCP_REGION]-docker.pkg.dev/[YOUR_PROJECT]/autogpt/autogpt-server
+  repository: autogpt/autogpt-server
   pullPolicy: IfNotPresent
   tag: "latest"
 
@@ -107,6 +108,7 @@ env:
   REDIS_HOST: "redis-master.autogpt.svc.cluster.local"
   REDIS_PORT: "6379"
   REDIS_PASSWORD: "password"
+  SUPABASE_URL: "http://supabase-kong.autogpt.svc.cluster.local:8000"
   AGENTSERVER_HOST: "autogpt-server.autogpt.svc.cluster.local"
   SCHEDULER_HOST: "autogpt-scheduler.autogpt.svc.cluster.local"
   DATABASEMANAGER_HOST: "autogpt-database-manager.autogpt.svc.cluster.local"

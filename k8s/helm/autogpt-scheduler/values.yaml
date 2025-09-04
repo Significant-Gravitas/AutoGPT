@@ -6,7 +6,8 @@ replicaCount: 1
 
 image:
   # All backend services use the same autogpt-server image with different entry points
-  repository: us-central1-docker.pkg.dev/agpt-dev/autogpt/autogpt-server
+  # Override with your registry: e.g., [GCP_REGION]-docker.pkg.dev/[YOUR_PROJECT]/autogpt/autogpt-server
+  repository: autogpt/autogpt-server
   pullPolicy: IfNotPresent
   tag: "latest"
 
