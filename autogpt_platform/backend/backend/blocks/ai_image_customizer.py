@@ -1,6 +1,5 @@
-import uuid
 from enum import Enum
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import SecretStr
 from replicate.client import Client as ReplicateClient
@@ -14,11 +13,11 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.file import MediaFileType
+from backend.util.file import MediaFileType, store_media_file
 
 
 class GeminiImageModel(str, Enum):
-    GEMINI_2_5_FLASH_IMAGE = "google/gemini-2.5-flash-image"
+    NANO_BANANA = "google/nano-banana"
 
 
 class OutputFormat(str, Enum):
@@ -54,13 +53,13 @@ class AIImageCustomizerBlock(Block):
             title="Prompt",
         )
         model: GeminiImageModel = SchemaField(
-            description="The AI model to use for image generation",
-            default=GeminiImageModel.GEMINI_2_5_FLASH_IMAGE,
+            description="The AI model to use for image generation and editing",
+            default=GeminiImageModel.NANO_BANANA,
             title="Model",
         )
         images: list[MediaFileType] = SchemaField(
             description="Optional list of input images to reference or modify",
-            default_factory=list,
+            default=[],
             title="Input Images",
         )
         output_format: OutputFormat = SchemaField(
@@ -75,17 +74,17 @@ class AIImageCustomizerBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id=str(uuid.uuid4()),
+            id="d76bbe4c-930e-4894-8469-b66775511f71",
             description=(
-                "Generate custom images using Google's Gemini 2.5 Flash Image model. "
-                "Provide a prompt and optional reference images to create new images."
+                "Generate and edit custom images using Google's Nano-Banana model from Gemini 2.5. "
+                "Provide a prompt and optional reference images to create or modify images."
             ),
             categories={BlockCategory.AI, BlockCategory.MULTIMEDIA},
             input_schema=AIImageCustomizerBlock.Input,
             output_schema=AIImageCustomizerBlock.Output,
             test_input={
-                "prompt": "A golden retriever, the Dalai Lama, and Taylor Swift ring the bell at the New York stock exchange for their new company",
-                "model": GeminiImageModel.GEMINI_2_5_FLASH_IMAGE,
+                "prompt": "Make the scene more vibrant and colorful",
+                "model": GeminiImageModel.NANO_BANANA,
                 "images": [],
                 "output_format": OutputFormat.JPG,
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -135,10 +134,9 @@ class AIImageCustomizerBlock(Block):
             "output_format": output_format,
         }
         
-        # Add images to input if provided
+        # Add images to input if provided (API expects "image_input" parameter)
         if images:
-            # Convert MediaFileType objects to base64 strings for the API
-            input_params["images"] = [str(img) for img in images]
+            input_params["image_input"] = [str(img) for img in images]
 
         output: FileOutput | str = await client.async_run(  # type: ignore
             model_name,
