@@ -165,6 +165,8 @@ async def migrate_legacy_triggered_graphs():
         )
     ]
 
+    n_migrated_webhooks = 0
+
     for graph in triggered_graphs:
         if not (trigger_node := graph.webhook_input_node):
             continue
@@ -197,3 +199,7 @@ async def migrate_legacy_triggered_graphs():
         )
         # Detach webhook from the graph node
         await set_node_webhook(trigger_node.id, None)
+
+        n_migrated_webhooks += 1
+
+    logger.info(f"Migrated {n_migrated_webhooks} node triggers to triggered presets")
