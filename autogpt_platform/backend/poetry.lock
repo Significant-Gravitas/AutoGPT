@@ -5989,19 +5989,19 @@ test = ["pylint", "pytest", "pytest-black", "pytest-cov", "pytest-pylint"]
 
 [[package]]
 name = "stripe"
-version = "11.6.0"
+version = "12.5.0"
 description = "Python bindings for the Stripe API"
 optional = false
 python-versions = ">=3.6"
 groups = ["main"]
 files = [
-    {file = "stripe-11.6.0-py2.py3-none-any.whl", hash = "sha256:6e6cf09ebb6d5fc2d708401cb8868fd7bff987a6d09a0433caaa92c62f97dbc5"},
-    {file = "stripe-11.6.0.tar.gz", hash = "sha256:0ced7cce23a6cb1a393c86a1f7f9435c9d83ae7cbd556362868caf62cb44a92c"},
+    {file = "stripe-12.5.0-py2.py3-none-any.whl", hash = "sha256:9256226ed5c64282045a025687b34279af6227af21c954d0ddd9ff9d4b69a335"},
+    {file = "stripe-12.5.0.tar.gz", hash = "sha256:cd2b8e71216b6aed5dc1e9b5e6f658b5e21d69a60d44fb8c08f41e1f7bddedd0"},
 ]
 
 [package.dependencies]
 requests = {version = ">=2.20", markers = "python_version >= \"3.0\""}
-typing-extensions = {version = ">=4.5.0", markers = "python_version >= \"3.7\""}
+typing_extensions = {version = ">=4.5.0", markers = "python_version >= \"3.7\""}
 
 [[package]]
 name = "supabase"
@@ -7132,4 +7132,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "892daa57d7126d9a9d5308005b07328a39b8c4cd7fe198f9b5ab10f957787c48"
+content-hash = "05d81e419c33e78de71acb59d4af1e1f0a4008edd5423a0cdd8b715ba8eda2d7"
