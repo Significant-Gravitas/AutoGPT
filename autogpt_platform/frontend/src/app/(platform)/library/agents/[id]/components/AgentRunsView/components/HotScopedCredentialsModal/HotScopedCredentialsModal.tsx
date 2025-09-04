@@ -7,12 +7,9 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import {
   Form,
-  FormControl,
   FormDescription,
   FormField,
-  FormItem,
   FormLabel,
-  FormMessage,
 } from "@/components/ui/form";
 import useCredentials from "@/hooks/useCredentials";
 import {
@@ -20,6 +17,7 @@ import {
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
 import { getHostFromUrl } from "@/lib/utils/url";
+import { PlusIcon, TrashIcon } from "@phosphor-icons/react";
 
 type Props = {
   schema: BlockIOCredentialsSubSchema;
@@ -139,6 +137,9 @@ export function HostScopedCredentialsModal({
         },
       }}
       onClose={onClose}
+      styling={{
+        maxWidth: "25rem",
+      }}
     >
       <Dialog.Content>
         {schema.description && (
@@ -146,81 +147,74 @@ export function HostScopedCredentialsModal({
         )}
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-2">
             <FormField
               control={form.control}
               name="host"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Host Pattern</FormLabel>
-                  <FormDescription>
-                    {currentHost
+                <Input
+                  id="host"
+                  label="Host Pattern"
+                  type="text"
+                  size="small"
+                  readOnly={!!currentHost}
+                  hint={
+                    currentHost
                       ? "Auto-populated from the URL field. Headers will be applied to requests to this host."
-                      : "Enter the host/domain to match against request URLs (e.g., api.example.com)."}
-                  </FormDescription>
-                  <FormControl>
-                    <Input
-                      id="host"
-                      label="Host Pattern"
-                      hideLabel
-                      type="text"
-                      readOnly={!!currentHost}
-                      placeholder={
-                        currentHost
-                          ? undefined
-                          : "Enter host (e.g., api.example.com)"
-                      }
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+                      : "Enter the host/domain to match against request URLs (e.g., api.example.com)."
+                  }
+                  placeholder={
+                    currentHost
+                      ? undefined
+                      : "Enter host (e.g., api.example.com)"
+                  }
+                  {...field}
+                />
               )}
             />
 
             <div className="space-y-2">
               <FormLabel>Headers</FormLabel>
-              <FormDescription>
+              <FormDescription className="max-w-md">
                 Add sensitive headers (like Authorization, X-API-Key) that
                 should be automatically included in requests to the specified
                 host.
               </FormDescription>
 
               {headerPairs.map((pair, index) => (
-                <div key={index} className="flex items-end gap-2">
-                  <div className="flex-1">
-                    <Input
-                      id={`header-${index}-key`}
-                      label="Header Name"
-                      hideLabel
-                      placeholder="Header name (e.g., Authorization)"
-                      value={pair.key}
-                      onChange={(e) =>
-                        updateHeaderPair(index, "key", e.target.value)
-                      }
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <Input
-                      id={`header-${index}-value`}
-                      label="Header Value"
-                      hideLabel
-                      type="password"
-                      placeholder="Header value (e.g., Bearer token123)"
-                      value={pair.value}
-                      onChange={(e) =>
-                        updateHeaderPair(index, "value", e.target.value)
-                      }
-                    />
-                  </div>
+                <div key={index} className="flex w-full items-center gap-4">
+                  <Input
+                    id={`header-${index}-key`}
+                    label="Header Name"
+                    placeholder="Header name (e.g., Authorization)"
+                    size="small"
+                    value={pair.key}
+                    className="flex-1"
+                    onChange={(e) =>
+                      updateHeaderPair(index, "key", e.target.value)
+                    }
+                  />
+
+                  <Input
+                    id={`header-${index}-value`}
+                    label="Header Value"
+                    size="small"
+                    type="password"
+                    className="flex-2"
+                    placeholder="Header value (e.g., Bearer token123)"
+                    value={pair.value}
+                    onChange={(e) =>
+                      updateHeaderPair(index, "value", e.target.value)
+                    }
+                  />
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="secondary"
                     size="small"
                     onClick={() => removeHeaderPair(index)}
                     disabled={headerPairs.length === 1}
                   >
-                    Remove
+                    <TrashIcon className="size-4" /> Remove
                   </Button>
                 </div>
               ))}
@@ -230,15 +224,16 @@ export function HostScopedCredentialsModal({
                 variant="outline"
                 size="small"
                 onClick={addHeaderPair}
-                className="w-full"
               >
-                Add Another Header
+                <PlusIcon className="size-4" /> Add Another Header
               </Button>
             </div>
 
-            <Button type="submit" className="w-full">
-              Save & use these credentials
-            </Button>
+            <div className="pt-8">
+              <Button type="submit" className="w-full" size="small">
+                Save & use these credentials
+              </Button>
+            </div>
           </form>
         </Form>
       </Dialog.Content>

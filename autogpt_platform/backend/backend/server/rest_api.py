@@ -363,6 +363,7 @@ class AgentServer(backend.util.service.AppProcess):
             preset_id=preset_id,
             user_id=user_id,
             inputs=inputs or {},
+            credential_inputs={},
         )
 
     @staticmethod

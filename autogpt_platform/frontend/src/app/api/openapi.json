@@ -1729,9 +1729,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ExecuteGraphResponse"
-                }
+                "schema": { "$ref": "#/components/schemas/GraphExecutionMeta" }
               }
             }
           },
@@ -3924,11 +3922,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Postv2Execute A Preset"
-                }
+                "schema": { "$ref": "#/components/schemas/GraphExecutionMeta" }
               }
             }
           },
@@ -4732,6 +4726,13 @@
             "type": "boolean",
             "title": "Has External Trigger",
             "readOnly": true
+          },
+          "trigger_setup_info": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/GraphTriggerInfo" },
+              { "type": "null" }
+            ],
+            "readOnly": true
           }
         },
         "type": "object",
@@ -4740,7 +4741,8 @@
           "description",
           "input_schema",
           "output_schema",
-          "has_external_trigger"
+          "has_external_trigger",
+          "trigger_setup_info"
         ],
         "title": "BaseGraph"
       },
@@ -4855,6 +4857,13 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Inputs"
+          },
+          "credential_inputs": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CredentialsMetaInput"
+            },
+            "type": "object",
+            "title": "Credential Inputs"
           }
         },
         "type": "object",
@@ -5135,14 +5144,6 @@
         "required": ["url", "relevance_score"],
         "title": "Document"
       },
-      "ExecuteGraphResponse": {
-        "properties": {
-          "graph_exec_id": { "type": "string", "title": "Graph Exec Id" }
-        },
-        "type": "object",
-        "required": ["graph_exec_id"],
-        "title": "ExecuteGraphResponse"
-      },
       "Graph": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -5191,6 +5192,36 @@
           "user_id": { "type": "string", "title": "User Id" },
           "graph_id": { "type": "string", "title": "Graph Id" },
           "graph_version": { "type": "integer", "title": "Graph Version" },
+          "inputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Inputs"
+          },
+          "credential_inputs": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/CredentialsMetaInput"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Credential Inputs"
+          },
+          "nodes_input_masks": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Nodes Input Masks"
+          },
           "preset_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Preset Id"
@@ -5212,11 +5243,6 @@
               { "type": "null" }
             ]
           },
-          "inputs": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Inputs"
-          },
           "outputs": {
             "additionalProperties": { "items": {}, "type": "array" },
             "type": "object",
@@ -5229,11 +5255,14 @@
           "user_id",
           "graph_id",
           "graph_version",
+          "inputs",
+          "credential_inputs",
+          "nodes_input_masks",
+          "preset_id",
           "status",
           "started_at",
           "ended_at",
           "stats",
-          "inputs",
           "outputs"
         ],
         "title": "GraphExecution"
@@ -5279,6 +5308,38 @@
           "user_id": { "type": "string", "title": "User Id" },
           "graph_id": { "type": "string", "title": "Graph Id" },
           "graph_version": { "type": "integer", "title": "Graph Version" },
+          "inputs": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Inputs"
+          },
+          "credential_inputs": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/CredentialsMetaInput"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Credential Inputs"
+          },
+          "nodes_input_masks": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Nodes Input Masks"
+          },
           "preset_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Preset Id"
@@ -5307,6 +5368,10 @@
           "user_id",
           "graph_id",
           "graph_version",
+          "inputs",
+          "credential_inputs",
+          "nodes_input_masks",
+          "preset_id",
           "status",
           "started_at",
           "ended_at",
@@ -5320,6 +5385,36 @@
           "user_id": { "type": "string", "title": "User Id" },
           "graph_id": { "type": "string", "title": "Graph Id" },
           "graph_version": { "type": "integer", "title": "Graph Version" },
+          "inputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Inputs"
+          },
+          "credential_inputs": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/CredentialsMetaInput"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Credential Inputs"
+          },
+          "nodes_input_masks": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Nodes Input Masks"
+          },
           "preset_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Preset Id"
@@ -5340,11 +5435,6 @@
               { "$ref": "#/components/schemas/Stats" },
               { "type": "null" }
             ]
-          },
-          "inputs": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Inputs"
           },
           "outputs": {
             "additionalProperties": { "items": {}, "type": "array" },
@@ -5363,11 +5453,14 @@
           "user_id",
           "graph_id",
           "graph_version",
+          "inputs",
+          "credential_inputs",
+          "nodes_input_masks",
+          "preset_id",
           "status",
           "started_at",
           "ended_at",
           "stats",
-          "inputs",
           "outputs",
           "node_executions"
         ],
@@ -5430,6 +5523,13 @@
             "title": "Has External Trigger",
             "readOnly": true
           },
+          "trigger_setup_info": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/GraphTriggerInfo" },
+              { "type": "null" }
+            ],
+            "readOnly": true
+          },
           "credentials_input_schema": {
             "additionalProperties": true,
             "type": "object",
@@ -5445,6 +5545,7 @@
           "input_schema",
           "output_schema",
           "has_external_trigger",
+          "trigger_setup_info",
           "credentials_input_schema"
         ],
         "title": "GraphMeta"
@@ -5504,6 +5605,13 @@
             "title": "Has External Trigger",
             "readOnly": true
           },
+          "trigger_setup_info": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/GraphTriggerInfo" },
+              { "type": "null" }
+            ],
+            "readOnly": true
+          },
           "credentials_input_schema": {
             "additionalProperties": true,
             "type": "object",
@@ -5519,9 +5627,32 @@
           "input_schema",
           "output_schema",
           "has_external_trigger",
+          "trigger_setup_info",
           "credentials_input_schema"
         ],
         "title": "GraphModel"
+      },
+      "GraphTriggerInfo": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "Provider name for integrations. Can be any string value, including custom provider names."
+          },
+          "config_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Config Schema",
+            "description": "Input schema for the trigger block"
+          },
+          "credentials_input_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credentials Input Name"
+          }
+        },
+        "type": "object",
+        "required": ["provider", "config_schema", "credentials_input_name"],
+        "title": "GraphTriggerInfo"
       },
       "HTTPValidationError": {
         "properties": {
@@ -5645,7 +5776,7 @@
           },
           "trigger_setup_info": {
             "anyOf": [
-              { "$ref": "#/components/schemas/LibraryAgentTriggerInfo" },
+              { "$ref": "#/components/schemas/GraphTriggerInfo" },
               { "type": "null" }
             ]
           },
@@ -5715,6 +5846,12 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "webhook": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/Webhook" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -5727,7 +5864,8 @@
           "description",
           "id",
           "user_id",
-          "updated_at"
+          "updated_at",
+          "webhook"
         ],
         "title": "LibraryAgentPreset",
         "description": "Represents a preset configuration for a library agent."
@@ -5867,28 +6005,6 @@
         "type": "string",
         "enum": ["COMPLETED", "HEALTHY", "WAITING", "ERROR"],
         "title": "LibraryAgentStatus"
-      },
-      "LibraryAgentTriggerInfo": {
-        "properties": {
-          "provider": {
-            "type": "string",
-            "title": "Provider",
-            "description": "Provider name for integrations. Can be any string value, including custom provider names."
-          },
-          "config_schema": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Config Schema",
-            "description": "Input schema for the trigger block"
-          },
-          "credentials_input_name": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Credentials Input Name"
-          }
-        },
-        "type": "object",
-        "required": ["provider", "config_schema", "credentials_input_name"],
-        "title": "LibraryAgentTriggerInfo"
       },
       "LibraryAgentUpdateRequest": {
         "properties": {

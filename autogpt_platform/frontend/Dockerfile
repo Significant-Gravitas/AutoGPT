@@ -9,13 +9,17 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm pnpm install --frozen-lock
 FROM base AS build
 
 COPY autogpt_platform/frontend/ .
+# Allow CI to opt-in to Playwright test build-time flags
+ARG NEXT_PUBLIC_PW_TEST="false"
+ENV NEXT_PUBLIC_PW_TEST=$NEXT_PUBLIC_PW_TEST
 RUN if [ -f .env ]; then \
       cat .env.default .env > .env.merged && mv .env.merged .env; \
     else \
       cp .env.default .env; \
     fi
 RUN pnpm run generate:api
-RUN pnpm build
+# In CI, we want NEXT_PUBLIC_PW_TEST=true during build so Next.js inlines it
+RUN if [ "$NEXT_PUBLIC_PW_TEST" = "true" ]; then NEXT_PUBLIC_PW_TEST=true pnpm build; else pnpm build; fi
 
 # Prod stage - based on NextJS reference Dockerfile https://github.com/vercel/next.js/blob/64271354533ed16da51be5dce85f0dbd15f17517/examples/with-docker/Dockerfile
 FROM node:21-alpine AS prod
