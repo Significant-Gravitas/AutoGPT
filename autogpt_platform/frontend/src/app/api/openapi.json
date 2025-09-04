@@ -5789,10 +5789,7 @@
             "type": "boolean",
             "title": "Is Latest Version"
           },
-          "is_favorite": {
-            "type": "boolean",
-            "title": "Is Favorite"
-          }
+          "is_favorite": { "type": "boolean", "title": "Is Favorite" }
         },
         "type": "object",
         "required": [
