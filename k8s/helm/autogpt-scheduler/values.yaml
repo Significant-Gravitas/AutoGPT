@@ -6,16 +6,13 @@ replicaCount: 1
 
 image:
   # All backend services use the same autogpt-server image with different entry points
-  # Default to Docker Hub for open-source users
-  # Override with your own registry:
-  # e.g., us-central1-docker.pkg.dev/YOUR_PROJECT/autogpt/autogpt-server
-  repository: autogpt/autogpt-server
+  repository: us-central1-docker.pkg.dev/agpt-dev/autogpt/autogpt-server
   pullPolicy: IfNotPresent
   tag: "latest"
 
 imagePullSecrets: []
 nameOverride: ""
-fullnameOverride: ""
+fullnameOverride: "autogpt-scheduler"
 
 serviceAccount:
   # Specifies whether a service account should be created
@@ -47,7 +44,7 @@ securityContext: {}
 
 service:
   type: ClusterIP
-  port: 80
+  port: 8003
 
 ingress:
   enabled: false
@@ -123,3 +120,18 @@ cors:
 # Sealed Secrets (disabled - using regular secrets)
 sealedSecrets:
   enabled: false
+
+# Environment variables
+env:
+  PYRO_HOST: "0.0.0.0"
+  RABBITMQ_HOST: "rabbitmq.autogpt.svc.cluster.local"
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_DEFAULT_USER: "autogpt"
+  RABBITMQ_DEFAULT_PASS: "oBpLPVBQflJf5tCG"
+  REDIS_HOST: "redis-master.autogpt.svc.cluster.local"
+  REDIS_PASSWORD: "autogpt-redis-password"
+  DATABASE_URL: "postgresql://supabase:CHANGE-THIS-TO-A-SECURE-PASSWORD@supabase-postgresql.autogpt.svc.cluster.local:5432/supabase?schema=platform"
+  DIRECT_URL: "postgresql://supabase:CHANGE-THIS-TO-A-SECURE-PASSWORD@supabase-postgresql.autogpt.svc.cluster.local:5432/supabase?schema=platform"
+  AGENTSERVER_HOST: "autogpt-server.autogpt.svc.cluster.local"
+  DATABASEMANAGER_HOST: "autogpt-database-manager.autogpt.svc.cluster.local"
+  EXECUTIONMANAGER_HOST: "autogpt-server-executor.autogpt.svc.cluster.local"

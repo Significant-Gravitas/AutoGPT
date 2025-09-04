@@ -42,8 +42,6 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "autogpt-scheduler-server.fullname" . }}-config
-            - secretRef:
-                name: {{ include "autogpt-scheduler-server.fullname" . }}-secrets
             {{- if .Values.sharedConfig }}
             {{- if .Values.sharedConfig.env }}
             - configMapRef:

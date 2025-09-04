@@ -29,7 +29,7 @@ securityContext: {}
 
 service:
   type: ClusterIP
-  port: 80
+  port: 8006
 
 serviceExecutor:
   type: ClusterIP
@@ -100,7 +100,8 @@ externalApiDomain: ""
 
 cors:
   allowOrigins:
-    - "https://dev-builder.agpt.co"
+    - "http://{{ .Values.global.autogptDomain | default \"localhost:3000\" }}"
+    - "https://{{ .Values.global.autogptDomain | default \"localhost:3000\" }}"
   allowMethods:
     - "GET"
     - "POST"
@@ -115,5 +116,12 @@ cors:
   allowCredentials: true
 
 env:
-  PORT: "80"
+  PORT: "8006"
+  RABBITMQ_HOST: "rabbitmq.autogpt.svc.cluster.local"
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_DEFAULT_USER: "autogpt"
+  RABBITMQ_DEFAULT_PASS: "oBpLPVBQflJf5tCG"
+  REDIS_HOST: "redis-master.autogpt.svc.cluster.local"
+  REDIS_PORT: "6379"
+  REDIS_PASSWORD: "autogpt-redis-password"
 

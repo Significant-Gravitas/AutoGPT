@@ -2,8 +2,11 @@
 # This file works with .env.local for secrets management
 
 global:
-  # Update this to your domain
+  # Update this to your domain  
   domain: "autogpt.yourdomain.com"
+  
+  # AutoGPT domain for local development
+  autogptDomain: "localhost:3000"
   
   # GCP specific settings
   project_id: "your-gcp-project-id"

@@ -18,25 +18,50 @@ cleanup() {
 # Trap cleanup on script exit
 trap cleanup SIGINT SIGTERM
 
-# Backend API Server (port 8006)
-echo "📡 Starting API server port forward (localhost:8006)..."
-kubectl port-forward deployment/autogpt-server 8006:8006 -n autogpt &
-API_PID=$!
-
 # Frontend Builder (port 3000)  
 echo "🖥️  Starting frontend port forward (localhost:3000)..."
-kubectl port-forward deployment/autogpt-builder 3000:3000 -n autogpt &
+kubectl port-forward svc/autogpt-builder 3000:3000 -n autogpt &
 FRONTEND_PID=$!
 
-# Supabase Auth (port 9999)
-echo "🔐 Starting auth server port forward (localhost:9999)..."
-kubectl port-forward deployment/supabase-auth 9999:9999 -n autogpt &
-AUTH_PID=$!
+# Backend API Server (port 8006)
+echo "📡 Starting API server port forward (localhost:8006)..."
+kubectl port-forward svc/autogpt-server 8006:8006 -n autogpt &
+API_PID=$!
 
-# Websocket Server (port 8001) - if deployed
+# Executor Service (port 8002)
+echo "⚙️  Starting executor port forward (localhost:8002)..."
+kubectl port-forward svc/autogpt-server-executor 8002:8002 -n autogpt &
+EXECUTOR_PID=$!
+
+# Websocket Server (port 8001)
 echo "🔌 Starting websocket server port forward (localhost:8001)..."
-kubectl port-forward deployment/autogpt-websocket-server 8001:8001 -n autogpt &
+kubectl port-forward svc/autogpt-websocket 8001:8001 -n autogpt &
 WS_PID=$!
+
+# Scheduler Service (port 8003)
+echo "📅 Starting scheduler port forward (localhost:8003)..."
+kubectl port-forward svc/autogpt-scheduler 8003:8003 -n autogpt &
+SCHEDULER_PID=$!
+
+# Database Manager (port 8005)
+echo "💾 Starting database manager port forward (localhost:8005)..."
+kubectl port-forward svc/autogpt-database-manager 8005:8005 -n autogpt &
+DBM_PID=$!
+
+# Notification Service (port 8007)
+echo "🔔 Starting notification service port forward (localhost:8007)..."
+kubectl port-forward svc/autogpt-notification 8007:8007 -n autogpt &
+NOTIFY_PID=$!
+
+# Supabase Kong API Gateway (port 8000)
+echo "🔐 Starting API gateway port forward (localhost:8000)..."
+kubectl port-forward svc/supabase-kong 8000:8000 -n autogpt &
+KONG_PID=$!
+
+# Supabase Auth (port 9999)
+echo "🔒 Starting auth server port forward (localhost:9999)..."
+kubectl port-forward svc/supabase-auth 9999:9999 -n autogpt &
+AUTH_PID=$!
 
 # Wait for services to be ready
 echo ""
@@ -47,35 +72,54 @@ sleep 10
 echo ""
 echo "🔍 Testing service health..."
 
+# Test Frontend
+if curl -s http://localhost:3000/health >/dev/null 2>&1; then
+    echo "✅ Frontend: http://localhost:3000"
+else
+    echo "⚠️  Frontend: Not ready yet"
+fi
+
 # Test API
 if curl -s http://localhost:8006/health >/dev/null 2>&1; then
     echo "✅ API Server: http://localhost:8006"
 else
-    echo "❌ API Server: Failed to connect"
+    echo "⚠️  API Server: Not ready yet"
 fi
 
-# Test Frontend
-if curl -s http://localhost:3000/ >/dev/null 2>&1; then
-    echo "✅ Frontend: http://localhost:3000"
+# Test Executor
+if curl -s http://localhost:8002/health >/dev/null 2>&1; then
+    echo "✅ Executor: http://localhost:8002"
 else
-    echo "❌ Frontend: Failed to connect"
+    echo "⚠️  Executor: Not ready yet"
 fi
 
-# Test Auth
-if curl -s http://localhost:9999/health >/dev/null 2>&1; then
-    echo "✅ Auth Server: http://localhost:9999"
+# Test Websocket
+if curl -s http://localhost:8001/health >/dev/null 2>&1; then
+    echo "✅ Websocket: ws://localhost:8001"
 else
-    echo "❌ Auth Server: Failed to connect"
+    echo "⚠️  Websocket: Not ready yet"
+fi
+
+# Test Kong Gateway
+if curl -s http://localhost:8000/health >/dev/null 2>&1; then
+    echo "✅ API Gateway: http://localhost:8000"
+else
+    echo "⚠️  API Gateway: Not ready yet"
 fi
 
 echo ""
 echo "🎉 AutoGPT is ready!"
 echo ""
 echo "📋 Access URLs:"
-echo "   Frontend:    http://localhost:3000"
-echo "   API:         http://localhost:8006"
-echo "   Auth:        http://localhost:9999"
-echo "   Websockets:  http://localhost:8001"
+echo "   Frontend:         http://localhost:3000"
+echo "   API Server:       http://localhost:8006/api"
+echo "   Executor:         http://localhost:8002"
+echo "   Websocket:        ws://localhost:8001"
+echo "   Scheduler:        http://localhost:8003"
+echo "   Database Manager: http://localhost:8005"
+echo "   Notifications:    http://localhost:8007"
+echo "   API Gateway:      http://localhost:8000"
+echo "   Auth Server:      http://localhost:9999"
 echo ""
 echo "Press Ctrl+C to stop all port forwards"
 

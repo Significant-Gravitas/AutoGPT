@@ -3,10 +3,10 @@
 replicaCount: 1
 
 image:
-  # Uses .env.default with TURNSTILE=disabled and BEHAVE_AS=LOCAL
+  # Local build with .env.k8s-local for proper environment
   repository: us-central1-docker.pkg.dev/agpt-dev/autogpt/autogpt-builder
-  pullPolicy: IfNotPresent
-  tag: "local-default"
+  pullPolicy: Always
+  tag: "k8s-local"
 
 imagePullSecrets: []
 nameOverride: ""
@@ -43,10 +43,10 @@ ingress:
 resources:
   requests:
     cpu: 100m
-    memory: 128Mi
+    memory: 256Mi
   limits:
     cpu: 500m
-    memory: 1280Mi
+    memory: 2Gi
 
 livenessProbe:
   httpGet:
@@ -68,8 +68,8 @@ readinessProbe:
 autoscaling:
   enabled: true
   minReplicas: 1
-  maxReplicas: 100
-  targetMemoryUtilizationPercentage: 80
+  maxReplicas: 3
+  targetMemoryUtilizationPercentage: 90
 
 volumes: []
 
@@ -89,20 +89,8 @@ sealedSecrets:
   enabled: false
 
 env:
-  # Application Environment
-  APP_ENV: "dev"
-  NEXT_PUBLIC_APP_ENV: "dev"
-  NEXT_PUBLIC_FRONTEND_BASE_URL: "http://localhost:3000"
-  # Client-side URLs (NEXT_PUBLIC_*) - for browser requests via port-forward
-  NEXT_PUBLIC_AGPT_SERVER_URL: "http://localhost:8006/api"
-  NEXT_PUBLIC_SUPABASE_URL: "http://localhost:8000"
-  NEXT_PUBLIC_AUTH_CALLBACK_URL: "http://localhost:3000/auth/callback"
-  AUTH_CALLBACK_URL: "http://localhost:3000/auth/callback"
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE"
-  NEXT_PUBLIC_BEHAVE_AS: "CLOUD"
-  NEXT_PUBLIC_TURNSTILE: "false"
-  NEXT_PUBLIC_LAUNCHDARKLY_ENABLED: "true"
-  # Server-side URLs (non-NEXT_PUBLIC_*) - for internal Kubernetes requests
-  AGPT_SERVER_URL: "http://autogpt-server.autogpt.svc.cluster.local:80/api"
-  SUPABASE_URL: "http://supabase-kong.autogpt.svc.cluster.local:8000"
+  # Server-side environment variables only
+  # NEXT_PUBLIC_* vars come from .env in locally built Docker image
+  AGPT_SERVER_URL: "http://autogpt-server:8006/api"
+  SUPABASE_URL: "http://supabase-kong:8000"
   SUPABASE_SERVICE_ROLE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJzZXJ2aWNlX3JvbGUiLAogICAgImlzcyI6ICJzdXBhYmFzZS1kZW1vIiwKICAgICJpYXQiOiAxNjQxNzY5MjAwLAogICAgImV4cCI6IDE3OTk1MzU2MDAKfQ.DaYlNEoUrrEn2Ig7tqibS-PHK5vgusbcbo7X36XVt4Q"

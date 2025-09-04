@@ -35,8 +35,6 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "autogpt-websocket-server.fullname" . }}-config
-            - secretRef:
-                name: {{ include "autogpt-websocket-server.fullname" . }}-secrets
             {{- if .Values.sharedConfig }}
             {{- if .Values.sharedConfig.env }}
             - configMapRef:
