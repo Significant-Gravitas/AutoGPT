@@ -1,6 +1,7 @@
 "use client";
 
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { Button } from "@/components/atoms/Button/Button";
 import { useState } from "react";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useAgentRunModal } from "./useAgentRunModal";
@@ -8,10 +9,13 @@ import { ModalHeader } from "./components/ModalHeader/ModalHeader";
 import { AgentCostSection } from "./components/AgentCostSection/AgentCostSection";
 import { AgentSectionHeader } from "./components/AgentSectionHeader/AgentSectionHeader";
 import { DefaultRunView } from "./components/DefaultRunView/DefaultRunView";
+import { RunAgentModalContextProvider } from "./context";
 import { ScheduleView } from "./components/ScheduleView/ScheduleView";
 import { AgentDetails } from "./components/AgentDetails/AgentDetails";
 import { RunActions } from "./components/RunActions/RunActions";
 import { ScheduleActions } from "./components/ScheduleActions/ScheduleActions";
+import { Text } from "@/components/atoms/Text/Text";
+import { AlarmIcon, TrashIcon } from "@phosphor-icons/react";
 
 interface Props {
   triggerSlot: React.ReactNode;
@@ -22,20 +26,45 @@ interface Props {
 
 export function RunAgentModal({ triggerSlot, agent }: Props) {
   const {
+    // UI state
     isOpen,
     setIsOpen,
     showScheduleView,
+
+    // Run mode
     defaultRunType,
+
+    // Form: regular inputs
     inputValues,
     setInputValues,
+
+    // Form: credentials
+    inputCredentials,
+    setInputCredentials,
+
+    // Preset/trigger labels
+    presetName,
+    presetDescription,
+    setPresetName,
+    setPresetDescription,
+
+    // Scheduling
     scheduleName,
     cronExpression,
+
+    // Validation/readiness
     allRequiredInputsAreSet,
-    // agentInputFields, // Available if needed for future use
-    hasInputFields,
+
+    // Schemas
+    agentInputFields,
+    agentCredentialsInputFields,
+
+    // Async states
     isExecuting,
     isCreatingSchedule,
     isSettingUpTrigger,
+
+    // Actions
     handleRun,
     handleSchedule,
     handleShowSchedule,
@@ -46,11 +75,27 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
 
   const [isScheduleFormValid, setIsScheduleFormValid] = useState(true);
 
+  const hasAnySetupFields =
+    Object.keys(agentInputFields || {}).length > 0 ||
+    Object.keys(agentCredentialsInputFields || {}).length > 0;
+
   function handleInputChange(key: string, value: string) {
     setInputValues((prev) => ({
       ...prev,
       [key]: value,
     }));
+  }
+
+  function handleCredentialsChange(key: string, value: any | undefined) {
+    setInputCredentials((prev) => {
+      const next = { ...prev } as Record<string, any>;
+      if (value === undefined) {
+        delete next[key];
+        return next;
+      }
+      next[key] = value;
+      return next;
+    });
   }
 
   function handleSetOpen(open: boolean) {
@@ -59,86 +104,118 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
     if (open || !open) handleGoBack();
   }
 
-  return (
-    <Dialog
-      controlled={{ isOpen, set: handleSetOpen }}
-      styling={{ maxWidth: "600px", maxHeight: "90vh" }}
-    >
-      <Dialog.Trigger>{triggerSlot}</Dialog.Trigger>
-      <Dialog.Content>
-        <div className="flex h-full flex-col">
-          {/* Header */}
-          <div className="flex-shrink-0">
-            <ModalHeader agent={agent} />
-            <AgentCostSection flowId={agent.graph_id} />
-          </div>
+  function handleRemoveSchedule() {
+    handleGoBack();
+    handleSetScheduleName("");
+    handleSetCronExpression("");
+  }
 
-          {/* Scrollable content */}
-          <div
-            className="flex-1 overflow-y-auto overflow-x-hidden pr-1"
-            style={{ scrollbarGutter: "stable" }}
-          >
-            {/* Setup Section */}
-            <div className="mt-10">
-              {showScheduleView ? (
-                <>
-                  <AgentSectionHeader title="Schedule Setup" />
-                  <div>
+  return (
+    <>
+      <Dialog
+        controlled={{ isOpen, set: handleSetOpen }}
+        styling={{ maxWidth: "600px", maxHeight: "90vh" }}
+      >
+        <Dialog.Trigger>{triggerSlot}</Dialog.Trigger>
+        <Dialog.Content>
+          <div className="flex h-full flex-col pb-4">
+            {/* Header */}
+            <div className="flex-shrink-0">
+              <ModalHeader agent={agent} />
+              <AgentCostSection flowId={agent.graph_id} />
+            </div>
+
+            {/* Scrollable content */}
+            <div className="flex-1 pr-1" style={{ scrollbarGutter: "stable" }}>
+              {/* Setup Section */}
+              <div className="mt-10">
+                {hasAnySetupFields ? (
+                  <RunAgentModalContextProvider
+                    value={{
+                      agent,
+                      defaultRunType,
+                      presetName,
+                      setPresetName,
+                      presetDescription,
+                      setPresetDescription,
+                      inputValues,
+                      setInputValue: handleInputChange,
+                      agentInputFields,
+                      inputCredentials,
+                      setInputCredentialsValue: handleCredentialsChange,
+                      agentCredentialsInputFields,
+                    }}
+                  >
+                    <>
+                      <AgentSectionHeader
+                        title={
+                          defaultRunType === "automatic-trigger"
+                            ? "Trigger Setup"
+                            : "Agent Setup"
+                        }
+                      />
+                      <div>
+                        <DefaultRunView />
+                      </div>
+                    </>
+                  </RunAgentModalContextProvider>
+                ) : null}
+              </div>
+
+              {/* Schedule Section - always visible */}
+              <div className="mt-8">
+                <AgentSectionHeader title="Schedule Setup" />
+                {showScheduleView ? (
+                  <>
+                    <div className="mb-3 flex justify-start">
+                      <Button
+                        variant="secondary"
+                        size="small"
+                        onClick={handleRemoveSchedule}
+                      >
+                        <TrashIcon size={16} />
+                        Remove schedule
+                      </Button>
+                    </div>
                     <ScheduleView
-                      agent={agent}
                       scheduleName={scheduleName}
                       cronExpression={cronExpression}
-                      inputValues={inputValues}
                       onScheduleNameChange={handleSetScheduleName}
                       onCronExpressionChange={handleSetCronExpression}
-                      onInputChange={handleInputChange}
                       onValidityChange={setIsScheduleFormValid}
                     />
+                  </>
+                ) : (
+                  <div className="flex flex-col items-start gap-2">
+                    <Text variant="body" className="mb-3 !text-zinc-500">
+                      No schedule configured. Create a schedule to run this
+                      agent automatically at a specific time.{" "}
+                    </Text>
+                    <Button
+                      variant="secondary"
+                      size="small"
+                      onClick={handleShowSchedule}
+                    >
+                      <AlarmIcon size={16} />
+                      Create schedule
+                    </Button>
                   </div>
-                </>
-              ) : hasInputFields ? (
-                <>
-                  <AgentSectionHeader
-                    title={
-                      defaultRunType === "automatic-trigger"
-                        ? "Trigger Setup"
-                        : "Agent Setup"
-                    }
-                  />
-                  <div>
-                    <DefaultRunView
-                      agent={agent}
-                      defaultRunType={defaultRunType}
-                      inputValues={inputValues}
-                      onInputChange={handleInputChange}
-                    />
-                  </div>
-                </>
-              ) : null}
-            </div>
+                )}
+              </div>
 
-            {/* Agent Details Section */}
-            <div className="mt-8">
-              <AgentSectionHeader title="Agent Details" />
-              <AgentDetails agent={agent} />
+              {/* Agent Details Section */}
+              <div className="mt-8">
+                <AgentSectionHeader title="Agent Details" />
+                <AgentDetails agent={agent} />
+              </div>
             </div>
           </div>
-
-          {/* Fixed Actions - sticky inside dialog scroll */}
-          <Dialog.Footer className="sticky bottom-0 z-10 bg-white">
-            {!showScheduleView ? (
-              <RunActions
-                hasExternalTrigger={agent.has_external_trigger}
-                defaultRunType={defaultRunType}
-                onShowSchedule={handleShowSchedule}
-                onRun={handleRun}
-                isExecuting={isExecuting}
-                isSettingUpTrigger={isSettingUpTrigger}
-                allRequiredInputsAreSet={allRequiredInputsAreSet}
-              />
-            ) : (
+          <Dialog.Footer
+            className="fixed bottom-1 left-0 z-10 w-full bg-white p-4"
+            style={{ boxShadow: "0px -8px 10px white" }}
+          >
+            {showScheduleView ? (
               <ScheduleActions
-                onGoBack={handleGoBack}
                 onSchedule={handleSchedule}
                 isCreatingSchedule={isCreatingSchedule}
                 allRequiredInputsAreSet={
@@ -147,10 +224,18 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
                   isScheduleFormValid
                 }
               />
+            ) : (
+              <RunActions
+                defaultRunType={defaultRunType}
+                onRun={handleRun}
+                isExecuting={isExecuting}
+                isSettingUpTrigger={isSettingUpTrigger}
+                allRequiredInputsAreSet={allRequiredInputsAreSet}
+              />
             )}
           </Dialog.Footer>
-        </div>
-      </Dialog.Content>
-    </Dialog>
+        </Dialog.Content>
+      </Dialog>
+    </>
   );
 }

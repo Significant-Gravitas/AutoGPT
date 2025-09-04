@@ -11,11 +11,14 @@ from typing import (
     Generator,
     Generic,
     Literal,
+    Mapping,
     Optional,
     TypeVar,
+    cast,
     overload,
 )
 
+from prisma import Json
 from prisma.enums import AgentExecutionStatus
 from prisma.models import (
     AgentGraphExecution,
@@ -24,7 +27,6 @@ from prisma.models import (
     AgentNodeExecutionKeyValueData,
 )
 from prisma.types import (
-    AgentGraphExecutionCreateInput,
     AgentGraphExecutionUpdateManyMutationInput,
     AgentGraphExecutionWhereInput,
     AgentNodeExecutionCreateInput,
@@ -60,7 +62,7 @@ from .includes import (
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     graph_execution_include,
 )
-from .model import GraphExecutionStats, NodeExecutionStats
+from .model import CredentialsMetaInput, GraphExecutionStats, NodeExecutionStats
 
 T = TypeVar("T")
 
@@ -87,6 +89,8 @@ class BlockErrorStats(BaseModel):
 
 
 ExecutionStatus = AgentExecutionStatus
+NodeInputMask = Mapping[str, JsonValue]
+NodesInputMasks = Mapping[str, NodeInputMask]
 
 
 class GraphExecutionMeta(BaseDbModel):
@@ -94,7 +98,10 @@ class GraphExecutionMeta(BaseDbModel):
     user_id: str
     graph_id: str
     graph_version: int
-    preset_id: Optional[str] = None
+    inputs: Optional[BlockInput]  # no default -> required in the OpenAPI spec
+    credential_inputs: Optional[dict[str, CredentialsMetaInput]]
+    nodes_input_masks: Optional[dict[str, BlockInput]]
+    preset_id: Optional[str]
     status: ExecutionStatus
     started_at: datetime
     ended_at: datetime
@@ -179,6 +186,18 @@ class GraphExecutionMeta(BaseDbModel):
             user_id=_graph_exec.userId,
             graph_id=_graph_exec.agentGraphId,
             graph_version=_graph_exec.agentGraphVersion,
+            inputs=cast(BlockInput | None, _graph_exec.inputs),
+            credential_inputs=(
+                {
+                    name: CredentialsMetaInput.model_validate(cmi)
+                    for name, cmi in cast(dict, _graph_exec.credentialInputs).items()
+                }
+                if _graph_exec.credentialInputs
+                else None
+            ),
+            nodes_input_masks=cast(
+                dict[str, BlockInput] | None, _graph_exec.nodesInputMasks
+            ),
             preset_id=_graph_exec.agentPresetId,
             status=ExecutionStatus(_graph_exec.executionStatus),
             started_at=start_time,
@@ -206,7 +225,7 @@ class GraphExecutionMeta(BaseDbModel):
 
 
 class GraphExecution(GraphExecutionMeta):
-    inputs: BlockInput
+    inputs: BlockInput  # type: ignore - incompatible override is intentional
     outputs: CompletedBlockOutput
 
     @staticmethod
@@ -226,15 +245,18 @@ class GraphExecution(GraphExecutionMeta):
         )
 
         inputs = {
-            **{
-                # inputs from Agent Input Blocks
-                exec.input_data["name"]: exec.input_data.get("value")
-                for exec in complete_node_executions
-                if (
-                    (block := get_block(exec.block_id))
-                    and block.block_type == BlockType.INPUT
-                )
-            },
+            **(
+                graph_exec.inputs
+                or {
+                    # fallback: extract inputs from Agent Input Blocks
+                    exec.input_data["name"]: exec.input_data.get("value")
+                    for exec in complete_node_executions
+                    if (
+                        (block := get_block(exec.block_id))
+                        and block.block_type == BlockType.INPUT
+                    )
+                }
+            ),
             **{
                 # input from webhook-triggered block
                 "payload": exec.input_data["payload"]
@@ -252,14 +274,13 @@ class GraphExecution(GraphExecutionMeta):
             if (
                 block := get_block(exec.block_id)
             ) and block.block_type == BlockType.OUTPUT:
-                outputs[exec.input_data["name"]].append(
-                    exec.input_data.get("value", None)
-                )
+                outputs[exec.input_data["name"]].append(exec.input_data.get("value"))
 
         return GraphExecution(
             **{
                 field_name: getattr(graph_exec, field_name)
                 for field_name in GraphExecutionMeta.model_fields
+                if field_name != "inputs"
             },
             inputs=inputs,
             outputs=outputs,
@@ -292,13 +313,17 @@ class GraphExecutionWithNodes(GraphExecution):
             node_executions=node_executions,
         )
 
-    def to_graph_execution_entry(self, user_context: "UserContext"):
+    def to_graph_execution_entry(
+        self,
+        user_context: "UserContext",
+        compiled_nodes_input_masks: Optional[NodesInputMasks] = None,
+    ):
         return GraphExecutionEntry(
             user_id=self.user_id,
             graph_id=self.graph_id,
             graph_version=self.graph_version or 0,
             graph_exec_id=self.id,
-            nodes_input_masks={},  # FIXME: store credentials on AgentGraphExecution
+            nodes_input_masks=compiled_nodes_input_masks,
             user_context=user_context,
         )
 
@@ -335,7 +360,7 @@ class NodeExecutionResult(BaseModel):
         else:
             input_data: BlockInput = defaultdict()
             for data in _node_exec.Input or []:
-                input_data[data.name] = type_utils.convert(data.data, type[Any])
+                input_data[data.name] = type_utils.convert(data.data, JsonValue)
 
         output_data: CompletedBlockOutput = defaultdict(list)
 
@@ -344,7 +369,7 @@ class NodeExecutionResult(BaseModel):
                 output_data[name].extend(messages)
         else:
             for data in _node_exec.Output or []:
-                output_data[data.name].append(type_utils.convert(data.data, type[Any]))
+                output_data[data.name].append(type_utils.convert(data.data, JsonValue))
 
         graph_execution: AgentGraphExecution | None = _node_exec.GraphExecution
         if graph_execution:
@@ -539,9 +564,12 @@ async def get_graph_execution(
 async def create_graph_execution(
     graph_id: str,
     graph_version: int,
-    starting_nodes_input: list[tuple[str, BlockInput]],
+    starting_nodes_input: list[tuple[str, BlockInput]],  # list[(node_id, BlockInput)]
+    inputs: Mapping[str, JsonValue],
     user_id: str,
-    preset_id: str | None = None,
+    preset_id: Optional[str] = None,
+    credential_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
+    nodes_input_masks: Optional[NodesInputMasks] = None,
 ) -> GraphExecutionWithNodes:
     """
     Create a new AgentGraphExecution record.
@@ -549,11 +577,18 @@ async def create_graph_execution(
         The id of the AgentGraphExecution and the list of ExecutionResult for each node.
     """
     result = await AgentGraphExecution.prisma().create(
-        data=AgentGraphExecutionCreateInput(
-            agentGraphId=graph_id,
-            agentGraphVersion=graph_version,
-            executionStatus=ExecutionStatus.QUEUED,
-            NodeExecutions={
+        data={
+            "agentGraphId": graph_id,
+            "agentGraphVersion": graph_version,
+            "executionStatus": ExecutionStatus.QUEUED,
+            "inputs": SafeJson(inputs),
+            "credentialInputs": (
+                SafeJson(credential_inputs) if credential_inputs else Json({})
+            ),
+            "nodesInputMasks": (
+                SafeJson(nodes_input_masks) if nodes_input_masks else Json({})
+            ),
+            "NodeExecutions": {
                 "create": [
                     AgentNodeExecutionCreateInput(
                         agentNodeId=node_id,
@@ -569,9 +604,9 @@ async def create_graph_execution(
                     for node_id, node_input in starting_nodes_input
                 ]
             },
-            userId=user_id,
-            agentPresetId=preset_id,
-        ),
+            "userId": user_id,
+            "agentPresetId": preset_id,
+        },
         include=GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     )
 
@@ -582,7 +617,7 @@ async def upsert_execution_input(
     node_id: str,
     graph_exec_id: str,
     input_name: str,
-    input_data: Any,
+    input_data: JsonValue,
     node_exec_id: str | None = None,
 ) -> tuple[str, BlockInput]:
     """
@@ -631,7 +666,7 @@ async def upsert_execution_input(
         )
         return existing_execution.id, {
             **{
-                input_data.name: type_utils.convert(input_data.data, type[Any])
+                input_data.name: type_utils.convert(input_data.data, JsonValue)
                 for input_data in existing_execution.Input or []
             },
             input_name: input_data,
@@ -888,7 +923,7 @@ class GraphExecutionEntry(BaseModel):
     graph_exec_id: str
     graph_id: str
     graph_version: int
-    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None
+    nodes_input_masks: Optional[NodesInputMasks] = None
     user_context: UserContext
 
 

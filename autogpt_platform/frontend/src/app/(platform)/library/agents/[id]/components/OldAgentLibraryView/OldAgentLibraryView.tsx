@@ -38,16 +38,21 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import LoadingBox, { LoadingSpinner } from "@/components/ui/loading";
-import { useToast } from "@/components/molecules/Toast/use-toast";
+import {
+  useToast,
+  useToastOnFail,
+} from "@/components/molecules/Toast/use-toast";
 import { AgentRunDetailsView } from "./components/agent-run-details-view";
 import { AgentRunDraftView } from "./components/agent-run-draft-view";
-import { useAgentRunsInfinite } from "../use-agent-runs";
+import { CreatePresetDialog } from "./components/create-preset-dialog";
+import { useAgentRunsInfinite } from "./use-agent-runs";
 import { AgentRunsSelectorList } from "./components/agent-runs-selector-list";
 import { AgentScheduleDetailsView } from "./components/agent-schedule-details-view";
 
 export function OldAgentLibraryView() {
   const { id: agentID }: { id: LibraryAgentID } = useParams();
   const [executionId, setExecutionId] = useQueryState("executionId");
+  const toastOnFail = useToastOnFail();
   const { toast } = useToast();
   const router = useRouter();
   const api = useBackendAPI();
@@ -85,6 +90,8 @@ export function OldAgentLibraryView() {
     incrementRuns,
   } = useOnboarding();
   const [copyAgentDialogOpen, setCopyAgentDialogOpen] = useState(false);
+  const [creatingPresetFromExecutionID, setCreatingPresetFromExecutionID] =
+    useState<GraphExecutionID | null>(null);
 
   // Set page title with agent name
   useEffect(() => {
@@ -283,6 +290,10 @@ export function OldAgentLibraryView() {
         }
 
         agentRunsQuery.upsertAgentRun(data);
+        if (data.id === selectedView.id) {
+          // Update currently viewed run
+          setSelectedRun(data);
+        }
       },
     );
 
@@ -382,6 +393,26 @@ export function OldAgentLibraryView() {
       openRunDraftView();
     },
     [schedules, api],
+  );
+
+  const handleCreatePresetFromRun = useCallback(
+    async (name: string, description: string) => {
+      if (!creatingPresetFromExecutionID) return;
+
+      await api
+        .createLibraryAgentPreset({
+          name,
+          description,
+          graph_execution_id: creatingPresetFromExecutionID,
+        })
+        .then((preset) => {
+          setAgentPresets((prev) => [...prev, preset]);
+          selectPreset(preset.id);
+          setCreatingPresetFromExecutionID(null);
+        })
+        .catch(toastOnFail("create a preset"));
+    },
+    [api, creatingPresetFromExecutionID, selectPreset, toast],
   );
 
   const downloadGraph = useCallback(
@@ -488,6 +519,7 @@ export function OldAgentLibraryView() {
         doDeleteRun={setConfirmingDeleteAgentRun}
         doDeletePreset={setConfirmingDeleteAgentPreset}
         doDeleteSchedule={deleteSchedule}
+        doCreatePresetFromRun={setCreatingPresetFromExecutionID}
       />
 
       <div className="flex-1">
@@ -512,14 +544,16 @@ export function OldAgentLibraryView() {
               run={selectedRun}
               agentActions={agentActions}
               onRun={selectRun}
-              deleteRun={() => setConfirmingDeleteAgentRun(selectedRun)}
+              doDeleteRun={() => setConfirmingDeleteAgentRun(selectedRun)}
+              doCreatePresetFromRun={() =>
+                setCreatingPresetFromExecutionID(selectedRun.id)
+              }
             />
           ) : null
         ) : selectedView.type == "run" ? (
           /* Draft new runs / Create new presets */
           <AgentRunDraftView
             graph={graph}
-            triggerSetupInfo={agent.trigger_setup_info}
             onRun={selectRun}
             onCreateSchedule={onCreateSchedule}
             onCreatePreset={onCreatePreset}
@@ -529,7 +563,6 @@ export function OldAgentLibraryView() {
           /* Edit & update presets */
           <AgentRunDraftView
             graph={graph}
-            triggerSetupInfo={agent.trigger_setup_info}
             agentPreset={
               agentPresets.find((preset) => preset.id == selectedView.id)!
             }
@@ -610,6 +643,11 @@ export function OldAgentLibraryView() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        <CreatePresetDialog
+          open={!!creatingPresetFromExecutionID}
+          onOpenChange={() => setCreatingPresetFromExecutionID(null)}
+          onConfirm={handleCreatePresetFromRun}
+        />
       </div>
     </div>
   );
