@@ -34,7 +34,7 @@ export function AgentRunOutputView({
     const items: Array<{
       key: string;
       label: string;
-      value: any;
+      value: unknown;
       metadata?: OutputMetadata;
       renderer: any;
     }> = [];
@@ -56,18 +56,8 @@ export function AgentRunOutputView({
           if (objValue.filename) metadata.filename = objValue.filename;
         }
 
-        // Log what we're trying to render for debugging
-        console.log(`Attempting to render output ${key}-${index}:`, {
-          value,
-          metadata,
-          valueType: typeof value,
-          isObject: typeof value === "object",
-          isValidElement: React.isValidElement(value),
-        });
-
         const renderer = globalRegistry.getRenderer(value, metadata);
         if (renderer) {
-          console.log(`Found renderer: ${renderer.name} for ${key}-${index}`);
           items.push({
             key: `${key}-${index}`,
             label: index === 0 ? title || key : "",
@@ -76,8 +66,6 @@ export function AgentRunOutputView({
             renderer,
           });
         } else {
-          // Always push with TextRenderer as fallback
-          console.warn(`No renderer found for ${key}-${index}, using fallback`);
           const textRenderer = globalRegistry
             .getAllRenderers()
             .find((r) => r.name === "TextRenderer");

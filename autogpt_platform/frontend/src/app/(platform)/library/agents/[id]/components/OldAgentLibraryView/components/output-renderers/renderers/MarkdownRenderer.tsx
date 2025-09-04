@@ -17,66 +17,137 @@ import {
 import "highlight.js/styles/github-dark.css";
 import "katex/dist/katex.min.css";
 
-export class MarkdownRenderer implements OutputRenderer {
-  name = "MarkdownRenderer";
-  priority = 35;
+const markdownPatterns = [
+  /```[\s\S]*?```/u,                               // Fenced code blocks (check first)
+  /^#{1,6}\s+\S+/gum,                              // ATX headers (require content)
+  /\*\*[^*\n]+?\*\*/u,                             // **bold**
+  /__(?!_)[^_\n]+?__(?!_)/u,                       // __bold__ (avoid ___/snake_case_)
+  /(?<!\*)\*(?!\*)(?:[^*\n]|(?<=\\)\*)+?(?<!\\)\*(?!\*)/u, // *italic* (try to avoid **)
+  /(?<!_)_(?!_)(?:[^_\n]|(?<=\\)_)+?(?<!\\)_(?!_)/u,       // _italic_ with guards
+  /\[([^\]\n]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/u,   // Links with optional title (simple)
+  /!\[([^\]\n]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/u,  // Images with optional title (simple)
+  /`[^`\n]+`/u,                                     // Inline code
+  /^(?:\s*[-*+]\s+\S.*)(?:\n\s*[-*+]\s+\S.*)+$/gum, // UL list (≥2 items)
+  /^(?:\s*\d+\.\s+\S.*)(?:\n\s*\d+\.\s+\S.*)+$/gum, // OL list (≥2 items)
+  /^>\s+\S.*/gm,                                    // Blockquotes
+  /^\|[^|\n]+(\|[^|\n]+)+\|\s*$/gm,                 // Table row (at least two cells)
+  /^\s*\|(?:\s*:?[-=]{3,}\s*\|)+\s*$/gm,            // Table separator row
+  /\$\$[\s\S]+?\$\$/u,                              // Display math
+  /(?<!\\)(?<!\w)\$[^$\n]+?\$(?!\w)/u,              // Inline math: avoid prices/ids
+];
 
-  private markdownPatterns = [
-    /^#{1,6}\s+/m, // Headers
-    /\*\*[^*]+\*\*/, // Bold
-    /\*[^*]+\*/, // Italic
-    /__[^_]+__/, // Bold alt
-    /_[^_]+_/, // Italic alt
-    /\[([^\]]+)\]\(([^)]+)\)/, // Links
-    /```[\s\S]*?```/, // Code blocks
-    /`[^`]+`/, // Inline code
-    /^\s*[-*+]\s+/m, // Unordered lists
-    /^\s*\d+\.\s+/m, // Ordered lists
-    /^>\s+/m, // Blockquotes
-    /\|.+\|/, // Tables
-    /!\[([^\]]*)\]\(([^)]+)\)/, // Images
-    /\$\$[\s\S]+?\$\$/, // Display math
-    /\$[^$]+\$/, // Inline math
-  ];
+const videoExtensions = [".mp4", ".webm", ".ogg", ".mov", ".avi"];
 
-  canRender(value: any, metadata?: OutputMetadata): boolean {
-    // Check metadata first
-    if (
-      metadata?.type === "markdown" ||
-      metadata?.mimeType === "text/markdown" ||
-      metadata?.mimeType === "text/x-markdown"
-    ) {
-      return true;
-    }
+function isVideoUrl(url: string): boolean {
+  if (url.includes("youtube.com/watch") || url.includes("youtu.be/")) {
+    return true;
+  }
+  if (url.includes("vimeo.com/")) {
+    return true;
+  }
+  return videoExtensions.some((ext) => url.toLowerCase().includes(ext));
+}
 
-    // Check if it's a string
-    if (typeof value !== "string") {
-      return false;
-    }
+function getVideoEmbedUrl(url: string): string | null {
+  const youtubeMatch = url.match(
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/,
+  );
+  if (youtubeMatch) {
+    return `https://www.youtube.com/embed/${youtubeMatch[1]}`;
+  }
 
-    // Check filename extension
-    if (metadata?.filename?.toLowerCase().endsWith(".md")) {
-      return true;
-    }
+  const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
+  if (vimeoMatch) {
+    return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
+  }
 
-    // Count how many markdown patterns match
-    let matchCount = 0;
-    const requiredMatches = 2; // Need at least 2 patterns to consider it markdown
+  if (videoExtensions.some((ext) => url.toLowerCase().includes(ext))) {
+    return url;
+  }
 
-    for (const pattern of this.markdownPatterns) {
-      if (pattern.test(value)) {
-        matchCount++;
-        if (matchCount >= requiredMatches) {
-          return true;
-        }
-      }
-    }
+  return null;
+}
 
+function renderVideoEmbed(url: string): React.ReactNode {
+  const embedUrl = getVideoEmbedUrl(url);
+
+  if (!embedUrl) {
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-blue-600 underline"
+      >
+        {url}
+      </a>
+    );
+  }
+
+  if (videoExtensions.some((ext) => embedUrl.toLowerCase().includes(ext))) {
+    return (
+      <div className="my-4">
+        <video
+          controls
+          className="w-full max-w-2xl rounded-lg shadow-md"
+          preload="metadata"
+        >
+          <source src={embedUrl} />
+          Your browser does not support the video tag.
+        </video>
+      </div>
+    );
+  }
+
+  return (
+    <div className="my-4">
+      <div className="relative aspect-video">
+        <iframe
+          src={embedUrl}
+          title="Embedded video player"
+          className="absolute left-0 top-0 h-full w-full rounded-lg shadow-md"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+        />
+      </div>
+    </div>
+  );
+}
+
+function canRenderMarkdown(value: unknown, metadata?: OutputMetadata): boolean {
+  if (
+    metadata?.type === "markdown" ||
+    metadata?.mimeType === "text/markdown" ||
+    metadata?.mimeType === "text/x-markdown"
+  ) {
+    return true;
+  }
+
+  if (typeof value !== "string") {
     return false;
   }
 
-  render(value: any, _metadata?: OutputMetadata): React.ReactNode {
-    const markdownContent = String(value);
+  if (metadata?.filename?.toLowerCase().endsWith(".md")) {
+    return true;
+  }
+
+  let matchCount = 0;
+  const requiredMatches = 2;
+
+  for (const pattern of markdownPatterns) {
+    if (pattern.test(value)) {
+      matchCount++;
+      if (matchCount >= requiredMatches) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function renderMarkdown(value: unknown, _metadata?: OutputMetadata): React.ReactNode {
+  const markdownContent = String(value);
 
     return (
       <div className="markdown-output">
@@ -279,8 +350,8 @@ export class MarkdownRenderer implements OutputRenderer {
             // Image handling
             img: ({ src, alt, ...props }) => {
               // Check if it's a video URL pattern
-              if (src && this.isVideoUrl(src)) {
-                return this.renderVideoEmbed(src);
+              if (src && isVideoUrl(src)) {
+                return renderVideoEmbed(src);
               }
 
               return (
@@ -298,9 +369,9 @@ export class MarkdownRenderer implements OutputRenderer {
               // Check if paragraph contains just a video URL
               if (
                 typeof children === "string" &&
-                this.isVideoUrl(children.trim())
+                isVideoUrl(children.trim())
               ) {
-                return this.renderVideoEmbed(children.trim());
+                return renderVideoEmbed(children.trim());
               }
 
               // Check for video URLs in link children
@@ -308,8 +379,8 @@ export class MarkdownRenderer implements OutputRenderer {
                 const child = React.Children.toArray(children)[0];
                 if (React.isValidElement(child) && child.type === "a") {
                   const href = child.props.href;
-                  if (href && this.isVideoUrl(href)) {
-                    return this.renderVideoEmbed(href);
+                  if (href && isVideoUrl(href)) {
+                    return renderVideoEmbed(href);
                   }
                 }
               }
@@ -329,121 +400,42 @@ export class MarkdownRenderer implements OutputRenderer {
         </ReactMarkdown>
       </div>
     );
-  }
-
-  getCopyContent(value: any, _metadata?: OutputMetadata): CopyContent | null {
-    const markdownText = String(value);
-    return {
-      mimeType: "text/markdown",
-      data: markdownText,
-      alternativeMimeTypes: ["text/plain"],
-      fallbackText: markdownText,
-    };
-  }
-
-  getDownloadContent(
-    value: any,
-    metadata?: OutputMetadata,
-  ): DownloadContent | null {
-    const markdownText = String(value);
-    const blob = new Blob([markdownText], { type: "text/markdown" });
-
-    return {
-      data: blob,
-      filename: metadata?.filename || "output.md",
-      mimeType: "text/markdown",
-    };
-  }
-
-  isConcatenable(_value: any, _metadata?: OutputMetadata): boolean {
-    return true;
-  }
-
-  private isVideoUrl(url: string): boolean {
-    // YouTube patterns
-    if (url.includes("youtube.com/watch") || url.includes("youtu.be/")) {
-      return true;
-    }
-    // Vimeo patterns
-    if (url.includes("vimeo.com/")) {
-      return true;
-    }
-    // Direct video file extensions
-    const videoExtensions = [".mp4", ".webm", ".ogg", ".mov", ".avi"];
-    return videoExtensions.some((ext) => url.toLowerCase().includes(ext));
-  }
-
-  private getVideoEmbedUrl(url: string): string | null {
-    // YouTube
-    const youtubeMatch = url.match(
-      /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/,
-    );
-    if (youtubeMatch) {
-      return `https://www.youtube.com/embed/${youtubeMatch[1]}`;
-    }
-
-    // Vimeo
-    const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
-    if (vimeoMatch) {
-      return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
-    }
-
-    // Direct video URL
-    const videoExtensions = [".mp4", ".webm", ".ogg", ".mov"];
-    if (videoExtensions.some((ext) => url.toLowerCase().includes(ext))) {
-      return url;
-    }
-
-    return null;
-  }
-
-  private renderVideoEmbed(url: string): React.ReactNode {
-    const embedUrl = this.getVideoEmbedUrl(url);
-
-    if (!embedUrl) {
-      // Fallback to link if we can't embed
-      return (
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-blue-600 underline"
-        >
-          {url}
-        </a>
-      );
-    }
-
-    // Check if it's a direct video file
-    const videoExtensions = [".mp4", ".webm", ".ogg", ".mov"];
-    if (videoExtensions.some((ext) => embedUrl.toLowerCase().includes(ext))) {
-      return (
-        <div className="my-4">
-          <video
-            controls
-            className="w-full max-w-2xl rounded-lg shadow-md"
-            preload="metadata"
-          >
-            <source src={embedUrl} />
-            Your browser does not support the video tag.
-          </video>
-        </div>
-      );
-    }
-
-    // YouTube or Vimeo embed
-    return (
-      <div className="my-4">
-        <div className="relative aspect-video">
-          <iframe
-            src={embedUrl}
-            title="Embedded video player"
-            className="absolute left-0 top-0 h-full w-full rounded-lg shadow-md"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-          />
-        </div>
-      </div>
-    );
-  }
 }
+
+function getCopyContentMarkdown(value: unknown, _metadata?: OutputMetadata): CopyContent | null {
+  const markdownText = String(value);
+  return {
+    mimeType: "text/markdown",
+    data: markdownText,
+    alternativeMimeTypes: ["text/plain"],
+    fallbackText: markdownText,
+  };
+}
+
+function getDownloadContentMarkdown(
+  value: unknown,
+  metadata?: OutputMetadata,
+): DownloadContent | null {
+  const markdownText = String(value);
+  const blob = new Blob([markdownText], { type: "text/markdown" });
+
+  return {
+    data: blob,
+    filename: metadata?.filename || "output.md",
+    mimeType: "text/markdown",
+  };
+}
+
+function isConcatenableMarkdown(_value: unknown, _metadata?: OutputMetadata): boolean {
+  return true;
+}
+
+export const markdownRenderer: OutputRenderer = {
+  name: "MarkdownRenderer",
+  priority: 35,
+  canRender: canRenderMarkdown,
+  render: renderMarkdown,
+  getCopyContent: getCopyContentMarkdown,
+  getDownloadContent: getDownloadContentMarkdown,
+  isConcatenable: isConcatenableMarkdown,
+};

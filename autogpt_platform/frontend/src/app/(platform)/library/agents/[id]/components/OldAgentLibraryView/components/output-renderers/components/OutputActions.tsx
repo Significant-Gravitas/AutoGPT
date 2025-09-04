@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useState } from "react";
-import { CopyIcon, DownloadIcon, ShareIcon, CheckIcon } from "lucide-react";
+import { CheckIcon, CopyIcon, DownloadIcon } from "@phosphor-icons/react";
+import { Button } from "@/components/ui/button";
 import { OutputRenderer, OutputMetadata } from "../types";
 import { downloadOutputs } from "../utils/download";
 
 interface OutputActionsProps {
   items: Array<{
-    value: any;
+    value: unknown;
     metadata?: OutputMetadata;
     renderer: OutputRenderer;
   }>;
@@ -57,39 +58,30 @@ export function OutputActions({ items }: OutputActionsProps) {
     downloadOutputs(items);
   };
 
-  const handleShare = () => {
-    console.log("Share functionality to be implemented");
-  };
 
   return (
     <div className="flex items-center gap-3">
-      <button
+      <Button
+        variant="ghost"
+        size="icon"
         onClick={handleCopyAll}
-        className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 transition-colors hover:bg-gray-50"
         aria-label="Copy all text outputs"
       >
         {copied ? (
-          <CheckIcon className="h-4 w-4 text-green-600" />
+          <CheckIcon className="size-4 text-green-600" />
         ) : (
-          <CopyIcon className="h-4 w-4 cursor-pointer text-neutral-500 hover:text-neutral-700" />
+          <CopyIcon className="size-4 text-neutral-500" />
         )}
-      </button>
+      </Button>
 
-      <button
-        onClick={handleShare}
-        className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 transition-colors hover:bg-gray-50"
-        aria-label="Share outputs"
-      >
-        <ShareIcon className="h-4 w-4 cursor-pointer text-neutral-500 hover:text-neutral-700" />
-      </button>
-
-      <button
+      <Button
+        variant="ghost"
+        size="icon"
         onClick={handleDownloadAll}
-        className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 transition-colors hover:bg-gray-50"
         aria-label="Download outputs"
       >
-        <DownloadIcon className="h-4 w-4 cursor-pointer text-neutral-500 hover:text-neutral-700" />
-      </button>
+        <DownloadIcon className="size-4 text-neutral-500" />
+      </Button>
     </div>
   );
 }

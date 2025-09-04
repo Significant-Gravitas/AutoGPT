@@ -1,8 +1,5 @@
 import { CopyContent } from "../types";
 
-/**
- * Check if a MIME type is supported for clipboard operations
- */
 export function isClipboardTypeSupported(mimeType: string): boolean {
   // ClipboardItem.supports() is the proper way to check
   if ("ClipboardItem" in window && "supports" in ClipboardItem) {
@@ -16,9 +13,6 @@ export function isClipboardTypeSupported(mimeType: string): boolean {
   return fallbackSupported.includes(mimeType);
 }
 
-/**
- * Get supported MIME types for clipboard from a list of preferences
- */
 export function getSupportedClipboardType(
   preferredTypes: string[],
 ): string | null {
@@ -95,7 +89,6 @@ export async function copyToClipboard(copyContent: CopyContent): Promise<void> {
         return;
       } catch {
         // Even fallback failed
-        // toast.error("Failed to copy content please report this via ");
       }
     }
     throw _error;

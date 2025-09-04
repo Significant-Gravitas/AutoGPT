@@ -1,18 +1,18 @@
 import { globalRegistry } from "./types";
-import { TextRenderer } from "./renderers/TextRenderer";
-import { CodeRenderer } from "./renderers/CodeRenderer";
-import { ImageRenderer } from "./renderers/ImageRenderer";
-import { VideoRenderer } from "./renderers/VideoRenderer";
-import { JSONRenderer } from "./renderers/JSONRenderer";
-import { MarkdownRenderer } from "./renderers/MarkdownRenderer";
+import { textRenderer } from "./renderers/TextRenderer";
+import { codeRenderer } from "./renderers/CodeRenderer";
+import { imageRenderer } from "./renderers/ImageRenderer";
+import { videoRenderer } from "./renderers/VideoRenderer";
+import { jsonRenderer } from "./renderers/JSONRenderer";
+import { markdownRenderer } from "./renderers/MarkdownRenderer";
 
 // Register all renderers in priority order
-globalRegistry.register(new VideoRenderer());
-globalRegistry.register(new ImageRenderer());
-globalRegistry.register(new CodeRenderer());
-globalRegistry.register(new MarkdownRenderer());
-globalRegistry.register(new JSONRenderer());
-globalRegistry.register(new TextRenderer());
+globalRegistry.register(videoRenderer);
+globalRegistry.register(imageRenderer);
+globalRegistry.register(codeRenderer);
+globalRegistry.register(markdownRenderer);
+globalRegistry.register(jsonRenderer);
+globalRegistry.register(textRenderer);
 
 export { globalRegistry };
 export type { OutputRenderer, OutputMetadata, DownloadContent } from "./types";

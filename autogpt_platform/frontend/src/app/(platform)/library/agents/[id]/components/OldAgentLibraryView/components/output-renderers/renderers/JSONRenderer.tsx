@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { CaretDown, CaretRight } from "@phosphor-icons/react";
 import {
   OutputRenderer,
   OutputMetadata,
@@ -9,76 +9,81 @@ import {
   CopyContent,
 } from "../types";
 
-export class JSONRenderer implements OutputRenderer {
-  name = "JSONRenderer";
-  priority = 20;
-
-  canRender(value: any, _metadata?: OutputMetadata): boolean {
-    if (_metadata?.type === "json") {
-      return true;
-    }
-
-    if (typeof value === "object" && value !== null) {
-      return true;
-    }
-
-    if (typeof value === "string") {
-      try {
-        JSON.parse(value);
-        return true;
-      } catch {
-        return false;
-      }
-    }
-
-    return false;
-  }
-
-  render(value: any, _metadata?: OutputMetadata): React.ReactNode {
-    let jsonData = value;
-
-    if (typeof value === "string") {
-      try {
-        jsonData = JSON.parse(value);
-      } catch {
-        return null;
-      }
-    }
-
-    return <JSONViewer data={jsonData} />;
-  }
-
-  getCopyContent(value: any, _metadata?: OutputMetadata): CopyContent | null {
-    const jsonString =
-      typeof value === "string" ? value : JSON.stringify(value, null, 2);
-
-    return {
-      mimeType: "application/json",
-      data: jsonString,
-      alternativeMimeTypes: ["text/plain"],
-      fallbackText: jsonString,
-    };
-  }
-
-  getDownloadContent(
-    value: any,
-    _metadata?: OutputMetadata,
-  ): DownloadContent | null {
-    const jsonString =
-      typeof value === "string" ? value : JSON.stringify(value, null, 2);
-    const blob = new Blob([jsonString], { type: "application/json" });
-
-    return {
-      data: blob,
-      filename: _metadata?.filename || "output.json",
-      mimeType: "application/json",
-    };
-  }
-
-  isConcatenable(_value: any, _metadata?: OutputMetadata): boolean {
+function canRenderJSON(value: unknown, _metadata?: OutputMetadata): boolean {
+  if (_metadata?.type === "json") {
     return true;
   }
+
+  if (typeof value === "object" && value !== null) {
+    return true;
+  }
+
+  if (typeof value === "string") {
+    try {
+      JSON.parse(value);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
 }
+
+function renderJSON(value: unknown, _metadata?: OutputMetadata): React.ReactNode {
+  let jsonData = value;
+
+  if (typeof value === "string") {
+    try {
+      jsonData = JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+
+  return <JSONViewer data={jsonData} />;
+}
+
+function getCopyContentJSON(value: unknown, _metadata?: OutputMetadata): CopyContent | null {
+  const jsonString =
+    typeof value === "string" ? value : JSON.stringify(value, null, 2);
+
+  return {
+    mimeType: "application/json",
+    data: jsonString,
+    alternativeMimeTypes: ["text/plain"],
+    fallbackText: jsonString,
+  };
+}
+
+function getDownloadContentJSON(
+  value: unknown,
+  _metadata?: OutputMetadata,
+): DownloadContent | null {
+  const jsonString =
+    typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  const blob = new Blob([jsonString], { type: "application/json" });
+
+  return {
+    data: blob,
+    filename: _metadata?.filename || "output.json",
+    mimeType: "application/json",
+  };
+}
+
+function isConcatenableJSON(_value: unknown, _metadata?: OutputMetadata): boolean {
+  return true;
+}
+
+export const jsonRenderer: OutputRenderer = {
+  name: "JSONRenderer",
+  priority: 20,
+  canRender: canRenderJSON,
+  render: renderJSON,
+  getCopyContent: getCopyContentJSON,
+  getDownloadContent: getDownloadContentJSON,
+  isConcatenable: isConcatenableJSON,
+};
 
 function JSONViewer({ data }: { data: any }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -120,9 +125,9 @@ function JSONViewer({ data }: { data: any }) {
             className="inline-flex items-center rounded px-1 hover:bg-muted"
           >
             {isCollapsed ? (
-              <ChevronRight className="h-3 w-3" />
+              <CaretRight className="size-3" />
             ) : (
-              <ChevronDown className="h-3 w-3" />
+              <CaretDown className="size-3" />
             )}
             <span className="ml-1 text-muted-foreground">
               Array({itemCount})
@@ -157,9 +162,9 @@ function JSONViewer({ data }: { data: any }) {
             className="inline-flex items-center rounded px-1 hover:bg-muted"
           >
             {isCollapsed ? (
-              <ChevronRight className="h-3 w-3" />
+              <CaretRight className="size-3" />
             ) : (
-              <ChevronDown className="h-3 w-3" />
+              <CaretDown className="size-3" />
             )}
             <span className="ml-1 text-muted-foreground">Object</span>
           </button>
