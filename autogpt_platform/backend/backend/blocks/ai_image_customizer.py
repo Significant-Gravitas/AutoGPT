@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import SecretStr
 from replicate.client import Client as ReplicateClient
@@ -13,7 +13,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.file import MediaFileType, store_media_file
+from backend.util.file import MediaFileType
 
 
 class GeminiImageModel(str, Enum):
@@ -93,7 +93,9 @@ class AIImageCustomizerBlock(Block):
                 ("image_url", "https://replicate.delivery/generated-image.jpg"),
             ],
             test_mock={
-                "run_model": lambda *args, **kwargs: MediaFileType("https://replicate.delivery/generated-image.jpg"),
+                "run_model": lambda *args, **kwargs: MediaFileType(
+                    "https://replicate.delivery/generated-image.jpg"
+                ),
             },
             test_credentials=TEST_CREDENTIALS,
         )
@@ -133,7 +135,7 @@ class AIImageCustomizerBlock(Block):
             "prompt": prompt,
             "output_format": output_format,
         }
-        
+
         # Add images to input if provided (API expects "image_input" parameter)
         if images:
             input_params["image_input"] = [str(img) for img in images]
