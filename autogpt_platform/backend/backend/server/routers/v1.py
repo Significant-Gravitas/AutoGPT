@@ -78,7 +78,6 @@ from backend.server.model import (
     CreateAPIKeyRequest,
     CreateAPIKeyResponse,
     CreateGraph,
-    ExecuteGraphResponse,
     RequestTopUp,
     SetGraphActiveVersion,
     TimezoneResponse,
@@ -783,7 +782,7 @@ async def execute_graph(
     ],
     graph_version: Optional[int] = None,
     preset_id: Optional[str] = None,
-) -> ExecuteGraphResponse:
+) -> execution_db.GraphExecutionMeta:
     current_balance = await _user_credit_model.get_credits(user_id)
     if current_balance <= 0:
         raise HTTPException(
@@ -792,7 +791,7 @@ async def execute_graph(
         )
 
     try:
-        graph_exec = await execution_utils.add_graph_execution(
+        return await execution_utils.add_graph_execution(
             graph_id=graph_id,
             user_id=user_id,
             inputs=inputs,
@@ -800,7 +799,6 @@ async def execute_graph(
             graph_version=graph_version,
             graph_credentials_inputs=credentials_inputs,
         )
-        return ExecuteGraphResponse(graph_exec_id=graph_exec.id)
     except GraphValidationError as e:
         # Return structured validation errors that the frontend can parse
         raise HTTPException(

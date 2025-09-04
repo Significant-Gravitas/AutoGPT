@@ -6,8 +6,10 @@ from fastapi import APIRouter, Body, HTTPException, Query, Security, status
 
 import backend.server.v2.library.db as db
 import backend.server.v2.library.model as models
+from backend.data.execution import GraphExecutionMeta
 from backend.data.graph import get_graph
 from backend.data.integrations import get_webhook
+from backend.data.model import CredentialsMetaInput
 from backend.executor.utils import add_graph_execution, make_node_credentials_input_map
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks import get_webhook_manager
@@ -369,48 +371,41 @@ async def execute_preset(
     preset_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
     inputs: dict[str, Any] = Body(..., embed=True, default_factory=dict),
-) -> dict[str, Any]:  # FIXME: add proper return type
+    credential_inputs: dict[str, CredentialsMetaInput] = Body(
+        ..., embed=True, default_factory=dict
+    ),
+) -> GraphExecutionMeta:
     """
     Execute a preset given graph parameters, returning the execution ID on success.
 
     Args:
-        preset_id (str): ID of the preset to execute.
-        user_id (str): ID of the authenticated user.
-        inputs (dict[str, Any]): Optionally, additional input data for the graph execution.
+        preset_id: ID of the preset to execute.
+        user_id: ID of the authenticated user.
+        inputs: Optionally, inputs to override the preset for execution.
+        credential_inputs: Optionally, credentials to override the preset for execution.
 
     Returns:
-        {id: graph_exec_id}: A response containing the execution ID.
+        GraphExecutionMeta: Object representing the created execution.
 
     Raises:
         HTTPException: If the preset is not found or an error occurs while executing the preset.
     """
-    try:
-        preset = await db.get_preset(user_id, preset_id)
-        if not preset:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Preset #{preset_id} not found",
-            )
-
-        # Merge input overrides with preset inputs
-        merged_node_input = preset.inputs | inputs
-
-        execution = await add_graph_execution(
-            user_id=user_id,
-            graph_id=preset.graph_id,
-            graph_version=preset.graph_version,
-            preset_id=preset_id,
-            inputs=merged_node_input,
-        )
-
-        logger.debug(f"Execution added: {execution} with input: {merged_node_input}")
-
-        return {"id": execution.id}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("Preset execution failed for user %s: %s", user_id, e)
+    preset = await db.get_preset(user_id, preset_id)
+    if not preset:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e),
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Preset #{preset_id} not found",
         )
+
+    # Merge input overrides with preset inputs
+    merged_node_input = preset.inputs | inputs
+    merged_credential_inputs = preset.credentials | credential_inputs
+
+    return await add_graph_execution(
+        user_id=user_id,
+        graph_id=preset.graph_id,
+        graph_version=preset.graph_version,
+        preset_id=preset_id,
+        inputs=merged_node_input,
+        graph_credentials_inputs=merged_credential_inputs,
+    )

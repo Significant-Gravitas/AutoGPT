@@ -178,7 +178,11 @@ export function Input({
         <Text variant="body-medium" as="span" className="text-black">
           {label}
         </Text>
-        {hint}
+        {hint ? (
+          <Text variant="small" as="span" className="!text-zinc-400">
+            {hint}
+          </Text>
+        ) : null}
       </div>
       {inputWithError}
     </label>
