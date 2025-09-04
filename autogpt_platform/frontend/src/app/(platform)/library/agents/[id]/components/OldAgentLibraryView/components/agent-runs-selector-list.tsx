@@ -16,13 +16,9 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/atoms/Button/Button";
 import LoadingBox from "@/components/ui/loading";
-import { PlusIcon } from "@phosphor-icons/react";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-
-import { RunAgentModal } from "../../AgentRunsView/components/RunAgentModal/RunAgentModal";
 import { AgentRunsQuery } from "../use-agent-runs";
 import { agentRunStatusMap } from "./agent-run-status-chip";
 import { AgentRunSummaryCard } from "./agent-run-summary-card";
