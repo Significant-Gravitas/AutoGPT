@@ -113,7 +113,7 @@ export function AgentRunDetailsView({
   const runAgain = useCallback(() => {
     if (
       !run.inputs ||
-      !(graph.credentials_input_schema.required ?? []).every(
+      !(graph.credentials_input_schema?.required ?? []).every(
         (k) => k in (run.credential_inputs ?? {}),
       )
     )
@@ -194,7 +194,7 @@ export function AgentRunDetailsView({
         : []),
       ...(["success", "failed", "stopped"].includes(runStatus) &&
       !graph.has_external_trigger &&
-      (graph.credentials_input_schema.required ?? []).every(
+      (graph.credentials_input_schema?.required ?? []).every(
         (k) => k in (run.credential_inputs ?? {}),
       )
         ? [
@@ -228,7 +228,7 @@ export function AgentRunDetailsView({
       doDeleteRun,
       doCreatePresetFromRun,
       graph.has_external_trigger,
-      graph.credentials_input_schema.required,
+      graph.credentials_input_schema?.required,
       agent.can_access_graph,
       run.graph_id,
       run.graph_version,

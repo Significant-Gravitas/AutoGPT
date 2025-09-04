@@ -630,14 +630,15 @@ view StoreAgent {
   agent_image String[]
 
   featured         Boolean  @default(false)
-  creator_username String
-  creator_avatar   String
+  creator_username String?
+  creator_avatar   String?
   sub_heading      String
   description      String
   categories       String[]
   runs             Int
   rating           Float
   versions         String[]
+  is_available     Boolean  @default(true)
 
   // Materialized views used (refreshed every 15 minutes via pg_cron):
   // - mv_agent_run_counts - Pre-aggregated agent execution counts by agentGraphId
