@@ -9,7 +9,6 @@ import {
 import { useDeleteV1DeleteGraphExecution } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { usePostV1ExecuteGraphAgent } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import type { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
-import type { ExecuteGraphResponse } from "@/app/api/__generated__/models/executeGraphResponse";
 
 export function useRunDetailHeader(
   agentGraphId: string,
@@ -78,8 +77,7 @@ export function useRunDetailHeader(
     mutation: {
       onSuccess: async (res) => {
         toast({ title: "Run started" });
-        const newRunId = (res?.data as ExecuteGraphResponse | undefined)
-          ?.graph_exec_id;
+        const newRunId = res?.status === 200 ? (res?.data?.id ?? "") : "";
 
         await queryClient.invalidateQueries({
           queryKey:
