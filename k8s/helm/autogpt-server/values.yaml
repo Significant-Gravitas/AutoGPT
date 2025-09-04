@@ -6,8 +6,7 @@ image:
   # Default to Docker Hub for open-source users
   # Override with your own registry: 
   # e.g., us-central1-docker.pkg.dev/YOUR_PROJECT/autogpt/autogpt-server
-  repository: autogpt/autogpt-server
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
   tag: "latest"
 
 imagePullSecrets: []

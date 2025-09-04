@@ -44,7 +44,6 @@ if [ ! -f "$CONFIG_DIR/.env" ]; then
         echo -e "${RED}🚨 IMPORTANT: Edit $CONFIG_DIR/.env before continuing${NC}"
         echo "Update at minimum:"
         echo "  - AUTOGPT_DOMAIN (your actual domain)"  
-        echo "  - DB_PASS (secure database password)"
         echo "  - All passwords and secret keys"
         echo ""
         read -p "Press Enter after editing .env..."
@@ -107,14 +106,13 @@ kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=rabbitmq -n aut
 echo -e "${BLUE}🤖 Deploying AutoGPT services...${NC}"
 
 # Deploy in order of dependencies
-services=("autogpt-database-manager" "autogpt-server" "autogpt-scheduler" "autogpt-notification" "autogpt-websocket" "autogpt-builder")
+services=("autogpt-database-manager" "autogpt-scheduler" "autogpt-notification" "autogpt-websocket" "autogpt-builder" "autogpt-server")
 
 for service in "${services[@]}"; do
     echo -e "${BLUE}📦 Deploying $service...${NC}"
     helm upgrade --install "$service" "./helm/$service" \
         --namespace autogpt \
-        --set global.domain="$AUTOGPT_DOMAIN" \
-        --set image.repository="${IMAGE_REGISTRY:-autogpt}/$service" \
+        --set image.repository="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/autogpt/autogpt-server" \
         --set domain="$AUTOGPT_DOMAIN"
 done
 

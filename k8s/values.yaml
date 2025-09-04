@@ -20,9 +20,8 @@ autogpt-server:
   replicaCount: 2
   
   image:
-    repository: "autogpt/autogpt-server"
     tag: "latest"
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
   
   service:
     type: ClusterIP
@@ -64,7 +63,6 @@ autogpt-builder:
   replicaCount: 2
   
   image:
-    repository: "autogpt/autogpt-builder"
     tag: "latest"
   
   service:
@@ -94,7 +92,6 @@ autogpt-websocket:
   replicaCount: 2
   
   image:
-    repository: "autogpt/autogpt-websocket"
     tag: "latest"
   
   service:

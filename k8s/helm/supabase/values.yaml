@@ -8,16 +8,16 @@ global:
   supabaseUrl: "http://localhost:8000"
   frontendUrl: "http://localhost:3000"
   database:
-    user: "supabase"
-    name: "supabase"
-    password: "CHANGE-THIS-TO-A-SECURE-PASSWORD"
+    user: "${POSTGRES_USER:-postgres}"
+    name: "${POSTGRES_DB:-postgres}"
+    password: "${POSTGRES_PASSWORD:-your-super-secret-and-long-postgres-password}"
 
 # PostgreSQL database configuration
 postgresql:
   enabled: true
   auth:
-    database: "supabase"
-    username: "supabase"
+    database: "${POSTGRES_DB:-postgres}"
+    username: "${POSTGRES_USER:-postgres}"
     existingSecret: "supabase-secrets"
     secretKeys:
       adminPasswordKey: "password"
@@ -40,7 +40,7 @@ kong:
   image:
     repository: kong
     tag: "3.2"
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
   service:
     type: ClusterIP
   resources:
@@ -58,7 +58,7 @@ auth:
   image:
     repository: supabase/gotrue
     tag: "v2.151.0"
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
   smtp:
     enabled: false
   environment:
@@ -88,7 +88,7 @@ rest:
   image:
     repository: postgrest/postgrest
     tag: "v12.0.2"
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
   environment:
     DB_HOST: "supabase-postgresql"
     DB_USER: "{{ .Values.global.database.user }}"
@@ -110,7 +110,7 @@ storage:
   image:
     repository: supabase/storage-api
     tag: "v0.46.4"
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
   environment:
     DB_HOST: "supabase-postgresql"
     DB_USER: "supabase"
@@ -139,7 +139,7 @@ realtime:
   image:
     repository: supabase/realtime
     tag: "v2.27.5"
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
   environment:
     DB_HOST: "supabase-postgresql"
     DB_USER: "supabase"
@@ -166,7 +166,7 @@ meta:
   image:
     repository: supabase/postgres-meta
     tag: "v0.80.0"
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
   environment:
     DB_HOST: "supabase-postgresql"
     DB_USER: "{{ .Values.global.database.user }}"
