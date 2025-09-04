@@ -326,32 +326,47 @@ export function useAgentRunModal(
   }, [agentInputFields]);
 
   return {
+    // UI state
     isOpen,
     setIsOpen,
     showScheduleView,
+
+    // Run mode
     defaultRunType,
+
+    // Form: regular inputs
     inputValues,
     setInputValues,
+
+    // Form: credentials
     inputCredentials,
     setInputCredentials,
+
+    // Preset/trigger labels
     presetName,
     presetDescription,
     setPresetName,
     setPresetDescription,
+
+    // Scheduling
     scheduleName,
     cronExpression,
+
+    // Validation/readiness
     allRequiredInputsAreSet,
     missingInputs,
-    // Expose credential readiness for any UI hints if needed
-    // but enforcement is already applied in allRequiredInputsAreSet
-    // allCredentialsAreSet,
-    // missingCredentials,
+
+    // Schemas for rendering
     agentInputFields,
     agentCredentialsInputFields,
     hasInputFields,
+
+    // Async states
     isExecuting: executeGraphMutation.isPending,
     isCreatingSchedule: createScheduleMutation.isPending,
     isSettingUpTrigger: setupTriggerMutation.isPending,
+
+    // Actions
     handleRun,
     handleSchedule,
     handleShowSchedule,

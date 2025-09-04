@@ -1,22 +1,10 @@
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
+import { Input } from "@/components/atoms/Input/Input";
+import { Button } from "@/components/atoms/Button/Button";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { Form, FormField } from "@/components/ui/form";
 import useCredentials from "@/hooks/useCredentials";
 import {
   BlockIOCredentialsSubSchema,
@@ -81,76 +69,72 @@ export function PasswordCredentialsModal({
 
   return (
     <Dialog
-      open={open}
-      onOpenChange={(open) => {
-        if (!open) onClose();
+      title={`Add new username & password for ${providerName}`}
+      controlled={{
+        isOpen: open,
+        set: (isOpen) => {
+          if (!isOpen) onClose();
+        },
+      }}
+      onClose={onClose}
+      styling={{
+        maxWidth: "25rem",
       }}
     >
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>
-            Add new username & password for {providerName}
-          </DialogTitle>
-        </DialogHeader>
+      <Dialog.Content>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form
+            onSubmit={form.handleSubmit(onSubmit)}
+            className="space-y-2 pt-4"
+          >
             <FormField
               control={form.control}
               name="username"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Username</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="text"
-                      placeholder="Enter username..."
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+                <Input
+                  id="username"
+                  label="Username"
+                  type="text"
+                  placeholder="Enter username..."
+                  size="small"
+                  {...field}
+                />
               )}
             />
             <FormField
               control={form.control}
               name="password"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Password</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="password"
-                      placeholder="Enter password..."
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+                <Input
+                  id="password"
+                  label="Password"
+                  type="password"
+                  placeholder="Enter password..."
+                  size="small"
+                  {...field}
+                />
               )}
             />
             <FormField
               control={form.control}
               name="title"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Name</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="text"
-                      placeholder="Enter a name for this user login..."
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+                <Input
+                  id="title"
+                  label="Name"
+                  type="text"
+                  placeholder="Enter a name for this user login..."
+                  size="small"
+                  {...field}
+                />
               )}
             />
-            <Button type="submit" className="w-full">
+            <Button type="submit" size="small" className="min-w-68">
               Save & use this user login
             </Button>
           </form>
         </Form>
-      </DialogContent>
+      </Dialog.Content>
     </Dialog>
   );
 }

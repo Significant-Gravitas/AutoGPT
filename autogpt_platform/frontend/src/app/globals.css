@@ -2,8 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-@plugin 'tailwind-scrollbar';
-
 @layer base {
   :root {
     --background: 0 0% 98%; /* neutral-50#FAFAFA */
