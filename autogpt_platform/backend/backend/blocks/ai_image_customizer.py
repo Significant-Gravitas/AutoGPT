@@ -12,6 +12,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.file import MediaFileType, store_media_file
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -59,14 +60,10 @@ class AIImageCustomizerBlock(Block):
             default=GeminiImageModel.GEMINI_2_5_FLASH_IMAGE,
             title="Model",
         )
-        images: Optional[List[str]] = SchemaField(
-            description="List of image URLs (optional)",
+        images: Optional[List[MediaFileType]] = SchemaField(
+            description="List of input images (optional)",
             default=None,
             title="Images",
-            json_schema_extra={
-                "type": "array",
-                "items": {"type": "string", "format": "uri"},
-            },
         )
         output_format: OutputFormat = SchemaField(
             description="Format of the output image",
@@ -106,14 +103,29 @@ class AIImageCustomizerBlock(Block):
         input_data: Input,
         *,
         credentials: APIKeyCredentials,
+        graph_exec_id: str,
+        user_id: str,
         **kwargs,
     ) -> BlockOutput:
         try:
+            # Process input images if provided
+            processed_images = None
+            if input_data.images:
+                processed_images = []
+                for image in input_data.images:
+                    image_b64 = await store_media_file(
+                        graph_exec_id=graph_exec_id,
+                        file=image,
+                        user_id=user_id,
+                        return_content=True,
+                    )
+                    processed_images.append(image_b64)
+
             result = await self.run_model(
                 api_key=credentials.api_key,
                 model_name=input_data.model.api_name,
                 prompt=input_data.prompt,
-                images=input_data.images,
+                images=processed_images,
                 output_format=input_data.output_format.value,
             )
             yield "image_url", result
