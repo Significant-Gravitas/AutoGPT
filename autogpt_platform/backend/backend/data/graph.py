@@ -1,7 +1,7 @@
 import logging
 import uuid
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal, Optional, cast
 
 from prisma.enums import SubmissionStatus
@@ -1149,6 +1149,7 @@ def make_graph_model(creatable_graph: Graph, user_id: str) -> GraphModel:
     return GraphModel(
         **creatable_graph.model_dump(exclude={"nodes"}),
         user_id=user_id,
+        created_at=datetime.now(tz=timezone.utc),
         nodes=[
             NodeModel(
                 **creatable_node.model_dump(),

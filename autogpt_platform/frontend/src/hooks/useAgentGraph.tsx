@@ -14,6 +14,7 @@ import {
   GraphExecutionID,
   GraphID,
   GraphMeta,
+  LibraryAgent,
   LinkCreatable,
   NodeCreatable,
   NodeExecutionResult,
@@ -48,6 +49,7 @@ export default function useAgentGraph(
   const [savedAgent, setSavedAgent] = useState<Graph | null>(null);
   const [agentDescription, setAgentDescription] = useState<string>("");
   const [agentName, setAgentName] = useState<string>("");
+  const [libraryAgent, setLibraryAgent] = useState<LibraryAgent | null>(null);
   const [allBlocks, setAllBlocks] = useState<Block[]>([]);
   const [availableFlows, setAvailableFlows] = useState<GraphMeta[]>([]);
   const [updateQueue, setUpdateQueue] = useState<NodeExecutionResult[]>([]);
@@ -194,7 +196,6 @@ export default function useAgentGraph(
             inputSchema: block.inputSchema,
             outputSchema: block.outputSchema,
             hardcodedValues: node.input_default,
-            webhook: node.webhook,
             uiType: block.uiType,
             metadata: node.metadata,
             connections: graph.links
@@ -431,6 +432,20 @@ export default function useAgentGraph(
       _loadGraph(graph);
     });
   }, [flowID, flowVersion, availableBlocks, api]);
+
+  // Load library agent
+  useEffect(() => {
+    if (!flowID) return;
+    api
+      .getLibraryAgentByGraphID(flowID, flowVersion)
+      .then((libraryAgent) => setLibraryAgent(libraryAgent))
+      .catch((error) => {
+        console.warn(
+          `Failed to fetch LibraryAgent for graph #${flowID} v${flowVersion}`,
+          error,
+        );
+      });
+  }, [api, flowID, flowVersion]);
 
   // Check if local graph state is in sync with backend
   const nodesSyncedWithSavedAgent = useMemo(() => {
@@ -933,6 +948,7 @@ export default function useAgentGraph(
     agentDescription,
     setAgentDescription,
     savedAgent,
+    libraryAgent,
     availableBlocks,
     availableFlows,
     getOutputType,

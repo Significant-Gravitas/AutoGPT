@@ -35,7 +35,6 @@ import {
   GraphID,
   LibraryAgent,
 } from "@/lib/autogpt-server-api";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { Key, storage } from "@/services/storage/local-storage";
 import {
   getTypeColor,
@@ -69,7 +68,8 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
 const MINIMUM_MOVE_BEFORE_LOG = 50;
 
-type FlowContextType = {
+type BuilderContextType = {
+  libraryAgent: LibraryAgent | null;
   visualizeBeads: "no" | "static" | "animate";
   setIsAnyModalOpen: (isOpen: boolean) => void;
   getNextNodeId: () => string;
@@ -84,7 +84,7 @@ export type NodeDimension = {
   };
 };
 
-export const FlowContext = createContext<FlowContextType | null>(null);
+export const BuilderContext = createContext<BuilderContextType | null>(null);
 
 const FlowEditor: React.FC<{
   flowID?: GraphID;
@@ -118,6 +118,7 @@ const FlowEditor: React.FC<{
     agentDescription,
     setAgentDescription,
     savedAgent,
+    libraryAgent,
     availableBlocks,
     availableFlows,
     getOutputType,
@@ -140,20 +141,6 @@ const FlowEditor: React.FC<{
     flowExecutionID,
     visualizeBeads !== "no",
   );
-  const api = useBackendAPI();
-  const [libraryAgent, setLibraryAgent] = useState<LibraryAgent | null>(null);
-  useEffect(() => {
-    if (!flowID) return;
-    api
-      .getLibraryAgentByGraphID(flowID, flowVersion)
-      .then((libraryAgent) => setLibraryAgent(libraryAgent))
-      .catch((error) => {
-        console.warn(
-          `Failed to fetch LibraryAgent for graph #${flowID} v${flowVersion}`,
-          error,
-        );
-      });
-  }, [api, flowID, flowVersion]);
 
   const router = useRouter();
   const pathname = usePathname();
@@ -833,8 +820,8 @@ const FlowEditor: React.FC<{
   );
 
   return (
-    <FlowContext.Provider
-      value={{ visualizeBeads, setIsAnyModalOpen, getNextNodeId }}
+    <BuilderContext.Provider
+      value={{ libraryAgent, visualizeBeads, setIsAnyModalOpen, getNextNodeId }}
     >
       <div className={className}>
         <ReactFlow
@@ -925,7 +912,7 @@ const FlowEditor: React.FC<{
                   : "will listen"}{" "}
                 for its trigger and will run when the time is right.
                 <br />
-                You can view its activity in your
+                You can view its activity in your{" "}
                 <Link
                   href={
                     libraryAgent
@@ -958,7 +945,7 @@ const FlowEditor: React.FC<{
           className="fixed bottom-4 right-4 z-20"
         />
       </Suspense>
-    </FlowContext.Provider>
+    </BuilderContext.Provider>
   );
 };
 
