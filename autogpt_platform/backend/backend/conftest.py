@@ -53,3 +53,40 @@ async def graph_cleanup(server):
                 resp = await server.agent_server.test_delete_graph(graph_id, user_id)
                 num_deleted = resp["version_counts"]
                 assert num_deleted > 0, f"Graph {graph_id} was not deleted."
+
+
+@pytest.fixture(scope="session", autouse=True)
+async def store_listing_cleanup(server):
+    """
+    Cleanup fixture for StoreListing objects created during tests.
+    This ensures test data doesn't persist and cause migration failures.
+    """
+    created_store_listing_ids = []
+    original_create_store_listing = server.agent_server.test_create_store_listing
+
+    async def create_store_listing_wrapper(*args, **kwargs):
+        store_listing = await original_create_store_listing(*args, **kwargs)
+        # Check if the creation was successful (not a JSONResponse error)
+        import fastapi.responses
+        if not isinstance(store_listing, fastapi.responses.JSONResponse):
+            created_store_listing_ids.append(store_listing.store_listing_id)
+        return store_listing
+
+    try:
+        server.agent_server.test_create_store_listing = create_store_listing_wrapper
+        yield  # This runs the test function
+    finally:
+        server.agent_server.test_create_store_listing = original_create_store_listing
+
+        # Clean up created store listings using Prisma
+        if created_store_listing_ids:
+            from prisma import Prisma
+            prisma = Prisma()
+            await prisma.connect()
+            try:
+                # Delete store listings (cascade will handle related records)
+                await prisma.storelisting.delete_many(
+                    where={"id": {"in": created_store_listing_ids}}
+                )
+            finally:
+                await prisma.disconnect()
