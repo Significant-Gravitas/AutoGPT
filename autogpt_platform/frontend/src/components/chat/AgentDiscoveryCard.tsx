@@ -39,7 +39,7 @@ export function AgentDiscoveryCard({
       <div className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
         🎯 Recommended Agents for You:
       </div>
-      
+
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
         {agents.slice(0, 3).map((agent) => (
           <div
@@ -49,7 +49,7 @@ export function AgentDiscoveryCard({
               "border-neutral-200 dark:border-neutral-700",
               "bg-white dark:bg-neutral-900",
               "transition-all duration-300 hover:shadow-lg",
-              "animate-in fade-in-50 slide-in-from-bottom-2"
+              "animate-in fade-in-50 slide-in-from-bottom-2",
             )}
           >
             <div className="bg-gradient-to-br from-violet-500/10 to-purple-500/10 p-4">
@@ -66,17 +66,17 @@ export function AgentDiscoveryCard({
                   </div>
                 )}
               </div>
-              
+
               <p className="mb-3 line-clamp-2 text-sm text-neutral-600 dark:text-neutral-400">
                 {agent.description}
               </p>
-              
+
               {agent.creator && (
                 <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-500">
                   by {agent.creator}
                 </p>
               )}
-              
+
               <div className="mb-3 flex items-center gap-3 text-xs text-neutral-500 dark:text-neutral-500">
                 {agent.runs && (
                   <div className="flex items-center gap-1">
@@ -91,20 +91,20 @@ export function AgentDiscoveryCard({
                   </div>
                 )}
               </div>
-              
+
               {agent.categories && agent.categories.length > 0 && (
                 <div className="mb-3 flex flex-wrap gap-1">
                   {agent.categories.slice(0, 3).map((category) => (
                     <span
                       key={category}
-                      className="rounded-full bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 text-xs text-neutral-600 dark:text-neutral-400"
+                      className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400"
                     >
                       {category}
                     </span>
                   ))}
                 </div>
               )}
-              
+
               <div className="flex gap-2">
                 <Button
                   onClick={() => onGetDetails(agent)}

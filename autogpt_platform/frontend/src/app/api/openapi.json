@@ -4394,6 +4394,379 @@
         }
       }
     },
+    "/api/v2/chat/sessions": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Create Session",
+        "description": "Create a new chat session for the authenticated or anonymous user.\n\nArgs:\n    request: Session creation parameters\n    user_id: Optional authenticated user ID\n\nReturns:\n    Created session details",
+        "operationId": "postV2CreateSession",
+        "security": [{ "HTTPBearer": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateSessionRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateSessionResponse"
+                }
+              }
+            }
+          },
+          "404": { "description": "Resource not found" },
+          "401": { "description": "Unauthorized" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "List Sessions",
+        "description": "List chat sessions for the authenticated user.\n\nArgs:\n    limit: Maximum number of sessions to return\n    offset: Number of sessions to skip\n    include_last_message: Whether to include the last message\n    user_id: Authenticated user ID\n\nReturns:\n    List of user's chat sessions",
+        "operationId": "getV2ListSessions",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "include_last_message",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Include Last Message"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SessionListResponse" }
+              }
+            }
+          },
+          "404": { "description": "Resource not found" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/chat/sessions/{session_id}": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get Session",
+        "description": "Get details of a specific chat session.\n\nArgs:\n    session_id: ID of the session to retrieve\n    include_messages: Whether to include all messages\n    user_id: Authenticated user ID\n\nReturns:\n    Session details with optional messages",
+        "operationId": "getV2GetSession",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "include_messages",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Include Messages"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDetailResponse"
+                }
+              }
+            }
+          },
+          "404": { "description": "Resource not found" },
+          "401": { "description": "Unauthorized" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Delete Session",
+        "description": "Delete a chat session and all its messages.\n\nArgs:\n    session_id: ID of the session to delete\n    user_id: Authenticated user ID\n\nReturns:\n    Deletion confirmation",
+        "operationId": "deleteV2DeleteSession",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Deletev2Deletesession"
+                }
+              }
+            }
+          },
+          "404": { "description": "Resource not found" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/chat/sessions/{session_id}/messages": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Send Message",
+        "description": "Send a message to a chat session (non-streaming).\n\nThis endpoint processes the message and returns the complete response.\nFor streaming responses, use the /stream endpoint.\n\nArgs:\n    session_id: ID of the session\n    request: Message parameters\n    user_id: Authenticated user ID\n\nReturns:\n    Complete assistant response",
+        "operationId": "postV2SendMessage",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SendMessageRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SendMessageResponse" }
+              }
+            }
+          },
+          "404": { "description": "Resource not found" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/chat/sessions/{session_id}/stream": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Stream Chat",
+        "description": "Stream chat responses using Server-Sent Events (SSE).\n\nThis endpoint streams the AI response in real-time, including:\n- Text chunks as they're generated\n- Tool call UI elements\n- Tool execution results\n\nArgs:\n    session_id: ID of the session\n    message: User's message\n    model: AI model to use\n    max_context: Maximum context messages\n    user_id: Optional authenticated user ID\n\nReturns:\n    SSE stream of response chunks",
+        "operationId": "getV2StreamChat",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "message",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 10000,
+              "title": "Message"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "gpt-4o",
+              "title": "Model"
+            }
+          },
+          {
+            "name": "max_context",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Max Context"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "404": { "description": "Resource not found" },
+          "401": { "description": "Unauthorized" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/chat/sessions/{session_id}/assign-user": {
+      "patch": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Assign User To Session",
+        "description": "Assign an authenticated user to an anonymous session.\n\nThis is called after a user logs in to claim their anonymous session.\n\nArgs:\n    session_id: ID of the anonymous session\n    user_id: Authenticated user ID\n\nReturns:\n    Success status",
+        "operationId": "patchV2AssignUserToSession",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Patchv2Assignusertosession"
+                }
+              }
+            }
+          },
+          "404": { "description": "Resource not found" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/chat/health": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Health Check",
+        "description": "Check if the chat service is healthy.\n\nReturns:\n    Health status",
+        "operationId": "getV2HealthCheck",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Getv2Healthcheck"
+                }
+              }
+            }
+          },
+          "404": { "description": "Resource not found" },
+          "401": { "description": "Unauthorized" }
+        }
+      }
+    },
     "/api/email/unsubscribe": {
       "post": {
         "tags": ["v1", "email"],
@@ -4955,6 +5328,37 @@
         "type": "object",
         "required": ["graph"],
         "title": "CreateGraph"
+      },
+      "CreateSessionRequest": {
+        "properties": {
+          "system_prompt": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "System Prompt",
+            "description": "Optional system prompt for the session"
+          },
+          "metadata": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Metadata",
+            "description": "Optional metadata"
+          }
+        },
+        "type": "object",
+        "title": "CreateSessionRequest",
+        "description": "Request model for creating a new chat session."
+      },
+      "CreateSessionResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "created_at": { "type": "string", "title": "Created At" },
+          "user_id": { "type": "string", "title": "User Id" }
+        },
+        "type": "object",
+        "required": ["id", "created_at", "user_id"],
+        "title": "CreateSessionResponse",
+        "description": "Response model for created chat session."
       },
       "Creator": {
         "properties": {
@@ -6343,7 +6747,9 @@
           "WEEKLY_SUMMARY",
           "MONTHLY_SUMMARY",
           "REFUND_REQUEST",
-          "REFUND_PROCESSED"
+          "REFUND_PROCESSED",
+          "AGENT_APPROVED",
+          "AGENT_REJECTED"
         ],
         "title": "NotificationType"
       },
@@ -7043,6 +7449,98 @@
         "type": "object",
         "required": ["items", "total_items", "page", "more_pages"],
         "title": "SearchResponse"
+      },
+      "SendMessageRequest": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Message",
+            "description": "Message content"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "AI model to use",
+            "default": "gpt-4o"
+          },
+          "max_context_messages": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Max Context Messages",
+            "description": "Max context messages",
+            "default": 50
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "SendMessageRequest",
+        "description": "Request model for sending a chat message."
+      },
+      "SendMessageResponse": {
+        "properties": {
+          "message_id": { "type": "string", "title": "Message Id" },
+          "content": { "type": "string", "title": "Content" },
+          "role": { "type": "string", "title": "Role" },
+          "tokens_used": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Tokens Used"
+          }
+        },
+        "type": "object",
+        "required": ["message_id", "content", "role"],
+        "title": "SendMessageResponse",
+        "description": "Response model for non-streaming message."
+      },
+      "SessionDetailResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "created_at": { "type": "string", "title": "Created At" },
+          "updated_at": { "type": "string", "title": "Updated At" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "messages": {
+            "items": { "additionalProperties": true, "type": "object" },
+            "type": "array",
+            "title": "Messages"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "created_at",
+          "updated_at",
+          "user_id",
+          "messages",
+          "metadata"
+        ],
+        "title": "SessionDetailResponse",
+        "description": "Response model for session details."
+      },
+      "SessionListResponse": {
+        "properties": {
+          "sessions": {
+            "items": { "additionalProperties": true, "type": "object" },
+            "type": "array",
+            "title": "Sessions"
+          },
+          "total": { "type": "integer", "title": "Total" },
+          "limit": { "type": "integer", "title": "Limit" },
+          "offset": { "type": "integer", "title": "Offset" }
+        },
+        "type": "object",
+        "required": ["sessions", "total", "limit", "offset"],
+        "title": "SessionListResponse",
+        "description": "Response model for session list."
       },
       "SetGraphActiveVersion": {
         "properties": {
@@ -9107,6 +9605,7 @@
         "scheme": "bearer",
         "bearerFormat": "jwt"
       },
+      "HTTPBearer": { "type": "http", "scheme": "bearer" },
       "APIKeyAuthenticator-X-Postmark-Webhook-Token": {
         "type": "apiKey",
         "in": "header",

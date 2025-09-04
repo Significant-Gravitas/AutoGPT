@@ -24,7 +24,6 @@ export interface ChatMessage {
 }
 
 export interface CreateSessionRequest {
-  system_prompt?: string;
   metadata?: Record<string, any>;
 }
 
@@ -35,8 +34,27 @@ export interface SendMessageRequest {
 }
 
 export interface StreamChunk {
-  type: "text" | "html" | "error";
+  type:
+    | "text"
+    | "html"
+    | "error"
+    | "text_chunk"
+    | "tool_call"
+    | "tool_response"
+    | "login_needed"
+    | "stream_end";
   content: string;
+  // Additional fields for structured responses
+  tool_id?: string;
+  tool_name?: string;
+  arguments?: Record<string, any>;
+  result?: any;
+  success?: boolean;
+  message?: string;
+  session_id?: string;
+  agent_info?: any;
+  timestamp?: string;
+  summary?: any;
 }
 
 export class ChatAPI {
@@ -49,30 +67,38 @@ export class ChatAPI {
   async createSession(request?: CreateSessionRequest): Promise<ChatSession> {
     // For anonymous sessions, we'll make a direct request without auth
     const baseUrl = (this.api as any).baseUrl;
-    
+
     // Generate a unique anonymous ID for this session
-    const anonId = typeof window !== 'undefined' 
-      ? localStorage.getItem('anon_id') || Math.random().toString(36).substring(2, 15)
-      : 'server-anon';
-    
-    if (typeof window !== 'undefined' && !localStorage.getItem('anon_id')) {
-      localStorage.setItem('anon_id', anonId);
+    const anonId =
+      typeof window !== "undefined"
+        ? localStorage.getItem("anon_id") ||
+          Math.random().toString(36).substring(2, 15)
+        : "server-anon";
+
+    if (typeof window !== "undefined" && !localStorage.getItem("anon_id")) {
+      localStorage.setItem("anon_id", anonId);
     }
-    
+
     try {
       // First try with authentication if available
       const supabase = await (this.api as any).getSupabaseClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       if (session?.access_token) {
         // User is authenticated, use normal request
-        const response = await (this.api as any)._request("POST", "/v2/chat/sessions", request || {});
+        const response = await (this.api as any)._request(
+          "POST",
+          "/v2/chat/sessions",
+          request || {},
+        );
         return response;
       }
-    } catch (e) {
+    } catch (_e) {
       // Continue with anonymous session
     }
-    
+
     // Create anonymous session
     const response = await fetch(`${baseUrl}/v2/chat/sessions`, {
       method: "POST",
@@ -81,7 +107,7 @@ export class ChatAPI {
       },
       body: JSON.stringify({
         ...request,
-        metadata: { anon_id: anonId }
+        metadata: { anon_id: anonId },
       }),
     });
 
@@ -94,11 +120,14 @@ export class ChatAPI {
   }
 
   async createSessionOld(request?: CreateSessionRequest): Promise<ChatSession> {
-    const response = await fetch(`${(this.api as any).baseUrl}/v2/chat/sessions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(request || {}),
-    });
+    const response = await fetch(
+      `${(this.api as any).baseUrl}/v2/chat/sessions`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify(request || {}),
+      },
+    );
 
     if (!response.ok) {
       const error = await response.text();
@@ -108,20 +137,26 @@ export class ChatAPI {
     return response.json();
   }
 
-  async getSession(sessionId: string, includeMessages = true): Promise<ChatSession> {
+  async getSession(
+    sessionId: string,
+    includeMessages = true,
+  ): Promise<ChatSession> {
     const response = await (this.api as any)._get(
-      `/v2/chat/sessions/${sessionId}?include_messages=${includeMessages}`
+      `/v2/chat/sessions/${sessionId}?include_messages=${includeMessages}`,
     );
     return response;
   }
 
-  async getSessionOld(sessionId: string, includeMessages = true): Promise<ChatSession> {
+  async getSessionOld(
+    sessionId: string,
+    includeMessages = true,
+  ): Promise<ChatSession> {
     const response = await fetch(
       `${(this.api as any).baseUrl}/v2/chat/sessions/${sessionId}?include_messages=${includeMessages}`,
       {
         method: "GET",
         headers,
-      }
+      },
     );
 
     if (!response.ok) {
@@ -132,7 +167,11 @@ export class ChatAPI {
     return response.json();
   }
 
-  async listSessions(limit = 50, offset = 0, includeLastMessage = true): Promise<{
+  async listSessions(
+    limit = 50,
+    offset = 0,
+    includeLastMessage = true,
+  ): Promise<{
     sessions: ChatSession[];
     total: number;
     limit: number;
@@ -145,12 +184,16 @@ export class ChatAPI {
     });
 
     const response = await (this.api as any)._get(
-      `/v2/chat/sessions?${params}`
+      `/v2/chat/sessions?${params}`,
     );
     return response;
   }
 
-  async listSessionsOld(limit = 50, offset = 0, includeLastMessage = true): Promise<{
+  async listSessionsOld(
+    limit = 50,
+    offset = 0,
+    includeLastMessage = true,
+  ): Promise<{
     sessions: ChatSession[];
     total: number;
     limit: number;
@@ -167,7 +210,7 @@ export class ChatAPI {
       {
         method: "GET",
         headers,
-      }
+      },
     );
 
     if (!response.ok) {
@@ -188,7 +231,7 @@ export class ChatAPI {
       {
         method: "DELETE",
         headers,
-      }
+      },
     );
 
     if (!response.ok) {
@@ -199,19 +242,19 @@ export class ChatAPI {
 
   async sendMessage(
     sessionId: string,
-    request: SendMessageRequest
+    request: SendMessageRequest,
   ): Promise<ChatMessage> {
     const response = await (this.api as any)._request(
       "POST",
       `/v2/chat/sessions/${sessionId}/messages`,
-      request
+      request,
     );
     return response;
   }
 
   async sendMessageOld(
     sessionId: string,
-    request: SendMessageRequest
+    request: SendMessageRequest,
   ): Promise<ChatMessage> {
     const response = await fetch(
       `${(this.api as any).baseUrl}/v2/chat/sessions/${sessionId}/messages`,
@@ -219,7 +262,7 @@ export class ChatAPI {
         method: "POST",
         headers,
         body: JSON.stringify(request),
-      }
+      },
     );
 
     if (!response.ok) {
@@ -235,7 +278,7 @@ export class ChatAPI {
     message: string,
     model = "gpt-4o",
     maxContext = 50,
-    onError?: (error: Error) => void
+    onError?: (error: Error) => void,
   ): AsyncGenerator<StreamChunk, void, unknown> {
     const params = new URLSearchParams({
       message,
@@ -245,16 +288,18 @@ export class ChatAPI {
 
     try {
       // Try to get auth token, but allow anonymous if not available
-      let headers: HeadersInit = {};
-      
+      const headers: HeadersInit = {};
+
       try {
         const supabase = await (this.api as any).getSupabaseClient();
-        const { data: { session } } = await supabase.auth.getSession();
-        
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
         if (session?.access_token) {
           headers.Authorization = `Bearer ${session.access_token}`;
         }
-      } catch (e) {
+      } catch (_e) {
         // Continue without auth for anonymous sessions
       }
 
@@ -263,7 +308,7 @@ export class ChatAPI {
         {
           method: "GET",
           headers,
-        }
+        },
       );
 
       if (!response.ok) {
@@ -281,19 +326,19 @@ export class ChatAPI {
 
       while (true) {
         const { done, value } = await reader.read();
-        
+
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
-        
+
         // Keep the last incomplete line in the buffer
         buffer = lines.pop() || "";
 
         for (const line of lines) {
           if (line.startsWith("data: ")) {
             const data = line.slice(6).trim();
-            
+
             if (data === "[DONE]") {
               return;
             }
@@ -301,8 +346,8 @@ export class ChatAPI {
             try {
               const chunk = JSON.parse(data) as StreamChunk;
               yield chunk;
-            } catch (e) {
-              console.error("Failed to parse SSE data:", data, e);
+            } catch (_e) {
+              console.error("Failed to parse SSE data:", data, _e);
             }
           }
         }

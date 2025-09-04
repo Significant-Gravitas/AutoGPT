@@ -1,7 +1,14 @@
 "use client";
 
 import React, { useState } from "react";
-import { ChevronDown, ChevronUp, Wrench, Loader2, CheckCircle, XCircle } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Wrench,
+  Loader2,
+  CheckCircle,
+  XCircle,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ToolCallWidgetProps {
@@ -21,7 +28,7 @@ export function ToolCallWidget({
   error,
   className,
 }: ToolCallWidgetProps) {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const getStatusIcon = () => {
     switch (status) {
@@ -51,9 +58,12 @@ export function ToolCallWidget({
 
   const getToolDisplayName = () => {
     const toolDisplayNames: Record<string, string> = {
-      find_agent: "Search Marketplace",
-      get_agent_details: "Get Agent Details",
-      setup_agent: "Setup Agent",
+      find_agent: "🔍 Search Marketplace",
+      get_agent_details: "📋 Get Agent Details",
+      check_credentials: "🔑 Check Credentials",
+      setup_agent: "⚙️ Setup Agent",
+      run_agent: "▶️ Run Agent",
+      get_required_setup_info: "📝 Get Setup Requirements",
     };
     return toolDisplayNames[toolName] || toolName;
   };
@@ -61,35 +71,37 @@ export function ToolCallWidget({
   return (
     <div
       className={cn(
-        "my-4 overflow-hidden rounded-lg border",
-        status === "error" ? "border-red-200 dark:border-red-800" : "border-neutral-200 dark:border-neutral-700",
+        "overflow-hidden rounded-lg border transition-all duration-200",
+        status === "error"
+          ? "border-red-200 dark:border-red-800"
+          : "border-neutral-200 dark:border-neutral-700",
         "bg-white dark:bg-neutral-900",
-        "animate-in slide-in-from-top-2 duration-300",
-        className
+        "animate-in fade-in-50 slide-in-from-top-1",
+        className,
       )}
     >
       <div
         className={cn(
-          "flex items-center justify-between px-4 py-3",
+          "flex items-center justify-between px-3 py-2",
           "bg-gradient-to-r",
-          status === "error" 
+          status === "error"
             ? "from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20"
-            : "from-violet-50 to-purple-50 dark:from-violet-900/20 dark:to-purple-900/20"
+            : "from-neutral-50 to-neutral-100 dark:from-neutral-800/20 dark:to-neutral-700/20",
         )}
       >
-        <div className="flex items-center gap-3">
-          <Wrench className="h-5 w-5 text-violet-600 dark:text-violet-400" />
-          <span className="font-medium text-neutral-900 dark:text-neutral-100">
+        <div className="flex items-center gap-2">
+          <Wrench className="h-4 w-4 text-neutral-500 dark:text-neutral-400" />
+          <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
             {getToolDisplayName()}
           </span>
-          <div className="flex items-center gap-2">
+          <div className="ml-2 flex items-center gap-1.5">
             {getStatusIcon()}
-            <span className="text-sm text-neutral-600 dark:text-neutral-400">
+            <span className="text-xs text-neutral-500 dark:text-neutral-400">
               {getStatusText()}
             </span>
           </div>
         </div>
-        
+
         <button
           onClick={() => setIsExpanded(!isExpanded)}
           className="rounded p-1 hover:bg-neutral-200/50 dark:hover:bg-neutral-700/50"
@@ -109,7 +121,7 @@ export function ToolCallWidget({
               <div className="mb-2 text-xs font-medium text-neutral-600 dark:text-neutral-400">
                 Parameters:
               </div>
-              <div className="rounded-md bg-neutral-50 dark:bg-neutral-800 p-3">
+              <div className="rounded-md bg-neutral-50 p-3 dark:bg-neutral-800">
                 <pre className="text-xs text-neutral-700 dark:text-neutral-300">
                   {JSON.stringify(parameters, null, 2)}
                 </pre>
@@ -117,26 +129,46 @@ export function ToolCallWidget({
             </div>
           )}
 
-          {result && status === "completed" && (
-            <div>
-              <div className="mb-2 text-xs font-medium text-neutral-600 dark:text-neutral-400">
-                Result:
-              </div>
-              <div className="rounded-md bg-green-50 dark:bg-green-900/20 p-3">
-                <pre className="whitespace-pre-wrap text-xs text-green-800 dark:text-green-200">
-                  {result}
-                </pre>
-              </div>
-            </div>
-          )}
+          {result &&
+            status === "completed" &&
+            (() => {
+              // Check if result is agent carousel data - if so, don't display raw JSON
+              try {
+                const parsed = JSON.parse(result);
+                if (parsed.type === "agent_carousel") {
+                  return (
+                    <div className="text-xs text-neutral-600 dark:text-neutral-400">
+                      Found {parsed.count} agents matching &ldquo;{parsed.query}
+                      &rdquo;
+                    </div>
+                  );
+                }
+              } catch {}
+
+              // Display regular result
+              return (
+                <div>
+                  <div className="mb-2 text-xs font-medium text-neutral-600 dark:text-neutral-400">
+                    Result:
+                  </div>
+                  <div className="rounded-md bg-green-50 p-3 dark:bg-green-900/20">
+                    <pre className="whitespace-pre-wrap text-xs text-green-800 dark:text-green-200">
+                      {result}
+                    </pre>
+                  </div>
+                </div>
+              );
+            })()}
 
           {error && status === "error" && (
             <div>
               <div className="mb-2 text-xs font-medium text-red-600 dark:text-red-400">
                 Error:
               </div>
-              <div className="rounded-md bg-red-50 dark:bg-red-900/20 p-3">
-                <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
+              <div className="rounded-md bg-red-50 p-3 dark:bg-red-900/20">
+                <p className="text-sm text-red-800 dark:text-red-200">
+                  {error}
+                </p>
               </div>
             </div>
           )}

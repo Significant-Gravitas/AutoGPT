@@ -74,6 +74,7 @@ def sanitize_query(query: str | None) -> str | None:
 
 async def search_store_agents(
     search_query: str,
+    limit: int = 30,
 ) -> backend.server.v2.store.model.StoreAgentsResponse:
     """
     Search for store agents using embeddings with SQLAlchemy.
@@ -92,7 +93,7 @@ async def search_store_agents(
             return await get_store_agents(
                 search_query=search_query,
                 page=1,
-                page_size=30,
+                page_size=limit,
             )
 
         # Use SQLAlchemy service for vector search

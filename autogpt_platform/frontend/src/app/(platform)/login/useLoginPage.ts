@@ -75,7 +75,11 @@ export function useLoginPage() {
     }
 
     try {
-      const error = await providerLogin(provider);
+      const returnUrl = searchParams.get("returnUrl") || undefined;
+      const error = await providerLogin(
+        provider,
+        returnUrl ? decodeURIComponent(returnUrl) : undefined,
+      );
       if (error) throw error;
       setFeedback(null);
     } catch (error) {
@@ -114,7 +118,12 @@ export function useLoginPage() {
       return;
     }
 
-    const error = await login(data, turnstile.token as string);
+    const returnUrl = searchParams.get("returnUrl") || undefined;
+    const error = await login(
+      data,
+      turnstile.token as string,
+      returnUrl ? decodeURIComponent(returnUrl) : undefined,
+    );
     await supabase?.auth.refreshSession();
     setIsLoading(false);
     if (error) {

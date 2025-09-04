@@ -14,6 +14,7 @@ interface AuthPromptWidgetProps {
     name: string;
     trigger_type: string;
   };
+  returnUrl?: string;
   className?: string;
 }
 
@@ -21,6 +22,7 @@ export function AuthPromptWidget({
   message,
   sessionId,
   agentInfo,
+  returnUrl = "/marketplace/discover",
   className,
 }: AuthPromptWidgetProps) {
   const router = useRouter();
@@ -33,10 +35,11 @@ export function AuthPromptWidget({
         localStorage.setItem("pending_agent_setup", JSON.stringify(agentInfo));
       }
     }
-    
-    // Redirect to sign in with return URL
-    const returnUrl = encodeURIComponent("/marketplace/discover");
-    router.push(`/signin?returnUrl=${returnUrl}`);
+
+    // Build return URL with session ID
+    const returnUrlWithSession = `${returnUrl}?sessionId=${sessionId}`;
+    const encodedReturnUrl = encodeURIComponent(returnUrlWithSession);
+    router.push(`/login?returnUrl=${encodedReturnUrl}`);
   };
 
   const handleSignUp = () => {
@@ -47,10 +50,11 @@ export function AuthPromptWidget({
         localStorage.setItem("pending_agent_setup", JSON.stringify(agentInfo));
       }
     }
-    
-    // Redirect to sign up with return URL
-    const returnUrl = encodeURIComponent("/marketplace/discover");
-    router.push(`/signup?returnUrl=${returnUrl}`);
+
+    // Build return URL with session ID
+    const returnUrlWithSession = `${returnUrl}?sessionId=${sessionId}`;
+    const encodedReturnUrl = encodeURIComponent(returnUrlWithSession);
+    router.push(`/signup?returnUrl=${encodedReturnUrl}`);
   };
 
   return (
@@ -58,8 +62,8 @@ export function AuthPromptWidget({
       className={cn(
         "my-4 overflow-hidden rounded-lg border border-violet-200 dark:border-violet-800",
         "bg-gradient-to-br from-violet-50 to-purple-50 dark:from-violet-950/30 dark:to-purple-950/30",
-        "animate-in fade-in-50 slide-in-from-bottom-2 duration-500",
-        className
+        "duration-500 animate-in fade-in-50 slide-in-from-bottom-2",
+        className,
       )}
     >
       <div className="px-6 py-5">
@@ -77,14 +81,20 @@ export function AuthPromptWidget({
           </div>
         </div>
 
-        <div className="mb-5 rounded-md bg-white/50 dark:bg-neutral-900/50 p-4">
+        <div className="mb-5 rounded-md bg-white/50 p-4 dark:bg-neutral-900/50">
           <p className="text-sm text-neutral-700 dark:text-neutral-300">
             {message}
           </p>
           {agentInfo && (
             <div className="mt-3 text-xs text-neutral-600 dark:text-neutral-400">
-              <p>Ready to set up: <span className="font-medium">{agentInfo.name}</span></p>
-              <p>Type: <span className="font-medium">{agentInfo.trigger_type}</span></p>
+              <p>
+                Ready to set up:{" "}
+                <span className="font-medium">{agentInfo.name}</span>
+              </p>
+              <p>
+                Type:{" "}
+                <span className="font-medium">{agentInfo.trigger_type}</span>
+              </p>
             </div>
           )}
         </div>

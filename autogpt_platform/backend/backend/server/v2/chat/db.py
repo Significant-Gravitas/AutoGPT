@@ -1,11 +1,18 @@
 """Database operations for chat functionality."""
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import prisma.errors
 import prisma.models
 import prisma.types
+from openai.types.chat import (
+    ChatCompletionAssistantMessageParam,
+    ChatCompletionMessageParam,
+    ChatCompletionSystemMessageParam,
+    ChatCompletionToolMessageParam,
+    ChatCompletionUserMessageParam,
+)
 from prisma import Json
 from prisma.enums import ChatMessageRole
 
@@ -20,22 +27,22 @@ logger = logging.getLogger(__name__)
 async def create_chat_session(
     user_id: str,
 ) -> prisma.models.ChatSession:
-    """
-    Create a new chat session for a user.
+    """Create a new chat session for a user.
 
     Args:
         user_id: The ID of the user creating the session
 
     Returns:
         The created ChatSession object
+
     """
     # For anonymous users, create a temporary user record
     if user_id.startswith("anon_"):
         # Check if anonymous user already exists
         existing_user = await prisma.models.User.prisma().find_unique(
-            where={"id": user_id}
+            where={"id": user_id},
         )
-        
+
         if not existing_user:
             # Create anonymous user with minimal data
             await prisma.models.User.prisma().create(
@@ -43,24 +50,23 @@ async def create_chat_session(
                     "id": user_id,
                     "email": f"{user_id}@anonymous.local",
                     "name": "Anonymous User",
-                }
+                },
             )
             logger.info(f"Created anonymous user: {user_id}")
-    
+
     return await prisma.models.ChatSession.prisma().create(
         data={
             "userId": user_id,
-        }
+        },
     )
 
 
 async def get_chat_session(
     session_id: str,
-    user_id: Optional[str] = None,
+    user_id: str | None = None,
     include_messages: bool = False,
 ) -> prisma.models.ChatSession:
-    """
-    Get a chat session by ID.
+    """Get a chat session by ID.
 
     Args:
         session_id: The ID of the session
@@ -72,8 +78,9 @@ async def get_chat_session(
 
     Raises:
         NotFoundError: If the session doesn't exist or user doesn't have access
+
     """
-    where_clause: Dict[str, Any] = {"id": session_id}
+    where_clause: dict[str, Any] = {"id": session_id}
     if user_id:
         where_clause["userId"] = user_id
 
@@ -83,7 +90,8 @@ async def get_chat_session(
     )
 
     if not session:
-        raise NotFoundError(f"Chat session {session_id} not found")
+        msg = f"Chat session {session_id} not found"
+        raise NotFoundError(msg)
 
     return session
 
@@ -93,9 +101,8 @@ async def list_chat_sessions(
     limit: int = 50,
     offset: int = 0,
     include_last_message: bool = False,
-) -> List[prisma.models.ChatSession]:
-    """
-    List chat sessions for a user.
+) -> list[prisma.models.ChatSession]:
+    """List chat sessions for a user.
 
     Args:
         user_id: The ID of the user
@@ -105,8 +112,9 @@ async def list_chat_sessions(
 
     Returns:
         List of ChatSession objects
+
     """
-    where_clause: Dict[str, Any] = {"userId": user_id}
+    where_clause: dict[str, Any] = {"userId": user_id}
 
     include_clause = None
     if include_last_message:
@@ -128,17 +136,16 @@ async def create_chat_message(
     session_id: str,
     content: str,
     role: ChatMessageRole,
-    sequence: Optional[int] = None,
-    tool_call_id: Optional[str] = None,
-    tool_calls: Optional[List[Dict[str, Any]]] = None,
-    parent_id: Optional[str] = None,
-    metadata: Optional[Dict[str, Any]] = None,
-    prompt_tokens: Optional[int] = None,
-    completion_tokens: Optional[int] = None,
-    error: Optional[str] = None,
+    sequence: int | None = None,
+    tool_call_id: str | None = None,
+    tool_calls: list[dict[str, Any]] | None = None,
+    parent_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
+    prompt_tokens: int | None = None,
+    completion_tokens: int | None = None,
+    error: str | None = None,
 ) -> prisma.models.ChatMessage:
-    """
-    Create a new chat message.
+    """Create a new chat message.
 
     Args:
         session_id: The ID of the chat session
@@ -155,6 +162,7 @@ async def create_chat_message(
 
     Returns:
         The created ChatMessage object
+
     """
     # Auto-increment sequence if not provided
     if sequence is None:
@@ -169,13 +177,13 @@ async def create_chat_message(
         total_tokens = prompt_tokens + completion_tokens
 
     # Build the data dict dynamically to avoid setting None values
-    data: Dict[str, Any] = {
+    data: dict[str, Any] = {
         "sessionId": session_id,
         "content": content,
         "role": role,
         "sequence": sequence,
     }
-    
+
     # Only add optional fields if they have values
     if tool_call_id:
         data["toolCallId"] = tool_call_id
@@ -204,13 +212,12 @@ async def create_chat_message(
 
 async def get_chat_messages(
     session_id: str,
-    limit: Optional[int] = None,
+    limit: int | None = None,
     offset: int = 0,
-    parent_id: Optional[str] = None,
+    parent_id: str | None = None,
     include_children: bool = False,
-) -> List[prisma.models.ChatMessage]:
-    """
-    Get messages for a chat session.
+) -> list[prisma.models.ChatMessage]:
+    """Get messages for a chat session.
 
     Args:
         session_id: The ID of the chat session
@@ -221,8 +228,9 @@ async def get_chat_messages(
 
     Returns:
         List of ChatMessage objects ordered by sequence
+
     """
-    where_clause: Dict[str, Any] = {"sessionId": session_id}
+    where_clause: dict[str, Any] = {"sessionId": session_id}
 
     if parent_id is not None:
         where_clause["parentId"] = parent_id
@@ -245,9 +253,8 @@ async def get_conversation_context(
     session_id: str,
     max_messages: int = 50,
     include_system: bool = True,
-) -> List[Dict[str, Any]]:
-    """
-    Get the conversation context formatted for OpenAI API.
+) -> list[ChatCompletionMessageParam]:
+    """Get the conversation context formatted for OpenAI API.
 
     Args:
         session_id: The ID of the chat session
@@ -255,30 +262,54 @@ async def get_conversation_context(
         include_system: Whether to include system messages
 
     Returns:
-        List of message dictionaries formatted for OpenAI API
+        List of ChatCompletionMessageParam for OpenAI API
+
     """
     messages = await get_chat_messages(session_id, limit=max_messages)
 
-    context = []
+    context: list[ChatCompletionMessageParam] = []
     for msg in messages:
         if not include_system and msg.role == ChatMessageRole.SYSTEM:
             continue
 
         # Handle role - it might be a string or an enum
-        role_value = msg.role.value if hasattr(msg.role, 'value') else msg.role
-        message_dict = {
-            "role": role_value.lower(),
-            "content": msg.content,
-        }
+        role_value = msg.role.value if hasattr(msg.role, "value") else msg.role
+        role = role_value.lower()
 
-        # Add tool calls if present
-        if msg.toolCalls:
-            message_dict["tool_calls"] = msg.toolCalls
+        # Build the message based on role
+        if role == "assistant" and msg.toolCalls:
+            # Assistant message with tool calls
+            message: ChatCompletionMessageParam = {
+                "role": "assistant",
+                "content": msg.content if msg.content else None,
+                "tool_calls": msg.toolCalls,
+            }
+        elif role == "tool":
+            # Tool response message
+            message: ChatCompletionToolMessageParam = {
+                "role": "tool",
+                "content": msg.content,
+                "tool_call_id": msg.toolCallId or "",
+            }
+        elif role == "system":
+            # System message
+            message: ChatCompletionSystemMessageParam = {
+                "role": "system",
+                "content": msg.content,
+            }
+        elif role == "user":
+            # User message
+            message: ChatCompletionUserMessageParam = {
+                "role": "user",
+                "content": msg.content,
+            }
+        else:
+            # Default assistant message
+            message: ChatCompletionAssistantMessageParam = {
+                "role": "assistant",
+                "content": msg.content,
+            }
 
-        # Add tool call ID for tool responses
-        if msg.toolCallId:
-            message_dict["tool_call_id"] = msg.toolCallId
-
-        context.append(message_dict)
+        context.append(message)
 
     return context

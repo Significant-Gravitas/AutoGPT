@@ -11,6 +11,7 @@ import { verifyTurnstileToken } from "@/lib/turnstile";
 export async function signup(
   values: z.infer<typeof signupFormSchema>,
   turnstileToken: string,
+  returnUrl?: string,
 ) {
   "use server";
   return await Sentry.withServerActionInstrumentation(
@@ -47,6 +48,13 @@ export async function signup(
       if (data.session) {
         await supabase.auth.setSession(data.session);
       }
+
+      // If returnUrl is provided, skip onboarding and redirect to returnUrl
+      if (returnUrl) {
+        revalidatePath("/", "layout");
+        redirect(returnUrl);
+      }
+
       // Don't onboard if disabled
       if (await new BackendAPI().isOnboardingEnabled()) {
         revalidatePath("/onboarding", "layout");

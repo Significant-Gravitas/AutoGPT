@@ -19,6 +19,7 @@ async function shouldShowOnboarding() {
 export async function login(
   values: z.infer<typeof loginFormSchema>,
   turnstileToken: string,
+  returnUrl?: string,
 ) {
   return await Sentry.withServerActionInstrumentation("login", {}, async () => {
     const supabase = await getServerSupabase();
@@ -43,6 +44,12 @@ export async function login(
 
     await api.createUser();
 
+    // If returnUrl is provided, skip onboarding and redirect to returnUrl
+    if (returnUrl) {
+      revalidatePath("/", "layout");
+      redirect(returnUrl);
+    }
+
     // Don't onboard if disabled or already onboarded
     if (await shouldShowOnboarding()) {
       revalidatePath("/onboarding", "layout");
@@ -54,7 +61,10 @@ export async function login(
   });
 }
 
-export async function providerLogin(provider: LoginProvider) {
+export async function providerLogin(
+  provider: LoginProvider,
+  returnUrl?: string,
+) {
   return await Sentry.withServerActionInstrumentation(
     "providerLogin",
     {},
@@ -65,12 +75,16 @@ export async function providerLogin(provider: LoginProvider) {
         redirect("/error");
       }
 
+      const callbackUrl =
+        process.env.AUTH_CALLBACK_URL ?? `http://localhost:3000/auth/callback`;
+      const redirectTo = returnUrl
+        ? `${callbackUrl}?next=${encodeURIComponent(returnUrl)}`
+        : callbackUrl;
+
       const { data, error } = await supabase!.auth.signInWithOAuth({
         provider: provider,
         options: {
-          redirectTo:
-            process.env.AUTH_CALLBACK_URL ??
-            `http://localhost:3000/auth/callback`,
+          redirectTo: redirectTo,
         },
       });
 

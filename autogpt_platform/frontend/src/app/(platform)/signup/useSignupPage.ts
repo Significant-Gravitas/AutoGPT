@@ -77,7 +77,11 @@ export function useSignupPage() {
       return;
     }
 
-    const error = await providerLogin(provider);
+    const returnUrl = searchParams.get("returnUrl") || undefined;
+    const error = await providerLogin(
+      provider,
+      returnUrl ? decodeURIComponent(returnUrl) : undefined,
+    );
     if (error) {
       setIsGoogleLoading(false);
       resetCaptcha();
@@ -115,7 +119,12 @@ export function useSignupPage() {
       return;
     }
 
-    const error = await signup(data, turnstile.token as string);
+    const returnUrl = searchParams.get("returnUrl") || undefined;
+    const error = await signup(
+      data,
+      turnstile.token as string,
+      returnUrl ? decodeURIComponent(returnUrl) : undefined,
+    );
     setIsLoading(false);
     if (error) {
       if (error === "user_already_exists") {

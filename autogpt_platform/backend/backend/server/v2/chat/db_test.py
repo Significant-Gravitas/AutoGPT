@@ -9,12 +9,12 @@ import prisma.types
 import pytest
 from prisma.enums import ChatMessageRole
 
-import backend.server.v2.chat.db as db
+from backend.server.v2.chat import db
 from backend.util.exceptions import NotFoundError
 
 
 @pytest.mark.asyncio
-async def test_create_chat_session(mocker):
+async def test_create_chat_session(mocker) -> None:
     """Test creating a new chat session."""
     # Mock data
     mock_session = prisma.models.ChatSession(
@@ -37,12 +37,12 @@ async def test_create_chat_session(mocker):
 
     # Verify the create was called with correct data
     mock_chat_session.return_value.create.assert_called_once_with(
-        data={"userId": "test-user"}
+        data={"userId": "test-user"},
     )
 
 
 @pytest.mark.asyncio
-async def test_get_chat_session(mocker):
+async def test_get_chat_session(mocker) -> None:
     """Test getting a chat session by ID."""
     # Mock data
     mock_session = prisma.models.ChatSession(
@@ -55,7 +55,7 @@ async def test_get_chat_session(mocker):
     # Mock prisma call
     mock_chat_session = mocker.patch("prisma.models.ChatSession.prisma")
     mock_chat_session.return_value.find_first = mocker.AsyncMock(
-        return_value=mock_session
+        return_value=mock_session,
     )
 
     # Call function
@@ -73,7 +73,7 @@ async def test_get_chat_session(mocker):
 
 
 @pytest.mark.asyncio
-async def test_get_chat_session_not_found(mocker):
+async def test_get_chat_session_not_found(mocker) -> None:
     """Test getting a non-existent chat session."""
     # Mock prisma call to return None
     mock_chat_session = mocker.patch("prisma.models.ChatSession.prisma")
@@ -87,7 +87,7 @@ async def test_get_chat_session_not_found(mocker):
 
 
 @pytest.mark.asyncio
-async def test_get_chat_session_with_messages(mocker):
+async def test_get_chat_session_with_messages(mocker) -> None:
     """Test getting a chat session with messages included."""
     # Mock data
     mock_messages = [
@@ -98,7 +98,8 @@ async def test_get_chat_session_with_messages(mocker):
             role=ChatMessageRole.USER,
             sequence=0,
             createdAt=datetime.now(),
-        )
+            updatedAt=datetime.now(),
+        ),
     ]
 
     mock_session = prisma.models.ChatSession(
@@ -112,7 +113,7 @@ async def test_get_chat_session_with_messages(mocker):
     # Mock prisma call
     mock_chat_session = mocker.patch("prisma.models.ChatSession.prisma")
     mock_chat_session.return_value.find_first = mocker.AsyncMock(
-        return_value=mock_session
+        return_value=mock_session,
     )
 
     # Call function
@@ -131,7 +132,7 @@ async def test_get_chat_session_with_messages(mocker):
 
 
 @pytest.mark.asyncio
-async def test_list_chat_sessions(mocker):
+async def test_list_chat_sessions(mocker) -> None:
     """Test listing chat sessions for a user."""
     # Mock data
     mock_sessions = [
@@ -152,7 +153,7 @@ async def test_list_chat_sessions(mocker):
     # Mock prisma call
     mock_chat_session = mocker.patch("prisma.models.ChatSession.prisma")
     mock_chat_session.return_value.find_many = mocker.AsyncMock(
-        return_value=mock_sessions
+        return_value=mock_sessions,
     )
 
     # Call function
@@ -174,7 +175,7 @@ async def test_list_chat_sessions(mocker):
 
 
 @pytest.mark.asyncio
-async def test_list_chat_sessions_with_last_message(mocker):
+async def test_list_chat_sessions_with_last_message(mocker) -> None:
     """Test listing chat sessions with the last message included."""
     # Mock data
     mock_sessions = [
@@ -191,7 +192,8 @@ async def test_list_chat_sessions_with_last_message(mocker):
                     role=ChatMessageRole.ASSISTANT,
                     sequence=5,
                     createdAt=datetime.now(),
-                )
+                    updatedAt=datetime.now(),
+                ),
             ],
         ),
     ]
@@ -199,7 +201,7 @@ async def test_list_chat_sessions_with_last_message(mocker):
     # Mock prisma call
     mock_chat_session = mocker.patch("prisma.models.ChatSession.prisma")
     mock_chat_session.return_value.find_many = mocker.AsyncMock(
-        return_value=mock_sessions
+        return_value=mock_sessions,
     )
 
     # Call function
@@ -222,7 +224,7 @@ async def test_list_chat_sessions_with_last_message(mocker):
 
 
 @pytest.mark.asyncio
-async def test_create_chat_message(mocker):
+async def test_create_chat_message(mocker) -> None:
     """Test creating a new chat message."""
     # Mock data
     mock_message = prisma.models.ChatMessage(
@@ -234,18 +236,19 @@ async def test_create_chat_message(mocker):
         toolCallId=None,
         toolCalls=None,
         parentId=None,
-        metadata={},
+        metadata=prisma.Json({}),
         promptTokens=10,
         completionTokens=20,
         totalTokens=30,
         error=None,
         createdAt=datetime.now(),
+        updatedAt=datetime.now(),
     )
 
     # Mock prisma calls
     mock_chat_message = mocker.patch("prisma.models.ChatMessage.prisma")
     mock_chat_message.return_value.find_first = mocker.AsyncMock(
-        return_value=None
+        return_value=None,
     )  # No existing messages
     mock_chat_message.return_value.create = mocker.AsyncMock(return_value=mock_message)
 
@@ -283,17 +286,18 @@ async def test_create_chat_message(mocker):
             "completionTokens": 20,
             "totalTokens": 30,
             "error": None,
-        }
+        },
     )
 
     # Verify session was updated
     mock_chat_session.return_value.update.assert_called_once_with(
-        where={"id": "session123"}, data={}
+        where={"id": "session123"},
+        data={},
     )
 
 
 @pytest.mark.asyncio
-async def test_create_chat_message_with_auto_sequence(mocker):
+async def test_create_chat_message_with_auto_sequence(mocker) -> None:
     """Test creating a chat message with auto-incremented sequence."""
     # Mock existing message
     mock_last_message = prisma.models.ChatMessage(
@@ -303,6 +307,7 @@ async def test_create_chat_message_with_auto_sequence(mocker):
         role=ChatMessageRole.USER,
         sequence=5,
         createdAt=datetime.now(),
+        updatedAt=datetime.now(),
     )
 
     mock_new_message = prisma.models.ChatMessage(
@@ -312,17 +317,18 @@ async def test_create_chat_message_with_auto_sequence(mocker):
         role=ChatMessageRole.ASSISTANT,
         sequence=6,
         createdAt=datetime.now(),
-        metadata={},
+        updatedAt=datetime.now(),
+        metadata=prisma.Json({}),
         totalTokens=None,
     )
 
     # Mock prisma calls
     mock_chat_message = mocker.patch("prisma.models.ChatMessage.prisma")
     mock_chat_message.return_value.find_first = mocker.AsyncMock(
-        return_value=mock_last_message
+        return_value=mock_last_message,
     )
     mock_chat_message.return_value.create = mocker.AsyncMock(
-        return_value=mock_new_message
+        return_value=mock_new_message,
     )
 
     mock_chat_session = mocker.patch("prisma.models.ChatSession.prisma")
@@ -344,7 +350,7 @@ async def test_create_chat_message_with_auto_sequence(mocker):
 
 
 @pytest.mark.asyncio
-async def test_create_chat_message_with_tool_calls(mocker):
+async def test_create_chat_message_with_tool_calls(mocker) -> None:
     """Test creating a chat message with tool calls."""
     # Mock data
     tool_calls = [
@@ -355,7 +361,7 @@ async def test_create_chat_message_with_tool_calls(mocker):
                 "name": "get_weather",
                 "arguments": '{"location": "San Francisco"}',
             },
-        }
+        },
     ]
 
     mock_message = prisma.models.ChatMessage(
@@ -367,8 +373,9 @@ async def test_create_chat_message_with_tool_calls(mocker):
         toolCallId=None,
         toolCalls=tool_calls,
         parentId=None,
-        metadata={},
+        metadata=prisma.Json({}),
         createdAt=datetime.now(),
+        updatedAt=datetime.now(),
         totalTokens=None,
     )
 
@@ -397,7 +404,7 @@ async def test_create_chat_message_with_tool_calls(mocker):
 
 
 @pytest.mark.asyncio
-async def test_get_chat_messages(mocker):
+async def test_get_chat_messages(mocker) -> None:
     """Test getting messages for a chat session."""
     # Mock data
     mock_messages = [
@@ -408,6 +415,7 @@ async def test_get_chat_messages(mocker):
             role=ChatMessageRole.USER,
             sequence=0,
             createdAt=datetime.now(),
+            updatedAt=datetime.now(),
         ),
         prisma.models.ChatMessage(
             id="msg2",
@@ -416,13 +424,14 @@ async def test_get_chat_messages(mocker):
             role=ChatMessageRole.ASSISTANT,
             sequence=1,
             createdAt=datetime.now(),
+            updatedAt=datetime.now(),
         ),
     ]
 
     # Mock prisma call
     mock_chat_message = mocker.patch("prisma.models.ChatMessage.prisma")
     mock_chat_message.return_value.find_many = mocker.AsyncMock(
-        return_value=mock_messages
+        return_value=mock_messages,
     )
 
     # Call function
@@ -445,7 +454,7 @@ async def test_get_chat_messages(mocker):
 
 
 @pytest.mark.asyncio
-async def test_get_chat_messages_with_parent_filter(mocker):
+async def test_get_chat_messages_with_parent_filter(mocker) -> None:
     """Test getting messages filtered by parent ID."""
     # Mock data
     mock_messages = [
@@ -457,13 +466,14 @@ async def test_get_chat_messages_with_parent_filter(mocker):
             sequence=2,
             parentId="msg1",
             createdAt=datetime.now(),
+            updatedAt=datetime.now(),
         ),
     ]
 
     # Mock prisma call
     mock_chat_message = mocker.patch("prisma.models.ChatMessage.prisma")
     mock_chat_message.return_value.find_many = mocker.AsyncMock(
-        return_value=mock_messages
+        return_value=mock_messages,
     )
 
     # Call function
@@ -484,7 +494,7 @@ async def test_get_chat_messages_with_parent_filter(mocker):
 
 
 @pytest.mark.asyncio
-async def test_get_conversation_context(mocker):
+async def test_get_conversation_context(mocker) -> None:
     """Test getting conversation context formatted for OpenAI API."""
     # Mock data
     mock_messages = [
@@ -497,6 +507,7 @@ async def test_get_conversation_context(mocker):
             toolCallId=None,
             toolCalls=None,
             createdAt=datetime.now(),
+            updatedAt=datetime.now(),
         ),
         prisma.models.ChatMessage(
             id="msg2",
@@ -507,6 +518,7 @@ async def test_get_conversation_context(mocker):
             toolCallId=None,
             toolCalls=None,
             createdAt=datetime.now(),
+            updatedAt=datetime.now(),
         ),
         prisma.models.ChatMessage(
             id="msg3",
@@ -523,9 +535,10 @@ async def test_get_conversation_context(mocker):
                         "name": "get_weather",
                         "arguments": '{"location": "SF"}',
                     },
-                }
+                },
             ],
             createdAt=datetime.now(),
+            updatedAt=datetime.now(),
         ),
         prisma.models.ChatMessage(
             id="msg4",
@@ -536,12 +549,14 @@ async def test_get_conversation_context(mocker):
             toolCallId="call123",
             toolCalls=None,
             createdAt=datetime.now(),
+            updatedAt=datetime.now(),
         ),
     ]
 
     # Mock get_chat_messages
     mocker.patch(
-        "backend.server.v2.chat.db.get_chat_messages", return_value=mock_messages
+        "backend.server.v2.chat.db.get_chat_messages",
+        return_value=mock_messages,
     )
 
     # Call function
@@ -571,7 +586,7 @@ async def test_get_conversation_context(mocker):
 
 
 @pytest.mark.asyncio
-async def test_get_conversation_context_without_system(mocker):
+async def test_get_conversation_context_without_system(mocker) -> None:
     """Test getting conversation context without system messages."""
     # Mock data
     mock_messages = [
@@ -584,6 +599,7 @@ async def test_get_conversation_context_without_system(mocker):
             toolCallId=None,
             toolCalls=None,
             createdAt=datetime.now(),
+            updatedAt=datetime.now(),
         ),
         prisma.models.ChatMessage(
             id="msg2",
@@ -594,12 +610,14 @@ async def test_get_conversation_context_without_system(mocker):
             toolCallId=None,
             toolCalls=None,
             createdAt=datetime.now(),
+            updatedAt=datetime.now(),
         ),
     ]
 
     # Mock get_chat_messages
     mocker.patch(
-        "backend.server.v2.chat.db.get_chat_messages", return_value=mock_messages
+        "backend.server.v2.chat.db.get_chat_messages",
+        return_value=mock_messages,
     )
 
     # Call function

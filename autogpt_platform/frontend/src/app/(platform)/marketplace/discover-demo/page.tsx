@@ -6,7 +6,7 @@ import { ChatInput } from "@/components/chat/ChatInput";
 import { ToolCallWidget } from "@/components/chat/ToolCallWidget";
 import { AgentDiscoveryCard } from "@/components/chat/AgentDiscoveryCard";
 import { ChatMessage as ChatMessageType } from "@/lib/autogpt-server-api/chat";
-import { Loader2 } from "lucide-react";
+// import { Loader2 } from "lucide-react";
 
 // Demo page that simulates the chat interface without requiring authentication
 export default function DiscoverDemoPage() {
@@ -26,7 +26,8 @@ export default function DiscoverDemoPage() {
   useEffect(() => {
     setMessages([
       {
-        content: "Hello! I'm your AI agent discovery assistant. I can help you find and set up the perfect AI agents for your needs. What would you like to automate today?",
+        content:
+          "Hello! I'm your AI agent discovery assistant. I can help you find and set up the perfect AI agents for your needs. What would you like to automate today?",
         role: "ASSISTANT",
         created_at: new Date().toISOString(),
       },
@@ -37,7 +38,7 @@ export default function DiscoverDemoPage() {
     setIsStreaming(true);
     setStreamingContent("");
     setToolCalls([]);
-    
+
     // Add user message
     const userMessage: ChatMessageType = {
       content: message,
@@ -51,42 +52,53 @@ export default function DiscoverDemoPage() {
 
     // Check for keywords and simulate appropriate response
     const lowerMessage = message.toLowerCase();
-    
-    if (lowerMessage.includes("content") || lowerMessage.includes("write") || lowerMessage.includes("blog")) {
+
+    if (
+      lowerMessage.includes("content") ||
+      lowerMessage.includes("write") ||
+      lowerMessage.includes("blog")
+    ) {
       // Simulate tool call
-      setToolCalls([{
-        id: "tool-1",
-        name: "find_agent",
-        parameters: { search_query: "content creation" },
-        status: "calling",
-      }]);
-      
+      setToolCalls([
+        {
+          id: "tool-1",
+          name: "find_agent",
+          parameters: { search_query: "content creation" },
+          status: "calling",
+        },
+      ]);
+
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      
-      setToolCalls([{
-        id: "tool-1",
-        name: "find_agent",
-        parameters: { search_query: "content creation" },
-        status: "executing",
-      }]);
-      
+
+      setToolCalls([
+        {
+          id: "tool-1",
+          name: "find_agent",
+          parameters: { search_query: "content creation" },
+          status: "executing",
+        },
+      ]);
+
       await new Promise((resolve) => setTimeout(resolve, 1500));
-      
-      setToolCalls([{
-        id: "tool-1",
-        name: "find_agent",
-        parameters: { search_query: "content creation" },
-        status: "completed",
-        result: "Found 3 agents for content creation",
-      }]);
-      
+
+      setToolCalls([
+        {
+          id: "tool-1",
+          name: "find_agent",
+          parameters: { search_query: "content creation" },
+          status: "completed",
+          result: "Found 3 agents for content creation",
+        },
+      ]);
+
       // Simulate discovered agents
       setDiscoveredAgents([
         {
           id: "agent-001",
           version: "1.0.0",
           name: "Blog Writer Pro",
-          description: "Generates high-quality blog posts with SEO optimization",
+          description:
+            "Generates high-quality blog posts with SEO optimization",
           creator: "AutoGPT Team",
           rating: 4.8,
           runs: 5420,
@@ -96,7 +108,8 @@ export default function DiscoverDemoPage() {
           id: "agent-002",
           version: "2.1.0",
           name: "Social Media Content Creator",
-          description: "Creates engaging social media posts for multiple platforms",
+          description:
+            "Creates engaging social media posts for multiple platforms",
           creator: "Community",
           rating: 4.6,
           runs: 3200,
@@ -106,59 +119,72 @@ export default function DiscoverDemoPage() {
           id: "agent-003",
           version: "1.5.0",
           name: "Technical Documentation Writer",
-          description: "Generates comprehensive technical documentation from code",
+          description:
+            "Generates comprehensive technical documentation from code",
           creator: "DevTools Inc",
           rating: 4.9,
           runs: 2100,
           categories: ["Documentation", "Development"],
         },
       ]);
-      
+
       // Simulate streaming response
-      const response = "I found some excellent content creation agents for you! These agents can help with blog writing, social media content, and technical documentation. Each one has been highly rated by the community.";
-      
+      const response =
+        "I found some excellent content creation agents for you! These agents can help with blog writing, social media content, and technical documentation. Each one has been highly rated by the community.";
+
       for (let i = 0; i < response.length; i += 5) {
         setStreamingContent(response.substring(0, i + 5));
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
-      
-      setMessages((prev) => [...prev, {
-        content: response,
-        role: "ASSISTANT",
-        created_at: new Date().toISOString(),
-      }]);
-      
-    } else if (lowerMessage.includes("automat") || lowerMessage.includes("task")) {
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          content: response,
+          role: "ASSISTANT",
+          created_at: new Date().toISOString(),
+        },
+      ]);
+    } else if (
+      lowerMessage.includes("automat") ||
+      lowerMessage.includes("task")
+    ) {
       // Different response for automation
-      const response = "I can help you find automation agents! What specific tasks would you like to automate? For example:\n\n- Data processing and analysis\n- Email management\n- File organization\n- Web scraping\n- Report generation\n- API integrations\n\nJust describe what you need and I'll find the perfect agent for you!";
-      
+      const response =
+        "I can help you find automation agents! What specific tasks would you like to automate? For example:\n\n- Data processing and analysis\n- Email management\n- File organization\n- Web scraping\n- Report generation\n- API integrations\n\nJust describe what you need and I'll find the perfect agent for you!";
+
       for (let i = 0; i < response.length; i += 5) {
         setStreamingContent(response.substring(0, i + 5));
         await new Promise((resolve) => setTimeout(resolve, 30));
       }
-      
-      setMessages((prev) => [...prev, {
-        content: response,
-        role: "ASSISTANT",
-        created_at: new Date().toISOString(),
-      }]);
-      
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          content: response,
+          role: "ASSISTANT",
+          created_at: new Date().toISOString(),
+        },
+      ]);
     } else {
       // Generic response
       const response = `I understand you're interested in "${message}". Let me search for relevant agents that can help you with that.`;
-      
+
       for (let i = 0; i < response.length; i += 5) {
         setStreamingContent(response.substring(0, i + 5));
         await new Promise((resolve) => setTimeout(resolve, 40));
       }
-      
-      setMessages((prev) => [...prev, {
-        content: response,
-        role: "ASSISTANT",
-        created_at: new Date().toISOString(),
-      }]);
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          content: response,
+          role: "ASSISTANT",
+          created_at: new Date().toISOString(),
+        },
+      ]);
     }
-    
+
     setStreamingContent("");
     setIsStreaming(false);
   };
@@ -180,7 +206,7 @@ export default function DiscoverDemoPage() {
   return (
     <div className="flex h-screen flex-col bg-neutral-50 dark:bg-neutral-950">
       {/* Header */}
-      <div className="border-b border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-4 py-3">
+      <div className="border-b border-neutral-200 bg-white px-4 py-3 dark:border-neutral-700 dark:bg-neutral-900">
         <div className="mx-auto max-w-4xl">
           <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
             AI Agent Discovery Assistant (Demo)

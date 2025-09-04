@@ -1,10 +1,10 @@
 """Chat API routes for SSE streaming and session management."""
 
 import logging
-from typing import List, Optional
+from typing import Annotated
 
-import autogpt_libs.auth as auth
 import prisma.models
+from autogpt_libs import auth
 from fastapi import APIRouter, Depends, HTTPException, Query, Security
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 optional_bearer = HTTPBearer(auto_error=False)
 
 router = APIRouter(
-    prefix="/chat",
     tags=["chat"],
     responses={
         404: {"description": "Resource not found"},
@@ -31,22 +30,21 @@ router = APIRouter(
 
 
 def get_optional_user_id(
-    credentials: Optional[HTTPAuthorizationCredentials] = Security(optional_bearer),
-) -> Optional[str]:
+    credentials: HTTPAuthorizationCredentials | None = Security(optional_bearer),
+) -> str | None:
     """Get user ID from auth token if present, otherwise None for anonymous."""
     if not credentials:
         return None
-    
+
     try:
         # Parse JWT token to get user ID
         from autogpt_libs.auth.jwt_utils import parse_jwt_token
+
         payload = parse_jwt_token(credentials.credentials)
         return payload.get("sub")
     except Exception as e:
         logger.debug(f"Auth token validation failed (anonymous access): {e}")
         return None
-
-
 
 
 # ========== Request/Response Models ==========
@@ -55,11 +53,9 @@ def get_optional_user_id(
 class CreateSessionRequest(BaseModel):
     """Request model for creating a new chat session."""
 
-    system_prompt: Optional[str] = Field(
-        None, description="Optional system prompt for the session"
-    )
-    metadata: Optional[dict] = Field(
-        default_factory=dict, description="Optional metadata"
+    metadata: dict | None = Field(
+        default_factory=dict,
+        description="Optional metadata",
     )
 
 
@@ -75,11 +71,17 @@ class SendMessageRequest(BaseModel):
     """Request model for sending a chat message."""
 
     message: str = Field(
-        ..., min_length=1, max_length=10000, description="Message content"
+        ...,
+        min_length=1,
+        max_length=10000,
+        description="Message content",
     )
     model: str = Field(default="gpt-4o", description="AI model to use")
     max_context_messages: int = Field(
-        default=50, ge=1, le=100, description="Max context messages"
+        default=50,
+        ge=1,
+        le=100,
+        description="Max context messages",
     )
 
 
@@ -89,13 +91,13 @@ class SendMessageResponse(BaseModel):
     message_id: str
     content: str
     role: str
-    tokens_used: Optional[dict] = None
+    tokens_used: dict | None = None
 
 
 class SessionListResponse(BaseModel):
     """Response model for session list."""
 
-    sessions: List[dict]
+    sessions: list[dict]
     total: int
     limit: int
     offset: int
@@ -108,7 +110,7 @@ class SessionDetailResponse(BaseModel):
     created_at: str
     updated_at: str
     user_id: str
-    messages: List[dict]
+    messages: list[dict]
     metadata: dict
 
 
@@ -117,11 +119,10 @@ class SessionDetailResponse(BaseModel):
 
 @router.post(
     "/sessions",
-    response_model=CreateSessionResponse,
 )
 async def create_session(
     request: CreateSessionRequest,
-    user_id: Optional[str] = Depends(get_optional_user_id),
+    user_id: Annotated[str | None, Depends(get_optional_user_id)],
 ) -> CreateSessionResponse:
     """Create a new chat session for the authenticated or anonymous user.
 
@@ -131,26 +132,19 @@ async def create_session(
 
     Returns:
         Created session details
+
     """
     try:
         logger.info(f"Creating session with user_id: {user_id}")
-        
+
         # Create the session (anonymous if no user_id)
         # Use a special anonymous user ID if not authenticated
         import uuid
+
         session_user_id = user_id if user_id else f"anon_{uuid.uuid4().hex[:12]}"
         logger.info(f"Using session_user_id: {session_user_id}")
-        
-        session = await db.create_chat_session(user_id=session_user_id)
 
-        # Add system prompt if provided
-        if request.system_prompt:
-            await db.create_chat_message(
-                session_id=session.id,
-                content=request.system_prompt,
-                role=ChatMessageRole.SYSTEM,
-                metadata=request.metadata or {},
-            )
+        session = await db.create_chat_session(user_id=session_user_id)
 
         logger.info(f"Created chat session {session.id} for user {user_id}")
 
@@ -160,20 +154,19 @@ async def create_session(
             user_id=session.userId,
         )
     except Exception as e:
-        logger.error(f"Failed to create session: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to create session: {str(e)}")
+        logger.error(f"Failed to create session: {e!s}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to create session: {e!s}")
 
 
 @router.get(
     "/sessions",
-    response_model=SessionListResponse,
     dependencies=[Security(auth.requires_user)],
 )
 async def list_sessions(
-    user_id: str = Security(auth.get_user_id),
-    limit: int = Query(default=50, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
-    include_last_message: bool = Query(default=True),
+    user_id: Annotated[str, Security(auth.get_user_id)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    include_last_message: Annotated[bool, Query()] = True,
 ) -> SessionListResponse:
     """List chat sessions for the authenticated user.
 
@@ -185,6 +178,7 @@ async def list_sessions(
 
     Returns:
         List of user's chat sessions
+
     """
     try:
         sessions = await db.list_chat_sessions(
@@ -221,19 +215,17 @@ async def list_sessions(
             offset=offset,
         )
     except Exception as e:
-        logger.error(f"Failed to list sessions: {str(e)}")
+        logger.exception(f"Failed to list sessions: {e!s}")
         raise HTTPException(status_code=500, detail="Failed to list sessions")
 
 
 @router.get(
     "/sessions/{session_id}",
-    response_model=SessionDetailResponse,
-    dependencies=[Security(auth.requires_user)],
 )
 async def get_session(
     session_id: str,
-    user_id: str = Security(auth.get_user_id),
-    include_messages: bool = Query(default=True),
+    user_id: Annotated[str | None, Depends(get_optional_user_id)],
+    include_messages: Annotated[bool, Query()] = True,
 ) -> SessionDetailResponse:
     """Get details of a specific chat session.
 
@@ -244,13 +236,36 @@ async def get_session(
 
     Returns:
         Session details with optional messages
+
     """
     try:
-        session = await db.get_chat_session(
-            session_id=session_id,
-            user_id=user_id,
-            include_messages=include_messages,
-        )
+        # For anonymous sessions, we don't check ownership
+        if user_id:
+            # Authenticated user - verify ownership
+            session = await db.get_chat_session(
+                session_id=session_id,
+                user_id=user_id,
+                include_messages=include_messages,
+            )
+        else:
+            # Anonymous user - just get the session by ID
+            from backend.data.db import prisma
+
+            if include_messages:
+                session = await prisma.chatsession.find_unique(
+                    where={"id": session_id},
+                    include={"messages": True},
+                )
+                # Sort messages if they were included
+                if session and session.messages:
+                    session.messages.sort(key=lambda m: m.sequence)
+            else:
+                session = await prisma.chatsession.find_unique(
+                    where={"id": session_id},
+                )
+            if not session:
+                msg = f"Session {session_id} not found"
+                raise NotFoundError(msg)
 
         # Format messages if included
         messages = []
@@ -273,7 +288,7 @@ async def get_session(
                             if msg.totalTokens
                             else None
                         ),
-                    }
+                    },
                 )
 
         return SessionDetailResponse(
@@ -290,14 +305,14 @@ async def get_session(
             detail=f"Session {session_id} not found",
         )
     except Exception as e:
-        logger.error(f"Failed to get session: {str(e)}")
+        logger.exception(f"Failed to get session: {e!s}")
         raise HTTPException(status_code=500, detail="Failed to get session")
 
 
 @router.delete("/sessions/{session_id}", dependencies=[Security(auth.requires_user)])
 async def delete_session(
     session_id: str,
-    user_id: str = Security(auth.get_user_id),
+    user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> dict:
     """Delete a chat session and all its messages.
 
@@ -307,6 +322,7 @@ async def delete_session(
 
     Returns:
         Deletion confirmation
+
     """
     try:
         # Verify ownership first
@@ -327,19 +343,18 @@ async def delete_session(
             detail=f"Session {session_id} not found",
         )
     except Exception as e:
-        logger.error(f"Failed to delete session: {str(e)}")
+        logger.exception(f"Failed to delete session: {e!s}")
         raise HTTPException(status_code=500, detail="Failed to delete session")
 
 
 @router.post(
     "/sessions/{session_id}/messages",
-    response_model=SendMessageResponse,
     dependencies=[Security(auth.requires_user)],
 )
 async def send_message(
     session_id: str,
     request: SendMessageRequest,
-    user_id: str = Security(auth.get_user_id),
+    user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> SendMessageResponse:
     """Send a message to a chat session (non-streaming).
 
@@ -353,6 +368,7 @@ async def send_message(
 
     Returns:
         Complete assistant response
+
     """
     try:
         # Verify session ownership
@@ -368,12 +384,9 @@ async def send_message(
             role=ChatMessageRole.USER,
         )
 
-        # Get chat service and process message
-        service = chat.get_chat_service()
-
-        # Collect the complete response
+        # Collect the complete response using the refactored function
         full_response = ""
-        async for chunk in service.stream_chat_response(
+        async for chunk in chat.stream_chat_completion(
             session_id=session_id,
             user_message=request.message,
             user_id=user_id,
@@ -386,7 +399,7 @@ async def send_message(
 
                 try:
                     data = json.loads(chunk[6:].strip())
-                    if data.get("type") == "text":
+                    if data.get("type") == "text_chunk":
                         full_response += data.get("content", "")
                 except json.JSONDecodeError:
                     continue
@@ -415,19 +428,19 @@ async def send_message(
             detail=f"Session {session_id} not found",
         )
     except Exception as e:
-        logger.error(f"Failed to send message: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to send message: {str(e)}")
+        logger.exception(f"Failed to send message: {e!s}")
+        raise HTTPException(status_code=500, detail=f"Failed to send message: {e!s}")
 
 
 @router.get(
-    "/sessions/{session_id}/stream"
+    "/sessions/{session_id}/stream",
 )
 async def stream_chat(
     session_id: str,
-    message: str = Query(..., min_length=1, max_length=10000),
-    model: str = Query(default="gpt-4o"),
-    max_context: int = Query(default=50, ge=1, le=100),
-    user_id: Optional[str] = Depends(get_optional_user_id),
+    message: Annotated[str, Query(min_length=1, max_length=10000)] = ...,
+    model: Annotated[str, Query()] = "gpt-4o",
+    max_context: Annotated[int, Query(ge=1, le=100)] = 50,
+    user_id: str | None = Depends(get_optional_user_id),
 ):
     """Stream chat responses using Server-Sent Events (SSE).
 
@@ -445,9 +458,10 @@ async def stream_chat(
 
     Returns:
         SSE stream of response chunks
+
     """
     try:
-        
+
         # Get session - allow anonymous access by session ID
         # For anonymous users, we just verify the session exists
         if user_id:
@@ -458,18 +472,20 @@ async def stream_chat(
         else:
             # For anonymous, just verify session exists (no ownership check)
             from backend.data.db import prisma
+
             session = await prisma.chatsession.find_unique(
-                where={"id": session_id}
+                where={"id": session_id},
             )
             if not session:
-                raise NotFoundError(f"Session {session_id} not found")
-        
+                msg = f"Session {session_id} not found"
+                raise NotFoundError(msg)
+
         # Use the session's user_id for tool execution
         effective_user_id = user_id if user_id else session.userId
 
         logger.info(f"Starting SSE stream for session {session_id}")
 
-        # Get the streaming generator
+        # Get the streaming generator using the refactored function
         stream_generator = chat.stream_chat_completion(
             session_id=session_id,
             user_message=message,
@@ -495,63 +511,67 @@ async def stream_chat(
             detail=f"Session {session_id} not found",
         )
     except Exception as e:
-        logger.error(f"Failed to stream chat: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to stream: {str(e)}")
+        logger.exception(f"Failed to stream chat: {e!s}")
+        raise HTTPException(status_code=500, detail=f"Failed to stream: {e!s}")
 
 
-@router.patch("/sessions/{session_id}/assign-user", dependencies=[Security(auth.requires_user)])
+@router.patch(
+    "/sessions/{session_id}/assign-user", dependencies=[Security(auth.requires_user)]
+)
 async def assign_user_to_session(
     session_id: str,
-    user_id: str = Security(auth.get_user_id),
+    user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> dict:
     """Assign an authenticated user to an anonymous session.
-    
+
     This is called after a user logs in to claim their anonymous session.
-    
+
     Args:
         session_id: ID of the anonymous session
         user_id: Authenticated user ID
-        
+
     Returns:
         Success status
+
     """
     try:
         # Get the session (should be anonymous)
         from backend.data.db import prisma
+
         session = await prisma.chatsession.find_unique(
-            where={"id": session_id}
+            where={"id": session_id},
         )
-        
+
         if not session:
             raise HTTPException(
                 status_code=HTTP_404_NOT_FOUND,
                 detail=f"Session {session_id} not found",
             )
-        
+
         # Check if session is anonymous (starts with anon_)
         if not session.userId.startswith("anon_"):
             raise HTTPException(
                 status_code=400,
                 detail="Session already has an assigned user",
             )
-        
+
         # Update the session with the real user ID
         await prisma.chatsession.update(
             where={"id": session_id},
-            data={"userId": user_id}
+            data={"userId": user_id},
         )
-        
+
         logger.info(f"Assigned user {user_id} to session {session_id}")
-        
+
         return {
             "status": "success",
             "message": f"Session {session_id} assigned to user",
-            "user_id": user_id
+            "user_id": user_id,
         }
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to assign user to session: {str(e)}")
+        logger.exception(f"Failed to assign user to session: {e!s}")
         raise HTTPException(status_code=500, detail="Failed to assign user")
 
 
@@ -564,17 +584,23 @@ async def health_check() -> dict:
 
     Returns:
         Health status
+
     """
     try:
-        # Try to get the service instance
-        chat.get_chat_service()
+        # Try to get the OpenAI client to verify connectivity
+        from backend.server.v2.chat.config import get_config
+
+        config = get_config()
+
         return {
             "status": "healthy",
             "service": "chat",
             "version": "2.0",
+            "model": config.model,
+            "has_api_key": config.api_key is not None,
         }
     except Exception as e:
-        logger.error(f"Health check failed: {str(e)}")
+        logger.exception(f"Health check failed: {e!s}")
         return {
             "status": "unhealthy",
             "error": str(e),
