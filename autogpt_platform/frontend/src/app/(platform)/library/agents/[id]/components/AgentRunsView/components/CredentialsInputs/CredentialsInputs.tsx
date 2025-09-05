@@ -335,30 +335,39 @@ export const CredentialsInput: FC<{
   // Show credentials creation UI when no relevant credentials exist
   if (!hasRelevantCredentials) {
     return (
-      <div>
+      <div className="mb-4">
         {fieldHeader}
 
         <div className={cn("flex flex-row space-x-2", className)}>
           {supportsOAuth2 && (
-            <Button onClick={handleOAuthLogin}>
+            <Button onClick={handleOAuthLogin} size="small">
               <ProviderIcon className="mr-2 h-4 w-4" />
               {"Sign in with " + providerName}
             </Button>
           )}
           {supportsApiKey && (
-            <Button onClick={() => setAPICredentialsModalOpen(true)}>
+            <Button
+              onClick={() => setAPICredentialsModalOpen(true)}
+              size="small"
+            >
               <ProviderIcon className="mr-2 h-4 w-4" />
               Enter API key
             </Button>
           )}
           {supportsUserPassword && (
-            <Button onClick={() => setUserPasswordCredentialsModalOpen(true)}>
+            <Button
+              onClick={() => setUserPasswordCredentialsModalOpen(true)}
+              size="small"
+            >
               <ProviderIcon className="mr-2 h-4 w-4" />
               Enter username and password
             </Button>
           )}
           {supportsHostScoped && credentials.discriminatorValue && (
-            <Button onClick={() => setHostScopedCredentialsModalOpen(true)}>
+            <Button
+              onClick={() => setHostScopedCredentialsModalOpen(true)}
+              size="small"
+            >
               <ProviderIcon className="mr-2 h-4 w-4" />
               {`Enter sensitive headers for ${getHostFromUrl(credentials.discriminatorValue)}`}
             </Button>

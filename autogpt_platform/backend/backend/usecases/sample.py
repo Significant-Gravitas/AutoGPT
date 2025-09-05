@@ -88,12 +88,12 @@ async def sample_agent():
         test_user = await create_test_user()
         test_graph = await create_graph(create_test_graph(), test_user.id)
         input_data = {"input_1": "Hello", "input_2": "World"}
-        response = await server.agent_server.test_execute_graph(
+        graph_exec = await server.agent_server.test_execute_graph(
             graph_id=test_graph.id,
             user_id=test_user.id,
             node_input=input_data,
         )
-        await wait_execution(test_user.id, response.graph_exec_id, 10)
+        await wait_execution(test_user.id, graph_exec.id, 10)
 
 
 if __name__ == "__main__":

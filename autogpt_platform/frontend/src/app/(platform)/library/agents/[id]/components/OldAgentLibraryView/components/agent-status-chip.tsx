@@ -2,7 +2,7 @@ import React from "react";
 
 import { Badge } from "@/components/ui/badge";
 
-export type AgentStatus = "active" | "inactive" | "error";
+export type AgentStatus = "active" | "inactive" | "error" | "broken";
 
 const statusData: Record<
   AgentStatus,
@@ -10,6 +10,7 @@ const statusData: Record<
 > = {
   active: { label: "Active", variant: "success" },
   error: { label: "Error", variant: "destructive" },
+  broken: { label: "Broken", variant: "destructive" },
   inactive: { label: "Inactive", variant: "secondary" },
 };
 
@@ -24,7 +25,7 @@ const statusStyles = {
     "bg-slate-100 text-slate-800 hover:bg-slate-100 hover:text-slate-800",
 };
 
-export default function AgentStatusChip({
+export function AgentStatusChip({
   status,
 }: {
   status: AgentStatus;
