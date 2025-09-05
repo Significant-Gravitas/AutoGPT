@@ -12,9 +12,16 @@ COPY autogpt_platform/frontend/ .
 # Allow CI to opt-in to Playwright test build-time flags
 ARG NEXT_PUBLIC_PW_TEST="false"
 ENV NEXT_PUBLIC_PW_TEST=$NEXT_PUBLIC_PW_TEST
-RUN if [ -f .env ]; then \
+ENV NODE_ENV="production"
+# Merge env files appropriately based on environment
+RUN if [ -f .env.production ]; then \
+      # In CI/CD: merge defaults with production (production takes precedence)
+      cat .env.default .env.production > .env.merged && mv .env.merged .env.production; \
+    elif [ -f .env ]; then \
+      # Local with custom .env: merge defaults with .env
       cat .env.default .env > .env.merged && mv .env.merged .env; \
     else \
+      # Local without custom .env: use defaults
       cp .env.default .env; \
     fi
 RUN pnpm run generate:api
