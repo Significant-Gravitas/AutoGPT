@@ -19,7 +19,10 @@ const isDisabled = process.env.DISABLE_SENTRY === "true";
 
 const shouldEnable = !isDisabled && isProdOrDev && isCloud;
 
-console.log(`shouldEnableSentry: ${shouldEnable}`);
+console.log(`shouldEnableSentry: ${shouldEnable} (edge)`);
+console.log(`isCloud: ${isCloud} (edge)`);
+console.log(`isDisabled: ${isDisabled} (edge)`);
+console.log(`isProdOrDev: ${isProdOrDev} (edge)`);
 
 Sentry.init({
   dsn: "https://fe4e4aa4a283391808a5da396da20159@o4505260022104064.ingest.us.sentry.io/4507946746380288",
