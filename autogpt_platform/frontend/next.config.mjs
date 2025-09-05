@@ -1,9 +1,9 @@
 import { withSentryConfig } from "@sentry/nextjs";
-import bundleAnalyzer from '@next/bundle-analyzer';
+import bundleAnalyzer from "@next/bundle-analyzer";
 
 const withBundleAnalyzer = bundleAnalyzer({
-  enabled: process.env.ANALYZE === 'true',
-})
+  enabled: process.env.ANALYZE === "true",
+});
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -21,22 +21,25 @@ const nextConfig = {
   output: "standalone",
   transpilePackages: ["geist"],
   compiler: {
-    removeConsole: process.env.NODE_ENV === "production" ? {
-      exclude: ['error', 'warn'],
-    } : false,
+    removeConsole:
+      process.env.NODE_ENV === "production"
+        ? {
+            exclude: ["error", "warn"],
+          }
+        : false,
   },
   experimental: {
     optimizePackageImports: [
-      '@phosphor-icons/react',
-      '@radix-ui/react-alert-dialog',
-      '@radix-ui/react-dialog',
-      '@radix-ui/react-dropdown-menu',
-      '@radix-ui/react-select',
-      '@radix-ui/react-tabs',
-      '@radix-ui/react-tooltip',
-      'framer-motion',
-      '@xyflow/react',
-      'react-markdown',
+      "@phosphor-icons/react",
+      "@radix-ui/react-alert-dialog",
+      "@radix-ui/react-dialog",
+      "@radix-ui/react-dropdown-menu",
+      "@radix-ui/react-select",
+      "@radix-ui/react-tabs",
+      "@radix-ui/react-tooltip",
+      "framer-motion",
+      "@xyflow/react",
+      "react-markdown",
     ],
   },
 };
@@ -105,4 +108,4 @@ const finalConfig = isDevelopmentBuild
       },
     });
 
-export default withBundleAnalyzer(finalConfig)
+export default withBundleAnalyzer(finalConfig);

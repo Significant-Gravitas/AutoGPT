@@ -6,14 +6,14 @@ function makeQueryClient() {
       queries: {
         // Increase stale time to 5 minutes for better caching
         staleTime: 5 * 60 * 1000, // 5 minutes
-        
+
         // Keep data in cache for 30 minutes (was 5 minutes default)
         gcTime: 30 * 60 * 1000, // 30 minutes
-        
+
         // Reduce refetch frequency
         refetchOnWindowFocus: false,
-        refetchOnReconnect: 'always',
-        
+        refetchOnReconnect: "always",
+
         // Retry configuration
         retry: 2, // Reduce from 3 to 2 retries
         retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),

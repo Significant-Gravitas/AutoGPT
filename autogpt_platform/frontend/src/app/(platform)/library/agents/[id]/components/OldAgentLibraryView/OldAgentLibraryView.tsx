@@ -302,7 +302,7 @@ export function OldAgentLibraryView() {
           credential_inputs: {},
           nodes_input_masks: {},
         };
-        
+
         agentRunsQuery.upsertAgentRun(executionMeta);
         if (data.id === selectedView.id) {
           // Update currently viewed run

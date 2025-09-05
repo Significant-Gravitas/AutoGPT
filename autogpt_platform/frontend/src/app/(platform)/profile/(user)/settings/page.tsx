@@ -40,7 +40,7 @@ export default function SettingsPage() {
     redirect("/login");
   }
 
-  if (preferencesError || !preferences || !('preferences' in preferences)) {
+  if (preferencesError || !preferences || !("preferences" in preferences)) {
     return "Error..."; // TODO: Will use a Error reusable components from Block Menu redesign
   }
 

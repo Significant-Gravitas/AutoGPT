@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useRef, useEffect, useState } from 'react';
+import { useMemo, useCallback, useRef, useEffect, useState } from "react";
 
 /**
  * Custom hook for debouncing a value
@@ -24,7 +24,7 @@ export function useDebounce<T>(value: T, delay: number): T {
  */
 export function useThrottle<T extends (...args: any[]) => any>(
   callback: T,
-  delay: number
+  delay: number,
 ): T {
   const lastRan = useRef(Date.now());
   const timeoutRef = useRef<NodeJS.Timeout>();
@@ -32,19 +32,22 @@ export function useThrottle<T extends (...args: any[]) => any>(
   return useCallback(
     (...args: Parameters<T>) => {
       const now = Date.now();
-      
+
       if (now - lastRan.current >= delay) {
         lastRan.current = now;
         callback(...args);
       } else {
         clearTimeout(timeoutRef.current);
-        timeoutRef.current = setTimeout(() => {
-          lastRan.current = Date.now();
-          callback(...args);
-        }, delay - (now - lastRan.current));
+        timeoutRef.current = setTimeout(
+          () => {
+            lastRan.current = Date.now();
+            callback(...args);
+          },
+          delay - (now - lastRan.current),
+        );
       }
     },
-    [callback, delay]
+    [callback, delay],
   ) as T;
 }
 
@@ -53,7 +56,7 @@ export function useThrottle<T extends (...args: any[]) => any>(
  */
 export function useIntersectionObserver(
   ref: React.RefObject<Element>,
-  options?: IntersectionObserverInit
+  options?: IntersectionObserverInit,
 ) {
   const [isIntersecting, setIsIntersecting] = useState(false);
 
@@ -81,19 +84,19 @@ export function useVirtualScroll<T>(
   items: T[],
   itemHeight: number,
   containerHeight: number,
-  overscan = 5
+  overscan = 5,
 ) {
   const [scrollTop, setScrollTop] = useState(0);
 
   const startIndex = Math.max(0, Math.floor(scrollTop / itemHeight) - overscan);
   const endIndex = Math.min(
     items.length - 1,
-    Math.ceil((scrollTop + containerHeight) / itemHeight) + overscan
+    Math.ceil((scrollTop + containerHeight) / itemHeight) + overscan,
   );
 
   const visibleItems = useMemo(
     () => items.slice(startIndex, endIndex + 1),
-    [items, startIndex, endIndex]
+    [items, startIndex, endIndex],
   );
 
   const totalHeight = items.length * itemHeight;

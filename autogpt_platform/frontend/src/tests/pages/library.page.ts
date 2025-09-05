@@ -238,7 +238,6 @@ export class LibraryPage extends BasePage {
     ]);
   }
 
-
   async getSearchValue(): Promise<string> {
     console.log(`getting search input value`);
     try {
