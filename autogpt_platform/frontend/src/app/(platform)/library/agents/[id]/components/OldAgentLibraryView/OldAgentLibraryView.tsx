@@ -13,7 +13,6 @@ import {
   Graph,
   GraphExecution,
   GraphExecutionID,
-  GraphExecutionMeta,
   GraphID,
   LibraryAgent,
   LibraryAgentID,
@@ -45,7 +44,7 @@ import {
 import { AgentRunDetailsView } from "./components/agent-run-details-view";
 import { AgentRunDraftView } from "./components/agent-run-draft-view";
 import { CreatePresetDialog } from "./components/create-preset-dialog";
-import { useAgentRunsInfinite } from "./use-agent-runs";
+import { useAgentRunsInfinite, GraphExecutionMeta } from "../use-agent-runs";
 import { AgentRunsSelectorList } from "./components/agent-runs-selector-list";
 import { AgentScheduleDetailsView } from "./components/agent-schedule-details-view";
 
@@ -70,9 +69,7 @@ export function OldAgentLibraryView() {
     | { type: "preset"; id: LibraryAgentPresetID }
     | { type: "schedule"; id: ScheduleID }
   >({ type: "run" });
-  const [selectedRun, setSelectedRun] = useState<
-    GraphExecution | GraphExecutionMeta | null
-  >(null);
+  const [selectedRun, setSelectedRun] = useState<GraphExecution | null>(null);
   const selectedSchedule =
     selectedView.type == "schedule"
       ? schedules.find((s) => s.id == selectedView.id)
@@ -289,7 +286,24 @@ export function OldAgentLibraryView() {
           incrementRuns();
         }
 
-        agentRunsQuery.upsertAgentRun(data);
+        // Convert GraphExecution to the expected GraphExecutionMeta type
+        // which includes inputs and other fields from the generated API
+        const executionMeta = {
+          id: data.id,
+          user_id: data.user_id,
+          graph_id: data.graph_id,
+          graph_version: data.graph_version,
+          preset_id: data.preset_id,
+          status: data.status,
+          started_at: data.started_at,
+          ended_at: data.ended_at,
+          stats: data.stats,
+          inputs: data.inputs || {},
+          credential_inputs: {},
+          nodes_input_masks: {},
+        };
+        
+        agentRunsQuery.upsertAgentRun(executionMeta);
         if (data.id === selectedView.id) {
           // Update currently viewed run
           setSelectedRun(data);
@@ -306,10 +320,10 @@ export function OldAgentLibraryView() {
   useEffect(() => {
     if (selectedView.type != "run" || !selectedView.id) return;
 
-    const newSelectedRun = agentRuns.find((run) => run.id == selectedView.id);
+    const _newSelectedRun = agentRuns.find((run) => run.id == selectedView.id);
     if (selectedView.id !== selectedRun?.id) {
       // Pull partial data from "cache" while waiting for the rest to load
-      setSelectedRun((newSelectedRun as GraphExecutionMeta) ?? null);
+      setSelectedRun(null);
     }
   }, [api, selectedView, agentRuns, selectedRun?.id]);
 
@@ -516,7 +530,7 @@ export function OldAgentLibraryView() {
         onSelectPreset={selectPreset}
         onSelectSchedule={selectSchedule}
         onSelectDraftNewRun={openRunDraftView}
-        doDeleteRun={setConfirmingDeleteAgentRun}
+        doDeleteRun={(run) => setConfirmingDeleteAgentRun(run as any)}
         doDeletePreset={setConfirmingDeleteAgentPreset}
         doDeleteSchedule={deleteSchedule}
         doCreatePresetFromRun={setCreatingPresetFromExecutionID}
@@ -544,7 +558,26 @@ export function OldAgentLibraryView() {
               run={selectedRun}
               agentActions={agentActions}
               onRun={selectRun}
-              doDeleteRun={() => setConfirmingDeleteAgentRun(selectedRun)}
+              doDeleteRun={() => {
+                if (selectedRun) {
+                  // Convert GraphExecution to GraphExecutionMeta format
+                  const runMeta: any = {
+                    id: selectedRun.id,
+                    user_id: selectedRun.user_id,
+                    graph_id: selectedRun.graph_id,
+                    graph_version: selectedRun.graph_version,
+                    preset_id: selectedRun.preset_id,
+                    status: selectedRun.status,
+                    started_at: selectedRun.started_at,
+                    ended_at: selectedRun.ended_at,
+                    stats: selectedRun.stats,
+                    inputs: selectedRun.inputs || {},
+                    credential_inputs: {},
+                    nodes_input_masks: {},
+                  };
+                  setConfirmingDeleteAgentRun(runMeta);
+                }
+              }}
               doCreatePresetFromRun={() =>
                 setCreatingPresetFromExecutionID(selectedRun.id)
               }

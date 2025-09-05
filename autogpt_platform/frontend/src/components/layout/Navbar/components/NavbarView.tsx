@@ -81,9 +81,7 @@ export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
                           ? IconType.Library
                           : link.name === "Build"
                             ? IconType.Builder
-                            : link.name === "Monitor"
-                              ? IconType.Library
-                              : IconType.LayoutDashboard,
+                            : IconType.LayoutDashboard,
                     text: link.name,
                     href: link.href,
                   })),

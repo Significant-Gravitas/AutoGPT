@@ -909,9 +909,9 @@ export default function useAgentGraph(
           title: "Agent scheduling successful",
         });
 
-        // if scheduling is done from the monitor page, then redirect to monitor page after successful scheduling
+        // if scheduling is done from another page, redirect to library
         if (searchParams.get("open_scheduling") === "true") {
-          router.push("/monitoring");
+          router.push("/library");
         }
       } catch (error) {
         console.error("Error scheduling agent:", error);

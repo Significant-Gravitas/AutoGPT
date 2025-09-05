@@ -1,6 +1,5 @@
 "use client";
 
-import { IconLaptop } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import {
   CubeIcon,
@@ -41,14 +40,6 @@ export function NavbarLink({ name, href }: Props) {
         )}
         {href === "/build" && (
           <CubeIcon
-            className={cn(
-              iconWidthClass,
-              isActive && "text-white dark:text-black",
-            )}
-          />
-        )}
-        {href === "/monitor" && (
-          <IconLaptop
             className={cn(
               iconWidthClass,
               isActive && "text-white dark:text-black",
