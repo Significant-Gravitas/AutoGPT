@@ -253,6 +253,7 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
 
     id: str
     user_id: str
+    created_at: datetime.datetime
     updated_at: datetime.datetime
 
     webhook: "Webhook | None"
@@ -282,6 +283,7 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
         return cls(
             id=preset.id,
             user_id=preset.userId,
+            created_at=preset.createdAt,
             updated_at=preset.updatedAt,
             graph_id=preset.agentGraphId,
             graph_version=preset.agentGraphVersion,

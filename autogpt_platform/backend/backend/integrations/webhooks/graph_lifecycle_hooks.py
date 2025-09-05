@@ -7,10 +7,9 @@ from backend.data.graph import set_node_webhook
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 
 from . import get_webhook_manager, supports_webhooks
-from .utils import setup_webhook_for_block
 
 if TYPE_CHECKING:
-    from backend.data.graph import BaseGraph, GraphModel, Node, NodeModel
+    from backend.data.graph import BaseGraph, GraphModel, NodeModel
     from backend.data.model import Credentials
 
     from ._base import BaseWebhooksManager
@@ -43,32 +42,19 @@ async def _on_graph_activate(graph: "BaseGraph", user_id: str) -> "BaseGraph": .
 
 async def _on_graph_activate(graph: "BaseGraph | GraphModel", user_id: str):
     get_credentials = credentials_manager.cached_getter(user_id)
-    updated_nodes = []
     for new_node in graph.nodes:
         block_input_schema = cast(BlockSchema, new_node.block.input_schema)
 
-        node_credentials = None
-        if (
-            # Webhook-triggered blocks are only allowed to have 1 credentials input
-            (
-                creds_field_name := next(
-                    iter(block_input_schema.get_credentials_fields()), None
+        for creds_field_name in block_input_schema.get_credentials_fields().keys():
+            # Prevent saving graph with non-existent credentials
+            if (
+                creds_meta := new_node.input_default.get(creds_field_name)
+            ) and not await get_credentials(creds_meta["id"]):
+                raise ValueError(
+                    f"Node #{new_node.id} input '{creds_field_name}' updated with "
+                    f"non-existent credentials #{creds_meta['id']}"
                 )
-            )
-            and (creds_meta := new_node.input_default.get(creds_field_name))
-            and not (node_credentials := await get_credentials(creds_meta["id"]))
-        ):
-            raise ValueError(
-                f"Node #{new_node.id} input '{creds_field_name}' updated with "
-                f"non-existent credentials #{creds_meta['id']}"
-            )
 
-        updated_node = await on_node_activate(
-            user_id, graph.id, new_node, credentials=node_credentials
-        )
-        updated_nodes.append(updated_node)
-
-    graph.nodes = updated_nodes
     return graph
 
 
@@ -85,20 +71,14 @@ async def on_graph_deactivate(graph: "GraphModel", user_id: str):
         block_input_schema = cast(BlockSchema, node.block.input_schema)
 
         node_credentials = None
-        if (
-            # Webhook-triggered blocks are only allowed to have 1 credentials input
-            (
-                creds_field_name := next(
-                    iter(block_input_schema.get_credentials_fields()), None
+        for creds_field_name in block_input_schema.get_credentials_fields().keys():
+            if (creds_meta := node.input_default.get(creds_field_name)) and not (
+                node_credentials := await get_credentials(creds_meta["id"])
+            ):
+                logger.warning(
+                    f"Node #{node.id} input '{creds_field_name}' referenced "
+                    f"non-existent credentials #{creds_meta['id']}"
                 )
-            )
-            and (creds_meta := node.input_default.get(creds_field_name))
-            and not (node_credentials := await get_credentials(creds_meta["id"]))
-        ):
-            logger.error(
-                f"Node #{node.id} input '{creds_field_name}' referenced non-existent "
-                f"credentials #{creds_meta['id']}"
-            )
 
         updated_node = await on_node_deactivate(
             user_id, node, credentials=node_credentials
@@ -107,32 +87,6 @@ async def on_graph_deactivate(graph: "GraphModel", user_id: str):
 
     graph.nodes = updated_nodes
     return graph
-
-
-async def on_node_activate(
-    user_id: str,
-    graph_id: str,
-    node: "Node",
-    *,
-    credentials: Optional["Credentials"] = None,
-) -> "Node":
-    """Hook to be called when the node is activated/created"""
-
-    if node.block.webhook_config:
-        new_webhook, feedback = await setup_webhook_for_block(
-            user_id=user_id,
-            trigger_block=node.block,
-            trigger_config=node.input_default,
-            for_graph_id=graph_id,
-        )
-        if new_webhook:
-            node = await set_node_webhook(node.id, new_webhook.id)
-        else:
-            logger.debug(
-                f"Node #{node.id} does not have everything for a webhook: {feedback}"
-            )
-
-    return node
 
 
 async def on_node_deactivate(

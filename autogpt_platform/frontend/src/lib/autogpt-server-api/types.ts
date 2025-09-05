@@ -347,6 +347,7 @@ export type GraphTriggerInfo = {
 
 /* Mirror of backend/data/graph.py:Graph */
 export type Graph = GraphMeta & {
+  created_at: Date;
   nodes: Node[];
   links: Link[];
   sub_graphs: Omit<Graph, "sub_graphs">[]; // Flattened sub-graphs
@@ -356,6 +357,7 @@ export type GraphUpdateable = Omit<
   Graph,
   | "user_id"
   | "version"
+  | "created_at"
   | "is_active"
   | "nodes"
   | "links"
@@ -458,6 +460,7 @@ export type LibraryAgentResponse = {
 
 export type LibraryAgentPreset = {
   id: LibraryAgentPresetID;
+  created_at: Date;
   updated_at: Date;
   graph_id: GraphID;
   graph_version: number;
@@ -486,7 +489,7 @@ export type LibraryAgentPresetResponse = {
 
 export type LibraryAgentPresetCreatable = Omit<
   LibraryAgentPreset,
-  "id" | "updated_at" | "is_active"
+  "id" | "created_at" | "updated_at" | "is_active"
 > & {
   is_active?: boolean;
 };
