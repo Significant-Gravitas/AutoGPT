@@ -2,7 +2,6 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AutoGPT Agent Server",
-    "summary": "AutoGPT Agent Server",
     "description": "This server is used to execute agents that are created by the AutoGPT system.",
     "version": "0.1"
   },
@@ -12,6 +11,7 @@
         "tags": ["v1", "integrations"],
         "summary": "Login",
         "operationId": "getV1Login",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "provider",
@@ -50,6 +50,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -59,6 +62,7 @@
         "tags": ["v1", "integrations"],
         "summary": "Callback",
         "operationId": "postV1Callback",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "provider",
@@ -97,6 +101,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -120,8 +127,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/integrations/{provider}/credentials": {
@@ -129,6 +140,7 @@
         "tags": ["v1", "integrations"],
         "summary": "List Credentials By Provider",
         "operationId": "getV1ListCredentialsByProvider",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "provider",
@@ -163,6 +175,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -170,6 +185,7 @@
         "tags": ["v1", "integrations"],
         "summary": "Create Credentials",
         "operationId": "postV1CreateCredentials",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "provider",
@@ -242,6 +258,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -251,6 +270,7 @@
         "tags": ["v1", "integrations"],
         "summary": "Get Credential",
         "operationId": "getV1GetCredential",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "provider",
@@ -307,6 +327,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -314,6 +337,7 @@
         "tags": ["v1", "integrations"],
         "summary": "Delete Credentials",
         "operationId": "deleteV1DeleteCredentials",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "provider",
@@ -371,6 +395,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -419,6 +446,7 @@
         "tags": ["v1", "integrations"],
         "summary": "Webhook Ping",
         "operationId": "postV1WebhookPing",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "webhook_id",
@@ -439,6 +467,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -457,8 +488,12 @@
                 "schema": { "$ref": "#/components/schemas/AyrshareSSOResponse" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/integrations/providers": {
@@ -566,8 +601,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/analytics/log_raw_analytics": {
@@ -597,8 +636,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/auth/user": {
@@ -610,8 +653,12 @@
           "200": {
             "description": "Successful Response",
             "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/auth/user/email": {
@@ -647,8 +694,70 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/auth/user/timezone": {
+      "get": {
+        "tags": ["v1", "auth"],
+        "summary": "Get user timezone",
+        "description": "Get user timezone setting.",
+        "operationId": "getV1Get user timezone",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TimezoneResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["v1", "auth"],
+        "summary": "Update user timezone",
+        "description": "Update user timezone. The timezone should be a valid IANA timezone identifier.",
+        "operationId": "postV1Update user timezone",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateTimezoneRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TimezoneResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/auth/user/preferences": {
@@ -666,8 +775,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       },
       "post": {
         "tags": ["v1", "auth"],
@@ -701,8 +814,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/onboarding": {
@@ -714,8 +831,12 @@
           "200": {
             "description": "Successful Response",
             "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       },
       "patch": {
         "tags": ["v1", "onboarding"],
@@ -741,8 +862,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/onboarding/agents": {
@@ -754,8 +879,12 @@
           "200": {
             "description": "Successful Response",
             "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/onboarding/enabled": {
@@ -767,8 +896,12 @@
           "200": {
             "description": "Successful Response",
             "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/blocks": {
@@ -788,8 +921,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/blocks/{block_id}/execute": {
@@ -797,6 +934,7 @@
         "tags": ["v1", "blocks"],
         "summary": "Execute graph block",
         "operationId": "postV1Execute graph block",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "block_id",
@@ -837,6 +975,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -847,6 +988,7 @@
         "summary": "Upload file to cloud storage",
         "description": "Upload a file to cloud storage and return a storage key that can be used\nwith FileStoreBlock and AgentFileInputBlock.\n\nArgs:\n    file: The file to upload\n    user_id: The user ID\n    provider: Cloud storage provider (\"gcs\", \"s3\", \"azure\")\n    expiration_hours: Hours until file expires (1-48)\n\nReturns:\n    Dict containing the cloud storage path and signed URL",
         "operationId": "postV1Upload file to cloud storage",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "provider",
@@ -895,6 +1037,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -916,8 +1061,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       },
       "post": {
         "tags": ["v1", "credits"],
@@ -943,8 +1092,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       },
       "patch": {
         "tags": ["v1", "credits"],
@@ -954,8 +1107,12 @@
           "200": {
             "description": "Successful Response",
             "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/credits/{transaction_key}/refund": {
@@ -963,6 +1120,7 @@
         "tags": ["v1", "credits"],
         "summary": "Refund credit transaction",
         "operationId": "postV1Refund credit transaction",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "transaction_key",
@@ -1002,6 +1160,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1019,8 +1180,12 @@
                 "schema": { "$ref": "#/components/schemas/AutoTopUpConfig" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       },
       "post": {
         "tags": ["v1", "credits"],
@@ -1053,8 +1218,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/credits/stripe_webhook": {
@@ -1087,8 +1256,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/credits/transactions": {
@@ -1096,6 +1269,7 @@
         "tags": ["v1", "credits"],
         "summary": "Get credit history",
         "operationId": "getV1Get credit history",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "transaction_time",
@@ -1145,6 +1319,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1166,8 +1343,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/graphs": {
@@ -1187,8 +1368,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       },
       "post": {
         "tags": ["v1", "graphs"],
@@ -1218,8 +1403,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/graphs/{graph_id}/versions/{version}": {
@@ -1227,6 +1416,7 @@
         "tags": ["v1", "graphs"],
         "summary": "Get graph version",
         "operationId": "getV1Get graph version",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_id",
@@ -1270,6 +1460,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1279,6 +1472,7 @@
         "tags": ["v1", "graphs"],
         "summary": "Get specific graph",
         "operationId": "getV1Get specific graph",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_id",
@@ -1322,6 +1516,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -1329,6 +1526,7 @@
         "tags": ["v1", "graphs"],
         "summary": "Delete graph permanently",
         "operationId": "deleteV1Delete graph permanently",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_id",
@@ -1353,6 +1551,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -1360,6 +1561,7 @@
         "tags": ["v1", "graphs"],
         "summary": "Update graph version",
         "operationId": "putV1Update graph version",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_id",
@@ -1392,6 +1594,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1401,6 +1606,7 @@
         "tags": ["v1", "graphs"],
         "summary": "Get all graph versions",
         "operationId": "getV1Get all graph versions",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_id",
@@ -1429,6 +1635,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1438,6 +1647,7 @@
         "tags": ["v1", "graphs"],
         "summary": "Set active graph version",
         "operationId": "putV1Set active graph version",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_id",
@@ -1466,6 +1676,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1475,6 +1688,7 @@
         "tags": ["v1", "graphs"],
         "summary": "Execute graph agent",
         "operationId": "postV1Execute graph agent",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_id",
@@ -1515,9 +1729,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ExecuteGraphResponse"
-                }
+                "schema": { "$ref": "#/components/schemas/GraphExecutionMeta" }
               }
             }
           },
@@ -1528,6 +1740,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1537,6 +1752,7 @@
         "tags": ["v1", "graphs"],
         "summary": "Stop graph execution",
         "operationId": "postV1Stop graph execution",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_id",
@@ -1573,6 +1789,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1580,8 +1799,8 @@
     "/api/executions": {
       "get": {
         "tags": ["v1", "graphs"],
-        "summary": "Get all executions",
-        "operationId": "getV1Get all executions",
+        "summary": "List all executions",
+        "operationId": "getV1List all executions",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1592,25 +1811,57 @@
                     "$ref": "#/components/schemas/GraphExecutionMeta"
                   },
                   "type": "array",
-                  "title": "Response Getv1Get All Executions"
+                  "title": "Response Getv1List All Executions"
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/graphs/{graph_id}/executions": {
       "get": {
         "tags": ["v1", "graphs"],
-        "summary": "Get graph executions",
-        "operationId": "getV1Get graph executions",
+        "summary": "List graph executions",
+        "operationId": "getV1List graph executions",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_id",
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "Graph Id" }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Page number (1-indexed)",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "Page number (1-indexed)"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Number of executions per page",
+              "default": 25,
+              "title": "Page Size"
+            },
+            "description": "Number of executions per page"
           }
         ],
         "responses": {
@@ -1619,11 +1870,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/GraphExecutionMeta"
-                  },
-                  "title": "Response Getv1Get Graph Executions"
+                  "$ref": "#/components/schemas/GraphExecutionsPaginated"
                 }
               }
             }
@@ -1635,6 +1882,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1644,6 +1894,7 @@
         "tags": ["v1", "graphs"],
         "summary": "Get execution details",
         "operationId": "getV1Get execution details",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_id",
@@ -1680,6 +1931,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1689,6 +1943,7 @@
         "tags": ["v1", "graphs"],
         "summary": "Delete graph execution",
         "operationId": "deleteV1Delete graph execution",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_exec_id",
@@ -1706,6 +1961,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1715,6 +1973,7 @@
         "tags": ["v1", "schedules"],
         "summary": "Create execution schedule",
         "operationId": "postV1Create execution schedule",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_id",
@@ -1756,6 +2015,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -1763,6 +2025,7 @@
         "tags": ["v1", "schedules"],
         "summary": "List execution schedules for a graph",
         "operationId": "getV1List execution schedules for a graph",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_id",
@@ -1793,6 +2056,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1816,8 +2082,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/schedules/{schedule_id}": {
@@ -1825,6 +2095,7 @@
         "tags": ["v1", "schedules"],
         "summary": "Delete execution schedule",
         "operationId": "deleteV1Delete execution schedule",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "schedule_id",
@@ -1858,6 +2129,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1890,8 +2164,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       },
       "post": {
         "tags": ["v1", "api-keys"],
@@ -1924,8 +2202,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/api-keys/{key_id}": {
@@ -1934,6 +2216,7 @@
         "summary": "Get specific API key",
         "description": "Get a specific API key",
         "operationId": "getV1Get specific api key",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "key_id",
@@ -1958,6 +2241,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -1966,6 +2252,7 @@
         "summary": "Revoke API key",
         "description": "Revoke an API key",
         "operationId": "deleteV1Revoke api key",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "key_id",
@@ -1990,6 +2277,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2000,6 +2290,7 @@
         "summary": "Suspend API key",
         "description": "Suspend an API key",
         "operationId": "postV1Suspend api key",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "key_id",
@@ -2024,6 +2315,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2034,6 +2328,7 @@
         "summary": "Update key permissions",
         "description": "Update API key permissions",
         "operationId": "putV1Update key permissions",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "key_id",
@@ -2068,6 +2363,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2086,8 +2384,12 @@
                 "schema": { "$ref": "#/components/schemas/ProfileDetails" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       },
       "post": {
         "tags": ["v2", "store", "private"],
@@ -2118,8 +2420,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/store/agents": {
@@ -2254,6 +2560,7 @@
         "summary": "Get agent graph",
         "description": "Get Agent Graph from Store Listing Version ID.",
         "operationId": "getV2Get agent graph",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "store_listing_version_id",
@@ -2274,6 +2581,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2284,6 +2594,7 @@
         "summary": "Get agent by version",
         "description": "Get Store Agent Details from Store Listing Version ID.",
         "operationId": "getV2Get agent by version",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "store_listing_version_id",
@@ -2308,6 +2619,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2318,6 +2632,7 @@
         "summary": "Create agent review",
         "description": "Create a review for a store agent.\n\nArgs:\n    username: Creator's username\n    agent_name: Name/slug of the agent\n    review: Review details including score and optional comments\n    user_id: ID of authenticated user creating the review\n\nReturns:\n    The created review",
         "operationId": "postV2Create agent review",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "username",
@@ -2356,6 +2671,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2467,6 +2785,31 @@
         "tags": ["v2", "store", "private"],
         "summary": "Get my agents",
         "operationId": "getV2Get my agents",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2475,6 +2818,17 @@
                 "schema": { "$ref": "#/components/schemas/MyAgentsResponse" }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2485,6 +2839,7 @@
         "summary": "Delete store submission",
         "description": "Delete a store listing submission.\n\nArgs:\n    user_id (str): ID of the authenticated user\n    submission_id (str): ID of the submission to be deleted\n\nReturns:\n    bool: True if the submission was successfully deleted, False otherwise",
         "operationId": "deleteV2Delete store submission",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "submission_id",
@@ -2512,6 +2867,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2522,6 +2880,7 @@
         "summary": "List my submissions",
         "description": "Get a paginated list of store submissions for the authenticated user.\n\nArgs:\n    user_id (str): ID of the authenticated user\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of submissions per page. Defaults to 20.\n\nReturns:\n    StoreListingsResponse: Paginated list of store submissions\n\nRaises:\n    HTTPException: If page or page_size are less than 1",
         "operationId": "getV2List my submissions",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "page",
@@ -2554,6 +2913,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -2562,6 +2924,7 @@
         "summary": "Create store submission",
         "description": "Create a new store listing submission.\n\nArgs:\n    submission_request (StoreSubmissionRequest): The submission details\n    user_id (str): ID of the authenticated user submitting the listing\n\nReturns:\n    StoreSubmission: The created store submission\n\nRaises:\n    HTTPException: If there is an error creating the submission",
         "operationId": "postV2Create store submission",
+        "security": [{ "HTTPBearerJWT": [] }],
         "requestBody": {
           "required": true,
           "content": {
@@ -2588,6 +2951,57 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/store/submissions/{store_listing_version_id}": {
+      "put": {
+        "tags": ["v2", "store", "private"],
+        "summary": "Edit store submission",
+        "description": "Edit an existing store listing submission.\n\nArgs:\n    store_listing_version_id (str): ID of the store listing version to edit\n    submission_request (StoreSubmissionRequest): The updated submission details\n    user_id (str): ID of the authenticated user editing the listing\n\nReturns:\n    StoreSubmission: The updated store submission\n\nRaises:\n    HTTPException: If there is an error editing the submission",
+        "operationId": "putV2Edit store submission",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "store_listing_version_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Store Listing Version Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreSubmissionEditRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StoreSubmission" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2620,8 +3034,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/store/submissions/generate_image": {
@@ -2630,6 +3048,7 @@
         "summary": "Generate submission image",
         "description": "Generate an image for a store listing submission.\n\nArgs:\n    agent_id (str): ID of the agent to generate an image for\n    user_id (str): ID of the authenticated user\n\nReturns:\n    JSONResponse: JSON containing the URL of the generated image",
         "operationId": "postV2Generate submission image",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "agent_id",
@@ -2650,6 +3069,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2689,12 +3111,270 @@
         }
       }
     },
+    "/api/builder/suggestions": {
+      "get": {
+        "tags": ["v2"],
+        "summary": "Get Builder suggestions",
+        "description": "Get all suggestions for the Blocks Menu.",
+        "operationId": "getV2Get builder suggestions",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SuggestionsResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/builder/categories": {
+      "get": {
+        "tags": ["v2"],
+        "summary": "Get Builder block categories",
+        "description": "Get all block categories with a specified number of blocks per category.",
+        "operationId": "getV2Get builder block categories",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "blocks_per_category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 3,
+              "title": "Blocks Per Category"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BlockCategoryResponse"
+                  },
+                  "title": "Response Getv2Get Builder Block Categories"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/builder/blocks": {
+      "get": {
+        "tags": ["v2"],
+        "summary": "Get Builder blocks",
+        "description": "Get blocks based on either category, type, or provider.",
+        "operationId": "getV2Get builder blocks",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Category"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": ["all", "input", "action", "output"],
+                  "type": "string"
+                },
+                { "type": "null" }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "description": "Provider name for integrations. Can be any string value, including custom provider names."
+                },
+                { "type": "null" }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 1, "title": "Page" }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 50, "title": "Page Size" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BlockResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/builder/providers": {
+      "get": {
+        "tags": ["v2"],
+        "summary": "Get Builder integration providers",
+        "description": "Get all integration providers with their block counts.",
+        "operationId": "getV2Get builder integration providers",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 1, "title": "Page" }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 50, "title": "Page Size" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProviderResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/builder/search": {
+      "post": {
+        "tags": ["v2", "store", "private"],
+        "summary": "Builder search",
+        "description": "Search for blocks (including integrations), marketplace agents, and user library agents.",
+        "operationId": "postV2Builder search",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SearchRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SearchResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/builder/counts": {
+      "get": {
+        "tags": ["v2"],
+        "summary": "Get Builder item counts",
+        "description": "Get item counts for the menu categories in the Blocks Menu.",
+        "operationId": "getV2Get builder item counts",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CountResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/store/admin/listings": {
       "get": {
         "tags": ["v2", "admin", "store", "admin"],
         "summary": "Get Admin Listings History",
         "description": "Get store listings with their version history for admins.\n\nThis provides a consolidated view of listings with their versions,\nallowing for an expandable UI in the admin dashboard.\n\nArgs:\n    status: Filter by submission status (PENDING, APPROVED, REJECTED)\n    search: Search by name, description, or user email\n    page: Page number for pagination\n    page_size: Number of items per page\n\nReturns:\n    StoreListingsWithVersionsResponse with listings and their versions",
         "operationId": "getV2Get admin listings history",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "status",
@@ -2748,6 +3428,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2756,8 +3439,9 @@
       "post": {
         "tags": ["v2", "admin", "store", "admin"],
         "summary": "Review Store Submission",
-        "description": "Review a store listing submission.\n\nArgs:\n    store_listing_version_id: ID of the submission to review\n    request: Review details including approval status and comments\n    user: Authenticated admin user performing the review\n\nReturns:\n    StoreSubmission with updated review information",
+        "description": "Review a store listing submission.\n\nArgs:\n    store_listing_version_id: ID of the submission to review\n    request: Review details including approval status and comments\n    user_id: Authenticated admin user performing the review\n\nReturns:\n    StoreSubmission with updated review information",
         "operationId": "postV2Review store submission",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "store_listing_version_id",
@@ -2792,6 +3476,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2802,6 +3489,7 @@
         "summary": "Admin Download Agent File",
         "description": "Download the agent file by streaming its content.\n\nArgs:\n    store_listing_version_id (str): The ID of the agent to download\n\nReturns:\n    StreamingResponse: A streaming response containing the agent's graph data.\n\nRaises:\n    HTTPException: If the agent is not found or an unexpected error occurs.",
         "operationId": "getV2Admin download agent file",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "store_listing_version_id",
@@ -2827,6 +3515,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2864,8 +3555,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/credits/admin/users_history": {
@@ -2873,6 +3568,7 @@
         "tags": ["v2", "admin", "credits", "admin"],
         "summary": "Get All Users History",
         "operationId": "getV2Get all users history",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "search",
@@ -2924,6 +3620,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2934,6 +3633,7 @@
         "summary": "List presets",
         "description": "Retrieve a paginated list of presets for the current user.",
         "operationId": "getV2List presets",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "page",
@@ -2987,6 +3687,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -2995,6 +3698,7 @@
         "summary": "Create a new preset",
         "description": "Create a new preset for the current user.",
         "operationId": "postV2Create a new preset",
+        "security": [{ "HTTPBearerJWT": [] }],
         "requestBody": {
           "required": true,
           "content": {
@@ -3029,6 +3733,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3039,6 +3746,7 @@
         "summary": "Get a specific preset",
         "description": "Retrieve details for a specific preset by its ID.",
         "operationId": "getV2Get a specific preset",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "preset_id",
@@ -3063,6 +3771,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -3071,6 +3782,7 @@
         "summary": "Update an existing preset",
         "description": "Update an existing preset by its ID.",
         "operationId": "patchV2Update an existing preset",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "preset_id",
@@ -3105,6 +3817,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -3113,6 +3828,7 @@
         "summary": "Delete a preset",
         "description": "Delete an existing preset by its ID.",
         "operationId": "deleteV2Delete a preset",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "preset_id",
@@ -3130,6 +3846,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3166,8 +3885,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/library/presets/{preset_id}/execute": {
@@ -3176,6 +3899,7 @@
         "summary": "Execute a preset",
         "description": "Execute a preset with the given graph and node input for the current user.",
         "operationId": "postV2Execute a preset",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "preset_id",
@@ -3198,11 +3922,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Postv2Execute A Preset"
-                }
+                "schema": { "$ref": "#/components/schemas/GraphExecutionMeta" }
               }
             }
           },
@@ -3213,6 +3933,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3223,6 +3946,7 @@
         "summary": "List Library Agents",
         "description": "Get all agents in the user's library (both created and saved).\n\nArgs:\n    user_id: ID of the authenticated user.\n    search_term: Optional search term to filter agents by name/description.\n    filter_by: List of filters to apply (favorites, created by user).\n    sort_by: List of sorting criteria (created date, updated date).\n    page: Page number to retrieve.\n    page_size: Number of agents per page.\n\nReturns:\n    A LibraryAgentResponse containing agents and pagination metadata.\n\nRaises:\n    HTTPException: If a server/database error occurs.",
         "operationId": "getV2List library agents",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "search_term",
@@ -3295,6 +4019,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -3303,6 +4030,7 @@
         "summary": "Add Marketplace Agent",
         "description": "Add an agent from the marketplace to the user's library.\n\nArgs:\n    store_listing_version_id: ID of the store listing version to add.\n    user_id: ID of the authenticated user.\n\nReturns:\n    library_model.LibraryAgent: Agent added to the library\n\nRaises:\n    HTTPException(404): If the listing version is not found.\n    HTTPException(500): If a server/database error occurs.",
         "operationId": "postV2Add marketplace agent",
+        "security": [{ "HTTPBearerJWT": [] }],
         "requestBody": {
           "required": true,
           "content": {
@@ -3331,6 +4059,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3340,6 +4071,7 @@
         "tags": ["v2", "library", "private"],
         "summary": "Get Library Agent",
         "operationId": "getV2Get library agent",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "library_agent_id",
@@ -3364,6 +4096,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -3372,6 +4107,7 @@
         "summary": "Update Library Agent",
         "description": "Update the library agent with the given fields.\n\nArgs:\n    library_agent_id: ID of the library agent to update.\n    payload: Fields to update (auto_update_version, is_favorite, etc.).\n    user_id: ID of the authenticated user.\n\nRaises:\n    HTTPException(500): If a server/database error occurs.",
         "operationId": "patchV2Update library agent",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "library_agent_id",
@@ -3407,6 +4143,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -3415,6 +4154,7 @@
         "summary": "Delete Library Agent",
         "description": "Soft-delete the specified library agent.\n\nArgs:\n    library_agent_id: ID of the library agent to delete.\n    user_id: ID of the authenticated user.\n\nReturns:\n    204 No Content if successful.\n\nRaises:\n    HTTPException(404): If the agent does not exist.\n    HTTPException(500): If a server/database error occurs.",
         "operationId": "deleteV2Delete library agent",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "library_agent_id",
@@ -3438,6 +4178,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3447,6 +4190,7 @@
         "tags": ["v2", "library", "private"],
         "summary": "Get Library Agent By Graph Id",
         "operationId": "getV2GetLibraryAgentByGraphId",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_id",
@@ -3480,6 +4224,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3490,6 +4237,7 @@
         "summary": "Get Agent By Store ID",
         "description": "Get Library Agent from Store Listing Version ID.",
         "operationId": "getV2Get agent by store id",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "store_listing_version_id",
@@ -3520,6 +4268,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3529,6 +4280,7 @@
         "tags": ["v2", "library", "private"],
         "summary": "Fork Library Agent",
         "operationId": "postV2Fork library agent",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "library_agent_id",
@@ -3553,6 +4305,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3587,8 +4342,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/turnstile/verify": {
@@ -3710,7 +4469,7 @@
             }
           }
         },
-        "security": [{ "APIKeyHeader": [] }]
+        "security": [{ "APIKeyAuthenticator-X-Postmark-Webhook-Token": [] }]
       }
     },
     "/health": {
@@ -3967,6 +4726,13 @@
             "type": "boolean",
             "title": "Has External Trigger",
             "readOnly": true
+          },
+          "trigger_setup_info": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/GraphTriggerInfo" },
+              { "type": "null" }
+            ],
+            "readOnly": true
           }
         },
         "type": "object",
@@ -3975,9 +4741,37 @@
           "description",
           "input_schema",
           "output_schema",
-          "has_external_trigger"
+          "has_external_trigger",
+          "trigger_setup_info"
         ],
         "title": "BaseGraph"
+      },
+      "BlockCategoryResponse": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "total_blocks": { "type": "integer", "title": "Total Blocks" },
+          "blocks": {
+            "items": { "additionalProperties": true, "type": "object" },
+            "type": "array",
+            "title": "Blocks"
+          }
+        },
+        "type": "object",
+        "required": ["name", "total_blocks", "blocks"],
+        "title": "BlockCategoryResponse"
+      },
+      "BlockResponse": {
+        "properties": {
+          "blocks": {
+            "items": { "additionalProperties": true, "type": "object" },
+            "type": "array",
+            "title": "Blocks"
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        },
+        "type": "object",
+        "required": ["blocks", "pagination"],
+        "title": "BlockResponse"
       },
       "Body_postV1Callback": {
         "properties": {
@@ -4063,6 +4857,13 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Inputs"
+          },
+          "credential_inputs": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CredentialsMetaInput"
+            },
+            "type": "object",
+            "title": "Credential Inputs"
           }
         },
         "type": "object",
@@ -4098,6 +4899,31 @@
         "type": "object",
         "required": ["query", "conversation_history", "message_id"],
         "title": "ChatRequest"
+      },
+      "CountResponse": {
+        "properties": {
+          "all_blocks": { "type": "integer", "title": "All Blocks" },
+          "input_blocks": { "type": "integer", "title": "Input Blocks" },
+          "action_blocks": { "type": "integer", "title": "Action Blocks" },
+          "output_blocks": { "type": "integer", "title": "Output Blocks" },
+          "integrations": { "type": "integer", "title": "Integrations" },
+          "marketplace_agents": {
+            "type": "integer",
+            "title": "Marketplace Agents"
+          },
+          "my_agents": { "type": "integer", "title": "My Agents" }
+        },
+        "type": "object",
+        "required": [
+          "all_blocks",
+          "input_blocks",
+          "action_blocks",
+          "output_blocks",
+          "integrations",
+          "marketplace_agents",
+          "my_agents"
+        ],
+        "title": "CountResponse"
       },
       "CreateAPIKeyRequest": {
         "properties": {
@@ -4318,14 +5144,6 @@
         "required": ["url", "relevance_score"],
         "title": "Document"
       },
-      "ExecuteGraphResponse": {
-        "properties": {
-          "graph_exec_id": { "type": "string", "title": "Graph Exec Id" }
-        },
-        "type": "object",
-        "required": ["graph_exec_id"],
-        "title": "ExecuteGraphResponse"
-      },
       "Graph": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -4374,6 +5192,36 @@
           "user_id": { "type": "string", "title": "User Id" },
           "graph_id": { "type": "string", "title": "Graph Id" },
           "graph_version": { "type": "integer", "title": "Graph Version" },
+          "inputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Inputs"
+          },
+          "credential_inputs": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/CredentialsMetaInput"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Credential Inputs"
+          },
+          "nodes_input_masks": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Nodes Input Masks"
+          },
           "preset_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Preset Id"
@@ -4395,11 +5243,6 @@
               { "type": "null" }
             ]
           },
-          "inputs": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Inputs"
-          },
           "outputs": {
             "additionalProperties": { "items": {}, "type": "array" },
             "type": "object",
@@ -4408,14 +5251,18 @@
         },
         "type": "object",
         "required": [
+          "id",
           "user_id",
           "graph_id",
           "graph_version",
+          "inputs",
+          "credential_inputs",
+          "nodes_input_masks",
+          "preset_id",
           "status",
           "started_at",
           "ended_at",
           "stats",
-          "inputs",
           "outputs"
         ],
         "title": "GraphExecution"
@@ -4461,6 +5308,38 @@
           "user_id": { "type": "string", "title": "User Id" },
           "graph_id": { "type": "string", "title": "Graph Id" },
           "graph_version": { "type": "integer", "title": "Graph Version" },
+          "inputs": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Inputs"
+          },
+          "credential_inputs": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/CredentialsMetaInput"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Credential Inputs"
+          },
+          "nodes_input_masks": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Nodes Input Masks"
+          },
           "preset_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Preset Id"
@@ -4485,9 +5364,14 @@
         },
         "type": "object",
         "required": [
+          "id",
           "user_id",
           "graph_id",
           "graph_version",
+          "inputs",
+          "credential_inputs",
+          "nodes_input_masks",
+          "preset_id",
           "status",
           "started_at",
           "ended_at",
@@ -4501,6 +5385,36 @@
           "user_id": { "type": "string", "title": "User Id" },
           "graph_id": { "type": "string", "title": "Graph Id" },
           "graph_version": { "type": "integer", "title": "Graph Version" },
+          "inputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Inputs"
+          },
+          "credential_inputs": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/CredentialsMetaInput"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Credential Inputs"
+          },
+          "nodes_input_masks": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Nodes Input Masks"
+          },
           "preset_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Preset Id"
@@ -4521,11 +5435,6 @@
               { "$ref": "#/components/schemas/Stats" },
               { "type": "null" }
             ]
-          },
-          "inputs": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Inputs"
           },
           "outputs": {
             "additionalProperties": { "items": {}, "type": "array" },
@@ -4540,18 +5449,36 @@
         },
         "type": "object",
         "required": [
+          "id",
           "user_id",
           "graph_id",
           "graph_version",
+          "inputs",
+          "credential_inputs",
+          "nodes_input_masks",
+          "preset_id",
           "status",
           "started_at",
           "ended_at",
           "stats",
-          "inputs",
           "outputs",
           "node_executions"
         ],
         "title": "GraphExecutionWithNodes"
+      },
+      "GraphExecutionsPaginated": {
+        "properties": {
+          "executions": {
+            "items": { "$ref": "#/components/schemas/GraphExecutionMeta" },
+            "type": "array",
+            "title": "Executions"
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        },
+        "type": "object",
+        "required": ["executions", "pagination"],
+        "title": "GraphExecutionsPaginated",
+        "description": "Response schema for paginated graph executions."
       },
       "GraphMeta": {
         "properties": {
@@ -4596,6 +5523,13 @@
             "title": "Has External Trigger",
             "readOnly": true
           },
+          "trigger_setup_info": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/GraphTriggerInfo" },
+              { "type": "null" }
+            ],
+            "readOnly": true
+          },
           "credentials_input_schema": {
             "additionalProperties": true,
             "type": "object",
@@ -4611,6 +5545,7 @@
           "input_schema",
           "output_schema",
           "has_external_trigger",
+          "trigger_setup_info",
           "credentials_input_schema"
         ],
         "title": "GraphMeta"
@@ -4670,6 +5605,13 @@
             "title": "Has External Trigger",
             "readOnly": true
           },
+          "trigger_setup_info": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/GraphTriggerInfo" },
+              { "type": "null" }
+            ],
+            "readOnly": true
+          },
           "credentials_input_schema": {
             "additionalProperties": true,
             "type": "object",
@@ -4685,9 +5627,32 @@
           "input_schema",
           "output_schema",
           "has_external_trigger",
+          "trigger_setup_info",
           "credentials_input_schema"
         ],
         "title": "GraphModel"
+      },
+      "GraphTriggerInfo": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "Provider name for integrations. Can be any string value, including custom provider names."
+          },
+          "config_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Config Schema",
+            "description": "Input schema for the trigger block"
+          },
+          "credentials_input_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credentials Input Name"
+          }
+        },
+        "type": "object",
+        "required": ["provider", "config_schema", "credentials_input_name"],
+        "title": "GraphTriggerInfo"
       },
       "HTTPValidationError": {
         "properties": {
@@ -4791,6 +5756,11 @@
             "type": "object",
             "title": "Input Schema"
           },
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Output Schema"
+          },
           "credentials_input_schema": {
             "anyOf": [
               { "additionalProperties": true, "type": "object" },
@@ -4806,7 +5776,7 @@
           },
           "trigger_setup_info": {
             "anyOf": [
-              { "$ref": "#/components/schemas/LibraryAgentTriggerInfo" },
+              { "$ref": "#/components/schemas/GraphTriggerInfo" },
               { "type": "null" }
             ]
           },
@@ -4833,6 +5803,7 @@
           "name",
           "description",
           "input_schema",
+          "output_schema",
           "credentials_input_schema",
           "has_external_trigger",
           "new_output",
@@ -4875,6 +5846,12 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "webhook": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/Webhook" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -4887,7 +5864,8 @@
           "description",
           "id",
           "user_id",
-          "updated_at"
+          "updated_at",
+          "webhook"
         ],
         "title": "LibraryAgentPreset",
         "description": "Represents a preset configuration for a library agent."
@@ -5027,28 +6005,6 @@
         "type": "string",
         "enum": ["COMPLETED", "HEALTHY", "WAITING", "ERROR"],
         "title": "LibraryAgentStatus"
-      },
-      "LibraryAgentTriggerInfo": {
-        "properties": {
-          "provider": {
-            "type": "string",
-            "title": "Provider",
-            "description": "Provider name for integrations. Can be any string value, including custom provider names."
-          },
-          "config_schema": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Config Schema",
-            "description": "Input schema for the trigger block"
-          },
-          "credentials_input_name": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Credentials Input Name"
-          }
-        },
-        "type": "object",
-        "required": ["provider", "config_schema", "credentials_input_name"],
-        "title": "LibraryAgentTriggerInfo"
       },
       "LibraryAgentUpdateRequest": {
         "properties": {
@@ -5380,7 +6336,9 @@
           "WEEKLY_SUMMARY",
           "MONTHLY_SUMMARY",
           "REFUND_REQUEST",
-          "REFUND_PROCESSED"
+          "REFUND_PROCESSED",
+          "AGENT_APPROVED",
+          "AGENT_REJECTED"
         ],
         "title": "NotificationType"
       },
@@ -5837,13 +6795,39 @@
         "required": ["name", "username", "description", "links"],
         "title": "ProfileDetails"
       },
+      "Provider": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Provider name for integrations. Can be any string value, including custom provider names."
+          },
+          "description": { "type": "string", "title": "Description" },
+          "integration_count": {
+            "type": "integer",
+            "title": "Integration Count"
+          }
+        },
+        "type": "object",
+        "required": ["name", "description", "integration_count"],
+        "title": "Provider"
+      },
       "ProviderConstants": {
         "properties": {
           "PROVIDER_NAMES": {
             "additionalProperties": { "type": "string" },
             "type": "object",
             "title": "Provider Names",
-            "description": "All available provider names as a constant mapping"
+            "description": "All available provider names as a constant mapping",
+            "examples": [
+              {
+                "ANTHROPIC": "anthropic",
+                "EXA": "exa",
+                "EXAMPLE_SERVICE": "example-service",
+                "GEM": "gem",
+                "OPENAI": "openai"
+              }
+            ]
           }
         },
         "type": "object",
@@ -5875,6 +6859,19 @@
         "type": "object",
         "title": "ProviderNamesResponse",
         "description": "Response containing list of all provider names."
+      },
+      "ProviderResponse": {
+        "properties": {
+          "providers": {
+            "items": { "$ref": "#/components/schemas/Provider" },
+            "type": "array",
+            "title": "Providers"
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        },
+        "type": "object",
+        "required": ["providers", "pagination"],
+        "title": "ProviderResponse"
       },
       "RefundRequest": {
         "properties": {
@@ -5962,6 +6959,86 @@
         "required": ["name", "cron", "inputs"],
         "title": "ScheduleCreationRequest"
       },
+      "SearchRequest": {
+        "properties": {
+          "search_query": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Search Query"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "blocks",
+                    "integrations",
+                    "marketplace_agents",
+                    "my_agents"
+                  ]
+                },
+                "type": "array"
+              },
+              { "type": "null" }
+            ],
+            "title": "Filter"
+          },
+          "by_creator": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "By Creator"
+          },
+          "search_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Search Id"
+          },
+          "page": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Page"
+          },
+          "page_size": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "title": "SearchRequest"
+      },
+      "SearchResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "anyOf": [
+                { "additionalProperties": true, "type": "object" },
+                { "$ref": "#/components/schemas/LibraryAgent" },
+                { "$ref": "#/components/schemas/StoreAgent" }
+              ]
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total_items": {
+            "additionalProperties": { "type": "integer" },
+            "propertyNames": {
+              "enum": [
+                "blocks",
+                "integrations",
+                "marketplace_agents",
+                "my_agents"
+              ]
+            },
+            "type": "object",
+            "title": "Total Items"
+          },
+          "page": { "type": "integer", "title": "Page" },
+          "more_pages": { "type": "boolean", "title": "More Pages" }
+        },
+        "type": "object",
+        "required": ["items", "total_items", "page", "more_pages"],
+        "title": "SearchResponse"
+      },
       "SetGraphActiveVersion": {
         "properties": {
           "active_graph_version": {
@@ -6021,6 +7098,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error",
             "description": "Error message if any"
+          },
+          "activity_status": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Activity Status",
+            "description": "AI-generated summary of what the agent did"
           }
         },
         "additionalProperties": true,
@@ -6262,6 +7344,16 @@
           "changes_summary": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Changes Summary"
+          },
+          "video_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Video Url"
+          },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories",
+            "default": []
           }
         },
         "type": "object",
@@ -6279,6 +7371,40 @@
           "rating"
         ],
         "title": "StoreSubmission"
+      },
+      "StoreSubmissionEditRequest": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "sub_heading": { "type": "string", "title": "Sub Heading" },
+          "video_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Video Url"
+          },
+          "image_urls": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Image Urls",
+            "default": []
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories",
+            "default": []
+          },
+          "changes_summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Changes Summary"
+          }
+        },
+        "type": "object",
+        "required": ["name", "sub_heading"],
+        "title": "StoreSubmissionEditRequest"
       },
       "StoreSubmissionRequest": {
         "properties": {
@@ -6340,6 +7466,657 @@
         "type": "string",
         "enum": ["DRAFT", "PENDING", "APPROVED", "REJECTED"],
         "title": "SubmissionStatus"
+      },
+      "SuggestionsResponse": {
+        "properties": {
+          "otto_suggestions": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Otto Suggestions"
+          },
+          "recent_searches": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Recent Searches"
+          },
+          "providers": {
+            "items": {
+              "type": "string",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
+            },
+            "type": "array",
+            "title": "Providers"
+          },
+          "top_blocks": {
+            "items": { "additionalProperties": true, "type": "object" },
+            "type": "array",
+            "title": "Top Blocks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "otto_suggestions",
+          "recent_searches",
+          "providers",
+          "top_blocks"
+        ],
+        "title": "SuggestionsResponse"
+      },
+      "TimezoneResponse": {
+        "properties": {
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "Africa/Abidjan",
+                  "Africa/Accra",
+                  "Africa/Addis_Ababa",
+                  "Africa/Algiers",
+                  "Africa/Asmara",
+                  "Africa/Asmera",
+                  "Africa/Bamako",
+                  "Africa/Bangui",
+                  "Africa/Banjul",
+                  "Africa/Bissau",
+                  "Africa/Blantyre",
+                  "Africa/Brazzaville",
+                  "Africa/Bujumbura",
+                  "Africa/Cairo",
+                  "Africa/Casablanca",
+                  "Africa/Ceuta",
+                  "Africa/Conakry",
+                  "Africa/Dakar",
+                  "Africa/Dar_es_Salaam",
+                  "Africa/Djibouti",
+                  "Africa/Douala",
+                  "Africa/El_Aaiun",
+                  "Africa/Freetown",
+                  "Africa/Gaborone",
+                  "Africa/Harare",
+                  "Africa/Johannesburg",
+                  "Africa/Juba",
+                  "Africa/Kampala",
+                  "Africa/Khartoum",
+                  "Africa/Kigali",
+                  "Africa/Kinshasa",
+                  "Africa/Lagos",
+                  "Africa/Libreville",
+                  "Africa/Lome",
+                  "Africa/Luanda",
+                  "Africa/Lubumbashi",
+                  "Africa/Lusaka",
+                  "Africa/Malabo",
+                  "Africa/Maputo",
+                  "Africa/Maseru",
+                  "Africa/Mbabane",
+                  "Africa/Mogadishu",
+                  "Africa/Monrovia",
+                  "Africa/Nairobi",
+                  "Africa/Ndjamena",
+                  "Africa/Niamey",
+                  "Africa/Nouakchott",
+                  "Africa/Ouagadougou",
+                  "Africa/Porto-Novo",
+                  "Africa/Sao_Tome",
+                  "Africa/Timbuktu",
+                  "Africa/Tripoli",
+                  "Africa/Tunis",
+                  "Africa/Windhoek",
+                  "America/Adak",
+                  "America/Anchorage",
+                  "America/Anguilla",
+                  "America/Antigua",
+                  "America/Araguaina",
+                  "America/Argentina/Buenos_Aires",
+                  "America/Argentina/Catamarca",
+                  "America/Argentina/ComodRivadavia",
+                  "America/Argentina/Cordoba",
+                  "America/Argentina/Jujuy",
+                  "America/Argentina/La_Rioja",
+                  "America/Argentina/Mendoza",
+                  "America/Argentina/Rio_Gallegos",
+                  "America/Argentina/Salta",
+                  "America/Argentina/San_Juan",
+                  "America/Argentina/San_Luis",
+                  "America/Argentina/Tucuman",
+                  "America/Argentina/Ushuaia",
+                  "America/Aruba",
+                  "America/Asuncion",
+                  "America/Atikokan",
+                  "America/Atka",
+                  "America/Bahia",
+                  "America/Bahia_Banderas",
+                  "America/Barbados",
+                  "America/Belem",
+                  "America/Belize",
+                  "America/Blanc-Sablon",
+                  "America/Boa_Vista",
+                  "America/Bogota",
+                  "America/Boise",
+                  "America/Buenos_Aires",
+                  "America/Cambridge_Bay",
+                  "America/Campo_Grande",
+                  "America/Cancun",
+                  "America/Caracas",
+                  "America/Catamarca",
+                  "America/Cayenne",
+                  "America/Cayman",
+                  "America/Chicago",
+                  "America/Chihuahua",
+                  "America/Ciudad_Juarez",
+                  "America/Coral_Harbour",
+                  "America/Cordoba",
+                  "America/Costa_Rica",
+                  "America/Coyhaique",
+                  "America/Creston",
+                  "America/Cuiaba",
+                  "America/Curacao",
+                  "America/Danmarkshavn",
+                  "America/Dawson",
+                  "America/Dawson_Creek",
+                  "America/Denver",
+                  "America/Detroit",
+                  "America/Dominica",
+                  "America/Edmonton",
+                  "America/Eirunepe",
+                  "America/El_Salvador",
+                  "America/Ensenada",
+                  "America/Fort_Nelson",
+                  "America/Fort_Wayne",
+                  "America/Fortaleza",
+                  "America/Glace_Bay",
+                  "America/Godthab",
+                  "America/Goose_Bay",
+                  "America/Grand_Turk",
+                  "America/Grenada",
+                  "America/Guadeloupe",
+                  "America/Guatemala",
+                  "America/Guayaquil",
+                  "America/Guyana",
+                  "America/Halifax",
+                  "America/Havana",
+                  "America/Hermosillo",
+                  "America/Indiana/Indianapolis",
+                  "America/Indiana/Knox",
+                  "America/Indiana/Marengo",
+                  "America/Indiana/Petersburg",
+                  "America/Indiana/Tell_City",
+                  "America/Indiana/Vevay",
+                  "America/Indiana/Vincennes",
+                  "America/Indiana/Winamac",
+                  "America/Indianapolis",
+                  "America/Inuvik",
+                  "America/Iqaluit",
+                  "America/Jamaica",
+                  "America/Jujuy",
+                  "America/Juneau",
+                  "America/Kentucky/Louisville",
+                  "America/Kentucky/Monticello",
+                  "America/Knox_IN",
+                  "America/Kralendijk",
+                  "America/La_Paz",
+                  "America/Lima",
+                  "America/Los_Angeles",
+                  "America/Louisville",
+                  "America/Lower_Princes",
+                  "America/Maceio",
+                  "America/Managua",
+                  "America/Manaus",
+                  "America/Marigot",
+                  "America/Martinique",
+                  "America/Matamoros",
+                  "America/Mazatlan",
+                  "America/Mendoza",
+                  "America/Menominee",
+                  "America/Merida",
+                  "America/Metlakatla",
+                  "America/Mexico_City",
+                  "America/Miquelon",
+                  "America/Moncton",
+                  "America/Monterrey",
+                  "America/Montevideo",
+                  "America/Montreal",
+                  "America/Montserrat",
+                  "America/Nassau",
+                  "America/New_York",
+                  "America/Nipigon",
+                  "America/Nome",
+                  "America/Noronha",
+                  "America/North_Dakota/Beulah",
+                  "America/North_Dakota/Center",
+                  "America/North_Dakota/New_Salem",
+                  "America/Nuuk",
+                  "America/Ojinaga",
+                  "America/Panama",
+                  "America/Pangnirtung",
+                  "America/Paramaribo",
+                  "America/Phoenix",
+                  "America/Port-au-Prince",
+                  "America/Port_of_Spain",
+                  "America/Porto_Acre",
+                  "America/Porto_Velho",
+                  "America/Puerto_Rico",
+                  "America/Punta_Arenas",
+                  "America/Rainy_River",
+                  "America/Rankin_Inlet",
+                  "America/Recife",
+                  "America/Regina",
+                  "America/Resolute",
+                  "America/Rio_Branco",
+                  "America/Rosario",
+                  "America/Santa_Isabel",
+                  "America/Santarem",
+                  "America/Santiago",
+                  "America/Santo_Domingo",
+                  "America/Sao_Paulo",
+                  "America/Scoresbysund",
+                  "America/Shiprock",
+                  "America/Sitka",
+                  "America/St_Barthelemy",
+                  "America/St_Johns",
+                  "America/St_Kitts",
+                  "America/St_Lucia",
+                  "America/St_Thomas",
+                  "America/St_Vincent",
+                  "America/Swift_Current",
+                  "America/Tegucigalpa",
+                  "America/Thule",
+                  "America/Thunder_Bay",
+                  "America/Tijuana",
+                  "America/Toronto",
+                  "America/Tortola",
+                  "America/Vancouver",
+                  "America/Virgin",
+                  "America/Whitehorse",
+                  "America/Winnipeg",
+                  "America/Yakutat",
+                  "America/Yellowknife",
+                  "Antarctica/Casey",
+                  "Antarctica/Davis",
+                  "Antarctica/DumontDUrville",
+                  "Antarctica/Macquarie",
+                  "Antarctica/Mawson",
+                  "Antarctica/McMurdo",
+                  "Antarctica/Palmer",
+                  "Antarctica/Rothera",
+                  "Antarctica/South_Pole",
+                  "Antarctica/Syowa",
+                  "Antarctica/Troll",
+                  "Antarctica/Vostok",
+                  "Arctic/Longyearbyen",
+                  "Asia/Aden",
+                  "Asia/Almaty",
+                  "Asia/Amman",
+                  "Asia/Anadyr",
+                  "Asia/Aqtau",
+                  "Asia/Aqtobe",
+                  "Asia/Ashgabat",
+                  "Asia/Ashkhabad",
+                  "Asia/Atyrau",
+                  "Asia/Baghdad",
+                  "Asia/Bahrain",
+                  "Asia/Baku",
+                  "Asia/Bangkok",
+                  "Asia/Barnaul",
+                  "Asia/Beirut",
+                  "Asia/Bishkek",
+                  "Asia/Brunei",
+                  "Asia/Calcutta",
+                  "Asia/Chita",
+                  "Asia/Choibalsan",
+                  "Asia/Chongqing",
+                  "Asia/Chungking",
+                  "Asia/Colombo",
+                  "Asia/Dacca",
+                  "Asia/Damascus",
+                  "Asia/Dhaka",
+                  "Asia/Dili",
+                  "Asia/Dubai",
+                  "Asia/Dushanbe",
+                  "Asia/Famagusta",
+                  "Asia/Gaza",
+                  "Asia/Harbin",
+                  "Asia/Hebron",
+                  "Asia/Ho_Chi_Minh",
+                  "Asia/Hong_Kong",
+                  "Asia/Hovd",
+                  "Asia/Irkutsk",
+                  "Asia/Istanbul",
+                  "Asia/Jakarta",
+                  "Asia/Jayapura",
+                  "Asia/Jerusalem",
+                  "Asia/Kabul",
+                  "Asia/Kamchatka",
+                  "Asia/Karachi",
+                  "Asia/Kashgar",
+                  "Asia/Kathmandu",
+                  "Asia/Katmandu",
+                  "Asia/Khandyga",
+                  "Asia/Kolkata",
+                  "Asia/Krasnoyarsk",
+                  "Asia/Kuala_Lumpur",
+                  "Asia/Kuching",
+                  "Asia/Kuwait",
+                  "Asia/Macao",
+                  "Asia/Macau",
+                  "Asia/Magadan",
+                  "Asia/Makassar",
+                  "Asia/Manila",
+                  "Asia/Muscat",
+                  "Asia/Nicosia",
+                  "Asia/Novokuznetsk",
+                  "Asia/Novosibirsk",
+                  "Asia/Omsk",
+                  "Asia/Oral",
+                  "Asia/Phnom_Penh",
+                  "Asia/Pontianak",
+                  "Asia/Pyongyang",
+                  "Asia/Qatar",
+                  "Asia/Qostanay",
+                  "Asia/Qyzylorda",
+                  "Asia/Rangoon",
+                  "Asia/Riyadh",
+                  "Asia/Saigon",
+                  "Asia/Sakhalin",
+                  "Asia/Samarkand",
+                  "Asia/Seoul",
+                  "Asia/Shanghai",
+                  "Asia/Singapore",
+                  "Asia/Srednekolymsk",
+                  "Asia/Taipei",
+                  "Asia/Tashkent",
+                  "Asia/Tbilisi",
+                  "Asia/Tehran",
+                  "Asia/Tel_Aviv",
+                  "Asia/Thimbu",
+                  "Asia/Thimphu",
+                  "Asia/Tokyo",
+                  "Asia/Tomsk",
+                  "Asia/Ujung_Pandang",
+                  "Asia/Ulaanbaatar",
+                  "Asia/Ulan_Bator",
+                  "Asia/Urumqi",
+                  "Asia/Ust-Nera",
+                  "Asia/Vientiane",
+                  "Asia/Vladivostok",
+                  "Asia/Yakutsk",
+                  "Asia/Yangon",
+                  "Asia/Yekaterinburg",
+                  "Asia/Yerevan",
+                  "Atlantic/Azores",
+                  "Atlantic/Bermuda",
+                  "Atlantic/Canary",
+                  "Atlantic/Cape_Verde",
+                  "Atlantic/Faeroe",
+                  "Atlantic/Faroe",
+                  "Atlantic/Jan_Mayen",
+                  "Atlantic/Madeira",
+                  "Atlantic/Reykjavik",
+                  "Atlantic/South_Georgia",
+                  "Atlantic/St_Helena",
+                  "Atlantic/Stanley",
+                  "Australia/ACT",
+                  "Australia/Adelaide",
+                  "Australia/Brisbane",
+                  "Australia/Broken_Hill",
+                  "Australia/Canberra",
+                  "Australia/Currie",
+                  "Australia/Darwin",
+                  "Australia/Eucla",
+                  "Australia/Hobart",
+                  "Australia/LHI",
+                  "Australia/Lindeman",
+                  "Australia/Lord_Howe",
+                  "Australia/Melbourne",
+                  "Australia/NSW",
+                  "Australia/North",
+                  "Australia/Perth",
+                  "Australia/Queensland",
+                  "Australia/South",
+                  "Australia/Sydney",
+                  "Australia/Tasmania",
+                  "Australia/Victoria",
+                  "Australia/West",
+                  "Australia/Yancowinna",
+                  "Brazil/Acre",
+                  "Brazil/DeNoronha",
+                  "Brazil/East",
+                  "Brazil/West",
+                  "CET",
+                  "CST6CDT",
+                  "Canada/Atlantic",
+                  "Canada/Central",
+                  "Canada/Eastern",
+                  "Canada/Mountain",
+                  "Canada/Newfoundland",
+                  "Canada/Pacific",
+                  "Canada/Saskatchewan",
+                  "Canada/Yukon",
+                  "Chile/Continental",
+                  "Chile/EasterIsland",
+                  "Cuba",
+                  "EET",
+                  "EST",
+                  "EST5EDT",
+                  "Egypt",
+                  "Eire",
+                  "Etc/GMT",
+                  "Etc/GMT+0",
+                  "Etc/GMT+1",
+                  "Etc/GMT+10",
+                  "Etc/GMT+11",
+                  "Etc/GMT+12",
+                  "Etc/GMT+2",
+                  "Etc/GMT+3",
+                  "Etc/GMT+4",
+                  "Etc/GMT+5",
+                  "Etc/GMT+6",
+                  "Etc/GMT+7",
+                  "Etc/GMT+8",
+                  "Etc/GMT+9",
+                  "Etc/GMT-0",
+                  "Etc/GMT-1",
+                  "Etc/GMT-10",
+                  "Etc/GMT-11",
+                  "Etc/GMT-12",
+                  "Etc/GMT-13",
+                  "Etc/GMT-14",
+                  "Etc/GMT-2",
+                  "Etc/GMT-3",
+                  "Etc/GMT-4",
+                  "Etc/GMT-5",
+                  "Etc/GMT-6",
+                  "Etc/GMT-7",
+                  "Etc/GMT-8",
+                  "Etc/GMT-9",
+                  "Etc/GMT0",
+                  "Etc/Greenwich",
+                  "Etc/UCT",
+                  "Etc/UTC",
+                  "Etc/Universal",
+                  "Etc/Zulu",
+                  "Europe/Amsterdam",
+                  "Europe/Andorra",
+                  "Europe/Astrakhan",
+                  "Europe/Athens",
+                  "Europe/Belfast",
+                  "Europe/Belgrade",
+                  "Europe/Berlin",
+                  "Europe/Bratislava",
+                  "Europe/Brussels",
+                  "Europe/Bucharest",
+                  "Europe/Budapest",
+                  "Europe/Busingen",
+                  "Europe/Chisinau",
+                  "Europe/Copenhagen",
+                  "Europe/Dublin",
+                  "Europe/Gibraltar",
+                  "Europe/Guernsey",
+                  "Europe/Helsinki",
+                  "Europe/Isle_of_Man",
+                  "Europe/Istanbul",
+                  "Europe/Jersey",
+                  "Europe/Kaliningrad",
+                  "Europe/Kiev",
+                  "Europe/Kirov",
+                  "Europe/Kyiv",
+                  "Europe/Lisbon",
+                  "Europe/Ljubljana",
+                  "Europe/London",
+                  "Europe/Luxembourg",
+                  "Europe/Madrid",
+                  "Europe/Malta",
+                  "Europe/Mariehamn",
+                  "Europe/Minsk",
+                  "Europe/Monaco",
+                  "Europe/Moscow",
+                  "Europe/Nicosia",
+                  "Europe/Oslo",
+                  "Europe/Paris",
+                  "Europe/Podgorica",
+                  "Europe/Prague",
+                  "Europe/Riga",
+                  "Europe/Rome",
+                  "Europe/Samara",
+                  "Europe/San_Marino",
+                  "Europe/Sarajevo",
+                  "Europe/Saratov",
+                  "Europe/Simferopol",
+                  "Europe/Skopje",
+                  "Europe/Sofia",
+                  "Europe/Stockholm",
+                  "Europe/Tallinn",
+                  "Europe/Tirane",
+                  "Europe/Tiraspol",
+                  "Europe/Ulyanovsk",
+                  "Europe/Uzhgorod",
+                  "Europe/Vaduz",
+                  "Europe/Vatican",
+                  "Europe/Vienna",
+                  "Europe/Vilnius",
+                  "Europe/Volgograd",
+                  "Europe/Warsaw",
+                  "Europe/Zagreb",
+                  "Europe/Zaporozhye",
+                  "Europe/Zurich",
+                  "GB",
+                  "GB-Eire",
+                  "GMT",
+                  "GMT+0",
+                  "GMT-0",
+                  "GMT0",
+                  "Greenwich",
+                  "HST",
+                  "Hongkong",
+                  "Iceland",
+                  "Indian/Antananarivo",
+                  "Indian/Chagos",
+                  "Indian/Christmas",
+                  "Indian/Cocos",
+                  "Indian/Comoro",
+                  "Indian/Kerguelen",
+                  "Indian/Mahe",
+                  "Indian/Maldives",
+                  "Indian/Mauritius",
+                  "Indian/Mayotte",
+                  "Indian/Reunion",
+                  "Iran",
+                  "Israel",
+                  "Jamaica",
+                  "Japan",
+                  "Kwajalein",
+                  "Libya",
+                  "MET",
+                  "MST",
+                  "MST7MDT",
+                  "Mexico/BajaNorte",
+                  "Mexico/BajaSur",
+                  "Mexico/General",
+                  "NZ",
+                  "NZ-CHAT",
+                  "Navajo",
+                  "PRC",
+                  "PST8PDT",
+                  "Pacific/Apia",
+                  "Pacific/Auckland",
+                  "Pacific/Bougainville",
+                  "Pacific/Chatham",
+                  "Pacific/Chuuk",
+                  "Pacific/Easter",
+                  "Pacific/Efate",
+                  "Pacific/Enderbury",
+                  "Pacific/Fakaofo",
+                  "Pacific/Fiji",
+                  "Pacific/Funafuti",
+                  "Pacific/Galapagos",
+                  "Pacific/Gambier",
+                  "Pacific/Guadalcanal",
+                  "Pacific/Guam",
+                  "Pacific/Honolulu",
+                  "Pacific/Johnston",
+                  "Pacific/Kanton",
+                  "Pacific/Kiritimati",
+                  "Pacific/Kosrae",
+                  "Pacific/Kwajalein",
+                  "Pacific/Majuro",
+                  "Pacific/Marquesas",
+                  "Pacific/Midway",
+                  "Pacific/Nauru",
+                  "Pacific/Niue",
+                  "Pacific/Norfolk",
+                  "Pacific/Noumea",
+                  "Pacific/Pago_Pago",
+                  "Pacific/Palau",
+                  "Pacific/Pitcairn",
+                  "Pacific/Pohnpei",
+                  "Pacific/Ponape",
+                  "Pacific/Port_Moresby",
+                  "Pacific/Rarotonga",
+                  "Pacific/Saipan",
+                  "Pacific/Samoa",
+                  "Pacific/Tahiti",
+                  "Pacific/Tarawa",
+                  "Pacific/Tongatapu",
+                  "Pacific/Truk",
+                  "Pacific/Wake",
+                  "Pacific/Wallis",
+                  "Pacific/Yap",
+                  "Poland",
+                  "Portugal",
+                  "ROC",
+                  "ROK",
+                  "Singapore",
+                  "Turkey",
+                  "UCT",
+                  "US/Alaska",
+                  "US/Aleutian",
+                  "US/Arizona",
+                  "US/Central",
+                  "US/East-Indiana",
+                  "US/Eastern",
+                  "US/Hawaii",
+                  "US/Indiana-Starke",
+                  "US/Michigan",
+                  "US/Mountain",
+                  "US/Pacific",
+                  "US/Samoa",
+                  "UTC",
+                  "Universal",
+                  "W-SU",
+                  "WET",
+                  "Zulu"
+                ],
+                "minLength": 1
+              },
+              { "type": "string" }
+            ],
+            "title": "Timezone"
+          }
+        },
+        "type": "object",
+        "required": ["timezone"],
+        "title": "TimezoneResponse"
       },
       "TransactionHistory": {
         "properties": {
@@ -6449,6 +8226,617 @@
         "type": "object",
         "required": ["permissions"],
         "title": "UpdatePermissionsRequest"
+      },
+      "UpdateTimezoneRequest": {
+        "properties": {
+          "timezone": {
+            "type": "string",
+            "enum": [
+              "Africa/Abidjan",
+              "Africa/Accra",
+              "Africa/Addis_Ababa",
+              "Africa/Algiers",
+              "Africa/Asmara",
+              "Africa/Asmera",
+              "Africa/Bamako",
+              "Africa/Bangui",
+              "Africa/Banjul",
+              "Africa/Bissau",
+              "Africa/Blantyre",
+              "Africa/Brazzaville",
+              "Africa/Bujumbura",
+              "Africa/Cairo",
+              "Africa/Casablanca",
+              "Africa/Ceuta",
+              "Africa/Conakry",
+              "Africa/Dakar",
+              "Africa/Dar_es_Salaam",
+              "Africa/Djibouti",
+              "Africa/Douala",
+              "Africa/El_Aaiun",
+              "Africa/Freetown",
+              "Africa/Gaborone",
+              "Africa/Harare",
+              "Africa/Johannesburg",
+              "Africa/Juba",
+              "Africa/Kampala",
+              "Africa/Khartoum",
+              "Africa/Kigali",
+              "Africa/Kinshasa",
+              "Africa/Lagos",
+              "Africa/Libreville",
+              "Africa/Lome",
+              "Africa/Luanda",
+              "Africa/Lubumbashi",
+              "Africa/Lusaka",
+              "Africa/Malabo",
+              "Africa/Maputo",
+              "Africa/Maseru",
+              "Africa/Mbabane",
+              "Africa/Mogadishu",
+              "Africa/Monrovia",
+              "Africa/Nairobi",
+              "Africa/Ndjamena",
+              "Africa/Niamey",
+              "Africa/Nouakchott",
+              "Africa/Ouagadougou",
+              "Africa/Porto-Novo",
+              "Africa/Sao_Tome",
+              "Africa/Timbuktu",
+              "Africa/Tripoli",
+              "Africa/Tunis",
+              "Africa/Windhoek",
+              "America/Adak",
+              "America/Anchorage",
+              "America/Anguilla",
+              "America/Antigua",
+              "America/Araguaina",
+              "America/Argentina/Buenos_Aires",
+              "America/Argentina/Catamarca",
+              "America/Argentina/ComodRivadavia",
+              "America/Argentina/Cordoba",
+              "America/Argentina/Jujuy",
+              "America/Argentina/La_Rioja",
+              "America/Argentina/Mendoza",
+              "America/Argentina/Rio_Gallegos",
+              "America/Argentina/Salta",
+              "America/Argentina/San_Juan",
+              "America/Argentina/San_Luis",
+              "America/Argentina/Tucuman",
+              "America/Argentina/Ushuaia",
+              "America/Aruba",
+              "America/Asuncion",
+              "America/Atikokan",
+              "America/Atka",
+              "America/Bahia",
+              "America/Bahia_Banderas",
+              "America/Barbados",
+              "America/Belem",
+              "America/Belize",
+              "America/Blanc-Sablon",
+              "America/Boa_Vista",
+              "America/Bogota",
+              "America/Boise",
+              "America/Buenos_Aires",
+              "America/Cambridge_Bay",
+              "America/Campo_Grande",
+              "America/Cancun",
+              "America/Caracas",
+              "America/Catamarca",
+              "America/Cayenne",
+              "America/Cayman",
+              "America/Chicago",
+              "America/Chihuahua",
+              "America/Ciudad_Juarez",
+              "America/Coral_Harbour",
+              "America/Cordoba",
+              "America/Costa_Rica",
+              "America/Coyhaique",
+              "America/Creston",
+              "America/Cuiaba",
+              "America/Curacao",
+              "America/Danmarkshavn",
+              "America/Dawson",
+              "America/Dawson_Creek",
+              "America/Denver",
+              "America/Detroit",
+              "America/Dominica",
+              "America/Edmonton",
+              "America/Eirunepe",
+              "America/El_Salvador",
+              "America/Ensenada",
+              "America/Fort_Nelson",
+              "America/Fort_Wayne",
+              "America/Fortaleza",
+              "America/Glace_Bay",
+              "America/Godthab",
+              "America/Goose_Bay",
+              "America/Grand_Turk",
+              "America/Grenada",
+              "America/Guadeloupe",
+              "America/Guatemala",
+              "America/Guayaquil",
+              "America/Guyana",
+              "America/Halifax",
+              "America/Havana",
+              "America/Hermosillo",
+              "America/Indiana/Indianapolis",
+              "America/Indiana/Knox",
+              "America/Indiana/Marengo",
+              "America/Indiana/Petersburg",
+              "America/Indiana/Tell_City",
+              "America/Indiana/Vevay",
+              "America/Indiana/Vincennes",
+              "America/Indiana/Winamac",
+              "America/Indianapolis",
+              "America/Inuvik",
+              "America/Iqaluit",
+              "America/Jamaica",
+              "America/Jujuy",
+              "America/Juneau",
+              "America/Kentucky/Louisville",
+              "America/Kentucky/Monticello",
+              "America/Knox_IN",
+              "America/Kralendijk",
+              "America/La_Paz",
+              "America/Lima",
+              "America/Los_Angeles",
+              "America/Louisville",
+              "America/Lower_Princes",
+              "America/Maceio",
+              "America/Managua",
+              "America/Manaus",
+              "America/Marigot",
+              "America/Martinique",
+              "America/Matamoros",
+              "America/Mazatlan",
+              "America/Mendoza",
+              "America/Menominee",
+              "America/Merida",
+              "America/Metlakatla",
+              "America/Mexico_City",
+              "America/Miquelon",
+              "America/Moncton",
+              "America/Monterrey",
+              "America/Montevideo",
+              "America/Montreal",
+              "America/Montserrat",
+              "America/Nassau",
+              "America/New_York",
+              "America/Nipigon",
+              "America/Nome",
+              "America/Noronha",
+              "America/North_Dakota/Beulah",
+              "America/North_Dakota/Center",
+              "America/North_Dakota/New_Salem",
+              "America/Nuuk",
+              "America/Ojinaga",
+              "America/Panama",
+              "America/Pangnirtung",
+              "America/Paramaribo",
+              "America/Phoenix",
+              "America/Port-au-Prince",
+              "America/Port_of_Spain",
+              "America/Porto_Acre",
+              "America/Porto_Velho",
+              "America/Puerto_Rico",
+              "America/Punta_Arenas",
+              "America/Rainy_River",
+              "America/Rankin_Inlet",
+              "America/Recife",
+              "America/Regina",
+              "America/Resolute",
+              "America/Rio_Branco",
+              "America/Rosario",
+              "America/Santa_Isabel",
+              "America/Santarem",
+              "America/Santiago",
+              "America/Santo_Domingo",
+              "America/Sao_Paulo",
+              "America/Scoresbysund",
+              "America/Shiprock",
+              "America/Sitka",
+              "America/St_Barthelemy",
+              "America/St_Johns",
+              "America/St_Kitts",
+              "America/St_Lucia",
+              "America/St_Thomas",
+              "America/St_Vincent",
+              "America/Swift_Current",
+              "America/Tegucigalpa",
+              "America/Thule",
+              "America/Thunder_Bay",
+              "America/Tijuana",
+              "America/Toronto",
+              "America/Tortola",
+              "America/Vancouver",
+              "America/Virgin",
+              "America/Whitehorse",
+              "America/Winnipeg",
+              "America/Yakutat",
+              "America/Yellowknife",
+              "Antarctica/Casey",
+              "Antarctica/Davis",
+              "Antarctica/DumontDUrville",
+              "Antarctica/Macquarie",
+              "Antarctica/Mawson",
+              "Antarctica/McMurdo",
+              "Antarctica/Palmer",
+              "Antarctica/Rothera",
+              "Antarctica/South_Pole",
+              "Antarctica/Syowa",
+              "Antarctica/Troll",
+              "Antarctica/Vostok",
+              "Arctic/Longyearbyen",
+              "Asia/Aden",
+              "Asia/Almaty",
+              "Asia/Amman",
+              "Asia/Anadyr",
+              "Asia/Aqtau",
+              "Asia/Aqtobe",
+              "Asia/Ashgabat",
+              "Asia/Ashkhabad",
+              "Asia/Atyrau",
+              "Asia/Baghdad",
+              "Asia/Bahrain",
+              "Asia/Baku",
+              "Asia/Bangkok",
+              "Asia/Barnaul",
+              "Asia/Beirut",
+              "Asia/Bishkek",
+              "Asia/Brunei",
+              "Asia/Calcutta",
+              "Asia/Chita",
+              "Asia/Choibalsan",
+              "Asia/Chongqing",
+              "Asia/Chungking",
+              "Asia/Colombo",
+              "Asia/Dacca",
+              "Asia/Damascus",
+              "Asia/Dhaka",
+              "Asia/Dili",
+              "Asia/Dubai",
+              "Asia/Dushanbe",
+              "Asia/Famagusta",
+              "Asia/Gaza",
+              "Asia/Harbin",
+              "Asia/Hebron",
+              "Asia/Ho_Chi_Minh",
+              "Asia/Hong_Kong",
+              "Asia/Hovd",
+              "Asia/Irkutsk",
+              "Asia/Istanbul",
+              "Asia/Jakarta",
+              "Asia/Jayapura",
+              "Asia/Jerusalem",
+              "Asia/Kabul",
+              "Asia/Kamchatka",
+              "Asia/Karachi",
+              "Asia/Kashgar",
+              "Asia/Kathmandu",
+              "Asia/Katmandu",
+              "Asia/Khandyga",
+              "Asia/Kolkata",
+              "Asia/Krasnoyarsk",
+              "Asia/Kuala_Lumpur",
+              "Asia/Kuching",
+              "Asia/Kuwait",
+              "Asia/Macao",
+              "Asia/Macau",
+              "Asia/Magadan",
+              "Asia/Makassar",
+              "Asia/Manila",
+              "Asia/Muscat",
+              "Asia/Nicosia",
+              "Asia/Novokuznetsk",
+              "Asia/Novosibirsk",
+              "Asia/Omsk",
+              "Asia/Oral",
+              "Asia/Phnom_Penh",
+              "Asia/Pontianak",
+              "Asia/Pyongyang",
+              "Asia/Qatar",
+              "Asia/Qostanay",
+              "Asia/Qyzylorda",
+              "Asia/Rangoon",
+              "Asia/Riyadh",
+              "Asia/Saigon",
+              "Asia/Sakhalin",
+              "Asia/Samarkand",
+              "Asia/Seoul",
+              "Asia/Shanghai",
+              "Asia/Singapore",
+              "Asia/Srednekolymsk",
+              "Asia/Taipei",
+              "Asia/Tashkent",
+              "Asia/Tbilisi",
+              "Asia/Tehran",
+              "Asia/Tel_Aviv",
+              "Asia/Thimbu",
+              "Asia/Thimphu",
+              "Asia/Tokyo",
+              "Asia/Tomsk",
+              "Asia/Ujung_Pandang",
+              "Asia/Ulaanbaatar",
+              "Asia/Ulan_Bator",
+              "Asia/Urumqi",
+              "Asia/Ust-Nera",
+              "Asia/Vientiane",
+              "Asia/Vladivostok",
+              "Asia/Yakutsk",
+              "Asia/Yangon",
+              "Asia/Yekaterinburg",
+              "Asia/Yerevan",
+              "Atlantic/Azores",
+              "Atlantic/Bermuda",
+              "Atlantic/Canary",
+              "Atlantic/Cape_Verde",
+              "Atlantic/Faeroe",
+              "Atlantic/Faroe",
+              "Atlantic/Jan_Mayen",
+              "Atlantic/Madeira",
+              "Atlantic/Reykjavik",
+              "Atlantic/South_Georgia",
+              "Atlantic/St_Helena",
+              "Atlantic/Stanley",
+              "Australia/ACT",
+              "Australia/Adelaide",
+              "Australia/Brisbane",
+              "Australia/Broken_Hill",
+              "Australia/Canberra",
+              "Australia/Currie",
+              "Australia/Darwin",
+              "Australia/Eucla",
+              "Australia/Hobart",
+              "Australia/LHI",
+              "Australia/Lindeman",
+              "Australia/Lord_Howe",
+              "Australia/Melbourne",
+              "Australia/NSW",
+              "Australia/North",
+              "Australia/Perth",
+              "Australia/Queensland",
+              "Australia/South",
+              "Australia/Sydney",
+              "Australia/Tasmania",
+              "Australia/Victoria",
+              "Australia/West",
+              "Australia/Yancowinna",
+              "Brazil/Acre",
+              "Brazil/DeNoronha",
+              "Brazil/East",
+              "Brazil/West",
+              "CET",
+              "CST6CDT",
+              "Canada/Atlantic",
+              "Canada/Central",
+              "Canada/Eastern",
+              "Canada/Mountain",
+              "Canada/Newfoundland",
+              "Canada/Pacific",
+              "Canada/Saskatchewan",
+              "Canada/Yukon",
+              "Chile/Continental",
+              "Chile/EasterIsland",
+              "Cuba",
+              "EET",
+              "EST",
+              "EST5EDT",
+              "Egypt",
+              "Eire",
+              "Etc/GMT",
+              "Etc/GMT+0",
+              "Etc/GMT+1",
+              "Etc/GMT+10",
+              "Etc/GMT+11",
+              "Etc/GMT+12",
+              "Etc/GMT+2",
+              "Etc/GMT+3",
+              "Etc/GMT+4",
+              "Etc/GMT+5",
+              "Etc/GMT+6",
+              "Etc/GMT+7",
+              "Etc/GMT+8",
+              "Etc/GMT+9",
+              "Etc/GMT-0",
+              "Etc/GMT-1",
+              "Etc/GMT-10",
+              "Etc/GMT-11",
+              "Etc/GMT-12",
+              "Etc/GMT-13",
+              "Etc/GMT-14",
+              "Etc/GMT-2",
+              "Etc/GMT-3",
+              "Etc/GMT-4",
+              "Etc/GMT-5",
+              "Etc/GMT-6",
+              "Etc/GMT-7",
+              "Etc/GMT-8",
+              "Etc/GMT-9",
+              "Etc/GMT0",
+              "Etc/Greenwich",
+              "Etc/UCT",
+              "Etc/UTC",
+              "Etc/Universal",
+              "Etc/Zulu",
+              "Europe/Amsterdam",
+              "Europe/Andorra",
+              "Europe/Astrakhan",
+              "Europe/Athens",
+              "Europe/Belfast",
+              "Europe/Belgrade",
+              "Europe/Berlin",
+              "Europe/Bratislava",
+              "Europe/Brussels",
+              "Europe/Bucharest",
+              "Europe/Budapest",
+              "Europe/Busingen",
+              "Europe/Chisinau",
+              "Europe/Copenhagen",
+              "Europe/Dublin",
+              "Europe/Gibraltar",
+              "Europe/Guernsey",
+              "Europe/Helsinki",
+              "Europe/Isle_of_Man",
+              "Europe/Istanbul",
+              "Europe/Jersey",
+              "Europe/Kaliningrad",
+              "Europe/Kiev",
+              "Europe/Kirov",
+              "Europe/Kyiv",
+              "Europe/Lisbon",
+              "Europe/Ljubljana",
+              "Europe/London",
+              "Europe/Luxembourg",
+              "Europe/Madrid",
+              "Europe/Malta",
+              "Europe/Mariehamn",
+              "Europe/Minsk",
+              "Europe/Monaco",
+              "Europe/Moscow",
+              "Europe/Nicosia",
+              "Europe/Oslo",
+              "Europe/Paris",
+              "Europe/Podgorica",
+              "Europe/Prague",
+              "Europe/Riga",
+              "Europe/Rome",
+              "Europe/Samara",
+              "Europe/San_Marino",
+              "Europe/Sarajevo",
+              "Europe/Saratov",
+              "Europe/Simferopol",
+              "Europe/Skopje",
+              "Europe/Sofia",
+              "Europe/Stockholm",
+              "Europe/Tallinn",
+              "Europe/Tirane",
+              "Europe/Tiraspol",
+              "Europe/Ulyanovsk",
+              "Europe/Uzhgorod",
+              "Europe/Vaduz",
+              "Europe/Vatican",
+              "Europe/Vienna",
+              "Europe/Vilnius",
+              "Europe/Volgograd",
+              "Europe/Warsaw",
+              "Europe/Zagreb",
+              "Europe/Zaporozhye",
+              "Europe/Zurich",
+              "GB",
+              "GB-Eire",
+              "GMT",
+              "GMT+0",
+              "GMT-0",
+              "GMT0",
+              "Greenwich",
+              "HST",
+              "Hongkong",
+              "Iceland",
+              "Indian/Antananarivo",
+              "Indian/Chagos",
+              "Indian/Christmas",
+              "Indian/Cocos",
+              "Indian/Comoro",
+              "Indian/Kerguelen",
+              "Indian/Mahe",
+              "Indian/Maldives",
+              "Indian/Mauritius",
+              "Indian/Mayotte",
+              "Indian/Reunion",
+              "Iran",
+              "Israel",
+              "Jamaica",
+              "Japan",
+              "Kwajalein",
+              "Libya",
+              "MET",
+              "MST",
+              "MST7MDT",
+              "Mexico/BajaNorte",
+              "Mexico/BajaSur",
+              "Mexico/General",
+              "NZ",
+              "NZ-CHAT",
+              "Navajo",
+              "PRC",
+              "PST8PDT",
+              "Pacific/Apia",
+              "Pacific/Auckland",
+              "Pacific/Bougainville",
+              "Pacific/Chatham",
+              "Pacific/Chuuk",
+              "Pacific/Easter",
+              "Pacific/Efate",
+              "Pacific/Enderbury",
+              "Pacific/Fakaofo",
+              "Pacific/Fiji",
+              "Pacific/Funafuti",
+              "Pacific/Galapagos",
+              "Pacific/Gambier",
+              "Pacific/Guadalcanal",
+              "Pacific/Guam",
+              "Pacific/Honolulu",
+              "Pacific/Johnston",
+              "Pacific/Kanton",
+              "Pacific/Kiritimati",
+              "Pacific/Kosrae",
+              "Pacific/Kwajalein",
+              "Pacific/Majuro",
+              "Pacific/Marquesas",
+              "Pacific/Midway",
+              "Pacific/Nauru",
+              "Pacific/Niue",
+              "Pacific/Norfolk",
+              "Pacific/Noumea",
+              "Pacific/Pago_Pago",
+              "Pacific/Palau",
+              "Pacific/Pitcairn",
+              "Pacific/Pohnpei",
+              "Pacific/Ponape",
+              "Pacific/Port_Moresby",
+              "Pacific/Rarotonga",
+              "Pacific/Saipan",
+              "Pacific/Samoa",
+              "Pacific/Tahiti",
+              "Pacific/Tarawa",
+              "Pacific/Tongatapu",
+              "Pacific/Truk",
+              "Pacific/Wake",
+              "Pacific/Wallis",
+              "Pacific/Yap",
+              "Poland",
+              "Portugal",
+              "ROC",
+              "ROK",
+              "Singapore",
+              "Turkey",
+              "UCT",
+              "US/Alaska",
+              "US/Aleutian",
+              "US/Arizona",
+              "US/Central",
+              "US/East-Indiana",
+              "US/Eastern",
+              "US/Hawaii",
+              "US/Indiana-Starke",
+              "US/Michigan",
+              "US/Mountain",
+              "US/Pacific",
+              "US/Samoa",
+              "UTC",
+              "Universal",
+              "W-SU",
+              "WET",
+              "Zulu"
+            ],
+            "minLength": 1,
+            "title": "Timezone"
+          }
+        },
+        "type": "object",
+        "required": ["timezone"],
+        "title": "UpdateTimezoneRequest"
       },
       "UploadFileResponse": {
         "properties": {
@@ -6709,10 +9097,28 @@
       }
     },
     "securitySchemes": {
-      "APIKeyHeader": {
+      "HTTPBearerJWT": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "jwt"
+      },
+      "APIKeyAuthenticator-X-Postmark-Webhook-Token": {
         "type": "apiKey",
         "in": "header",
         "name": "X-Postmark-Webhook-Token"
+      }
+    },
+    "responses": {
+      "HTTP401NotAuthenticatedError": {
+        "description": "Authentication required",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": { "detail": { "type": "string" } }
+            }
+          }
+        }
       }
     }
   }

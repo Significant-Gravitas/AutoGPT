@@ -17,6 +17,7 @@ from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.util import ZoneInfo
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
@@ -269,7 +270,9 @@ class Scheduler(AppService):
 
         self.scheduler = BackgroundScheduler(
             executors={
-                "default": ThreadPoolExecutor(max_workers=10),  # Max 10 concurrent jobs
+                "default": ThreadPoolExecutor(
+                    max_workers=self.db_pool_size()
+                ),  # Match DB pool size to prevent resource contention
             },
             job_defaults={
                 "coalesce": True,  # Skip redundant missed jobs - just run the latest
@@ -301,13 +304,15 @@ class Scheduler(AppService):
                 Jobstores.WEEKLY_NOTIFICATIONS.value: MemoryJobStore(),
             },
             logger=apscheduler_logger,
+            timezone=ZoneInfo("UTC"),
         )
 
         if self.register_system_tasks:
             # Notification PROCESS WEEKLY SUMMARY
+            # Runs every Monday at 9 AM UTC
             self.scheduler.add_job(
                 process_weekly_summary,
-                CronTrigger.from_crontab("0 * * * *"),
+                CronTrigger.from_crontab("0 9 * * 1"),
                 id="process_weekly_summary",
                 kwargs={},
                 replace_existing=True,
@@ -403,6 +408,8 @@ class Scheduler(AppService):
             )
         )
 
+        logger.info(f"Scheduling job for user {user_id} in UTC (cron: {cron})")
+
         job_args = GraphExecutionJobArgs(
             user_id=user_id,
             graph_id=graph_id,
@@ -415,12 +422,12 @@ class Scheduler(AppService):
             execute_graph,
             kwargs=job_args.model_dump(),
             name=name,
-            trigger=CronTrigger.from_crontab(cron),
+            trigger=CronTrigger.from_crontab(cron, timezone="UTC"),
             jobstore=Jobstores.EXECUTION.value,
             replace_existing=True,
         )
         logger.info(
-            f"Added job {job.id} with cron schedule '{cron}' input data: {input_data}"
+            f"Added job {job.id} with cron schedule '{cron}' in UTC, input data: {input_data}"
         )
         return GraphExecutionJobInfo.from_db(job_args, job)
 

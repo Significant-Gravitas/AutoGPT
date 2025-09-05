@@ -98,7 +98,6 @@ export function CronScheduler({
             <SelectValue placeholder="Select frequency" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="every minute">Every Minute</SelectItem>
             <SelectItem value="hourly">Every Hour</SelectItem>
             <SelectItem value="daily">Daily</SelectItem>
             <SelectItem value="weekly">Weekly</SelectItem>
@@ -214,6 +213,11 @@ export function CronScheduler({
               </Button>
             ))}
           </div>
+          {selectedWeekDays.length === 0 && (
+            <p className="text-sm text-red-500">
+              Please select at least one day of the week
+            </p>
+          )}
         </div>
       )}
       {frequency === "monthly" && (
@@ -275,6 +279,11 @@ export function CronScheduler({
               ))}
             </div>
           )}
+          {selectedMonthDays.length === 0 && (
+            <p className="text-sm text-red-500">
+              Please select at least one day of the month
+            </p>
+          )}
         </div>
       )}
       {frequency === "yearly" && (
@@ -288,7 +297,9 @@ export function CronScheduler({
                 if (selectedMonths.length === months.length) {
                   setSelectedMonths([]);
                 } else {
-                  setSelectedMonths(Array.from({ length: 12 }, (_, i) => i));
+                  setSelectedMonths(
+                    Array.from({ length: 12 }, (_, i) => i + 1),
+                  );
                 }
               }}
             >
@@ -320,10 +331,15 @@ export function CronScheduler({
               );
             })}
           </div>
+          {selectedMonths.length === 0 && (
+            <p className="text-sm text-red-500">
+              Please select at least one month
+            </p>
+          )}
         </div>
       )}
 
-      {frequency !== "every minute" && frequency !== "hourly" && (
+      {frequency !== "hourly" && (
         <div className="flex items-center gap-4 space-y-2">
           <Label className="pt-2">At</Label>
           <Input

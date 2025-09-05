@@ -35,20 +35,19 @@ async def execute_graph(
     logger.info("Input data: %s", input_data)
 
     # --- Test adding new executions --- #
-    response = await agent_server.test_execute_graph(
+    graph_exec = await agent_server.test_execute_graph(
         user_id=test_user.id,
         graph_id=test_graph.id,
         graph_version=test_graph.version,
         node_input=input_data,
     )
-    graph_exec_id = response.graph_exec_id
-    logger.info("Created execution with ID: %s", graph_exec_id)
+    logger.info("Created execution with ID: %s", graph_exec.id)
 
     # Execution queue should be empty
     logger.info("Waiting for execution to complete...")
-    result = await wait_execution(test_user.id, graph_exec_id, 30)
+    result = await wait_execution(test_user.id, graph_exec.id, 30)
     logger.info("Execution completed with %d results", len(result))
-    return graph_exec_id
+    return graph_exec.id
 
 
 @pytest.mark.asyncio(loop_scope="session")

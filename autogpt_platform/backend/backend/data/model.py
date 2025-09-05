@@ -96,6 +96,12 @@ class User(BaseModel):
         default=True, description="Notify on monthly summary"
     )
 
+    # User timezone for scheduling and time display
+    timezone: str = Field(
+        default="not-set",
+        description="User timezone (IANA timezone identifier or 'not-set')",
+    )
+
     @classmethod
     def from_db(cls, prisma_user: "PrismaUser") -> "User":
         """Convert a database User object to application User model."""
@@ -149,6 +155,7 @@ class User(BaseModel):
             notify_on_daily_summary=prisma_user.notifyOnDailySummary or True,
             notify_on_weekly_summary=prisma_user.notifyOnWeeklySummary or True,
             notify_on_monthly_summary=prisma_user.notifyOnMonthlySummary or True,
+            timezone=prisma_user.timezone or "not-set",
         )
 
 
@@ -821,3 +828,21 @@ class GraphExecutionStats(BaseModel):
     activity_status: Optional[str] = Field(
         default=None, description="AI-generated summary of what the agent did"
     )
+
+
+class UserExecutionSummaryStats(BaseModel):
+    """Summary of user statistics for a specific user."""
+
+    model_config = ConfigDict(
+        extra="allow",
+        arbitrary_types_allowed=True,
+    )
+
+    total_credits_used: float = Field(default=0)
+    total_executions: int = Field(default=0)
+    successful_runs: int = Field(default=0)
+    failed_runs: int = Field(default=0)
+    most_used_agent: str = Field(default="")
+    total_execution_time: float = Field(default=0)
+    average_execution_time: float = Field(default=0)
+    cost_breakdown: dict[str, float] = Field(default_factory=dict)

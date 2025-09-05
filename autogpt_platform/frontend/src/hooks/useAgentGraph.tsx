@@ -18,6 +18,7 @@ import {
   NodeCreatable,
   NodeExecutionResult,
   SpecialBlockID,
+  Node,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
@@ -155,6 +156,16 @@ export default function useAgentGraph(
     setAgentName(graph.name);
     setAgentDescription(graph.description);
 
+    const getGraphName = (node: Node) => {
+      if (node.input_default.agent_name) {
+        return node.input_default.agent_name;
+      }
+      return (
+        availableFlows.find((flow) => flow.id === node.input_default.graph_id)
+          ?.name || null
+      );
+    };
+
     setXYNodes((prevNodes) => {
       const _newNodes = graph.nodes.map((node) => {
         const block = availableBlocks.find(
@@ -162,12 +173,8 @@ export default function useAgentGraph(
         )!;
         if (!block) return null;
         const prevNode = prevNodes.find((n) => n.id === node.id);
-        const flow =
-          block.uiType == BlockUIType.AGENT
-            ? availableFlows.find(
-                (flow) => flow.id === node.input_default.graph_id,
-              )
-            : null;
+        const graphName =
+          (block.uiType == BlockUIType.AGENT && getGraphName(node)) || null;
         const newNode: CustomNode = {
           id: node.id,
           type: "custom",
@@ -179,7 +186,7 @@ export default function useAgentGraph(
             isOutputOpen: false,
             ...prevNode?.data,
             block_id: block.id,
-            blockType: flow?.name || block.name,
+            blockType: graphName || block.name,
             blockCosts: block.costs,
             categories: block.categories,
             description: block.description,
@@ -189,6 +196,7 @@ export default function useAgentGraph(
             hardcodedValues: node.input_default,
             webhook: node.webhook,
             uiType: block.uiType,
+            metadata: node.metadata,
             connections: graph.links
               .filter((l) => [l.source_id, l.sink_id].includes(node.id))
               .map((link) => ({
@@ -257,15 +265,16 @@ export default function useAgentGraph(
   const getToolFuncName = useCallback(
     (nodeID: string) => {
       const sinkNode = xyNodes.find((node) => node.id === nodeID);
-      const sinkNodeName = sinkNode
-        ? sinkNode.data.block_id === SpecialBlockID.AGENT
-          ? sinkNode.data.hardcodedValues?.graph_id
-            ? availableFlows.find(
-                (flow) => flow.id === sinkNode.data.hardcodedValues.graph_id,
-              )?.name || "agentexecutorblock"
-            : "agentexecutorblock"
-          : sinkNode.data.title.split(" ")[0]
-        : "";
+      if (!sinkNode) return "";
+
+      const sinkNodeName =
+        sinkNode.data.block_id === SpecialBlockID.AGENT
+          ? sinkNode.data.hardcodedValues?.agent_name ||
+            availableFlows.find(
+              (flow) => flow.id === sinkNode.data.hardcodedValues.graph_id,
+            )?.name ||
+            "agentexecutorblock"
+          : sinkNode.data.title.split(" ")[0];
 
       return sinkNodeName;
     },
@@ -593,7 +602,10 @@ export default function useAgentGraph(
           id: node.id,
           block_id: node.data.block_id,
           input_default: prepareNodeInputData(node),
-          metadata: { position: node.position },
+          metadata: {
+            position: node.position,
+            ...(node.data.metadata || {}),
+          },
         }),
       ),
       links: links,
@@ -672,6 +684,7 @@ export default function useAgentGraph(
                   backend_id: backendNode.id,
                   webhook: backendNode.webhook,
                   executionResults: [],
+                  metadata: backendNode.metadata,
                 },
               }
             : null;
@@ -769,13 +782,13 @@ export default function useAgentGraph(
           credentialsInputs,
         );
 
-        setActiveExecutionID(graphExecution.graph_exec_id);
+        setActiveExecutionID(graphExecution.id);
 
         // Update URL params
         const path = new URLSearchParams(searchParams);
         path.set("flowID", savedAgent.id);
         path.set("flowVersion", savedAgent.version.toString());
-        path.set("flowExecutionID", graphExecution.graph_exec_id);
+        path.set("flowExecutionID", graphExecution.id);
         router.push(`${pathname}?${path.toString()}`);
 
         if (state?.completedSteps.includes("BUILDER_SAVE_AGENT")) {
@@ -872,6 +885,16 @@ export default function useAgentGraph(
     ) => {
       if (!savedAgent || isScheduling) return;
 
+      // Validate cron expression
+      if (!cronExpression || cronExpression.trim() === "") {
+        toast({
+          variant: "destructive",
+          title: "Invalid schedule",
+          description: "Please enter a valid cron expression",
+        });
+        return;
+      }
+
       setIsScheduling(true);
       try {
         await api.createGraphExecutionSchedule({
@@ -891,7 +914,7 @@ export default function useAgentGraph(
           router.push("/monitoring");
         }
       } catch (error) {
-        console.error(error);
+        console.error("Error scheduling agent:", error);
         toast({
           variant: "destructive",
           title: "Error scheduling agent",
@@ -930,15 +953,27 @@ export default function useAgentGraph(
 }
 
 function graphsEquivalent(saved: Graph, current: GraphCreatable): boolean {
+  const sortNodes = (nodes: NodeCreatable[]) =>
+    nodes.toSorted((a, b) => a.id.localeCompare(b.id));
+
+  const sortLinks = (links: LinkCreatable[]) =>
+    links.toSorted(
+      (a, b) =>
+        8 * a.source_id.localeCompare(b.source_id) +
+        4 * a.sink_id.localeCompare(b.sink_id) +
+        2 * a.source_name.localeCompare(b.source_name) +
+        a.sink_name.localeCompare(b.sink_name),
+    );
+
   const _saved = {
     name: saved.name,
     description: saved.description,
-    nodes: saved.nodes.map((v) => ({
+    nodes: sortNodes(saved.nodes).map((v) => ({
       block_id: v.block_id,
       input_default: v.input_default,
       metadata: v.metadata,
     })),
-    links: saved.links.map((v) => ({
+    links: sortLinks(saved.links).map((v) => ({
       sink_name: v.sink_name,
       source_name: v.source_name,
     })),
@@ -946,8 +981,10 @@ function graphsEquivalent(saved: Graph, current: GraphCreatable): boolean {
   const _current = {
     name: current.name,
     description: current.description,
-    nodes: current.nodes.map(({ id: _, ...rest }) => rest),
-    links: current.links.map(({ source_id: _, sink_id: __, ...rest }) => rest),
+    nodes: sortNodes(current.nodes).map(({ id: _, ...rest }) => rest),
+    links: sortLinks(current.links).map(
+      ({ source_id: _, sink_id: __, ...rest }) => rest,
+    ),
   };
   return deepEquals(_saved, _current);
 }

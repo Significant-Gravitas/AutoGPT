@@ -11,11 +11,14 @@ from typing import (
     Generator,
     Generic,
     Literal,
+    Mapping,
     Optional,
     TypeVar,
+    cast,
     overload,
 )
 
+from prisma import Json
 from prisma.enums import AgentExecutionStatus
 from prisma.models import (
     AgentGraphExecution,
@@ -24,7 +27,6 @@ from prisma.models import (
     AgentNodeExecutionKeyValueData,
 )
 from prisma.types import (
-    AgentGraphExecutionCreateInput,
     AgentGraphExecutionUpdateManyMutationInput,
     AgentGraphExecutionWhereInput,
     AgentNodeExecutionCreateInput,
@@ -39,6 +41,7 @@ from pydantic.fields import Field
 from backend.server.v2.store.exceptions import DatabaseError
 from backend.util import type as type_utils
 from backend.util.json import SafeJson
+from backend.util.models import Pagination
 from backend.util.retry import func_retry
 from backend.util.settings import Config
 from backend.util.truncate import truncate
@@ -59,7 +62,7 @@ from .includes import (
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     graph_execution_include,
 )
-from .model import GraphExecutionStats, NodeExecutionStats
+from .model import CredentialsMetaInput, GraphExecutionStats, NodeExecutionStats
 
 T = TypeVar("T")
 
@@ -86,13 +89,19 @@ class BlockErrorStats(BaseModel):
 
 
 ExecutionStatus = AgentExecutionStatus
+NodeInputMask = Mapping[str, JsonValue]
+NodesInputMasks = Mapping[str, NodeInputMask]
 
 
 class GraphExecutionMeta(BaseDbModel):
+    id: str  # type: ignore # Override base class to make this required
     user_id: str
     graph_id: str
     graph_version: int
-    preset_id: Optional[str] = None
+    inputs: Optional[BlockInput]  # no default -> required in the OpenAPI spec
+    credential_inputs: Optional[dict[str, CredentialsMetaInput]]
+    nodes_input_masks: Optional[dict[str, BlockInput]]
+    preset_id: Optional[str]
     status: ExecutionStatus
     started_at: datetime
     ended_at: datetime
@@ -177,6 +186,18 @@ class GraphExecutionMeta(BaseDbModel):
             user_id=_graph_exec.userId,
             graph_id=_graph_exec.agentGraphId,
             graph_version=_graph_exec.agentGraphVersion,
+            inputs=cast(BlockInput | None, _graph_exec.inputs),
+            credential_inputs=(
+                {
+                    name: CredentialsMetaInput.model_validate(cmi)
+                    for name, cmi in cast(dict, _graph_exec.credentialInputs).items()
+                }
+                if _graph_exec.credentialInputs
+                else None
+            ),
+            nodes_input_masks=cast(
+                dict[str, BlockInput] | None, _graph_exec.nodesInputMasks
+            ),
             preset_id=_graph_exec.agentPresetId,
             status=ExecutionStatus(_graph_exec.executionStatus),
             started_at=start_time,
@@ -204,7 +225,7 @@ class GraphExecutionMeta(BaseDbModel):
 
 
 class GraphExecution(GraphExecutionMeta):
-    inputs: BlockInput
+    inputs: BlockInput  # type: ignore - incompatible override is intentional
     outputs: CompletedBlockOutput
 
     @staticmethod
@@ -224,15 +245,18 @@ class GraphExecution(GraphExecutionMeta):
         )
 
         inputs = {
-            **{
-                # inputs from Agent Input Blocks
-                exec.input_data["name"]: exec.input_data.get("value")
-                for exec in complete_node_executions
-                if (
-                    (block := get_block(exec.block_id))
-                    and block.block_type == BlockType.INPUT
-                )
-            },
+            **(
+                graph_exec.inputs
+                or {
+                    # fallback: extract inputs from Agent Input Blocks
+                    exec.input_data["name"]: exec.input_data.get("value")
+                    for exec in complete_node_executions
+                    if (
+                        (block := get_block(exec.block_id))
+                        and block.block_type == BlockType.INPUT
+                    )
+                }
+            ),
             **{
                 # input from webhook-triggered block
                 "payload": exec.input_data["payload"]
@@ -250,14 +274,13 @@ class GraphExecution(GraphExecutionMeta):
             if (
                 block := get_block(exec.block_id)
             ) and block.block_type == BlockType.OUTPUT:
-                outputs[exec.input_data["name"]].append(
-                    exec.input_data.get("value", None)
-                )
+                outputs[exec.input_data["name"]].append(exec.input_data.get("value"))
 
         return GraphExecution(
             **{
                 field_name: getattr(graph_exec, field_name)
                 for field_name in GraphExecutionMeta.model_fields
+                if field_name != "inputs"
             },
             inputs=inputs,
             outputs=outputs,
@@ -290,13 +313,18 @@ class GraphExecutionWithNodes(GraphExecution):
             node_executions=node_executions,
         )
 
-    def to_graph_execution_entry(self):
+    def to_graph_execution_entry(
+        self,
+        user_context: "UserContext",
+        compiled_nodes_input_masks: Optional[NodesInputMasks] = None,
+    ):
         return GraphExecutionEntry(
             user_id=self.user_id,
             graph_id=self.graph_id,
             graph_version=self.graph_version or 0,
             graph_exec_id=self.id,
-            nodes_input_masks={},  # FIXME: store credentials on AgentGraphExecution
+            nodes_input_masks=compiled_nodes_input_masks,
+            user_context=user_context,
         )
 
 
@@ -332,7 +360,7 @@ class NodeExecutionResult(BaseModel):
         else:
             input_data: BlockInput = defaultdict()
             for data in _node_exec.Input or []:
-                input_data[data.name] = type_utils.convert(data.data, type[Any])
+                input_data[data.name] = type_utils.convert(data.data, JsonValue)
 
         output_data: CompletedBlockOutput = defaultdict(list)
 
@@ -341,7 +369,7 @@ class NodeExecutionResult(BaseModel):
                 output_data[name].extend(messages)
         else:
             for data in _node_exec.Output or []:
-                output_data[data.name].append(type_utils.convert(data.data, type[Any]))
+                output_data[data.name].append(type_utils.convert(data.data, JsonValue))
 
         graph_execution: AgentGraphExecution | None = _node_exec.GraphExecution
         if graph_execution:
@@ -368,7 +396,9 @@ class NodeExecutionResult(BaseModel):
             end_time=_node_exec.endedTime,
         )
 
-    def to_node_execution_entry(self) -> "NodeExecutionEntry":
+    def to_node_execution_entry(
+        self, user_context: "UserContext"
+    ) -> "NodeExecutionEntry":
         return NodeExecutionEntry(
             user_id=self.user_id,
             graph_exec_id=self.graph_exec_id,
@@ -377,6 +407,7 @@ class NodeExecutionResult(BaseModel):
             node_id=self.node_id,
             block_id=self.block_id,
             inputs=self.input_data,
+            user_context=user_context,
         )
 
 
@@ -384,13 +415,13 @@ class NodeExecutionResult(BaseModel):
 
 
 async def get_graph_executions(
-    graph_exec_id: str | None = None,
-    graph_id: str | None = None,
-    user_id: str | None = None,
-    statuses: list[ExecutionStatus] | None = None,
-    created_time_gte: datetime | None = None,
-    created_time_lte: datetime | None = None,
-    limit: int | None = None,
+    graph_exec_id: Optional[str] = None,
+    graph_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+    statuses: Optional[list[ExecutionStatus]] = None,
+    created_time_gte: Optional[datetime] = None,
+    created_time_lte: Optional[datetime] = None,
+    limit: Optional[int] = None,
 ) -> list[GraphExecutionMeta]:
     """⚠️ **Optional `user_id` check**: MUST USE check in user-facing endpoints."""
     where_filter: AgentGraphExecutionWhereInput = {
@@ -416,6 +447,60 @@ async def get_graph_executions(
         take=limit,
     )
     return [GraphExecutionMeta.from_db(execution) for execution in executions]
+
+
+class GraphExecutionsPaginated(BaseModel):
+    """Response schema for paginated graph executions."""
+
+    executions: list[GraphExecutionMeta]
+    pagination: Pagination
+
+
+async def get_graph_executions_paginated(
+    user_id: str,
+    graph_id: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 25,
+    statuses: Optional[list[ExecutionStatus]] = None,
+    created_time_gte: Optional[datetime] = None,
+    created_time_lte: Optional[datetime] = None,
+) -> GraphExecutionsPaginated:
+    """Get paginated graph executions for a specific graph."""
+    where_filter: AgentGraphExecutionWhereInput = {
+        "isDeleted": False,
+        "userId": user_id,
+    }
+
+    if graph_id:
+        where_filter["agentGraphId"] = graph_id
+    if created_time_gte or created_time_lte:
+        where_filter["createdAt"] = {
+            "gte": created_time_gte or datetime.min.replace(tzinfo=timezone.utc),
+            "lte": created_time_lte or datetime.max.replace(tzinfo=timezone.utc),
+        }
+    if statuses:
+        where_filter["OR"] = [{"executionStatus": status} for status in statuses]
+
+    total_count = await AgentGraphExecution.prisma().count(where=where_filter)
+    total_pages = (total_count + page_size - 1) // page_size
+
+    offset = (page - 1) * page_size
+    executions = await AgentGraphExecution.prisma().find_many(
+        where=where_filter,
+        order={"createdAt": "desc"},
+        take=page_size,
+        skip=offset,
+    )
+
+    return GraphExecutionsPaginated(
+        executions=[GraphExecutionMeta.from_db(execution) for execution in executions],
+        pagination=Pagination(
+            total_items=total_count,
+            total_pages=total_pages,
+            current_page=page,
+            page_size=page_size,
+        ),
+    )
 
 
 async def get_graph_execution_meta(
@@ -479,9 +564,12 @@ async def get_graph_execution(
 async def create_graph_execution(
     graph_id: str,
     graph_version: int,
-    starting_nodes_input: list[tuple[str, BlockInput]],
+    starting_nodes_input: list[tuple[str, BlockInput]],  # list[(node_id, BlockInput)]
+    inputs: Mapping[str, JsonValue],
     user_id: str,
-    preset_id: str | None = None,
+    preset_id: Optional[str] = None,
+    credential_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
+    nodes_input_masks: Optional[NodesInputMasks] = None,
 ) -> GraphExecutionWithNodes:
     """
     Create a new AgentGraphExecution record.
@@ -489,11 +577,18 @@ async def create_graph_execution(
         The id of the AgentGraphExecution and the list of ExecutionResult for each node.
     """
     result = await AgentGraphExecution.prisma().create(
-        data=AgentGraphExecutionCreateInput(
-            agentGraphId=graph_id,
-            agentGraphVersion=graph_version,
-            executionStatus=ExecutionStatus.QUEUED,
-            NodeExecutions={
+        data={
+            "agentGraphId": graph_id,
+            "agentGraphVersion": graph_version,
+            "executionStatus": ExecutionStatus.QUEUED,
+            "inputs": SafeJson(inputs),
+            "credentialInputs": (
+                SafeJson(credential_inputs) if credential_inputs else Json({})
+            ),
+            "nodesInputMasks": (
+                SafeJson(nodes_input_masks) if nodes_input_masks else Json({})
+            ),
+            "NodeExecutions": {
                 "create": [
                     AgentNodeExecutionCreateInput(
                         agentNodeId=node_id,
@@ -509,9 +604,9 @@ async def create_graph_execution(
                     for node_id, node_input in starting_nodes_input
                 ]
             },
-            userId=user_id,
-            agentPresetId=preset_id,
-        ),
+            "userId": user_id,
+            "agentPresetId": preset_id,
+        },
         include=GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     )
 
@@ -522,7 +617,7 @@ async def upsert_execution_input(
     node_id: str,
     graph_exec_id: str,
     input_name: str,
-    input_data: Any,
+    input_data: JsonValue,
     node_exec_id: str | None = None,
 ) -> tuple[str, BlockInput]:
     """
@@ -571,7 +666,7 @@ async def upsert_execution_input(
         )
         return existing_execution.id, {
             **{
-                input_data.name: type_utils.convert(input_data.data, type[Any])
+                input_data.name: type_utils.convert(input_data.data, JsonValue)
                 for input_data in existing_execution.Input or []
             },
             input_name: input_data,
@@ -817,12 +912,19 @@ async def get_latest_node_execution(
 # ----------------- Execution Infrastructure ----------------- #
 
 
+class UserContext(BaseModel):
+    """Generic user context for graph execution containing user-specific settings."""
+
+    timezone: str
+
+
 class GraphExecutionEntry(BaseModel):
     user_id: str
     graph_exec_id: str
     graph_id: str
     graph_version: int
-    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None
+    nodes_input_masks: Optional[NodesInputMasks] = None
+    user_context: UserContext
 
 
 class NodeExecutionEntry(BaseModel):
@@ -833,6 +935,7 @@ class NodeExecutionEntry(BaseModel):
     node_id: str
     block_id: str
     inputs: BlockInput
+    user_context: UserContext
 
 
 class ExecutionQueue(Generic[T]):

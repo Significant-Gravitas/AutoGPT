@@ -1,15 +1,13 @@
 import json
 
-import autogpt_libs.auth.depends
-import autogpt_libs.auth.middleware
 import fastapi
 import fastapi.testclient
+import pytest
 import pytest_mock
 from pytest_snapshot.plugin import Snapshot
 
 import backend.server.v2.otto.models as otto_models
 import backend.server.v2.otto.routes as otto_routes
-from backend.server.utils import get_user_id
 from backend.server.v2.otto.service import OttoService
 
 app = fastapi.FastAPI()
@@ -18,20 +16,14 @@ app.include_router(otto_routes.router)
 client = fastapi.testclient.TestClient(app)
 
 
-def override_auth_middleware():
-    """Override auth middleware for testing"""
-    return {"sub": "test-user-id"}
+@pytest.fixture(autouse=True)
+def setup_app_auth(mock_jwt_user):
+    """Setup auth overrides for all tests in this module"""
+    from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
-
-def override_get_user_id():
-    """Override get_user_id for testing"""
-    return "test-user-id"
-
-
-app.dependency_overrides[autogpt_libs.auth.middleware.auth_middleware] = (
-    override_auth_middleware
-)
-app.dependency_overrides[get_user_id] = override_get_user_id
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    yield
+    app.dependency_overrides.clear()
 
 
 def test_ask_otto_success(
@@ -241,31 +233,14 @@ def test_ask_otto_invalid_request() -> None:
     assert response.status_code == 422
 
 
-def test_ask_otto_unauthenticated(mocker: pytest_mock.MockFixture) -> None:
-    """Test Otto API request without authentication"""
-    # Remove the auth override to test unauthenticated access
-    app.dependency_overrides.clear()
-
-    # Mock auth_middleware to raise an exception
-    mocker.patch(
-        "autogpt_libs.auth.middleware.auth_middleware",
-        side_effect=fastapi.HTTPException(status_code=401, detail="Unauthorized"),
-    )
-
+def test_ask_otto_unconfigured() -> None:
+    """Test Otto API request without configuration"""
     request_data = {
         "query": "Test",
         "conversation_history": [],
         "message_id": "123",
     }
 
+    # When Otto API URL is not configured, we get 502
     response = client.post("/ask", json=request_data)
-    # When auth is disabled and Otto API URL is not configured, we get 502 (wrapped from 503)
     assert response.status_code == 502
-
-    # Restore the override
-    app.dependency_overrides[autogpt_libs.auth.middleware.auth_middleware] = (
-        override_auth_middleware
-    )
-    app.dependency_overrides[autogpt_libs.auth.depends.get_user_id] = (
-        override_get_user_id
-    )

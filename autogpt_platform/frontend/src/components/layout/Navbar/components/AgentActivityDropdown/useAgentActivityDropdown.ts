@@ -1,11 +1,11 @@
-import { useGetV1GetAllExecutions } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { useGetV1ListAllExecutions } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { useGetV2ListLibraryAgents } from "@/app/api/__generated__/endpoints/library/library";
 
-import { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgentResponse";
 import BackendAPI from "@/lib/autogpt-server-api/client";
 import type { GraphExecution, GraphID } from "@/lib/autogpt-server-api/types";
 import { useCallback, useEffect, useState } from "react";
 import * as Sentry from "@sentry/nextjs";
+import { toast } from "sonner";
 import {
   NotificationState,
   categorizeExecutions,
@@ -44,13 +44,41 @@ export function useAgentActivityDropdown() {
     data: executions,
     isSuccess: executionsSuccess,
     error: executionsError,
-  } = useGetV1GetAllExecutions();
+  } = useGetV1ListAllExecutions({
+    query: { select: (res) => (res.status === 200 ? res.data : null) },
+  });
 
   // Create a map of library agents
   useEffect(() => {
+    if (agentsError) {
+      Sentry.captureException(agentsError, {
+        tags: {
+          context: "library_agents_fetch",
+        },
+      });
+      toast.error("Failed to load agent information", {
+        description:
+          "There was a problem connecting to our servers. Agent activity may be limited.",
+      });
+      return;
+    }
+
     if (agents && agentsSuccess) {
-      // SafeCast: library agents loaded
-      const libraryAgents = agents.data as LibraryAgentResponse;
+      if (agents.status !== 200) {
+        Sentry.captureException(new Error("Failed to load library agents"), {
+          extra: {
+            status: agents.status,
+            error: agents.data,
+          },
+        });
+        toast.error("Invalid agent data received", {
+          description:
+            "The server returned invalid data. Agent activity may be limited.",
+        });
+        return;
+      }
+
+      const libraryAgents = agents.data;
 
       if (!libraryAgents.agents || !libraryAgents.agents.length) return;
 
@@ -71,7 +99,7 @@ export function useAgentActivityDropdown() {
 
       setAgentInfoMap(agentMap);
     }
-  }, [agents, agentsSuccess]);
+  }, [agents, agentsSuccess, agentsError]);
 
   // Handle real-time execution updates
   const handleExecutionEvent = useCallback(
@@ -86,7 +114,7 @@ export function useAgentActivityDropdown() {
   // Process initial execution state when data loads
   useEffect(() => {
     if (executions && executionsSuccess && agentInfoMap.size > 0) {
-      const notifications = categorizeExecutions(executions.data, agentInfoMap);
+      const notifications = categorizeExecutions(executions, agentInfoMap);
       setNotifications(notifications);
     }
   }, [executions, executionsSuccess, agentInfoMap]);

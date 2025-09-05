@@ -1,12 +1,12 @@
 "use client";
 
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
-import { Switch } from "@/components/ui/switch";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { NotificationPreference } from "@/app/api/__generated__/models/notificationPreference";
 import { User } from "@supabase/supabase-js";
 import { useNotificationForm } from "./useNotificationForm";
+import { Switch } from "@/components/atoms/Switch/Switch";
 
 type NotificationFormProps = {
   preferences: NotificationPreference;
@@ -93,6 +93,60 @@ export function NotificationForm({ preferences, user }: NotificationFormProps) {
                     </Text>
                     <Text variant="body">
                       Receive alerts when an agent encounters repeated errors
+                    </Text>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+          </div>
+
+          {/* Store Notifications */}
+          <div className="flex flex-col gap-6">
+            <Text variant="h4" size="body-medium" className="text-slate-400">
+              Store Notifications
+            </Text>
+            <FormField
+              control={form.control}
+              name="notifyOnAgentApproved"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Text variant="h4" size="body-medium">
+                      Agent Approved
+                    </Text>
+                    <Text variant="body">
+                      Get notified when your submitted agent is approved for the
+                      store
+                    </Text>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="notifyOnAgentRejected"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Text variant="h4" size="body-medium">
+                      Agent Rejected
+                    </Text>
+                    <Text variant="body">
+                      Receive notifications when your agent submission needs
+                      updates
                     </Text>
                   </div>
                   <FormControl>

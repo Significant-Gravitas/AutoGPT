@@ -54,25 +54,19 @@ class AgentRunData(BaseNotificationData):
 
 
 class ZeroBalanceData(BaseNotificationData):
-    last_transaction: float
-    last_transaction_time: datetime
-    top_up_link: str
-
-    @field_validator("last_transaction_time")
-    @classmethod
-    def validate_timezone(cls, value: datetime):
-        if value.tzinfo is None:
-            raise ValueError("datetime must have timezone information")
-        return value
-
-
-class LowBalanceData(BaseNotificationData):
     agent_name: str = Field(..., description="Name of the agent")
     current_balance: float = Field(
         ..., description="Current balance in credits (100 = $1)"
     )
     billing_page_link: str = Field(..., description="Link to billing page")
     shortfall: float = Field(..., description="Amount of credits needed to continue")
+
+
+class LowBalanceData(BaseNotificationData):
+    current_balance: float = Field(
+        ..., description="Current balance in credits (100 = $1)"
+    )
+    billing_page_link: str = Field(..., description="Link to billing page")
 
 
 class BlockExecutionFailedData(BaseNotificationData):
@@ -181,6 +175,42 @@ class RefundRequestData(BaseNotificationData):
     balance: int
 
 
+class AgentApprovalData(BaseNotificationData):
+    agent_name: str
+    agent_id: str
+    agent_version: int
+    reviewer_name: str
+    reviewer_email: str
+    comments: str
+    reviewed_at: datetime
+    store_url: str
+
+    @field_validator("reviewed_at")
+    @classmethod
+    def validate_timezone(cls, value: datetime):
+        if value.tzinfo is None:
+            raise ValueError("datetime must have timezone information")
+        return value
+
+
+class AgentRejectionData(BaseNotificationData):
+    agent_name: str
+    agent_id: str
+    agent_version: int
+    reviewer_name: str
+    reviewer_email: str
+    comments: str
+    reviewed_at: datetime
+    resubmit_url: str
+
+    @field_validator("reviewed_at")
+    @classmethod
+    def validate_timezone(cls, value: datetime):
+        if value.tzinfo is None:
+            raise ValueError("datetime must have timezone information")
+        return value
+
+
 NotificationData = Annotated[
     Union[
         AgentRunData,
@@ -240,6 +270,8 @@ def get_notif_data_type(
         NotificationType.MONTHLY_SUMMARY: MonthlySummaryData,
         NotificationType.REFUND_REQUEST: RefundRequestData,
         NotificationType.REFUND_PROCESSED: RefundRequestData,
+        NotificationType.AGENT_APPROVED: AgentApprovalData,
+        NotificationType.AGENT_REJECTED: AgentRejectionData,
     }[notification_type]
 
 
@@ -274,7 +306,7 @@ class NotificationTypeOverride:
             # These are batched by the notification service
             NotificationType.AGENT_RUN: QueueType.BATCH,
             # These are batched by the notification service, but with a backoff strategy
-            NotificationType.ZERO_BALANCE: QueueType.BACKOFF,
+            NotificationType.ZERO_BALANCE: QueueType.IMMEDIATE,
             NotificationType.LOW_BALANCE: QueueType.IMMEDIATE,
             NotificationType.BLOCK_EXECUTION_FAILED: QueueType.BACKOFF,
             NotificationType.CONTINUOUS_AGENT_ERROR: QueueType.BACKOFF,
@@ -283,6 +315,8 @@ class NotificationTypeOverride:
             NotificationType.MONTHLY_SUMMARY: QueueType.SUMMARY,
             NotificationType.REFUND_REQUEST: QueueType.ADMIN,
             NotificationType.REFUND_PROCESSED: QueueType.ADMIN,
+            NotificationType.AGENT_APPROVED: QueueType.IMMEDIATE,
+            NotificationType.AGENT_REJECTED: QueueType.IMMEDIATE,
         }
         return BATCHING_RULES.get(self.notification_type, QueueType.IMMEDIATE)
 
@@ -300,6 +334,8 @@ class NotificationTypeOverride:
             NotificationType.MONTHLY_SUMMARY: "monthly_summary.html",
             NotificationType.REFUND_REQUEST: "refund_request.html",
             NotificationType.REFUND_PROCESSED: "refund_processed.html",
+            NotificationType.AGENT_APPROVED: "agent_approved.html",
+            NotificationType.AGENT_REJECTED: "agent_rejected.html",
         }[self.notification_type]
 
     @property
@@ -315,6 +351,8 @@ class NotificationTypeOverride:
             NotificationType.MONTHLY_SUMMARY: "We did a lot this month!",
             NotificationType.REFUND_REQUEST: "[ACTION REQUIRED] You got a ${{data.amount / 100}} refund request from {{data.user_name}}",
             NotificationType.REFUND_PROCESSED: "Refund for ${{data.amount / 100}} to {{data.user_name}} has been processed",
+            NotificationType.AGENT_APPROVED: "🎉 Your agent '{{data.agent_name}}' has been approved!",
+            NotificationType.AGENT_REJECTED: "Your agent '{{data.agent_name}}' needs some updates",
         }[self.notification_type]
 
 

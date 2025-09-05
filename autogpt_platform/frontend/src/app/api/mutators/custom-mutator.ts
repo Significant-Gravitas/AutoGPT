@@ -3,6 +3,9 @@ import {
   getServerAuthToken,
 } from "@/lib/autogpt-server-api/helpers";
 import { isServerSide } from "@/lib/utils/is-server-side";
+import { getAgptServerBaseUrl } from "@/lib/env-config";
+
+import { transformDates } from "./date-transformer";
 
 const FRONTEND_BASE_URL =
   process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "http://localhost:3000";
@@ -12,9 +15,7 @@ const getBaseUrl = (): string => {
   if (!isServerSide()) {
     return API_PROXY_BASE_URL;
   } else {
-    return (
-      process.env.NEXT_PUBLIC_AGPT_SERVER_BASE_URL || "http://localhost:8006"
-    );
+    return getAgptServerBaseUrl();
   }
 };
 
@@ -32,7 +33,9 @@ const getBody = <T>(c: Response | Request): Promise<T> => {
   return c.text() as Promise<T>;
 };
 
-export const customMutator = async <T = any>(
+export const customMutator = async <
+  T extends { data: any; status: number; headers: Headers },
+>(
   url: string,
   options: RequestInit & {
     params?: any;
@@ -97,11 +100,14 @@ export const customMutator = async <T = any>(
     throw new Error(`Request failed with status ${response.status}`);
   }
 
-  const response_data = await getBody<T>(response);
+  const response_data = await getBody<T["data"]>(response);
+
+  // Transform ISO date strings to Date objects in the response data
+  const transformedData = transformDates(response_data);
 
   return {
     status: response.status,
-    data: response_data,
+    data: transformedData,
     headers: response.headers,
   } as T;
 };

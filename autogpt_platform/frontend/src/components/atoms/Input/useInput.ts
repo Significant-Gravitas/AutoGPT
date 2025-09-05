@@ -17,7 +17,9 @@ interface ExtendedInputProps extends InputProps {
     | "amount"
     | "tel"
     | "url"
-    | "textarea";
+    | "textarea"
+    | "date"
+    | "datetime-local";
 }
 
 export function useInput(args: ExtendedInputProps) {

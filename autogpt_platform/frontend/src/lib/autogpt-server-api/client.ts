@@ -3,6 +3,12 @@ import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Key, storage } from "@/services/storage/local-storage";
+import {
+  getAgptServerApiUrl,
+  getAgptWsServerUrl,
+  getSupabaseUrl,
+  getSupabaseAnonKey,
+} from "@/lib/env-config";
 import * as Sentry from "@sentry/nextjs";
 import type {
   AddUserCreditsResponse,
@@ -25,6 +31,7 @@ import type {
   GraphExecution,
   GraphExecutionID,
   GraphExecutionMeta,
+  GraphExecutionsResponse,
   GraphID,
   GraphMeta,
   GraphUpdateable,
@@ -86,10 +93,8 @@ export default class BackendAPI {
   heartbeatTimeoutID: number | null = null;
 
   constructor(
-    baseUrl: string = process.env.NEXT_PUBLIC_AGPT_SERVER_URL ||
-      "http://localhost:8006/api",
-    wsUrl: string = process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL ||
-      "ws://localhost:8001/ws",
+    baseUrl: string = getAgptServerApiUrl(),
+    wsUrl: string = getAgptWsServerUrl(),
   ) {
     this.baseUrl = baseUrl;
     this.wsUrl = wsUrl;
@@ -97,11 +102,9 @@ export default class BackendAPI {
 
   private async getSupabaseClient(): Promise<SupabaseClient | null> {
     return isClient
-      ? createBrowserClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-          { isSingleton: true },
-        )
+      ? createBrowserClient(getSupabaseUrl(), getSupabaseAnonKey(), {
+          isSingleton: true,
+        })
       : await getServerSupabase();
   }
 
@@ -270,7 +273,7 @@ export default class BackendAPI {
     version: number,
     inputs: { [key: string]: any } = {},
     credentials_inputs: { [key: string]: CredentialsMetaInput } = {},
-  ): Promise<{ graph_exec_id: GraphExecutionID }> {
+  ): Promise<GraphExecutionMeta> {
     return this._request("POST", `/graphs/${id}/execute/${version}`, {
       inputs,
       credentials_inputs,
@@ -283,7 +286,7 @@ export default class BackendAPI {
     );
   }
 
-  getGraphExecutions(graphID: GraphID): Promise<GraphExecutionMeta[]> {
+  getGraphExecutions(graphID: GraphID): Promise<GraphExecutionsResponse> {
     return this._get(`/graphs/${graphID}/executions`).then((results) =>
       results.map(parseGraphExecutionTimestamps),
     );
@@ -635,6 +638,7 @@ export default class BackendAPI {
     search?: string;
     page?: number;
     page_size?: number;
+    transaction_filter?: string;
   }): Promise<UsersBalanceHistoryResponse> {
     return this._get("/credits/admin/users_history", params);
   }
@@ -768,10 +772,12 @@ export default class BackendAPI {
 
   executeLibraryAgentPreset(
     presetID: LibraryAgentPresetID,
-    inputs?: { [key: string]: any },
-  ): Promise<{ id: GraphExecutionID }> {
+    inputs?: Record<string, any>,
+    credential_inputs?: Record<string, CredentialsMetaInput>,
+  ): Promise<GraphExecutionMeta> {
     return this._request("POST", `/library/presets/${presetID}/execute`, {
       inputs,
+      credential_inputs,
     });
   }
 

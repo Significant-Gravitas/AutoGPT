@@ -1,0 +1,77 @@
+{# Agent Rejected Notification Email Template #}
+{#
+  Template variables:
+  data.agent_name: the name of the rejected agent
+  data.agent_id: the ID of the agent
+  data.agent_version: the version of the agent
+  data.reviewer_name: the name of the reviewer who rejected it
+  data.reviewer_email: the email of the reviewer
+  data.comments: comments from the reviewer explaining the rejection
+  data.reviewed_at: when the agent was reviewed
+  data.resubmit_url: URL to resubmit the agent
+
+  Subject: Your agent '{{ data.agent_name }}' needs some updates
+#}
+
+
+{% block content %}
+<h1 style="color: #d73a49; font-size: 32px; font-weight: 700; margin: 0 0 24px 0; text-align: center;">
+  📝 Review Complete
+</h1>
+
+<p style="color: #586069; font-size: 18px; text-align: center; margin: 0 0 24px 0;">
+  Your agent <strong>'{{ data.agent_name }}'</strong> needs some updates before approval.
+</p>
+
+<div style="height: 32px; background: transparent;"></div>
+
+<div style="background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 8px; padding: 20px; margin: 0 0 24px 0;">
+  <h3 style="color: #721c24; font-size: 16px; font-weight: 600; margin: 0 0 12px 0;">
+    💬 Creator feedback area
+  </h3>
+  <p style="color: #721c24; margin: 0; font-size: 16px; line-height: 1.5;">
+    {{ data.comments }}
+  </p>
+</div>
+
+<div style="height: 40px; background: transparent;"></div>
+
+<div style="background: #d4edda; border: 1px solid #c3e6cb; border-radius: 8px; padding: 20px; margin: 0 0 24px 0;">
+  <h3 style="color: #155724; font-size: 16px; font-weight: 600; margin: 0 0 12px 0;">
+    ☑ Steps to Resubmit:
+  </h3>
+  <ul style="color: #155724; margin: 0; padding-left: 18px; font-size: 16px; line-height: 1.6;">
+    <li>Review the feedback provided above carefully</li>
+    <li>Make the necessary updates to your agent</li>
+    <li>Test your agent thoroughly to ensure it works as expected</li>
+    <li>Submit your updated agent for review</li>
+  </ul>
+</div>
+
+<div style="height: 32px; background: transparent;"></div>
+
+<div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 6px; padding: 12px; margin: 0 0 24px 0; text-align: center;">
+  <p style="margin: 0; color: #856404; font-size: 14px;">
+    <strong>💡 Tip:</strong> Address all the points mentioned in the feedback to increase your chances of approval in the next review.
+  </p>
+</div>
+
+<div style="text-align: center; margin: 32px 0;">
+  <a href="{{ data.resubmit_url }}" style="display: inline-block; background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%); color: black; text-decoration: none; padding: 14px 28px; border-radius: 6px; font-weight: 600; font-size: 16px;">
+    Update & Resubmit Agent
+  </a>
+</div>
+
+<div style="background: #d1ecf1; border: 1px solid #bee5eb; border-radius: 6px; padding: 16px; margin: 24px 0;">
+  <p style="margin: 0; color: #0c5460; font-size: 14px; text-align: center;">
+    <strong>🌟 Don't Give Up!</strong> Many successful agents go through multiple iterations before approval. Our review team is here to help you succeed!
+  </p>
+</div>
+
+<div style="height: 32px; background: transparent;"></div>
+
+<p style="color: #6a737d; font-size: 14px; text-align: center; margin: 32px 0 24px 0;">
+  We're excited to see your improved agent submission! 🚀
+</p>
+
+{% endblock %}
