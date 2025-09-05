@@ -5,9 +5,10 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useAgentRunsView } from "./useAgentRunsView";
 import { AgentRunsLoading } from "./components/AgentRunsLoading";
 import { RunsSidebar } from "./components/RunsSidebar/RunsSidebar";
-import React from "react";
+import React, { useMemo, useState } from "react";
 import { RunDetails } from "./components/RunDetails/RunDetails";
 import { ScheduleDetails } from "./components/ScheduleDetails/ScheduleDetails";
+import { EmptyAgentRuns } from "./components/EmptyAgentRuns/EmptyAgentRuns";
 
 export function AgentRunsView() {
   const {
@@ -19,6 +20,17 @@ export function AgentRunsView() {
     handleSelectRun,
     clearSelectedRun,
   } = useAgentRunsView();
+  const [sidebarCounts, setSidebarCounts] = useState({
+    runsCount: 0,
+    schedulesCount: 0,
+  });
+
+  const hasAnyItems = useMemo(
+    () =>
+      (sidebarCounts.runsCount ?? 0) > 0 ||
+      (sidebarCounts.schedulesCount ?? 0) > 0,
+    [sidebarCounts],
+  );
 
   if (!ready) {
     return <AgentRunsLoading />;
@@ -57,21 +69,32 @@ export function AgentRunsView() {
   const agent = response.data;
 
   return (
-    <div className="grid h-screen grid-cols-1 gap-0 pt-6 md:gap-4 lg:grid-cols-[25%_70%]">
-      <RunsSidebar
-        agent={agent}
-        selectedRunId={selectedRun}
-        onSelectRun={handleSelectRun}
-      />
+    <div
+      className={
+        hasAnyItems
+          ? "grid h-screen grid-cols-1 gap-0 pt-6 md:gap-4 lg:grid-cols-[25%_70%]"
+          : "grid h-screen grid-cols-1 gap-0 pt-6 md:gap-4"
+      }
+    >
+      <div className={hasAnyItems ? "" : "hidden"}>
+        <RunsSidebar
+          agent={agent}
+          selectedRunId={selectedRun}
+          onSelectRun={handleSelectRun}
+          onCountsChange={setSidebarCounts}
+        />
+      </div>
 
       {/* Main Content - 70% */}
       <div className="p-4">
-        <Breadcrumbs
-          items={[
-            { name: "My Library", link: "/library" },
-            { name: agent.name, link: `/library/agents/${agentId}` },
-          ]}
-        />
+        <div className={!hasAnyItems ? "px-2" : ""}>
+          <Breadcrumbs
+            items={[
+              { name: "My Library", link: "/library" },
+              { name: agent.name, link: `/library/agents/${agentId}` },
+            ]}
+          />
+        </div>
         <div className="mt-1">
           {selectedRun ? (
             selectedRun.startsWith("schedule:") ? (
@@ -87,10 +110,17 @@ export function AgentRunsView() {
                 onClearSelectedRun={clearSelectedRun}
               />
             )
-          ) : (
+          ) : hasAnyItems ? (
             <div className="text-gray-600">
               Select a run to view its details
             </div>
+          ) : (
+            <EmptyAgentRuns
+              agentName={agent.name}
+              creatorName={agent.creator_name || "Unknown"}
+              description={agent.description}
+              agent={agent}
+            />
           )}
         </div>
       </div>
