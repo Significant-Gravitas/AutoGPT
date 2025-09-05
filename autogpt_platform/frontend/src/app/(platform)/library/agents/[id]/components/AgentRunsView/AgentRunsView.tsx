@@ -101,6 +101,7 @@ export function AgentRunsView() {
               <ScheduleDetails
                 agent={agent}
                 scheduleId={selectedRun.replace("schedule:", "")}
+                onClearSelectedRun={clearSelectedRun}
               />
             ) : (
               <RunDetails

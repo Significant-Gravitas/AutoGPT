@@ -7,7 +7,7 @@ export function useAgentRunsView() {
   const agentId = id as string;
   const { data: response, isSuccess, error } = useGetV2GetLibraryAgent(agentId);
 
-  const [runParam, setRunParam] = useQueryState("run", parseAsString);
+  const [runParam, setRunParam] = useQueryState("executionId", parseAsString);
   const selectedRun = runParam ?? undefined;
 
   function handleSelectRun(id: string) {
