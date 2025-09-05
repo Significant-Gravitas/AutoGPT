@@ -1,9 +1,16 @@
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useState, useCallback, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { isEmpty } from "@/lib/utils";
-import { usePostV1ExecuteGraphAgent } from "@/app/api/__generated__/endpoints/graphs/graphs";
-import { usePostV1CreateExecutionSchedule as useCreateSchedule } from "@/app/api/__generated__/endpoints/schedules/schedules";
+import {
+  usePostV1ExecuteGraphAgent,
+  getGetV1ListGraphExecutionsInfiniteQueryOptions,
+} from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
+  usePostV1CreateExecutionSchedule as useCreateSchedule,
+  getGetV1ListExecutionSchedulesForAGraphQueryKey,
+} from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { usePostV2SetupTrigger } from "@/app/api/__generated__/endpoints/presets/presets";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
@@ -26,6 +33,7 @@ export function useAgentRunModal(
   callbacks?: UseAgentRunModalCallbacks,
 ) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
   const [showScheduleView, setShowScheduleView] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
@@ -53,7 +61,13 @@ export function useAgentRunModal(
           toast({
             title: "Agent execution started",
           });
-          callbacks?.onRun?.(response.data);
+          callbacks?.onRun?.(response.data as unknown as GraphExecutionMeta);
+          // Invalidate runs list for this graph
+          queryClient.invalidateQueries({
+            queryKey: getGetV1ListGraphExecutionsInfiniteQueryOptions(
+              agent.graph_id,
+            ).queryKey,
+          });
           setIsOpen(false);
         }
       },
@@ -75,6 +89,12 @@ export function useAgentRunModal(
             title: "Schedule created",
           });
           callbacks?.onCreateSchedule?.(response.data);
+          // Invalidate schedules list for this graph
+          queryClient.invalidateQueries({
+            queryKey: getGetV1ListExecutionSchedulesForAGraphQueryKey(
+              agent.graph_id,
+            ),
+          });
           setIsOpen(false);
         }
       },

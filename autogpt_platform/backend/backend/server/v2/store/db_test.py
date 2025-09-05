@@ -41,6 +41,7 @@ async def test_get_store_agents(mocker):
             rating=4.5,
             versions=["1.0"],
             updated_at=datetime.now(),
+            is_available=False,
         )
     ]
 
@@ -82,6 +83,7 @@ async def test_get_store_agent_details(mocker):
         rating=4.5,
         versions=["1.0"],
         updated_at=datetime.now(),
+        is_available=False,
     )
 
     # Create a mock StoreListing result
