@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 
 const getYouTubeVideoId = (url: string) => {
   const regExp =
@@ -75,12 +76,13 @@ const ImageRenderer: React.FC<{ imageUrl: string }> = ({ imageUrl }) => {
   return (
     <div className="w-full p-2">
       <picture>
-        <img
+        <Image
           src={imageUrl}
           alt="Image"
           className="h-auto max-w-full"
-          width="100%"
-          height="auto"
+          width={800}
+          height={600}
+          style={{ width: "100%", height: "auto" }}
         />
       </picture>
     </div>
