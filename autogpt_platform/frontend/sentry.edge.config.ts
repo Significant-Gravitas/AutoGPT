@@ -22,6 +22,7 @@ const shouldEnable = !isDisabled && isProdOrDev && isCloud;
 console.log(`shouldEnableSentry: ${shouldEnable} (edge)`);
 console.log(`isCloud: ${isCloud} (edge)`);
 console.log(`isDisabled: ${isDisabled} (edge)`);
+console.log(`AppEnv: ${getAppEnv()} (edge)`);
 console.log(`isProdOrDev: ${isProdOrDev} (edge)`);
 
 Sentry.init({

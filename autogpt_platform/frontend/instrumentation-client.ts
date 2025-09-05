@@ -21,6 +21,7 @@ const shouldEnable = !isDisabled && isProdOrDev && isCloud;
 console.log(`shouldEnableSentry: ${shouldEnable} (instrumentation)`);
 console.log(`isCloud: ${isCloud} (instrumentation)`);
 console.log(`isDisabled: ${isDisabled} (instrumentation)`);
+console.log(`AppEnv: ${getAppEnv()} (instrumentation)`);
 console.log(`isProdOrDev: ${isProdOrDev} (instrumentation)`);
 
 Sentry.init({
