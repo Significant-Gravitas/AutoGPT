@@ -5,10 +5,14 @@
 import { BehaveAs, getBehaveAs, getEnvironmentStr } from "@/lib/utils";
 import * as Sentry from "@sentry/nextjs";
 
-const shouldEnable =
-  (process.env.NODE_ENV === "production" ||
-    process.env.NODE_ENV === "development") &&
-  getBehaveAs() === BehaveAs.CLOUD;
+const isProdOrDev =
+  process.env.NODE_ENV === "production" ||
+  process.env.NODE_ENV === "development";
+
+const isCloud = getBehaveAs() === BehaveAs.CLOUD;
+const isDisabled = process.env.DISABLE_SENTRY === "true";
+
+const shouldEnable = !isDisabled && isProdOrDev && isCloud;
 
 Sentry.init({
   dsn: "https://fe4e4aa4a283391808a5da396da20159@o4505260022104064.ingest.us.sentry.io/4507946746380288",
