@@ -77,7 +77,7 @@ export function useRunDetailHeader(
     mutation: {
       onSuccess: async (res) => {
         toast({ title: "Run started" });
-        const newRunId = res?.status === 200 ? (res?.data?.id ?? "") : "";
+        const newRunId = res?.status === 200 ? (res?.data?.graph_exec_id ?? "") : "";
 
         await queryClient.invalidateQueries({
           queryKey:

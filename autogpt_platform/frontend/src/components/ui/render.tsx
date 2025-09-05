@@ -80,8 +80,9 @@ const ImageRenderer: React.FC<{ imageUrl: string }> = ({ imageUrl }) => {
           src={imageUrl}
           alt="Image"
           className="h-auto max-w-full"
-          width="100%"
-          height="auto"
+          width={800}
+          height={600}
+          style={{ width: '100%', height: 'auto' }}
         />
       </picture>
     </div>

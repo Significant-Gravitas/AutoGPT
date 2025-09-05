@@ -44,7 +44,7 @@ import {
 import { AgentRunDetailsView } from "./components/agent-run-details-view";
 import { AgentRunDraftView } from "./components/agent-run-draft-view";
 import { CreatePresetDialog } from "./components/create-preset-dialog";
-import { useAgentRunsInfinite, GraphExecutionMeta } from "../use-agent-runs";
+import { useAgentRunsInfinite, GraphExecutionMeta } from "./use-agent-runs";
 import { AgentRunsSelectorList } from "./components/agent-runs-selector-list";
 import { AgentScheduleDetailsView } from "./components/agent-schedule-details-view";
 

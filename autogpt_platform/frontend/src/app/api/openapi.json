@@ -1729,7 +1729,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/GraphExecutionMeta" }
+                "schema": {
+                  "$ref": "#/components/schemas/ExecuteGraphResponse"
+                }
               }
             }
           },
@@ -3922,7 +3924,11 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/GraphExecutionMeta" }
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Postv2Execute A Preset"
+                }
               }
             }
           },
@@ -5230,13 +5236,6 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Inputs"
-          },
-          "credential_inputs": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/CredentialsMetaInput"
-            },
-            "type": "object",
-            "title": "Credential Inputs"
           }
         },
         "type": "object",
@@ -5542,6 +5541,14 @@
         "type": "object",
         "required": ["url", "relevance_score"],
         "title": "Document"
+      },
+      "ExecuteGraphResponse": {
+        "properties": {
+          "graph_exec_id": { "type": "string", "title": "Graph Exec Id" }
+        },
+        "type": "object",
+        "required": ["graph_exec_id"],
+        "title": "ExecuteGraphResponse"
       },
       "Graph": {
         "properties": {
@@ -9593,10 +9600,7 @@
         "scheme": "bearer",
         "bearerFormat": "jwt"
       },
-<<<<<<< Updated upstream
-=======
       "HTTPBearer": { "type": "http", "scheme": "bearer" },
->>>>>>> Stashed changes
       "APIKeyAuthenticator-X-Postmark-Webhook-Token": {
         "type": "apiKey",
         "in": "header",
