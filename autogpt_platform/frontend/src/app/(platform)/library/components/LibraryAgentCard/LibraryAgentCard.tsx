@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
+import React from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
@@ -8,7 +9,7 @@ interface LibraryAgentCardProps {
   agent: LibraryAgent;
 }
 
-export default function LibraryAgentCard({
+const LibraryAgentCard = React.memo(function LibraryAgentCard({
   agent: {
     id,
     name,
@@ -103,4 +104,6 @@ export default function LibraryAgentCard({
       </div>
     </div>
   );
-}
+});
+
+export default LibraryAgentCard;

@@ -1,6 +1,6 @@
 "use client";
 
-import FlowEditor from "@/components/Flow";
+import FlowEditor from "@/components/FlowLazy";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 import LoadingBox from "@/components/ui/loading";
 import { GraphID } from "@/lib/autogpt-server-api/types";
