@@ -556,7 +556,9 @@ def prepare_pr_api_url(pr_url: str, path: str) -> str:
     pattern = r"^(?:https?://)?github\.com/([^/]+/[^/]+)/pull/(\d+)"
     match = re.match(pattern, pr_url)
     if not match:
-        raise ValueError(f"Invalid GitHub PR URL: {pr_url}. URL must be a valid pull request URL, e.g., https://github.com/owner/repo/pull/123")
+        raise ValueError(
+            f"Invalid GitHub PR URL: {pr_url}. URL must be a valid pull request URL, e.g., https://github.com/owner/repo/pull/123"
+        )
 
     repo_path, pr_number = match.groups()
     return f"{repo_path}/pulls/{pr_number}/{path}"
