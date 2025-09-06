@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "supabase.fullname" . }}-kong
+  labels:
+    app.kubernetes.io/name: {{ include "supabase.name" . }}-kong
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: kong
+spec:
+  replicas: {{ .Values.kong.replicas | default 1 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "supabase.name" . }}-kong
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "supabase.name" . }}-kong
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: kong
+    spec:
+      {{- with .Values.kong.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.kong.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: kong
+        image: "{{ .Values.kong.image.repository }}:{{ .Values.kong.image.tag }}"
+        imagePullPolicy: {{ .Values.kong.image.pullPolicy }}
+        ports:
+        - containerPort: 8000
+          name: proxy
+        - containerPort: 8443
+          name: proxy-ssl
+        env:
+        - name: KONG_DATABASE
+          value: "off"
+        - name: KONG_DECLARATIVE_CONFIG
+          value: /var/lib/kong/kong.yml
+        - name: KONG_DNS_ORDER
+          value: "LAST,A,CNAME"
+        - name: KONG_PLUGINS
+          value: "request-transformer,cors,key-auth,acl,basic-auth"
+        - name: KONG_NGINX_PROXY_PROXY_BUFFER_SIZE
+          value: "160k"
+        - name: KONG_NGINX_PROXY_PROXY_BUFFERS
+          value: "64 160k"
+        - name: SUPABASE_ANON_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.secret.jwt.secretRef }}
+              key: {{ .Values.secret.jwt.secretRefKey.anonKey }}
+        - name: SUPABASE_SERVICE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.secret.jwt.secretRef }}
+              key: {{ .Values.secret.jwt.secretRefKey.serviceKey }}
+        volumeMounts:
+        - name: kong-config
+          mountPath: /var/lib/kong
+        resources:
+          {{- toYaml .Values.kong.resources | nindent 12 }}
+      volumes:
+      - name: kong-config
+        configMap:
+          name: {{ include "supabase.fullname" . }}-kong-config

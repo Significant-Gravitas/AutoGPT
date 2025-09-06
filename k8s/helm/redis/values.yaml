@@ -1,0 +1,18 @@
+redis:
+  architecture: standalone
+  auth:
+    enabled: true
+    password: password
+  master:
+    persistence:
+      enabled: true
+      size: 3Gi
+    resources:
+      limits:
+        cpu: 2500m
+        memory: 5Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
+  replica:
+    replicaCount: 0

@@ -1,0 +1,23 @@
+{{- if and .Values.certManager (hasKey .Values.certManager "enabled") .Values.certManager.enabled }}
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-issuer
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "supabase.fullname" . }}-cert
+  namespace: {{ .Release.Namespace }}
+spec:
+  secretName: {{ include "supabase.fullname" . }}-tls-secret
+  issuerRef:
+    name: selfsigned-issuer
+    kind: ClusterIssuer
+  dnsNames:
+  - {{ .Values.domain }}
+  duration: 8760h  # 365 days
+  renewBefore: 720h  # 30 days before expiry
+{{- end }}
