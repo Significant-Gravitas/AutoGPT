@@ -1338,20 +1338,21 @@ packaging = ">=20"
 
 [[package]]
 name = "firecrawl-py"
-version = "2.16.3"
+version = "4.3.3"
 description = "Python SDK for Firecrawl API"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
 files = [
-    {file = "firecrawl_py-2.16.3-py3-none-any.whl", hash = "sha256:94bb46af5e0df6c8ec414ac999a5355c0f5a46f15fd1cf5a02a3b31062db0aa8"},
-    {file = "firecrawl_py-2.16.3.tar.gz", hash = "sha256:5fd063ef4acc4c4be62648f1e11467336bc127780b3afc28d39078a012e6a14c"},
+    {file = "firecrawl_py-4.3.3-py3-none-any.whl", hash = "sha256:95d1409d62e18707fd081f2806a7f9f077d3d3c67f38e75af3083e47019a37d5"},
+    {file = "firecrawl_py-4.3.3.tar.gz", hash = "sha256:35760e628810d2918718a24cc69de187beb2d38cf06b6be9d5a3c71246049199"},
 ]
 
 [package.dependencies]
 aiohttp = "*"
+httpx = "*"
 nest-asyncio = "*"
-pydantic = "*"
+pydantic = ">=2.0"
 python-dotenv = "*"
 requests = "*"
 websockets = "*"
@@ -7142,4 +7143,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "80d4dc2cbcd1ae33b2fa3920db5dcb1f82ad252d1e4a8bfeba8b2f2eebbdda0d"
+content-hash = "495ba239c5e2580b610beb57077ae82e835f15c5731d08ace0d10a38cb8e6851"
