@@ -64,6 +64,9 @@ class LibraryAgent(pydantic.BaseModel):
     # Indicates if this agent is the latest version
     is_latest_version: bool
 
+    # Recommended schedule cron (from marketplace agents)
+    recommended_schedule_cron: str | None = None
+
     @staticmethod
     def from_db(
         agent: prisma.models.LibraryAgent,
@@ -130,6 +133,7 @@ class LibraryAgent(pydantic.BaseModel):
             new_output=new_output,
             can_access_graph=can_access_graph,
             is_latest_version=is_latest_version,
+            recommended_schedule_cron=agent.AgentGraph.recommendedScheduleCron,
         )
 
 

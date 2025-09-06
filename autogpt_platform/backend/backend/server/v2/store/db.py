@@ -183,6 +183,13 @@ async def get_store_agent_details(
             store_listing.hasApprovedVersion if store_listing else False
         )
 
+        if store_listing and store_listing.ActiveVersion:
+            recommended_schedule_cron = (
+                store_listing.ActiveVersion.recommendedScheduleCron
+            )
+        else:
+            recommended_schedule_cron = None
+
         logger.debug(f"Found agent details for {username}/{agent_name}")
         return backend.server.v2.store.model.StoreAgentDetails(
             store_listing_version_id=agent.storeListingVersionId,
@@ -201,6 +208,7 @@ async def get_store_agent_details(
             last_updated=agent.updated_at,
             active_version_id=active_version_id,
             has_approved_version=has_approved_version,
+            recommended_schedule_cron=recommended_schedule_cron,
         )
     except backend.server.v2.store.exceptions.AgentNotFoundError:
         raise
@@ -562,6 +570,7 @@ async def create_store_submission(
     sub_heading: str = "",
     categories: list[str] = [],
     changes_summary: str | None = "Initial Submission",
+    recommended_schedule_cron: str | None = None,
 ) -> backend.server.v2.store.model.StoreSubmission:
     """
     Create the first (and only) store listing and thus submission as a normal user
@@ -655,6 +664,7 @@ async def create_store_submission(
                         submissionStatus=prisma.enums.SubmissionStatus.PENDING,
                         submittedAt=datetime.now(tz=timezone.utc),
                         changesSummary=changes_summary,
+                        recommendedScheduleCron=recommended_schedule_cron,
                     )
                 ]
             },
@@ -710,6 +720,7 @@ async def edit_store_submission(
     sub_heading: str = "",
     categories: list[str] = [],
     changes_summary: str | None = "Update submission",
+    recommended_schedule_cron: str | None = None,
 ) -> backend.server.v2.store.model.StoreSubmission:
     """
     Edit an existing store listing submission.
@@ -789,6 +800,7 @@ async def edit_store_submission(
                 sub_heading=sub_heading,
                 categories=categories,
                 changes_summary=changes_summary,
+                recommended_schedule_cron=recommended_schedule_cron,
             )
 
         # For PENDING submissions, we can update the existing version
@@ -804,6 +816,7 @@ async def edit_store_submission(
                     categories=categories,
                     subHeading=sub_heading,
                     changesSummary=changes_summary,
+                    recommendedScheduleCron=recommended_schedule_cron,
                 ),
             )
 
@@ -866,6 +879,7 @@ async def create_store_version(
     sub_heading: str = "",
     categories: list[str] = [],
     changes_summary: str | None = "Initial submission",
+    recommended_schedule_cron: str | None = None,
 ) -> backend.server.v2.store.model.StoreSubmission:
     """
     Create a new version for an existing store listing
@@ -935,6 +949,7 @@ async def create_store_version(
                 submissionStatus=prisma.enums.SubmissionStatus.PENDING,
                 submittedAt=datetime.now(),
                 changesSummary=changes_summary,
+                recommendedScheduleCron=recommended_schedule_cron,
                 storeListingId=store_listing_id,
             )
         )
@@ -1150,6 +1165,7 @@ async def get_my_agents(
                 last_edited=graph.updatedAt or graph.createdAt,
                 description=graph.description or "",
                 agent_image=library_agent.imageUrl,
+                recommended_schedule_cron=graph.recommendedScheduleCron,
             )
             for library_agent in library_agents
             if (graph := library_agent.AgentGraph)
@@ -1349,6 +1365,21 @@ async def review_store_submission(
                             store_listing_version.AgentGraph
                         )
                     ]
+                )
+
+                # Update the AgentGraph with store listing data
+                await prisma.models.AgentGraph.prisma().update(
+                    where={
+                        "graphVersionId": {
+                            "id": store_listing_version.agentGraphId,
+                            "version": store_listing_version.agentGraphVersion,
+                        }
+                    },
+                    data={
+                        "name": store_listing_version.name,
+                        "description": store_listing_version.description,
+                        "recommendedScheduleCron": store_listing_version.recommendedScheduleCron,
+                    },
                 )
 
                 await prisma.models.StoreListing.prisma(tx).update(

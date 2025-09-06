@@ -91,7 +91,12 @@ export function usePublishAgentModal({ targetState, onStateChange }: Props) {
   function handleNextFromSelect(
     agentId: string,
     agentVersion: number,
-    agentData: { name: string; description: string; imageSrc: string },
+    agentData: {
+      name: string;
+      description: string;
+      imageSrc: string;
+      recommendedScheduleCron: string | null;
+    },
   ) {
     setInitialData({
       ...emptyModalState,
@@ -100,6 +105,7 @@ export function usePublishAgentModal({ targetState, onStateChange }: Props) {
       description: agentData.description,
       thumbnailSrc: agentData.imageSrc,
       slug: agentData.name.replace(/ /g, "-"),
+      recommendedScheduleCron: agentData.recommendedScheduleCron || "",
     });
 
     updateState({
