@@ -39,6 +39,18 @@ def serialize_email_recipients(recipients: list[str]) -> str:
     return ", ".join(recipients)
 
 
+def deduplicate_email_addresses(addresses: list[str]) -> list[str]:
+    """Deduplicate email addresses while preserving order.
+
+    Args:
+        addresses: List of email addresses that may contain duplicates or None values
+
+    Returns:
+        List of unique email addresses with None values filtered out
+    """
+    return list(dict.fromkeys(filter(None, addresses)))
+
+
 def _make_mime_text(
     body: str,
     content_type: Optional[Literal["auto", "plain", "html"]] = None,
@@ -1263,11 +1275,8 @@ class GmailReplyBlock(GmailBase):
                 recipients += [
                     addr for _, addr in getaddresses([headers.get("cc", "")])
                 ]
-                dedup: list[str] = []
-                for r in recipients:
-                    if r and r not in dedup:
-                        dedup.append(r)
-                input_data.to = dedup
+                # Deduplicate recipients while preserving order
+                input_data.to = deduplicate_email_addresses(recipients)
             else:
                 sender = parseaddr(headers.get("reply-to", headers.get("from", "")))[1]
                 input_data.to = [sender] if sender else []
@@ -1315,6 +1324,224 @@ class GmailReplyBlock(GmailBase):
             .send(userId="me", body={"threadId": input_data.threadId, "raw": raw})
             .execute()
         )
+
+
+class GmailCreateDraftReplyBlock(GmailBase):
+    """
+    Creates draft replies to Gmail threads with intelligent content type detection.
+
+    Features:
+    - Automatic HTML detection: Draft replies containing HTML tags are formatted as text/html
+    - No hard-wrap for plain text: Plain text drafts preserve natural line flow
+    - Manual content type override: Use content_type parameter to force specific format
+    - Reply-all functionality: Option to draft reply to all original recipients
+    - Thread preservation: Maintains proper email threading with headers
+    - Full Unicode/emoji support with UTF-8 encoding
+    - Attachment support for multiple files
+    """
+
+    class Input(BlockSchema):
+        credentials: GoogleCredentialsInput = GoogleCredentialsField(
+            [
+                "https://www.googleapis.com/auth/gmail.modify",
+                "https://www.googleapis.com/auth/gmail.readonly",
+            ]
+        )
+        threadId: str = SchemaField(description="Thread ID to reply in")
+        parentMessageId: str = SchemaField(
+            description="ID of the message being replied to"
+        )
+        to: list[str] = SchemaField(description="To recipients", default_factory=list)
+        cc: list[str] = SchemaField(description="CC recipients", default_factory=list)
+        bcc: list[str] = SchemaField(description="BCC recipients", default_factory=list)
+        replyAll: bool = SchemaField(
+            description="Reply to all original recipients", default=False
+        )
+        subject: str = SchemaField(description="Email subject", default="")
+        body: str = SchemaField(description="Email body (plain text or HTML)")
+        content_type: Optional[Literal["auto", "plain", "html"]] = SchemaField(
+            description="Content type: 'auto' (default - detects HTML), 'plain', or 'html'",
+            default=None,
+            advanced=True,
+        )
+        attachments: list[MediaFileType] = SchemaField(
+            description="Files to attach", default_factory=list, advanced=True
+        )
+
+    class Output(BlockSchema):
+        draftId: str = SchemaField(description="Created draft ID")
+        messageId: str = SchemaField(description="Draft message ID")
+        threadId: str = SchemaField(description="Thread ID")
+        status: str = SchemaField(description="Draft creation status")
+        error: str = SchemaField(description="Error message if any")
+
+    def __init__(self):
+        super().__init__(
+            id="8f2e9d3c-4b1a-4c7e-9a2f-1d3e5f7a9b1c",
+            description="Create draft replies to Gmail threads with automatic HTML detection and proper text formatting. Drafts maintain proper email threading and can be edited before sending.",
+            categories={BlockCategory.COMMUNICATION},
+            input_schema=GmailCreateDraftReplyBlock.Input,
+            output_schema=GmailCreateDraftReplyBlock.Output,
+            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
+            test_input={
+                "threadId": "t1",
+                "parentMessageId": "m1",
+                "body": "Thanks for your message. I'll draft a response.",
+                "replyAll": False,
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                ("draftId", "draft1"),
+                ("messageId", "msg1"),
+                ("threadId", "t1"),
+                ("status", "draft_reply_created"),
+            ],
+            test_mock={
+                "_create_draft_reply": lambda *args, **kwargs: {
+                    "id": "draft1",
+                    "message": {"id": "msg1", "threadId": "t1"},
+                },
+            },
+        )
+
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GoogleCredentials,
+        graph_exec_id: str,
+        user_id: str,
+        **kwargs,
+    ) -> BlockOutput:
+        service = self._build_service(credentials, **kwargs)
+        result = await self._create_draft_reply(
+            service,
+            input_data,
+            graph_exec_id,
+            user_id,
+        )
+        yield "draftId", result["id"]
+        yield "messageId", result["message"]["id"]
+        yield "threadId", result["message"].get("threadId", input_data.threadId)
+        yield "status", "draft_reply_created"
+
+    async def _create_draft_reply(
+        self, service, input_data: Input, graph_exec_id: str, user_id: str
+    ) -> dict:
+        # Fetch parent message metadata
+        parent = await asyncio.to_thread(
+            lambda: service.users()
+            .messages()
+            .get(
+                userId="me",
+                id=input_data.parentMessageId,
+                format="metadata",
+                metadataHeaders=[
+                    "Subject",
+                    "References",
+                    "Message-ID",
+                    "From",
+                    "To",
+                    "Cc",
+                    "Reply-To",
+                ],
+            )
+            .execute()
+        )
+
+        headers = {
+            h["name"].lower(): h["value"]
+            for h in parent.get("payload", {}).get("headers", [])
+        }
+
+        # Auto-populate recipients if not provided
+        if not (input_data.to or input_data.cc or input_data.bcc):
+            if input_data.replyAll:
+                # Reply all - include all original recipients
+                recipients = [parseaddr(headers.get("from", ""))[1]]
+                recipients += [
+                    addr for _, addr in getaddresses([headers.get("to", "")])
+                ]
+                recipients += [
+                    addr for _, addr in getaddresses([headers.get("cc", "")])
+                ]
+                # Deduplicate recipients
+                dedup: list[str] = []
+                for r in recipients:
+                    if r and r not in dedup:
+                        dedup.append(r)
+                input_data.to = dedup
+            else:
+                # Reply to sender only
+                sender = parseaddr(headers.get("reply-to", headers.get("from", "")))[1]
+                input_data.to = [sender] if sender else []
+
+        # Generate subject with Re: prefix if needed
+        subject = input_data.subject or (f"Re: {headers.get('subject', '')}".strip())
+
+        # Build References header chain
+        references = headers.get("references", "").split()
+        if headers.get("message-id"):
+            references.append(headers["message-id"])
+
+        # Create MIME message with threading headers
+        msg = MIMEMultipart()
+        if input_data.to:
+            msg["To"] = ", ".join(input_data.to)
+        if input_data.cc:
+            msg["Cc"] = ", ".join(input_data.cc)
+        if input_data.bcc:
+            msg["Bcc"] = ", ".join(input_data.bcc)
+        msg["Subject"] = subject
+
+        # Set threading headers for proper conversation grouping
+        if headers.get("message-id"):
+            msg["In-Reply-To"] = headers["message-id"]
+        if references:
+            msg["References"] = " ".join(references)
+
+        # Add body with proper content type handling
+        msg.attach(_make_mime_text(input_data.body, input_data.content_type))
+
+        # Handle attachments if any
+        for attach in input_data.attachments:
+            local_path = await store_media_file(
+                user_id=user_id,
+                graph_exec_id=graph_exec_id,
+                file=attach,
+                return_content=False,
+            )
+            abs_path = get_exec_file_path(graph_exec_id, local_path)
+            part = MIMEBase("application", "octet-stream")
+            with open(abs_path, "rb") as f:
+                part.set_payload(f.read())
+            encoders.encode_base64(part)
+            part.add_header(
+                "Content-Disposition", f"attachment; filename={Path(abs_path).name}"
+            )
+            msg.attach(part)
+
+        # Encode message for Gmail API
+        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
+
+        # Create draft with threadId to ensure it appears as a reply
+        draft = await asyncio.to_thread(
+            lambda: service.users()
+            .drafts()
+            .create(
+                userId="me",
+                body={
+                    "message": {
+                        "threadId": input_data.threadId,
+                        "raw": raw,
+                    }
+                },
+            )
+            .execute()
+        )
+
+        return draft
 
 
 class GmailGetProfileBlock(GmailBase):
