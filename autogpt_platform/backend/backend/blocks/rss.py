@@ -1,4 +1,7 @@
 import asyncio
+import logging
+import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -101,7 +104,38 @@ class ReadRSSFeedBlock(Block):
 
     @staticmethod
     def parse_feed(url: str) -> dict[str, Any]:
-        return feedparser.parse(url)  # type: ignore
+        # Security fix: Add protection against memory exhaustion attacks
+        MAX_FEED_SIZE = 10 * 1024 * 1024  # 10MB limit for RSS feeds
+
+        # Validate URL
+        parsed_url = urllib.parse.urlparse(url)
+        if parsed_url.scheme not in ("http", "https"):
+            raise ValueError(f"Invalid URL scheme: {parsed_url.scheme}")
+
+        # Download with size limit
+        try:
+            with urllib.request.urlopen(url, timeout=30) as response:
+                # Check content length if available
+                content_length = response.headers.get("Content-Length")
+                if content_length and int(content_length) > MAX_FEED_SIZE:
+                    raise ValueError(
+                        f"Feed too large: {content_length} bytes exceeds {MAX_FEED_SIZE} limit"
+                    )
+
+                # Read with size limit
+                content = response.read(MAX_FEED_SIZE + 1)
+                if len(content) > MAX_FEED_SIZE:
+                    raise ValueError(
+                        f"Feed too large: exceeds {MAX_FEED_SIZE} byte limit"
+                    )
+
+                # Parse with feedparser using the validated content
+                # feedparser has built-in protection against XML attacks
+                return feedparser.parse(content)  # type: ignore
+        except Exception as e:
+            # Log error and return empty feed
+            logging.warning(f"Failed to parse RSS feed from {url}: {e}")
+            return {"entries": []}
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         keep_going = True

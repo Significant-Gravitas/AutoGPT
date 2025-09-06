@@ -4,6 +4,7 @@ import logging
 import os
 import socket
 import sys
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from pydantic import Field, field_validator
@@ -139,8 +140,13 @@ def configure_logging(force_cloud_logging: bool = False) -> None:
         print(f"Log directory: {config.log_dir}")
 
         # Activity log handler (INFO and above)
-        activity_log_handler = logging.FileHandler(
-            config.log_dir / LOG_FILE, "a", "utf-8"
+        # Security fix: Use RotatingFileHandler with size limits to prevent disk exhaustion
+        activity_log_handler = RotatingFileHandler(
+            config.log_dir / LOG_FILE,
+            mode="a",
+            encoding="utf-8",
+            maxBytes=10 * 1024 * 1024,  # 10MB per file
+            backupCount=3,  # Keep 3 backup files (40MB total)
         )
         activity_log_handler.setLevel(config.level)
         activity_log_handler.setFormatter(
@@ -150,8 +156,13 @@ def configure_logging(force_cloud_logging: bool = False) -> None:
 
         if config.level == logging.DEBUG:
             # Debug log handler (all levels)
-            debug_log_handler = logging.FileHandler(
-                config.log_dir / DEBUG_LOG_FILE, "a", "utf-8"
+            # Security fix: Use RotatingFileHandler with size limits
+            debug_log_handler = RotatingFileHandler(
+                config.log_dir / DEBUG_LOG_FILE,
+                mode="a",
+                encoding="utf-8",
+                maxBytes=10 * 1024 * 1024,  # 10MB per file
+                backupCount=3,  # Keep 3 backup files (40MB total)
             )
             debug_log_handler.setLevel(logging.DEBUG)
             debug_log_handler.setFormatter(
@@ -160,8 +171,13 @@ def configure_logging(force_cloud_logging: bool = False) -> None:
             log_handlers.append(debug_log_handler)
 
         # Error log handler (ERROR and above)
-        error_log_handler = logging.FileHandler(
-            config.log_dir / ERROR_LOG_FILE, "a", "utf-8"
+        # Security fix: Use RotatingFileHandler with size limits
+        error_log_handler = RotatingFileHandler(
+            config.log_dir / ERROR_LOG_FILE,
+            mode="a",
+            encoding="utf-8",
+            maxBytes=10 * 1024 * 1024,  # 10MB per file
+            backupCount=3,  # Keep 3 backup files (40MB total)
         )
         error_log_handler.setLevel(logging.ERROR)
         error_log_handler.setFormatter(AGPTFormatter(DEBUG_LOG_FORMAT, no_color=True))
