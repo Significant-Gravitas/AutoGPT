@@ -5879,6 +5879,7 @@
             "type": "boolean",
             "title": "Is Latest Version"
           },
+          "is_favorite": { "type": "boolean", "title": "Is Favorite" },
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
@@ -5902,7 +5903,8 @@
           "has_external_trigger",
           "new_output",
           "can_access_graph",
-          "is_latest_version"
+          "is_latest_version",
+          "is_favorite"
         ],
         "title": "LibraryAgent",
         "description": "Represents an agent in the library, including metadata for display and\nuser interaction within the system."
