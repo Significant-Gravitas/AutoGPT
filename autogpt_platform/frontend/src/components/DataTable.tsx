@@ -1,6 +1,6 @@
 import { beautifyString } from "@/lib/utils";
-import { Clipboard } from "lucide-react";
-import React from "react";
+import { Clipboard, Maximize2 } from "lucide-react";
+import React, { useState } from "react";
 import { Button } from "./ui/button";
 import { ContentRenderer } from "./ui/render";
 import {
@@ -12,6 +12,7 @@ import {
   TableRow,
 } from "./ui/table";
 import { useToast } from "./molecules/Toast/use-toast";
+import ExpandableOutputDialog from "./ExpandableOutputDialog";
 
 type DataTableProps = {
   title?: string;
@@ -25,6 +26,12 @@ export default function DataTable({
   data,
 }: DataTableProps) {
   const { toast } = useToast();
+  const [expandedDialog, setExpandedDialog] = useState<{
+    isOpen: boolean;
+    execId: string;
+    pinName: string;
+    data: any[];
+  } | null>(null);
 
   const copyData = (pin: string, data: string) => {
     navigator.clipboard.writeText(data).then(() => {
@@ -33,6 +40,19 @@ export default function DataTable({
         duration: 2000,
       });
     });
+  };
+
+  const openExpandedView = (pinName: string, pinData: any[]) => {
+    setExpandedDialog({
+      isOpen: true,
+      execId: title || "Unknown Execution",
+      pinName,
+      data: pinData,
+    });
+  };
+
+  const closeExpandedView = () => {
+    setExpandedDialog(null);
   };
 
   return (
@@ -53,26 +73,35 @@ export default function DataTable({
               </TableCell>
               <TableCell className="cursor-text">
                 <div className="flex min-h-9 items-center whitespace-pre-wrap">
-                  <Button
-                    className="absolute right-1 top-auto m-1 hidden p-2 group-hover:block"
-                    variant="outline"
-                    size="icon"
-                    onClick={() =>
-                      copyData(
-                        beautifyString(key),
-                        value
-                          .map((i) =>
-                            typeof i === "object"
-                              ? JSON.stringify(i, null, 2)
-                              : String(i),
-                          )
-                          .join(", "),
-                      )
-                    }
-                    title="Copy Data"
-                  >
-                    <Clipboard size={18} />
-                  </Button>
+                  <div className="absolute right-1 top-auto m-1 hidden gap-1 group-hover:flex">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => openExpandedView(key, value)}
+                      title="Expand Full View"
+                    >
+                      <Maximize2 size={18} />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() =>
+                        copyData(
+                          beautifyString(key),
+                          value
+                            .map((i) =>
+                              typeof i === "object"
+                                ? JSON.stringify(i, null, 2)
+                                : String(i),
+                            )
+                            .join(", "),
+                        )
+                      }
+                      title="Copy Data"
+                    >
+                      <Clipboard size={18} />
+                    </Button>
+                  </div>
                   {value.map((item, index) => (
                     <React.Fragment key={index}>
                       <ContentRenderer
@@ -88,6 +117,16 @@ export default function DataTable({
           ))}
         </TableBody>
       </Table>
+
+      {expandedDialog && (
+        <ExpandableOutputDialog
+          isOpen={expandedDialog.isOpen}
+          onClose={closeExpandedView}
+          execId={expandedDialog.execId}
+          pinName={expandedDialog.pinName}
+          data={expandedDialog.data}
+        />
+      )}
     </>
   );
 }
