@@ -53,6 +53,7 @@ import { LocalValuedInput } from "./ui/input";
 import NodeHandle from "./NodeHandle";
 import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
 import { Switch } from "./atoms/Switch/Switch";
+import { NodeTableInput } from "./node-table-input";
 
 type NodeObjectInputTreeProps = {
   nodeId: string;
@@ -103,6 +104,7 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
               handleInputChange={handleInputChange}
               handleInputClick={handleInputClick}
               displayName={propSchema.title || beautifyString(propKey)}
+              parentContext={object}
             />
           </div>
         );
@@ -312,6 +314,7 @@ export const NodeGenericInputField: FC<{
   handleInputClick: NodeObjectInputTreeProps["handleInputClick"];
   className?: string;
   displayName?: string;
+  parentContext?: { [key: string]: any };
 }> = ({
   nodeId,
   propKey,
@@ -323,6 +326,7 @@ export const NodeGenericInputField: FC<{
   handleInputClick,
   className,
   displayName,
+  parentContext,
 }) => {
   className = cn(className);
   displayName ||= propSchema.title || beautifyString(propKey);
@@ -477,6 +481,7 @@ export const NodeGenericInputField: FC<{
           connections={connections}
           handleInputChange={handleInputChange}
           handleInputClick={handleInputClick}
+          parentContext={parentContext}
         />
       );
 
@@ -891,6 +896,7 @@ const NodeArrayInput: FC<{
   handleInputClick: NodeObjectInputTreeProps["handleInputClick"];
   className?: string;
   displayName?: string;
+  parentContext?: { [key: string]: any };
 }> = ({
   nodeId,
   selfKey,
@@ -902,6 +908,7 @@ const NodeArrayInput: FC<{
   handleInputClick,
   className,
   displayName,
+  parentContext,
 }) => {
   entries ??= schema.default;
   if (!entries || !Array.isArray(entries)) entries = [];
@@ -920,6 +927,29 @@ const NodeArrayInput: FC<{
   const isItemObject = "items" in schema && "properties" in schema.items!;
   const error =
     typeof errors[selfKey] === "string" ? errors[selfKey] : undefined;
+
+  // Check if we should render as a table - when the parent has a 'headers' field
+  // and this is the 'value' field of a table input block
+  const isTableInput = selfKey === "value" && parentContext?.headers && Array.isArray(parentContext.headers) && isItemObject;
+  
+  if (isTableInput) {
+    // Render as table
+    return (
+      <NodeTableInput
+        nodeId={nodeId}
+        selfKey={selfKey}
+        schema={schema}
+        headers={parentContext.headers}
+        rows={entries as any[]}
+        errors={errors}
+        connections={connections}
+        handleInputChange={handleInputChange}
+        handleInputClick={handleInputClick}
+        className={className}
+        displayName={displayName}
+      />
+    );
+  }
   return (
     <div className={cn(className, "flex flex-col")}>
       {entries.map((entry: any, index: number) => {
