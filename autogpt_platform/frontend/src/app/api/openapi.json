@@ -4759,7 +4759,7 @@
           "name": { "type": "string", "title": "Name" },
           "total_blocks": { "type": "integer", "title": "Total Blocks" },
           "blocks": {
-            "items": { "additionalProperties": true, "type": "object" },
+            "items": { "$ref": "#/components/schemas/BlockInfo" },
             "type": "array",
             "title": "Blocks"
           }
@@ -4768,10 +4768,80 @@
         "required": ["name", "total_blocks", "blocks"],
         "title": "BlockCategoryResponse"
       },
+      "BlockCost": {
+        "properties": {
+          "cost_amount": { "type": "integer", "title": "Cost Amount" },
+          "cost_filter": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Cost Filter"
+          },
+          "cost_type": { "$ref": "#/components/schemas/BlockCostType" }
+        },
+        "type": "object",
+        "required": ["cost_amount", "cost_filter", "cost_type"],
+        "title": "BlockCost"
+      },
+      "BlockCostType": {
+        "type": "string",
+        "enum": ["run", "byte", "second"],
+        "title": "BlockCostType"
+      },
+      "BlockInfo": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "inputSchema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Inputschema"
+          },
+          "outputSchema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Outputschema"
+          },
+          "costs": {
+            "items": { "$ref": "#/components/schemas/BlockCost" },
+            "type": "array",
+            "title": "Costs"
+          },
+          "description": { "type": "string", "title": "Description" },
+          "categories": {
+            "items": {
+              "additionalProperties": { "type": "string" },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Categories"
+          },
+          "contributors": {
+            "items": { "additionalProperties": true, "type": "object" },
+            "type": "array",
+            "title": "Contributors"
+          },
+          "staticOutput": { "type": "boolean", "title": "Staticoutput" },
+          "uiType": { "type": "string", "title": "Uitype" }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "inputSchema",
+          "outputSchema",
+          "costs",
+          "description",
+          "categories",
+          "contributors",
+          "staticOutput",
+          "uiType"
+        ],
+        "title": "BlockInfo"
+      },
       "BlockResponse": {
         "properties": {
           "blocks": {
-            "items": { "additionalProperties": true, "type": "object" },
+            "items": { "$ref": "#/components/schemas/BlockInfo" },
             "type": "array",
             "title": "Blocks"
           },
@@ -7039,7 +7109,7 @@
           "items": {
             "items": {
               "anyOf": [
-                { "additionalProperties": true, "type": "object" },
+                { "$ref": "#/components/schemas/BlockInfo" },
                 { "$ref": "#/components/schemas/LibraryAgent" },
                 { "$ref": "#/components/schemas/StoreAgent" }
               ]
@@ -7528,7 +7598,7 @@
             "title": "Providers"
           },
           "top_blocks": {
-            "items": { "additionalProperties": true, "type": "object" },
+            "items": { "$ref": "#/components/schemas/BlockInfo" },
             "type": "array",
             "title": "Top Blocks"
           }
