@@ -1,0 +1,16 @@
+[
+  {
+    "name": "AI",
+    "total_blocks": 2,
+    "blocks": [
+      {
+        "id": "block1",
+        "name": "Block 1"
+      },
+      {
+        "id": "block2",
+        "name": "Block 2"
+      }
+    ]
+  }
+]
