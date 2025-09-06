@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import {
   TabsLine,
   TabsLineList,
@@ -23,12 +23,17 @@ interface RunsSidebarProps {
   agent: LibraryAgent;
   selectedRunId?: string;
   onSelectRun: (id: string) => void;
+  onCountsChange?: (info: {
+    runsCount: number;
+    schedulesCount: number;
+  }) => void;
 }
 
 export function RunsSidebar({
   agent,
   selectedRunId,
   onSelectRun,
+  onCountsChange,
 }: RunsSidebarProps) {
   const {
     runs,
@@ -43,6 +48,10 @@ export function RunsSidebar({
     tabValue,
     setTabValue,
   } = useRunsSidebar({ graphId: agent.graph_id, onSelectRun });
+
+  useEffect(() => {
+    if (onCountsChange) onCountsChange({ runsCount, schedulesCount });
+  }, [runsCount, schedulesCount, onCountsChange]);
 
   if (error) {
     return <ErrorCard responseError={error} />;
