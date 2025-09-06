@@ -19,7 +19,7 @@ RUN if [ -f .env ]; then \
     fi
 RUN pnpm run generate:api
 # In CI, we want NEXT_PUBLIC_PW_TEST=true during build so Next.js inlines it
-RUN if [ "$NEXT_PUBLIC_PW_TEST" = "true" ]; then NEXT_PUBLIC_PW_TEST=true pnpm build; else pnpm build; fi
+RUN if [ "$NEXT_PUBLIC_PW_TEST" = "true" ]; then NEXT_PUBLIC_PW_TEST=true NODE_OPTIONS="--max-old-space-size=4096" pnpm build; else NODE_OPTIONS="--max-old-space-size=4096" pnpm build; fi
 
 # Prod stage - based on NextJS reference Dockerfile https://github.com/vercel/next.js/blob/64271354533ed16da51be5dce85f0dbd15f17517/examples/with-docker/Dockerfile
 FROM node:21-alpine AS prod
