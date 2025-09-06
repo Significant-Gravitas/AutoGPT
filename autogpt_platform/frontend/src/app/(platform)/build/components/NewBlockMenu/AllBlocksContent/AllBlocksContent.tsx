@@ -2,7 +2,6 @@ import React, { Fragment } from "react";
 import { Block } from "../Block";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
 import { beautifyString } from "@/lib/utils";
 import { scrollbarStyles } from "@/components/styles/scrollbar";
 import { useAllBlockContent } from "./useAllBlockContent";
@@ -76,6 +75,17 @@ export const AllBlocksContent = () => {
                     ))}
                   </>
                 )}
+
+                {
+                  !isErrorOnLoadingMore && (
+                    <ErrorCard
+                      isSuccess={false}
+                      responseError={{ message: "Error loading blocks" }}
+                      context="blocks"
+                      onRetry={() => handleRefetchBlocks(category.name)}
+                    />
+                  )
+                }
 
                 {category.total_blocks > category.blocks.length && (
                   <Button

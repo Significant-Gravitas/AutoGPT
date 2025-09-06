@@ -7,7 +7,7 @@ import { useState } from "react";
 export const useAllBlockContent = () => {
 
     const [loadingCategories, setLoadingCategories] = useState<Set<string>>(new Set());
-    const [isErrorOnLoadingMore, setIsErrorOnLoadingMore] = useState(false);
+    const [errorLoadingCategories, setErrorLoadingCategories] = useState<Set<string>>(new Set());
   
     const {data, isLoading, isError, error} = useGetV2GetBuilderBlockCategories(undefined,{
     query: {
@@ -22,6 +22,13 @@ export const useAllBlockContent = () => {
 
     try {
         setLoadingCategories(prev => new Set(prev).add(targetCategory));
+        
+        // Clear any previous error for this category
+        setErrorLoadingCategories(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(targetCategory);
+            return newSet;
+        });
         const response = await getV2GetBuilderBlocks({ category: targetCategory });
         await new Promise((resolve) => setTimeout(resolve, 3000));
         const result = response.data as BlockResponse;
@@ -49,7 +56,7 @@ export const useAllBlockContent = () => {
             })
         }
     } catch (error) {
-        setIsErrorOnLoadingMore(true);
+        setErrorLoadingCategories(prev => new Set(prev).add(targetCategory));
     } finally {
         setLoadingCategories(prev => {
             const newSet = new Set(prev);
@@ -61,6 +68,7 @@ export const useAllBlockContent = () => {
   }
 
   const isLoadingMore = (categoryName: string) => loadingCategories.has(categoryName);
+  const isErrorOnLoadingMore = (categoryName: string) => errorLoadingCategories.has(categoryName);
 
 
   return {data, isLoading, isError, error, handleRefetchBlocks, isLoadingMore, isErrorOnLoadingMore};

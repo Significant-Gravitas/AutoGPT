@@ -41,6 +41,13 @@ export default defineConfig({
               useInfiniteQueryParam: "page",
             },
           },
+          "getV2Get builder blocks": {
+            query: {
+              useInfinite: true,
+              useInfiniteQueryParam: "page",
+              useQuery: true,
+            },
+          },
         },
       },
     },
