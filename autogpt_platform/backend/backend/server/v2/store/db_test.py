@@ -90,6 +90,8 @@ async def test_get_store_agent_details(mocker):
     mock_store_listing = mocker.MagicMock()
     mock_store_listing.activeVersionId = "active-version-id"
     mock_store_listing.hasApprovedVersion = True
+    mock_store_listing.ActiveVersion = mocker.MagicMock()
+    mock_store_listing.ActiveVersion.recommendedScheduleCron = None
 
     # Mock StoreAgent prisma call
     mock_store_agent = mocker.patch("prisma.models.StoreAgent.prisma")

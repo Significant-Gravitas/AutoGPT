@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import { Text } from "../../../../atoms/Text/Text";
 import { Button } from "../../../../atoms/Button/Button";
 import { StepHeader } from "../StepHeader";
@@ -15,7 +16,12 @@ interface Props {
   onNext: (
     agentId: string,
     agentVersion: number,
-    agentData: { name: string; description: string; imageSrc: string },
+    agentData: {
+      name: string;
+      description: string;
+      imageSrc: string;
+      recommendedScheduleCron: string | null;
+    },
   ) => void;
   onOpenBuilder: () => void;
 }
@@ -147,11 +153,12 @@ export function AgentSelectStep({
                       aria-pressed={selectedAgentId === agent.id}
                     >
                       <div className="relative h-32 bg-zinc-400 sm:h-40">
-                        <img
+                        <Image
                           src={agent.imageSrc}
                           alt={agent.name}
-                          className="h-full w-full object-cover"
-                          loading="lazy"
+                          className="object-cover"
+                          fill
+                          sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, 33vw"
                         />
                       </div>
                       <div className="flex flex-col gap-2 p-3">

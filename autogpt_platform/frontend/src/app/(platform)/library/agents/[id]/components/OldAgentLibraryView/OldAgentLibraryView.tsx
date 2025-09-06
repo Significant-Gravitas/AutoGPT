@@ -309,7 +309,7 @@ export function OldAgentLibraryView() {
     const newSelectedRun = agentRuns.find((run) => run.id == selectedView.id);
     if (selectedView.id !== selectedRun?.id) {
       // Pull partial data from "cache" while waiting for the rest to load
-      setSelectedRun(newSelectedRun ?? null);
+      setSelectedRun((newSelectedRun as GraphExecutionMeta) ?? null);
     }
   }, [api, selectedView, agentRuns, selectedRun?.id]);
 
@@ -558,6 +558,7 @@ export function OldAgentLibraryView() {
             onCreateSchedule={onCreateSchedule}
             onCreatePreset={onCreatePreset}
             agentActions={agentActions}
+            recommendedScheduleCron={agent?.recommended_schedule_cron || null}
           />
         ) : selectedView.type == "preset" ? (
           /* Edit & update presets */
@@ -567,6 +568,7 @@ export function OldAgentLibraryView() {
               agentPresets.find((preset) => preset.id == selectedView.id)!
             }
             onRun={selectRun}
+            recommendedScheduleCron={agent?.recommended_schedule_cron || null}
             onCreateSchedule={onCreateSchedule}
             onUpdatePreset={onUpdatePreset}
             doDeletePreset={setConfirmingDeleteAgentPreset}
