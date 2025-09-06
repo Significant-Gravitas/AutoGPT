@@ -8,6 +8,8 @@ import { GraphExecutionsPaginated } from "@/app/api/__generated__/models/graphEx
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { useSearchParams } from "next/navigation";
 
+const AGENT_RUNNING_POLL_INTERVAL = 1500;
+
 type Args = {
   graphId?: string;
   onSelectRun: (runId: string) => void;
@@ -40,7 +42,7 @@ export function useRunsSidebar({ graphId, onSelectRun }: Args) {
               (e: { status?: string }) =>
                 e.status === "RUNNING" || e.status === "QUEUED",
             );
-            return hasActive ? 3000 : false;
+            return hasActive ? AGENT_RUNNING_POLL_INTERVAL : false;
           } catch {
             return false;
           }
