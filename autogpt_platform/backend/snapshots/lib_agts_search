@@ -28,7 +28,8 @@
       "new_output": false,
       "can_access_graph": true,
       "is_latest_version": true,
-      "is_favorite": false
+      "is_favorite": false,
+      "recommended_schedule_cron": null
     },
     {
       "id": "test-agent-2",
@@ -58,7 +59,8 @@
       "new_output": false,
       "can_access_graph": false,
       "is_latest_version": true,
-      "is_favorite": false
+      "is_favorite": false,
+      "recommended_schedule_cron": null
     }
   ],
   "pagination": {

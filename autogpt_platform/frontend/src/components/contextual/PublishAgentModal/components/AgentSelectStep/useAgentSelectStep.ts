@@ -8,6 +8,7 @@ export interface Agent {
   lastEdited: string;
   imageSrc: string;
   description: string;
+  recommendedScheduleCron: string | null;
 }
 
 interface UseAgentSelectStepProps {
@@ -15,7 +16,12 @@ interface UseAgentSelectStepProps {
   onNext: (
     agentId: string,
     agentVersion: number,
-    agentData: { name: string; description: string; imageSrc: string },
+    agentData: {
+      name: string;
+      description: string;
+      imageSrc: string;
+      recommendedScheduleCron: string | null;
+    },
   ) => void;
 }
 
@@ -43,6 +49,7 @@ export function useAgentSelectStep({
             lastEdited: agent.last_edited.toLocaleDateString(),
             imageSrc: agent.agent_image || "https://picsum.photos/300/200",
             description: agent.description || "",
+            recommendedScheduleCron: agent.recommended_schedule_cron ?? null,
           }),
         )
         .sort(
@@ -71,6 +78,7 @@ export function useAgentSelectStep({
           name: selectedAgent.name,
           description: selectedAgent.description,
           imageSrc: selectedAgent.imageSrc,
+          recommendedScheduleCron: selectedAgent.recommendedScheduleCron,
         });
       }
     }

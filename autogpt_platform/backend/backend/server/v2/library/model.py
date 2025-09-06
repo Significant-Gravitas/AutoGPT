@@ -66,6 +66,9 @@ class LibraryAgent(pydantic.BaseModel):
 
     # Whether the agent is marked as favorite by the user
     is_favorite: bool
+ 
+    # Recommended schedule cron (from marketplace agents)
+    recommended_schedule_cron: str | None = None
 
     @staticmethod
     def from_db(
@@ -134,6 +137,7 @@ class LibraryAgent(pydantic.BaseModel):
             can_access_graph=can_access_graph,
             is_latest_version=is_latest_version,
             is_favorite=agent.isFavorite,
+            recommended_schedule_cron=agent.AgentGraph.recommendedScheduleCron,
         )
 
 
