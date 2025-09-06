@@ -18,7 +18,7 @@ export function ActionButtons({
   context,
 }: ActionButtonsProps) {
   return (
-    <div className="flex flex-col gap-3 pt-2 sm:flex-row">
+    <div className="flex flex-col flex-wrap gap-3 pt-2 sm:flex-row">
       {onRetry && (
         <Button onClick={onRetry} variant="outline" size="small">
           <ArrowClockwise size={16} weight="bold" />

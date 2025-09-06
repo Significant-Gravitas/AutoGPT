@@ -19,21 +19,19 @@ export function MobileNavbarMenuItem({
   onClick,
 }: Props) {
   const content = (
-    <div className="inline-flex w-full items-center justify-start gap-4 hover:rounded hover:bg-[#e0e0e0] dark:hover:bg-[#3a3a3a]">
+    <div className="inline-flex w-full items-center justify-start gap-4 hover:rounded hover:bg-[#e0e0e0]">
       {getAccountMenuOptionIcon(icon)}
       <div className="relative">
         <div
           className={cn(
             "font-sans text-base font-normal leading-7",
-            isActive
-              ? "font-semibold text-[#272727] dark:text-[#ffffff]"
-              : "text-[#474747] dark:text-[#cfcfcf]",
+            isActive ? "font-semibold text-[#272727]" : "text-[#474747]",
           )}
         >
           {text}
         </div>
         {isActive && (
-          <div className="absolute bottom-[-4px] left-0 h-[2px] w-full bg-[#272727] dark:bg-[#ffffff]"></div>
+          <div className="absolute bottom-[-4px] left-0 h-[2px] w-full bg-[#272727]"></div>
         )}
       </div>
     </div>
