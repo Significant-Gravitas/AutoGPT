@@ -1,0 +1,117 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autogpt-server
+  namespace: autogpt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: autogpt-server
+  template:
+    metadata:
+      labels:
+        app: autogpt-server
+    spec:
+      containers:
+      - name: autogpt-server
+        image: us-central1-docker.pkg.dev/agpt-dev/autogpt/autogpt-server:latest
+        ports:
+        - containerPort: 8006
+          name: http
+        env:
+        - name: DATABASE_URL
+          value: "postgresql://postgres:your-super-secret-and-long-postgres-password@supabase-postgresql:5432/postgres?schema=platform"
+        - name: PORT
+          value: "8006"
+        - name: RABBITMQ_HOST
+          value: "rabbitmq.autogpt.svc.cluster.local"
+        - name: RABBITMQ_PORT
+          value: "5672"
+        - name: RABBITMQ_DEFAULT_USER
+          value: "autogpt"
+        - name: RABBITMQ_DEFAULT_PASS
+          value: "oBpLPVBQflJf5tCG"
+        - name: REDIS_HOST
+          value: "redis-master.autogpt.svc.cluster.local"
+        - name: REDIS_PORT
+          value: "6379"
+        - name: REDIS_PASSWORD
+          value: "autogpt-redis-password"
+        command:
+        - poetry
+        - run
+        - app
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: autogpt-server
+  namespace: autogpt
+spec:
+  selector:
+    app: autogpt-server
+  ports:
+  - port: 80
+    targetPort: 8006
+    protocol: TCP
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autogpt-server-executor
+  namespace: autogpt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: autogpt-server-executor
+  template:
+    metadata:
+      labels:
+        app: autogpt-server-executor
+    spec:
+      containers:
+      - name: autogpt-server-executor
+        image: us-central1-docker.pkg.dev/agpt-dev/autogpt/autogpt-server:latest
+        ports:
+        - containerPort: 8002
+          name: executor
+        env:
+        - name: DATABASE_URL
+          value: "postgresql://postgres:your-super-secret-and-long-postgres-password@supabase-postgresql:5432/postgres?schema=platform"
+        - name: PORT
+          value: "8002"
+        - name: RABBITMQ_HOST
+          value: "rabbitmq.autogpt.svc.cluster.local"
+        - name: RABBITMQ_PORT
+          value: "5672"
+        - name: RABBITMQ_DEFAULT_USER
+          value: "autogpt"
+        - name: RABBITMQ_DEFAULT_PASS
+          value: "oBpLPVBQflJf5tCG"
+        - name: REDIS_HOST
+          value: "redis-master.autogpt.svc.cluster.local"
+        - name: REDIS_PORT
+          value: "6379"
+        - name: REDIS_PASSWORD
+          value: "autogpt-redis-password"
+        command:
+        - poetry
+        - run
+        - exec
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: autogpt-server-executor
+  namespace: autogpt
+spec:
+  selector:
+    app: autogpt-server-executor
+  ports:
+  - port: 8002
+    targetPort: 8002
+    protocol: TCP
+  type: ClusterIP

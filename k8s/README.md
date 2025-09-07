@@ -1,206 +1,195 @@
 # AutoGPT Platform - Kubernetes Deployment Guide
 
-Deploy the complete AutoGPT Platform on Google Cloud Platform using Kubernetes.
+Deploy the complete AutoGPT Platform on Kubernetes using streamlined YAML configurations and environment variables.
 
 ## 🚀 Prerequisites
 
-- **GCP Account** with billing enabled and project created
+- **Kubernetes cluster** (GKE, EKS, local minikube, etc.)
 - **AutoGPT source code** cloned locally  
-- **gcloud CLI** installed and authenticated (`gcloud auth login`)
-- **kubectl** (v1.24+)
-- **Helm** (v3.8+)
+- **kubectl** (v1.24+) configured for your cluster
 - **Docker** (for building images)
-- **Terraform** (for GCP infrastructure)
+- **envsubst** (usually included with `gettext` package)
 
-## 📋 Deployment Process
+## 📋 Quick Start
 
-### Step 1: Setup GCP Infrastructure with Terraform
+### Step 1: Configure Environment Variables
+
+Copy and customize the environment configuration:
 
 ```bash
-# Navigate to Terraform directory
-cd terraform/gcp
+# Copy example configuration
+cp configs/.env.example configs/.env
 
-# Initialize and apply Terraform
-terraform init
-terraform plan
-terraform apply
-
-# Connect to created GKE cluster
-gcloud container clusters get-credentials autogpt-cluster --zone us-central1-a --project [YOUR_PROJECT_ID]
-
-# Create namespace
-kubectl create namespace autogpt
+# Edit configuration (IMPORTANT: Change passwords and secrets!)
+vim configs/.env
 ```
 
-### Step 2: Build Docker Images
+Key variables to customize:
+- `POSTGRES_PASSWORD`: Strong database password
+- `JWT_SECRET`: 32+ character secret for JWT tokens
+- `ANON_KEY`, `SERVICE_ROLE_KEY`: Supabase authentication keys
+- `REGISTRY_TYPE`: `gcr` for Google Cloud, `local` for local images
+- `GCP_PROJECT_ID`, `GCP_REGION`: For GCR registry
+- `AUTOGPT_SOURCE_DIR`: Path to your AutoGPT source code
+- `NAMESPACE`: Kubernetes namespace (default: `autogpt`)
 
-Choose your container registry based on your cloud provider:
+### Step 2: Build Images (Optional)
 
-#### Option A: Google Cloud Artifact Registry (GCP)
 ```bash
-# Setup for Google Cloud
-export REGISTRY_TYPE=gcr
-export GCP_PROJECT_ID=your-project-id
-export GCP_REGION=us-central1
-export AUTOGPT_SOURCE_DIR=/path/to/AutoGPT
+# Build both server and frontend images
+./scripts/deploy-complete.sh --build
+
+# Or build manually
 ./scripts/build-images.sh
-
-# Images pushed to: [GCP_REGION]-docker.pkg.dev/[PROJECT]/autogpt/
 ```
 
-#### Option B: Docker Hub (Open Source)
-```bash
-# Setup for Docker Hub
-export REGISTRY_TYPE=dockerhub
-export DOCKER_HUB_USERNAME=your-username
-export AUTOGPT_SOURCE_DIR=/path/to/AutoGPT
-./scripts/build-images.sh
+### Step 3: Deploy Complete Stack
 
-# Images pushed to: docker.io/[USERNAME]/autogpt-[service]
+```bash
+# Deploy everything: infrastructure + services + migrations
+./scripts/deploy-complete.sh
 ```
 
-#### Option C: AWS ECR
-```bash
-# Setup for AWS ECR
-export REGISTRY_TYPE=ecr
-export AWS_ACCOUNT_ID=your-account-id
-export AWS_REGION=us-west-2
-export AUTOGPT_SOURCE_DIR=/path/to/AutoGPT
-./scripts/build-images.sh
+This single command:
+1. ✅ Creates namespace
+2. ✅ Deploys infrastructure (PostgreSQL, Redis, RabbitMQ, Supabase)
+3. ✅ Waits for infrastructure readiness
+4. ✅ Runs database migrations
+5. ✅ Deploys AutoGPT services
+6. ✅ Shows deployment status
 
-# Images pushed to: [AWS_ACCOUNT_ID].dkr.ecr.[AWS_REGION].amazonaws.com/autogpt-[service]
-```
-
-#### Option D: Local Registry
-```bash
-# For local development/testing
-export REGISTRY_TYPE=local
-export AUTOGPT_SOURCE_DIR=/path/to/AutoGPT
-./scripts/build-images.sh
-
-# Images tagged locally: localhost:5000/autogpt-[service]
-```
-
-### Step 3: Deploy with Helm
+### Step 4: Access Services
 
 ```bash
-# Deploy all services using Helm
-./scripts/deploy.sh
-
-# Run database migrations (required after first deployment)
-./scripts/run-migrations.sh
-
-# Or deploy individual services with custom registry:
-helm install redis ./helm/redis -n autogpt
-helm install rabbitmq ./helm/rabbit-mq -n autogpt  
-helm install supabase ./helm/supabase -n autogpt
-
-# Deploy AutoGPT services with your custom registry
-helm install autogpt-server ./helm/autogpt-server -n autogpt \
-  --set image.repository=[GCP_REGION]-docker.pkg.dev/[YOUR_PROJECT]/autogpt/autogpt-server
-
-helm install autogpt-builder ./helm/autogpt-builder -n autogpt \
-  --set image.repository=[GCP_REGION]-docker.pkg.dev/[YOUR_PROJECT]/autogpt/autogpt-builder
-
-helm install autogpt-websocket ./helm/autogpt-websocket -n autogpt \
-  --set image.repository=[GCP_REGION]-docker.pkg.dev/[YOUR_PROJECT]/autogpt/autogpt-server
-```
-
-### Step 4: Upgrade Services (After Code Changes)
-
-```bash
-# Rebuild images with latest code
-./scripts/build-images.sh
-
-# Upgrade specific services
-helm upgrade autogpt-builder ./helm/autogpt-builder -n autogpt --wait
-helm upgrade autogpt-server ./helm/autogpt-server -n autogpt --wait
-helm upgrade autogpt-websocket ./helm/autogpt-websocket -n autogpt --wait
-```
-
-### Step 5: Local Access via Port Forwarding
-
-```bash
-# Start all port forwards for local development
+# Automated port forwarding (recommended)
 ./scripts/local-access.sh
 
 # Or manually:
 kubectl port-forward svc/autogpt-builder 3000:3000 -n autogpt &
-kubectl port-forward svc/autogpt-server 8006:8006 -n autogpt &  
-kubectl port-forward svc/autogpt-websocket 8001:8001 -n autogpt &
-kubectl port-forward svc/supabase-kong 8000:8000 -n autogpt &
+kubectl port-forward svc/autogpt-server 8006:8006 -n autogpt &
 
 # Access URLs:
 # Frontend: http://localhost:3000
 # API: http://localhost:8006
-# WebSocket: ws://localhost:8001  
-# Supabase: http://localhost:8000
 ```
 
-**Important**: Restart port forwards after each Helm upgrade/redeploy.
+## 🏗️ Architecture
 
-## ✅ Verification
-
-```bash
-# Check all pods are running
-kubectl get pods -n autogpt
-
-# Test API health  
-curl http://localhost:8006/health
-
-# Test frontend access
-open http://localhost:3000
-```
-
-## 🏗️ Architecture Components
-
-### Core Services
-| Service | Purpose | Port | 
-|---------|---------|------|
-| autogpt-server | Main API | 8006 |
-| autogpt-server-executor | Task execution engine | 8002 |
-| autogpt-builder | Frontend UI | 3000 |
-| autogpt-websocket | Real-time updates | 8001 |
-| autogpt-database-manager | Database access for executors | - |
-| autogpt-scheduler | Task scheduling | - |
-| autogpt-notification | Notification service | - |
+### AutoGPT Services
+| Service | Purpose | Port | Image |
+|---------|---------|------|-------|
+| autogpt-server | Main REST API | 8006 | autogpt-server |
+| autogpt-server-executor | Task execution engine | 8002 | autogpt-server |
+| autogpt-scheduler | Task scheduling | 8003 | autogpt-server |
+| autogpt-websocket | Real-time updates | 8001 | autogpt-server |
+| autogpt-notification | Notifications | 8007 | autogpt-server |
+| autogpt-database-manager | Database management | 8005 | autogpt-server |
+| autogpt-builder | Frontend UI | 3000 | autogpt-builder |
 
 ### Infrastructure Services  
-| Service | Purpose |
-|---------|---------|
-| PostgreSQL | Primary database |
-| Redis | Cache & sessions |
-| RabbitMQ | Message queue |
-| Supabase Kong | API Gateway |
-| Supabase Auth | Authentication service |
+| Service | Purpose | Port |
+|---------|---------|------|
+| supabase-postgresql | Primary database | 5432 |
+| redis-master | Cache & sessions | 6379 |
+| rabbitmq | Message queue | 5672 |
+| supabase-kong | API Gateway | 8000 |
+| supabase-auth | Authentication (GoTrue) | 9999 |
 
-## 🔧 Management Commands
+## 🔧 Configuration Files
 
-### Monitor Deployment
+- **configs/.env**: Main configuration with all environment variables
+- **infrastructure.yaml**: Infrastructure services (DB, Redis, RabbitMQ, Supabase)
+- **autogpt-services.yaml**: AutoGPT application services
+- **scripts/deploy-complete.sh**: Main deployment script with environment variable substitution
+
+## 📝 Environment Variable System
+
+All YAML files use `${VARIABLE_NAME}` syntax for environment variable substitution via `envsubst`. The deploy script automatically:
+
+1. Loads variables from `configs/.env`
+2. Calculates registry paths based on `REGISTRY_TYPE`
+3. Substitutes all variables in YAML files
+4. Applies the processed configurations
+
+## 🔄 Management Commands
+
+### Check Status
 ```bash
-# Check status
 kubectl get pods,svc -n autogpt
-
-# View logs
 kubectl logs -f deployment/autogpt-server -n autogpt
 ```
 
-### Update Images
+### Update After Code Changes
 ```bash
-# After pulling latest code, rebuild and upgrade:
-./scripts/build-images.sh  
-helm upgrade autogpt-builder ./helm/autogpt-builder -n autogpt --wait
-
-# Restart port forwards after upgrade
-pkill kubectl && ./scripts/local-access.sh
+# Rebuild images and redeploy
+./scripts/deploy-complete.sh --build
 ```
 
-## 🧹 Cleanup
-
+### Run Migrations Separately
 ```bash
-# Remove everything
+./scripts/run-migrations.sh
+```
+
+### Clean Up
+```bash
 kubectl delete namespace autogpt
-
-# Or individual services
-helm uninstall autogpt-server autogpt-builder autogpt-websocket redis rabbitmq supabase -n autogpt
 ```
+
+## 🛠️ Registry Options
+
+### Google Cloud Registry (GCR)
+```bash
+# In configs/.env:
+REGISTRY_TYPE=gcr
+GCP_PROJECT_ID=your-project-id
+GCP_REGION=us-central1
+ARTIFACT_REPO=autogpt
+```
+
+### Local Images
+```bash
+# In configs/.env:
+REGISTRY_TYPE=local
+# Images will be tagged as autogpt-server:latest, autogpt-builder:latest
+```
+
+### Production Domain Access
+```bash
+# For production deployments with LoadBalancer/Ingress
+./scripts/setup-local-access.sh
+# This configures /etc/hosts entries for your domain
+```
+
+## 🔍 Troubleshooting
+
+### Common Issues
+
+1. **kubectl not connected**: Ensure kubectl is configured for your cluster first
+   ```bash
+   # For GKE: gcloud container clusters get-credentials CLUSTER_NAME --zone ZONE
+   # For EKS: aws eks update-kubeconfig --name CLUSTER_NAME
+   # For local: kubectl config use-context CONTEXT_NAME
+   ```
+2. **Image pull errors**: Check your registry configuration and authentication
+3. **Pod crashes**: Check logs with `kubectl logs -f pod/POD_NAME -n autogpt`
+4. **Database connection**: Ensure PostgreSQL is ready before services start
+5. **Environment variables**: Verify all required variables are set in configs/.env
+
+### Debug Commands
+```bash
+# Check environment variable substitution
+envsubst < autogpt-services.yaml
+
+# Verify image existence
+kubectl describe pod POD_NAME -n autogpt
+
+# Check service endpoints
+kubectl get endpoints -n autogpt
+```
+
+## 🚨 Security Notes
+
+- **CHANGE ALL DEFAULT PASSWORDS** in configs/.env
+- **Use strong JWT secrets** (32+ characters)
+- **Secure your cluster** with proper RBAC and network policies
+- **Use TLS** for production deployments

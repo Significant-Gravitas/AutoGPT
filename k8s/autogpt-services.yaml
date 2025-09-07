@@ -1,0 +1,437 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autogpt-server
+  namespace: ${NAMESPACE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: autogpt-server
+  template:
+    metadata:
+      labels:
+        app: autogpt-server
+    spec:
+      containers:
+      - name: server
+        image: ${FULL_SERVER_IMAGE}
+        imagePullPolicy: Always
+        command:
+        - poetry
+        - run
+        - rest
+        env:
+        # Database Configuration
+        - name: DATABASE_URL
+          value: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?schema=platform&connect_timeout=${DB_CONNECT_TIMEOUT}"
+        - name: DIRECT_URL
+          value: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?schema=platform&connect_timeout=${DB_CONNECT_TIMEOUT}"
+        - name: DB_HOST
+          value: "${DB_HOST}"
+        - name: DB_USER
+          value: "${DB_USER}"
+        - name: DB_PASS
+          value: "${DB_PASS}"
+        - name: DB_NAME
+          value: "${DB_NAME}"
+        - name: DB_PORT
+          value: "${DB_PORT}"
+        - name: DB_CONNECTION_LIMIT
+          value: "${DB_CONNECTION_LIMIT}"
+        - name: DB_CONNECT_TIMEOUT
+          value: "${DB_CONNECT_TIMEOUT}"
+        - name: DB_POOL_TIMEOUT
+          value: "${DB_POOL_TIMEOUT}"
+        - name: DB_SCHEMA
+          value: "${DB_SCHEMA}"
+        # Redis Configuration
+        - name: REDIS_HOST
+          value: "${REDIS_HOST}.${NAMESPACE}.svc.cluster.local"
+        - name: REDIS_PASSWORD
+          value: "${REDIS_PASSWORD}"
+        - name: REDIS_PORT
+          value: "${REDIS_PORT}"
+        # RabbitMQ Configuration
+        - name: RABBITMQ_HOST
+          value: "${RABBITMQ_HOST}.${NAMESPACE}.svc.cluster.local"
+        - name: RABBITMQ_PORT
+          value: "${RABBITMQ_PORT}"
+        - name: RABBITMQ_DEFAULT_USER
+          value: "${RABBITMQ_DEFAULT_USER}"
+        - name: RABBITMQ_DEFAULT_PASS
+          value: "${RABBITMQ_DEFAULT_PASS}"
+        # Service Host Configuration
+        - name: PYRO_HOST
+          value: "${PYRO_HOST}"
+        - name: AGENTSERVER_HOST
+          value: "${AGENTSERVER_HOST}.${NAMESPACE}.svc.cluster.local"
+        - name: SCHEDULER_HOST
+          value: "${SCHEDULER_HOST}.${NAMESPACE}.svc.cluster.local"
+        - name: DATABASEMANAGER_HOST
+          value: "${DATABASEMANAGER_HOST}.${NAMESPACE}.svc.cluster.local"
+        - name: EXECUTIONMANAGER_HOST
+          value: "${EXECUTIONMANAGER_HOST}.${NAMESPACE}.svc.cluster.local"
+        - name: NOTIFICATIONMANAGER_HOST
+          value: "${NOTIFICATIONMANAGER_HOST}.${NAMESPACE}.svc.cluster.local"
+        - name: CLAMAV_SERVICE_HOST
+          value: "${CLAMAV_SERVICE_HOST}"
+        # Supabase Configuration
+        - name: SUPABASE_URL
+          value: "${SUPABASE_URL}"
+        - name: SUPABASE_SERVICE_ROLE_KEY
+          value: "${SUPABASE_SERVICE_ROLE_KEY}"
+        - name: JWT_VERIFY_KEY
+          value: "${JWT_VERIFY_KEY}"
+        - name: ANON_KEY
+          value: "${ANON_KEY}"
+        - name: SERVICE_ROLE_KEY
+          value: "${SERVICE_ROLE_KEY}"
+        # Platform Configuration
+        - name: PLATFORM_BASE_URL
+          value: "${PLATFORM_BASE_URL}"
+        - name: FRONTEND_BASE_URL
+          value: "${FRONTEND_BASE_URL}"
+        - name: CORS_ALLOWED_ORIGINS
+          value: "${CORS_ALLOWED_ORIGINS}"
+        # Security Keys
+        - name: ENCRYPTION_KEY
+          value: "${ENCRYPTION_KEY}"
+        - name: UNSUBSCRIBE_SECRET_KEY
+          value: "${UNSUBSCRIBE_SECRET_KEY}"
+        # Media Storage
+        - name: MEDIA_GCS_BUCKET_NAME
+          value: "${MEDIA_GCS_BUCKET_NAME}"
+        ports:
+        - containerPort: 8006
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autogpt-server-executor
+  namespace: ${NAMESPACE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: autogpt-server-executor
+  template:
+    metadata:
+      labels:
+        app: autogpt-server-executor
+    spec:
+      containers:
+      - name: executor
+        image: ${FULL_SERVER_IMAGE}
+        imagePullPolicy: Always
+        command:
+        - poetry
+        - run
+        - executor
+        env:
+        - name: DATABASE_URL
+          value: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?schema=platform"
+        - name: DIRECT_URL
+          value: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?schema=platform"
+        - name: REDIS_HOST
+          value: "${REDIS_HOST}.${NAMESPACE}.svc.cluster.local"
+        - name: REDIS_PASSWORD
+          value: "${REDIS_PASSWORD}"
+        - name: RABBITMQ_HOST
+          value: "${RABBITMQ_HOST}.${NAMESPACE}.svc.cluster.local"
+        - name: RABBITMQ_PORT
+          value: "${RABBITMQ_PORT}"
+        - name: RABBITMQ_DEFAULT_USER
+          value: "${RABBITMQ_DEFAULT_USER}"
+        - name: RABBITMQ_DEFAULT_PASS
+          value: "${RABBITMQ_DEFAULT_PASS}"
+        ports:
+        - containerPort: 8002
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autogpt-scheduler
+  namespace: ${NAMESPACE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: autogpt-scheduler
+  template:
+    metadata:
+      labels:
+        app: autogpt-scheduler
+    spec:
+      containers:
+      - name: scheduler
+        image: ${FULL_SERVER_IMAGE}
+        imagePullPolicy: Always
+        command:
+        - poetry
+        - run
+        - scheduler
+        env:
+        - name: DATABASE_URL
+          value: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?schema=platform"
+        - name: DIRECT_URL
+          value: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?schema=platform"
+        - name: REDIS_HOST
+          value: "${REDIS_HOST}.${NAMESPACE}.svc.cluster.local"
+        - name: REDIS_PASSWORD
+          value: "${REDIS_PASSWORD}"
+        - name: RABBITMQ_HOST
+          value: "${RABBITMQ_HOST}.${NAMESPACE}.svc.cluster.local"
+        - name: RABBITMQ_PORT
+          value: "${RABBITMQ_PORT}"
+        - name: RABBITMQ_DEFAULT_USER
+          value: "${RABBITMQ_DEFAULT_USER}"
+        - name: RABBITMQ_DEFAULT_PASS
+          value: "${RABBITMQ_DEFAULT_PASS}"
+        ports:
+        - containerPort: 8003
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autogpt-websocket
+  namespace: ${NAMESPACE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: autogpt-websocket
+  template:
+    metadata:
+      labels:
+        app: autogpt-websocket
+    spec:
+      containers:
+      - name: websocket
+        image: ${FULL_SERVER_IMAGE}
+        imagePullPolicy: Always
+        command:
+        - poetry
+        - run
+        - ws
+        env:
+        - name: DATABASE_URL
+          value: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?schema=platform"
+        - name: DIRECT_URL
+          value: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?schema=platform"
+        - name: REDIS_HOST
+          value: "${REDIS_HOST}.${NAMESPACE}.svc.cluster.local"
+        - name: REDIS_PASSWORD
+          value: "${REDIS_PASSWORD}"
+        - name: RABBITMQ_HOST
+          value: "${RABBITMQ_HOST}.${NAMESPACE}.svc.cluster.local"
+        - name: RABBITMQ_PORT
+          value: "${RABBITMQ_PORT}"
+        - name: RABBITMQ_DEFAULT_USER
+          value: "${RABBITMQ_DEFAULT_USER}"
+        - name: RABBITMQ_DEFAULT_PASS
+          value: "${RABBITMQ_DEFAULT_PASS}"
+        ports:
+        - containerPort: 8001
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autogpt-notification
+  namespace: ${NAMESPACE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: autogpt-notification
+  template:
+    metadata:
+      labels:
+        app: autogpt-notification
+    spec:
+      containers:
+      - name: notification
+        image: ${FULL_SERVER_IMAGE}
+        imagePullPolicy: Always
+        command:
+        - poetry
+        - run
+        - notification
+        env:
+        - name: DATABASE_URL
+          value: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?schema=platform"
+        - name: DIRECT_URL
+          value: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?schema=platform"
+        - name: REDIS_HOST
+          value: "${REDIS_HOST}.${NAMESPACE}.svc.cluster.local"
+        - name: REDIS_PASSWORD
+          value: "${REDIS_PASSWORD}"
+        - name: RABBITMQ_HOST
+          value: "${RABBITMQ_HOST}.${NAMESPACE}.svc.cluster.local"
+        - name: RABBITMQ_PORT
+          value: "${RABBITMQ_PORT}"
+        - name: RABBITMQ_DEFAULT_USER
+          value: "${RABBITMQ_DEFAULT_USER}"
+        - name: RABBITMQ_DEFAULT_PASS
+          value: "${RABBITMQ_DEFAULT_PASS}"
+        ports:
+        - containerPort: 8007
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autogpt-database-manager
+  namespace: ${NAMESPACE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: autogpt-database-manager
+  template:
+    metadata:
+      labels:
+        app: autogpt-database-manager
+    spec:
+      containers:
+      - name: database-manager
+        image: ${FULL_SERVER_IMAGE}
+        imagePullPolicy: Always
+        command:
+        - poetry
+        - run
+        - db
+        env:
+        - name: DATABASE_URL
+          value: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?schema=platform"
+        - name: DIRECT_URL
+          value: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?schema=platform"
+        - name: REDIS_HOST
+          value: "${REDIS_HOST}.${NAMESPACE}.svc.cluster.local"
+        - name: REDIS_PASSWORD
+          value: "${REDIS_PASSWORD}"
+        - name: RABBITMQ_HOST
+          value: "${RABBITMQ_HOST}.${NAMESPACE}.svc.cluster.local"
+        - name: RABBITMQ_PORT
+          value: "${RABBITMQ_PORT}"
+        - name: RABBITMQ_DEFAULT_USER
+          value: "${RABBITMQ_DEFAULT_USER}"
+        - name: RABBITMQ_DEFAULT_PASS
+          value: "${RABBITMQ_DEFAULT_PASS}"
+        ports:
+        - containerPort: 8005
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autogpt-builder
+  namespace: ${NAMESPACE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: autogpt-builder
+  template:
+    metadata:
+      labels:
+        app: autogpt-builder
+    spec:
+      containers:
+      - name: builder
+        image: ${FULL_BUILDER_IMAGE}
+        imagePullPolicy: Always
+        env:
+        - name: NEXT_PUBLIC_AGPT_SERVER_URL
+          value: "${NEXT_PUBLIC_AGPT_SERVER_URL}"
+        - name: NEXT_PUBLIC_AGPT_WS_SERVER_URL
+          value: "${NEXT_PUBLIC_AGPT_WS_SERVER_URL}"
+        - name: NEXT_PUBLIC_SUPABASE_URL
+          value: "${NEXT_PUBLIC_SUPABASE_URL}"
+        - name: NEXT_PUBLIC_SUPABASE_ANON_KEY
+          value: "${ANON_KEY}"
+        ports:
+        - containerPort: 3000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: autogpt-server
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    app: autogpt-server
+  ports:
+  - port: 8006
+    targetPort: 8006
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: autogpt-server-executor
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    app: autogpt-server-executor
+  ports:
+  - port: 8002
+    targetPort: 8002
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: autogpt-scheduler
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    app: autogpt-scheduler
+  ports:
+  - port: 8003
+    targetPort: 8003
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: autogpt-websocket
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    app: autogpt-websocket
+  ports:
+  - port: 8001
+    targetPort: 8001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: autogpt-notification
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    app: autogpt-notification
+  ports:
+  - port: 8007
+    targetPort: 8007
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: autogpt-database-manager
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    app: autogpt-database-manager
+  ports:
+  - port: 8005
+    targetPort: 8005
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: autogpt-builder
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    app: autogpt-builder
+  ports:
+  - port: 3000
+    targetPort: 3000

@@ -1,0 +1,52 @@
+replicaCount: 1
+
+image:
+  pullPolicy: Always
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext: {}
+
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 8002
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 2Gi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+sealedSecrets:
+  enabled: false
+
+env:
+  PORT: "8002"
+  RABBITMQ_HOST: "rabbitmq.autogpt.svc.cluster.local"
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_DEFAULT_USER: "autogpt"
+  RABBITMQ_DEFAULT_PASS: "oBpLPVBQflJf5tCG"
+  REDIS_HOST: "redis-master.autogpt.svc.cluster.local"
+  REDIS_PASSWORD: "autogpt-redis-password"

@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "autogpt-server-executor.fullname" . }}
+  labels:
+    {{- include "autogpt-server-executor.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "autogpt-server-executor.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "autogpt-server-executor.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "autogpt-server-executor.serviceAccountName" . }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: {{ include "autogpt-server-executor.fullname" . }}-secrets
+          env:
+          - name: RABBITMQ_HOST
+            value: "rabbitmq.autogpt.svc.cluster.local"
+          - name: RABBITMQ_PORT
+            value: "5672"
+          - name: RABBITMQ_DEFAULT_USER
+            value: "autogpt"
+          - name: RABBITMQ_DEFAULT_PASS
+            value: "{{ .Values.rabbitmq.password | default "oBpLPVBQflJf5tCG" }}"
+          - name: REDIS_HOST
+            value: "redis-master.autogpt.svc.cluster.local"
+          - name: REDIS_PASSWORD
+            value: "{{ .Values.redis.password | default "autogpt-redis-password" }}"
+          {{- range $key, $value := .Values.env }}
+          - name: {{ $key }}
+            value: {{ $value | quote }}
+          {{- end }}
+          command:
+            - poetry
+            - run
+            - executor
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

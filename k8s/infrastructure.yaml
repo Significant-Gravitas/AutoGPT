@@ -1,0 +1,226 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-master
+  namespace: ${NAMESPACE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+      role: master
+  template:
+    metadata:
+      labels:
+        app: redis
+        role: master
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+        env:
+        - name: REDIS_PASSWORD
+          value: "${REDIS_PASSWORD}"
+        command:
+        - redis-server
+        - --requirepass
+        - ${REDIS_PASSWORD}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-master
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    app: redis
+    role: master
+  ports:
+  - port: 6379
+    targetPort: 6379
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  namespace: ${NAMESPACE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      containers:
+      - name: rabbitmq
+        image: rabbitmq:3-management-alpine
+        ports:
+        - containerPort: 5672
+        - containerPort: 15672
+        env:
+        - name: RABBITMQ_DEFAULT_USER
+          value: "${RABBITMQ_DEFAULT_USER}"
+        - name: RABBITMQ_DEFAULT_PASS
+          value: "${RABBITMQ_DEFAULT_PASS}"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    app: rabbitmq
+  ports:
+  - name: amqp
+    port: 5672
+    targetPort: 5672
+  - name: management
+    port: 15672
+    targetPort: 15672
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: supabase-postgresql
+  namespace: ${NAMESPACE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: supabase-postgresql
+  template:
+    metadata:
+      labels:
+        app: supabase-postgresql
+    spec:
+      containers:
+      - name: postgresql
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          value: "postgres"
+        - name: POSTGRES_USER
+          value: "postgres"
+        - name: POSTGRES_PASSWORD
+          value: "${POSTGRES_PASSWORD}"
+        - name: PGDATA
+          value: "/var/lib/postgresql/data/pgdata"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: supabase-postgresql
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    app: supabase-postgresql
+  ports:
+  - port: 5432
+    targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: supabase-auth
+  namespace: ${NAMESPACE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: supabase-auth
+  template:
+    metadata:
+      labels:
+        app: supabase-auth
+    spec:
+      containers:
+      - name: auth
+        image: supabase/gotrue:v2.151.0
+        ports:
+        - containerPort: 9999
+        env:
+        - name: GOTRUE_DB_DRIVER
+          value: "postgres"
+        - name: GOTRUE_DB_DATABASE_URL
+          value: "postgresql://postgres:${POSTGRES_PASSWORD}@supabase-postgresql:5432/postgres?sslmode=disable&search_path=auth"
+        - name: GOTRUE_SITE_URL
+          value: "https://auth.test.autogpt.sample"
+        - name: GOTRUE_API_EXTERNAL_URL
+          value: "https://auth.test.autogpt.sample"
+        - name: API_EXTERNAL_URL
+          value: "https://auth.test.autogpt.sample"
+        - name: GOTRUE_JWT_SECRET
+          value: "${JWT_SECRET}"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: supabase-auth
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    app: supabase-auth
+  ports:
+  - port: 9999
+    targetPort: 9999
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: supabase-kong
+  namespace: ${NAMESPACE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: supabase-kong
+  template:
+    metadata:
+      labels:
+        app: supabase-kong
+    spec:
+      containers:
+      - name: kong
+        image: kong:3.2
+        ports:
+        - containerPort: 8000
+        env:
+        - name: KONG_DATABASE
+          value: "off"
+        - name: KONG_PROXY_ACCESS_LOG
+          value: "/dev/stdout"
+        - name: KONG_ADMIN_ACCESS_LOG
+          value: "/dev/stdout"
+        - name: KONG_PROXY_ERROR_LOG
+          value: "/dev/stderr"
+        - name: KONG_ADMIN_ERROR_LOG
+          value: "/dev/stderr"
+        - name: KONG_ADMIN_LISTEN
+          value: "0.0.0.0:8001"
+        - name: KONG_PROXY_LISTEN
+          value: "0.0.0.0:8000"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: supabase-kong
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    app: supabase-kong
+  ports:
+  - name: proxy
+    port: 8000
+    targetPort: 8000
+  - name: admin
+    port: 8001
+    targetPort: 8001

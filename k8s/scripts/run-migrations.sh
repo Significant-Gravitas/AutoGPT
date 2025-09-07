@@ -15,55 +15,95 @@ echo ""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 K8S_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CONFIG_DIR="$K8S_ROOT/configs"
+ENV_FILE="$CONFIG_DIR/.env"
 
 # Load environment variables
-if [ -f "$CONFIG_DIR/.env" ]; then
-    echo -e "${BLUE}📂 Loading configuration...${NC}"
-    source "$CONFIG_DIR/.env"
+if [ -f "$ENV_FILE" ]; then
+    echo -e "${BLUE}📂 Loading configuration from $ENV_FILE...${NC}"
+    set -a  # automatically export all variables
+    source "$ENV_FILE"
+    set +a  # disable automatic export
 else
-    echo -e "${RED}❌ .env file not found${NC}"
-    echo "Please run ./scripts/setup-gcp.sh first"
+    echo -e "${RED}❌ .env file not found at $ENV_FILE${NC}"
+    echo "Please create .env file from .env.example"
+    exit 1
+fi
+
+# Calculate IMAGE_REPOSITORY based on REGISTRY_TYPE
+if [ "$REGISTRY_TYPE" = "gcr" ]; then
+    IMAGE_REPOSITORY="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REPO}"
+    MIGRATION_IMAGE="${IMAGE_REPOSITORY}/autogpt-server:${IMAGE_TAG}"
+elif [ "$REGISTRY_TYPE" = "local" ]; then
+    MIGRATION_IMAGE="autogpt-server:${IMAGE_TAG}"
+else
+    echo -e "${RED}❌ Unsupported REGISTRY_TYPE: $REGISTRY_TYPE${NC}"
     exit 1
 fi
 
 # Check if kubectl is configured
 if ! kubectl cluster-info &> /dev/null; then
     echo -e "${RED}❌ kubectl not connected to cluster${NC}"
-    echo "Please run ./scripts/setup-gcp.sh first to create and configure the cluster"
     exit 1
 fi
 
 echo -e "${BLUE}🔍 Checking if PostgreSQL is ready...${NC}"
-if ! kubectl get pod supabase-postgresql-0 -n autogpt &> /dev/null; then
+# Find PostgreSQL pod 
+POSTGRES_POD=$(kubectl get pods -n ${NAMESPACE} -l app=supabase-postgresql -o jsonpath='{.items[0].metadata.name}')
+if [ -z "$POSTGRES_POD" ]; then
     echo -e "${RED}❌ PostgreSQL pod not found${NC}"
-    echo "Please deploy the platform first: ./scripts/deploy.sh"
+    echo "Please deploy infrastructure first: kubectl apply -f infrastructure.yaml"
     exit 1
 fi
 
-if ! kubectl wait --for=condition=ready pod supabase-postgresql-0 -n autogpt --timeout=60s; then
+if ! kubectl wait --for=condition=ready pod "$POSTGRES_POD" -n ${NAMESPACE} --timeout=60s; then
     echo -e "${RED}❌ PostgreSQL is not ready${NC}"
     exit 1
 fi
 
-echo -e "${BLUE}🔧 Running database migrations...${NC}"
+echo -e "${BLUE}🔧 Creating database schemas...${NC}"
+echo "Using PostgreSQL pod: $POSTGRES_POD"
 
 # Create database schemas if they don't exist
-echo "Creating required database schemas..."
-kubectl exec supabase-postgresql-0 -n autogpt -- bash -c "PGPASSWORD=\"$DB_PASS\" psql -U $DB_USER -d $DB_NAME -c 'CREATE SCHEMA IF NOT EXISTS auth;'"
-kubectl exec supabase-postgresql-0 -n autogpt -- bash -c "PGPASSWORD=\"$DB_PASS\" psql -U $DB_USER -d $DB_NAME -c 'CREATE SCHEMA IF NOT EXISTS platform;'"
+kubectl exec "$POSTGRES_POD" -n ${NAMESPACE} -- bash -c "PGPASSWORD=\"${POSTGRES_PASSWORD}\" psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c \"CREATE SCHEMA IF NOT EXISTS auth;\""
+kubectl exec "$POSTGRES_POD" -n ${NAMESPACE} -- bash -c "PGPASSWORD=\"${POSTGRES_PASSWORD}\" psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c \"CREATE SCHEMA IF NOT EXISTS platform;\""
 
-# Run Prisma migrations
-echo "Running Prisma migrations..."
-kubectl run db-migrate-job --rm -i \
-    --image=us-central1-docker.pkg.dev/agpt-dev/autogpt/autogpt-server:latest \
-    --env="DATABASE_URL=postgresql://${DB_USER}:${DB_PASS}@supabase-postgresql.autogpt.svc.cluster.local:${DB_PORT}/${DB_NAME}?schema=${DB_SCHEMA}&connect_timeout=${DB_CONNECT_TIMEOUT}" \
-    --env="DIRECT_URL=postgresql://${DB_USER}:${DB_PASS}@supabase-postgresql.autogpt.svc.cluster.local:${DB_PORT}/${DB_NAME}?schema=${DB_SCHEMA}&connect_timeout=${DB_CONNECT_TIMEOUT}" \
-    -n autogpt \
-    -- bash -c "cd /app/autogpt_platform/backend && poetry run prisma migrate deploy"
+echo -e "${BLUE}🔧 Setting up port forwarding to PostgreSQL...${NC}"
+# Kill any existing port-forward for PostgreSQL
+pkill -f "port-forward.*supabase-postgresql.*5432" 2>/dev/null || true
+
+# Start port forwarding to PostgreSQL
+kubectl port-forward svc/supabase-postgresql 5432:5432 -n ${NAMESPACE} > /dev/null 2>&1 &
+PORT_FORWARD_PID=$!
+sleep 3
+
+echo -e "${BLUE}🔧 Running Prisma migrations locally...${NC}"
+DATABASE_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB}?schema=platform"
+
+echo "Database URL: postgresql://${POSTGRES_USER}:****@localhost:5432/${POSTGRES_DB}?schema=platform"
+
+# Check if we have the AutoGPT source directory
+if [ -z "$AUTOGPT_SOURCE_DIR" ]; then
+    echo -e "${RED}❌ AUTOGPT_SOURCE_DIR not set in .env${NC}"
+    kill $PORT_FORWARD_PID 2>/dev/null
+    exit 1
+fi
+
+if [ ! -d "$AUTOGPT_SOURCE_DIR/autogpt_platform/backend" ]; then
+    echo -e "${RED}❌ AutoGPT backend not found at $AUTOGPT_SOURCE_DIR/autogpt_platform/backend${NC}"
+    kill $PORT_FORWARD_PID 2>/dev/null
+    exit 1
+fi
+
+# Run migrations locally (using db push to sync schema)
+cd "$AUTOGPT_SOURCE_DIR/autogpt_platform/backend"
+DATABASE_URL="$DATABASE_URL" DIRECT_URL="$DATABASE_URL" poetry run prisma db push --accept-data-loss
+
+# Kill port forwarding
+kill $PORT_FORWARD_PID 2>/dev/null
 
 echo ""
 echo -e "${GREEN}✅ Database migrations completed!${NC}"
 echo ""
 echo -e "${BLUE}📋 Next steps:${NC}"
-echo "  1. Restart the main server: kubectl rollout restart deployment autogpt-server -n autogpt"
-echo "  2. Check service status: kubectl get pods -n autogpt"
+echo "  1. Deploy services: kubectl apply -f autogpt-services.yaml"
+echo "  2. Check service status: kubectl get pods -n ${NAMESPACE}"
