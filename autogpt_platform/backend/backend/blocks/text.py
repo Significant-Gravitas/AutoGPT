@@ -166,6 +166,7 @@ class ExtractTextInformationBlock(Block):
             r"(?=.*\*)",  # Lookahead with quantifier
         ]
 
+        timer = None
         for dangerous in dangerous_patterns:
             if re.search(dangerous, input_data.pattern):
                 # Limit execution time for potentially dangerous patterns
@@ -175,6 +176,7 @@ class ExtractTextInformationBlock(Block):
                 # Use threading timer for timeout (5 seconds max)
                 timer = threading.Timer(5.0, timeout_handler)
                 timer.start()
+                break
 
         try:
             matches = []
@@ -207,7 +209,7 @@ class ExtractTextInformationBlock(Block):
             yield "matched_count", 0
         finally:
             # Cancel timer if it exists
-            if "timer" in locals():
+            if timer is not None:
                 timer.cancel()
 
 

@@ -13,6 +13,7 @@ from backend.blocks.llm import AITextSummarizerBlock
 from backend.blocks.text import ExtractTextInformationBlock
 from backend.blocks.xml_parser import XMLParserBlock
 from backend.util.file import store_media_file
+from backend.util.type import MediaFileType
 
 
 class TestCodeExtractionBlockSecurity:
@@ -179,7 +180,9 @@ class TestStoreMediaFileSecurity:
 
         with pytest.raises(ValueError, match="File too large"):
             await store_media_file(
-                graph_exec_id="test", file=large_data_uri, user_id="test_user"
+                graph_exec_id="test",
+                file=MediaFileType(large_data_uri),
+                user_id="test_user",
             )
 
     @patch("backend.util.file.get_cloud_storage_handler")
