@@ -8,22 +8,46 @@ import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/
 import { getTimezoneDisplayName } from "@/lib/timezone-utils";
 import { InfoIcon } from "lucide-react";
 
+// Base type for cron expression only
+type CronOnlyCallback = (cronExpression: string) => void;
+// Type for cron expression with schedule name
+type CronWithNameCallback = (
+  cronExpression: string,
+  scheduleName: string,
+) => void;
+
 type CronSchedulerDialogProps = {
   open: boolean;
   setOpen: (open: boolean) => void;
-  afterCronCreation: (cronExpression: string, scheduleName: string) => void;
-  defaultScheduleName?: string;
-};
+  defaultCronExpression?: string;
+  title?: string;
+} & (
+  | {
+      // For cases where only cron expression is needed (builder, submission)
+      mode: "cron-only";
+      onSubmit: CronOnlyCallback;
+    }
+  | {
+      // For cases where schedule name is required (agent run)
+      mode: "with-name";
+      onSubmit: CronWithNameCallback;
+      defaultScheduleName?: string;
+    }
+);
 
-export function CronSchedulerDialog({
-  open,
-  setOpen,
-  afterCronCreation,
-  defaultScheduleName = "",
-}: CronSchedulerDialogProps) {
+export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
+  const {
+    open,
+    setOpen,
+    defaultCronExpression = "",
+    title = "Schedule Task",
+  } = props;
+
   const { toast } = useToast();
   const [cronExpression, setCronExpression] = useState<string>("");
-  const [scheduleName, setScheduleName] = useState<string>(defaultScheduleName);
+  const [scheduleName, setScheduleName] = useState<string>(
+    props.mode === "with-name" ? props.defaultScheduleName || "" : "",
+  );
 
   // Get user's timezone
   const { data: userTimezone } = useGetV1GetUserTimezone({
@@ -36,13 +60,15 @@ export function CronSchedulerDialog({
   // Reset state when dialog opens
   useEffect(() => {
     if (open) {
-      setScheduleName(defaultScheduleName);
-      setCronExpression("");
+      const defaultName =
+        props.mode === "with-name" ? props.defaultScheduleName || "" : "";
+      setScheduleName(defaultName);
+      setCronExpression(defaultCronExpression);
     }
-  }, [open]);
+  }, [open, props, defaultCronExpression]);
 
   const handleDone = () => {
-    if (!scheduleName.trim()) {
+    if (props.mode === "with-name" && !scheduleName.trim()) {
       toast({
         title: "Please enter a schedule name",
         variant: "destructive",
@@ -60,28 +86,38 @@ export function CronSchedulerDialog({
       return;
     }
 
-    afterCronCreation(cronExpression, scheduleName);
+    if (props.mode === "with-name") {
+      props.onSubmit(cronExpression, scheduleName);
+    } else {
+      props.onSubmit(cronExpression);
+    }
     setOpen(false);
   };
 
   return (
     <Dialog
       controlled={{ isOpen: open, set: setOpen }}
-      title="Schedule Task"
+      title={title}
       styling={{ maxWidth: "600px" }}
     >
       <Dialog.Content>
         <div className="flex flex-col gap-4">
-          <div className="flex max-w-[448px] flex-col space-y-2">
-            <label className="text-sm font-medium">Schedule Name</label>
-            <Input
-              value={scheduleName}
-              onChange={(e) => setScheduleName(e.target.value)}
-              placeholder="Enter a name for this schedule"
-            />
-          </div>
+          {props.mode === "with-name" && (
+            <div className="flex max-w-[448px] flex-col space-y-2">
+              <label className="text-sm font-medium">Schedule Name</label>
+              <Input
+                value={scheduleName}
+                onChange={(e) => setScheduleName(e.target.value)}
+                placeholder="Enter a name for this schedule"
+              />
+            </div>
+          )}
 
-          <CronScheduler onCronExpressionChange={setCronExpression} />
+          <CronScheduler
+            onCronExpressionChange={setCronExpression}
+            initialCronExpression={defaultCronExpression}
+            key={`${open}-${defaultCronExpression}`}
+          />
 
           {/* Timezone info */}
           {userTimezone === "not-set" ? (
@@ -112,5 +148,59 @@ export function CronSchedulerDialog({
         </div>
       </Dialog.Content>
     </Dialog>
+  );
+}
+
+// Convenience components for common use cases
+export function CronExpressionDialog({
+  open,
+  setOpen,
+  onSubmit,
+  defaultCronExpression,
+  title = "Set Schedule",
+}: {
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  onSubmit: (cronExpression: string) => void;
+  defaultCronExpression?: string;
+  title?: string;
+}) {
+  return (
+    <CronSchedulerDialog
+      open={open}
+      setOpen={setOpen}
+      mode="cron-only"
+      onSubmit={onSubmit}
+      defaultCronExpression={defaultCronExpression}
+      title={title}
+    />
+  );
+}
+
+export function ScheduleTaskDialog({
+  open,
+  setOpen,
+  onSubmit,
+  defaultScheduleName,
+  defaultCronExpression,
+  title = "Schedule Task",
+}: {
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  onSubmit: (cronExpression: string, scheduleName: string) => void;
+  defaultScheduleName?: string;
+  defaultCronExpression?: string;
+  title?: string;
+}) {
+  return (
+    <CronSchedulerDialog
+      open={open}
+      setOpen={setOpen}
+      mode="with-name"
+      onSubmit={onSubmit}
+      defaultScheduleName={defaultScheduleName}
+      defaultCronExpression={defaultCronExpression}
+      title={title}
+    />
   );
 }

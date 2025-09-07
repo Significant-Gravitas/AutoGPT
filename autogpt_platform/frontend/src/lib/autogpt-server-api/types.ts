@@ -250,6 +250,9 @@ export type GraphExecutionMeta = {
   user_id: UserID;
   graph_id: GraphID;
   graph_version: number;
+  inputs: Record<string, any> | null;
+  credential_inputs: Record<string, CredentialsMetaInput> | null;
+  nodes_input_masks: Record<string, Record<string, any>> | null;
   preset_id: LibraryAgentPresetID | null;
   status:
     | "QUEUED"
@@ -276,7 +279,7 @@ export type GraphExecutionMeta = {
 export type GraphExecutionID = Brand<string, "GraphExecutionID">;
 
 /* Mirror of backend/data/execution.py:GraphExecution */
-export type GraphExecution = GraphExecutionMeta & {
+export type GraphExecution = Omit<GraphExecutionMeta, "inputs"> & {
   inputs: Record<string, any>;
   outputs: Record<string, Array<any>>;
   node_executions?: NodeExecutionResult[];
@@ -295,13 +298,22 @@ export type GraphMeta = {
   is_active: boolean;
   name: string;
   description: string;
+  recommended_schedule_cron: string | null;
   forked_from_id?: GraphID | null;
   forked_from_version?: number | null;
   input_schema: GraphIOSchema;
   output_schema: GraphIOSchema;
-  has_external_trigger: boolean;
   credentials_input_schema: CredentialsInputSchema;
-};
+} & (
+  | {
+      has_external_trigger: true;
+      trigger_setup_info: GraphTriggerInfo;
+    }
+  | {
+      has_external_trigger: false;
+      trigger_setup_info: null;
+    }
+);
 
 export type GraphID = Brand<string, "GraphID">;
 
@@ -324,7 +336,14 @@ export type GraphIOSubSchema = Omit<
 export type CredentialsInputSchema = {
   type: "object";
   properties: Record<string, BlockIOCredentialsSubSchema>;
-  required: (keyof CredentialsInputSchema["properties"])[];
+  required?: (keyof CredentialsInputSchema["properties"])[];
+};
+
+/* Mirror of backend/data/graph.py:GraphTriggerInfo */
+export type GraphTriggerInfo = {
+  provider: CredentialsProviderName;
+  config_schema: BlockIORootSchema;
+  credentials_input_name: string | null;
 };
 
 /* Mirror of backend/data/graph.py:Graph */
@@ -346,6 +365,7 @@ export type GraphUpdateable = Omit<
   | "output_schema"
   | "credentials_input_schema"
   | "has_external_trigger"
+  | "trigger_setup_info"
 > & {
   version?: number;
   is_active?: boolean;
@@ -399,7 +419,7 @@ export type LibraryAgent = {
   id: LibraryAgentID;
   graph_id: GraphID;
   graph_version: number;
-  image_url?: string;
+  image_url: string | null;
   creator_name: string;
   creator_image_url: string;
   status: AgentStatus;
@@ -412,24 +432,19 @@ export type LibraryAgent = {
   new_output: boolean;
   can_access_graph: boolean;
   is_latest_version: boolean;
+  recommended_schedule_cron: string | null;
 } & (
   | {
       has_external_trigger: true;
-      trigger_setup_info: LibraryAgentTriggerInfo;
+      trigger_setup_info: GraphTriggerInfo;
     }
   | {
       has_external_trigger: false;
-      trigger_setup_info?: undefined;
+      trigger_setup_info: null;
     }
 );
 
 export type LibraryAgentID = Brand<string, "LibraryAgentID">;
-
-export type LibraryAgentTriggerInfo = {
-  provider: CredentialsProviderName;
-  config_schema: BlockIORootSchema;
-  credentials_input_name?: string;
-};
 
 export enum AgentStatus {
   COMPLETED = "COMPLETED",
@@ -453,8 +468,16 @@ export type LibraryAgentPreset = {
   name: string;
   description: string;
   is_active: boolean;
-  webhook_id?: string;
-};
+} & (
+  | {
+      webhook_id: string;
+      webhook: Webhook;
+    }
+  | {
+      webhook_id?: undefined;
+      webhook?: undefined;
+    }
+);
 
 export type LibraryAgentPresetID = Brand<string, "LibraryAgentPresetID">;
 
@@ -472,7 +495,7 @@ export type LibraryAgentPresetCreatable = Omit<
 
 export type LibraryAgentPresetCreatableFromGraphExecution = Omit<
   LibraryAgentPresetCreatable,
-  "graph_id" | "graph_version" | "inputs"
+  "graph_id" | "graph_version" | "inputs" | "credentials"
 > & {
   graph_execution_id: GraphExecutionID;
 };
@@ -516,7 +539,7 @@ export type CredentialsDeleteNeedConfirmationResponse = {
 export type CredentialsMetaInput = {
   id: string;
   type: CredentialsType;
-  title?: string;
+  title?: string | null;
   provider: string;
 };
 
@@ -594,9 +617,9 @@ export type Webhook = {
   id: string;
   url: string;
   provider: CredentialsProviderName;
-  credentials_id: string;
+  credentials_id: string; // empty string if not appicable
   webhook_type: string;
-  resource?: string;
+  resource: string; // empty string if not appicable
   events: string[];
   secret: string;
   config: Record<string, any>;
@@ -752,6 +775,7 @@ export type StoreSubmissionRequest = {
   description: string;
   categories: string[];
   changes_summary?: string;
+  recommended_schedule_cron?: string | null;
 };
 
 export type ProfileDetails = {
@@ -794,6 +818,7 @@ export type MyAgent = {
   agent_image: string | null;
   last_edited: string;
   description: string;
+  recommended_schedule_cron: string | null;
 };
 
 export type MyAgentsResponse = {

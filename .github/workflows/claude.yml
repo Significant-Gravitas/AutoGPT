@@ -30,18 +30,295 @@ jobs:
         github.event.issue.author_association == 'COLLABORATOR'
       )
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+
     permissions:
-      contents: read
+      contents: write
       pull-requests: read
       issues: read
       id-token: write
+      actions: read # Required for CI access
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+
+      # Backend Python/Poetry setup (mirrors platform-backend-ci.yml)
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"  # Use standard version matching CI
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
+
+      - name: Install Poetry
+        run: |
+          # Extract Poetry version from backend/poetry.lock (matches CI)
+          cd autogpt_platform/backend
+          HEAD_POETRY_VERSION=$(python3 ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)
+          echo "Found Poetry version ${HEAD_POETRY_VERSION} in backend/poetry.lock"
+          
+          # Install Poetry
+          curl -sSL https://install.python-poetry.org | POETRY_VERSION=$HEAD_POETRY_VERSION python3 -
+          
+          # Add Poetry to PATH
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Check poetry.lock
+        working-directory: autogpt_platform/backend
+        run: |
+          poetry lock
+          if ! git diff --quiet --ignore-matching-lines="^# " poetry.lock; then
+            echo "Warning: poetry.lock not up to date, but continuing for setup"
+            git checkout poetry.lock  # Reset for clean setup
+          fi
+
+      - name: Install Python dependencies
+        working-directory: autogpt_platform/backend
+        run: poetry install
+
+      - name: Generate Prisma Client
+        working-directory: autogpt_platform/backend
+        run: poetry run prisma generate
+
+      # Frontend Node.js/pnpm setup (mirrors platform-frontend-ci.yml)
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "21"
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Set pnpm store directory
+        run: |
+          pnpm config set store-dir ~/.pnpm-store
+          echo "PNPM_HOME=$HOME/.pnpm-store" >> $GITHUB_ENV
+
+      - name: Cache frontend dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
+            ${{ runner.os }}-pnpm-
+
+      - name: Install JavaScript dependencies
+        working-directory: autogpt_platform/frontend
+        run: pnpm install --frozen-lockfile
+
+      # Install Playwright browsers for frontend testing
+      # NOTE: Disabled to save ~1 minute of setup time. Re-enable if Copilot needs browser automation (e.g., for MCP)
+      # - name: Install Playwright browsers
+      #   working-directory: autogpt_platform/frontend
+      #   run: pnpm playwright install --with-deps chromium
+
+      # Docker setup for development environment
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Copy default environment files
+        working-directory: autogpt_platform
+        run: |
+          # Copy default environment files for development
+          cp .env.default .env
+          cp backend/.env.default backend/.env
+          cp frontend/.env.default frontend/.env
+
+      # Phase 1: Cache and load Docker images for faster setup
+      - name: Set up Docker image cache
+        id: docker-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/docker-cache
+          # Use a versioned key for cache invalidation when image list changes
+          key: docker-images-v2-${{ runner.os }}-${{ hashFiles('.github/workflows/copilot-setup-steps.yml') }}
+          restore-keys: |
+            docker-images-v2-${{ runner.os }}-
+            docker-images-v1-${{ runner.os }}-
+
+      - name: Load or pull Docker images
+        working-directory: autogpt_platform
+        run: |
+          mkdir -p ~/docker-cache
+          
+          # Define image list for easy maintenance
+          IMAGES=(
+            "redis:latest"
+            "rabbitmq:management"
+            "clamav/clamav-debian:latest"
+            "busybox:latest"
+            "kong:2.8.1"
+            "supabase/gotrue:v2.170.0"
+            "supabase/postgres:15.8.1.049"
+            "supabase/postgres-meta:v0.86.1"
+            "supabase/studio:20250224-d10db0f"
+          )
+          
+          # Check if any cached tar files exist (more reliable than cache-hit)
+          if ls ~/docker-cache/*.tar 1> /dev/null 2>&1; then
+            echo "Docker cache found, loading images in parallel..."
+            for image in "${IMAGES[@]}"; do
+              # Convert image name to filename (replace : and / with -)
+              filename=$(echo "$image" | tr ':/' '--')
+              if [ -f ~/docker-cache/${filename}.tar ]; then
+                echo "Loading $image..."
+                docker load -i ~/docker-cache/${filename}.tar || echo "Warning: Failed to load $image from cache" &
+              fi
+            done
+            wait
+            echo "All cached images loaded"
+          else
+            echo "No Docker cache found, pulling images in parallel..."
+            # Pull all images in parallel
+            for image in "${IMAGES[@]}"; do
+              docker pull "$image" &
+            done
+            wait
+            
+            # Only save cache on main branches (not PRs) to avoid cache pollution
+            if [[ "${{ github.ref }}" == "refs/heads/master" ]] || [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
+              echo "Saving Docker images to cache in parallel..."
+              for image in "${IMAGES[@]}"; do
+                # Convert image name to filename (replace : and / with -)
+                filename=$(echo "$image" | tr ':/' '--')
+                echo "Saving $image..."
+                docker save -o ~/docker-cache/${filename}.tar "$image" || echo "Warning: Failed to save $image" &
+              done
+              wait
+              echo "Docker image cache saved"
+            else
+              echo "Skipping cache save for PR/feature branch"
+            fi
+          fi
+          
+          echo "Docker images ready for use"
+
+      # Phase 2: Build migrate service with GitHub Actions cache
+      - name: Build migrate Docker image with cache
+        working-directory: autogpt_platform
+        run: |
+          # Build the migrate image with buildx for GHA caching
+          docker buildx build \
+            --cache-from type=gha \
+            --cache-to type=gha,mode=max \
+            --target migrate \
+            --tag autogpt_platform-migrate:latest \
+            --load \
+            -f backend/Dockerfile \
+            ..
+
+      # Start services using pre-built images
+      - name: Start Docker services for development
+        working-directory: autogpt_platform
+        run: |
+          # Start essential services (migrate image already built with correct tag)
+          docker compose --profile local up deps --no-build --detach
+          echo "Waiting for services to be ready..."
+          
+          # Wait for database to be ready
+          echo "Checking database readiness..."
+          timeout 30 sh -c 'until docker compose exec -T db pg_isready -U postgres 2>/dev/null; do 
+            echo "  Waiting for database..."
+            sleep 2
+          done' && echo "✅ Database is ready" || echo "⚠️ Database ready check timeout after 30s, continuing..."
+          
+          # Check migrate service status
+          echo "Checking migration status..."
+          docker compose ps migrate || echo "  Migrate service not visible in ps output"
+          
+          # Wait for migrate service to complete
+          echo "Waiting for migrations to complete..."
+          timeout 30 bash -c '
+            ATTEMPTS=0
+            while [ $ATTEMPTS -lt 15 ]; do
+              ATTEMPTS=$((ATTEMPTS + 1))
+              
+              # Check using docker directly (more reliable than docker compose ps)
+              CONTAINER_STATUS=$(docker ps -a --filter "label=com.docker.compose.service=migrate" --format "{{.Status}}" | head -1)
+              
+              if [ -z "$CONTAINER_STATUS" ]; then
+                echo "  Attempt $ATTEMPTS: Migrate container not found yet..."
+              elif echo "$CONTAINER_STATUS" | grep -q "Exited (0)"; then
+                echo "✅ Migrations completed successfully"
+                docker compose logs migrate --tail=5 2>/dev/null || true
+                exit 0
+              elif echo "$CONTAINER_STATUS" | grep -q "Exited ([1-9]"; then
+                EXIT_CODE=$(echo "$CONTAINER_STATUS" | grep -oE "Exited \([0-9]+\)" | grep -oE "[0-9]+")
+                echo "❌ Migrations failed with exit code: $EXIT_CODE"
+                echo "Migration logs:"
+                docker compose logs migrate --tail=20 2>/dev/null || true
+                exit 1
+              elif echo "$CONTAINER_STATUS" | grep -q "Up"; then
+                echo "  Attempt $ATTEMPTS: Migrate container is running... ($CONTAINER_STATUS)"
+              else
+                echo "  Attempt $ATTEMPTS: Migrate container status: $CONTAINER_STATUS"
+              fi
+              
+              sleep 2
+            done
+            
+            echo "⚠️ Timeout: Could not determine migration status after 30 seconds"
+            echo "Final container check:"
+            docker ps -a --filter "label=com.docker.compose.service=migrate" || true
+            echo "Migration logs (if available):"
+            docker compose logs migrate --tail=10 2>/dev/null || echo "  No logs available"
+          ' || echo "⚠️ Migration check completed with warnings, continuing..."
+          
+          # Brief wait for other services to stabilize
+          echo "Waiting 5 seconds for other services to stabilize..."
+          sleep 5
+
+      # Verify installations and provide environment info
+      - name: Verify setup and show environment info
+        run: |
+          echo "=== Python Setup ==="
+          python --version
+          poetry --version
+          
+          echo "=== Node.js Setup ==="
+          node --version
+          pnpm --version
+          
+          echo "=== Additional Tools ==="
+          docker --version
+          docker compose version
+          gh --version || true
+          
+          echo "=== Services Status ==="
+          cd autogpt_platform
+          docker compose ps || true
+          
+          echo "=== Backend Dependencies ==="
+          cd backend
+          poetry show | head -10 || true
+          
+          echo "=== Frontend Dependencies ==="
+          cd ../frontend
+          pnpm list --depth=0 | head -10 || true
+          
+          echo "=== Environment Files ==="
+          ls -la ../.env* || true
+          ls -la .env* || true
+          ls -la ../backend/.env* || true
+          
+          echo "✅ AutoGPT Platform development environment setup complete!"
+          echo "🚀 Ready for development with Docker services running"
+          echo "📝 Backend server: poetry run serve (port 8000)"
+          echo "🌐 Frontend server: pnpm dev (port 3000)"
+
       - name: Run Claude Code
         id: claude
-        uses: anthropics/claude-code-action@beta
+        uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: |
+            --allowedTools "Bash(npm:*),Bash(pnpm:*),Bash(poetry:*),Bash(git:*),Edit,Replace,NotebookEditCell,mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*)"
+          additional_permissions: |
+            actions: read
