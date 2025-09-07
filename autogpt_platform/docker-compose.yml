@@ -162,7 +162,6 @@ services:
       - redis
       - rabbitmq
       - clamav
-      - migrate
 
   deps_backend:
     <<: *agpt-services
