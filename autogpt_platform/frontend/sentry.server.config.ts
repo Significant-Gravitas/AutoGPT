@@ -40,9 +40,9 @@ Sentry.init({
 
   // Integrations
   integrations: [
+    Sentry.anrIntegration(),
     // NodeProfilingIntegration,
     Sentry.extraErrorDataIntegration(),
-    // nodeProfilingIntegration(),
     // Sentry.fsIntegration(),
   ],
 
