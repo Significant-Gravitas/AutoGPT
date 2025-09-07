@@ -783,14 +783,14 @@ async def update_graph_execution_stats(
         data=update_data,
     )
 
-    graph_exec = await AgentGraphExecution.prisma().find_unique(
+    graph_exec = await AgentGraphExecution.prisma().find_unique_or_raise(
         where={"id": graph_exec_id},
         include=graph_execution_include(
             [*get_io_block_ids(), *get_webhook_block_ids()]
         ),
     )
 
-    return GraphExecution.from_db(graph_exec) if graph_exec else None
+    return GraphExecution.from_db(graph_exec)
 
 
 async def update_node_execution_status_batch(
