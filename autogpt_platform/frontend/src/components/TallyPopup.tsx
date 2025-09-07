@@ -4,9 +4,14 @@ import React, { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { QuestionMarkCircledIcon } from "@radix-ui/react-icons";
 import { useRouter, usePathname } from "next/navigation";
+import * as Sentry from "@sentry/nextjs";
 
 const TallyPopupSimple = () => {
   const [isFormVisible, setIsFormVisible] = useState(false);
+  const [sentryReplayId, setSentryReplayId] = useState("");
+  const [replayUrl, setReplayUrl] = useState("");
+  const [pageUrl, setPageUrl] = useState("");
+  const [userAgent, setUserAgent] = useState("");
   const router = useRouter();
   const pathname = usePathname();
 
@@ -15,6 +20,26 @@ const TallyPopupSimple = () => {
   useEffect(() => {
     setShowTutorial(pathname.includes("build"));
   }, [pathname]);
+
+  useEffect(() => {
+    // Set client-side values
+    if (typeof window !== "undefined") {
+      setPageUrl(window.location.href);
+      setUserAgent(window.navigator.userAgent);
+
+      const replay = Sentry.getReplay();
+
+      if (replay) {
+        const replayId = replay.getReplayId();
+
+        if (replayId) {
+          setSentryReplayId(replayId);
+          const orgSlug = "significant-gravitas";
+          setReplayUrl(`https://${orgSlug}.sentry.io/replays/${replayId}/`);
+        }
+      }
+    }
+  }, []);
 
   useEffect(() => {
     // Load Tally script
@@ -26,15 +51,40 @@ const TallyPopupSimple = () => {
     // Setup event listeners for Tally events
     const handleTallyMessage = (event: MessageEvent) => {
       if (typeof event.data === "string") {
+        // Ignore iframe-resizer messages
+        if (
+          event.data.startsWith("[iFrameSize") ||
+          event.data.startsWith("[iFrameResizer")
+        ) {
+          return;
+        }
+
         try {
           const data = JSON.parse(event.data);
+
+          // Only process Tally events
+          if (!data.event?.startsWith("Tally.")) {
+            return;
+          }
+
           if (data.event === "Tally.FormLoaded") {
             setIsFormVisible(true);
+
+            // Flush Sentry replay when form opens
+            if (typeof window !== "undefined") {
+              const replay = Sentry.getReplay();
+              if (replay) {
+                replay.flush();
+              }
+            }
           } else if (data.event === "Tally.PopupClosed") {
             setIsFormVisible(false);
           }
         } catch (error) {
-          console.error("Error parsing Tally message:", error);
+          // Only log errors for messages we care about
+          if (event.data.includes("Tally")) {
+            console.error("Error parsing Tally message:", error);
+          }
         }
       }
     };
@@ -48,7 +98,7 @@ const TallyPopupSimple = () => {
   }, []);
 
   if (isFormVisible) {
-    return null; // Hide the button when the form is visible
+    return null;
   }
 
   const resetTutorial = () => {
@@ -72,6 +122,10 @@ const TallyPopupSimple = () => {
         data-tally-open="3yx2L0"
         data-tally-emoji-text="👋"
         data-tally-emoji-animation="wave"
+        data-sentry-replay-id={sentryReplayId || "not-initialized"}
+        data-sentry-replay-url={replayUrl || "not-initialized"}
+        data-user-agent={userAgent}
+        data-page-url={pageUrl}
       >
         <QuestionMarkCircledIcon className="h-14 w-14" />
         <span className="sr-only">Reach Out</span>
