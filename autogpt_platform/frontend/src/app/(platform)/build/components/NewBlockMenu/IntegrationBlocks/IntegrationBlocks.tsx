@@ -6,7 +6,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useIntegrationBlocks } from "./useIntegrationBlocks";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
-import { CircleNotchIcon } from "@phosphor-icons/react";
 
 export const IntegrationBlocks = () => {
   const { integration, setIntegration } = useBlockMenuContext();
@@ -56,9 +55,6 @@ export const IntegrationBlocks = () => {
       isFetchingNextPage={isFetchingNextPage}
       fetchNextPage={fetchNextPage}
       hasNextPage={hasNextPage}
-      loader={
-        <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
-      }
     >
       <div className="space-y-2.5">
         <div className="flex items-center justify-between">

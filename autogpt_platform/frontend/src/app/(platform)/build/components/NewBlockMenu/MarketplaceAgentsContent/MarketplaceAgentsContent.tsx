@@ -5,7 +5,7 @@ import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
-import { CircleNotchIcon, EmptyIcon } from "@phosphor-icons/react";
+import { EmptyIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
 import { blockMenuContainerStyle } from "../style";
 
@@ -67,9 +67,6 @@ export const MarketplaceAgentsContent = () => {
       isFetchingNextPage={isFetchingNextPage}
       fetchNextPage={fetchNextPage}
       hasNextPage={hasNextPage}
-      loader={
-        <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
-      }
       className={blockMenuContainerStyle}
     >
       {listStoreAgents?.map((agent, index) => (

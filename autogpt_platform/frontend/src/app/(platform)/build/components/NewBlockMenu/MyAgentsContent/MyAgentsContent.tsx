@@ -3,7 +3,6 @@ import { UGCAgentBlock } from "../UGCAgentBlock";
 import { useMyAgentsContent } from "./useMyAgentsContent";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
-import { CircleNotchIcon } from "@phosphor-icons/react";
 import { blockMenuContainerStyle } from "../style";
 
 export const MyAgentsContent = () => {
@@ -44,9 +43,6 @@ export const MyAgentsContent = () => {
       isFetchingNextPage={isFetchingNextPage}
       fetchNextPage={fetchNextPage}
       hasNextPage={hasNextPage}
-      loader={
-        <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
-      }
       className={blockMenuContainerStyle}
     >
       {allAgents.map((agent) => (
