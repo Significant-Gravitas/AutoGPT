@@ -91,7 +91,6 @@ export const useAllBlockContent = () => {
     isLoading,
     isError,
     error,
-    status,
     handleRefetchBlocks,
     isLoadingMore,
     isErrorOnLoadingMore,
