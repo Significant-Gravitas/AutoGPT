@@ -46,6 +46,8 @@ export const useMarketplaceAgentsContent = () => {
       return response.agents;
     }) ?? [];
 
+  const status = listStoreAgents?.pages[0]?.status;
+
   const { mutate: addMarketplaceAgent } = usePostV2AddMarketplaceAgent();
 
   const handleAddStoreAgent = async ({
@@ -88,6 +90,7 @@ export const useMarketplaceAgentsContent = () => {
   return {
     handleAddStoreAgent,
     listStoreAgents: allAgents,
+    status,
     addingAgent,
     isListStoreAgentsLoading,
     isListStoreAgentsError,

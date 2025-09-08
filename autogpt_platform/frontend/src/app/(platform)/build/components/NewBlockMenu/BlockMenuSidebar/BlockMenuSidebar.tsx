@@ -6,14 +6,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
 export const BlockMenuSidebar = () => {
-  const {
-    blockCounts,
-    setDefaultState,
-    defaultState,
-    isLoading,
-    isError,
-    error,
-  } = useBlockMenuSidebar();
+  const { data, setDefaultState, defaultState, isLoading, isError, error } =
+    useBlockMenuSidebar();
   const { setIntegration } = useBlockMenuContext();
   if (isLoading) {
     return (
@@ -32,15 +26,20 @@ export const BlockMenuSidebar = () => {
       <div className="w-fit space-y-2 px-4 pt-4">
         <ErrorCard
           className="w-[12.875rem]"
+          isSuccess={false}
+          responseError={error || undefined}
+          context="block menu"
           httpError={{
-            status: 500,
+            status: data?.status,
             statusText: "Internal Server Error",
-            message: error?.detail || "An error occurred",
+            message: (error?.detail as string) || "An error occurred",
           }}
         />
       </div>
     );
   }
+
+  const blockCounts = data?.blockCounts;
 
   const topLevelMenuItems = [
     {

@@ -33,17 +33,24 @@ export const AllBlocksContent = () => {
       <div className="h-full p-4">
         <ErrorCard
           isSuccess={false}
-          responseError={{ message: error?.detail as string }}
-          context="blocks"
+          responseError={error || undefined}
+          httpError={{
+            status: data?.status,
+            statusText: "Request failed",
+            message: (error?.detail as string) || "An error occurred",
+          }}
+          context="block menu"
           onRetry={() => window.location.reload()}
         />
       </div>
     );
   }
 
+  const categories = data?.categories;
+
   return (
     <div className={blockMenuContainerStyle}>
-      {data?.map((category, index) => (
+      {categories?.map((category, index) => (
         <Fragment key={category.name}>
           {index > 0 && <Separator className="h-[1px] w-full text-zinc-300" />}
 

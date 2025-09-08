@@ -22,7 +22,10 @@ export const useAllBlockContent = () => {
     {
       query: {
         select: (x) => {
-          return x.data as BlockCategoryResponse[];
+          return {
+            categories: x.data as BlockCategoryResponse[],
+            status: x.status,
+          };
         },
       },
     },
@@ -88,6 +91,7 @@ export const useAllBlockContent = () => {
     isLoading,
     isError,
     error,
+    status,
     handleRefetchBlocks,
     isLoadingMore,
     isErrorOnLoadingMore,

@@ -41,8 +41,11 @@ export const usePaginatedBlocks = ({ type }: UsePaginatedBlocksProps) => {
       return response.blocks;
     }) ?? [];
 
+  const status = blocks?.pages[0]?.status;
+
   return {
     allBlocks,
+    status,
     blocksLoading,
     hasNextPage,
     isFetchingNextPage,

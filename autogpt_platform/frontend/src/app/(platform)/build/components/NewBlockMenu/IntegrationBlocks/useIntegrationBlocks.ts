@@ -45,9 +45,12 @@ export const useIntegrationBlocks = () => {
     ? (blocks.pages[0].data as BlockResponse).pagination.total_items
     : 0;
 
+  const status = blocks?.pages[0]?.status;
+
   return {
     allBlocks,
     totalBlocks,
+    status,
     blocksLoading,
     hasNextPage,
     isFetchingNextPage,

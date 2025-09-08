@@ -21,6 +21,7 @@ export const MarketplaceAgentsContent = () => {
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
+    status,
   } = useMarketplaceAgentsContent();
 
   if (isListStoreAgentsLoading) {
@@ -45,8 +46,15 @@ export const MarketplaceAgentsContent = () => {
       <div className="h-full p-4">
         <ErrorCard
           isSuccess={false}
-          context="marketplace agents"
-          responseError={{ detail: listStoreAgentsError?.detail }}
+          context="block menu"
+          httpError={{
+            status: status,
+            statusText: "Request failed",
+            message:
+              (listStoreAgentsError?.detail as unknown as string) ||
+              "An error occurred",
+          }}
+          responseError={listStoreAgentsError || undefined}
           onRetry={() => refetchListStoreAgents()}
         />
       </div>

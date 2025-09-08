@@ -1,4 +1,3 @@
-
 import { useGetV2GetBuilderIntegrationProvidersInfinite } from "@/app/api/__generated__/endpoints/default/default";
 import { ProviderResponse } from "@/app/api/__generated__/models/providerResponse";
 
@@ -29,13 +28,16 @@ export const usePaginatedIntegrationList = () => {
           return isMore ? pagination.current_page + 1 : undefined;
         },
       },
-    }
+    },
   );
 
-  const allProviders = providers?.pages?.flatMap((page: any) => {
-    const response = page.data as ProviderResponse;
-    return response.providers;
-  }) ?? [];
+  const allProviders =
+    providers?.pages?.flatMap((page: any) => {
+      const response = page.data as ProviderResponse;
+      return response.providers;
+    }) ?? [];
+
+  const status = providers?.pages[0]?.status;
 
   return {
     allProviders,
@@ -45,5 +47,6 @@ export const usePaginatedIntegrationList = () => {
     fetchNextPage,
     error,
     refetch,
+    status,
   };
 };

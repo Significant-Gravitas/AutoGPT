@@ -10,6 +10,7 @@ export const useMyAgentsContent = () => {
     isError,
     isLoading: agentLoading,
     refetch,
+    error,
   } = useGetV2ListLibraryAgentsInfinite(
     {
       page: 1,
@@ -35,6 +36,8 @@ export const useMyAgentsContent = () => {
       return response.agents;
     }) ?? [];
 
+  const status = agents?.pages[0]?.status;
+
   return {
     allAgents,
     agentLoading,
@@ -43,5 +46,7 @@ export const useMyAgentsContent = () => {
     fetchNextPage,
     isError,
     refetch,
+    error,
+    status,
   };
 };

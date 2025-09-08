@@ -11,6 +11,7 @@ export const IntegrationBlocks = () => {
   const { integration, setIntegration } = useBlockMenuContext();
   const {
     allBlocks,
+    status,
     totalBlocks,
     blocksLoading,
     hasNextPage,
@@ -42,8 +43,13 @@ export const IntegrationBlocks = () => {
       <div className="h-full p-4">
         <ErrorCard
           isSuccess={false}
-          responseError={error}
-          context="integration blocks"
+          responseError={error || undefined}
+          httpError={{
+            status: status,
+            statusText: "Request failed",
+            message: (error?.detail as string) || "An error occurred",
+          }}
+          context="block menu"
           onRetry={() => refetch()}
         />
       </div>

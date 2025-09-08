@@ -14,6 +14,7 @@ export const PaginatedBlocksContent: React.FC<PaginatedBlocksContentProps> = ({
 }) => {
   const {
     allBlocks: blocks,
+    status,
     blocksLoading,
     hasNextPage,
     isFetchingNextPage,
@@ -29,8 +30,13 @@ export const PaginatedBlocksContent: React.FC<PaginatedBlocksContentProps> = ({
       <div className="h-full px-4">
         <ErrorCard
           isSuccess={false}
+          httpError={{
+            status: status,
+            statusText: "Request failed",
+            message: (error?.detail as string) || "An error occurred",
+          }}
           responseError={error || undefined}
-          context="blocks"
+          context="block menu"
           onRetry={() => refetch()}
         />
       </div>

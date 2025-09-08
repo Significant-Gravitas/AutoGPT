@@ -3,7 +3,6 @@ import { Integration } from "../Integration";
 import { useBlockMenuContext } from "../block-menu-provider";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
 import { usePaginatedIntegrationList } from "./usePaginatedIntegrationList";
-import { CircleNotchIcon } from "@phosphor-icons/react";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { blockMenuContainerStyle } from "../style";
 
@@ -16,6 +15,7 @@ export const PaginatedIntegrationList = () => {
     isFetchingNextPage,
     fetchNextPage,
     error,
+    status,
     refetch,
   } = usePaginatedIntegrationList();
 
@@ -25,7 +25,12 @@ export const PaginatedIntegrationList = () => {
         <ErrorCard
           isSuccess={false}
           responseError={error || undefined}
-          context="integrations"
+          context="block menu"
+          httpError={{
+            status: status,
+            statusText: "Request failed",
+            message: (error?.detail as string) || "An error occurred",
+          }}
           onRetry={() => refetch()}
         />
       </div>

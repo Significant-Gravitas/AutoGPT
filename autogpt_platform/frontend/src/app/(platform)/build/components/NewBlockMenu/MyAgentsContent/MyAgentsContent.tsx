@@ -13,6 +13,8 @@ export const MyAgentsContent = () => {
     isFetchingNextPage,
     fetchNextPage,
     isError,
+    error,
+    status,
     refetch,
   } = useMyAgentsContent();
 
@@ -31,7 +33,13 @@ export const MyAgentsContent = () => {
       <div className="h-full p-4">
         <ErrorCard
           isSuccess={false}
-          context="library agents"
+          context="block menu"
+          responseError={error || undefined}
+          httpError={{
+            status: status,
+            statusText: "Request failed",
+            message: (error?.detail as string) || "An error occurred",
+          }}
           onRetry={() => refetch()}
         />
       </div>

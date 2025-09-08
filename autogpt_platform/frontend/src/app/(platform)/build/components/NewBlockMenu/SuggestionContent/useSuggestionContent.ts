@@ -2,19 +2,17 @@ import { useGetV2GetBuilderSuggestions } from "@/app/api/__generated__/endpoints
 import { SuggestionsResponse } from "@/app/api/__generated__/models/suggestionsResponse";
 
 export const useSuggestionContent = () => {
-  const {
-    data: suggestions,
-    isLoading,
-    isError,
-    error,
-    refetch,
-  } = useGetV2GetBuilderSuggestions({
-    query: {
-      select: (x) => {
-        return x.data as SuggestionsResponse;
+  const { data, isLoading, isError, error, refetch } =
+    useGetV2GetBuilderSuggestions({
+      query: {
+        select: (x) => {
+          return {
+            suggestions: x.data as SuggestionsResponse,
+            status: x.status,
+          };
+        },
       },
-    },
-  });
+    });
 
-  return { suggestions, isLoading, isError, error, refetch };
+  return { data, isLoading, isError, error, refetch };
 };
