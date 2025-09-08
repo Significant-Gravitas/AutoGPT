@@ -1,6 +1,7 @@
-import { getGetV2GetBuilderBlockCategoriesQueryKey, getV2GetBuilderBlocks, useGetV2GetBuilderBlockCategories, useGetV2GetBuilderBlocks } from "@/app/api/__generated__/endpoints/default/default";
+import { getGetV2GetBuilderBlockCategoriesQueryKey, getV2GetBuilderBlocks, useGetV2GetBuilderBlockCategories } from "@/app/api/__generated__/endpoints/default/default";
 import { BlockCategoryResponse } from "@/app/api/__generated__/models/blockCategoryResponse";
 import { BlockResponse } from "@/app/api/__generated__/models/blockResponse";
+import * as Sentry from "@sentry/nextjs";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useState } from "react";
 
@@ -56,6 +57,7 @@ export const useAllBlockContent = () => {
             })
         }
     } catch (error) {
+        Sentry.captureException(error);
         setErrorLoadingCategories(prev => new Set(prev).add(targetCategory));
     } finally {
         setLoadingCategories(prev => {

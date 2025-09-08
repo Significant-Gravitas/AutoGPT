@@ -1,5 +1,5 @@
 import { usePostV2AddMarketplaceAgent } from "@/app/api/__generated__/endpoints/library/library";
-import { getV2GetSpecificAgent, useGetV2GetSpecificAgent, useGetV2ListStoreAgents, useGetV2ListStoreAgentsInfinite } from "@/app/api/__generated__/endpoints/store/store";
+import { getV2GetSpecificAgent, useGetV2ListStoreAgentsInfinite } from "@/app/api/__generated__/endpoints/store/store";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { StoreAgentsResponse } from "@/lib/autogpt-server-api";
 import * as Sentry from "@sentry/nextjs";

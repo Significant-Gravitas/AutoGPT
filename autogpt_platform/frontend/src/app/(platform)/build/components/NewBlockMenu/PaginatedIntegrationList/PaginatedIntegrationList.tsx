@@ -3,8 +3,6 @@ import { Integration } from "../Integration";
 import { useBlockMenuContext } from "../block-menu-provider";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
 import { usePaginatedIntegrationList } from "./usePaginatedIntegrationList";
-import { scrollbarStyles } from "@/components/styles/scrollbars";
-import { cn } from "@/lib/utils";
 import { CircleNotchIcon } from "@phosphor-icons/react";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { blockMenuContainerStyle } from "../style";

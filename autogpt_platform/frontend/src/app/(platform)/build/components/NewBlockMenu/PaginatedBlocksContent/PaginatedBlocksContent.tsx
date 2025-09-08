@@ -2,8 +2,6 @@ import React from "react";
 import { BlocksList } from "../BlockList/BlockList";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
 import { usePaginatedBlocks } from "./usePaginatedBlocks";
-import { scrollbarStyles } from "@/components/styles/scrollbars";
-import { cn } from "@/lib/utils";
 import { CircleNotchIcon } from "@phosphor-icons/react";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { blockMenuContainerStyle } from "../style";

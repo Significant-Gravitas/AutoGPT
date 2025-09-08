@@ -1,8 +1,5 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
-import { getV2GetBuilderBlocks, useGetV2GetBuilderBlocksInfinite } from "@/app/api/__generated__/endpoints/default/default";
+import { useGetV2GetBuilderBlocksInfinite } from "@/app/api/__generated__/endpoints/default/default";
 import { BlockResponse } from "@/app/api/__generated__/models/blockResponse";
-import { GetV2GetBuilderBlocksParams } from "@/app/api/__generated__/models/getV2GetBuilderBlocksParams";
-import { BlockType } from "../BlockList";
 
 interface UsePaginatedBlocksProps {
   type?: "all" | "input" | "action" | "output" | null;

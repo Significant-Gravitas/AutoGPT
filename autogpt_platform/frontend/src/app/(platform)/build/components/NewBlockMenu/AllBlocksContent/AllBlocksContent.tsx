@@ -2,10 +2,9 @@ import React, { Fragment } from "react";
 import { Block } from "../Block";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { beautifyString, cn } from "@/lib/utils";
+import { beautifyString } from "@/lib/utils";
 import { useAllBlockContent } from "./useAllBlockContent";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { blockMenuContainerStyle } from "../style";
 
 export const AllBlocksContent = () => {
