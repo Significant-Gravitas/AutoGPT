@@ -5,6 +5,7 @@ import { Select } from "@/components/atoms/Select/Select";
 import { useScheduleView } from "./useScheduleView";
 import { useCallback, useState } from "react";
 import { validateSchedule } from "./helpers";
+import { TimezoneNotice } from "../TimezoneNotice/TimezoneNotice";
 
 interface Props {
   scheduleName: string;
@@ -141,8 +142,9 @@ export function ScheduleView({
         placeholder="00:00"
         error={errors.time}
       />
-
-      {/** Agent inputs are rendered in the main modal; none here. */}
+      <div className="-mt-4">
+        <TimezoneNotice />
+      </div>
     </div>
   );
 }

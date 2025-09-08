@@ -25,7 +25,7 @@ import { useScheduleDetailHeader } from "../RunDetailHeader/useScheduleDetailHea
 import { DeleteScheduleButton } from "./components/DeleteScheduleButton/DeleteScheduleButton";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
-import { formatInTimezone } from "@/lib/timezone-utils";
+import { formatInTimezone, getTimezoneDisplayName } from "@/lib/timezone-utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AgentInputsReadOnly } from "../AgentInputsReadOnly/AgentInputsReadOnly";
 import { Button } from "@/components/atoms/Button/Button";
@@ -96,10 +96,11 @@ export function ScheduleDetails({
             <RunDetailHeader
               agent={agent}
               run={undefined}
-              scheduleRecurrence={humanizeCronExpression(
-                schedule?.cron || "",
-                userTzRes,
-              )}
+              scheduleRecurrence={
+                schedule
+                  ? `${humanizeCronExpression(schedule.cron || "", userTzRes)} · ${getTimezoneDisplayName(userTzRes || "UTC")} timezone`
+                  : undefined
+              }
             />
           </div>
           {schedule ? (
