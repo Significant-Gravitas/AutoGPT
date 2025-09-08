@@ -11,7 +11,7 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
   edited_time?: Date;
   version?: number;
-  image_url?: string;
+  image_url: string | null;
   highlightedText?: string;
 }
 

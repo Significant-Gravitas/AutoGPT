@@ -45,6 +45,7 @@ export const useMarketplaceAgentsContent = () => {
     const handleAddStoreAgent = async ({creator_name, slug}: {creator_name: string, slug: string}) => {
         try {
             setAddingAgent(slug);
+            new Promise(resolve => setTimeout(resolve, 4000));
             const {data: agent, status} = await getV2GetSpecificAgent(creator_name, slug)
             if (status !== 200){
                 Sentry.captureException("Store listing version not found");
