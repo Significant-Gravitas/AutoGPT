@@ -5,7 +5,11 @@ import Image from "next/image";
 import React, { ButtonHTMLAttributes } from "react";
 import Link from "next/link";
 import { highlightText } from "./helpers";
-import { ArrowSquareOutIcon, CircleNotchIcon, PlusIcon } from "@phosphor-icons/react";
+import {
+  ArrowSquareOutIcon,
+  CircleNotchIcon,
+  PlusIcon,
+} from "@phosphor-icons/react";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
@@ -89,7 +93,10 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
             <span className="font-sans text-xs leading-5 text-blue-700 underline">
               Agent page
             </span>
-            <ArrowSquareOutIcon className="h-4 w-4 text-blue-700" strokeWidth={1} />
+            <ArrowSquareOutIcon
+              className="h-4 w-4 text-blue-700"
+              strokeWidth={1}
+            />
           </Link>
         </div>
       </div>

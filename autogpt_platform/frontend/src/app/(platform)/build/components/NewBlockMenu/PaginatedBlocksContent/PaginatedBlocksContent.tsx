@@ -27,27 +27,28 @@ export const PaginatedBlocksContent: React.FC<PaginatedBlocksContentProps> = ({
 
   if (error) {
     return (
-      <div className="h-full px-4"> 
+      <div className="h-full px-4">
         <ErrorCard
-        isSuccess={false}
-        responseError={error || undefined}
-        context="blocks"
-        onRetry={() => refetch()}
-        /> 
+          isSuccess={false}
+          responseError={error || undefined}
+          context="blocks"
+          onRetry={() => refetch()}
+        />
       </div>
-     
     );
   }
 
   return (
-        <InfiniteScroll
-          isFetchingNextPage={isFetchingNextPage}
-          fetchNextPage={fetchNextPage}
-          hasNextPage={hasNextPage}
-          loader={<CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />}
-          className={blockMenuContainerStyle}
-        >
-          <BlocksList blocks={blocks} loading={blocksLoading} />
-        </InfiniteScroll>
+    <InfiniteScroll
+      isFetchingNextPage={isFetchingNextPage}
+      fetchNextPage={fetchNextPage}
+      hasNextPage={hasNextPage}
+      loader={
+        <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
+      }
+      className={blockMenuContainerStyle}
+    >
+      <BlocksList blocks={blocks} loading={blocksLoading} />
+    </InfiniteScroll>
   );
 };

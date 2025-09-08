@@ -23,7 +23,10 @@ export const BlockMenu: React.FC<BlockMenuProps> = ({
   blockMenuSelected,
   setBlockMenuSelected,
 }) => {
-  const {open, onOpen} = useBlockMenu({pinBlocksPopover, setBlockMenuSelected});
+  const { open, onOpen } = useBlockMenu({
+    pinBlocksPopover,
+    setBlockMenuSelected,
+  });
   return (
     <Popover open={pinBlocksPopover ? true : open} onOpenChange={onOpen}>
       <PopoverTrigger className="hover:cursor-pointer">
@@ -33,8 +36,8 @@ export const BlockMenu: React.FC<BlockMenuProps> = ({
           selected={blockMenuSelected === "block"}
           className="rounded-none"
         >
-           {/* Need to find phosphor icon alternative for this lucide icon */}
-          <ToyBrick className="h-5 w-6" strokeWidth={2} /> 
+          {/* Need to find phosphor icon alternative for this lucide icon */}
+          <ToyBrick className="h-5 w-6" strokeWidth={2} />
         </ControlPanelButton>
       </PopoverTrigger>
 
@@ -45,10 +48,9 @@ export const BlockMenu: React.FC<BlockMenuProps> = ({
         className="absolute h-[80vh] w-[46.625rem] overflow-hidden rounded-[1rem] border-none p-0 shadow-[0_2px_6px_0_rgba(0,0,0,0.05)]"
         data-id="blocks-control-popover-content"
       >
-          <BlockMenuStateProvider>
-            <BlockMenuContent />
-          </BlockMenuStateProvider>
-
+        <BlockMenuStateProvider>
+          <BlockMenuContent />
+        </BlockMenuStateProvider>
       </PopoverContent>
     </Popover>
   );

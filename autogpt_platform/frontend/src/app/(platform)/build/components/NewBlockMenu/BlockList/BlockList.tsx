@@ -20,7 +20,7 @@ export const BlocksList: React.FC<BlocksListProps> = ({
   blocks,
   loading = false,
 }) => {
-  if(loading) {
+  if (loading) {
     return (
       <div className={blockMenuContainerStyle}>
         {Array.from({ length: 7 }).map((_, index) => (
@@ -29,13 +29,7 @@ export const BlocksList: React.FC<BlocksListProps> = ({
       </div>
     );
   }
-  return (
-     blocks.map((block) => (
-            <Block
-              key={block.id}
-              title={block.name}
-              description={block.description}
-            />
-      ))
-  );
+  return blocks.map((block) => (
+    <Block key={block.id} title={block.name} description={block.description} />
+  ));
 };

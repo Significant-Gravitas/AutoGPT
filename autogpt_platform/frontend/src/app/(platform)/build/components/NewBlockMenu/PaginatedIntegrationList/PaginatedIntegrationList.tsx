@@ -33,33 +33,31 @@ export const PaginatedIntegrationList = () => {
   }
   if (providersLoading && providers.length === 0) {
     return (
-        <div className={blockMenuContainerStyle}>
-            {Array.from({ length: 6 }).map((_, integrationIndex) => (
-              <Integration.Skeleton key={integrationIndex} />
-            ))}
-        </div>
+      <div className={blockMenuContainerStyle}>
+        {Array.from({ length: 6 }).map((_, integrationIndex) => (
+          <Integration.Skeleton key={integrationIndex} />
+        ))}
+      </div>
     );
   }
 
   return (
-      <InfiniteScroll
-        isFetchingNextPage={isFetchingNextPage}
-        fetchNextPage={fetchNextPage}
-        hasNextPage={hasNextPage}
-        loader={<CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />}
-        className={blockMenuContainerStyle}
-      >
-            {providers.map((integration, index) => (
-              <Integration
-                key={integration.name + index}
-                title={integration.name}
-                icon_url={`/integrations/${integration.name}.png`}
-                description={integration.description}
-                number_of_blocks={integration.integration_count}
-                onClick={() => setIntegration(integration.name)}
-              />
-            ))}
-      </InfiniteScroll>
-
+    <InfiniteScroll
+      isFetchingNextPage={isFetchingNextPage}
+      fetchNextPage={fetchNextPage}
+      hasNextPage={hasNextPage}
+      className={blockMenuContainerStyle}
+    >
+      {providers.map((integration, index) => (
+        <Integration
+          key={integration.name + index}
+          title={integration.name}
+          icon_url={`/integrations/${integration.name}.png`}
+          description={integration.description}
+          number_of_blocks={integration.integration_count}
+          onClick={() => setIntegration(integration.name)}
+        />
+      ))}
+    </InfiniteScroll>
   );
 };

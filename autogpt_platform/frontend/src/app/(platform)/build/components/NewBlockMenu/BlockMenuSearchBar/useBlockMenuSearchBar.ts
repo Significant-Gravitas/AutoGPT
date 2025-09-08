@@ -5,42 +5,42 @@ import { useBlockMenuContext } from "../block-menu-provider";
 const SEARCH_DEBOUNCE_MS = 300;
 
 export const useBlockMenuSearchBar = () => {
-    const inputRef = useRef<HTMLInputElement>(null);
-    const [localQuery, setLocalQuery] = useState("");
-    const { setSearchQuery, setSearchId, searchId } = useBlockMenuContext();
-    
-    const searchIdRef = useRef(searchId);
-    useEffect(() => {
-      searchIdRef.current = searchId;
-    }, [searchId]);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [localQuery, setLocalQuery] = useState("");
+  const { setSearchQuery, setSearchId, searchId } = useBlockMenuContext();
 
-    const debouncedSetSearchQuery = debounce((value: string) => {
-          setSearchQuery(value);
-          if (value.length === 0) {
-            setSearchId(undefined);
-          } else if (!searchIdRef.current) {
-            setSearchId(crypto.randomUUID());
-          }
-        }, SEARCH_DEBOUNCE_MS);
-  
-    useEffect(() => {
-      return () => {
-        debouncedSetSearchQuery.cancel();
-      };
-    }, [debouncedSetSearchQuery]);
-  
-    const handleClear = () => {
-      setLocalQuery("");
-      setSearchQuery("");
+  const searchIdRef = useRef(searchId);
+  useEffect(() => {
+    searchIdRef.current = searchId;
+  }, [searchId]);
+
+  const debouncedSetSearchQuery = debounce((value: string) => {
+    setSearchQuery(value);
+    if (value.length === 0) {
       setSearchId(undefined);
+    } else if (!searchIdRef.current) {
+      setSearchId(crypto.randomUUID());
+    }
+  }, SEARCH_DEBOUNCE_MS);
+
+  useEffect(() => {
+    return () => {
       debouncedSetSearchQuery.cancel();
     };
+  }, [debouncedSetSearchQuery]);
 
-    return {
-        handleClear,
-        inputRef,
-        localQuery,
-        setLocalQuery,
-        debouncedSetSearchQuery,
-    }
+  const handleClear = () => {
+    setLocalQuery("");
+    setSearchQuery("");
+    setSearchId(undefined);
+    debouncedSetSearchQuery.cancel();
+  };
+
+  return {
+    handleClear,
+    inputRef,
+    localQuery,
+    setLocalQuery,
+    debouncedSetSearchQuery,
+  };
 };

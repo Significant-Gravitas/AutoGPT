@@ -10,7 +10,16 @@ import { CircleNotchIcon } from "@phosphor-icons/react";
 
 export const IntegrationBlocks = () => {
   const { integration, setIntegration } = useBlockMenuContext();
-  const { allBlocks, totalBlocks, blocksLoading, hasNextPage, isFetchingNextPage, fetchNextPage, error, refetch } = useIntegrationBlocks();
+  const {
+    allBlocks,
+    totalBlocks,
+    blocksLoading,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+    error,
+    refetch,
+  } = useIntegrationBlocks();
 
   if (blocksLoading) {
     return (
@@ -47,43 +56,44 @@ export const IntegrationBlocks = () => {
       isFetchingNextPage={isFetchingNextPage}
       fetchNextPage={fetchNextPage}
       hasNextPage={hasNextPage}
-      loader={<CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />}
+      loader={
+        <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
+      }
     >
-        <div className="space-y-2.5">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1">
-          <Button
-            variant={"link"}
-            className="p-0 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800"
-            onClick={() => {
-              setIntegration(undefined);
-            }}
-          >
-            Integrations
-          </Button>
-          <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
-            /
-          </p>
-          <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
-            {integration}
-          </p>
+      <div className="space-y-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1">
+            <Button
+              variant={"link"}
+              className="p-0 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800"
+              onClick={() => {
+                setIntegration(undefined);
+              }}
+            >
+              Integrations
+            </Button>
+            <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
+              /
+            </p>
+            <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
+              {integration}
+            </p>
+          </div>
+          <span className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-[1.25rem] bg-[#f0f0f0] p-1.5 font-sans text-sm leading-[1.375rem] text-zinc-500 group-disabled:text-zinc-400">
+            {totalBlocks}
+          </span>
         </div>
-        <span className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-[1.25rem] bg-[#f0f0f0] p-1.5 font-sans text-sm leading-[1.375rem] text-zinc-500 group-disabled:text-zinc-400">
-          {totalBlocks}
-        </span>
+        <div className="space-y-3">
+          {allBlocks.map((block) => (
+            <IntegrationBlock
+              key={block.id}
+              title={block.name}
+              description={block.description}
+              icon_url={`/integrations/${integration}.png`}
+            />
+          ))}
+        </div>
       </div>
-      <div className="space-y-3" >
-        {allBlocks.map((block) => (
-          <IntegrationBlock
-            key={block.id}
-            title={block.name}
-            description={block.description}
-            icon_url={`/integrations/${integration}.png`}
-          />
-        ))}
-      </div>
-    </div>
     </InfiniteScroll>
-  
   );
 };

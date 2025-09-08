@@ -8,14 +8,17 @@ import { blockMenuContainerStyle } from "../style";
 
 export const SuggestionContent = () => {
   const { setIntegration, setDefaultState } = useBlockMenuContext();
-  const { suggestions, isLoading, isError, error, refetch } = useSuggestionContent();
+  const { suggestions, isLoading, isError, error, refetch } =
+    useSuggestionContent();
 
   if (isError) {
     return (
       <div className="h-full p-4">
         <ErrorCard
           isSuccess={false}
-          responseError={{detail: error?.detail || "Error fetching suggestions"}}
+          responseError={{
+            detail: error?.detail || "Error fetching suggestions",
+          }}
           context="Error fetching suggestions"
           onRetry={() => refetch()}
         />

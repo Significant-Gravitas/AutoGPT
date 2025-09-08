@@ -6,38 +6,40 @@ interface UsePaginatedBlocksProps {
 }
 
 const PAGE_SIZE = 10;
-export const usePaginatedBlocks = ({
-  type,
-}: UsePaginatedBlocksProps) => {
-  const {data: blocks,
+export const usePaginatedBlocks = ({ type }: UsePaginatedBlocksProps) => {
+  const {
+    data: blocks,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
     isLoading: blocksLoading,
     error,
     refetch,
-  } = useGetV2GetBuilderBlocksInfinite({
-    page: 1,
-    page_size: PAGE_SIZE,
-    type,
-  },{
-    query: {
-      getNextPageParam: (lastPage) => {
-        const pagination = (lastPage.data as BlockResponse).pagination;
-        const isMore =
-          pagination.current_page * pagination.page_size <
-          pagination.total_items;
+  } = useGetV2GetBuilderBlocksInfinite(
+    {
+      page: 1,
+      page_size: PAGE_SIZE,
+      type,
+    },
+    {
+      query: {
+        getNextPageParam: (lastPage) => {
+          const pagination = (lastPage.data as BlockResponse).pagination;
+          const isMore =
+            pagination.current_page * pagination.page_size <
+            pagination.total_items;
 
-        return isMore ? pagination.current_page + 1 : undefined;
+          return isMore ? pagination.current_page + 1 : undefined;
+        },
       },
     },
-  },)  
+  );
 
-
-  const allBlocks = blocks?.pages?.flatMap((page) => {
-    const response = page.data as BlockResponse;
-    return response.blocks;
-  }) ?? [];
+  const allBlocks =
+    blocks?.pages?.flatMap((page) => {
+      const response = page.data as BlockResponse;
+      return response.blocks;
+    }) ?? [];
 
   return {
     allBlocks,

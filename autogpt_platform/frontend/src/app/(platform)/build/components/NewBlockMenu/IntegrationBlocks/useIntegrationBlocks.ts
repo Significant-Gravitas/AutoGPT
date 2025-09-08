@@ -6,7 +6,7 @@ const PAGE_SIZE = 10;
 
 export const useIntegrationBlocks = () => {
   const { integration } = useBlockMenuContext();
-  
+
   const {
     data: blocks,
     fetchNextPage,
@@ -32,15 +32,18 @@ export const useIntegrationBlocks = () => {
           return isMore ? pagination.current_page + 1 : undefined;
         },
       },
-    }
+    },
   );
 
-  const allBlocks = blocks?.pages?.flatMap((page) => {
-    const response = page.data as BlockResponse;
-    return response.blocks;
-  }) ?? [];
+  const allBlocks =
+    blocks?.pages?.flatMap((page) => {
+      const response = page.data as BlockResponse;
+      return response.blocks;
+    }) ?? [];
 
-const totalBlocks = blocks?.pages[0] ? (blocks.pages[0].data as BlockResponse).pagination.total_items : 0;
+  const totalBlocks = blocks?.pages[0]
+    ? (blocks.pages[0].data as BlockResponse).pagination.total_items
+    : 0;
 
   return {
     allBlocks,

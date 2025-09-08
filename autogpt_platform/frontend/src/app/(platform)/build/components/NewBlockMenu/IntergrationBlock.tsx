@@ -17,8 +17,6 @@ interface IntegrationBlockComponent extends React.FC<Props> {
   Skeleton: React.FC<{ className?: string }>;
 }
 
-
-
 export const IntegrationBlock: IntegrationBlockComponent = ({
   title,
   icon_url,

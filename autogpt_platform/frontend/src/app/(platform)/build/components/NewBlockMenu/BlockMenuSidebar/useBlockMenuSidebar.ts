@@ -5,12 +5,17 @@ import { CountResponse } from "@/app/api/__generated__/models/countResponse";
 export const useBlockMenuSidebar = () => {
   const { defaultState, setDefaultState } = useBlockMenuContext();
 
-  const { data: blockCounts, isLoading, isError, error} = useGetV2GetBuilderItemCounts({
-    query : {
-        select : (x) =>{
-            return x.data as CountResponse
-        }
-    }
+  const {
+    data: blockCounts,
+    isLoading,
+    isError,
+    error,
+  } = useGetV2GetBuilderItemCounts({
+    query: {
+      select: (x) => {
+        return x.data as CountResponse;
+      },
+    },
   });
 
   return {
@@ -20,5 +25,5 @@ export const useBlockMenuSidebar = () => {
     isLoading,
     isError,
     error,
-  }
+  };
 };

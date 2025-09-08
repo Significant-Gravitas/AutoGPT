@@ -13,8 +13,13 @@ export const IntegrationsContent = () => {
   }
 
   return (
-    <div className={cn(scrollbarStyles, "h-full overflow-y-auto pt-4 transition-all duration-200")}>
-      <div className="w-full px-4 pb-4" >
+    <div
+      className={cn(
+        scrollbarStyles,
+        "h-full overflow-y-auto pt-4 transition-all duration-200",
+      )}
+    >
+      <div className="w-full px-4 pb-4">
         <IntegrationBlocks />
       </div>
     </div>

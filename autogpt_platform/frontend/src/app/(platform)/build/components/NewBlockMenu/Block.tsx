@@ -1,10 +1,9 @@
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { beautifyString, cn } from "@/lib/utils";
-import React, { ButtonHTMLAttributes } from "react";import { highlightText } from "./helpers";
+import React, { ButtonHTMLAttributes } from "react";
+import { highlightText } from "./helpers";
 import { PlusIcon } from "@phosphor-icons/react";
-;
-
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
   description?: string;

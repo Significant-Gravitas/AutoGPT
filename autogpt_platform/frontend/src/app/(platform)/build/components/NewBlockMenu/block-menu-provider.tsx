@@ -12,7 +12,6 @@ export type DefaultStateType =
   | "marketplace_agents"
   | "my_agents";
 
-
 interface BlockMenuContextType {
   searchQuery: string;
   setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
@@ -22,7 +21,7 @@ interface BlockMenuContextType {
   setDefaultState: React.Dispatch<React.SetStateAction<DefaultStateType>>;
   integration: string | undefined;
   setIntegration: React.Dispatch<React.SetStateAction<string | undefined>>;
-}   
+}
 
 export const BlockMenuContext = createContext<BlockMenuContextType>(
   {} as BlockMenuContextType,
@@ -37,7 +36,8 @@ export function BlockMenuStateProvider({
 }: BlockMenuStateProviderProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchId, setSearchId] = useState<string | undefined>(undefined);
-  const [defaultState, setDefaultState] = useState<DefaultStateType>("suggestion");
+  const [defaultState, setDefaultState] =
+    useState<DefaultStateType>("suggestion");
   const [integration, setIntegration] = useState<string | undefined>(undefined);
 
   return (
