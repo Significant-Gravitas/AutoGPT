@@ -1,10 +1,15 @@
-import { usePostV2AddMarketplaceAgent } from "@/app/api/__generated__/endpoints/library/library";
+import { getGetV2GetBuilderItemCountsQueryKey } from "@/app/api/__generated__/endpoints/default/default";
+import {
+  getGetV2ListLibraryAgentsQueryKey,
+  usePostV2AddMarketplaceAgent,
+} from "@/app/api/__generated__/endpoints/library/library";
 import {
   getV2GetSpecificAgent,
   useGetV2ListStoreAgentsInfinite,
 } from "@/app/api/__generated__/endpoints/store/store";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { StoreAgentsResponse } from "@/lib/autogpt-server-api";
+import { getQueryClient } from "@/lib/react-query/queryClient";
 import * as Sentry from "@sentry/nextjs";
 import { useState } from "react";
 
@@ -48,7 +53,20 @@ export const useMarketplaceAgentsContent = () => {
 
   const status = listStoreAgents?.pages[0]?.status;
 
-  const { mutate: addMarketplaceAgent } = usePostV2AddMarketplaceAgent();
+  const { mutate: addMarketplaceAgent } = usePostV2AddMarketplaceAgent({
+    mutation: {
+      onSuccess: () => {
+        const queryClient = getQueryClient();
+        queryClient.invalidateQueries({
+          queryKey: getGetV2ListLibraryAgentsQueryKey(),
+        });
+
+        queryClient.refetchQueries({
+          queryKey: getGetV2GetBuilderItemCountsQueryKey(),
+        });
+      },
+    },
+  });
 
   const handleAddStoreAgent = async ({
     creator_name,

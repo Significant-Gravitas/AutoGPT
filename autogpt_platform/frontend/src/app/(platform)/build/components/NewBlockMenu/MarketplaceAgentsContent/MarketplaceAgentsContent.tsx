@@ -5,8 +5,6 @@ import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
-import { EmptyIcon } from "@phosphor-icons/react";
-import { Text } from "@/components/atoms/Text/Text";
 import { blockMenuContainerStyle } from "../style";
 
 export const MarketplaceAgentsContent = () => {

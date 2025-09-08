@@ -4,8 +4,6 @@ import { useMyAgentsContent } from "./useMyAgentsContent";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
 import { blockMenuContainerStyle } from "../style";
-import { EmptyIcon } from "@phosphor-icons/react";
-import { Text } from "@/components/atoms/Text/Text";
 
 export const MyAgentsContent = () => {
   const {
@@ -44,17 +42,6 @@ export const MyAgentsContent = () => {
           }}
           onRetry={() => refetch()}
         />
-      </div>
-    );
-  }
-
-  if (allAgents.length === 0) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center space-y-3 p-4">
-        <EmptyIcon className="h-8 w-8 text-zinc-400" />
-        <Text variant="body">
-          No agent present in your library, please create one
-        </Text>
       </div>
     );
   }

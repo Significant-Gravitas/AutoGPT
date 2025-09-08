@@ -77,7 +77,7 @@ export const BlockMenuSidebar = () => {
       type: "integrations",
       number: blockCounts?.integrations,
       onClick: () => {
-        setDefaultState("integrations");
+        setDefaultState(DefaultStateType.INTEGRATIONS);
         setIntegration(undefined);
       },
     },

@@ -1,7 +1,7 @@
 import React from "react";
 import { IntegrationChip } from "../IntegrationChip";
 import { Block } from "../Block";
-import { useBlockMenuContext } from "../block-menu-provider";
+import { DefaultStateType, useBlockMenuContext } from "../block-menu-provider";
 import { useSuggestionContent } from "./useSuggestionContent";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { blockMenuContainerStyle } from "../style";
@@ -46,7 +46,7 @@ export const SuggestionContent = () => {
                     icon_url={`/integrations/${provider}.png`}
                     name={provider}
                     onClick={() => {
-                      setDefaultState("integrations");
+                      setDefaultState(DefaultStateType.INTEGRATIONS);
                       setIntegration(provider);
                     }}
                   />

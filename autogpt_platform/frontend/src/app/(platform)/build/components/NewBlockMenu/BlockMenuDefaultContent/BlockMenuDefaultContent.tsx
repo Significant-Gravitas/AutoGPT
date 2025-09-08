@@ -1,5 +1,5 @@
 import React from "react";
-import { useBlockMenuContext } from "../block-menu-provider";
+import { DefaultStateType, useBlockMenuContext } from "../block-menu-provider";
 import { AllBlocksContent } from "../AllBlocksContent/AllBlocksContent";
 import { PaginatedBlocksContent } from "../PaginatedBlocksContent/PaginatedBlocksContent";
 import { IntegrationsContent } from "../IntegrationsContent/IntegrationsContent";
@@ -24,20 +24,22 @@ export const BlockMenuDefaultContent = () => {
 
   return (
     <div className="h-full flex-1 overflow-hidden">
-      {defaultState == "suggestion" && <SuggestionContent />}
-      {defaultState == "all_blocks" && <AllBlocksContent />}
-      {defaultState == "input_blocks" && (
+      {defaultState == DefaultStateType.SUGGESTION && <SuggestionContent />}
+      {defaultState == DefaultStateType.ALL_BLOCKS && <AllBlocksContent />}
+      {defaultState == DefaultStateType.INPUT_BLOCKS && (
         <PaginatedBlocksContent type="input" />
       )}
-      {defaultState == "action_blocks" && (
+      {defaultState == DefaultStateType.ACTION_BLOCKS && (
         <PaginatedBlocksContent type="action" />
       )}
-      {defaultState == "output_blocks" && (
+      {defaultState == DefaultStateType.OUTPUT_BLOCKS && (
         <PaginatedBlocksContent type="output" />
       )}
-      {defaultState == "integrations" && <IntegrationsContent />}
-      {defaultState == "marketplace_agents" && <MarketplaceAgentsContent />}
-      {defaultState == "my_agents" && <MyAgentsContent />}
+      {defaultState == DefaultStateType.INTEGRATIONS && <IntegrationsContent />}
+      {defaultState == DefaultStateType.MARKETPLACE_AGENTS && (
+        <MarketplaceAgentsContent />
+      )}
+      {defaultState == DefaultStateType.MY_AGENTS && <MyAgentsContent />}
     </div>
   );
 };
