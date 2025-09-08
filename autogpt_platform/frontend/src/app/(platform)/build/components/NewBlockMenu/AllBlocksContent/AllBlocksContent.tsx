@@ -2,10 +2,10 @@ import React, { Fragment } from "react";
 import { Block } from "../Block";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { beautifyString } from "@/lib/utils";
-import { scrollbarStyles } from "@/components/styles/scrollbar";
+import { beautifyString, cn } from "@/lib/utils";
 import { useAllBlockContent } from "./useAllBlockContent";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { scrollbarStyles } from "@/components/styles/scrollbars";
 
 export const AllBlocksContent = () => {
   const {data, isLoading, isError, error, handleRefetchBlocks, isLoadingMore, isErrorOnLoadingMore} = useAllBlockContent();
@@ -38,7 +38,7 @@ export const AllBlocksContent = () => {
   }
 
   return (
-    <div className={scrollbarStyles}>
+    <div className={cn(scrollbarStyles, "h-full overflow-y-auto pt-4 transition-all duration-200")}>
       <div className="w-full space-y-3 px-4 pb-4">
         {data?.map((category, index) => (
           <Fragment key={category.name}>

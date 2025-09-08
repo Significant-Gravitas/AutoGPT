@@ -5,23 +5,23 @@ import { GetV2GetBuilderBlocksParams } from "@/app/api/__generated__/models/getV
 import { BlockType } from "../BlockList";
 
 interface UsePaginatedBlocksProps {
-  category?: string | null;
   type?: "all" | "input" | "action" | "output" | null;
-  provider?: string | null;
-  pageSize?: number;
 }
 
+const PAGE_SIZE = 10;
 export const usePaginatedBlocks = ({
   type,
-  pageSize = 10,
 }: UsePaginatedBlocksProps) => {
   const {data: blocks,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-    isLoading: blocksLoading,} = useGetV2GetBuilderBlocksInfinite({
+    isLoading: blocksLoading,
+    error,
+    refetch,
+  } = useGetV2GetBuilderBlocksInfinite({
     page: 1,
-    page_size: pageSize,
+    page_size: PAGE_SIZE,
     type,
   },{
     query: {
@@ -36,6 +36,7 @@ export const usePaginatedBlocks = ({
     },
   },)  
 
+
   const allBlocks = blocks?.pages?.flatMap((page) => {
     const response = page.data as BlockResponse;
     return response.blocks;
@@ -45,8 +46,9 @@ export const usePaginatedBlocks = ({
     allBlocks,
     blocksLoading,
     hasNextPage,
-
     isFetchingNextPage,
     fetchNextPage,
+    error,
+    refetch,
   };
 };
