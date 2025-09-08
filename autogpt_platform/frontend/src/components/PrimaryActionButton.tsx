@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
 import { ClockIcon } from "@phosphor-icons/react";
 import { IconPlay, IconSquare } from "@/components/ui/icons";
+import { useTrackEvent, EventKeys } from "@/services/feature-flags/use-track-event";
 
 interface PrimaryActionBarProps {
   onClickAgentOutputs?: () => void;
@@ -24,6 +25,7 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
   isDisabled,
   className,
 }) => {
+  const { track } = useTrackEvent();
   const buttonClasses =
     "flex items-center gap-2 text-sm font-medium md:text-lg";
   return (
@@ -39,7 +41,10 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
             className={buttonClasses}
             variant="outline"
             size="primary"
-            onClick={onClickAgentOutputs}
+            onClick={() => {
+              track("agent-outputs-viewed", { source: "primary-action-bar" });
+              onClickAgentOutputs();
+            }}
             title="View agent outputs"
           >
             <LogOut className="hidden size-5 md:flex" /> Agent Outputs
@@ -56,7 +61,15 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
             )}
             variant="accent"
             size="primary"
-            onClick={onClickRunAgent}
+            onClick={() => {
+              if (onClickRunAgent) {
+                track(EventKeys.AGENT_RUN_STARTED, { 
+                  source: "primary-action-bar",
+                  timestamp: new Date().toISOString()
+                });
+                onClickRunAgent();
+              }
+            }}
             disabled={!onClickRunAgent}
             title="Run the agent"
             aria-label="Run the agent"
@@ -69,7 +82,13 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
             className={buttonClasses}
             variant="destructive"
             size="primary"
-            onClick={onClickStopRun}
+            onClick={() => {
+              track("agent-run-stopped", { 
+                source: "primary-action-bar",
+                timestamp: new Date().toISOString()
+              });
+              onClickStopRun();
+            }}
             title="Stop the agent"
             data-id="primary-action-stop-agent"
           >
@@ -82,7 +101,13 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
             className={buttonClasses}
             variant="outline"
             size="primary"
-            onClick={onClickScheduleButton}
+            onClick={() => {
+              track("agent-schedule-opened", { 
+                source: "primary-action-bar",
+                timestamp: new Date().toISOString()
+              });
+              onClickScheduleButton();
+            }}
             title="Set up a run schedule for the agent"
             data-id="primary-action-schedule-agent"
           >

@@ -13,11 +13,13 @@ import { StoreAgentDetails } from "@/lib/autogpt-server-api";
 import { finishOnboarding } from "../6-congrats/actions";
 import { isEmptyOrWhitespace } from "@/lib/utils";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import { useTrackEvent, EventKeys } from "@/services/feature-flags/use-track-event";
 
 export default function Page() {
   const { state, updateState } = useOnboarding(4, "INTEGRATIONS");
   const [agents, setAgents] = useState<StoreAgentDetails[]>([]);
   const api = useBackendAPI();
+  const { track } = useTrackEvent();
 
   useEffect(() => {
     api.getOnboardingAgents().then((agents) => {
@@ -66,12 +68,19 @@ export default function Page() {
                 agents[0]?.store_listing_version_id
               : false
           }
-          onClick={() =>
+          onClick={() => {
+            track("onboarding-agent-selected", {
+              agentId: agents[0].store_listing_version_id,
+              agentName: agents[0].name,
+              position: 1,
+              step: "agent-selection",
+              timestamp: new Date().toISOString(),
+            });
             updateState({
               selectedStoreListingVersionId: agents[0].store_listing_version_id,
               agentInput: {},
-            })
-          }
+            });
+          }}
         />
         <OnboardingAgentCard
           agent={agents[1]}

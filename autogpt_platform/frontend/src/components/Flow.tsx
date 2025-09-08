@@ -48,6 +48,8 @@ import ConnectionLine from "./ConnectionLine";
 import { Control, ControlPanel } from "@/components/edit/control/ControlPanel";
 import { SaveControl } from "@/components/edit/control/SaveControl";
 import { BlocksControl } from "@/components/edit/control/BlocksControl";
+import { useTrackEvent, EventKeys } from "@/services/feature-flags/use-track-event";
+import { useAgentTracking } from "@/hooks/use-agent-tracking";
 import { GraphSearchControl } from "@/components/edit/control/GraphSearchControl";
 import { IconUndo2, IconRedo2 } from "@/components/ui/icons";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -316,8 +318,18 @@ const FlowEditor: React.FC<{
     [deleteElements, setNodes, nodes, edges, addNodes],
   );
 
+  const { track } = useTrackEvent();
+  const { trackBlockAdded, trackBlockRemoved, trackBuilderAction } = useAgentTracking();
+
   const onConnect: OnConnect = useCallback(
     (connection: Connection) => {
+      track(EventKeys.BUILDER_NODE_CONNECTED, {
+        sourceNode: connection.source,
+        targetNode: connection.target,
+        sourceHandle: connection.sourceHandle,
+        targetHandle: connection.targetHandle,
+        timestamp: new Date().toISOString(),
+      });
       // Check if this exact connection already exists
       const existingConnection = edges.find(
         (edge) =>
@@ -566,6 +578,13 @@ const FlowEditor: React.FC<{
         console.error(`Schema not found for block ID: ${blockId}`);
         return;
       }
+      
+      // Track block addition
+      trackBlockAdded(
+        nodeSchema.uiType,
+        blockId,
+        nodeSchema.metadata?.beta === true
+      );
 
       /*
        Calculate a position to the right of the newly added block, allowing for some margin.

@@ -4,12 +4,14 @@ import { cn } from "@/lib/utils";
 import { finishOnboarding } from "./actions";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 import * as party from "party-js";
+import { useTrackEvent, EventKeys } from "@/services/feature-flags/use-track-event";
 
 export default function Page() {
   const { completeStep } = useOnboarding(7, "AGENT_INPUT");
   const [showText, setShowText] = useState(false);
   const [showSubtext, setShowSubtext] = useState(false);
   const divRef = useRef(null);
+  const { track } = useTrackEvent();
 
   useEffect(() => {
     if (divRef.current) {
@@ -31,6 +33,10 @@ export default function Page() {
     }, 500);
 
     const timer2 = setTimeout(() => {
+      track(EventKeys.ONBOARDING_COMPLETED, {
+        timestamp: new Date().toISOString(),
+        completionStep: "CONGRATS",
+      });
       completeStep("CONGRATS");
       finishOnboarding();
     }, 3000);
