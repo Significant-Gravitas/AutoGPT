@@ -61,15 +61,6 @@ export const MarketplaceAgentsContent = () => {
     );
   }
 
-  if (listStoreAgents.length === 0) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center space-y-3 p-4">
-        <EmptyIcon className="h-8 w-8 text-zinc-400" />
-        <Text variant="body">No marketplace agents present</Text>
-      </div>
-    );
-  }
-
   return (
     <InfiniteScroll
       isFetchingNextPage={isFetchingNextPage}
