@@ -1,13 +1,13 @@
 import React from "react";
 import { MenuItem } from "../MenuItem";
-import { DefaultStateType } from "../block-menu-provider";
+import { DefaultStateType, useBlockMenuContext } from "../block-menu-provider";
 import { useBlockMenuSidebar } from "./useBlockMenuSidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
 export const BlockMenuSidebar = () => {
   const { blockCounts, setDefaultState, defaultState, isLoading, isError, error } = useBlockMenuSidebar();
-
+  const { setIntegration } = useBlockMenuContext();
   if (isLoading) {
     return (
       <div className="w-fit space-y-2 px-4 pt-4">
@@ -63,6 +63,7 @@ export const BlockMenuSidebar = () => {
       number: blockCounts?.integrations,
       onClick: () => {
         setDefaultState("integrations");
+        setIntegration(undefined);
       },
     },
     {

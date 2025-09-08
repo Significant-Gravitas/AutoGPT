@@ -30,7 +30,7 @@ export const useAllBlockContent = () => {
             return newSet;
         });
         const response = await getV2GetBuilderBlocks({ category: targetCategory });
-        await new Promise((resolve) => setTimeout(resolve, 3000));
+
         const result = response.data as BlockResponse;
         if (result.blocks) {
             const categoriesQueryKey = getGetV2GetBuilderBlockCategoriesQueryKey();

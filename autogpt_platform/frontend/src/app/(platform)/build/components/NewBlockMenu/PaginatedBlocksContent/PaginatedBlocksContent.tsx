@@ -6,6 +6,7 @@ import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
 import { CircleNotchIcon } from "@phosphor-icons/react";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { blockMenuContainerStyle } from "../style";
 
 interface PaginatedBlocksContentProps {
   type?: "all" | "input" | "action" | "output" | null;
@@ -41,15 +42,14 @@ export const PaginatedBlocksContent: React.FC<PaginatedBlocksContentProps> = ({
   }
 
   return (
-    <div className={cn(scrollbarStyles, "h-full overflow-y-auto pt-4 transition-all duration-200")}>
         <InfiniteScroll
           isFetchingNextPage={isFetchingNextPage}
           fetchNextPage={fetchNextPage}
           hasNextPage={hasNextPage}
           loader={<CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />}
+          className={blockMenuContainerStyle}
         >
           <BlocksList blocks={blocks} loading={blocksLoading} />
         </InfiniteScroll>
-    </div>
   );
 };

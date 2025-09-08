@@ -48,6 +48,19 @@ export default defineConfig({
               useQuery: true,
             },
           },
+          "getV2Get builder integration providers": {
+            query: {
+              useInfinite: true,
+              useInfiniteQueryParam: "page",
+            },
+          },
+          "getV2List store agents": {
+            query: {
+              useInfinite: true,
+              useInfiniteQueryParam: "page",
+              useQuery: true,
+            },
+          },
         },
       },
     },

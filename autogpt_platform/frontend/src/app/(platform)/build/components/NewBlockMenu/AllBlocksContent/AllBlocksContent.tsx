@@ -6,21 +6,20 @@ import { beautifyString, cn } from "@/lib/utils";
 import { useAllBlockContent } from "./useAllBlockContent";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
+import { blockMenuContainerStyle } from "../style";
 
 export const AllBlocksContent = () => {
   const {data, isLoading, isError, error, handleRefetchBlocks, isLoadingMore, isErrorOnLoadingMore} = useAllBlockContent();
 
   if (isLoading) {
     return (
-      <div className={scrollbarStyles}>
-        <div className="w-full space-y-3 px-4 pb-4">
+        <div className={blockMenuContainerStyle}>
             {[0, 1, 2, 3, 4].map((skeletonIndex) => (
                 <Block.Skeleton
                     key={`skeleton-${skeletonIndex}`}
                 />
             ))}
         </div>
-      </div>
     );
   }
 
@@ -38,8 +37,7 @@ export const AllBlocksContent = () => {
   }
 
   return (
-    <div className={cn(scrollbarStyles, "h-full overflow-y-auto pt-4 transition-all duration-200")}>
-      <div className="w-full space-y-3 px-4 pb-4">
+      <div className={blockMenuContainerStyle}>
         {data?.map((category, index) => (
           <Fragment key={category.name}>
             {index > 0 && (
@@ -102,6 +100,5 @@ export const AllBlocksContent = () => {
           </Fragment>
         ))}
       </div>
-    </div>
   );
 };

@@ -20,6 +20,8 @@ interface BlockMenuContextType {
   setSearchId: React.Dispatch<React.SetStateAction<string | undefined>>;
   defaultState: DefaultStateType;
   setDefaultState: React.Dispatch<React.SetStateAction<DefaultStateType>>;
+  integration: string | undefined;
+  setIntegration: React.Dispatch<React.SetStateAction<string | undefined>>;
 }   
 
 export const BlockMenuContext = createContext<BlockMenuContextType>(
@@ -36,6 +38,7 @@ export function BlockMenuStateProvider({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchId, setSearchId] = useState<string | undefined>(undefined);
   const [defaultState, setDefaultState] = useState<DefaultStateType>("suggestion");
+  const [integration, setIntegration] = useState<string | undefined>(undefined);
 
   return (
     <BlockMenuContext.Provider
@@ -46,6 +49,8 @@ export function BlockMenuStateProvider({
         setSearchId,
         defaultState,
         setDefaultState,
+        integration,
+        setIntegration,
       }}
     >
       {children}
