@@ -1124,10 +1124,15 @@ async def _build_reply_message(
         .execute()
     )
 
-    headers = {
-        h["name"].lower(): h["value"]
-        for h in parent.get("payload", {}).get("headers", [])
-    }
+    # Build headers dictionary, preserving all values for duplicate headers
+    headers = {}
+    for h in parent.get("payload", {}).get("headers", []):
+        name = h["name"].lower()
+        value = h["value"]
+        if name in headers:
+            # For duplicate headers, keep the first occurrence (most relevant for reply context)
+            continue
+        headers[name] = value
     
     # Determine recipients if not specified
     if not (input_data.to or input_data.cc or input_data.bcc):
@@ -1139,17 +1144,25 @@ async def _build_reply_message(
             recipients += [
                 addr for _, addr in getaddresses([headers.get("cc", "")])
             ]
-            dedup: list[str] = []
-            for r in recipients:
-                if r and r not in dedup:
-                    dedup.append(r)
-            input_data.to = dedup
+            # Use dict.fromkeys() for O(n) deduplication while preserving order
+            input_data.to = list(dict.fromkeys(filter(None, recipients)))
         else:
-            sender = parseaddr(headers.get("reply-to", headers.get("from", "")))[1]
+            # Check Reply-To header first, fall back to From header
+            reply_to = headers.get("reply-to", "")
+            from_addr = headers.get("from", "")
+            sender = parseaddr(reply_to if reply_to else from_addr)[1]
             input_data.to = [sender] if sender else []
     
     # Set subject with Re: prefix if not already present
-    subject = input_data.subject or (f"Re: {headers.get('subject', '')}".strip())
+    if input_data.subject:
+        subject = input_data.subject
+    else:
+        parent_subject = headers.get('subject', '').strip()
+        # Only add "Re:" if not already present (case-insensitive check)
+        if parent_subject.lower().startswith("re:"):
+            subject = parent_subject
+        else:
+            subject = f"Re: {parent_subject}" if parent_subject else "Re:"
     
     # Build references header for proper threading
     references = headers.get("references", "").split()
