@@ -3,7 +3,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { useCallback, useState } from "react";
 import { validateSchedule } from "./helpers";
 import { TimezoneNotice } from "../TimezoneNotice/TimezoneNotice";
-import { CronScheduler } from "./CronScheduler/CronScheduler";
+import { CronScheduler } from "../CronScheduler/CronScheduler";
 
 interface Props {
   scheduleName: string;
