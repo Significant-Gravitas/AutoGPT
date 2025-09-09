@@ -1410,3 +1410,26 @@ async def list_bases(
     )
 
     return response.json()
+
+
+async def get_base_tables(
+    credentials: Credentials,
+    base_id: str,
+) -> list[dict]:
+    """
+    Get all tables for a specific base.
+
+    Args:
+        credentials: Airtable API credentials
+        base_id: The ID of the base
+
+    Returns:
+        list[dict]: List of table objects with their schemas
+    """
+    response = await Requests().get(
+        f"https://api.airtable.com/v0/meta/bases/{base_id}/tables",
+        headers={"Authorization": credentials.auth_header()},
+    )
+
+    data = response.json()
+    return data.get("tables", [])
