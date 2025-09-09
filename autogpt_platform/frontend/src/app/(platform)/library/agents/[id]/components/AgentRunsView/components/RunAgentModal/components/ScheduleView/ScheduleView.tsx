@@ -5,10 +5,12 @@ import { Select } from "@/components/atoms/Select/Select";
 import { useScheduleView } from "./useScheduleView";
 import { useCallback, useState } from "react";
 import { validateSchedule } from "./helpers";
+import { TimezoneNotice } from "../TimezoneNotice/TimezoneNotice";
 
 interface Props {
   scheduleName: string;
   cronExpression: string;
+  recommendedScheduleCron?: string | null;
   onScheduleNameChange: (name: string) => void;
   onCronExpressionChange: (expression: string) => void;
   onValidityChange?: (valid: boolean) => void;
@@ -17,6 +19,7 @@ interface Props {
 export function ScheduleView({
   scheduleName,
   cronExpression: _cronExpression,
+  recommendedScheduleCron,
   onScheduleNameChange,
   onCronExpressionChange,
   onValidityChange,
@@ -71,6 +74,15 @@ export function ScheduleView({
         placeholder="Enter a name for this schedule"
         error={errors.scheduleName}
       />
+
+      {recommendedScheduleCron && (
+        <div className="mb-4 rounded-md bg-blue-50 p-3">
+          <Text variant="body" className="text-blue-800">
+            💡 This agent has a recommended schedule that has been pre-filled
+            below. You can modify it as needed.
+          </Text>
+        </div>
+      )}
 
       <Select
         id="repeat"
@@ -130,8 +142,9 @@ export function ScheduleView({
         placeholder="00:00"
         error={errors.time}
       />
-
-      {/** Agent inputs are rendered in the main modal; none here. */}
+      <div className="-mt-4">
+        <TimezoneNotice />
+      </div>
     </div>
   );
 }

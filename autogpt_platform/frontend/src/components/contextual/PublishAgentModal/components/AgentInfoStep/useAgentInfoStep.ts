@@ -44,6 +44,7 @@ export function useAgentInfoStep({
       youtubeLink: "",
       category: "",
       description: "",
+      recommendedScheduleCron: "",
     },
   });
 
@@ -64,6 +65,7 @@ export function useAgentInfoStep({
         youtubeLink: initialData.youtubeLink,
         category: initialData.category,
         description: initialData.description,
+        recommendedScheduleCron: initialData.recommendedScheduleCron || "",
       });
     }
   }, [initialData, form]);
@@ -98,6 +100,7 @@ export function useAgentInfoStep({
         agent_version: selectedAgentVersion || 0,
         slug: data.slug.replace(/\s+/g, "-"),
         categories: filteredCategories,
+        recommended_schedule_cron: data.recommendedScheduleCron || null,
       });
 
       await queryClient.invalidateQueries({

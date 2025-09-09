@@ -1,15 +1,16 @@
 import {
   IconBuilder,
   IconEdit,
-  IconLayoutDashboard,
   IconLibrary,
   IconLogOut,
   IconMarketplace,
   IconRefresh,
   IconSettings,
+  IconSliders,
   IconType,
   IconUploadCloud,
 } from "@/components/ui/icons";
+import { StorefrontIcon } from "@phosphor-icons/react";
 
 type Link = {
   name: string;
@@ -90,11 +91,74 @@ export const accountMenuItems: MenuItemGroup[] = [
   },
 ];
 
+export function getAccountMenuItems(userRole?: string): MenuItemGroup[] {
+  const baseMenuItems: MenuItemGroup[] = [
+    {
+      items: [
+        {
+          icon: IconType.Edit,
+          text: "Edit profile",
+          href: "/profile",
+        },
+      ],
+    },
+    {
+      items: [
+        {
+          icon: IconType.LayoutDashboard,
+          text: "Creator Dashboard",
+          href: "/profile/dashboard",
+        },
+        {
+          icon: IconType.UploadCloud,
+          text: "Publish an agent",
+        },
+      ],
+    },
+  ];
+
+  // Add admin menu item for admin users
+  if (userRole === "admin") {
+    baseMenuItems.push({
+      items: [
+        {
+          icon: IconType.Sliders,
+          text: "Admin",
+          href: "/admin/marketplace",
+        },
+      ],
+    });
+  }
+
+  // Add settings and logout
+  baseMenuItems.push(
+    {
+      items: [
+        {
+          icon: IconType.Settings,
+          text: "Settings",
+          href: "/profile/settings",
+        },
+      ],
+    },
+    {
+      items: [
+        {
+          icon: IconType.LogOut,
+          text: "Log out",
+        },
+      ],
+    },
+  );
+
+  return baseMenuItems;
+}
+
 export function getAccountMenuOptionIcon(icon: IconType) {
-  const iconClass = "w-6 h-6";
+  const iconClass = "w-5 h-5";
   switch (icon) {
     case IconType.LayoutDashboard:
-      return <IconLayoutDashboard className={iconClass} />;
+      return <StorefrontIcon className={iconClass} />;
     case IconType.UploadCloud:
       return <IconUploadCloud className={iconClass} />;
     case IconType.Edit:
@@ -109,6 +173,8 @@ export function getAccountMenuOptionIcon(icon: IconType) {
       return <IconLibrary className={iconClass} />;
     case IconType.Builder:
       return <IconBuilder className={iconClass} />;
+    case IconType.Sliders:
+      return <IconSliders className={iconClass} />;
     default:
       return <IconRefresh className={iconClass} />;
   }
