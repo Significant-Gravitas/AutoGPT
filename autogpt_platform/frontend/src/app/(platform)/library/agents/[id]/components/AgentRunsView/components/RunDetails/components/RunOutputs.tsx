@@ -6,7 +6,10 @@ import {
   OutputItem,
   OutputActions,
 } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/OutputRenderers";
-import type { OutputMetadata } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/OutputRenderers";
+import type {
+  OutputMetadata,
+  OutputRenderer,
+} from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/OutputRenderers";
 
 type OutputsRecord = Record<string, Array<unknown>>;
 
@@ -21,7 +24,7 @@ export function RunOutputs({ outputs }: RunOutputsProps) {
       label: string;
       value: unknown;
       metadata?: OutputMetadata;
-      renderer: any;
+      renderer: OutputRenderer;
     }> = [];
 
     Object.entries(outputs || {}).forEach(([key, values]) => {
@@ -43,7 +46,7 @@ export function RunOutputs({ outputs }: RunOutputsProps) {
             metadata.language = obj["language"] as string;
         }
 
-        const renderer = globalRegistry.getRenderer(value as any, metadata);
+        const renderer = globalRegistry.getRenderer(value, metadata);
         if (renderer) {
           list.push({
             key: `${key}-${index}`,
