@@ -1,6 +1,5 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import BackendAPI from "@/lib/autogpt-server-api";
-import type { LibraryAgentResponse } from "@/lib/autogpt-server-api/types";
 
 export function useFavoriteAgents() {
   const api = new BackendAPI();
