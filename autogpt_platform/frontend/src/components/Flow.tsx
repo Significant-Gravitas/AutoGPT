@@ -48,7 +48,10 @@ import ConnectionLine from "./ConnectionLine";
 import { Control, ControlPanel } from "@/components/edit/control/ControlPanel";
 import { SaveControl } from "@/components/edit/control/SaveControl";
 import { BlocksControl } from "@/components/edit/control/BlocksControl";
-import { useTrackEvent, EventKeys } from "@/services/feature-flags/use-track-event";
+import {
+  useTrackEvent,
+  EventKeys,
+} from "@/services/feature-flags/use-track-event";
 import { useAgentTracking } from "@/hooks/use-agent-tracking";
 import { GraphSearchControl } from "@/components/edit/control/GraphSearchControl";
 import { IconUndo2, IconRedo2 } from "@/components/ui/icons";
@@ -319,7 +322,7 @@ const FlowEditor: React.FC<{
   );
 
   const { track } = useTrackEvent();
-  const { trackBlockAdded, trackBlockRemoved, trackBuilderAction } = useAgentTracking();
+  const { trackBlockAdded } = useAgentTracking();
 
   const onConnect: OnConnect = useCallback(
     (connection: Connection) => {
@@ -578,13 +581,9 @@ const FlowEditor: React.FC<{
         console.error(`Schema not found for block ID: ${blockId}`);
         return;
       }
-      
+
       // Track block addition
-      trackBlockAdded(
-        nodeSchema.uiType,
-        blockId,
-        nodeSchema.metadata?.beta === true
-      );
+      trackBlockAdded(nodeSchema.uiType, blockId);
 
       /*
        Calculate a position to the right of the newly added block, allowing for some margin.

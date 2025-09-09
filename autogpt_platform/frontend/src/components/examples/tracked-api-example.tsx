@@ -36,7 +36,7 @@ export function TrackedAPIExample() {
       // Make API call with tracking
       const agent = await trackAPICall(
         () =>
-          api.createAgentGraph({
+          api.createGraph({
             name: agentName,
             description: "Created with tracking",
           } as any),
@@ -63,7 +63,7 @@ export function TrackedAPIExample() {
       // Track API call with performance metrics
       const execution = await trackAPICall(
         () =>
-          api.executeAgentGraph(agentId, {
+          api.executeGraph(agentId as any, {
             inputData: {},
           } as any),
         "run-agent",
@@ -88,7 +88,7 @@ export function TrackedAPIExample() {
     try {
       // Example of tracking a marketplace API call
       const storeItems = await trackAPICall(
-        () => api.getStoreListings({ limit: 10 } as any),
+        () => (api as any).getStoreListings({ limit: 10 } as any),
         "fetch-marketplace",
         {
           limit: 10,

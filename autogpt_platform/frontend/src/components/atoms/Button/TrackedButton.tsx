@@ -66,7 +66,11 @@ export function TrackedButton({
     }
   };
 
-  return <Button {...props} onClick={handleClick}>{children}</Button>;
+  return (
+    <Button {...props} onClick={handleClick}>
+      {children}
+    </Button>
+  );
 }
 
 // Export common tracked button presets for consistency
@@ -74,9 +78,9 @@ export const TrackedPrimaryButton: React.FC<TrackedButtonProps> = (props) => (
   <TrackedButton variant="primary" {...props} />
 );
 
-export const TrackedSecondaryButton: React.FC<TrackedButtonProps> = (
-  props,
-) => <TrackedButton variant="secondary" {...props} />;
+export const TrackedSecondaryButton: React.FC<TrackedButtonProps> = (props) => (
+  <TrackedButton variant="secondary" {...props} />
+);
 
 export const TrackedDestructiveButton: React.FC<TrackedButtonProps> = (
   props,

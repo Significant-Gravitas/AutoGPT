@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
-import { useTrackEvent, EventKeys } from "./use-track-event";
+import { useTrackEvent } from "./use-track-event";
 
 interface TrackInteractionProps {
   children: React.ReactNode;
@@ -74,16 +74,15 @@ export function withTracking<P extends object>(
   defaultEventKey?: string,
   defaultEventData?: Record<string, any>,
 ) {
-  return React.forwardRef<any, P>((props, ref) => {
+  const WrappedComponent = React.forwardRef<any, P>((props, ref) => {
     return (
-      <TrackInteraction
-        eventKey={defaultEventKey}
-        eventData={defaultEventData}
-      >
-        <Component {...props} ref={ref} />
+      <TrackInteraction eventKey={defaultEventKey} eventData={defaultEventData}>
+        <Component {...(props as P)} ref={ref} />
       </TrackInteraction>
     );
   });
+  WrappedComponent.displayName = `withTracking(${Component.displayName || Component.name || "Component"})`;
+  return WrappedComponent;
 }
 
 /**
@@ -120,8 +119,7 @@ export function TrackButton({
 /**
  * Track link component that automatically sends events on click
  */
-interface TrackLinkProps
-  extends React.AnchorHTMLAttributes<HTMLAnchorElement> {
+interface TrackLinkProps extends React.AnchorHTMLAttributes<HTMLAnchorElement> {
   eventKey: string;
   eventData?: Record<string, any>;
   children: React.ReactNode;

@@ -13,7 +13,7 @@ import { StoreAgentDetails } from "@/lib/autogpt-server-api";
 import { finishOnboarding } from "../6-congrats/actions";
 import { isEmptyOrWhitespace } from "@/lib/utils";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
-import { useTrackEvent, EventKeys } from "@/services/feature-flags/use-track-event";
+import { useTrackEvent } from "@/services/feature-flags/use-track-event";
 
 export default function Page() {
   const { state, updateState } = useOnboarding(4, "INTEGRATIONS");
@@ -71,7 +71,7 @@ export default function Page() {
           onClick={() => {
             track("onboarding-agent-selected", {
               agentId: agents[0].store_listing_version_id,
-              agentName: agents[0].name,
+              agentName: agents[0].agent_name,
               position: 1,
               step: "agent-selection",
               timestamp: new Date().toISOString(),

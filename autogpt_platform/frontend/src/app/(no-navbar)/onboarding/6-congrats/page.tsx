@@ -4,7 +4,10 @@ import { cn } from "@/lib/utils";
 import { finishOnboarding } from "./actions";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 import * as party from "party-js";
-import { useTrackEvent, EventKeys } from "@/services/feature-flags/use-track-event";
+import {
+  useTrackEvent,
+  EventKeys,
+} from "@/services/feature-flags/use-track-event";
 
 export default function Page() {
   const { completeStep } = useOnboarding(7, "AGENT_INPUT");

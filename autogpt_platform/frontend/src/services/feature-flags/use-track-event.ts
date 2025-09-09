@@ -31,9 +31,6 @@ export function useTrackEvent() {
       }
 
       try {
-        // Get the current context from the client
-        const context = client.getContext();
-
         if (metricValue !== undefined) {
           // Track with numeric value for numeric metrics
           client.track(eventKey, data, metricValue);

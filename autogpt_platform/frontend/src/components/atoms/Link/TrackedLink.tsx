@@ -59,10 +59,13 @@ const TrackedLink = forwardRef<HTMLAnchorElement, TrackedLinkProps>(
       }
     };
 
+    // Wrap the Link in a span to capture clicks
     return (
-      <Link ref={ref} href={href} {...props} onClick={handleClick}>
-        {children}
-      </Link>
+      <span onClick={handleClick} style={{ display: "inline" }}>
+        <Link ref={ref} href={href} {...props}>
+          {children}
+        </Link>
+      </span>
     );
   },
 );

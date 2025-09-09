@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback } from "react";
-import { useTrackEvent, EventKeys } from "@/services/feature-flags/use-track-event";
+import {
+  useTrackEvent,
+  EventKeys,
+} from "@/services/feature-flags/use-track-event";
 
 /**
  * Hook that wraps API calls with automatic error tracking
@@ -17,17 +20,17 @@ export function useAPIWithTracking() {
    * @param metadata Additional metadata to track
    */
   const trackAPICall = useCallback(
-    async <T,>(
+    async <T>(
       apiCall: () => Promise<T>,
       eventName?: string,
       metadata?: Record<string, any>,
     ): Promise<T> => {
       const startTime = performance.now();
-      
+
       try {
         const result = await apiCall();
         const duration = performance.now() - startTime;
-        
+
         // Track successful API response time
         if (duration > 1000) {
           // Only track if response took more than 1 second
@@ -41,11 +44,11 @@ export function useAPIWithTracking() {
             Math.round(duration),
           );
         }
-        
+
         return result;
       } catch (error) {
         const duration = performance.now() - startTime;
-        
+
         // Track API error
         track(EventKeys.API_ERROR, {
           eventName,
@@ -55,7 +58,7 @@ export function useAPIWithTracking() {
           timestamp: new Date().toISOString(),
           ...metadata,
         });
-        
+
         // Re-throw the error so the calling code can handle it
         throw error;
       }
@@ -111,7 +114,7 @@ export function withAPITracking<T extends (...args: any[]) => Promise<any>>(
 ): T {
   return (async (...args: Parameters<T>) => {
     const startTime = performance.now();
-    
+
     try {
       const result = await fn(...args);
       return result;
@@ -123,7 +126,7 @@ export function withAPITracking<T extends (...args: any[]) => Promise<any>>(
         metadata: getMetadata ? getMetadata(...args) : undefined,
         duration: performance.now() - startTime,
       });
-      
+
       throw error;
     }
   }) as T;

@@ -1,7 +1,10 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Image from "next/image";
 import { StarRatingIcons } from "@/components/ui/icons";
-import { useTrackEvent, EventKeys } from "@/services/feature-flags/use-track-event";
+import {
+  useTrackEvent,
+  EventKeys,
+} from "@/services/feature-flags/use-track-event";
 
 interface StoreCardProps {
   agentName: string;
@@ -29,7 +32,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
   agentId,
 }) => {
   const { track } = useTrackEvent();
-  
+
   const handleClick = () => {
     track(EventKeys.STORE_AGENT_VIEWED, {
       agentId,

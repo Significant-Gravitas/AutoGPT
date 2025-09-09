@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs";
 import { TrackedLink } from "./TrackedLink";
 import { EventKeys } from "@/services/feature-flags/use-track-event";
 
@@ -86,7 +86,7 @@ export const ExternalLink: Story = {
     isExternal: true,
     children: "View Documentation",
     trackEventKey: "documentation-link-clicked",
-    trackEventData: { 
+    trackEventData: {
       destination: "external-docs",
       openInNewTab: true,
     },
@@ -122,6 +122,10 @@ export const ComplexTracking: Story = {
 
 // Multiple links showcase
 export const MultipleLinks: Story = {
+  args: {
+    href: "/",
+    children: "Link",
+  },
   render: () => (
     <div className="flex flex-col gap-4">
       <TrackedLink
@@ -161,6 +165,10 @@ export const MultipleLinks: Story = {
 
 // Navigation menu example
 export const NavigationMenu: Story = {
+  args: {
+    href: "/",
+    children: "Link",
+  },
   render: () => (
     <nav className="flex gap-6">
       <TrackedLink

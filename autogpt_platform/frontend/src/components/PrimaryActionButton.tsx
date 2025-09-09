@@ -4,7 +4,10 @@ import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
 import { ClockIcon } from "@phosphor-icons/react";
 import { IconPlay, IconSquare } from "@/components/ui/icons";
-import { useTrackEvent, EventKeys } from "@/services/feature-flags/use-track-event";
+import {
+  useTrackEvent,
+  EventKeys,
+} from "@/services/feature-flags/use-track-event";
 
 interface PrimaryActionBarProps {
   onClickAgentOutputs?: () => void;
@@ -63,9 +66,9 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
             size="primary"
             onClick={() => {
               if (onClickRunAgent) {
-                track(EventKeys.AGENT_RUN_STARTED, { 
+                track(EventKeys.AGENT_RUN_STARTED, {
                   source: "primary-action-bar",
-                  timestamp: new Date().toISOString()
+                  timestamp: new Date().toISOString(),
                 });
                 onClickRunAgent();
               }
@@ -83,9 +86,9 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
             variant="destructive"
             size="primary"
             onClick={() => {
-              track("agent-run-stopped", { 
+              track("agent-run-stopped", {
                 source: "primary-action-bar",
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
               });
               onClickStopRun();
             }}
@@ -102,9 +105,9 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
             variant="outline"
             size="primary"
             onClick={() => {
-              track("agent-schedule-opened", { 
+              track("agent-schedule-opened", {
                 source: "primary-action-bar",
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
               });
               onClickScheduleButton();
             }}
