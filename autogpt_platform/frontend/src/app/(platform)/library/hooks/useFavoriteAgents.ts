@@ -1,5 +1,5 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { BackendAPI } from "@/lib/autogpt-server-api";
+import BackendAPI from "@/lib/autogpt-server-api";
 import type { LibraryAgentResponse } from "@/lib/autogpt-server-api/types";
 
 export function useFavoriteAgents() {
@@ -8,21 +8,12 @@ export function useFavoriteAgents() {
   return useInfiniteQuery({
     queryKey: ["favoriteLibraryAgents"],
     queryFn: async ({ pageParam = 1 }) => {
-      // Fetch favorite agents from the new endpoint
-      const response = await fetch("/api/library/agents/favorites?" + new URLSearchParams({
-        page: pageParam.toString(),
-        page_size: "10",
-      }), {
-        headers: {
-          "Authorization": `Bearer ${await api.getAuthToken()}`,
-        },
+      // Call the API method to list favorite library agents
+      const response = await api.listFavoriteLibraryAgents({
+        page: pageParam,
+        page_size: 10,
       });
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch favorite agents");
-      }
-
-      return response.json() as Promise<LibraryAgentResponse>;
+      return response;
     },
     getNextPageParam: (lastPage, pages) => {
       const currentPage = pages.length;

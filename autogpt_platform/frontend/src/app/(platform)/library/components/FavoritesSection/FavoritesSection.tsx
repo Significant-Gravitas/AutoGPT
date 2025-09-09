@@ -3,13 +3,13 @@
 import React from "react";
 import { useFavoriteAgents } from "../../hooks/useFavoriteAgents";
 import LibraryAgentCard from "../LibraryAgentCard/LibraryAgentCard";
-import { useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { useGetFlag, Flag } from "@/services/feature-flags/use-get-flag";
 import { Heart } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 export default function FavoritesSection() {
-  const isAgentFavoritingEnabled = useGetFlag("isAgentFavoritingEnabled");
+  const isAgentFavoritingEnabled = useGetFlag(Flag.AGENT_FAVORITING);
   const { data, isLoading, error } = useFavoriteAgents();
 
   // Only show this section if the feature flag is enabled
@@ -41,7 +41,7 @@ export default function FavoritesSection() {
           </span>
         )}
       </div>
-      
+
       <div className="relative">
         {isLoading ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -50,24 +50,20 @@ export default function FavoritesSection() {
             ))}
           </div>
         ) : (
-          <div className={cn(
-            "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4",
-            favoriteAgents.length > 4 && "overflow-x-auto"
-          )}>
+          <div
+            className={cn(
+              "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4",
+              favoriteAgents.length > 4 && "overflow-x-auto",
+            )}
+          >
             {favoriteAgents.map((agent) => (
-              <LibraryAgentCard
-                key={agent.id}
-                {...agent}
-                className="min-w-[280px]"
-              />
+              <LibraryAgentCard key={agent.id} agent={agent} />
             ))}
           </div>
         )}
       </div>
-      
-      {favoriteAgents.length > 0 && (
-        <div className="mt-6 border-t pt-6" />
-      )}
+
+      {favoriteAgents.length > 0 && <div className="mt-6 border-t pt-6" />}
     </div>
   );
 }

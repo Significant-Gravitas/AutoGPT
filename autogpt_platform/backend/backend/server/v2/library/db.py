@@ -225,7 +225,9 @@ async def list_favorite_library_agents(
 
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error fetching favorite library agents: {e}")
-        raise store_exceptions.DatabaseError("Failed to fetch favorite library agents") from e
+        raise store_exceptions.DatabaseError(
+            "Failed to fetch favorite library agents"
+        ) from e
 
 
 async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent:

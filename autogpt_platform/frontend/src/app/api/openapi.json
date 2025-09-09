@@ -4104,7 +4104,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/LibraryAgentResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryAgentResponse"
+                }
               }
             }
           },
