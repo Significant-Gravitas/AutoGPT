@@ -2,7 +2,7 @@
 Airtable record operation blocks.
 """
 
-from typing import Optional
+from typing import Optional, cast
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -55,8 +55,8 @@ class AirtableListRecordsBlock(Block):
             description="Specific fields to return (comma-separated)", default=[]
         )
         normalize_output: bool = SchemaField(
-            description="Normalize output to include all fields with proper empty values (adds extra API call for schema)",
-            default=False,
+            description="Normalize output to include all fields with proper empty values (disable to skip schema fetch and get raw Airtable response)",
+            default=True,
         )
         include_field_metadata: bool = SchemaField(
             description="Include field type and configuration metadata (requires normalize_output=true)",
@@ -144,8 +144,8 @@ class AirtableGetRecordBlock(Block):
         table_id_or_name: str = SchemaField(description="Table ID or name")
         record_id: str = SchemaField(description="The record ID to retrieve")
         normalize_output: bool = SchemaField(
-            description="Normalize output to include all fields with proper empty values (adds extra API call for schema)",
-            default=False,
+            description="Normalize output to include all fields with proper empty values (disable to skip schema fetch and get raw Airtable response)",
+            default=True,
         )
         include_field_metadata: bool = SchemaField(
             description="Include field type and configuration metadata (requires normalize_output=true)",
@@ -214,7 +214,7 @@ class AirtableGetRecordBlock(Block):
 
 class AirtableCreateRecordsBlock(Block):
     """
-    Creates one or more records in an Airtable table, or finds existing records based on unique fields.
+    Creates one or more records in an Airtable table.
     """
 
     class Input(BlockSchema):
@@ -226,12 +226,8 @@ class AirtableCreateRecordsBlock(Block):
         records: list[dict] = SchemaField(
             description="Array of records to create (each with 'fields' object)"
         )
-        find_by_fields: list[str] = SchemaField(
-            description="Field names to use for finding existing records before creating (e.g., ['email', 'id'])",
-            default=[],
-        )
-        update_if_found: bool = SchemaField(
-            description="If true, update existing records when found; if false, skip creation",
+        skip_normalization: bool = SchemaField(
+            description="Skip output normalization to get raw Airtable response (faster but may have missing fields)",
             default=False,
         )
         typecast: bool = SchemaField(
@@ -244,24 +240,12 @@ class AirtableCreateRecordsBlock(Block):
         )
 
     class Output(BlockSchema):
-        records: list[dict] = SchemaField(
-            description="Array of created/found/updated record objects"
-        )
-        created_count: int = SchemaField(
-            description="Number of records created", default=0
-        )
-        found_count: int = SchemaField(
-            description="Number of existing records found", default=0
-        )
-        updated_count: int = SchemaField(
-            description="Number of records updated", default=0
-        )
-        details: dict = SchemaField(description="Details of the operation")
+        records: list[dict] = SchemaField(description="Array of created record objects")
 
     def __init__(self):
         super().__init__(
             id="42527e98-47b6-44ce-ac0e-86b4883721d3",
-            description="Create or find records in an Airtable table",
+            description="Create records in an Airtable table",
             categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
@@ -270,116 +254,32 @@ class AirtableCreateRecordsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        result_records = []
-        created_count = 0
-        found_count = 0
-        updated_count = 0
+        from ._api import get_table_schema, normalize_records
 
-        # If find_by_fields is specified, check for existing records first
-        if input_data.find_by_fields:
-            for record_data in input_data.records:
-                # Build filter formula for finding existing records
-                filter_parts = []
-                for field_name in input_data.find_by_fields:
-                    if field_name in record_data:
-                        value = record_data[field_name]
-                        if isinstance(value, str):
-                            # Escape single quotes in the value
-                            escaped_value = value.replace("'", "\\'")
-                            filter_parts.append(f"{{{field_name}}} = '{escaped_value}'")
-                        elif isinstance(value, bool):
-                            filter_parts.append(
-                                f"{{{field_name}}} = "
-                                + ("TRUE()" if value else "FALSE()")
-                            )
-                        elif isinstance(value, (int, float)):
-                            filter_parts.append(f"{{{field_name}}} = {value}")
+        data = await create_record(
+            credentials,
+            input_data.base_id,
+            input_data.table_id_or_name,
+            records=[{"fields": record} for record in input_data.records],
+            typecast=input_data.typecast if input_data.typecast else None,
+            return_fields_by_field_id=input_data.return_fields_by_field_id,
+        )
+        result_records = cast(list[dict], data.get("records", []))
 
-                if filter_parts:
-                    filter_formula = (
-                        "AND(" + ", ".join(filter_parts) + ")"
-                        if len(filter_parts) > 1
-                        else filter_parts[0]
-                    )
-
-                    # Search for existing record
-                    existing_records = await list_records(
-                        credentials,
-                        input_data.base_id,
-                        input_data.table_id_or_name,
-                        filter_by_formula=filter_formula,
-                        max_records=1,
-                    )
-
-                    if existing_records.get("records"):
-                        # Record exists
-                        existing_record = existing_records["records"][0]
-                        found_count += 1
-
-                        if input_data.update_if_found:
-                            # Update the existing record
-                            update_data = await update_multiple_records(
-                                credentials,
-                                input_data.base_id,
-                                input_data.table_id_or_name,
-                                records=[
-                                    {"id": existing_record["id"], "fields": record_data}
-                                ],
-                                typecast=input_data.typecast,
-                                return_fields_by_field_id=input_data.return_fields_by_field_id,
-                            )
-                            result_records.extend(update_data.get("records", []))
-                            updated_count += 1
-                        else:
-                            # Just return the existing record
-                            result_records.append(existing_record)
-                    else:
-                        # Record doesn't exist, create it
-                        create_data = await create_record(
-                            credentials,
-                            input_data.base_id,
-                            input_data.table_id_or_name,
-                            records=[{"fields": record_data}],
-                            typecast=input_data.typecast,
-                            return_fields_by_field_id=input_data.return_fields_by_field_id,
-                        )
-                        result_records.extend(create_data.get("records", []))
-                        created_count += 1
-                else:
-                    # No fields to match on, just create
-                    create_data = await create_record(
-                        credentials,
-                        input_data.base_id,
-                        input_data.table_id_or_name,
-                        records=[{"fields": record_data}],
-                        typecast=input_data.typecast,
-                        return_fields_by_field_id=input_data.return_fields_by_field_id,
-                    )
-                    result_records.extend(create_data.get("records", []))
-                    created_count += 1
-        else:
-            # No find_by_fields specified, use original behavior (backwards compatible)
-            data = await create_record(
-                credentials,
-                input_data.base_id,
-                input_data.table_id_or_name,
-                records=[{"fields": record} for record in input_data.records],
-                typecast=input_data.typecast if input_data.typecast else None,
-                return_fields_by_field_id=input_data.return_fields_by_field_id,
+        # Normalize output unless explicitly disabled
+        if not input_data.skip_normalization and result_records:
+            # Fetch table schema
+            table_schema = await get_table_schema(
+                credentials, input_data.base_id, input_data.table_id_or_name
             )
-            result_records = data.get("records", [])
-            created_count = len(result_records)
+
+            # Normalize the records
+            normalized_data = await normalize_records(
+                result_records, table_schema, include_field_metadata=False
+            )
+            result_records = normalized_data["records"]
 
         yield "records", result_records
-        yield "created_count", created_count
-        yield "found_count", found_count
-        yield "updated_count", updated_count
-        yield "details", {
-            "total_processed": len(input_data.records),
-            "created": created_count,
-            "found": found_count,
-            "updated": updated_count,
-        }
 
 
 class AirtableUpdateRecordsBlock(Block):
