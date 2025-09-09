@@ -1,7 +1,60 @@
+# Global fallback
 * @Significant-Gravitas/maintainers
+
+# Frontend
+autogpt_platform/frontend/ @lluis.agusti @kpczerwinski @Abhi
+classic/frontend/ @lluis.agusti @kpczerwinski @Abhi
+
+# Backend
+autogpt_platform/backend/ @zamil.majdy @ntindle @pwuts @swiftyos
+
+# Blocks
+autogpt_platform/backend/backend/blocks/ @swiftyos @ntindle @bently
+
+# Install / Docs
+autogpt_platform/installer/ @bently @pwuts
+docs/ @bently @pwuts
+*.md @bently @pwuts
+README* @bently @pwuts
+
+# Docker changes
+**/Dockerfile* @ntindle @bently @lluis.agusti
+docker-compose*.yml @ntindle @bently @lluis.agusti
+docker-compose*.yaml @ntindle @bently @lluis.agusti
+
+# Database manager changes
+autogpt_platform/backend/backend/data/ @zamil.majdy
+schema.prisma @zamil.majdy
+**/migrations/ @zamil.majdy
+
+# Notification changes
+autogpt_platform/backend/backend/notifications/ @ntindle
+autogpt_platform/backend/backend/notification.py @ntindle
+
+# Block SDK changes
+autogpt_platform/backend/backend/sdk/ @swiftyos
+
+# Auth changes
+autogpt_platform/autogpt_libs/autogpt_libs/auth/ @pwuts
+
+# Molecule/Atom changes
+autogpt_platform/frontend/src/components/molecules/ @lluis.agusti
+autogpt_platform/frontend/src/components/atoms/ @lluis.agusti
+
+# Classic changes
+classic/ @pwuts @bently
+
+# Test changes
+**/test/ @Abhi
+**/*test*.py @Abhi
+**/*test*.ts @Abhi
+**/*test*.tsx @Abhi
+**/tests/ @Abhi
+**/*.test.* @Abhi
+
+# DevOps and workflows
 .github/workflows/ @Significant-Gravitas/devops
-classic/forge/ @Significant-Gravitas/forge-maintainers
-classic/benchmark/ @Significant-Gravitas/benchmark-maintainers
-classic/frontend/ @Significant-Gravitas/frontend-maintainers
 autogpt_platform/infra @Significant-Gravitas/devops
+
+# Admin files
 .github/CODEOWNERS @Significant-Gravitas/admins
