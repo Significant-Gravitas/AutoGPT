@@ -9,7 +9,8 @@ import { MainCreatorPage } from "../../components/MainCreatorPage/MainCreatorPag
 import { Metadata } from "next";
 import { CreatorDetails } from "@/app/api/__generated__/models/creatorDetails";
 
-export const dynamic = "force-dynamic";
+// Enable ISR with 10-minute revalidation
+export const revalidate = 600; // 10 minutes in seconds
 
 export interface MarketplaceCreatorPageParams {
   creator: string;

@@ -1,4 +1,5 @@
 import React from "react";
+import Image from "next/image";
 import {
   OutputRenderer,
   OutputMetadata,
@@ -112,11 +113,15 @@ function renderImage(
 
   return (
     <div className="group relative">
-      <img
+      <Image
         src={imageUrl}
         alt={altText}
         className="h-auto max-w-full rounded-md border border-gray-200"
+        width={800}
+        height={600}
+        style={{ width: "auto", height: "auto" }}
         loading="lazy"
+        unoptimized={imageUrl.startsWith("data:")}
       />
     </div>
   );

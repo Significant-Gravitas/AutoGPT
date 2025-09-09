@@ -87,9 +87,26 @@ function createResponse(
   responseBody: any,
   responseStatus: number,
   responseHeaders: Record<string, string>,
+  path: string[],
 ): NextResponse {
+  // Add cache headers for store endpoints to enable caching
+  const pathString = path.join("/");
+  const isStoreEndpoint =
+    pathString.startsWith("store/") ||
+    pathString.startsWith("v2/store/") ||
+    pathString.startsWith("api/store/");
+
+  if (isStoreEndpoint) {
+    // Cache store endpoints for 10 minutes
+    responseHeaders["Cache-Control"] =
+      "public, s-maxage=600, stale-while-revalidate=60";
+  }
+
   if (responseStatus === 204) {
-    return new NextResponse(null, { status: responseStatus });
+    return new NextResponse(null, {
+      status: responseStatus,
+      headers: responseHeaders,
+    });
   } else {
     return NextResponse.json(responseBody, {
       status: responseStatus,
@@ -180,7 +197,7 @@ async function handler(
       return createUnsupportedContentTypeResponse(contentType);
     }
 
-    return createResponse(responseBody, 200, responseHeaders);
+    return createResponse(responseBody, 200, responseHeaders, path);
   } catch (error) {
     return createErrorResponse(
       error,

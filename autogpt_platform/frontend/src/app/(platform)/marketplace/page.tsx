@@ -7,7 +7,8 @@ import { getQueryClient } from "@/lib/react-query/queryClient";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { MainMarkeplacePage } from "./components/MainMarketplacePage/MainMarketplacePage";
 
-export const dynamic = "force-dynamic";
+// Enable ISR with 10-minute revalidation
+export const revalidate = 600; // 10 minutes in seconds
 
 // FIX: Correct metadata
 export const metadata: Metadata = {

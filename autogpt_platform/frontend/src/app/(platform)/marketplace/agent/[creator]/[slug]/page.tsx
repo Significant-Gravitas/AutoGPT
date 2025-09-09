@@ -11,7 +11,8 @@ import { getQueryClient } from "@/lib/react-query/queryClient";
 import { prefetchGetV2GetAgentByStoreIdQuery } from "@/app/api/__generated__/endpoints/library/library";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 
-export const dynamic = "force-dynamic";
+// Enable ISR with 10-minute revalidation
+export const revalidate = 600; // 10 minutes in seconds
 
 export type MarketplaceAgentPageParams = { creator: string; slug: string };
 
