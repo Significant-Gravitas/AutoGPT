@@ -4,7 +4,9 @@ from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
+
 from backend.data.model import CredentialsMetaInput
+
 
 class ResponseType(str, Enum):
     """Types of tool responses."""

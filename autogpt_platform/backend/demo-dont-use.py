@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import os
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -59,7 +60,7 @@ def execute_tool(tool_name: str, parameters: dict) -> str:
 async def stream_openai_response(prompt: str):
     """Stream OpenAI responses with proper tool calling support"""
     # Build initial messages list
-    messages = [{"role": "user", "content": prompt}]
+    messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
 
     logger.info(f"Received prompt: {prompt}")
 
@@ -72,8 +73,8 @@ async def stream_openai_response(prompt: str):
             # Use chat.completions API (standard OpenAI format)
             stream = client.chat.completions.create(
                 model="gpt-4",  # Use a model that supports tools
-                messages=messages,
-                tools=tools,
+                messages=messages,  # type: ignore
+                tools=tools,  # type: ignore
                 tool_choice="auto",
                 stream=True,
             )
@@ -223,7 +224,7 @@ async def stream_openai_response(prompt: str):
 
 async def stream_openai_response_old(prompt: str):
     # Build messages list
-    messages = [{"role": "user", "content": prompt}]
+    messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
     tool_calls_to_execute = []
 
     logger.info(f"Received prompt: {prompt}")
@@ -232,7 +233,7 @@ async def stream_openai_response_old(prompt: str):
         logger.info("Creating OpenAI response stream...")
         response = client.responses.create(  # type: ignore
             model="gpt-5-nano-2025-08-07",  # Latest model
-            input=messages,
+            input=messages,  # type: ignore
             tools=tools,  # type: ignore
             tool_choice="auto",
             stream=True,
@@ -373,7 +374,7 @@ async def stream_openai_response_old(prompt: str):
             yield f"data: {json.dumps({'type': 'html', 'content': processing_html})}\n\n"
 
             second_response = client.responses.create(  # type: ignore
-                model="gpt-5-nano-2025-08-07", input=messages, stream=True
+                model="gpt-5-nano-2025-08-07", input=messages, stream=True  # type: ignore
             )
 
             # Stream the final response

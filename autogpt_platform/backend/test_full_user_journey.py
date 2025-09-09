@@ -42,9 +42,10 @@ class ChatTestClient:
         self.auth_token = None
         self.conversation_history = []
         self.tool_calls_detected = []
-        self.openai_client = (
-            OpenAI(api_key=os.getenv("OPENAI_API_KEY")) if openai_available else None
-        )
+        if openai_available:
+            self.openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))  # type: ignore
+        else:
+            self.openai_client = None
 
     def log(self, message: str, level: str = "INFO"):
         timestamp = time.strftime("%H:%M:%S")
@@ -103,7 +104,8 @@ Keep response super short and concise.
                 temperature=0.8,
             )
 
-            message = response.choices[0].message.content.strip()
+            content = response.choices[0].message.content
+            message = content.strip() if content else ""
             self.log(f"🤖 AI User: {message}", "USER")
             return message
 
@@ -155,7 +157,7 @@ Keep response super short and concise.
             self.log(f"❌ Error creating session: {e}", "ERROR")
             return False
 
-    def send_message(self, message: str = None, context: str = "") -> str:
+    def send_message(self, message: str | None = None, context: str = "") -> str:
         """Send a message and return the response using streaming endpoint.
 
         Always uses the /sessions/{session_id}/stream endpoint for consistency,

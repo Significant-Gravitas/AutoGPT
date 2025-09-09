@@ -7,6 +7,7 @@ import { ToolCallWidget } from "./ToolCallWidget";
 import { AgentCarousel } from "./AgentCarousel";
 import { CredentialsSetupWidget } from "./CredentialsSetupWidget";
 import { AgentSetupCard } from "./AgentSetupCard";
+import { AgentRunCard } from "./AgentRunCard";
 
 interface ContentSegment {
   type:
@@ -15,6 +16,7 @@ interface ContentSegment {
     | "carousel"
     | "credentials_setup"
     | "agent_setup"
+    | "agent_run"
     | "auth_required";
   content: any;
   id?: string;
@@ -247,6 +249,24 @@ export function StreamingMessage({
               addedToLibrary={setupData.added_to_library}
               libraryId={setupData.library_id}
               message={setupData.message}
+            />
+          </div>
+        );
+
+      case "agent_run":
+        const runData = segment.content;
+        return (
+          <div key={segmentKey} className="my-4">
+            <AgentRunCard
+              executionId={runData.execution_id}
+              graphId={runData.graph_id}
+              graphName={runData.graph_name}
+              status={runData.status}
+              inputs={runData.inputs}
+              outputs={runData.outputs}
+              error={runData.error}
+              timeoutReached={runData.timeout_reached}
+              endedAt={runData.ended_at}
             />
           </div>
         );

@@ -360,7 +360,9 @@ async def stream_chat_completion(
 
     """
     config = get_config()
-    logger.warn(f"Streaming chat completion for session {session_id} with user {user_id} and message {user_message}")
+    logger.warn(
+        f"Streaming chat completion for session {session_id} with user {user_id} and message {user_message}"
+    )
     # Store user message in database
     await db.create_chat_message(
         session_id=session_id,

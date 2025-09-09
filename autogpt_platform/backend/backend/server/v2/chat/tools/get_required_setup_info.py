@@ -5,9 +5,7 @@ from typing import Any
 
 from backend.data import graph as graph_db
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.server.v2.store import db as store_db
 from backend.sdk.registry import AutoRegistry
-
 from backend.server.v2.chat.tools.base import BaseTool
 from backend.server.v2.chat.tools.models import (
     ErrorResponse,
@@ -17,8 +15,8 @@ from backend.server.v2.chat.tools.models import (
     SetupRequirementInfo,
     SetupRequirementsResponse,
     ToolResponseBase,
-    UserReadiness,
 )
+from backend.server.v2.store import db as store_db
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +90,7 @@ class GetRequiredSetupInfoTool(BaseTool):
 
         try:
             graph = None
-            
+
             # Check if it's a marketplace slug format (username/agent_name)
             if "/" in agent_id:
                 try:
@@ -156,7 +154,7 @@ class GetRequiredSetupInfoTool(BaseTool):
             ):
                 user_credentials = {}
                 system_credentials = {}
-                
+
                 try:
                     # Get user's existing credentials
                     if user_id:
@@ -166,20 +164,24 @@ class GetRequiredSetupInfoTool(BaseTool):
                     else:
                         user_creds_list = []
                     user_credentials = {c.provider: c for c in user_creds_list}
-                    logger.info(f"User has credentials for providers: {list(user_credentials.keys())}")
+                    logger.info(
+                        f"User has credentials for providers: {list(user_credentials.keys())}"
+                    )
                 except Exception as e:
                     logger.warning(f"Failed to get user credentials: {e}")
-                
+
                 # Get system-provided default credentials
                 try:
                     system_creds_list = AutoRegistry.get_all_credentials()
                     system_credentials = {c.provider: c for c in system_creds_list}
-                    
+
                     # WORKAROUND: Check for common LLM providers that don't use SDK pattern
                     import os
-                    from backend.data.model import APIKeyCredentials
+
                     from pydantic import SecretStr
-                    
+
+                    from backend.data.model import APIKeyCredentials
+
                     # Check for OpenAI
                     if "openai" not in system_credentials:
                         openai_key = os.getenv("OPENAI_API_KEY")
@@ -188,27 +190,27 @@ class GetRequiredSetupInfoTool(BaseTool):
                                 id="openai-system",
                                 provider="openai",
                                 api_key=SecretStr(openai_key),
-                                title="System OpenAI API Key"
+                                title="System OpenAI API Key",
                             )
-                    
+
                     # Check for Anthropic
                     if "anthropic" not in system_credentials:
                         anthropic_key = os.getenv("ANTHROPIC_API_KEY")
                         if anthropic_key:
                             system_credentials["anthropic"] = APIKeyCredentials(
                                 id="anthropic-system",
-                                provider="anthropic", 
+                                provider="anthropic",
                                 api_key=SecretStr(anthropic_key),
-                                title="System Anthropic API Key"
+                                title="System Anthropic API Key",
                             )
-                    
+
                     # Check for other common providers
                     provider_env_map = {
                         "groq": "GROQ_API_KEY",
                         "ollama": "OLLAMA_API_KEY",
                         "open_router": "OPEN_ROUTER_API_KEY",
                     }
-                    
+
                     for provider, env_var in provider_env_map.items():
                         if provider not in system_credentials:
                             api_key = os.getenv(env_var)
@@ -217,10 +219,12 @@ class GetRequiredSetupInfoTool(BaseTool):
                                     id=f"{provider}-system",
                                     provider=provider,
                                     api_key=SecretStr(api_key),
-                                    title=f"System {provider} API Key"
+                                    title=f"System {provider} API Key",
                                 )
-                    
-                    logger.info(f"System provides credentials for: {list(system_credentials.keys())}")
+
+                    logger.info(
+                        f"System provides credentials for: {list(system_credentials.keys())}"
+                    )
                 except Exception as e:
                     logger.warning(f"Failed to get system credentials: {e}")
 
@@ -229,7 +233,9 @@ class GetRequiredSetupInfoTool(BaseTool):
                 if isinstance(graph.credentials_input_schema, dict):
                     # Check if it's a JSON schema with properties
                     if "properties" in graph.credentials_input_schema:
-                        credentials_to_check = graph.credentials_input_schema["properties"]
+                        credentials_to_check = graph.credentials_input_schema[
+                            "properties"
+                        ]
                     else:
                         # Fallback to treating the whole schema as credentials
                         credentials_to_check = graph.credentials_input_schema
@@ -254,12 +260,16 @@ class GetRequiredSetupInfoTool(BaseTool):
                                 actual_provider = str(providers[0])
                                 # Handle ProviderName enum format
                                 if "ProviderName." in actual_provider:
-                                    actual_provider = actual_provider.split("'")[1] if "'" in actual_provider else actual_provider.split(".")[-1].lower()
+                                    actual_provider = (
+                                        actual_provider.split("'")[1]
+                                        if "'" in actual_provider
+                                        else actual_provider.split(".")[-1].lower()
+                                    )
                                 cred_req.provider = actual_provider
                         elif "provider" in cred_schema:
                             cred_req.provider = cred_schema["provider"]
                             actual_provider = cred_schema["provider"]
-                        
+
                         if "type" in cred_schema:
                             cred_req.type = cred_schema["type"]  # oauth, api_key
                         if "scopes" in cred_schema:
@@ -269,8 +279,10 @@ class GetRequiredSetupInfoTool(BaseTool):
 
                     # Check if user has this credential using the actual provider name
                     provider_name = actual_provider or cred_req.provider
-                    logger.debug(f"Checking credential {cred_key}: provider={provider_name}, available={list(user_credentials.keys())}")
-                    
+                    logger.debug(
+                        f"Checking credential {cred_key}: provider={provider_name}, available={list(user_credentials.keys())}"
+                    )
+
                     # Check user credentials first, then system credentials
                     if provider_name in user_credentials:
                         cred_req.user_has = True
@@ -282,8 +294,9 @@ class GetRequiredSetupInfoTool(BaseTool):
                         logger.info(f"System provides credential for {provider_name}")
                     else:
                         cred_in_schema[cred_key] = cred_schema
-                        logger.info(f"User missing credential for {provider_name} (not provided by system either)")
-                
+                        logger.info(
+                            f"User missing credential for {provider_name} (not provided by system either)"
+                        )
 
                     setup_info.requirements["credentials"].append(cred_req)
                 setup_info.user_readiness.missing_credentials = cred_in_schema
@@ -412,6 +425,7 @@ class GetRequiredSetupInfoTool(BaseTool):
 
 if __name__ == "__main__":
     import asyncio
+
     from backend.data.db import prisma
 
     setup_tool = GetRequiredSetupInfoTool()
@@ -419,52 +433,58 @@ if __name__ == "__main__":
 
     async def main():
         await prisma.connect()
-        
+
         # Test with a logged-in user who HAS credentials
         print("\n=== Testing with logged-in user WITH credentials ===")
         result1 = await setup_tool._execute(
-            agent_id="autogpt-store/slug-a", 
-            user_id="c640e784-7355-4afb-bed6-299cea1e5945", 
-            session_id="session1"
+            agent_id="autogpt-store/slug-a",
+            user_id="c640e784-7355-4afb-bed6-299cea1e5945",
+            session_id="session1",
         )
         print(f"Result type: {result1.type}")
-        if hasattr(result1, 'setup_info'):
+        if hasattr(result1, "setup_info"):
             print(f"User ready: {result1.setup_info.user_readiness.ready_to_run}")
             creds = result1.setup_info.requirements.get("credentials", [])
-            print(f"Required credentials:")
+            print("Required credentials:")
             for cred in creds:
-                print(f"  - {cred.provider}: {'✓ Has' if cred.user_has else '✗ Missing'}")
-        
+                print(
+                    f"  - {cred.provider}: {'✓ Has' if cred.user_has else '✗ Missing'}"
+                )
+
         # Test with a logged-in user WITHOUT credentials
         print("\n=== Testing with logged-in user WITHOUT credentials ===")
         result2 = await setup_tool._execute(
-            agent_id="autogpt-store/slug-a", 
-            user_id="3e53486c-cf57-477e-ba2a-cb02dc828e1a", 
-            session_id="session2"
+            agent_id="autogpt-store/slug-a",
+            user_id="3e53486c-cf57-477e-ba2a-cb02dc828e1a",
+            session_id="session2",
         )
         print(f"Result type: {result2.type}")
-        if hasattr(result2, 'setup_info'):
+        if hasattr(result2, "setup_info"):
             print(f"User ready: {result2.setup_info.user_readiness.ready_to_run}")
             creds = result2.setup_info.requirements.get("credentials", [])
-            print(f"Required credentials:")
+            print("Required credentials:")
             for cred in creds:
-                print(f"  - {cred.provider}: {'✓ Has' if cred.user_has else '✗ Missing'}")
-        
-        # Test with an anonymous user  
+                print(
+                    f"  - {cred.provider}: {'✓ Has' if cred.user_has else '✗ Missing'}"
+                )
+
+        # Test with an anonymous user
         print("\n=== Testing with anonymous user ===")
         result3 = await setup_tool._execute(
-            agent_id="autogpt-store/slug-a", 
-            user_id="anon_user123", 
-            session_id="session3"
+            agent_id="autogpt-store/slug-a",
+            user_id="anon_user123",
+            session_id="session3",
         )
         print(f"Result type: {result3.type}")
-        if hasattr(result3, 'setup_info'):
+        if hasattr(result3, "setup_info"):
             print(f"User ready: {result3.setup_info.user_readiness.ready_to_run}")
             creds = result3.setup_info.requirements.get("credentials", [])
-            print(f"Required credentials:")
+            print("Required credentials:")
             for cred in creds:
-                print(f"  - {cred.provider}: {'✓ Has' if cred.user_has else '✗ Missing'}")
-        
+                print(
+                    f"  - {cred.provider}: {'✓ Has' if cred.user_has else '✗ Missing'}"
+                )
+
         await prisma.disconnect()
-    
+
     asyncio.run(main())

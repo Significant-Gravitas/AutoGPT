@@ -7,6 +7,7 @@ from collections import defaultdict
 from concurrent.futures import Future
 from typing import Any, Mapping, Optional, cast
 
+from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 from pydantic import BaseModel, JsonValue, SecretStr, ValidationError
 
 from backend.data import execution as execution_db
@@ -26,6 +27,7 @@ from backend.data.graph import GraphModel, Node
 from backend.data.model import CredentialsMetaInput
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.data.user import get_user_by_id
+from backend.sdk.registry import AutoRegistry
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_async_execution_queue,
@@ -37,26 +39,26 @@ from backend.util.logging import TruncatedLogger
 from backend.util.mock import MockObject
 from backend.util.settings import Config
 from backend.util.type import convert
-from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials, OAuth2Credentials
-from backend.sdk.registry import AutoRegistry
 
 
 def get_system_credentials():
     """Get system-provided credentials from environment and AutoRegistry."""
     from datetime import datetime, timedelta
-    
+
     system_credentials = {}
-    
+
     try:
         # Get SDK-registered credentials
         system_creds_list = AutoRegistry.get_all_credentials()
         for cred in system_creds_list:
             system_credentials[f"system-{cred.provider}"] = cred
-        
+
         # WORKAROUND: Check for common LLM providers that don't use SDK pattern
         # System credentials never expire - set to far future (Unix timestamp)
-        expires_at = int((datetime.utcnow() + timedelta(days=36500)).timestamp())  # 100 years
-        
+        expires_at = int(
+            (datetime.utcnow() + timedelta(days=36500)).timestamp()
+        )  # 100 years
+
         # Check for OpenAI
         if "system-openai" not in system_credentials:
             openai_key = os.getenv("OPENAI_API_KEY")
@@ -66,10 +68,10 @@ def get_system_credentials():
                     provider="openai",
                     api_key=SecretStr(openai_key),
                     title="System OpenAI API Key",
-                    expires_at=expires_at
+                    expires_at=expires_at,
                 )
-        
-        # Check for Anthropic  
+
+        # Check for Anthropic
         if "system-anthropic" not in system_credentials:
             anthropic_key = os.getenv("ANTHROPIC_API_KEY")
             if anthropic_key:
@@ -78,9 +80,9 @@ def get_system_credentials():
                     provider="anthropic",
                     api_key=SecretStr(anthropic_key),
                     title="System Anthropic API Key",
-                    expires_at=expires_at
+                    expires_at=expires_at,
                 )
-        
+
         # Check for Replicate
         if "system-replicate" not in system_credentials:
             replicate_key = os.getenv("REPLICATE_API_KEY")
@@ -90,12 +92,12 @@ def get_system_credentials():
                     provider="replicate",
                     api_key=SecretStr(replicate_key),
                     title="System Replicate API Key",
-                    expires_at=expires_at
+                    expires_at=expires_at,
                 )
-                
+
     except Exception as e:
         logging.error(f"Error getting system credentials: {e}")
-    
+
     return system_credentials
 
 
@@ -537,13 +539,15 @@ async def _validate_node_input_credentials(
             if credentials_meta.id.startswith("system-"):
                 system_creds = get_system_credentials()
                 credentials = system_creds.get(credentials_meta.id)
-            
+
             # If not a system credential or not found, try user credentials
             if not credentials:
                 try:
                     # Fetch the corresponding Credentials and perform sanity checks
-                    credentials = await get_integration_credentials_store().get_creds_by_id(
-                        user_id, credentials_meta.id
+                    credentials = (
+                        await get_integration_credentials_store().get_creds_by_id(
+                            user_id, credentials_meta.id
+                        )
                     )
                 except Exception as e:
                     # Handle any errors fetching credentials
@@ -594,7 +598,7 @@ def make_node_credentials_input_map(
 
     # Get aggregated credentials fields for the graph
     graph_cred_inputs = graph.aggregate_credentials_inputs()
-    
+
     logging.debug(f"Graph expects credentials: {list(graph_cred_inputs.keys())}")
     logging.debug(f"Provided credentials: {list(graph_credentials_input.keys())}")
 

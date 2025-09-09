@@ -3,8 +3,6 @@
 import logging
 from typing import Any
 
-from backend.server.v2.store import db as store_db
-
 from backend.server.v2.chat.tools.base import BaseTool
 from backend.server.v2.chat.tools.models import (
     AgentCarouselResponse,
@@ -13,6 +11,7 @@ from backend.server.v2.chat.tools.models import (
     NoResultsResponse,
     ToolResponseBase,
 )
+from backend.server.v2.store import db as store_db
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +85,9 @@ class FindAgentTool(BaseTool):
                 agent_slug = agent.slug
                 agent_creator = agent.creator
                 agent_id = f"{agent_creator}/{agent_slug}"
-                logger.info(f"Building agent ID: creator={agent_creator}, slug={agent_slug}, full_id={agent_id}")
+                logger.info(
+                    f"Building agent ID: creator={agent_creator}, slug={agent_slug}, full_id={agent_id}"
+                )
                 agents.append(
                     AgentInfo(
                         id=agent_id,  # Use username/slug format for marketplace agents
@@ -131,17 +132,21 @@ class FindAgentTool(BaseTool):
                 session_id=session_id,
             )
 
+
 if __name__ == "__main__":
     import asyncio
+
     import prisma
 
     find_agent_tool = FindAgentTool()
     print(find_agent_tool.parameters)
 
-
     async def main():
         await prisma.Prisma().connect()
-        agents = await find_agent_tool.execute(query="Linkedin", user_id="user", session_id="session")
+        agents = await find_agent_tool.execute(
+            query="Linkedin", user_id="user", session_id="session"
+        )
         print(agents)
         await prisma.Prisma().disconnect()
+
     asyncio.run(main())

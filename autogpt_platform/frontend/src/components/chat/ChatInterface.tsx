@@ -41,6 +41,7 @@ interface ContentSegment {
     | "carousel"
     | "credentials_setup"
     | "agent_setup"
+    | "agent_run"
     | "auth_required";
   content: any;
   id?: string;
@@ -694,6 +695,53 @@ export function ChatInterface({
                   return updated;
                 });
               }
+            } else if (chunk.result.type === "execution_started") {
+              // First, flush any accumulated text before adding special segment
+              if (currentStreamingText.current) {
+                collectedSegments.push({
+                  type: "text",
+                  content: currentStreamingText.current,
+                  id: `text-${Date.now()}`,
+                });
+                currentStreamingText.current = "";
+              }
+              
+              // Try to find the corresponding tool call to get the inputs
+              let inputs = chunk.result.inputs || {};
+              const toolCallSegment = collectedSegments.find(
+                seg => seg.type === "tool" && seg.id === chunk.tool_id
+              );
+              if (toolCallSegment && toolCallSegment.content.name === "run_agent") {
+                // Use the inputs from the tool call parameters
+                inputs = toolCallSegment.content.parameters?.inputs || inputs;
+              }
+              
+              // Agent execution started
+              const runSegment: ContentSegment = {
+                type: "agent_run",
+                content: {
+                  execution_id: chunk.result.execution_id,
+                  graph_id: chunk.result.graph_id,
+                  graph_name: chunk.result.graph_name,
+                  status: chunk.result.status,
+                  inputs: inputs,
+                  outputs: chunk.result.outputs,
+                  error: chunk.result.error,
+                  timeout_reached: chunk.result.timeout_reached,
+                  ended_at: chunk.result.ended_at,
+                },
+                id: `run-${chunk.result.execution_id}`,
+              };
+              collectedSegments.push(runSegment);
+              
+              // Update segments properly without duplicating text
+              setStreamingSegments((prev) => {
+                // Filter out any temporary text segments
+                const filtered = prev.filter(s => s.id !== "current-text");
+                return [...filtered, ...collectedSegments.filter(seg => 
+                  !filtered.some(existing => existing.id === seg.id)
+                )];
+              });
             } else if (
               chunk.result.status === "success" &&
               chunk.result.trigger_type

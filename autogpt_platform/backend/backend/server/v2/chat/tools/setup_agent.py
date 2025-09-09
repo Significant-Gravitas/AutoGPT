@@ -11,11 +11,10 @@ from pydantic import SecretStr
 
 from backend.data import graph as graph_db
 from backend.data.model import APIKeyCredentials, CredentialsMetaInput
-from backend.executor.scheduler import SchedulerClient
-from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks.utils import setup_webhook_for_block
 from backend.sdk.registry import AutoRegistry
 from backend.server.v2.library import db as library_db
+from backend.util.clients import get_scheduler_client
 
 from .base import BaseTool
 from .models import (
@@ -83,7 +82,7 @@ class SetupAgentTool(BaseTool):
                 },
                 "inputs": {
                     "type": "object",
-                    "description": "REQUIRED: Dictionary with ALL required inputs from get_agent_details. Format: {\"input_name\": value}",
+                    "description": 'REQUIRED: Dictionary with ALL required inputs from get_agent_details. Format: {"input_name": value}',
                     "additionalProperties": True,
                 },
                 "credentials": {
@@ -152,13 +151,16 @@ class SetupAgentTool(BaseTool):
             # Check if agent_id looks like a marketplace slug
             graph = None
             marketplace_graph = None
-            
+
             if "/" in agent_id:
                 # Looks like a marketplace slug, try to get from store first
                 from backend.server.v2.store import db as store_db
+
                 try:
                     username, agent_name = agent_id.split("/", 1)
-                    agent_details = await store_db.get_store_agent_details(username, agent_name)
+                    agent_details = await store_db.get_store_agent_details(
+                        username, agent_name
+                    )
                     if agent_details:
                         # Get the graph from the store listing version
                         graph_meta = await store_db.get_available_graph(
@@ -173,7 +175,7 @@ class SetupAgentTool(BaseTool):
                         logger.info(f"Found marketplace agent by slug: {agent_id}")
                 except Exception as e:
                     logger.debug(f"Failed to get agent by slug: {e}")
-            
+
             # If we have a marketplace graph from the slug lookup, handle it
             if marketplace_graph:
                 # Check if already in user's library
@@ -182,9 +184,11 @@ class SetupAgentTool(BaseTool):
                     graph_id=marketplace_graph.id,
                     graph_version=marketplace_graph.version,
                 )
-                
+
                 if library_agent:
-                    logger.info(f"Agent {agent_id} already in user library, using existing entry")
+                    logger.info(
+                        f"Agent {agent_id} already in user library, using existing entry"
+                    )
                     # Get the graph from the library agent
                     graph = await graph_db.get_graph(
                         graph_id=library_agent.graph_id,
@@ -208,7 +212,7 @@ class SetupAgentTool(BaseTool):
                     user_id=user_id,
                     include_subgraphs=True,
                 )
-                
+
                 if not graph:
                     # Try as marketplace agent by ID
                     marketplace_graph = await graph_db.get_graph(
@@ -217,7 +221,7 @@ class SetupAgentTool(BaseTool):
                         user_id=None,  # Public access
                         include_subgraphs=True,
                     )
-                    
+
                     if marketplace_graph:
                         # Check if already in user's library
                         library_agent = await library_db.get_library_agent_by_graph_id(
@@ -225,9 +229,11 @@ class SetupAgentTool(BaseTool):
                             graph_id=marketplace_graph.id,
                             graph_version=marketplace_graph.version,
                         )
-                        
+
                         if library_agent:
-                            logger.info(f"Agent {agent_id} already in user library, using existing entry")
+                            logger.info(
+                                f"Agent {agent_id} already in user library, using existing entry"
+                            )
                             # Get the graph from the library agent
                             graph = await graph_db.get_graph(
                                 graph_id=library_agent.graph_id,
@@ -236,7 +242,9 @@ class SetupAgentTool(BaseTool):
                                 include_subgraphs=True,
                             )
                         else:
-                            logger.info(f"Adding marketplace agent {agent_id} to user library")
+                            logger.info(
+                                f"Adding marketplace agent {agent_id} to user library"
+                            )
                             await library_db.create_library_agent(
                                 graph=marketplace_graph,
                                 user_id=user_id,
@@ -257,10 +265,12 @@ class SetupAgentTool(BaseTool):
                 system_creds_list = AutoRegistry.get_all_credentials()
                 for cred in system_creds_list:
                     system_credentials[cred.provider] = cred
-                
+
                 # System credentials never expire - set to far future (Unix timestamp)
-                expires_at = int((datetime.utcnow() + timedelta(days=36500)).timestamp())
-                
+                expires_at = int(
+                    (datetime.utcnow() + timedelta(days=36500)).timestamp()
+                )
+
                 # Check for OpenAI
                 if "openai" not in system_credentials:
                     openai_key = os.getenv("OPENAI_API_KEY")
@@ -270,9 +280,9 @@ class SetupAgentTool(BaseTool):
                             provider="openai",
                             api_key=SecretStr(openai_key),
                             title="System OpenAI API Key",
-                            expires_at=expires_at
+                            expires_at=expires_at,
                         )
-                
+
                 # Check for Anthropic
                 if "anthropic" not in system_credentials:
                     anthropic_key = os.getenv("ANTHROPIC_API_KEY")
@@ -282,13 +292,15 @@ class SetupAgentTool(BaseTool):
                             provider="anthropic",
                             api_key=SecretStr(anthropic_key),
                             title="System Anthropic API Key",
-                            expires_at=expires_at
+                            expires_at=expires_at,
                         )
-                
+
                 # Check for other common providers
-                for provider, env_var in [("groq", "GROQ_API_KEY"), 
-                                           ("ollama", "OLLAMA_API_KEY"),
-                                           ("open_router", "OPEN_ROUTER_API_KEY")]:
+                for provider, env_var in [
+                    ("groq", "GROQ_API_KEY"),
+                    ("ollama", "OLLAMA_API_KEY"),
+                    ("open_router", "OPEN_ROUTER_API_KEY"),
+                ]:
                     if provider not in system_credentials:
                         api_key = os.getenv(env_var)
                         if api_key:
@@ -297,22 +309,29 @@ class SetupAgentTool(BaseTool):
                                 provider=provider,
                                 api_key=SecretStr(api_key),
                                 title=f"System {provider} API Key",
-                                expires_at=expires_at
+                                expires_at=expires_at,
                             )
-                
-                logger.info(f"System provides credentials for: {list(system_credentials.keys())}")
+
+                logger.info(
+                    f"System provides credentials for: {list(system_credentials.keys())}"
+                )
             except Exception as e:
                 logger.warning(f"Failed to get system credentials: {e}")
-            
+
             # Get user credentials if authenticated
             user_credentials = {}
             try:
-                from backend.integrations.creds_manager import IntegrationCredentialsManager
+                from backend.integrations.creds_manager import (
+                    IntegrationCredentialsManager,
+                )
+
                 creds_manager = IntegrationCredentialsManager()
                 user_creds_list = await creds_manager.store.get_all_creds(user_id)
                 for cred in user_creds_list:
                     user_credentials[cred.provider] = cred
-                logger.info(f"User has credentials for: {list(user_credentials.keys())}")
+                logger.info(
+                    f"User has credentials for: {list(user_credentials.keys())}"
+                )
             except Exception as e:
                 logger.warning(f"Failed to get user credentials: {e}")
 
@@ -328,51 +347,82 @@ class SetupAgentTool(BaseTool):
                         provider=key,  # Use the key as provider name
                         type="api_key",  # Default type
                     )
-            
+
             # Use the graph's aggregated credentials to properly map credentials
             # This ensures we use the same keys that the graph expects
             graph_cred_inputs = graph.aggregate_credentials_inputs()
-            logger.info(f"Graph aggregate credentials: {list(graph_cred_inputs.keys())}")
+            logger.info(
+                f"Graph aggregate credentials: {list(graph_cred_inputs.keys())}"
+            )
             logger.info(f"User provided credentials: {list(input_credentials.keys())}")
-            
+
             # Process each aggregated credential field
             for agg_key, (field_info, node_fields) in graph_cred_inputs.items():
                 if agg_key not in input_credentials:
                     # Extract provider from field_info (it's a frozenset, get the first element)
                     provider_set = field_info.provider
-                    if isinstance(provider_set, (set, frozenset)) and len(provider_set) > 0:
+                    if (
+                        isinstance(provider_set, (set, frozenset))
+                        and len(provider_set) > 0
+                    ):
                         # Get the first provider from the set
                         provider_enum = next(iter(provider_set))
                         # Get the string value from the enum
-                        provider_name = provider_enum.value if hasattr(provider_enum, 'value') else str(provider_enum)
+                        provider_name = (
+                            provider_enum.value
+                            if hasattr(provider_enum, "value")
+                            else str(provider_enum)
+                        )
                     else:
                         provider_name = str(provider_set) if provider_set else None
-                    
-                    logger.info(f"Checking credential {agg_key} for provider {provider_name}")
-                    
+
+                    logger.info(
+                        f"Checking credential {agg_key} for provider {provider_name}"
+                    )
+
                     # Try to find credential from user or system
                     credential_found = False
-                    
+
                     # First check user credentials
                     if provider_name and provider_name in user_credentials:
-                        logger.info(f"Using user credential for {provider_name} (key: {agg_key})")
+                        logger.info(
+                            f"Using user credential for {provider_name} (key: {agg_key})"
+                        )
                         user_cred = user_credentials[provider_name]
                         # Use the provider_enum we already extracted from the frozenset
-                        if isinstance(provider_set, (set, frozenset)) and len(provider_set) > 0:
+                        if (
+                            isinstance(provider_set, (set, frozenset))
+                            and len(provider_set) > 0
+                        ):
                             provider_enum = next(iter(provider_set))
                             input_credentials[agg_key] = CredentialsMetaInput(
                                 id=user_cred.id,
                                 provider=provider_enum,
-                                type=user_cred.type if hasattr(user_cred, 'type') else "api_key",
+                                type=(
+                                    user_cred.type
+                                    if hasattr(user_cred, "type")
+                                    else "api_key"
+                                ),
                             )
                             credential_found = True
-                            logger.info(f"Added user credential to input_credentials[{agg_key}]")
-                    
+                            logger.info(
+                                f"Added user credential to input_credentials[{agg_key}]"
+                            )
+
                     # If not found in user creds, check system credentials
-                    if not credential_found and provider_name and provider_name in system_credentials:
-                        logger.info(f"Using system credential for {provider_name} (key: {agg_key})")
+                    if (
+                        not credential_found
+                        and provider_name
+                        and provider_name in system_credentials
+                    ):
+                        logger.info(
+                            f"Using system credential for {provider_name} (key: {agg_key})"
+                        )
                         # Use the provider_enum we already extracted from the frozenset
-                        if isinstance(provider_set, (set, frozenset)) and len(provider_set) > 0:
+                        if (
+                            isinstance(provider_set, (set, frozenset))
+                            and len(provider_set) > 0
+                        ):
                             provider_enum = next(iter(provider_set))
                             input_credentials[agg_key] = CredentialsMetaInput(
                                 id=f"system-{provider_name}",
@@ -380,10 +430,14 @@ class SetupAgentTool(BaseTool):
                                 type="api_key",
                             )
                             credential_found = True
-                            logger.info(f"Added system credential to input_credentials[{agg_key}]")
-                    
+                            logger.info(
+                                f"Added system credential to input_credentials[{agg_key}]"
+                            )
+
                     if not credential_found:
-                        logger.warning(f"Could not find credential for {agg_key} (provider: {provider_name}) in user or system stores")
+                        logger.warning(
+                            f"Could not find credential for {agg_key} (provider: {provider_name}) in user or system stores"
+                        )
 
             result = {}
 
@@ -416,8 +470,7 @@ class SetupAgentTool(BaseTool):
                     )
 
                 # Create schedule via scheduler client
-                scheduler_client = SchedulerClient()
-                schedule_info = await scheduler_client.add_execution_schedule(
+                schedule_info = await get_scheduler_client().add_execution_schedule(
                     user_id=user_id,
                     graph_id=graph.id,
                     graph_version=graph.version,
@@ -535,22 +588,23 @@ if __name__ == "__main__":
     """Added a test script here to check all the functionality of the setup_agent tool"""
     import asyncio
     import json
+
     from backend.data.db import prisma
 
     async def main():
         await prisma.connect()
-        
+
         setup_tool = SetupAgentTool()
         print("SetupAgentTool parameters:")
         print(json.dumps(setup_tool.parameters, indent=2))
-        
+
         # Test user IDs
         test_user = "c640e784-7355-4afb-bed6-299cea1e5945"
-        
-        print("\n" + "="*60)
+
+        print("\n" + "=" * 60)
         print("Testing setup_agent tool")
-        print("="*60)
-        
+        print("=" * 60)
+
         # Test 1: Schedule setup with LinkedIn agent
         print("\n1. Testing schedule setup with LinkedIn Post Generator:")
         result1 = await setup_tool._execute(
@@ -566,16 +620,16 @@ if __name__ == "__main__":
             credentials={},  # Will use user's credentials
         )
         print(f"   Result type: {result1.type}")
-        if hasattr(result1, 'message'):
+        if hasattr(result1, "message"):
             print(f"   Message: {result1.message}")
-        if hasattr(result1, 'schedule_id'):
+        if hasattr(result1, "schedule_id"):
             print(f"   Schedule ID: {result1.schedule_id}")
-        
+
         # Test 2: Webhook setup with Github PR Reviewer (auto-setup webhook)
         print("\n2. Testing webhook setup with Github PR Reviewer (auto-setup):")
         result2 = await setup_tool._execute(
             user_id=test_user,
-            session_id="test-session-2", 
+            session_id="test-session-2",
             agent_id="github-pr-reviewer",  # Auto-setup webhook agent
             setup_type="webhook",
             name="PR Review Webhook",
@@ -587,11 +641,11 @@ if __name__ == "__main__":
             credentials={},  # Github credentials would be needed
         )
         print(f"   Result type: {result2.type}")
-        if hasattr(result2, 'message'):
+        if hasattr(result2, "message"):
             print(f"   Message: {result2.message}")
-        if hasattr(result2, 'webhook_url'):
+        if hasattr(result2, "webhook_url"):
             print(f"   Webhook URL: {result2.webhook_url}")
-        
+
         # Test 3: Webhook setup with Stripe Payment Tracker (manual setup)
         print("\n3. Testing webhook setup with Stripe Payment Tracker (manual):")
         result3 = await setup_tool._execute(
@@ -599,7 +653,7 @@ if __name__ == "__main__":
             session_id="test-session-3",
             agent_id="stripe-payment-tracker",  # Manual webhook setup agent
             setup_type="webhook",
-            name="Stripe Payment Webhook", 
+            name="Stripe Payment Webhook",
             description="Track Stripe payment events",
             webhook_config={
                 "endpoint": "payment.succeeded",
@@ -607,11 +661,11 @@ if __name__ == "__main__":
             credentials={},  # Stripe credentials would be needed
         )
         print(f"   Result type: {result3.type}")
-        if hasattr(result3, 'message'):
+        if hasattr(result3, "message"):
             print(f"   Message: {result3.message}")
-        if hasattr(result3, 'webhook_url'):
+        if hasattr(result3, "webhook_url"):
             print(f"   Webhook URL: {result3.webhook_url}")
-        
+
         # Test 4: Create preset configuration
         print("\n4. Testing preset creation for manual execution:")
         result4 = await setup_tool._execute(
@@ -628,11 +682,11 @@ if __name__ == "__main__":
             credentials={},
         )
         print(f"   Result type: {result4.type}")
-        if hasattr(result4, 'message'):
+        if hasattr(result4, "message"):
             print(f"   Message: {result4.message}")
-        if hasattr(result4, 'preset_id'):
+        if hasattr(result4, "preset_id"):
             print(f"   Preset ID: {result4.preset_id}")
-        
+
         # Test 5: Invalid cron expression
         print("\n5. Testing with invalid cron expression:")
         result5 = await setup_tool._execute(
@@ -644,9 +698,9 @@ if __name__ == "__main__":
             cron="not-a-valid-cron",
         )
         print(f"   Result type: {result5.type}")
-        if hasattr(result5, 'message'):
+        if hasattr(result5, "message"):
             print(f"   Message: {result5.message}")
-        
+
         # Test 6: No authentication
         print("\n6. Testing without authentication:")
         result6 = await setup_tool._execute(
@@ -658,13 +712,13 @@ if __name__ == "__main__":
             cron="0 * * * *",
         )
         print(f"   Result type: {result6.type}")
-        if hasattr(result6, 'message'):
+        if hasattr(result6, "message"):
             print(f"   Message: {result6.message}")
-        
-        print("\n" + "="*60)
+
+        print("\n" + "=" * 60)
         print("Testing complete!")
-        print("="*60)
-        
+        print("=" * 60)
+
         await prisma.disconnect()
-    
+
     asyncio.run(main())

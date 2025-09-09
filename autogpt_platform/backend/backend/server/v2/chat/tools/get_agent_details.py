@@ -4,20 +4,19 @@ import logging
 from typing import Any
 
 from backend.data import graph as graph_db
-from backend.server.v2.store import db as store_db
 from backend.sdk.registry import AutoRegistry
-
 from backend.server.v2.chat.tools.base import BaseTool
 from backend.server.v2.chat.tools.models import (
     AgentDetails,
-    AgentDetailsNeedLoginResponse,
     AgentDetailsNeedCredentialsResponse,
+    AgentDetailsNeedLoginResponse,
     AgentDetailsResponse,
     ErrorResponse,
     ExecutionOptions,
     InputField,
     ToolResponseBase,
 )
+from backend.server.v2.store import db as store_db
 
 logger = logging.getLogger(__name__)
 
@@ -100,8 +99,7 @@ class GetAgentDetailsTool(BaseTool):
                 try:
                     # Search for the agent in the store
                     search_results = await store_db.search_store_agents(
-                        search_query=agent_id,
-                        limit=1
+                        search_query=agent_id, limit=1
                     )
                     if search_results.agents:
                         first_agent = search_results.agents[0]
@@ -111,10 +109,10 @@ class GetAgentDetailsTool(BaseTool):
                             store_agent = await store_db.get_store_agent_details(
                                 username, agent_name
                             )
-                            logger.info(f"Found agent by search in marketplace")
+                            logger.info("Found agent by search in marketplace")
                 except Exception as e:
                     logger.debug(f"Failed to search marketplace: {e}")
-            
+
             # If we found a store agent, get its graph
             if store_agent:
                 try:
@@ -184,12 +182,14 @@ class GetAgentDetailsTool(BaseTool):
                 try:
                     system_creds_list = AutoRegistry.get_all_credentials()
                     system_credentials = {c.provider: c for c in system_creds_list}
-                    
+
                     # WORKAROUND: Check for common LLM providers that don't use SDK pattern
                     import os
-                    from backend.data.model import APIKeyCredentials
+
                     from pydantic import SecretStr
-                    
+
+                    from backend.data.model import APIKeyCredentials
+
                     # Check for OpenAI
                     if "openai" not in system_credentials:
                         openai_key = os.getenv("OPENAI_API_KEY")
@@ -198,10 +198,10 @@ class GetAgentDetailsTool(BaseTool):
                                 id="openai-system",
                                 provider="openai",
                                 api_key=SecretStr(openai_key),
-                                title="System OpenAI API Key"
+                                title="System OpenAI API Key",
                             )
-                    
-                    # Check for Anthropic  
+
+                    # Check for Anthropic
                     if "anthropic" not in system_credentials:
                         anthropic_key = os.getenv("ANTHROPIC_API_KEY")
                         if anthropic_key:
@@ -209,13 +209,15 @@ class GetAgentDetailsTool(BaseTool):
                                 id="anthropic-system",
                                 provider="anthropic",
                                 api_key=SecretStr(anthropic_key),
-                                title="System Anthropic API Key"
+                                title="System Anthropic API Key",
                             )
-                    
+
                     # Check for other common providers
-                    for provider, env_var in [("groq", "GROQ_API_KEY"), 
-                                               ("ollama", "OLLAMA_API_KEY"),
-                                               ("open_router", "OPEN_ROUTER_API_KEY")]:
+                    for provider, env_var in [
+                        ("groq", "GROQ_API_KEY"),
+                        ("ollama", "OLLAMA_API_KEY"),
+                        ("open_router", "OPEN_ROUTER_API_KEY"),
+                    ]:
                         if provider not in system_credentials:
                             api_key = os.getenv(env_var)
                             if api_key:
@@ -223,33 +225,44 @@ class GetAgentDetailsTool(BaseTool):
                                     id=f"{provider}-system",
                                     provider=provider,
                                     api_key=SecretStr(api_key),
-                                    title=f"System {provider} API Key"
+                                    title=f"System {provider} API Key",
                                 )
-                    
-                    logger.debug(f"System provides credentials for: {list(system_credentials.keys())}")
+
+                    logger.debug(
+                        f"System provides credentials for: {list(system_credentials.keys())}"
+                    )
                 except Exception as e:
                     logger.warning(f"Failed to get system credentials: {e}")
-                
+
                 # Get user's credentials if authenticated
                 user_credentials = {}
                 if user_id and not user_id.startswith("anon_"):
                     try:
-                        from backend.integrations.creds_manager import IntegrationCredentialsManager
+                        from backend.integrations.creds_manager import (
+                            IntegrationCredentialsManager,
+                        )
+
                         creds_manager = IntegrationCredentialsManager()
-                        user_creds_list = await creds_manager.store.get_all_creds(user_id)
+                        user_creds_list = await creds_manager.store.get_all_creds(
+                            user_id
+                        )
                         user_credentials = {c.provider: c for c in user_creds_list}
-                        logger.debug(f"User has credentials for: {list(user_credentials.keys())}")
+                        logger.debug(
+                            f"User has credentials for: {list(user_credentials.keys())}"
+                        )
                     except Exception as e:
                         logger.warning(f"Failed to get user credentials: {e}")
-                
+
                 # Handle nested schema structure
                 credentials_to_check = {}
                 if isinstance(graph.credentials_input_schema, dict):
                     if "properties" in graph.credentials_input_schema:
-                        credentials_to_check = graph.credentials_input_schema["properties"]
+                        credentials_to_check = graph.credentials_input_schema[
+                            "properties"
+                        ]
                     else:
                         credentials_to_check = graph.credentials_input_schema
-                
+
                 # Process credentials from the schema dict into a list
                 credentials = []
                 for cred_key, cred_schema in credentials_to_check.items():
@@ -262,22 +275,33 @@ class GetAgentDetailsTool(BaseTool):
                             if isinstance(providers, list) and len(providers) > 0:
                                 actual_provider = str(providers[0])
                                 if "ProviderName." in actual_provider:
-                                    actual_provider = actual_provider.split("'")[1] if "'" in actual_provider else actual_provider.split(".")[-1].lower()
-                        
+                                    actual_provider = (
+                                        actual_provider.split("'")[1]
+                                        if "'" in actual_provider
+                                        else actual_provider.split(".")[-1].lower()
+                                    )
+
                         cred_meta = {
                             "id": cred_key,
-                            "provider": actual_provider or cred_schema.get("credentials_provider", cred_key),
+                            "provider": actual_provider
+                            or cred_schema.get("credentials_provider", cred_key),
                             "type": cred_schema.get("credentials_type", "api_key"),
-                            "title": cred_schema.get("title") or cred_schema.get("description"),
+                            "title": cred_schema.get("title")
+                            or cred_schema.get("description"),
                         }
                         credentials.append(cred_meta)
-                        
+
                         # Check if this credential is available
                         provider_name = actual_provider or cred_key
-                        if provider_name not in user_credentials and provider_name not in system_credentials:
+                        if (
+                            provider_name not in user_credentials
+                            and provider_name not in system_credentials
+                        ):
                             missing_credentials.append(provider_name)
-                            logger.debug(f"Missing credential for provider: {provider_name}")
-                
+                            logger.debug(
+                                f"Missing credential for provider: {provider_name}"
+                            )
+
                 # Only needs auth if there are missing credentials
                 needs_auth = bool(missing_credentials)
 
@@ -328,7 +352,7 @@ class GetAgentDetailsTool(BaseTool):
                 in_library=in_library,
                 is_marketplace=is_marketplace,
                 inputs=input_fields,
-                credentials=credentials, # type: ignore
+                credentials=credentials,  # type: ignore
                 execution_options=execution_options,
                 trigger_info=trigger_info,
                 stats=stats,
@@ -342,12 +366,12 @@ class GetAgentDetailsTool(BaseTool):
                     cred_list = []
                     for cred in credentials:
                         cred_desc = f"{cred.get('provider', 'Unknown')}"
-                        if cred.get('type'):
+                        if cred.get("type"):
                             cred_desc += f" ({cred.get('type')})"
                         cred_list.append(cred_desc)
-                    
+
                     cred_message = f"This agent requires the following credentials: {', '.join(cred_list)}. Please sign in to set up and run this agent."
-                    
+
                     return AgentDetailsNeedLoginResponse(
                         message=cred_message,
                         session_id=session_id,
@@ -365,7 +389,7 @@ class GetAgentDetailsTool(BaseTool):
                     # Authenticated user needs to set up credentials
                     # Return the credentials schema so the frontend can show the setup UI
                     cred_message = f"The agent '{details.name}' requires credentials to be configured. Please provide the required credentials to continue."
-                    
+
                     return AgentDetailsNeedCredentialsResponse(
                         message=cred_message,
                         session_id=session_id,
@@ -383,16 +407,16 @@ class GetAgentDetailsTool(BaseTool):
 
             # Build a descriptive message about the agent
             message_parts = [f"Agent '{graph.name}' details loaded successfully."]
-            
+
             if credentials:
                 cred_list = []
                 for cred in credentials:
                     cred_desc = f"{cred.get('provider', 'Unknown')}"
-                    if cred.get('type'):
+                    if cred.get("type"):
                         cred_desc += f" ({cred.get('type')})"
                     cred_list.append(cred_desc)
                 message_parts.append(f"Required credentials: {', '.join(cred_list)}")
-            
+
             # Be very explicit about required inputs
             if input_fields:
                 if input_fields.get("required"):
@@ -402,7 +426,7 @@ class GetAgentDetailsTool(BaseTool):
                         if field.description:
                             desc += f": {field.description}"
                         message_parts.append(desc)
-                    
+
                     # Build example dict format
                     example_dict = {}
                     for field in input_fields["required"]:
@@ -414,10 +438,12 @@ class GetAgentDetailsTool(BaseTool):
                             example_dict[field.name] = True
                         else:
                             example_dict[field.name] = f"<{field.type}_value>"
-                    
-                    message_parts.append(f"\n**IMPORTANT:** To run this agent, you MUST pass these inputs as a dictionary to run_agent, setup_agent, and get_required_setup_info tools.")
+
+                    message_parts.append(
+                        "\n**IMPORTANT:** To run this agent, you MUST pass these inputs as a dictionary to run_agent, setup_agent, and get_required_setup_info tools."
+                    )
                     message_parts.append(f"Example format: inputs={example_dict}")
-                
+
                 if input_fields.get("optional"):
                     message_parts.append("\n**OPTIONAL INPUTS:**")
                     for field in input_fields["optional"]:
@@ -427,7 +453,7 @@ class GetAgentDetailsTool(BaseTool):
                         if field.default is not None:
                             desc += f" [default: {field.default}]"
                         message_parts.append(desc)
-            
+
             return AgentDetailsResponse(
                 message=" ".join(message_parts),
                 session_id=session_id,
@@ -448,6 +474,7 @@ class GetAgentDetailsTool(BaseTool):
 
 if __name__ == "__main__":
     import asyncio
+
     from backend.data.db import prisma
 
     find_agent_tool = GetAgentDetailsTool()
@@ -455,30 +482,30 @@ if __name__ == "__main__":
 
     async def main():
         await prisma.connect()
-        
+
         # Test with a logged-in user
         print("\n=== Testing agent with logged-in user ===")
         result1 = await find_agent_tool._execute(
-            agent_id="autogpt-store/slug-a", 
-            user_id="3e53486c-cf57-477e-ba2a-cb02dc828e1a", 
-            session_id="session1"
+            agent_id="autogpt-store/slug-a",
+            user_id="3e53486c-cf57-477e-ba2a-cb02dc828e1a",
+            session_id="session1",
         )
         print(f"Result type: {result1.type}")
         print(f"Has credentials schema: {'credentials_schema' in result1.__dict__}")
-        if hasattr(result1, 'message'):
+        if hasattr(result1, "message"):
             print(f"Result type: {result1.type}")
             print(f"Message: {result1.message}...")
-        
-        # Test with an anonymous user  
+
+        # Test with an anonymous user
         print("\n=== Testing with anonymous user ===")
         result2 = await find_agent_tool._execute(
-            agent_id="autogpt-store/slug-a", 
-            user_id="anon_user123", 
-            session_id="session2"
+            agent_id="autogpt-store/slug-a",
+            user_id="anon_user123",
+            session_id="session2",
         )
         print(f"Result type: {result2.type}")
         print(f"Message: {result2.message}...")
-        
+
         await prisma.disconnect()
-    
+
     asyncio.run(main())
