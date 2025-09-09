@@ -33,7 +33,7 @@ def sentry_init():
     )
 
 
-def sentry_capture_error(error: Exception):
+def sentry_capture_error(error: BaseException):
     sentry_sdk.capture_exception(error)
     sentry_sdk.flush()
 
