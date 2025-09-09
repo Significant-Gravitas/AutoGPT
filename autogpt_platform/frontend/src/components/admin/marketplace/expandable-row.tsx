@@ -9,9 +9,8 @@ import {
   TableHead,
   TableBody,
 } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import {
   type StoreListingWithVersions,
@@ -19,7 +18,6 @@ import {
   SubmissionStatus,
 } from "@/lib/autogpt-server-api/types";
 import { ApproveRejectButtons } from "./approve-reject-buttons";
-import { downloadAsAdmin } from "@/app/(platform)/admin/marketplace/actions";
 import { DownloadAgentAdminButton } from "./download-agent-button";
 
 // Moved the getStatusBadge function into the client component
@@ -85,7 +83,8 @@ export function ExpandableRow({
               />
             )}
 
-            {latestVersion?.status === SubmissionStatus.PENDING && (
+            {(latestVersion?.status === SubmissionStatus.PENDING ||
+              latestVersion?.status === SubmissionStatus.APPROVED) && (
               <ApproveRejectButtons version={latestVersion} />
             )}
           </div>
@@ -190,7 +189,8 @@ export function ExpandableRow({
                                 }
                               />
                             )}
-                            {version.status === SubmissionStatus.PENDING && (
+                            {(version.status === SubmissionStatus.PENDING ||
+                              version.status === SubmissionStatus.APPROVED) && (
                               <ApproveRejectButtons version={version} />
                             )}
                           </div>

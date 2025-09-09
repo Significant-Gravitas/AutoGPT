@@ -12,8 +12,13 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ClockIcon, Loader2 } from "lucide-react";
-import { useToast } from "@/components/ui/use-toast";
-import { CronExpressionManager } from "@/lib/monitor/cronExpressionManager";
+import { useToast } from "@/components/molecules/Toast/use-toast";
+import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+import {
+  formatScheduleTime,
+  getTimezoneAbbreviation,
+} from "@/lib/timezone-utils";
+import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 import {
   Select,
   SelectContent,
@@ -52,13 +57,19 @@ export const SchedulesTable = ({
 }: SchedulesTableProps) => {
   const { toast } = useToast();
   const router = useRouter();
-  const cron_manager = new CronExpressionManager();
   const [selectedAgent, setSelectedAgent] = useState<string>(""); // Library Agent ID
   const [selectedVersion, setSelectedVersion] = useState<number>(0); // Graph version
   const [maxVersion, setMaxVersion] = useState<number>(0);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState<string>(""); // Graph ID
+
+  // Get user's timezone for displaying schedule times
+  const { data: userTimezone } = useGetV1GetUserTimezone({
+    query: {
+      select: (res) => (res.status === 200 ? res.data.timezone : "UTC"),
+    },
+  });
 
   const filteredAndSortedSchedules = [...schedules]
     .filter(
@@ -219,7 +230,7 @@ export const SchedulesTable = ({
               >
                 Schedule
               </TableHead>
-
+              <TableHead>Timezone</TableHead>
               <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -227,7 +238,7 @@ export const SchedulesTable = ({
             {filteredAndSortedSchedules.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={4}
+                  colSpan={6}
                   className="py-8 text-center text-lg text-gray-400"
                 >
                   No schedules are available
@@ -242,14 +253,18 @@ export const SchedulesTable = ({
                   </TableCell>
                   <TableCell>{schedule.graph_version}</TableCell>
                   <TableCell>
-                    {schedule.next_run_time.toLocaleString()}
+                    {formatScheduleTime(schedule.next_run_time, userTimezone)}
                   </TableCell>
                   <TableCell>
                     <Badge variant="secondary">
-                      {cron_manager.generateDescription(schedule.cron || "")}
+                      {humanizeCronExpression(schedule.cron, userTimezone)}
                     </Badge>
                   </TableCell>
-
+                  <TableCell>
+                    <span className="text-sm text-muted-foreground">
+                      {userTimezone && getTimezoneAbbreviation(userTimezone)}
+                    </span>
+                  </TableCell>
                   <TableCell>
                     <div className="flex space-x-2">
                       <Button

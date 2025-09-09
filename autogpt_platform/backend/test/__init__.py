@@ -1,3 +1,1 @@
-import os
-
-os.environ["ENABLE_AUTH"] = "false"
+# This file makes the test directory a Python module

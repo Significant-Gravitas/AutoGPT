@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Popover,
   PopoverContent,
@@ -15,16 +15,23 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/molecules/Toast/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
+import { getGetV2ListMySubmissionsQueryKey } from "@/app/api/__generated__/endpoints/store/store";
+import { CronExpressionDialog } from "@/components/cron-scheduler-dialog";
+import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+import { CalendarClockIcon } from "lucide-react";
 
 interface SaveControlProps {
   agentMeta: GraphMeta | null;
   agentName: string;
   agentDescription: string;
+  agentRecommendedScheduleCron: string;
   canSave: boolean;
-  onSave: () => void;
+  onSave: () => Promise<void>;
   onNameChange: (name: string) => void;
   onDescriptionChange: (description: string) => void;
+  onRecommendedScheduleCronChange: (cron: string) => void;
   pinSavePopover: boolean;
 }
 
@@ -48,6 +55,8 @@ export const SaveControl = ({
   onNameChange,
   agentDescription,
   onDescriptionChange,
+  agentRecommendedScheduleCron,
+  onRecommendedScheduleCronChange,
   pinSavePopover,
 }: SaveControlProps) => {
   /**
@@ -56,17 +65,22 @@ export const SaveControl = ({
    * We should migrate this to be handled with form controls and a form library.
    */
 
-  const handleSave = useCallback(() => {
-    onSave();
-  }, [onSave]);
-
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [cronScheduleDialogOpen, setCronScheduleDialogOpen] = useState(false);
+
+  const handleScheduleChange = (cronExpression: string) => {
+    onRecommendedScheduleCronChange(cronExpression);
+  };
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
+    const handleKeyDown = async (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key === "s") {
         event.preventDefault(); // Stop the browser default action
-        handleSave(); // Call your save function
+        await onSave(); // Call your save function
+        queryClient.invalidateQueries({
+          queryKey: getGetV2ListMySubmissionsQueryKey(),
+        });
         toast({
           duration: 2000,
           title: "All changes saved successfully!",
@@ -79,7 +93,7 @@ export const SaveControl = ({
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [handleSave, toast]);
+  }, [onSave, toast]);
 
   return (
     <Popover open={pinSavePopover ? true : undefined}>
@@ -104,57 +118,84 @@ export const SaveControl = ({
         sideOffset={15}
         align="start"
         data-id="save-control-popover-content"
+        className="w-96 max-w-[400px]"
       >
         <Card className="border-none shadow-none dark:bg-slate-900">
           <CardContent className="p-4">
-            <div className="grid gap-3">
-              <Label htmlFor="name" className="dark:text-gray-300">
-                Name
-              </Label>
-              <Input
-                id="name"
-                placeholder="Enter your agent name"
-                className="col-span-3"
-                value={agentName}
-                onChange={(e) => onNameChange(e.target.value)}
-                data-id="save-control-name-input"
-                data-testid="save-control-name-input"
-                maxLength={100}
-              />
-              <Label htmlFor="description" className="dark:text-gray-300">
-                Description
-              </Label>
-              <Input
-                id="description"
-                placeholder="Your agent description"
-                className="col-span-3"
-                value={agentDescription}
-                onChange={(e) => onDescriptionChange(e.target.value)}
-                data-id="save-control-description-input"
-                data-testid="save-control-description-input"
-                maxLength={500}
-              />
+            <div className="space-y-3">
+              <div>
+                <Label htmlFor="name" className="dark:text-gray-300">
+                  Name
+                </Label>
+                <Input
+                  id="name"
+                  placeholder="Enter your agent name"
+                  value={agentName}
+                  onChange={(e) => onNameChange(e.target.value)}
+                  data-id="save-control-name-input"
+                  data-testid="save-control-name-input"
+                  maxLength={100}
+                  className="mt-1"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="description" className="dark:text-gray-300">
+                  Description
+                </Label>
+                <Input
+                  id="description"
+                  placeholder="Your agent description"
+                  value={agentDescription}
+                  onChange={(e) => onDescriptionChange(e.target.value)}
+                  data-id="save-control-description-input"
+                  data-testid="save-control-description-input"
+                  maxLength={500}
+                  className="mt-1"
+                />
+              </div>
+
+              <div>
+                <Label className="dark:text-gray-300">
+                  Recommended Schedule
+                </Label>
+                <Button
+                  variant="outline"
+                  onClick={() => setCronScheduleDialogOpen(true)}
+                  className="mt-1 w-full min-w-0 justify-start text-sm"
+                  data-id="save-control-recommended-schedule-button"
+                  data-testid="save-control-recommended-schedule-button"
+                >
+                  <CalendarClockIcon className="mr-2 h-4 w-4 flex-shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">
+                    {agentRecommendedScheduleCron
+                      ? humanizeCronExpression(agentRecommendedScheduleCron)
+                      : "Set schedule"}
+                  </span>
+                </Button>
+              </div>
+
               {agentMeta?.version && (
-                <>
+                <div>
                   <Label htmlFor="version" className="dark:text-gray-300">
                     Version
                   </Label>
                   <Input
                     id="version"
                     placeholder="Version"
-                    className="col-span-3"
                     value={agentMeta?.version || "-"}
                     disabled
                     data-testid="save-control-version-output"
+                    className="mt-1"
                   />
-                </>
+                </div>
               )}
             </div>
           </CardContent>
           <CardFooter className="flex flex-col items-stretch gap-2">
             <Button
               className="w-full dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-800"
-              onClick={handleSave}
+              onClick={onSave}
               data-id="save-control-save-agent"
               data-testid="save-control-save-agent-button"
               disabled={!canSave}
@@ -164,6 +205,13 @@ export const SaveControl = ({
           </CardFooter>
         </Card>
       </PopoverContent>
+      <CronExpressionDialog
+        open={cronScheduleDialogOpen}
+        setOpen={setCronScheduleDialogOpen}
+        onSubmit={handleScheduleChange}
+        defaultCronExpression={agentRecommendedScheduleCron}
+        title="Recommended Schedule"
+      />
     </Popover>
   );
 };

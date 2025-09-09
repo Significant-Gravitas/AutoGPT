@@ -4,23 +4,42 @@ from enum import Enum
 from typing import Awaitable, Optional
 
 import aio_pika
-import aio_pika.exceptions as aio_ex
 import pika
 import pika.adapters.blocking_connection
-from pika.exceptions import AMQPError
 from pika.spec import BasicProperties
 from pydantic import BaseModel
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_random_exponential,
-)
 
-from backend.util.retry import conn_retry
+from backend.util.retry import conn_retry, func_retry
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
+
+# RabbitMQ Connection Constants
+# These constants solve specific connection stability issues observed in production
+
+# BLOCKED_CONNECTION_TIMEOUT (300s = 5 minutes)
+# Problem: Connection can hang indefinitely if RabbitMQ server is overloaded
+# Solution: Timeout and reconnect if connection is blocked for too long
+# Use case: Network issues or server resource constraints
+BLOCKED_CONNECTION_TIMEOUT = 300
+
+# SOCKET_TIMEOUT (30s)
+# Problem: Network operations can hang indefinitely on poor connections
+# Solution: Fail fast on socket operations to enable quick reconnection
+# Use case: Network latency, packet loss, or connectivity issues
+SOCKET_TIMEOUT = 30
+
+# CONNECTION_ATTEMPTS (5 attempts)
+# Problem: Temporary network issues cause permanent connection failures
+# Solution: More retry attempts for better resilience during long executions
+# Use case: Transient network issues during service startup or long-running operations
+CONNECTION_ATTEMPTS = 5
+
+# RETRY_DELAY (1 second)
+# Problem: Immediate reconnection attempts can overwhelm the server
+# Solution: Quick retry for faster recovery while still being respectful
+# Use case: Faster reconnection for long-running executions that need to resume quickly
+RETRY_DELAY = 1
 
 
 class ExchangeType(str, Enum):
@@ -117,8 +136,11 @@ class SyncRabbitMQ(RabbitMQBase):
             port=self.port,
             virtual_host=self.config.vhost,
             credentials=credentials,
-            heartbeat=600,
-            blocked_connection_timeout=300,
+            blocked_connection_timeout=BLOCKED_CONNECTION_TIMEOUT,
+            socket_timeout=SOCKET_TIMEOUT,
+            connection_attempts=CONNECTION_ATTEMPTS,
+            retry_delay=RETRY_DELAY,
+            heartbeat=300,  # 5 minute timeout (heartbeats sent every 2.5 min)
         )
 
         self._connection = pika.BlockingConnection(parameters)
@@ -169,12 +191,7 @@ class SyncRabbitMQ(RabbitMQBase):
                     routing_key=queue.routing_key or queue.name,
                 )
 
-    @retry(
-        retry=retry_if_exception_type((AMQPError, ConnectionError)),
-        wait=wait_random_exponential(multiplier=1, max=5),
-        stop=stop_after_attempt(5),
-        reraise=True,
-    )
+    @func_retry
     def publish_message(
         self,
         routing_key: str,
@@ -227,6 +244,8 @@ class AsyncRabbitMQ(RabbitMQBase):
             login=self.username,
             password=self.password,
             virtualhost=self.config.vhost.lstrip("/"),
+            blocked_connection_timeout=BLOCKED_CONNECTION_TIMEOUT,
+            heartbeat=300,  # 5 minute timeout (heartbeats sent every 2.5 min)
         )
         self._channel = await self._connection.channel()
         await self._channel.set_qos(prefetch_count=1)
@@ -272,12 +291,7 @@ class AsyncRabbitMQ(RabbitMQBase):
                     exchange, routing_key=queue.routing_key or queue.name
                 )
 
-    @retry(
-        retry=retry_if_exception_type((aio_ex.AMQPError, ConnectionError)),
-        wait=wait_random_exponential(multiplier=1, max=5),
-        stop=stop_after_attempt(5),
-        reraise=True,
-    )
+    @func_retry
     async def publish_message(
         self,
         routing_key: str,

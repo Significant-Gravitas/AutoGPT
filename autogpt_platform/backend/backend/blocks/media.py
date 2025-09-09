@@ -39,17 +39,19 @@ class MediaDurationBlock(Block):
             output_schema=MediaDurationBlock.Output,
         )
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
         graph_exec_id: str,
+        user_id: str,
         **kwargs,
     ) -> BlockOutput:
         # 1) Store the input media locally
-        local_media_path = store_media_file(
+        local_media_path = await store_media_file(
             graph_exec_id=graph_exec_id,
             file=input_data.media_in,
+            user_id=user_id,
             return_content=False,
         )
         media_abspath = get_exec_file_path(graph_exec_id, local_media_path)
@@ -105,18 +107,20 @@ class LoopVideoBlock(Block):
             output_schema=LoopVideoBlock.Output,
         )
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
         node_exec_id: str,
         graph_exec_id: str,
+        user_id: str,
         **kwargs,
     ) -> BlockOutput:
         # 1) Store the input video locally
-        local_video_path = store_media_file(
+        local_video_path = await store_media_file(
             graph_exec_id=graph_exec_id,
             file=input_data.video_in,
+            user_id=user_id,
             return_content=False,
         )
         input_abspath = get_exec_file_path(graph_exec_id, local_video_path)
@@ -146,9 +150,10 @@ class LoopVideoBlock(Block):
         looped_clip.write_videofile(output_abspath, codec="libx264", audio_codec="aac")
 
         # Return as data URI
-        video_out = store_media_file(
+        video_out = await store_media_file(
             graph_exec_id=graph_exec_id,
             file=output_filename,
+            user_id=user_id,
             return_content=input_data.output_return_type == "data_uri",
         )
 
@@ -194,23 +199,26 @@ class AddAudioToVideoBlock(Block):
             output_schema=AddAudioToVideoBlock.Output,
         )
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
         node_exec_id: str,
         graph_exec_id: str,
+        user_id: str,
         **kwargs,
     ) -> BlockOutput:
         # 1) Store the inputs locally
-        local_video_path = store_media_file(
+        local_video_path = await store_media_file(
             graph_exec_id=graph_exec_id,
             file=input_data.video_in,
+            user_id=user_id,
             return_content=False,
         )
-        local_audio_path = store_media_file(
+        local_audio_path = await store_media_file(
             graph_exec_id=graph_exec_id,
             file=input_data.audio_in,
+            user_id=user_id,
             return_content=False,
         )
 
@@ -236,9 +244,10 @@ class AddAudioToVideoBlock(Block):
         final_clip.write_videofile(output_abspath, codec="libx264", audio_codec="aac")
 
         # 5) Return either path or data URI
-        video_out = store_media_file(
+        video_out = await store_media_file(
             graph_exec_id=graph_exec_id,
             file=output_filename,
+            user_id=user_id,
             return_content=input_data.output_return_type == "data_uri",
         )
 

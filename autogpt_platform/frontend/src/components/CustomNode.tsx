@@ -27,11 +27,11 @@ import {
   cn,
   getValue,
   hasNonNullNonObjectValue,
+  isObject,
   parseKeys,
   setNestedProperty,
 } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/atoms/Button/Button";
 import { TextRenderer } from "@/components/ui/render";
 import { history } from "./history";
 import NodeHandle from "./NodeHandle";
@@ -52,9 +52,20 @@ import {
   TrashIcon,
   CopyIcon,
   ExitIcon,
+  Pencil1Icon,
 } from "@radix-ui/react-icons";
-
+import { Key } from "@phosphor-icons/react";
 import useCredits from "@/hooks/useCredits";
+import { getV1GetAyrshareSsoUrl } from "@/app/api/__generated__/endpoints/integrations/integrations";
+import { toast } from "@/components/molecules/Toast/use-toast";
+import { Input } from "@/components/ui/input";
+import { Switch } from "./atoms/Switch/Switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export type ConnectionData = Array<{
   edge_id: string;
@@ -82,24 +93,20 @@ export type CustomNodeData = {
   executionResults?: {
     execId: string;
     data: NodeExecutionResult["output_data"];
+    status: NodeExecutionResult["status"];
   }[];
   block_id: string;
   backend_id?: string;
   errors?: { [key: string]: string };
   isOutputStatic?: boolean;
   uiType: BlockUIType;
+  metadata?: { [key: string]: any };
 };
 
 export type CustomNode = XYNode<CustomNodeData, "custom">;
 
 export const CustomNode = React.memo(
-  function CustomNode({
-    data,
-    id,
-    width,
-    height,
-    selected,
-  }: NodeProps<CustomNode>) {
+  function CustomNode({ data, id, height, selected }: NodeProps<CustomNode>) {
     const [isOutputOpen, setIsOutputOpen] = useState(
       data.isOutputOpen || false,
     );
@@ -108,6 +115,12 @@ export const CustomNode = React.memo(
     const [activeKey, setActiveKey] = useState<string | null>(null);
     const [inputModalValue, setInputModalValue] = useState<string>("");
     const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
+    const [isEditingTitle, setIsEditingTitle] = useState(false);
+    const [customTitle, setCustomTitle] = useState(
+      data.metadata?.customized_name || "",
+    );
+    const [isTitleHovered, setIsTitleHovered] = useState(false);
+    const titleInputRef = useRef<HTMLInputElement>(null);
     const { updateNodeData, deleteElements, addNodes, getNode } = useReactFlow<
       CustomNode,
       Edge
@@ -116,6 +129,8 @@ export const CustomNode = React.memo(
     const flowContext = useContext(FlowContext);
     const api = useBackendAPI();
     const { formatCredits } = useCredits();
+    const [isLoading, setIsLoading] = useState(false);
+
     let nodeFlowId = "";
 
     if (data.uiType === BlockUIType.AGENT) {
@@ -185,9 +200,54 @@ export const CustomNode = React.memo(
       [id, updateNodeData],
     );
 
+    const handleTitleEdit = useCallback(() => {
+      setIsEditingTitle(true);
+      setTimeout(() => {
+        titleInputRef.current?.focus();
+        titleInputRef.current?.select();
+      }, 0);
+    }, []);
+
+    const handleTitleSave = useCallback(() => {
+      setIsEditingTitle(false);
+      const newMetadata = {
+        ...data.metadata,
+        customized_name: customTitle.trim() || undefined,
+      };
+      updateNodeData(id, { metadata: newMetadata });
+    }, [customTitle, data.metadata, id, updateNodeData]);
+
+    const handleTitleKeyDown = useCallback(
+      (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === "Enter") {
+          handleTitleSave();
+        } else if (e.key === "Escape") {
+          setCustomTitle(data.metadata?.customized_name || "");
+          setIsEditingTitle(false);
+        }
+      },
+      [handleTitleSave, data.metadata],
+    );
+
+    const displayTitle =
+      customTitle ||
+      beautifyString(data.blockType?.replace(/Block$/, "") || data.title);
+
     useEffect(() => {
       isInitialSetup.current = false;
-      setHardcodedValues(fillDefaults(data.hardcodedValues, data.inputSchema));
+      if (data.uiType === BlockUIType.AGENT) {
+        setHardcodedValues({
+          ...data.hardcodedValues,
+          inputs: fillDefaults(
+            data.hardcodedValues.inputs ?? {},
+            data.inputSchema,
+          ),
+        });
+      } else {
+        setHardcodedValues(
+          fillDefaults(data.hardcodedValues, data.inputSchema),
+        );
+      }
     }, []);
 
     const setErrors = useCallback(
@@ -196,10 +256,6 @@ export const CustomNode = React.memo(
       },
       [id, updateNodeData],
     );
-
-    const toggleOutput = (checked: boolean) => {
-      setIsOutputOpen(checked);
-    };
 
     const toggleAdvancedSettings = (checked: boolean) => {
       setIsAdvancedOpen(checked);
@@ -249,12 +305,60 @@ export const CustomNode = React.memo(
       return renderHandles(schema.properties);
     };
 
+    const generateAyrshareSSOHandles = () => {
+      const handleSSOLogin = async () => {
+        setIsLoading(true);
+        try {
+          const { data, status } = await getV1GetAyrshareSsoUrl();
+          if (status !== 200) {
+            throw new Error(data.detail);
+          }
+          const popup = window.open(data.sso_url, "_blank", "popup=true");
+          if (!popup) {
+            throw new Error(
+              "Please allow popups for this site to be able to login with Ayrshare",
+            );
+          }
+        } catch (error) {
+          toast({
+            title: "Error",
+            description: `Error getting SSO URL: ${error}`,
+            variant: "destructive",
+          });
+        } finally {
+          setIsLoading(false);
+        }
+      };
+
+      return (
+        <div className="flex flex-col gap-2">
+          <Button type="button" onClick={handleSSOLogin} disabled={isLoading}>
+            {isLoading ? (
+              "Loading..."
+            ) : (
+              <>
+                <Key className="mr-2 h-4 w-4" />
+                Connect Social Media Accounts
+              </>
+            )}
+          </Button>
+          <NodeHandle
+            title="SSO Token"
+            keyName="sso_token"
+            isConnected={false}
+            schema={{ type: "string" }}
+            side="right"
+          />
+        </div>
+      );
+    };
+
     const generateInputHandles = (
       schema: BlockIORootSchema,
       nodeType: BlockUIType,
     ) => {
       if (!schema?.properties) return null;
-      let keys = Object.entries(schema.properties);
+      const keys = Object.entries(schema.properties);
       switch (nodeType) {
         case BlockUIType.NOTE:
           // For NOTE blocks, don't render any input handles
@@ -276,7 +380,7 @@ export const CustomNode = React.memo(
 
         default:
           const getInputPropKey = (key: string) =>
-            nodeType == BlockUIType.AGENT ? `data.${key}` : key;
+            nodeType == BlockUIType.AGENT ? `inputs.${key}` : key;
 
           return keys.map(([propKey, propSchema]) => {
             const isRequired = data.inputSchema.required?.includes(propKey);
@@ -434,8 +538,15 @@ export const CustomNode = React.memo(
         if (activeKey) {
           try {
             const parsedValue = JSON.parse(value);
-            handleInputChange(activeKey, parsedValue);
-          } catch (error) {
+            // Validate that the parsed value is safe before using it
+            if (isObject(parsedValue) || Array.isArray(parsedValue)) {
+              handleInputChange(activeKey, parsedValue);
+            } else {
+              // For primitive values, use the original string
+              handleInputChange(activeKey, value);
+            }
+          } catch {
+            // If JSON parsing fails, treat as plain text
             handleInputChange(activeKey, value);
           }
         }
@@ -480,6 +591,10 @@ export const CustomNode = React.memo(
           block_id: data.block_id,
           connections: [],
           isOutputOpen: false,
+          metadata: {
+            ...data.metadata,
+            customized_name: undefined, // Don't copy the custom name
+          },
         },
       };
 
@@ -720,7 +835,9 @@ export const CustomNode = React.memo(
       <div
         className={`${blockClasses} ${errorClass} ${statusClass}`}
         data-id={`custom-node-${id}`}
+        id={data.block_id}
         z-index={1}
+        data-testid={data.block_id}
         data-blockid={data.block_id}
         data-blockname={data.title}
         data-blocktype={data.blockType}
@@ -744,14 +861,58 @@ export const CustomNode = React.memo(
 
           <div className="flex w-full flex-col justify-start space-y-2.5 px-4 pt-4">
             <div className="flex flex-row items-center space-x-2 font-semibold">
-              <h3 className="font-roboto text-lg">
-                <TextRenderer
-                  value={beautifyString(
-                    data.blockType?.replace(/Block$/, "") || data.title,
-                  )}
-                  truncateLengthLimit={80}
-                />
-              </h3>
+              <div
+                className="group flex items-center gap-1"
+                onMouseEnter={() => setIsTitleHovered(true)}
+                onMouseLeave={() => setIsTitleHovered(false)}
+              >
+                {isEditingTitle ? (
+                  <Input
+                    ref={titleInputRef}
+                    value={customTitle}
+                    onChange={(e) => setCustomTitle(e.target.value)}
+                    onBlur={handleTitleSave}
+                    onKeyDown={handleTitleKeyDown}
+                    className="h-7 w-auto min-w-[100px] max-w-[200px] px-2 py-1 text-lg font-semibold"
+                    placeholder={beautifyString(
+                      data.blockType?.replace(/Block$/, "") || data.title,
+                    )}
+                  />
+                ) : (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <h3 className="font-roboto cursor-default text-lg">
+                          <TextRenderer
+                            value={displayTitle}
+                            truncateLengthLimit={80}
+                          />
+                        </h3>
+                      </TooltipTrigger>
+                      {customTitle && (
+                        <TooltipContent>
+                          <p>
+                            Type:{" "}
+                            {beautifyString(
+                              data.blockType?.replace(/Block$/, "") ||
+                                data.title,
+                            )}
+                          </p>
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+                {isTitleHovered && !isEditingTitle && (
+                  <button
+                    onClick={handleTitleEdit}
+                    className="cursor-pointer rounded p-1 opacity-0 transition-opacity hover:bg-gray-100 group-hover:opacity-100"
+                    aria-label="Edit title"
+                  >
+                    <Pencil1Icon className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
               <span className="text-xs text-gray-500">#{id.split("-")[0]}</span>
 
               <div className="w-auto grow" />
@@ -826,8 +987,18 @@ export const CustomNode = React.memo(
                       (A Webhook URL will be generated when you save the agent)
                     </p>
                   ))}
-                {data.inputSchema &&
-                  generateInputHandles(data.inputSchema, data.uiType)}
+                {data.uiType === BlockUIType.AYRSHARE ? (
+                  <>
+                    {generateAyrshareSSOHandles()}
+                    {generateInputHandles(
+                      data.inputSchema,
+                      BlockUIType.STANDARD,
+                    )}
+                  </>
+                ) : (
+                  data.inputSchema &&
+                  generateInputHandles(data.inputSchema, data.uiType)
+                )}
               </div>
             </div>
           ) : (

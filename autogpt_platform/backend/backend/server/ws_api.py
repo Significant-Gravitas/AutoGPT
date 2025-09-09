@@ -3,9 +3,9 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Protocol
 
+import pydantic
 import uvicorn
-from autogpt_libs.auth import parse_jwt_token
-from autogpt_libs.logging.utils import generate_uvicorn_config
+from autogpt_libs.auth.jwt_utils import parse_jwt_token
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
 
@@ -18,6 +18,7 @@ from backend.server.model import (
     WSSubscribeGraphExecutionRequest,
     WSSubscribeGraphExecutionsRequest,
 )
+from backend.util.retry import continuous_retry
 from backend.util.service import AppProcess
 from backend.util.settings import AppEnvironment, Config, Settings
 
@@ -45,14 +46,11 @@ def get_connection_manager():
     return _connection_manager
 
 
+@continuous_retry()
 async def event_broadcaster(manager: ConnectionManager):
-    try:
-        event_queue = AsyncRedisExecutionEventBus()
-        async for event in event_queue.listen("*"):
-            await manager.send_execution_update(event)
-    except Exception as e:
-        logger.exception(f"Event broadcaster error: {e}")
-        raise
+    event_queue = AsyncRedisExecutionEventBus()
+    async for event in event_queue.listen("*"):
+        await manager.send_execution_update(event)
 
 
 async def authenticate_websocket(websocket: WebSocket) -> str:
@@ -221,7 +219,22 @@ async def websocket_router(
     try:
         while True:
             data = await websocket.receive_text()
-            message = WSMessage.model_validate_json(data)
+            try:
+                message = WSMessage.model_validate_json(data)
+            except pydantic.ValidationError as e:
+                logger.error(
+                    "Invalid WebSocket message from user #%s: %s",
+                    user_id,
+                    e,
+                )
+                await websocket.send_text(
+                    WSMessage(
+                        method=WSMethod.ERROR,
+                        success=False,
+                        error=("Invalid message format. Review the schema and retry"),
+                    ).model_dump_json()
+                )
+                continue
 
             try:
                 if message.method in _MSG_HANDLERS:
@@ -232,6 +245,21 @@ async def websocket_router(
                         message=message,
                     )
                     continue
+            except pydantic.ValidationError as e:
+                logger.error(
+                    "Validation error while handling '%s' for user #%s: %s",
+                    message.method.value,
+                    user_id,
+                    e,
+                )
+                await websocket.send_text(
+                    WSMessage(
+                        method=WSMethod.ERROR,
+                        success=False,
+                        error="Invalid message data. Refer to the API schema",
+                    ).model_dump_json()
+                )
+                continue
             except Exception as e:
                 logger.error(
                     f"Error while handling '{message.method.value}' message "
@@ -280,7 +308,7 @@ class WebsocketServer(AppProcess):
             server_app,
             host=Config().websocket_server_host,
             port=Config().websocket_server_port,
-            log_config=generate_uvicorn_config(),
+            log_config=None,
         )
 
     def cleanup(self):

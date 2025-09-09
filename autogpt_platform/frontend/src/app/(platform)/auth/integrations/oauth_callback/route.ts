@@ -1,11 +1,11 @@
-import { OAuthPopupResultMessage } from "@/components/integrations/credentials-input";
+import { OAuthPopupResultMessage } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
 import { NextResponse } from "next/server";
 
 // This route is intended to be used as the callback for integration OAuth flows,
 // controlled by the CredentialsInput component. The CredentialsInput opens the login
 // page in a pop-up window, which then redirects to this route to close the loop.
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
   const state = searchParams.get("state");
 

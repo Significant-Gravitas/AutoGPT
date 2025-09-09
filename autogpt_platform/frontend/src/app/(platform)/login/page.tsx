@@ -1,107 +1,40 @@
 "use client";
-import { login, providerLogin } from "./actions";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { useForm } from "react-hook-form";
-import { Input } from "@/components/ui/input";
-import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useCallback, useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import useSupabase from "@/hooks/useSupabase";
-import Spinner from "@/components/Spinner";
-import {
-  AuthCard,
-  AuthHeader,
-  AuthButton,
-  AuthFeedback,
-  AuthBottomText,
-  PasswordInput,
-  Turnstile,
-} from "@/components/auth";
-import { loginFormSchema } from "@/types/auth";
+import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
+import { Link } from "@/components/atoms/Link/Link";
+import { AuthCard } from "@/components/auth/AuthCard";
+import AuthFeedback from "@/components/auth/AuthFeedback";
+import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
+import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
+import Turnstile from "@/components/auth/Turnstile";
+import { Form, FormField } from "@/components/ui/form";
 import { getBehaveAs } from "@/lib/utils";
-import { useTurnstile } from "@/hooks/useTurnstile";
+import { LoadingLogin } from "./components/LoadingLogin";
+import { useLoginPage } from "./useLoginPage";
 
 export default function LoginPage() {
-  const { supabase, user, isUserLoading } = useSupabase();
-  const [feedback, setFeedback] = useState<string | null>(null);
-  const router = useRouter();
-  const [isLoading, setIsLoading] = useState(false);
+  const {
+    form,
+    feedback,
+    turnstile,
+    captchaKey,
+    isLoading,
+    isLoggedIn,
+    isCloudEnv,
+    isUserLoading,
+    isGoogleLoading,
+    showNotAllowedModal,
+    isSupabaseAvailable,
+    handleSubmit,
+    handleProviderLogin,
+    handleCloseNotAllowedModal,
+  } = useLoginPage();
 
-  const turnstile = useTurnstile({
-    action: "login",
-    autoVerify: false,
-    resetOnError: true,
-  });
-
-  const form = useForm<z.infer<typeof loginFormSchema>>({
-    resolver: zodResolver(loginFormSchema),
-    defaultValues: {
-      email: "",
-      password: "",
-    },
-  });
-
-  // TODO: uncomment when we enable social login
-  // const onProviderLogin = useCallback(async (
-  //   provider: LoginProvider,
-  // ) => {
-  //   setIsLoading(true);
-  //   const error = await providerLogin(provider);
-  //   setIsLoading(false);
-  //   if (error) {
-  //     setFeedback(error);
-  //     return;
-  //   }
-  //   setFeedback(null);
-  // }, [supabase]);
-
-  const onLogin = useCallback(
-    async (data: z.infer<typeof loginFormSchema>) => {
-      setIsLoading(true);
-
-      if (!(await form.trigger())) {
-        setIsLoading(false);
-        return;
-      }
-
-      if (!turnstile.verified) {
-        setFeedback("Please complete the CAPTCHA challenge.");
-        setIsLoading(false);
-        return;
-      }
-
-      const error = await login(data, turnstile.token as string);
-      setIsLoading(false);
-      if (error) {
-        setFeedback(error);
-        // Always reset the turnstile on any error
-        turnstile.reset();
-        return;
-      }
-      setFeedback(null);
-    },
-    [form, turnstile],
-  );
-
-  if (user) {
-    console.debug("User exists, redirecting to /");
-    router.push("/");
+  if (isUserLoading || isLoggedIn) {
+    return <LoadingLogin />;
   }
 
-  if (isUserLoading || user) {
-    return <Spinner className="h-[80vh]" />;
-  }
-
-  if (!supabase) {
+  if (!isSupabaseAvailable) {
     return (
       <div>
         User accounts are disabled because Supabase client is unavailable
@@ -110,83 +43,93 @@ export default function LoginPage() {
   }
 
   return (
-    <AuthCard className="mx-auto">
-      <AuthHeader>Login to your account</AuthHeader>
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onLogin)}>
-          <FormField
-            control={form.control}
-            name="email"
-            render={({ field }) => (
-              <FormItem className="mb-6">
-                <FormLabel>Email</FormLabel>
-                <FormControl>
-                  <Input
-                    placeholder="m@example.com"
-                    {...field}
-                    type="email" // Explicitly specify email type
-                    autoComplete="username" // Added for password managers
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="password"
-            render={({ field }) => (
-              <FormItem className="mb-6">
-                <FormLabel className="flex w-full items-center justify-between">
-                  <span>Password</span>
-                  <Link
-                    href="/reset_password"
-                    className="text-sm font-normal leading-normal text-black underline"
-                  >
-                    Forgot your password?
-                  </Link>
-                </FormLabel>
-                <FormControl>
-                  <PasswordInput
-                    {...field}
-                    autoComplete="current-password" // Added for password managers
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+    <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
+      <AuthCard title="Login to your account">
+        <Form {...form}>
+          <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <Input
+                  id={field.name}
+                  label="Email"
+                  placeholder="m@example.com"
+                  type="email"
+                  autoComplete="username"
+                  className="w-full"
+                  error={form.formState.errors.email?.message}
+                  {...field}
+                />
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <Input
+                  id={field.name}
+                  label="Password"
+                  placeholder="•••••••••••••••••••••"
+                  type="password"
+                  autoComplete="current-password"
+                  error={form.formState.errors.password?.message}
+                  hint={
+                    <Link variant="secondary" href="/reset-password">
+                      Forgot password?
+                    </Link>
+                  }
+                  {...field}
+                />
+              )}
+            />
 
-          {/* Turnstile CAPTCHA Component */}
-          <Turnstile
-            siteKey={turnstile.siteKey}
-            onVerify={turnstile.handleVerify}
-            onExpire={turnstile.handleExpire}
-            onError={turnstile.handleError}
-            action="login"
-            shouldRender={turnstile.shouldRender}
-          />
+            {/* Turnstile CAPTCHA Component */}
+            {isCloudEnv && !turnstile.verified ? (
+              <Turnstile
+                key={captchaKey}
+                siteKey={turnstile.siteKey}
+                onVerify={turnstile.handleVerify}
+                onExpire={turnstile.handleExpire}
+                onError={turnstile.handleError}
+                setWidgetId={turnstile.setWidgetId}
+                action="login"
+                shouldRender={turnstile.shouldRender}
+              />
+            ) : null}
 
-          <AuthButton
-            onClick={() => onLogin(form.getValues())}
-            isLoading={isLoading}
-            type="submit"
-          >
-            Login
-          </AuthButton>
-        </form>
-        <AuthFeedback
-          type="login"
-          message={feedback}
-          isError={!!feedback}
-          behaveAs={getBehaveAs()}
+            <Button
+              variant="primary"
+              loading={isLoading}
+              type="submit"
+              className="mt-6 w-full"
+            >
+              {isLoading ? "Logging in..." : "Login"}
+            </Button>
+          </form>
+          {isCloudEnv ? (
+            <GoogleOAuthButton
+              onClick={() => handleProviderLogin("google")}
+              isLoading={isGoogleLoading}
+              disabled={isLoading}
+            />
+          ) : null}
+          <AuthFeedback
+            type="login"
+            message={feedback}
+            isError={!!feedback}
+            behaveAs={getBehaveAs()}
+          />
+        </Form>
+        <AuthCard.BottomText
+          text="Don't have an account?"
+          link={{ text: "Sign up", href: "/signup" }}
         />
-      </Form>
-      <AuthBottomText
-        text="Don't have an account?"
-        linkText="Sign up"
-        href="/signup"
+      </AuthCard>
+      <EmailNotAllowedModal
+        isOpen={showNotAllowedModal}
+        onClose={handleCloseNotAllowedModal}
       />
-    </AuthCard>
+    </div>
   );
 }

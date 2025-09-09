@@ -1,27 +1,81 @@
 # AutoGPT: Build, Deploy, and Run AI Agents
 
-[![Discord Follow](https://dcbadge.vercel.app/api/server/autogpt?style=flat)](https://discord.gg/autogpt) &ensp;
+[![Discord Follow](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdiscord.com%2Fapi%2Finvites%2Fautogpt%3Fwith_counts%3Dtrue&query=%24.approximate_member_count&label=total%20members&logo=discord&logoColor=white&color=7289da)](https://discord.gg/autogpt) &ensp;
 [![Twitter Follow](https://img.shields.io/twitter/follow/Auto_GPT?style=social)](https://twitter.com/Auto_GPT) &ensp;
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+<!-- Keep these links. Translations will automatically update with the README. -->
+[Deutsch](https://zdoc.app/de/Significant-Gravitas/AutoGPT) | 
+[Español](https://zdoc.app/es/Significant-Gravitas/AutoGPT) | 
+[français](https://zdoc.app/fr/Significant-Gravitas/AutoGPT) | 
+[日本語](https://zdoc.app/ja/Significant-Gravitas/AutoGPT) | 
+[한국어](https://zdoc.app/ko/Significant-Gravitas/AutoGPT) | 
+[Português](https://zdoc.app/pt/Significant-Gravitas/AutoGPT) | 
+[Русский](https://zdoc.app/ru/Significant-Gravitas/AutoGPT) | 
+[中文](https://zdoc.app/zh/Significant-Gravitas/AutoGPT)
 
 **AutoGPT** is a powerful platform that allows you to create, deploy, and manage continuous AI agents that automate complex workflows. 
 
 ## Hosting Options 
-   - Download to self-host
-   - [Join the Waitlist](https://bit.ly/3ZDijAI) for the cloud-hosted beta  
+   - Download to self-host (Free!)
+   - [Join the Waitlist](https://bit.ly/3ZDijAI) for the cloud-hosted beta (Closed Beta - Public release Coming Soon!)
 
-## How to Setup for Self-Hosting
+## How to Self-Host the AutoGPT Platform
 > [!NOTE]
 > Setting up and hosting the AutoGPT Platform yourself is a technical process. 
 > If you'd rather something that just works, we recommend [joining the waitlist](https://bit.ly/3ZDijAI) for the cloud-hosted beta.
 
+### System Requirements
+
+Before proceeding with the installation, ensure your system meets the following requirements:
+
+#### Hardware Requirements
+- CPU: 4+ cores recommended
+- RAM: Minimum 8GB, 16GB recommended
+- Storage: At least 10GB of free space
+
+#### Software Requirements
+- Operating Systems:
+  - Linux (Ubuntu 20.04 or newer recommended)
+  - macOS (10.15 or newer)
+  - Windows 10/11 with WSL2
+- Required Software (with minimum versions):
+  - Docker Engine (20.10.0 or newer)
+  - Docker Compose (2.0.0 or newer)
+  - Git (2.30 or newer)
+  - Node.js (16.x or newer)
+  - npm (8.x or newer)
+  - VSCode (1.60 or newer) or any modern code editor
+
+#### Network Requirements
+- Stable internet connection
+- Access to required ports (will be configured in Docker)
+- Ability to make outbound HTTPS connections
+
 ### Updated Setup Instructions:
-We’ve moved to a fully maintained and regularly updated documentation site.
+We've moved to a fully maintained and regularly updated documentation site.
 
 👉 [Follow the official self-hosting guide here](https://docs.agpt.co/platform/getting-started/)
 
 
 This tutorial assumes you have Docker, VSCode, git and npm installed.
+
+---
+
+#### ⚡ Quick Setup with One-Line Script (Recommended for Local Hosting)
+
+Skip the manual steps and get started in minutes using our automatic setup script.
+
+For macOS/Linux:
+```
+curl -fsSL https://setup.agpt.co/install.sh -o install.sh && bash install.sh
+```
+
+For Windows (PowerShell):
+```
+powershell -c "iwr https://setup.agpt.co/install.bat -o install.bat; ./install.bat"
+```
+
+This will install dependencies, configure Docker, and launch your local instance — all in one go.
 
 ### 🧱 AutoGPT Frontend
 
@@ -69,7 +123,17 @@ Here are two examples of what you can do with AutoGPT:
 These examples show just a glimpse of what you can achieve with AutoGPT! You can create customized workflows to build agents for any use case.
 
 ---
-### Mission and Licencing
+
+### **License Overview:**
+
+🛡️ **Polyform Shield License:**
+All code and content within the `autogpt_platform` folder is licensed under the Polyform Shield License. This new project is our in-developlemt platform for building, deploying and managing agents.</br>_[Read more about this effort](https://agpt.co/blog/introducing-the-autogpt-platform)_
+
+🦉 **MIT License:**
+All other portions of the AutoGPT repository (i.e., everything outside the `autogpt_platform` folder) are licensed under the MIT License. This includes the original stand-alone AutoGPT Agent, along with projects such as [Forge](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/forge), [agbenchmark](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/benchmark) and the [AutoGPT Classic GUI](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/frontend).</br>We also publish additional work under the MIT Licence in other repositories, such as [GravitasML](https://github.com/Significant-Gravitas/gravitasml) which is developed for and used in the AutoGPT Platform. See also our MIT Licenced [Code Ability](https://github.com/Significant-Gravitas/AutoGPT-Code-Ability) project.
+
+---
+### Mission
 Our mission is to provide the tools, so that you can focus on what matters:
 
 - 🏗️ **Building** - Lay the foundation for something amazing.
@@ -81,14 +145,6 @@ Be part of the revolution! **AutoGPT** is here to stay, at the forefront of AI i
 **📖 [Documentation](https://docs.agpt.co)**
 &ensp;|&ensp;
 **🚀 [Contributing](CONTRIBUTING.md)**
-
-**Licensing:**
-
-MIT License: The majority of the AutoGPT repository is under the MIT License.
-
-Polyform Shield License: This license applies to the autogpt_platform folder. 
-
-For more information, see https://agpt.co/blog/introducing-the-autogpt-platform
 
 ---
 ## 🤖 AutoGPT Classic
@@ -152,7 +208,7 @@ Just clone the repo, install dependencies with `./run setup`, and you should be 
 
 [![Join us on Discord](https://invidget.switchblade.xyz/autogpt)](https://discord.gg/autogpt)
 
-To report a bug or request a feature, create a [GitHub Issue](https://github.com/Significant-Gravitas/AutoGPT/issues/new/choose). Please ensure someone else hasn’t created an issue for the same topic.
+To report a bug or request a feature, create a [GitHub Issue](https://github.com/Significant-Gravitas/AutoGPT/issues/new/choose). Please ensure someone else hasn't created an issue for the same topic.
 
 ## 🤝 Sister projects
 

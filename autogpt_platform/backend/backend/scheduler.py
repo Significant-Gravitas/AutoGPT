@@ -6,7 +6,9 @@ def main():
     """
     Run all the processes required for the AutoGPT-server Scheduling System.
     """
-    run_processes(Scheduler())
+    run_processes(
+        Scheduler(),
+    )
 
 
 if __name__ == "__main__":

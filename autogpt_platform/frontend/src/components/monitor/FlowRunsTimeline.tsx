@@ -58,7 +58,7 @@ export const FlowRunsTimeline = ({
         tickFormatter={(s) => (s > 90 ? `${Math.round(s / 60)}m` : `${s}s`)}
       />
       <Tooltip
-        content={({ payload, label }) => {
+        content={({ payload }) => {
           if (payload && payload.length) {
             const data: GraphExecutionMeta & {
               time: number;

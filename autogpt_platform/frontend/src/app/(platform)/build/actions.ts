@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import BackendAPI from "@/lib/autogpt-server-api/client";
 import { OttoQuery, OttoResponse } from "@/lib/autogpt-server-api/types";
 

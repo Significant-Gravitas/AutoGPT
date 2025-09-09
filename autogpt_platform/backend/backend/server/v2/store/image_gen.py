@@ -1,4 +1,3 @@
-import asyncio
 import io
 import logging
 from enum import Enum
@@ -17,10 +16,10 @@ from backend.blocks.ideogram import (
     StyleType,
     UpscaleOption,
 )
-from backend.data.graph import Graph
+from backend.data.graph import BaseGraph
 from backend.data.model import CredentialsMetaInput, ProviderName
 from backend.integrations.credentials_store import ideogram_credentials
-from backend.util.request import requests
+from backend.util.request import Requests
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -35,14 +34,14 @@ class ImageStyle(str, Enum):
     DIGITAL_ART = "digital art"
 
 
-async def generate_agent_image(agent: Graph | AgentGraph) -> io.BytesIO:
+async def generate_agent_image(agent: BaseGraph | AgentGraph) -> io.BytesIO:
     if settings.config.use_agent_image_generation_v2:
-        return await asyncio.to_thread(generate_agent_image_v2, graph=agent)
+        return await generate_agent_image_v2(graph=agent)
     else:
         return await generate_agent_image_v1(agent=agent)
 
 
-def generate_agent_image_v2(graph: Graph | AgentGraph) -> io.BytesIO:
+async def generate_agent_image_v2(graph: BaseGraph | AgentGraph) -> io.BytesIO:
     """
     Generate an image for an agent using Ideogram model.
     Returns:
@@ -74,7 +73,7 @@ def generate_agent_image_v2(graph: Graph | AgentGraph) -> io.BytesIO:
     ]
 
     # Run the Ideogram model block with the specified parameters
-    url = IdeogramModelBlock().run_once(
+    url = await IdeogramModelBlock().run_once(
         IdeogramModelBlock.Input(
             credentials=CredentialsMetaInput(
                 id=ideogram_credentials.id,
@@ -83,7 +82,7 @@ def generate_agent_image_v2(graph: Graph | AgentGraph) -> io.BytesIO:
                 type=ideogram_credentials.type,
             ),
             prompt=prompt,
-            ideogram_model_name=IdeogramModelName.V2,
+            ideogram_model_name=IdeogramModelName.V3,
             aspect_ratio=AspectRatio.ASPECT_16_9,
             magic_prompt_option=MagicPromptOption.OFF,
             style_type=StyleType.AUTO,
@@ -96,10 +95,11 @@ def generate_agent_image_v2(graph: Graph | AgentGraph) -> io.BytesIO:
         "result",
         credentials=ideogram_credentials,
     )
-    return io.BytesIO(requests.get(url).content)
+    response = await Requests().get(url)
+    return io.BytesIO(response.content)
 
 
-async def generate_agent_image_v1(agent: Graph | AgentGraph) -> io.BytesIO:
+async def generate_agent_image_v1(agent: BaseGraph | AgentGraph) -> io.BytesIO:
     """
     Generate an image for an agent using Flux model via Replicate API.
 
@@ -145,13 +145,13 @@ async def generate_agent_image_v1(agent: Graph | AgentGraph) -> io.BytesIO:
                 else:
                     # If it's a URL string, fetch the image bytes
                     result_url = output[0]
-                    response = requests.get(result_url)
+                    response = await Requests().get(result_url)
                     image_bytes = response.content
             elif isinstance(output, FileOutput):
                 image_bytes = output.read()
             elif isinstance(output, str):
                 # Output is a URL
-                response = requests.get(output)
+                response = await Requests().get(output)
                 image_bytes = response.content
             else:
                 raise RuntimeError("Unexpected output format from the model.")

@@ -1,7 +1,7 @@
+import { useCallback, useMemo, useState } from "react";
+import { LoadingSpinner } from "@/components/ui/loading";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
-import Spinner from "../Spinner";
 
 const variants = {
   default: "bg-zinc-700 hover:bg-zinc-800",
@@ -55,7 +55,7 @@ export default function OnboardingButton({
   if (href && !disabled) {
     return (
       <Link href={href} onClick={onClickInternal} className={buttonClasses}>
-        {isLoading && <Spinner className="h-5 w-5" />}
+        {isLoading && <LoadingSpinner className="mr-2 size-5" />}
         {icon && !isLoading && <>{icon}</>}
         {children}
       </Link>
@@ -68,7 +68,7 @@ export default function OnboardingButton({
       disabled={disabled}
       className={buttonClasses}
     >
-      {isLoading && <Spinner className="h-5 w-5" />}
+      {isLoading && <LoadingSpinner className="mr-2 size-5" />}
       {icon && !isLoading && <>{icon}</>}
       {children}
     </button>

@@ -2,14 +2,28 @@
 // The config you add here will be used whenever a users loads a page in their browser.
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
-import { getEnvironmentStr } from "@/lib/utils";
+import {
+  AppEnv,
+  BehaveAs,
+  getAppEnv,
+  getBehaveAs,
+  getEnvironmentStr,
+} from "@/lib/utils";
 import * as Sentry from "@sentry/nextjs";
+
+const isProdOrDev = [AppEnv.PROD, AppEnv.DEV].includes(getAppEnv());
+
+const isCloud = getBehaveAs() === BehaveAs.CLOUD;
+const isDisabled = process.env.DISABLE_SENTRY === "true";
+
+const shouldEnable = !isDisabled && isProdOrDev && isCloud;
 
 Sentry.init({
   dsn: "https://fe4e4aa4a283391808a5da396da20159@o4505260022104064.ingest.us.sentry.io/4507946746380288",
 
-  enabled: process.env.DISABLE_SENTRY !== "true",
   environment: getEnvironmentStr(),
+
+  enabled: shouldEnable,
 
   // Add optional integrations for additional features
   integrations: [
@@ -52,8 +66,7 @@ Sentry.init({
   // For example, a tracesSampleRate of 0.5 and profilesSampleRate of 0.5 would
   // result in 25% of transactions being profiled (0.5*0.5=0.25)
   profilesSampleRate: 1.0,
-  _experiments: {
-    // Enable logs to be sent to Sentry.
-    enableLogs: true,
-  },
+  enableLogs: true,
 });
+
+export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;

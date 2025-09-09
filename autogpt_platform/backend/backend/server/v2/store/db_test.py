@@ -41,6 +41,7 @@ async def test_get_store_agents(mocker):
             rating=4.5,
             versions=["1.0"],
             updated_at=datetime.now(),
+            is_available=False,
         )
     ]
 
@@ -82,16 +83,27 @@ async def test_get_store_agent_details(mocker):
         rating=4.5,
         versions=["1.0"],
         updated_at=datetime.now(),
+        is_available=False,
     )
 
     # Create a mock StoreListing result
     mock_store_listing = mocker.MagicMock()
     mock_store_listing.activeVersionId = "active-version-id"
     mock_store_listing.hasApprovedVersion = True
+    mock_store_listing.ActiveVersion = mocker.MagicMock()
+    mock_store_listing.ActiveVersion.recommendedScheduleCron = None
 
     # Mock StoreAgent prisma call
     mock_store_agent = mocker.patch("prisma.models.StoreAgent.prisma")
     mock_store_agent.return_value.find_first = mocker.AsyncMock(return_value=mock_agent)
+
+    # Mock Profile prisma call
+    mock_profile = mocker.MagicMock()
+    mock_profile.userId = "user-id-123"
+    mock_profile_db = mocker.patch("prisma.models.Profile.prisma")
+    mock_profile_db.return_value.find_first = mocker.AsyncMock(
+        return_value=mock_profile
+    )
 
     # Mock StoreListing prisma call - this is what was missing
     mock_store_listing_db = mocker.patch("prisma.models.StoreListing.prisma")

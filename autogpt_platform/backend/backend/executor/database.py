@@ -5,19 +5,22 @@ from backend.data import db
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
     create_graph_execution,
-    get_graph_execution,
+    get_block_error_stats,
+    get_execution_kv_data,
     get_graph_execution_meta,
     get_graph_executions,
     get_latest_node_execution,
+    get_node_execution,
     get_node_executions,
+    set_execution_kv_data,
     update_graph_execution_start_time,
     update_graph_execution_stats,
-    update_node_execution_stats,
     update_node_execution_status,
     update_node_execution_status_batch,
     upsert_execution_input,
     upsert_execution_output,
 )
+from backend.data.generate_data import get_user_execution_summary_data
 from backend.data.graph import (
     get_connected_output_nodes,
     get_graph,
@@ -36,12 +39,18 @@ from backend.data.user import (
     get_user_email_by_id,
     get_user_email_verification,
     get_user_integrations,
-    get_user_metadata,
     get_user_notification_preference,
     update_user_integrations,
-    update_user_metadata,
 )
-from backend.util.service import AppService, AppServiceClient, endpoint_to_sync, expose
+from backend.server.v2.library.db import add_store_agent_to_library, list_library_agents
+from backend.server.v2.store.db import get_store_agent_details, get_store_agents
+from backend.util.service import (
+    AppService,
+    AppServiceClient,
+    UnhealthyServiceError,
+    endpoint_to_sync,
+    expose,
+)
 from backend.util.settings import Config
 
 config = Config()
@@ -73,6 +82,11 @@ class DatabaseManager(AppService):
         logger.info(f"[{self.service_name}] ⏳ Disconnecting Database...")
         self.run_and_wait(db.disconnect())
 
+    async def health_check(self) -> str:
+        if not db.is_connected():
+            raise UnhealthyServiceError("Database is not connected")
+        return await super().health_check()
+
     @classmethod
     def get_port(cls) -> int:
         return config.database_api_port
@@ -86,19 +100,21 @@ class DatabaseManager(AppService):
         return cast(Callable[Concatenate[object, P], R], expose(f))
 
     # Executions
-    get_graph_execution = _(get_graph_execution)
     get_graph_executions = _(get_graph_executions)
     get_graph_execution_meta = _(get_graph_execution_meta)
     create_graph_execution = _(create_graph_execution)
+    get_node_execution = _(get_node_execution)
     get_node_executions = _(get_node_executions)
     get_latest_node_execution = _(get_latest_node_execution)
     update_node_execution_status = _(update_node_execution_status)
     update_node_execution_status_batch = _(update_node_execution_status_batch)
     update_graph_execution_start_time = _(update_graph_execution_start_time)
     update_graph_execution_stats = _(update_graph_execution_stats)
-    update_node_execution_stats = _(update_node_execution_stats)
     upsert_execution_input = _(upsert_execution_input)
     upsert_execution_output = _(upsert_execution_output)
+    get_execution_kv_data = _(get_execution_kv_data)
+    set_execution_kv_data = _(set_execution_kv_data)
+    get_block_error_stats = _(get_block_error_stats)
 
     # Graphs
     get_node = _(get_node)
@@ -111,8 +127,6 @@ class DatabaseManager(AppService):
     get_credits = _(_get_credits, name="get_credits")
 
     # User + User Metadata + User Integrations
-    get_user_metadata = _(get_user_metadata)
-    update_user_metadata = _(update_user_metadata)
     get_user_integrations = _(get_user_integrations)
     update_user_integrations = _(update_user_integrations)
 
@@ -133,6 +147,17 @@ class DatabaseManager(AppService):
         get_user_notification_oldest_message_in_batch
     )
 
+    # Library
+    list_library_agents = _(list_library_agents)
+    add_store_agent_to_library = _(add_store_agent_to_library)
+
+    # Store
+    get_store_agents = _(get_store_agents)
+    get_store_agent_details = _(get_store_agent_details)
+
+    # Summary data - async
+    get_user_execution_summary_data = _(get_user_execution_summary_data)
+
 
 class DatabaseManagerClient(AppServiceClient):
     d = DatabaseManager
@@ -143,49 +168,86 @@ class DatabaseManagerClient(AppServiceClient):
         return DatabaseManager
 
     # Executions
-    get_graph_execution = _(d.get_graph_execution)
     get_graph_executions = _(d.get_graph_executions)
     get_graph_execution_meta = _(d.get_graph_execution_meta)
-    create_graph_execution = _(d.create_graph_execution)
     get_node_executions = _(d.get_node_executions)
-    get_latest_node_execution = _(d.get_latest_node_execution)
     update_node_execution_status = _(d.update_node_execution_status)
-    update_node_execution_status_batch = _(d.update_node_execution_status_batch)
     update_graph_execution_start_time = _(d.update_graph_execution_start_time)
     update_graph_execution_stats = _(d.update_graph_execution_stats)
-    update_node_execution_stats = _(d.update_node_execution_stats)
-    upsert_execution_input = _(d.upsert_execution_input)
     upsert_execution_output = _(d.upsert_execution_output)
 
     # Graphs
-    get_node = _(d.get_node)
-    get_graph = _(d.get_graph)
-    get_connected_output_nodes = _(d.get_connected_output_nodes)
     get_graph_metadata = _(d.get_graph_metadata)
 
     # Credits
     spend_credits = _(d.spend_credits)
     get_credits = _(d.get_credits)
 
-    # User + User Metadata + User Integrations
-    get_user_metadata = _(d.get_user_metadata)
-    update_user_metadata = _(d.update_user_metadata)
-    get_user_integrations = _(d.get_user_integrations)
-    update_user_integrations = _(d.update_user_integrations)
+    # Block error monitoring
+    get_block_error_stats = _(d.get_block_error_stats)
 
-    # User Comms - async
-    get_active_user_ids_in_timerange = _(d.get_active_user_ids_in_timerange)
+    # User Emails
     get_user_email_by_id = _(d.get_user_email_by_id)
-    get_user_email_verification = _(d.get_user_email_verification)
-    get_user_notification_preference = _(d.get_user_notification_preference)
 
-    # Notifications - async
-    create_or_add_to_user_notification_batch = _(
+    # Library
+    list_library_agents = _(d.list_library_agents)
+    add_store_agent_to_library = _(d.add_store_agent_to_library)
+
+    # Store
+    get_store_agents = _(d.get_store_agents)
+    get_store_agent_details = _(d.get_store_agent_details)
+
+
+class DatabaseManagerAsyncClient(AppServiceClient):
+    d = DatabaseManager
+
+    @classmethod
+    def get_service_type(cls):
+        return DatabaseManager
+
+    create_graph_execution = d.create_graph_execution
+    get_connected_output_nodes = d.get_connected_output_nodes
+    get_latest_node_execution = d.get_latest_node_execution
+    get_graph = d.get_graph
+    get_graph_metadata = d.get_graph_metadata
+    get_graph_execution_meta = d.get_graph_execution_meta
+    get_node = d.get_node
+    get_node_execution = d.get_node_execution
+    get_node_executions = d.get_node_executions
+    get_user_integrations = d.get_user_integrations
+    upsert_execution_input = d.upsert_execution_input
+    upsert_execution_output = d.upsert_execution_output
+    update_graph_execution_stats = d.update_graph_execution_stats
+    update_node_execution_status = d.update_node_execution_status
+    update_node_execution_status_batch = d.update_node_execution_status_batch
+    update_user_integrations = d.update_user_integrations
+    get_execution_kv_data = d.get_execution_kv_data
+    set_execution_kv_data = d.set_execution_kv_data
+
+    # User Comms
+    get_active_user_ids_in_timerange = d.get_active_user_ids_in_timerange
+    get_user_email_by_id = d.get_user_email_by_id
+    get_user_email_verification = d.get_user_email_verification
+    get_user_notification_preference = d.get_user_notification_preference
+
+    # Notifications
+    create_or_add_to_user_notification_batch = (
         d.create_or_add_to_user_notification_batch
     )
-    empty_user_notification_batch = _(d.empty_user_notification_batch)
-    get_all_batches_by_type = _(d.get_all_batches_by_type)
-    get_user_notification_batch = _(d.get_user_notification_batch)
-    get_user_notification_oldest_message_in_batch = _(
+    empty_user_notification_batch = d.empty_user_notification_batch
+    get_all_batches_by_type = d.get_all_batches_by_type
+    get_user_notification_batch = d.get_user_notification_batch
+    get_user_notification_oldest_message_in_batch = (
         d.get_user_notification_oldest_message_in_batch
     )
+
+    # Library
+    list_library_agents = d.list_library_agents
+    add_store_agent_to_library = d.add_store_agent_to_library
+
+    # Store
+    get_store_agents = d.get_store_agents
+    get_store_agent_details = d.get_store_agent_details
+
+    # Summary data
+    get_user_execution_summary_data = d.get_user_execution_summary_data

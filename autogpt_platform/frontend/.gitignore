@@ -22,10 +22,16 @@
 
 # debug
 npm-debug.log*
+pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# lock files (from yarn1 or npm)
+yarn.lock
+package-lock.json
+
 # local env files
+.env
 .env*.local
 
 # vercel
@@ -47,4 +53,8 @@ node_modules/
 storybook-static
 *.ignore.*
 *.ign.*
+!.npmrc
 .cursorrules
+
+# Generated API files
+src/app/api/__generated__/

@@ -33,6 +33,10 @@ model User {
   notifyOnDailySummary         Boolean @default(true)
   notifyOnWeeklySummary        Boolean @default(true)
   notifyOnMonthlySummary       Boolean @default(true)
+  notifyOnAgentApproved        Boolean @default(true)
+  notifyOnAgentRejected        Boolean @default(true)
+
+  timezone String @default("not-set")
 
   // Relations
 
@@ -53,9 +57,6 @@ model User {
   APIKeys               APIKey[]
   IntegrationWebhooks   IntegrationWebhook[]
   NotificationBatches   UserNotificationBatch[]
-
-  @@index([id])
-  @@index([email])
 }
 
 enum OnboardingStep {
@@ -68,6 +69,7 @@ enum OnboardingStep {
   AGENT_INPUT
   CONGRATS
   GET_RESULTS
+  RUN_AGENTS
   // Marketplace
   MARKETPLACE_VISIT
   MARKETPLACE_ADD_AGENT
@@ -79,8 +81,8 @@ enum OnboardingStep {
 }
 
 model UserOnboarding {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
+  id        String    @id @default(uuid())
+  createdAt DateTime  @default(now())
   updatedAt DateTime? @updatedAt
 
   completedSteps                OnboardingStep[] @default([])
@@ -93,11 +95,10 @@ model UserOnboarding {
   selectedStoreListingVersionId String?
   agentInput                    Json?
   onboardingAgentExecutionId    String?
+  agentRuns                     Int              @default(0)
 
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
 }
 
 // This model describes the Agent Graph/Flow (Multi Agent System).
@@ -109,6 +110,7 @@ model AgentGraph {
 
   name        String?
   description String?
+  recommendedScheduleCron String?
 
   isActive Boolean @default(true)
 
@@ -120,7 +122,7 @@ model AgentGraph {
 
   forkedFromId      String?
   forkedFromVersion Int?
-  forkedFrom        AgentGraph? @relation("AgentGraphForks", fields: [forkedFromId, forkedFromVersion], references: [id, version])
+  forkedFrom        AgentGraph?  @relation("AgentGraphForks", fields: [forkedFromId, forkedFromVersion], references: [id, version])
   forks             AgentGraph[] @relation("AgentGraphForks")
 
   Nodes      AgentNode[]
@@ -133,6 +135,7 @@ model AgentGraph {
 
   @@id(name: "graphVersionId", [id, version])
   @@index([userId, isActive])
+  @@index([forkedFromId, forkedFromVersion])
 }
 
 ////////////////////////////////////////////////////////////
@@ -167,9 +170,15 @@ model AgentPreset {
   InputPresets AgentNodeExecutionInputOutput[] @relation("AgentPresetsInputData")
   Executions   AgentGraphExecution[]
 
+  // For webhook-triggered agents: reference to the webhook that triggers the agent
+  webhookId String?
+  Webhook   IntegrationWebhook? @relation(fields: [webhookId], references: [id])
+
   isDeleted Boolean @default(false)
 
   @@index([userId])
+  @@index([agentGraphId, agentGraphVersion])
+  @@index([webhookId])
 }
 
 enum NotificationType {
@@ -183,6 +192,8 @@ enum NotificationType {
   MONTHLY_SUMMARY
   REFUND_REQUEST
   REFUND_PROCESSED
+  AGENT_APPROVED
+  AGENT_REJECTED
 }
 
 model NotificationEvent {
@@ -195,6 +206,8 @@ model NotificationEvent {
 
   type NotificationType
   data Json
+
+  @@index([userNotificationBatchId])
 }
 
 model UserNotificationBatch {
@@ -240,6 +253,8 @@ model LibraryAgent {
   isDeleted       Boolean @default(false)
 
   @@unique([userId, agentGraphId, agentGraphVersion])
+  @@index([agentGraphId, agentGraphVersion])
+  @@index([creatorId])
 }
 
 ////////////////////////////////////////////////////////////
@@ -340,19 +355,25 @@ model AgentGraphExecution {
   agentGraphVersion Int        @default(1)
   AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
 
+  agentPresetId String?
+  AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
+
+  inputs           Json?
+  credentialInputs Json?
+  nodesInputMasks  Json?
+
   NodeExecutions AgentNodeExecution[]
 
   // Link to User model -- Executed by this user
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  stats         Json?
-  agentPresetId String?
-  AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
+  stats Json?
 
   @@index([agentGraphId, agentGraphVersion])
   @@index([userId])
   @@index([createdAt])
+  @@index([agentPresetId])
 }
 
 // This model describes the execution of an AgentNode.
@@ -377,9 +398,9 @@ model AgentNodeExecution {
 
   stats Json?
 
-  @@index([agentGraphExecutionId])
-  @@index([agentNodeId])
-  @@index([addedTime])
+  @@index([agentGraphExecutionId, agentNodeId, executionStatus])
+  @@index([agentNodeId, executionStatus])
+  @@index([addedTime, queuedTime])
 }
 
 // This model describes the output of an AgentNodeExecution.
@@ -387,7 +408,7 @@ model AgentNodeExecutionInputOutput {
   id String @id @default(uuid())
 
   name String
-  data Json
+  data Json?
   time DateTime @default(now())
 
   // Prisma requires explicit back-references.
@@ -402,6 +423,20 @@ model AgentNodeExecutionInputOutput {
   // Input and Output pin names are unique for each AgentNodeExecution.
   @@unique([referencedByInputExecId, referencedByOutputExecId, name])
   @@index([referencedByOutputExecId])
+  // Composite index for `upsert_execution_input`.
+  @@index([name, time])
+  @@index([agentPresetId])
+}
+
+model AgentNodeExecutionKeyValueData {
+  userId               String
+  key                  String
+  agentNodeExecutionId String
+  data                 Json?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime? @updatedAt
+
+  @@id([userId, key])
 }
 
 // Webhook that is registered with a provider and propagates to one or more nodes
@@ -423,9 +458,8 @@ model IntegrationWebhook {
 
   providerWebhookId String // Webhook ID assigned by the provider
 
-  AgentNodes AgentNode[]
-
-  @@index([userId])
+  AgentNodes   AgentNode[]
+  AgentPresets AgentPreset[]
 }
 
 model AnalyticsDetails {
@@ -449,8 +483,7 @@ model AnalyticsDetails {
   // Indexable field for any count based analytical measures like page order clicking, tutorial step completion, etc.
   dataIndex String?
 
-  @@index([userId, type], name: "analyticsDetails")
-  @@index([type])
+  @@index([userId, type])
 }
 
 ////////////////////////////////////////////////////////////
@@ -474,8 +507,6 @@ model AnalyticsMetrics {
   // Link to User model
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
 }
 
 ////////////////////////////////////////////////////////////
@@ -561,7 +592,6 @@ model Profile {
 
   LibraryAgents LibraryAgent[]
 
-  @@index([username])
   @@index([userId])
 }
 
@@ -579,7 +609,15 @@ view Creator {
   agent_runs   Int
   is_featured  Boolean
 
-  // Index or unique are not applied to views
+  // Materialized views used (refreshed every 15 minutes via pg_cron):
+  // - mv_agent_run_counts - Pre-aggregated agent execution counts by agentGraphId
+  //   * idx_mv_agent_run_counts (UNIQUE on agentGraphId) - Primary lookup
+  // - mv_review_stats - Pre-aggregated review statistics (count, avg rating) by storeListingId
+  //   * idx_mv_review_stats (UNIQUE on storeListingId) - Primary lookup
+  //   * idx_mv_review_stats_rating (avg_rating DESC) - Sort by rating performance
+  //   * idx_mv_review_stats_count (review_count DESC) - Sort by review count performance
+  //
+  // Query strategy: Uses CTEs to efficiently aggregate creator statistics leveraging materialized views
 }
 
 view StoreAgent {
@@ -593,16 +631,25 @@ view StoreAgent {
   agent_image String[]
 
   featured         Boolean  @default(false)
-  creator_username String
-  creator_avatar   String
+  creator_username String?
+  creator_avatar   String?
   sub_heading      String
   description      String
   categories       String[]
   runs             Int
   rating           Float
   versions         String[]
+  is_available     Boolean  @default(true)
 
-  // Index or unique are not applied to views
+  // Materialized views used (refreshed every 15 minutes via pg_cron):
+  // - mv_agent_run_counts - Pre-aggregated agent execution counts by agentGraphId
+  //   * idx_mv_agent_run_counts (UNIQUE on agentGraphId) - Primary lookup
+  // - mv_review_stats - Pre-aggregated review statistics (count, avg rating) by storeListingId
+  //   * idx_mv_review_stats (UNIQUE on storeListingId) - Primary lookup
+  //   * idx_mv_review_stats_rating (avg_rating DESC) - Sort by rating performance
+  //   * idx_mv_review_stats_count (review_count DESC) - Sort by review count performance
+  //
+  // Query strategy: Uses CTE for version aggregation and joins with materialized views for performance
 }
 
 view StoreSubmission {
@@ -625,8 +672,37 @@ view StoreSubmission {
   internal_comments        String?
   reviewed_at              DateTime?
   changes_summary          String?
+  video_url                String?
+  categories               String[]
 
   // Index or unique are not applied to views
+}
+
+// Note: This is actually a MATERIALIZED VIEW in the database
+// Refreshed automatically every 15 minutes via pg_cron (with fallback to manual refresh)
+view mv_agent_run_counts {
+  agentGraphId String @unique
+  run_count    Int
+
+  // Pre-aggregated count of AgentGraphExecution records by agentGraphId
+  // Used by StoreAgent and Creator views for performance optimization
+  // Unique index created automatically on agentGraphId for fast lookups
+  // Refresh uses CONCURRENTLY to avoid blocking reads
+}
+
+// Note: This is actually a MATERIALIZED VIEW in the database
+// Refreshed automatically every 15 minutes via pg_cron (with fallback to manual refresh)
+view mv_review_stats {
+  storeListingId String @unique
+  review_count   Int
+  avg_rating     Float
+
+  // Pre-aggregated review statistics from StoreListingReview
+  // Includes count of reviews and average rating per StoreListing
+  // Only includes approved versions (submissionStatus = 'APPROVED') and non-deleted listings
+  // Used by StoreAgent view for performance optimization
+  // Unique index created automatically on storeListingId for fast lookups
+  // Refresh uses CONCURRENTLY to avoid blocking reads
 }
 
 model StoreListing {
@@ -661,6 +737,7 @@ model StoreListing {
   @@unique([owningUserId, slug])
   // Used in the view query
   @@index([isDeleted, hasApprovedVersion])
+  @@index([agentGraphId, agentGraphVersion])
 }
 
 model StoreListingVersion {
@@ -709,6 +786,8 @@ model StoreListingVersion {
   reviewComments   String? // Comments visible to creator
   reviewedAt       DateTime?
 
+  recommendedScheduleCron String? // cron expression like "0 9 * * *"
+
   // Reviews for this specific version
   Reviews StoreListingReview[]
 
@@ -734,6 +813,7 @@ model StoreListingReview {
   comments String?
 
   @@unique([storeListingVersionId, reviewByUserId])
+  @@index([reviewByUserId])
 }
 
 enum SubmissionStatus {
@@ -769,9 +849,7 @@ model APIKey {
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([key])
-  @@index([prefix])
-  @@index([status])
+  @@index([prefix, name])
   @@index([userId, status])
 }
 

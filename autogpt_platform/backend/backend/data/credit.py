@@ -2,7 +2,7 @@ import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import stripe
 from prisma import Json
@@ -23,7 +23,6 @@ from pydantic import BaseModel
 
 from backend.data import db
 from backend.data.block_cost_config import BLOCK_COSTS
-from backend.data.cost import BlockCost
 from backend.data.model import (
     AutoTopUpConfig,
     RefundRequest,
@@ -34,11 +33,15 @@ from backend.data.model import (
 from backend.data.notifications import NotificationEventModel, RefundRequestData
 from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications.notifications import queue_notification_async
-from backend.server.model import Pagination
 from backend.server.v2.admin.model import UserHistoryResponse
 from backend.util.exceptions import InsufficientBalanceError
+from backend.util.json import SafeJson
+from backend.util.models import Pagination
 from backend.util.retry import func_retry
 from backend.util.settings import Settings
+
+if TYPE_CHECKING:
+    from backend.data.block import Block, BlockCost
 
 settings = Settings()
 stripe.api_key = settings.secrets.stripe_api_key
@@ -285,11 +288,17 @@ class UserCreditBase(ABC):
         transaction = await CreditTransaction.prisma().find_first_or_raise(
             where={"transactionKey": transaction_key, "userId": user_id}
         )
-
         if transaction.isActive:
             return
 
         async with db.locked_transaction(f"usr_trx_{user_id}"):
+
+            transaction = await CreditTransaction.prisma().find_first_or_raise(
+                where={"transactionKey": transaction_key, "userId": user_id}
+            )
+            if transaction.isActive:
+                return
+
             user_balance, _ = await self._get_credits(user_id)
             await CreditTransaction.prisma().update(
                 where={
@@ -316,7 +325,7 @@ class UserCreditBase(ABC):
         transaction_key: str | None = None,
         ceiling_balance: int | None = None,
         fail_insufficient_credits: bool = True,
-        metadata: Json = Json({}),
+        metadata: Json = SafeJson({}),
     ) -> tuple[int, str]:
         """
         Add a new transaction for the user.
@@ -356,15 +365,15 @@ class UserCreditBase(ABC):
                 amount = min(-user_balance, 0)
 
             # Create the transaction
-            transaction_data = CreditTransactionCreateInput(
-                userId=user_id,
-                amount=amount,
-                runningBalance=user_balance + amount,
-                type=transaction_type,
-                metadata=metadata,
-                isActive=is_active,
-                createdAt=self.time_now(),
-            )
+            transaction_data: CreditTransactionCreateInput = {
+                "userId": user_id,
+                "amount": amount,
+                "runningBalance": user_balance + amount,
+                "type": transaction_type,
+                "metadata": metadata,
+                "isActive": is_active,
+                "createdAt": self.time_now(),
+            }
             if transaction_key:
                 transaction_data["transactionKey"] = transaction_key
             tx = await CreditTransaction.prisma().create(data=transaction_data)
@@ -399,7 +408,7 @@ class UserCredit(UserCreditBase):
             user_id=user_id,
             amount=-cost,
             transaction_type=CreditTransactionType.USAGE,
-            metadata=Json(metadata.model_dump()),
+            metadata=SafeJson(metadata.model_dump()),
         )
 
         # Auto top-up if balance is below threshold.
@@ -439,7 +448,7 @@ class UserCredit(UserCreditBase):
                 amount=credits,
                 transaction_type=CreditTransactionType.GRANT,
                 transaction_key=f"REWARD-{user_id}-{step.value}",
-                metadata=Json(
+                metadata=SafeJson(
                     {"reason": f"Reward for completing {step.value} onboarding step."}
                 ),
             )
@@ -531,7 +540,7 @@ class UserCredit(UserCreditBase):
             amount=-request.amount,
             transaction_type=CreditTransactionType.REFUND,
             transaction_key=request.id,
-            metadata=Json(request),
+            metadata=SafeJson(request),
             fail_insufficient_credits=False,
         )
 
@@ -669,7 +678,7 @@ class UserCredit(UserCreditBase):
             is_active=False,
             transaction_key=key,
             ceiling_balance=ceiling_balance,
-            metadata=(Json(metadata)),
+            metadata=(SafeJson(metadata)),
         )
 
         customer_id = await get_stripe_customer_id(user_id)
@@ -693,7 +702,7 @@ class UserCredit(UserCreditBase):
                     },
                 )
                 if setup_intent.status == "succeeded":
-                    successful_transaction = Json({"setup_intent": setup_intent})
+                    successful_transaction = SafeJson({"setup_intent": setup_intent})
                     new_transaction_key = setup_intent.id
                     break
             else:
@@ -711,7 +720,9 @@ class UserCredit(UserCreditBase):
                     },
                 )
                 if payment_intent.status == "succeeded":
-                    successful_transaction = Json({"payment_intent": payment_intent})
+                    successful_transaction = SafeJson(
+                        {"payment_intent": payment_intent}
+                    )
                     new_transaction_key = payment_intent.id
                     break
 
@@ -766,7 +777,7 @@ class UserCredit(UserCreditBase):
             transaction_type=CreditTransactionType.TOP_UP,
             transaction_key=checkout_session.id,
             is_active=False,
-            metadata=Json(checkout_session),
+            metadata=SafeJson(checkout_session),
         )
 
         return checkout_session.url or ""
@@ -822,7 +833,7 @@ class UserCredit(UserCreditBase):
                 transaction_key=credit_transaction.transactionKey,
                 new_transaction_key=new_transaction_key,
                 user_id=credit_transaction.userId,
-                metadata=Json(checkout_session),
+                metadata=SafeJson(checkout_session),
             )
 
     async def get_credits(self, user_id: str) -> int:
@@ -935,7 +946,7 @@ class BetaUserCredit(UserCredit):
                 amount=max(self.num_user_credits_refill - balance, 0),
                 transaction_type=CreditTransactionType.GRANT,
                 transaction_key=f"MONTHLY-CREDIT-TOP-UP-{cur_time}",
-                metadata=Json({"reason": "Monthly credit refill"}),
+                metadata=SafeJson({"reason": "Monthly credit refill"}),
             )
             return balance
         except UniqueViolationError:
@@ -988,15 +999,19 @@ def get_user_credit_model() -> UserCreditBase:
     return UserCredit()
 
 
-def get_block_costs() -> dict[str, list[BlockCost]]:
+def get_block_costs() -> dict[str, list["BlockCost"]]:
     return {block().id: costs for block, costs in BLOCK_COSTS.items()}
+
+
+def get_block_cost(block: "Block") -> list["BlockCost"]:
+    return BLOCK_COSTS.get(block.__class__, [])
 
 
 async def get_stripe_customer_id(user_id: str) -> str:
     user = await get_user_by_id(user_id)
 
-    if user.stripeCustomerId:
-        return user.stripeCustomerId
+    if user.stripe_customer_id:
+        return user.stripe_customer_id
 
     customer = stripe.Customer.create(
         name=user.name or "",
@@ -1012,17 +1027,17 @@ async def get_stripe_customer_id(user_id: str) -> str:
 async def set_auto_top_up(user_id: str, config: AutoTopUpConfig):
     await User.prisma().update(
         where={"id": user_id},
-        data={"topUpConfig": Json(config.model_dump())},
+        data={"topUpConfig": SafeJson(config.model_dump())},
     )
 
 
 async def get_auto_top_up(user_id: str) -> AutoTopUpConfig:
     user = await get_user_by_id(user_id)
 
-    if not user.topUpConfig:
+    if not user.top_up_config:
         return AutoTopUpConfig(threshold=0, amount=0)
 
-    return AutoTopUpConfig.model_validate(user.topUpConfig)
+    return AutoTopUpConfig.model_validate(user.top_up_config)
 
 
 async def admin_get_user_history(

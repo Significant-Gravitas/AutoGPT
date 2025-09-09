@@ -1,4 +1,6 @@
 import asyncio
+import concurrent
+import concurrent.futures
 import inspect
 import logging
 import os
@@ -25,11 +27,11 @@ import uvicorn
 from fastapi import FastAPI, Request, responses
 from pydantic import BaseModel, TypeAdapter, create_model
 
-from backend.util.exceptions import InsufficientBalanceError
+import backend.util.exceptions as exceptions
 from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
 from backend.util.process import AppProcess, get_service_name
-from backend.util.retry import conn_retry
+from backend.util.retry import conn_retry, create_retry_decorator
 from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
@@ -41,6 +43,34 @@ api_host = config.pyro_host
 api_comm_retry = config.pyro_client_comm_retry
 api_comm_timeout = config.pyro_client_comm_timeout
 api_call_timeout = config.rpc_client_call_timeout
+
+
+def _validate_no_prisma_objects(obj: Any, path: str = "result") -> None:
+    """
+    Recursively validate that no Prisma objects are being returned from service methods.
+    This enforces proper separation of layers - only application models should cross service boundaries.
+    """
+    if obj is None:
+        return
+
+    # Check if it's a Prisma model object
+    if hasattr(obj, "__class__") and hasattr(obj.__class__, "__module__"):
+        module_name = obj.__class__.__module__
+        if module_name and "prisma.models" in module_name:
+            raise ValueError(
+                f"Prisma object {obj.__class__.__name__} found in {path}. "
+                "Service methods must return application models, not Prisma objects. "
+                f"Use {obj.__class__.__name__}.from_db() to convert to application model."
+            )
+
+    # Recursively check collections
+    if isinstance(obj, (list, tuple)):
+        for i, item in enumerate(obj):
+            _validate_no_prisma_objects(item, f"{path}[{i}]")
+    elif isinstance(obj, dict):
+        for key, value in obj.items():
+            _validate_no_prisma_objects(value, f"{path}['{key}']")
+
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -67,11 +97,11 @@ class BaseAppService(AppProcess, ABC):
     @classmethod
     def get_host(cls) -> str:
         source_host = os.environ.get(f"{get_service_name().upper()}_HOST", api_host)
-        target_host = os.environ.get(f"{cls.service_name.upper()}_HOST", api_host)
+        target_host = os.environ.get(f"{cls.__name__.upper()}_HOST", api_host)
 
         if source_host == target_host and source_host != api_host:
             logger.warning(
-                f"Service {cls.service_name} is the same host as the source service."
+                f"Service {cls.__name__} is the same host as the source service."
                 f"Use the localhost of {api_host} instead."
             )
             return api_host
@@ -94,19 +124,65 @@ class RemoteCallError(BaseModel):
     args: Optional[Tuple[Any, ...]] = None
 
 
+class UnhealthyServiceError(ValueError):
+    def __init__(
+        self, message: str = "Service is unhealthy or not ready", log: bool = True
+    ):
+        msg = f"[{get_service_name()}] - {message}"
+        super().__init__(msg)
+        self.message = msg
+        if log:
+            logger.error(self.message)
+
+    def __str__(self):
+        return self.message
+
+
+class HTTPClientError(Exception):
+    """Exception for HTTP client errors (4xx status codes) that should not be retried."""
+
+    def __init__(self, status_code: int, message: str):
+        self.status_code = status_code
+        super().__init__(f"HTTP {status_code}: {message}")
+
+
+class HTTPServerError(Exception):
+    """Exception for HTTP server errors (5xx status codes) that can be retried."""
+
+    def __init__(self, status_code: int, message: str):
+        self.status_code = status_code
+        super().__init__(f"HTTP {status_code}: {message}")
+
+
 EXCEPTION_MAPPING = {
     e.__name__: e
     for e in [
         ValueError,
+        RuntimeError,
         TimeoutError,
         ConnectionError,
-        InsufficientBalanceError,
+        UnhealthyServiceError,
+        HTTPClientError,
+        HTTPServerError,
+        *[
+            ErrorType
+            for _, ErrorType in inspect.getmembers(exceptions)
+            if inspect.isclass(ErrorType)
+            and issubclass(ErrorType, Exception)
+            and ErrorType.__module__ == exceptions.__name__
+        ],
     ]
 }
 
 
 class AppService(BaseAppService, ABC):
     fastapi_app: FastAPI
+    log_level: str = "info"
+
+    def set_log_level(self, log_level: str):
+        """Set the uvicorn log level. Returns self for chaining."""
+        self.log_level = log_level
+        return self
 
     @staticmethod
     def _handle_internal_http_error(status_code: int = 500, log_error: bool = True):
@@ -160,17 +236,21 @@ class AppService(BaseAppService, ABC):
         if asyncio.iscoroutinefunction(f):
 
             async def async_endpoint(body: RequestBodyModel):  # type: ignore #RequestBodyModel being variable
-                return await f(
+                result = await f(
                     **{name: getattr(body, name) for name in type(body).model_fields}
                 )
+                _validate_no_prisma_objects(result, f"{func.__name__} result")
+                return result
 
             return async_endpoint
         else:
 
             def sync_endpoint(body: RequestBodyModel):  # type: ignore #RequestBodyModel being variable
-                return f(
+                result = f(
                     **{name: getattr(body, name) for name in type(body).model_fields}
                 )
+                _validate_no_prisma_objects(result, f"{func.__name__} result")
+                return result
 
             return sync_endpoint
 
@@ -179,15 +259,23 @@ class AppService(BaseAppService, ABC):
         logger.info(
             f"[{self.service_name}] Starting RPC server at http://{api_host}:{self.get_port()}"
         )
+
         server = uvicorn.Server(
             uvicorn.Config(
                 self.fastapi_app,
                 host=api_host,
                 port=self.get_port(),
-                log_level="warning",
+                log_config=None,  # Explicitly None to avoid uvicorn replacing the logger.
+                log_level=self.log_level,
             )
         )
         self.shared_event_loop.run_until_complete(server.serve())
+
+    async def health_check(self) -> str:
+        """
+        A method to check the health of the process.
+        """
+        return "OK"
 
     def run(self):
         sentry_init()
@@ -204,7 +292,10 @@ class AppService(BaseAppService, ABC):
                     methods=["POST"],
                 )
         self.fastapi_app.add_api_route(
-            "/health_check", self.health_check, methods=["POST"]
+            "/health_check", self.health_check, methods=["POST", "GET"]
+        )
+        self.fastapi_app.add_api_route(
+            "/health_check_async", self.health_check, methods=["POST", "GET"]
         )
         self.fastapi_app.add_exception_handler(
             ValueError, self._handle_internal_http_error(400)
@@ -236,6 +327,9 @@ class AppServiceClient(ABC):
     def health_check(self):
         pass
 
+    async def health_check_async(self):
+        pass
+
     def close(self):
         pass
 
@@ -247,68 +341,200 @@ ASC = TypeVar("ASC", bound=AppServiceClient)
 def get_service_client(
     service_client_type: Type[ASC],
     call_timeout: int | None = api_call_timeout,
-    health_check: bool = True,
+    request_retry: bool = False,
 ) -> ASC:
+
+    def _maybe_retry(fn: Callable[..., R]) -> Callable[..., R]:
+        """Decorate *fn* with tenacity retry when enabled."""
+        if not request_retry:
+            return fn
+
+        # Use preconfigured retry decorator for service communication
+        return create_retry_decorator(
+            max_attempts=api_comm_retry,
+            max_wait=5.0,
+            context="Service communication",
+            exclude_exceptions=(
+                # Don't retry these specific exceptions that won't be fixed by retrying
+                ValueError,  # Invalid input/parameters
+                KeyError,  # Missing required data
+                TypeError,  # Wrong data types
+                AttributeError,  # Missing attributes
+                asyncio.CancelledError,  # Task was cancelled
+                concurrent.futures.CancelledError,  # Future was cancelled
+                HTTPClientError,  # HTTP 4xx client errors - don't retry
+            ),
+        )(fn)
+
     class DynamicClient:
-        def __init__(self):
+        def __init__(self) -> None:
             service_type = service_client_type.get_service_type()
             host = service_type.get_host()
             port = service_type.get_port()
             self.base_url = f"http://{host}:{port}".rstrip("/")
+            self._connection_failure_count = 0
+            self._last_client_reset = 0
 
-        @cached_property
-        def sync_client(self) -> httpx.Client:
+        def _create_sync_client(self) -> httpx.Client:
             return httpx.Client(
                 base_url=self.base_url,
                 timeout=call_timeout,
-            )
-
-        @cached_property
-        def async_client(self) -> httpx.AsyncClient:
-            return httpx.AsyncClient(
-                base_url=self.base_url,
-                timeout=call_timeout,
-            )
-
-        def _handle_call_method_response(
-            self, response: httpx.Response, method_name: str
-        ) -> Any:
-            try:
-                response.raise_for_status()
-                return response.json()
-            except httpx.HTTPStatusError as e:
-                logger.error(f"HTTP error in {method_name}: {e.response.text}")
-                error = RemoteCallError.model_validate(e.response.json())
-                # DEBUG HELP: if you made a custom exception, make sure you override self.args to be how to make your exception
-                raise EXCEPTION_MAPPING.get(error.type, Exception)(
-                    *(error.args or [str(e)])
-                )
-
-        def _call_method_sync(self, method_name: str, **kwargs) -> Any:
-            return self._handle_call_method_response(
-                method_name=method_name,
-                response=self.sync_client.post(method_name, json=to_dict(kwargs)),
-            )
-
-        async def _call_method_async(self, method_name: str, **kwargs) -> Any:
-            return self._handle_call_method_response(
-                method_name=method_name,
-                response=await self.async_client.post(
-                    method_name, json=to_dict(kwargs)
+                limits=httpx.Limits(
+                    max_keepalive_connections=200,  # 10x default for async concurrent calls
+                    max_connections=500,  # High limit for burst handling
+                    keepalive_expiry=30.0,  # Keep connections alive longer
                 ),
             )
 
-        async def aclose(self):
-            self.sync_client.close()
-            await self.async_client.aclose()
+        def _create_async_client(self) -> httpx.AsyncClient:
+            return httpx.AsyncClient(
+                base_url=self.base_url,
+                timeout=call_timeout,
+                limits=httpx.Limits(
+                    max_keepalive_connections=200,  # 10x default for async concurrent calls
+                    max_connections=500,  # High limit for burst handling
+                    keepalive_expiry=30.0,  # Keep connections alive longer
+                ),
+            )
 
-        def close(self):
-            self.sync_client.close()
+        @cached_property
+        def sync_client(self) -> httpx.Client:
+            return self._create_sync_client()
 
-        def _get_params(self, signature: inspect.Signature, *args, **kwargs) -> dict:
+        @cached_property
+        def async_client(self) -> httpx.AsyncClient:
+            return self._create_async_client()
+
+        def _handle_connection_error(self, error: Exception) -> None:
+            """Handle connection errors and implement self-healing"""
+            self._connection_failure_count += 1
+            current_time = time.time()
+
+            # If we've had 3+ failures, and it's been more than 30 seconds since last reset
+            if (
+                self._connection_failure_count >= 3
+                and current_time - self._last_client_reset > 30
+            ):
+
+                logger.warning(
+                    f"Connection failures detected ({self._connection_failure_count}), recreating HTTP clients"
+                )
+
+                # Clear cached clients to force recreation on next access
+                # Only recreate when there's actually a problem
+                if hasattr(self, "sync_client"):
+                    delattr(self, "sync_client")
+                if hasattr(self, "async_client"):
+                    delattr(self, "async_client")
+
+                # Reset counters
+                self._connection_failure_count = 0
+                self._last_client_reset = current_time
+
+        def _handle_call_method_response(
+            self, *, response: httpx.Response, method_name: str
+        ) -> Any:
+            try:
+                response.raise_for_status()
+                # Reset failure count on successful response
+                self._connection_failure_count = 0
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                status_code = e.response.status_code
+
+                # Try to parse the error response as RemoteCallError for mapped exceptions
+                error_response = None
+                try:
+                    error_response = RemoteCallError.model_validate(e.response.json())
+                except Exception:
+                    pass
+
+                # If we successfully parsed a mapped exception type, re-raise it
+                if error_response and error_response.type in EXCEPTION_MAPPING:
+                    exception_class = EXCEPTION_MAPPING[error_response.type]
+                    args = error_response.args or [str(e)]
+                    raise exception_class(*args)
+
+                # Otherwise categorize by HTTP status code
+                if 400 <= status_code < 500:
+                    # Client errors (4xx) - wrap to prevent retries
+                    raise HTTPClientError(status_code, str(e))
+                elif 500 <= status_code < 600:
+                    # Server errors (5xx) - wrap but allow retries
+                    raise HTTPServerError(status_code, str(e))
+                else:
+                    # Other status codes (1xx, 2xx, 3xx) - re-raise original error
+                    raise e
+
+        @_maybe_retry
+        def _call_method_sync(self, method_name: str, **kwargs: Any) -> Any:
+            try:
+                return self._handle_call_method_response(
+                    method_name=method_name,
+                    response=self.sync_client.post(method_name, json=to_dict(kwargs)),
+                )
+            except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+                self._handle_connection_error(e)
+                raise
+
+        @_maybe_retry
+        async def _call_method_async(self, method_name: str, **kwargs: Any) -> Any:
+            try:
+                return self._handle_call_method_response(
+                    method_name=method_name,
+                    response=await self.async_client.post(
+                        method_name, json=to_dict(kwargs)
+                    ),
+                )
+            except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+                self._handle_connection_error(e)
+                raise
+
+        async def aclose(self) -> None:
+            if hasattr(self, "sync_client"):
+                self.sync_client.close()
+            if hasattr(self, "async_client"):
+                await self.async_client.aclose()
+
+        def close(self) -> None:
+            if hasattr(self, "sync_client"):
+                self.sync_client.close()
+            # Note: Cannot close async client synchronously
+
+        def __del__(self):
+            """Cleanup HTTP clients on garbage collection to prevent resource leaks."""
+            try:
+                if hasattr(self, "sync_client"):
+                    self.sync_client.close()
+                if hasattr(self, "async_client"):
+                    # Note: Can't await in __del__, so we just close sync
+                    # The async client will be cleaned up by garbage collection
+                    import warnings
+
+                    warnings.warn(
+                        "DynamicClient async client not explicitly closed. "
+                        "Call aclose() before destroying the client.",
+                        ResourceWarning,
+                        stacklevel=2,
+                    )
+            except Exception:
+                # Silently ignore cleanup errors in __del__
+                pass
+
+        async def __aenter__(self):
+            """Async context manager entry."""
+            return self
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            """Async context manager exit."""
+            await self.aclose()
+
+        def _get_params(
+            self, signature: inspect.Signature, *args: Any, **kwargs: Any
+        ) -> dict[str, Any]:
             if args:
                 arg_names = list(signature.parameters.keys())
-                if arg_names[0] in ("self", "cls"):
+                if arg_names and arg_names[0] in ("self", "cls"):
                     arg_names = arg_names[1:]
                 kwargs.update(dict(zip(arg_names, args)))
             return kwargs
@@ -324,36 +550,33 @@ def get_service_client(
                 raise AttributeError(
                     f"Method {name} not found in {service_client_type}"
                 )
-            else:
-                name = original_func.__name__
 
+            rpc_name = original_func.__name__
             sig = inspect.signature(original_func)
             ret_ann = sig.return_annotation
-            if ret_ann != inspect.Signature.empty:
-                expected_return = TypeAdapter(ret_ann)
-            else:
-                expected_return = None
+            expected_return = (
+                None if ret_ann is inspect.Signature.empty else TypeAdapter(ret_ann)
+            )
 
             if inspect.iscoroutinefunction(original_func):
 
-                async def async_method(*args, **kwargs) -> Any:
+                async def async_method(*args: P.args, **kwargs: P.kwargs):
                     params = self._get_params(sig, *args, **kwargs)
-                    result = await self._call_method_async(name, **params)
+                    result = await self._call_method_async(rpc_name, **params)
                     return self._get_return(expected_return, result)
 
                 return async_method
+
             else:
 
-                def sync_method(*args, **kwargs) -> Any:
+                def sync_method(*args: P.args, **kwargs: P.kwargs):
                     params = self._get_params(sig, *args, **kwargs)
-                    result = self._call_method_sync(name, **params)
+                    result = self._call_method_sync(rpc_name, **params)
                     return self._get_return(expected_return, result)
 
                 return sync_method
 
     client = cast(ASC, DynamicClient())
-    if health_check:
-        client.health_check()
 
     return client
 

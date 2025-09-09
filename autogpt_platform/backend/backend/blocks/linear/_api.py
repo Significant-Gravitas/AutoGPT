@@ -1,16 +1,11 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
-from backend.blocks.linear._auth import LinearCredentials
-from backend.blocks.linear.models import (
-    CreateCommentResponse,
-    CreateIssueResponse,
-    Issue,
-    Project,
-)
-from backend.util.request import Requests
+from backend.sdk import APIKeyCredentials, OAuth2Credentials, Requests
+
+from .models import CreateCommentResponse, CreateIssueResponse, Issue, Project
 
 
 class LinearAPIException(Exception):
@@ -29,13 +24,12 @@ class LinearClient:
 
     def __init__(
         self,
-        credentials: LinearCredentials | None = None,
+        credentials: Union[OAuth2Credentials, APIKeyCredentials, None] = None,
         custom_requests: Optional[Requests] = None,
     ):
         if custom_requests:
             self._requests = custom_requests
         else:
-
             headers: Dict[str, str] = {
                 "Content-Type": "application/json",
             }
@@ -48,7 +42,7 @@ class LinearClient:
                 raise_for_status=False,
             )
 
-    def _execute_graphql_request(
+    async def _execute_graphql_request(
         self, query: str, variables: dict | None = None
     ) -> Any:
         """
@@ -65,19 +59,18 @@ class LinearClient:
         if variables:
             payload["variables"] = variables
 
-        response = self._requests.post(self.API_URL, json=payload)
+        response = await self._requests.post(self.API_URL, json=payload)
 
         if not response.ok:
-
             try:
                 error_data = response.json()
                 error_message = error_data.get("errors", [{}])[0].get("message", "")
             except json.JSONDecodeError:
-                error_message = response.text
+                error_message = response.text()
 
             raise LinearAPIException(
-                f"Linear API request failed ({response.status_code}): {error_message}",
-                response.status_code,
+                f"Linear API request failed ({response.status}): {error_message}",
+                response.status,
             )
 
         response_data = response.json()
@@ -88,12 +81,12 @@ class LinearClient:
             ]
             raise LinearAPIException(
                 f"Linear API returned errors: {', '.join(error_messages)}",
-                response.status_code,
+                response.status,
             )
 
         return response_data["data"]
 
-    def query(self, query: str, variables: Optional[dict] = None) -> dict:
+    async def query(self, query: str, variables: Optional[dict] = None) -> dict:
         """Executes a GraphQL query.
 
         Args:
@@ -103,9 +96,9 @@ class LinearClient:
         Returns:
              The response data.
         """
-        return self._execute_graphql_request(query, variables)
+        return await self._execute_graphql_request(query, variables)
 
-    def mutate(self, mutation: str, variables: Optional[dict] = None) -> dict:
+    async def mutate(self, mutation: str, variables: Optional[dict] = None) -> dict:
         """Executes a GraphQL mutation.
 
         Args:
@@ -115,9 +108,11 @@ class LinearClient:
         Returns:
             The response data.
         """
-        return self._execute_graphql_request(mutation, variables)
+        return await self._execute_graphql_request(mutation, variables)
 
-    def try_create_comment(self, issue_id: str, comment: str) -> CreateCommentResponse:
+    async def try_create_comment(
+        self, issue_id: str, comment: str
+    ) -> CreateCommentResponse:
         try:
             mutation = """
                 mutation CommentCreate($input: CommentCreateInput!) {
@@ -138,13 +133,13 @@ class LinearClient:
                 }
             }
 
-            added_comment = self.mutate(mutation, variables)
+            added_comment = await self.mutate(mutation, variables)
             # Select the commentCreate field from the mutation response
             return CreateCommentResponse(**added_comment["commentCreate"])
         except LinearAPIException as e:
             raise e
 
-    def try_get_team_by_name(self, team_name: str) -> str:
+    async def try_get_team_by_name(self, team_name: str) -> str:
         try:
             query = """
             query GetTeamId($searchTerm: String!) {
@@ -167,12 +162,12 @@ class LinearClient:
                 "searchTerm": team_name,
             }
 
-            team_id = self.query(query, variables)
+            team_id = await self.query(query, variables)
             return team_id["teams"]["nodes"][0]["id"]
         except LinearAPIException as e:
             raise e
 
-    def try_create_issue(
+    async def try_create_issue(
         self,
         team_id: str,
         title: str,
@@ -211,12 +206,12 @@ class LinearClient:
             if priority:
                 variables["input"]["priority"] = priority
 
-            added_issue = self.mutate(mutation, variables)
+            added_issue = await self.mutate(mutation, variables)
             return CreateIssueResponse(**added_issue["issueCreate"])
         except LinearAPIException as e:
             raise e
 
-    def try_search_projects(self, term: str) -> list[Project]:
+    async def try_search_projects(self, term: str) -> list[Project]:
         try:
             query = """
                 query SearchProjects($term: String!, $includeComments: Boolean!) {
@@ -238,14 +233,14 @@ class LinearClient:
                 "includeComments": True,
             }
 
-            projects = self.query(query, variables)
+            projects = await self.query(query, variables)
             return [
                 Project(**project) for project in projects["searchProjects"]["nodes"]
             ]
         except LinearAPIException as e:
             raise e
 
-    def try_search_issues(self, term: str) -> list[Issue]:
+    async def try_search_issues(self, term: str) -> list[Issue]:
         try:
             query = """
                 query SearchIssues($term: String!, $includeComments: Boolean!) {
@@ -266,7 +261,7 @@ class LinearClient:
                 "includeComments": True,
             }
 
-            issues = self.query(query, variables)
+            issues = await self.query(query, variables)
             return [Issue(**issue) for issue in issues["searchIssues"]["nodes"]]
         except LinearAPIException as e:
             raise e

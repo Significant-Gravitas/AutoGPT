@@ -1,6 +1,6 @@
 import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import prisma.enums
 import prisma.models
@@ -8,7 +8,11 @@ import pydantic
 
 import backend.data.block as block_model
 import backend.data.graph as graph_model
-import backend.server.model as server_model
+from backend.data.model import CredentialsMetaInput, is_credentials_field_name
+from backend.util.models import Pagination
+
+if TYPE_CHECKING:
+    from backend.data.integrations import Webhook
 
 
 class LibraryAgentStatus(str, Enum):
@@ -40,8 +44,16 @@ class LibraryAgent(pydantic.BaseModel):
     name: str
     description: str
 
-    # Made input_schema and output_schema match GraphMeta's type
     input_schema: dict[str, Any]  # Should be BlockIOObjectSubSchema in frontend
+    output_schema: dict[str, Any]
+    credentials_input_schema: dict[str, Any] | None = pydantic.Field(
+        description="Input schema for credentials required by the agent",
+    )
+
+    has_external_trigger: bool = pydantic.Field(
+        description="Whether the agent has an external trigger (e.g. webhook) node"
+    )
+    trigger_setup_info: Optional[graph_model.GraphTriggerInfo] = None
 
     # Indicates whether there's a new output (based on recent runs)
     new_output: bool
@@ -52,8 +64,14 @@ class LibraryAgent(pydantic.BaseModel):
     # Indicates if this agent is the latest version
     is_latest_version: bool
 
+    # Recommended schedule cron (from marketplace agents)
+    recommended_schedule_cron: str | None = None
+
     @staticmethod
-    def from_db(agent: prisma.models.LibraryAgent) -> "LibraryAgent":
+    def from_db(
+        agent: prisma.models.LibraryAgent,
+        sub_graphs: Optional[list[prisma.models.AgentGraph]] = None,
+    ) -> "LibraryAgent":
         """
         Factory method that constructs a LibraryAgent from a Prisma LibraryAgent
         model instance.
@@ -61,7 +79,7 @@ class LibraryAgent(pydantic.BaseModel):
         if not agent.AgentGraph:
             raise ValueError("Associated Agent record is required.")
 
-        graph = graph_model.GraphModel.from_db(agent.AgentGraph)
+        graph = graph_model.GraphModel.from_db(agent.AgentGraph, sub_graphs=sub_graphs)
 
         agent_updated_at = agent.AgentGraph.updatedAt
         lib_agent_updated_at = agent.updatedAt
@@ -106,9 +124,16 @@ class LibraryAgent(pydantic.BaseModel):
             name=graph.name,
             description=graph.description,
             input_schema=graph.input_schema,
+            output_schema=graph.output_schema,
+            credentials_input_schema=(
+                graph.credentials_input_schema if sub_graphs is not None else None
+            ),
+            has_external_trigger=graph.has_external_trigger,
+            trigger_setup_info=graph.trigger_setup_info,
             new_output=new_output,
             can_access_graph=can_access_graph,
             is_latest_version=is_latest_version,
+            recommended_schedule_cron=agent.AgentGraph.recommendedScheduleCron,
         )
 
 
@@ -165,34 +190,102 @@ class LibraryAgentResponse(pydantic.BaseModel):
     """Response schema for a list of library agents and pagination info."""
 
     agents: list[LibraryAgent]
-    pagination: server_model.Pagination
+    pagination: Pagination
 
 
-class LibraryAgentPreset(pydantic.BaseModel):
-    """Represents a preset configuration for a library agent."""
-
-    id: str
-    updated_at: datetime.datetime
+class LibraryAgentPresetCreatable(pydantic.BaseModel):
+    """
+    Request model used when creating a new preset for a library agent.
+    """
 
     graph_id: str
     graph_version: int
 
+    inputs: block_model.BlockInput
+    credentials: dict[str, CredentialsMetaInput]
+
     name: str
     description: str
 
-    is_active: bool
+    is_active: bool = True
 
-    inputs: block_model.BlockInput
+    webhook_id: Optional[str] = None
+
+
+class LibraryAgentPresetCreatableFromGraphExecution(pydantic.BaseModel):
+    """
+    Request model used when creating a new preset for a library agent.
+    """
+
+    graph_execution_id: str
+
+    name: str
+    description: str
+
+    is_active: bool = True
+
+
+class LibraryAgentPresetUpdatable(pydantic.BaseModel):
+    """
+    Request model used when updating a preset for a library agent.
+    """
+
+    inputs: Optional[block_model.BlockInput] = None
+    credentials: Optional[dict[str, CredentialsMetaInput]] = None
+
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+    is_active: Optional[bool] = None
+
+
+class TriggeredPresetSetupRequest(pydantic.BaseModel):
+    name: str
+    description: str = ""
+
+    graph_id: str
+    graph_version: int
+
+    trigger_config: dict[str, Any]
+    agent_credentials: dict[str, CredentialsMetaInput] = pydantic.Field(
+        default_factory=dict
+    )
+
+
+class LibraryAgentPreset(LibraryAgentPresetCreatable):
+    """Represents a preset configuration for a library agent."""
+
+    id: str
+    user_id: str
+    updated_at: datetime.datetime
+
+    webhook: "Webhook | None"
 
     @classmethod
     def from_db(cls, preset: prisma.models.AgentPreset) -> "LibraryAgentPreset":
-        input_data: block_model.BlockInput = {}
+        from backend.data.integrations import Webhook
 
-        for preset_input in preset.InputPresets or []:
-            input_data[preset_input.name] = preset_input.data
+        if preset.InputPresets is None:
+            raise ValueError("InputPresets must be included in AgentPreset query")
+        if preset.webhookId and preset.Webhook is None:
+            raise ValueError(
+                "Webhook must be included in AgentPreset query when webhookId is set"
+            )
+
+        input_data: block_model.BlockInput = {}
+        input_credentials: dict[str, CredentialsMetaInput] = {}
+
+        for preset_input in preset.InputPresets:
+            if not is_credentials_field_name(preset_input.name):
+                input_data[preset_input.name] = preset_input.data
+            else:
+                input_credentials[preset_input.name] = (
+                    CredentialsMetaInput.model_validate(preset_input.data)
+                )
 
         return cls(
             id=preset.id,
+            user_id=preset.userId,
             updated_at=preset.updatedAt,
             graph_id=preset.agentGraphId,
             graph_version=preset.agentGraphVersion,
@@ -200,6 +293,9 @@ class LibraryAgentPreset(pydantic.BaseModel):
             description=preset.description,
             is_active=preset.isActive,
             inputs=input_data,
+            credentials=input_credentials,
+            webhook_id=preset.webhookId,
+            webhook=Webhook.from_db(preset.Webhook) if preset.Webhook else None,
         )
 
 
@@ -207,20 +303,7 @@ class LibraryAgentPresetResponse(pydantic.BaseModel):
     """Response schema for a list of agent presets and pagination info."""
 
     presets: list[LibraryAgentPreset]
-    pagination: server_model.Pagination
-
-
-class CreateLibraryAgentPresetRequest(pydantic.BaseModel):
-    """
-    Request model used when creating a new preset for a library agent.
-    """
-
-    name: str
-    description: str
-    inputs: block_model.BlockInput
-    graph_id: str
-    graph_version: int
-    is_active: bool
+    pagination: Pagination
 
 
 class LibraryAgentFilter(str, Enum):
@@ -253,7 +336,4 @@ class LibraryAgentUpdateRequest(pydantic.BaseModel):
     )
     is_archived: Optional[bool] = pydantic.Field(
         default=None, description="Archive the agent"
-    )
-    is_deleted: Optional[bool] = pydantic.Field(
-        default=None, description="Delete the agent"
     )

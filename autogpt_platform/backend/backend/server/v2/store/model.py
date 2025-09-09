@@ -4,7 +4,7 @@ from typing import List
 import prisma.enums
 import pydantic
 
-from backend.server.model import Pagination
+from backend.util.models import Pagination
 
 
 class MyAgent(pydantic.BaseModel):
@@ -14,6 +14,7 @@ class MyAgent(pydantic.BaseModel):
     agent_image: str | None = None
     description: str
     last_edited: datetime.datetime
+    recommended_schedule_cron: str | None = None
 
 
 class MyAgentsResponse(pydantic.BaseModel):
@@ -53,6 +54,7 @@ class StoreAgentDetails(pydantic.BaseModel):
     rating: float
     versions: list[str]
     last_updated: datetime.datetime
+    recommended_schedule_cron: str | None = None
 
     active_version_id: str | None = None
     has_approved_version: bool = False
@@ -115,11 +117,9 @@ class StoreSubmission(pydantic.BaseModel):
     reviewed_at: datetime.datetime | None = None
     changes_summary: str | None = None
 
-    reviewer_id: str | None = None
-    review_comments: str | None = None  # External comments visible to creator
-    internal_comments: str | None = None  # Private notes for admin use only
-    reviewed_at: datetime.datetime | None = None
-    changes_summary: str | None = None
+    # Additional fields for editing
+    video_url: str | None = None
+    categories: list[str] = []
 
 
 class StoreSubmissionsResponse(pydantic.BaseModel):
@@ -159,6 +159,18 @@ class StoreSubmissionRequest(pydantic.BaseModel):
     description: str = ""
     categories: list[str] = []
     changes_summary: str | None = None
+    recommended_schedule_cron: str | None = None
+
+
+class StoreSubmissionEditRequest(pydantic.BaseModel):
+    name: str
+    sub_heading: str
+    video_url: str | None = None
+    image_urls: list[str] = []
+    description: str = ""
+    categories: list[str] = []
+    changes_summary: str | None = None
+    recommended_schedule_cron: str | None = None
 
 
 class ProfileDetails(pydantic.BaseModel):

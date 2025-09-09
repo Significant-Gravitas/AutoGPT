@@ -10,17 +10,19 @@ updates:
     commit-message:
       prefix: "chore(libs/deps)"
       prefix-development: "chore(libs/deps-dev)"
+    ignore:
+      - dependency-name: "poetry"
     groups:
       production-dependencies:
         dependency-type: "production"
         update-types:
-        - "minor"
-        - "patch"
+          - "minor"
+          - "patch"
       development-dependencies:
         dependency-type: "development"
         update-types:
-        - "minor"
-        - "patch"
+          - "minor"
+          - "patch"
 
   # backend (Poetry project)
   - package-ecosystem: "pip"
@@ -32,17 +34,19 @@ updates:
     commit-message:
       prefix: "chore(backend/deps)"
       prefix-development: "chore(backend/deps-dev)"
+    ignore:
+      - dependency-name: "poetry"
     groups:
       production-dependencies:
         dependency-type: "production"
         update-types:
-        - "minor"
-        - "patch"
+          - "minor"
+          - "patch"
       development-dependencies:
         dependency-type: "development"
         update-types:
-        - "minor"
-        - "patch"
+          - "minor"
+          - "patch"
 
   # frontend (Next.js project)
   - package-ecosystem: "npm"
@@ -58,13 +62,13 @@ updates:
       production-dependencies:
         dependency-type: "production"
         update-types:
-        - "minor"
-        - "patch"
+          - "minor"
+          - "patch"
       development-dependencies:
         dependency-type: "development"
         update-types:
-        - "minor"
-        - "patch"
+          - "minor"
+          - "patch"
 
   # infra (Terraform)
   - package-ecosystem: "terraform"
@@ -81,14 +85,13 @@ updates:
       production-dependencies:
         dependency-type: "production"
         update-types:
-        - "minor"
-        - "patch"
+          - "minor"
+          - "patch"
       development-dependencies:
         dependency-type: "development"
         update-types:
-        - "minor"
-        - "patch"
-
+          - "minor"
+          - "patch"
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
@@ -101,14 +104,13 @@ updates:
       production-dependencies:
         dependency-type: "production"
         update-types:
-        - "minor"
-        - "patch"
+          - "minor"
+          - "patch"
       development-dependencies:
         dependency-type: "development"
         update-types:
-        - "minor"
-        - "patch"
-
+          - "minor"
+          - "patch"
 
   # Docker
   - package-ecosystem: "docker"
@@ -121,16 +123,16 @@ updates:
       production-dependencies:
         dependency-type: "production"
         update-types:
-        - "minor"
-        - "patch"
+          - "minor"
+          - "patch"
       development-dependencies:
         dependency-type: "development"
         update-types:
-        - "minor"
-        - "patch"
+          - "minor"
+          - "patch"
 
   # Docs
-  - package-ecosystem: 'pip'
+  - package-ecosystem: "pip"
     directory: "docs/"
     schedule:
       interval: "weekly"
@@ -142,10 +144,10 @@ updates:
       production-dependencies:
         dependency-type: "production"
         update-types:
-        - "minor"
-        - "patch"
+          - "minor"
+          - "patch"
       development-dependencies:
         dependency-type: "development"
         update-types:
-        - "minor"
-        - "patch"
+          - "minor"
+          - "patch"

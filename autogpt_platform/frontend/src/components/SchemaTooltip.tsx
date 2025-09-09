@@ -22,7 +22,7 @@ const SchemaTooltip: React.FC<{ description?: string }> = ({ description }) => {
         <TooltipContent className="tooltip-content max-w-xs bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100">
           <ReactMarkdown
             components={{
-              a: ({ node, ...props }) => (
+              a: ({ node: _, ...props }) => (
                 <a
                   target="_blank"
                   className="text-blue-400 underline dark:text-blue-300"

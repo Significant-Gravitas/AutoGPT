@@ -20,12 +20,15 @@ export default function Wallet() {
   const { credits, formatCredits, fetchCredits } = useCredits({
     fetchInitialCredits: true,
   });
+
   const { state, updateState } = useOnboarding();
   const [prevCredits, setPrevCredits] = useState<number | null>(credits);
   const [flash, setFlash] = useState(false);
+
   const [stepsLength, setStepsLength] = useState<number | null>(
     state?.completedSteps?.length || null,
   );
+
   const walletRef = useRef<HTMLButtonElement | null>(null);
 
   const onWalletOpen = useCallback(async () => {
@@ -109,7 +112,7 @@ export default function Wallet() {
           <button
             ref={walletRef}
             className={cn(
-              "relative flex items-center gap-1 rounded-md bg-zinc-200 px-3 py-2 text-sm transition-colors duration-200 hover:bg-zinc-300",
+              "relative flex items-center gap-1 rounded-md bg-zinc-50 px-3 py-2 text-sm",
             )}
             onClick={onWalletOpen}
           >
@@ -140,7 +143,7 @@ export default function Wallet() {
           <span className="font-poppins font-medium text-zinc-900">
             Your wallet
           </span>
-          <div className="flex items-center font-inter text-sm font-semibold text-violet-700">
+          <div className="flex items-center text-sm font-semibold text-violet-700">
             <div className="rounded-lg bg-violet-100 px-3 py-2">
               Wallet{" "}
               <span className="font-semibold">{formatCredits(credits)}</span>
