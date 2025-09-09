@@ -535,6 +535,7 @@ async def create_submission(
             sub_heading=submission_request.sub_heading,
             categories=submission_request.categories,
             changes_summary=submission_request.changes_summary or "Initial Submission",
+            recommended_schedule_cron=submission_request.recommended_schedule_cron,
         )
     except Exception:
         logger.exception("Exception occurred whilst creating store submission")
@@ -580,6 +581,7 @@ async def edit_submission(
         sub_heading=submission_request.sub_heading,
         categories=submission_request.categories,
         changes_summary=submission_request.changes_summary,
+        recommended_schedule_cron=submission_request.recommended_schedule_cron,
     )
 
 

@@ -50,6 +50,8 @@ export default function useAgentGraph(
   const [agentDescription, setAgentDescription] = useState<string>("");
   const [agentName, setAgentName] = useState<string>("");
   const [libraryAgent, setLibraryAgent] = useState<LibraryAgent | null>(null);
+  const [agentRecommendedScheduleCron, setAgentRecommendedScheduleCron] =
+    useState<string>("");
   const [allBlocks, setAllBlocks] = useState<Block[]>([]);
   const [availableFlows, setAvailableFlows] = useState<GraphMeta[]>([]);
   const [updateQueue, setUpdateQueue] = useState<NodeExecutionResult[]>([]);
@@ -157,6 +159,7 @@ export default function useAgentGraph(
     setSavedAgent(graph);
     setAgentName(graph.name);
     setAgentDescription(graph.description);
+    setAgentRecommendedScheduleCron(graph.recommended_schedule_cron || "");
 
     const getGraphName = (node: Node) => {
       if (node.input_default.agent_name) {
@@ -612,6 +615,7 @@ export default function useAgentGraph(
     return {
       name: agentName || `New Agent ${new Date().toISOString()}`,
       description: agentDescription || "",
+      recommended_schedule_cron: agentRecommendedScheduleCron || null,
       nodes: xyNodes.map(
         (node): NodeCreatable => ({
           id: node.id,
@@ -630,6 +634,7 @@ export default function useAgentGraph(
     xyEdges,
     agentName,
     agentDescription,
+    agentRecommendedScheduleCron,
     prepareNodeInputData,
     getToolFuncName,
   ]);
@@ -947,6 +952,8 @@ export default function useAgentGraph(
     setAgentName,
     agentDescription,
     setAgentDescription,
+    agentRecommendedScheduleCron,
+    setAgentRecommendedScheduleCron,
     savedAgent,
     libraryAgent,
     availableBlocks,

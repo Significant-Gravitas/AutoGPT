@@ -6,8 +6,12 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import LoadingBox from "@/components/ui/loading";
-import { globalRegistry, OutputItem, OutputActions } from "./output-renderers";
-import type { OutputMetadata } from "./output-renderers";
+import {
+  globalRegistry,
+  OutputItem,
+  OutputActions,
+} from "../../AgentRunsView/components/OutputRenderers";
+import type { OutputMetadata } from "../../AgentRunsView/components/OutputRenderers";
 
 export function AgentRunOutputView({
   agentRunOutputs,

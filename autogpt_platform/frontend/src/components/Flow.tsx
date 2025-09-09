@@ -117,6 +117,8 @@ const FlowEditor: React.FC<{
     setAgentName,
     agentDescription,
     setAgentDescription,
+    agentRecommendedScheduleCron,
+    setAgentRecommendedScheduleCron,
     savedAgent,
     libraryAgent,
     availableBlocks,
@@ -886,6 +888,10 @@ const FlowEditor: React.FC<{
                   onDescriptionChange={setAgentDescription}
                   agentName={agentName}
                   onNameChange={setAgentName}
+                  agentRecommendedScheduleCron={agentRecommendedScheduleCron}
+                  onRecommendedScheduleCronChange={
+                    setAgentRecommendedScheduleCron
+                  }
                   pinSavePopover={pinSavePopover}
                 />
               }

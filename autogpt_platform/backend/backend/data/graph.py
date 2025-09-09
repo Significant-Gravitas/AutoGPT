@@ -161,6 +161,7 @@ class BaseGraph(BaseDbModel):
     is_active: bool = True
     name: str
     description: str
+    recommended_schedule_cron: str | None = None
     nodes: list[Node] = []
     links: list[Link] = []
     forked_from_id: str | None = None
@@ -704,6 +705,7 @@ class GraphModel(Graph):
             is_active=graph.isActive,
             name=graph.name or "",
             description=graph.description or "",
+            recommended_schedule_cron=graph.recommendedScheduleCron,
             nodes=[NodeModel.from_db(node, for_export) for node in graph.Nodes or []],
             links=list(
                 {
@@ -1091,6 +1093,7 @@ async def __create_graph(tx, graph: Graph, user_id: str):
                 version=graph.version,
                 name=graph.name,
                 description=graph.description,
+                recommendedScheduleCron=graph.recommended_schedule_cron,
                 isActive=graph.is_active,
                 userId=user_id,
                 forkedFromId=graph.forked_from_id,
