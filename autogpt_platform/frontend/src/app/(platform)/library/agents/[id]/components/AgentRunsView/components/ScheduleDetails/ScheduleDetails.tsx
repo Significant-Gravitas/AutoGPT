@@ -25,7 +25,11 @@ import { useScheduleDetailHeader } from "../RunDetailHeader/useScheduleDetailHea
 import { DeleteScheduleButton } from "./components/DeleteScheduleButton/DeleteScheduleButton";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
-import { formatInTimezone, getTimezoneDisplayName } from "@/lib/timezone-utils";
+import {
+  formatInTimezone,
+  getTimezoneDisplayName,
+  getTimezoneGmtOffset,
+} from "@/lib/timezone-utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AgentInputsReadOnly } from "../AgentInputsReadOnly/AgentInputsReadOnly";
 import { Button } from "@/components/atoms/Button/Button";
@@ -98,7 +102,7 @@ export function ScheduleDetails({
               run={undefined}
               scheduleRecurrence={
                 schedule
-                  ? `${humanizeCronExpression(schedule.cron || "", userTzRes)} · ${getTimezoneDisplayName(userTzRes || "UTC")} timezone`
+                  ? `${humanizeCronExpression(schedule.cron || "", userTzRes)} · ${getTimezoneDisplayName(userTzRes || "UTC")} ${getTimezoneGmtOffset(userTzRes || "UTC")}`
                   : undefined
               }
             />
@@ -161,7 +165,8 @@ export function ScheduleDetails({
                     Recurrence
                   </Text>
                   <p className="text-sm text-zinc-600">
-                    {humanizeCronExpression(schedule.cron, userTzRes)}
+                    {humanizeCronExpression(schedule.cron, userTzRes)}{" "}
+                    {getTimezoneGmtOffset(userTzRes || "UTC")}
                   </p>
                 </div>
                 <div className="flex flex-col gap-1.5">

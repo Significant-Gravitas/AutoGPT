@@ -112,3 +112,23 @@ export function getTimezoneDisplayName(timezone: string): string {
     return timezone;
   }
 }
+
+/**
+ * Get the GMT offset for a given timezone, e.g. "GMT+9" or "UTC"
+ */
+export function getTimezoneGmtOffset(timezone: string): string {
+  if (timezone === "not-set" || !timezone) return "";
+  try {
+    const date = new Date();
+    const formatted = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      timeZoneName: "short",
+    }).format(date);
+
+    // Common outputs look like "1/1/2024, GMT+9" or "1/1/2024, UTC"
+    const match = formatted.match(/(GMT[+\-]\d{1,2}|UTC)/i);
+    return match ? match[0].toUpperCase() : "";
+  } catch {
+    return "";
+  }
+}
