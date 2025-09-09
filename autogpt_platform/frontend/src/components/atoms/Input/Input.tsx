@@ -22,7 +22,9 @@ export interface TextFieldProps extends Omit<InputProps, "size"> {
     | "amount"
     | "tel"
     | "url"
-    | "textarea";
+    | "textarea"
+    | "date"
+    | "datetime-local";
   // Textarea-specific props
   rows?: number;
 }
@@ -176,7 +178,11 @@ export function Input({
         <Text variant="body-medium" as="span" className="text-black">
           {label}
         </Text>
-        {hint}
+        {hint ? (
+          <Text variant="small" as="span" className="!text-zinc-400">
+            {hint}
+          </Text>
+        ) : null}
       </div>
       {inputWithError}
     </label>

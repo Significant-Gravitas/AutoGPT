@@ -3,13 +3,10 @@ import tempfile
 import typing
 import urllib.parse
 
-import autogpt_libs.auth.depends
-import autogpt_libs.auth.middleware
+import autogpt_libs.auth
 import fastapi
 import fastapi.responses
-from autogpt_libs.auth.depends import auth_middleware, get_user_id
 
-import backend.data.block
 import backend.data.graph
 import backend.server.v2.store.db
 import backend.server.v2.store.exceptions
@@ -32,12 +29,11 @@ router = fastapi.APIRouter()
     "/profile",
     summary="Get user profile",
     tags=["store", "private"],
+    dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
     response_model=backend.server.v2.store.model.ProfileDetails,
 )
 async def get_profile(
-    user_id: typing.Annotated[
-        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ],
+    user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
 ):
     """
     Get the profile details for the authenticated user.
@@ -65,14 +61,12 @@ async def get_profile(
     "/profile",
     summary="Update user profile",
     tags=["store", "private"],
-    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+    dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
     response_model=backend.server.v2.store.model.CreatorDetails,
 )
 async def update_or_create_profile(
     profile: backend.server.v2.store.model.Profile,
-    user_id: typing.Annotated[
-        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ],
+    user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
 ):
     """
     Update the store profile for the authenticated user.
@@ -215,11 +209,9 @@ async def get_agent(username: str, agent_name: str):
     "/graph/{store_listing_version_id}",
     summary="Get agent graph",
     tags=["store"],
+    dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
 )
-async def get_graph_meta_by_store_listing_version_id(
-    store_listing_version_id: str,
-    _: typing.Annotated[str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)],
-):
+async def get_graph_meta_by_store_listing_version_id(store_listing_version_id: str):
     """
     Get Agent Graph from Store Listing Version ID.
     """
@@ -240,12 +232,10 @@ async def get_graph_meta_by_store_listing_version_id(
     "/agents/{store_listing_version_id}",
     summary="Get agent by version",
     tags=["store"],
+    dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
     response_model=backend.server.v2.store.model.StoreAgentDetails,
 )
-async def get_store_agent(
-    store_listing_version_id: str,
-    _: typing.Annotated[str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)],
-):
+async def get_store_agent(store_listing_version_id: str):
     """
     Get Store Agent Details from Store Listing Version ID.
     """
@@ -266,16 +256,14 @@ async def get_store_agent(
     "/agents/{username}/{agent_name}/review",
     summary="Create agent review",
     tags=["store"],
-    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+    dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
     response_model=backend.server.v2.store.model.StoreReview,
 )
 async def create_review(
     username: str,
     agent_name: str,
     review: backend.server.v2.store.model.StoreReviewCreate,
-    user_id: typing.Annotated[
-        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ],
+    user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
 ):
     """
     Create a review for a store agent.
@@ -402,13 +390,11 @@ async def get_creator(
     "/myagents",
     summary="Get my agents",
     tags=["store", "private"],
-    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+    dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
     response_model=backend.server.v2.store.model.MyAgentsResponse,
 )
 async def get_my_agents(
-    user_id: typing.Annotated[
-        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ],
+    user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
     page: typing.Annotated[int, fastapi.Query(ge=1)] = 1,
     page_size: typing.Annotated[int, fastapi.Query(ge=1)] = 20,
 ):
@@ -429,14 +415,12 @@ async def get_my_agents(
     "/submissions/{submission_id}",
     summary="Delete store submission",
     tags=["store", "private"],
-    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+    dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
     response_model=bool,
 )
 async def delete_submission(
-    user_id: typing.Annotated[
-        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ],
     submission_id: str,
+    user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
 ):
     """
     Delete a store listing submission.
@@ -466,13 +450,11 @@ async def delete_submission(
     "/submissions",
     summary="List my submissions",
     tags=["store", "private"],
-    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+    dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
     response_model=backend.server.v2.store.model.StoreSubmissionsResponse,
 )
 async def get_submissions(
-    user_id: typing.Annotated[
-        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ],
+    user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
     page: int = 1,
     page_size: int = 20,
 ):
@@ -520,14 +502,12 @@ async def get_submissions(
     "/submissions",
     summary="Create store submission",
     tags=["store", "private"],
-    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+    dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
     response_model=backend.server.v2.store.model.StoreSubmission,
 )
 async def create_submission(
     submission_request: backend.server.v2.store.model.StoreSubmissionRequest,
-    user_id: typing.Annotated[
-        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ],
+    user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
 ):
     """
     Create a new store listing submission.
@@ -555,6 +535,7 @@ async def create_submission(
             sub_heading=submission_request.sub_heading,
             categories=submission_request.categories,
             changes_summary=submission_request.changes_summary or "Initial Submission",
+            recommended_schedule_cron=submission_request.recommended_schedule_cron,
         )
     except Exception:
         logger.exception("Exception occurred whilst creating store submission")
@@ -568,15 +549,13 @@ async def create_submission(
     "/submissions/{store_listing_version_id}",
     summary="Edit store submission",
     tags=["store", "private"],
-    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+    dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
     response_model=backend.server.v2.store.model.StoreSubmission,
 )
 async def edit_submission(
     store_listing_version_id: str,
     submission_request: backend.server.v2.store.model.StoreSubmissionEditRequest,
-    user_id: typing.Annotated[
-        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ],
+    user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
 ):
     """
     Edit an existing store listing submission.
@@ -602,6 +581,7 @@ async def edit_submission(
         sub_heading=submission_request.sub_heading,
         categories=submission_request.categories,
         changes_summary=submission_request.changes_summary,
+        recommended_schedule_cron=submission_request.recommended_schedule_cron,
     )
 
 
@@ -609,13 +589,11 @@ async def edit_submission(
     "/submissions/media",
     summary="Upload submission media",
     tags=["store", "private"],
-    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+    dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
 )
 async def upload_submission_media(
     file: fastapi.UploadFile,
-    user_id: typing.Annotated[
-        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ],
+    user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
 ):
     """
     Upload media (images/videos) for a store listing submission.
@@ -666,13 +644,11 @@ async def upload_submission_media(
     "/submissions/generate_image",
     summary="Generate submission image",
     tags=["store", "private"],
-    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+    dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
 )
 async def generate_image(
     agent_id: str,
-    user_id: typing.Annotated[
-        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ],
+    user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
 ) -> fastapi.responses.Response:
     """
     Generate an image for a store listing submission.
@@ -730,7 +706,6 @@ async def generate_image(
     tags=["store", "public"],
 )
 async def download_agent_file(
-    request: fastapi.Request,
     store_listing_version_id: str = fastapi.Path(
         ..., description="The ID of the agent to download"
     ),
@@ -747,15 +722,7 @@ async def download_agent_file(
     Raises:
         HTTPException: If the agent is not found or an unexpected error occurs.
     """
-    try:
-        user_id = get_user_id(await auth_middleware(request))
-    except fastapi.HTTPException:
-        user_id = None
-
-    graph_data = await backend.server.v2.store.db.get_agent(
-        user_id=user_id,
-        store_listing_version_id=store_listing_version_id,
-    )
+    graph_data = await backend.server.v2.store.db.get_agent(store_listing_version_id)
     file_name = f"agent_{graph_data.id}_v{graph_data.version or 'latest'}.json"
 
     # Sending graph as a stream (similar to marketplace v1)

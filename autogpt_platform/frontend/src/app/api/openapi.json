@@ -2,7 +2,6 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AutoGPT Agent Server",
-    "summary": "AutoGPT Agent Server",
     "description": "This server is used to execute agents that are created by the AutoGPT system.",
     "version": "0.1"
   },
@@ -12,6 +11,7 @@
         "tags": ["v1", "integrations"],
         "summary": "Login",
         "operationId": "getV1Login",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "provider",
@@ -50,6 +50,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -59,6 +62,7 @@
         "tags": ["v1", "integrations"],
         "summary": "Callback",
         "operationId": "postV1Callback",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "provider",
@@ -97,6 +101,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -120,8 +127,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/integrations/{provider}/credentials": {
@@ -129,6 +140,7 @@
         "tags": ["v1", "integrations"],
         "summary": "List Credentials By Provider",
         "operationId": "getV1ListCredentialsByProvider",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "provider",
@@ -163,6 +175,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -170,6 +185,7 @@
         "tags": ["v1", "integrations"],
         "summary": "Create Credentials",
         "operationId": "postV1CreateCredentials",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "provider",
@@ -242,6 +258,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -251,6 +270,7 @@
         "tags": ["v1", "integrations"],
         "summary": "Get Credential",
         "operationId": "getV1GetCredential",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "provider",
@@ -307,6 +327,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -314,6 +337,7 @@
         "tags": ["v1", "integrations"],
         "summary": "Delete Credentials",
         "operationId": "deleteV1DeleteCredentials",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "provider",
@@ -371,6 +395,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -419,6 +446,7 @@
         "tags": ["v1", "integrations"],
         "summary": "Webhook Ping",
         "operationId": "postV1WebhookPing",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "webhook_id",
@@ -439,6 +467,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -457,8 +488,12 @@
                 "schema": { "$ref": "#/components/schemas/AyrshareSSOResponse" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/integrations/providers": {
@@ -566,8 +601,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/analytics/log_raw_analytics": {
@@ -597,8 +636,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/auth/user": {
@@ -610,8 +653,12 @@
           "200": {
             "description": "Successful Response",
             "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/auth/user/email": {
@@ -647,8 +694,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/auth/user/timezone": {
@@ -665,8 +716,12 @@
                 "schema": { "$ref": "#/components/schemas/TimezoneResponse" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       },
       "post": {
         "tags": ["v1", "auth"],
@@ -697,8 +752,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/auth/user/preferences": {
@@ -716,8 +775,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       },
       "post": {
         "tags": ["v1", "auth"],
@@ -751,8 +814,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/onboarding": {
@@ -764,8 +831,12 @@
           "200": {
             "description": "Successful Response",
             "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       },
       "patch": {
         "tags": ["v1", "onboarding"],
@@ -791,8 +862,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/onboarding/agents": {
@@ -804,8 +879,12 @@
           "200": {
             "description": "Successful Response",
             "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/onboarding/enabled": {
@@ -817,8 +896,12 @@
           "200": {
             "description": "Successful Response",
             "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/blocks": {
@@ -838,8 +921,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/blocks/{block_id}/execute": {
@@ -847,6 +934,7 @@
         "tags": ["v1", "blocks"],
         "summary": "Execute graph block",
         "operationId": "postV1Execute graph block",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "block_id",
@@ -887,6 +975,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -897,6 +988,7 @@
         "summary": "Upload file to cloud storage",
         "description": "Upload a file to cloud storage and return a storage key that can be used\nwith FileStoreBlock and AgentFileInputBlock.\n\nArgs:\n    file: The file to upload\n    user_id: The user ID\n    provider: Cloud storage provider (\"gcs\", \"s3\", \"azure\")\n    expiration_hours: Hours until file expires (1-48)\n\nReturns:\n    Dict containing the cloud storage path and signed URL",
         "operationId": "postV1Upload file to cloud storage",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "provider",
@@ -945,6 +1037,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -966,8 +1061,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       },
       "post": {
         "tags": ["v1", "credits"],
@@ -993,8 +1092,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       },
       "patch": {
         "tags": ["v1", "credits"],
@@ -1004,8 +1107,12 @@
           "200": {
             "description": "Successful Response",
             "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/credits/{transaction_key}/refund": {
@@ -1013,6 +1120,7 @@
         "tags": ["v1", "credits"],
         "summary": "Refund credit transaction",
         "operationId": "postV1Refund credit transaction",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "transaction_key",
@@ -1052,6 +1160,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1069,8 +1180,12 @@
                 "schema": { "$ref": "#/components/schemas/AutoTopUpConfig" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       },
       "post": {
         "tags": ["v1", "credits"],
@@ -1103,8 +1218,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/credits/stripe_webhook": {
@@ -1137,8 +1256,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/credits/transactions": {
@@ -1146,6 +1269,7 @@
         "tags": ["v1", "credits"],
         "summary": "Get credit history",
         "operationId": "getV1Get credit history",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "transaction_time",
@@ -1195,6 +1319,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1216,8 +1343,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/graphs": {
@@ -1237,8 +1368,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       },
       "post": {
         "tags": ["v1", "graphs"],
@@ -1268,8 +1403,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/graphs/{graph_id}/versions/{version}": {
@@ -1277,6 +1416,7 @@
         "tags": ["v1", "graphs"],
         "summary": "Get graph version",
         "operationId": "getV1Get graph version",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_id",
@@ -1320,6 +1460,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1329,6 +1472,7 @@
         "tags": ["v1", "graphs"],
         "summary": "Get specific graph",
         "operationId": "getV1Get specific graph",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_id",
@@ -1372,6 +1516,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -1379,6 +1526,7 @@
         "tags": ["v1", "graphs"],
         "summary": "Delete graph permanently",
         "operationId": "deleteV1Delete graph permanently",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_id",
@@ -1403,6 +1551,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -1410,6 +1561,7 @@
         "tags": ["v1", "graphs"],
         "summary": "Update graph version",
         "operationId": "putV1Update graph version",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_id",
@@ -1442,6 +1594,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1451,6 +1606,7 @@
         "tags": ["v1", "graphs"],
         "summary": "Get all graph versions",
         "operationId": "getV1Get all graph versions",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_id",
@@ -1479,6 +1635,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1488,6 +1647,7 @@
         "tags": ["v1", "graphs"],
         "summary": "Set active graph version",
         "operationId": "putV1Set active graph version",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_id",
@@ -1516,6 +1676,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1525,6 +1688,7 @@
         "tags": ["v1", "graphs"],
         "summary": "Execute graph agent",
         "operationId": "postV1Execute graph agent",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_id",
@@ -1565,9 +1729,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ExecuteGraphResponse"
-                }
+                "schema": { "$ref": "#/components/schemas/GraphExecutionMeta" }
               }
             }
           },
@@ -1578,6 +1740,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1587,6 +1752,7 @@
         "tags": ["v1", "graphs"],
         "summary": "Stop graph execution",
         "operationId": "postV1Stop graph execution",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_id",
@@ -1623,6 +1789,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1646,8 +1815,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/graphs/{graph_id}/executions": {
@@ -1655,6 +1828,7 @@
         "tags": ["v1", "graphs"],
         "summary": "List graph executions",
         "operationId": "getV1List graph executions",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_id",
@@ -1708,6 +1882,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1717,6 +1894,7 @@
         "tags": ["v1", "graphs"],
         "summary": "Get execution details",
         "operationId": "getV1Get execution details",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_id",
@@ -1753,6 +1931,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1762,6 +1943,7 @@
         "tags": ["v1", "graphs"],
         "summary": "Delete graph execution",
         "operationId": "deleteV1Delete graph execution",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_exec_id",
@@ -1779,6 +1961,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1788,6 +1973,7 @@
         "tags": ["v1", "schedules"],
         "summary": "Create execution schedule",
         "operationId": "postV1Create execution schedule",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_id",
@@ -1829,6 +2015,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -1836,6 +2025,7 @@
         "tags": ["v1", "schedules"],
         "summary": "List execution schedules for a graph",
         "operationId": "getV1List execution schedules for a graph",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_id",
@@ -1866,6 +2056,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1889,8 +2082,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/schedules/{schedule_id}": {
@@ -1898,6 +2095,7 @@
         "tags": ["v1", "schedules"],
         "summary": "Delete execution schedule",
         "operationId": "deleteV1Delete execution schedule",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "schedule_id",
@@ -1931,6 +2129,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -1963,8 +2164,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       },
       "post": {
         "tags": ["v1", "api-keys"],
@@ -1997,8 +2202,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/api-keys/{key_id}": {
@@ -2007,6 +2216,7 @@
         "summary": "Get specific API key",
         "description": "Get a specific API key",
         "operationId": "getV1Get specific api key",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "key_id",
@@ -2031,6 +2241,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -2039,6 +2252,7 @@
         "summary": "Revoke API key",
         "description": "Revoke an API key",
         "operationId": "deleteV1Revoke api key",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "key_id",
@@ -2063,6 +2277,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2073,6 +2290,7 @@
         "summary": "Suspend API key",
         "description": "Suspend an API key",
         "operationId": "postV1Suspend api key",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "key_id",
@@ -2097,6 +2315,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2107,6 +2328,7 @@
         "summary": "Update key permissions",
         "description": "Update API key permissions",
         "operationId": "putV1Update key permissions",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "key_id",
@@ -2141,6 +2363,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2159,8 +2384,12 @@
                 "schema": { "$ref": "#/components/schemas/ProfileDetails" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       },
       "post": {
         "tags": ["v2", "store", "private"],
@@ -2191,8 +2420,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/store/agents": {
@@ -2327,6 +2560,7 @@
         "summary": "Get agent graph",
         "description": "Get Agent Graph from Store Listing Version ID.",
         "operationId": "getV2Get agent graph",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "store_listing_version_id",
@@ -2347,6 +2581,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2357,6 +2594,7 @@
         "summary": "Get agent by version",
         "description": "Get Store Agent Details from Store Listing Version ID.",
         "operationId": "getV2Get agent by version",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "store_listing_version_id",
@@ -2381,6 +2619,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2391,6 +2632,7 @@
         "summary": "Create agent review",
         "description": "Create a review for a store agent.\n\nArgs:\n    username: Creator's username\n    agent_name: Name/slug of the agent\n    review: Review details including score and optional comments\n    user_id: ID of authenticated user creating the review\n\nReturns:\n    The created review",
         "operationId": "postV2Create agent review",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "username",
@@ -2429,6 +2671,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2540,6 +2785,7 @@
         "tags": ["v2", "store", "private"],
         "summary": "Get my agents",
         "operationId": "getV2Get my agents",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "page",
@@ -2580,6 +2826,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2590,6 +2839,7 @@
         "summary": "Delete store submission",
         "description": "Delete a store listing submission.\n\nArgs:\n    user_id (str): ID of the authenticated user\n    submission_id (str): ID of the submission to be deleted\n\nReturns:\n    bool: True if the submission was successfully deleted, False otherwise",
         "operationId": "deleteV2Delete store submission",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "submission_id",
@@ -2617,6 +2867,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2627,6 +2880,7 @@
         "summary": "List my submissions",
         "description": "Get a paginated list of store submissions for the authenticated user.\n\nArgs:\n    user_id (str): ID of the authenticated user\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of submissions per page. Defaults to 20.\n\nReturns:\n    StoreListingsResponse: Paginated list of store submissions\n\nRaises:\n    HTTPException: If page or page_size are less than 1",
         "operationId": "getV2List my submissions",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "page",
@@ -2659,6 +2913,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -2667,6 +2924,7 @@
         "summary": "Create store submission",
         "description": "Create a new store listing submission.\n\nArgs:\n    submission_request (StoreSubmissionRequest): The submission details\n    user_id (str): ID of the authenticated user submitting the listing\n\nReturns:\n    StoreSubmission: The created store submission\n\nRaises:\n    HTTPException: If there is an error creating the submission",
         "operationId": "postV2Create store submission",
+        "security": [{ "HTTPBearerJWT": [] }],
         "requestBody": {
           "required": true,
           "content": {
@@ -2693,6 +2951,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2703,6 +2964,7 @@
         "summary": "Edit store submission",
         "description": "Edit an existing store listing submission.\n\nArgs:\n    store_listing_version_id (str): ID of the store listing version to edit\n    submission_request (StoreSubmissionRequest): The updated submission details\n    user_id (str): ID of the authenticated user editing the listing\n\nReturns:\n    StoreSubmission: The updated store submission\n\nRaises:\n    HTTPException: If there is an error editing the submission",
         "operationId": "putV2Edit store submission",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "store_listing_version_id",
@@ -2737,6 +2999,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2769,8 +3034,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/store/submissions/generate_image": {
@@ -2779,6 +3048,7 @@
         "summary": "Generate submission image",
         "description": "Generate an image for a store listing submission.\n\nArgs:\n    agent_id (str): ID of the agent to generate an image for\n    user_id (str): ID of the authenticated user\n\nReturns:\n    JSONResponse: JSON containing the URL of the generated image",
         "operationId": "postV2Generate submission image",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "agent_id",
@@ -2799,6 +3069,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2852,8 +3125,12 @@
                 "schema": { "$ref": "#/components/schemas/SuggestionsResponse" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/builder/categories": {
@@ -2862,6 +3139,7 @@
         "summary": "Get Builder block categories",
         "description": "Get all block categories with a specified number of blocks per category.",
         "operationId": "getV2Get builder block categories",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "blocks_per_category",
@@ -2896,6 +3174,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2906,6 +3187,7 @@
         "summary": "Get Builder blocks",
         "description": "Get blocks based on either category, type, or provider.",
         "operationId": "getV2Get builder blocks",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "category",
@@ -2975,6 +3257,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -2985,6 +3270,7 @@
         "summary": "Get Builder integration providers",
         "description": "Get all integration providers with their block counts.",
         "operationId": "getV2Get builder integration providers",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "page",
@@ -3015,6 +3301,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3049,8 +3338,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/builder/counts": {
@@ -3067,8 +3360,12 @@
                 "schema": { "$ref": "#/components/schemas/CountResponse" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/store/admin/listings": {
@@ -3077,6 +3374,7 @@
         "summary": "Get Admin Listings History",
         "description": "Get store listings with their version history for admins.\n\nThis provides a consolidated view of listings with their versions,\nallowing for an expandable UI in the admin dashboard.\n\nArgs:\n    status: Filter by submission status (PENDING, APPROVED, REJECTED)\n    search: Search by name, description, or user email\n    page: Page number for pagination\n    page_size: Number of items per page\n\nReturns:\n    StoreListingsWithVersionsResponse with listings and their versions",
         "operationId": "getV2Get admin listings history",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "status",
@@ -3130,6 +3428,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3138,8 +3439,9 @@
       "post": {
         "tags": ["v2", "admin", "store", "admin"],
         "summary": "Review Store Submission",
-        "description": "Review a store listing submission.\n\nArgs:\n    store_listing_version_id: ID of the submission to review\n    request: Review details including approval status and comments\n    user: Authenticated admin user performing the review\n\nReturns:\n    StoreSubmission with updated review information",
+        "description": "Review a store listing submission.\n\nArgs:\n    store_listing_version_id: ID of the submission to review\n    request: Review details including approval status and comments\n    user_id: Authenticated admin user performing the review\n\nReturns:\n    StoreSubmission with updated review information",
         "operationId": "postV2Review store submission",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "store_listing_version_id",
@@ -3174,6 +3476,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3184,6 +3489,7 @@
         "summary": "Admin Download Agent File",
         "description": "Download the agent file by streaming its content.\n\nArgs:\n    store_listing_version_id (str): The ID of the agent to download\n\nReturns:\n    StreamingResponse: A streaming response containing the agent's graph data.\n\nRaises:\n    HTTPException: If the agent is not found or an unexpected error occurs.",
         "operationId": "getV2Admin download agent file",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "store_listing_version_id",
@@ -3209,6 +3515,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3246,8 +3555,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/credits/admin/users_history": {
@@ -3255,6 +3568,7 @@
         "tags": ["v2", "admin", "credits", "admin"],
         "summary": "Get All Users History",
         "operationId": "getV2Get all users history",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "search",
@@ -3306,6 +3620,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3316,6 +3633,7 @@
         "summary": "List presets",
         "description": "Retrieve a paginated list of presets for the current user.",
         "operationId": "getV2List presets",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "page",
@@ -3369,6 +3687,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -3377,6 +3698,7 @@
         "summary": "Create a new preset",
         "description": "Create a new preset for the current user.",
         "operationId": "postV2Create a new preset",
+        "security": [{ "HTTPBearerJWT": [] }],
         "requestBody": {
           "required": true,
           "content": {
@@ -3411,6 +3733,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3421,6 +3746,7 @@
         "summary": "Get a specific preset",
         "description": "Retrieve details for a specific preset by its ID.",
         "operationId": "getV2Get a specific preset",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "preset_id",
@@ -3445,6 +3771,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -3453,6 +3782,7 @@
         "summary": "Update an existing preset",
         "description": "Update an existing preset by its ID.",
         "operationId": "patchV2Update an existing preset",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "preset_id",
@@ -3487,6 +3817,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -3495,6 +3828,7 @@
         "summary": "Delete a preset",
         "description": "Delete an existing preset by its ID.",
         "operationId": "deleteV2Delete a preset",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "preset_id",
@@ -3512,6 +3846,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3548,8 +3885,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/library/presets/{preset_id}/execute": {
@@ -3558,6 +3899,7 @@
         "summary": "Execute a preset",
         "description": "Execute a preset with the given graph and node input for the current user.",
         "operationId": "postV2Execute a preset",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "preset_id",
@@ -3580,11 +3922,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Postv2Execute A Preset"
-                }
+                "schema": { "$ref": "#/components/schemas/GraphExecutionMeta" }
               }
             }
           },
@@ -3595,6 +3933,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3605,6 +3946,7 @@
         "summary": "List Library Agents",
         "description": "Get all agents in the user's library (both created and saved).\n\nArgs:\n    user_id: ID of the authenticated user.\n    search_term: Optional search term to filter agents by name/description.\n    filter_by: List of filters to apply (favorites, created by user).\n    sort_by: List of sorting criteria (created date, updated date).\n    page: Page number to retrieve.\n    page_size: Number of agents per page.\n\nReturns:\n    A LibraryAgentResponse containing agents and pagination metadata.\n\nRaises:\n    HTTPException: If a server/database error occurs.",
         "operationId": "getV2List library agents",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "search_term",
@@ -3677,6 +4019,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -3685,6 +4030,7 @@
         "summary": "Add Marketplace Agent",
         "description": "Add an agent from the marketplace to the user's library.\n\nArgs:\n    store_listing_version_id: ID of the store listing version to add.\n    user_id: ID of the authenticated user.\n\nReturns:\n    library_model.LibraryAgent: Agent added to the library\n\nRaises:\n    HTTPException(404): If the listing version is not found.\n    HTTPException(500): If a server/database error occurs.",
         "operationId": "postV2Add marketplace agent",
+        "security": [{ "HTTPBearerJWT": [] }],
         "requestBody": {
           "required": true,
           "content": {
@@ -3713,6 +4059,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3722,6 +4071,7 @@
         "tags": ["v2", "library", "private"],
         "summary": "Get Library Agent",
         "operationId": "getV2Get library agent",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "library_agent_id",
@@ -3746,6 +4096,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -3754,6 +4107,7 @@
         "summary": "Update Library Agent",
         "description": "Update the library agent with the given fields.\n\nArgs:\n    library_agent_id: ID of the library agent to update.\n    payload: Fields to update (auto_update_version, is_favorite, etc.).\n    user_id: ID of the authenticated user.\n\nRaises:\n    HTTPException(500): If a server/database error occurs.",
         "operationId": "patchV2Update library agent",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "library_agent_id",
@@ -3789,6 +4143,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       },
@@ -3797,6 +4154,7 @@
         "summary": "Delete Library Agent",
         "description": "Soft-delete the specified library agent.\n\nArgs:\n    library_agent_id: ID of the library agent to delete.\n    user_id: ID of the authenticated user.\n\nReturns:\n    204 No Content if successful.\n\nRaises:\n    HTTPException(404): If the agent does not exist.\n    HTTPException(500): If a server/database error occurs.",
         "operationId": "deleteV2Delete library agent",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "library_agent_id",
@@ -3820,6 +4178,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3829,6 +4190,7 @@
         "tags": ["v2", "library", "private"],
         "summary": "Get Library Agent By Graph Id",
         "operationId": "getV2GetLibraryAgentByGraphId",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "graph_id",
@@ -3862,6 +4224,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3872,6 +4237,7 @@
         "summary": "Get Agent By Store ID",
         "description": "Get Library Agent from Store Listing Version ID.",
         "operationId": "getV2Get agent by store id",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "store_listing_version_id",
@@ -3902,6 +4268,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3911,6 +4280,7 @@
         "tags": ["v2", "library", "private"],
         "summary": "Fork Library Agent",
         "operationId": "postV2Fork library agent",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "library_agent_id",
@@ -3935,6 +4305,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -3969,8 +4342,12 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/turnstile/verify": {
@@ -4092,7 +4469,7 @@
             }
           }
         },
-        "security": [{ "APIKeyHeader": [] }]
+        "security": [{ "APIKeyAuthenticator-X-Postmark-Webhook-Token": [] }]
       }
     },
     "/health": {
@@ -4277,6 +4654,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
+          },
           "nodes": {
             "items": { "$ref": "#/components/schemas/Node" },
             "type": "array",
@@ -4313,6 +4694,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
+          },
           "nodes": {
             "items": { "$ref": "#/components/schemas/Node" },
             "type": "array",
@@ -4349,6 +4734,13 @@
             "type": "boolean",
             "title": "Has External Trigger",
             "readOnly": true
+          },
+          "trigger_setup_info": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/GraphTriggerInfo" },
+              { "type": "null" }
+            ],
+            "readOnly": true
           }
         },
         "type": "object",
@@ -4357,7 +4749,8 @@
           "description",
           "input_schema",
           "output_schema",
-          "has_external_trigger"
+          "has_external_trigger",
+          "trigger_setup_info"
         ],
         "title": "BaseGraph"
       },
@@ -4366,7 +4759,7 @@
           "name": { "type": "string", "title": "Name" },
           "total_blocks": { "type": "integer", "title": "Total Blocks" },
           "blocks": {
-            "items": { "additionalProperties": true, "type": "object" },
+            "items": { "$ref": "#/components/schemas/BlockInfo" },
             "type": "array",
             "title": "Blocks"
           }
@@ -4375,10 +4768,80 @@
         "required": ["name", "total_blocks", "blocks"],
         "title": "BlockCategoryResponse"
       },
+      "BlockCost": {
+        "properties": {
+          "cost_amount": { "type": "integer", "title": "Cost Amount" },
+          "cost_filter": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Cost Filter"
+          },
+          "cost_type": { "$ref": "#/components/schemas/BlockCostType" }
+        },
+        "type": "object",
+        "required": ["cost_amount", "cost_filter", "cost_type"],
+        "title": "BlockCost"
+      },
+      "BlockCostType": {
+        "type": "string",
+        "enum": ["run", "byte", "second"],
+        "title": "BlockCostType"
+      },
+      "BlockInfo": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "inputSchema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Inputschema"
+          },
+          "outputSchema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Outputschema"
+          },
+          "costs": {
+            "items": { "$ref": "#/components/schemas/BlockCost" },
+            "type": "array",
+            "title": "Costs"
+          },
+          "description": { "type": "string", "title": "Description" },
+          "categories": {
+            "items": {
+              "additionalProperties": { "type": "string" },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Categories"
+          },
+          "contributors": {
+            "items": { "additionalProperties": true, "type": "object" },
+            "type": "array",
+            "title": "Contributors"
+          },
+          "staticOutput": { "type": "boolean", "title": "Staticoutput" },
+          "uiType": { "type": "string", "title": "Uitype" }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "inputSchema",
+          "outputSchema",
+          "costs",
+          "description",
+          "categories",
+          "contributors",
+          "staticOutput",
+          "uiType"
+        ],
+        "title": "BlockInfo"
+      },
       "BlockResponse": {
         "properties": {
           "blocks": {
-            "items": { "additionalProperties": true, "type": "object" },
+            "items": { "$ref": "#/components/schemas/BlockInfo" },
             "type": "array",
             "title": "Blocks"
           },
@@ -4472,6 +4935,13 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Inputs"
+          },
+          "credential_inputs": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CredentialsMetaInput"
+            },
+            "type": "object",
+            "title": "Credential Inputs"
           }
         },
         "type": "object",
@@ -4752,14 +5222,6 @@
         "required": ["url", "relevance_score"],
         "title": "Document"
       },
-      "ExecuteGraphResponse": {
-        "properties": {
-          "graph_exec_id": { "type": "string", "title": "Graph Exec Id" }
-        },
-        "type": "object",
-        "required": ["graph_exec_id"],
-        "title": "ExecuteGraphResponse"
-      },
       "Graph": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -4771,6 +5233,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
+          },
           "nodes": {
             "items": { "$ref": "#/components/schemas/Node" },
             "type": "array",
@@ -4808,6 +5274,36 @@
           "user_id": { "type": "string", "title": "User Id" },
           "graph_id": { "type": "string", "title": "Graph Id" },
           "graph_version": { "type": "integer", "title": "Graph Version" },
+          "inputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Inputs"
+          },
+          "credential_inputs": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/CredentialsMetaInput"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Credential Inputs"
+          },
+          "nodes_input_masks": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Nodes Input Masks"
+          },
           "preset_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Preset Id"
@@ -4829,11 +5325,6 @@
               { "type": "null" }
             ]
           },
-          "inputs": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Inputs"
-          },
           "outputs": {
             "additionalProperties": { "items": {}, "type": "array" },
             "type": "object",
@@ -4846,11 +5337,14 @@
           "user_id",
           "graph_id",
           "graph_version",
+          "inputs",
+          "credential_inputs",
+          "nodes_input_masks",
+          "preset_id",
           "status",
           "started_at",
           "ended_at",
           "stats",
-          "inputs",
           "outputs"
         ],
         "title": "GraphExecution"
@@ -4896,6 +5390,38 @@
           "user_id": { "type": "string", "title": "User Id" },
           "graph_id": { "type": "string", "title": "Graph Id" },
           "graph_version": { "type": "integer", "title": "Graph Version" },
+          "inputs": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Inputs"
+          },
+          "credential_inputs": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/CredentialsMetaInput"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Credential Inputs"
+          },
+          "nodes_input_masks": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Nodes Input Masks"
+          },
           "preset_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Preset Id"
@@ -4924,6 +5450,10 @@
           "user_id",
           "graph_id",
           "graph_version",
+          "inputs",
+          "credential_inputs",
+          "nodes_input_masks",
+          "preset_id",
           "status",
           "started_at",
           "ended_at",
@@ -4937,6 +5467,36 @@
           "user_id": { "type": "string", "title": "User Id" },
           "graph_id": { "type": "string", "title": "Graph Id" },
           "graph_version": { "type": "integer", "title": "Graph Version" },
+          "inputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Inputs"
+          },
+          "credential_inputs": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/CredentialsMetaInput"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Credential Inputs"
+          },
+          "nodes_input_masks": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Nodes Input Masks"
+          },
           "preset_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Preset Id"
@@ -4957,11 +5517,6 @@
               { "$ref": "#/components/schemas/Stats" },
               { "type": "null" }
             ]
-          },
-          "inputs": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Inputs"
           },
           "outputs": {
             "additionalProperties": { "items": {}, "type": "array" },
@@ -4980,11 +5535,14 @@
           "user_id",
           "graph_id",
           "graph_version",
+          "inputs",
+          "credential_inputs",
+          "nodes_input_masks",
+          "preset_id",
           "status",
           "started_at",
           "ended_at",
           "stats",
-          "inputs",
           "outputs",
           "node_executions"
         ],
@@ -5015,6 +5573,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
+          },
           "forked_from_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Forked From Id"
@@ -5047,6 +5609,13 @@
             "title": "Has External Trigger",
             "readOnly": true
           },
+          "trigger_setup_info": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/GraphTriggerInfo" },
+              { "type": "null" }
+            ],
+            "readOnly": true
+          },
           "credentials_input_schema": {
             "additionalProperties": true,
             "type": "object",
@@ -5062,6 +5631,7 @@
           "input_schema",
           "output_schema",
           "has_external_trigger",
+          "trigger_setup_info",
           "credentials_input_schema"
         ],
         "title": "GraphMeta"
@@ -5077,6 +5647,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
+          },
           "nodes": {
             "items": { "$ref": "#/components/schemas/NodeModel" },
             "type": "array",
@@ -5121,6 +5695,13 @@
             "title": "Has External Trigger",
             "readOnly": true
           },
+          "trigger_setup_info": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/GraphTriggerInfo" },
+              { "type": "null" }
+            ],
+            "readOnly": true
+          },
           "credentials_input_schema": {
             "additionalProperties": true,
             "type": "object",
@@ -5136,9 +5717,32 @@
           "input_schema",
           "output_schema",
           "has_external_trigger",
+          "trigger_setup_info",
           "credentials_input_schema"
         ],
         "title": "GraphModel"
+      },
+      "GraphTriggerInfo": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "Provider name for integrations. Can be any string value, including custom provider names."
+          },
+          "config_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Config Schema",
+            "description": "Input schema for the trigger block"
+          },
+          "credentials_input_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credentials Input Name"
+          }
+        },
+        "type": "object",
+        "required": ["provider", "config_schema", "credentials_input_name"],
+        "title": "GraphTriggerInfo"
       },
       "HTTPValidationError": {
         "properties": {
@@ -5262,7 +5866,7 @@
           },
           "trigger_setup_info": {
             "anyOf": [
-              { "$ref": "#/components/schemas/LibraryAgentTriggerInfo" },
+              { "$ref": "#/components/schemas/GraphTriggerInfo" },
               { "type": "null" }
             ]
           },
@@ -5274,6 +5878,10 @@
           "is_latest_version": {
             "type": "boolean",
             "title": "Is Latest Version"
+          },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
           }
         },
         "type": "object",
@@ -5332,6 +5940,12 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "webhook": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/Webhook" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -5344,7 +5958,8 @@
           "description",
           "id",
           "user_id",
-          "updated_at"
+          "updated_at",
+          "webhook"
         ],
         "title": "LibraryAgentPreset",
         "description": "Represents a preset configuration for a library agent."
@@ -5485,28 +6100,6 @@
         "enum": ["COMPLETED", "HEALTHY", "WAITING", "ERROR"],
         "title": "LibraryAgentStatus"
       },
-      "LibraryAgentTriggerInfo": {
-        "properties": {
-          "provider": {
-            "type": "string",
-            "title": "Provider",
-            "description": "Provider name for integrations. Can be any string value, including custom provider names."
-          },
-          "config_schema": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Config Schema",
-            "description": "Input schema for the trigger block"
-          },
-          "credentials_input_name": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Credentials Input Name"
-          }
-        },
-        "type": "object",
-        "required": ["provider", "config_schema", "credentials_input_name"],
-        "title": "LibraryAgentTriggerInfo"
-      },
       "LibraryAgentUpdateRequest": {
         "properties": {
           "auto_update_version": {
@@ -5596,6 +6189,10 @@
             "type": "string",
             "format": "date-time",
             "title": "Last Edited"
+          },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
           }
         },
         "type": "object",
@@ -6319,7 +6916,16 @@
             "additionalProperties": { "type": "string" },
             "type": "object",
             "title": "Provider Names",
-            "description": "All available provider names as a constant mapping"
+            "description": "All available provider names as a constant mapping",
+            "examples": [
+              {
+                "ANTHROPIC": "anthropic",
+                "EXA": "exa",
+                "EXAMPLE_SERVICE": "example-service",
+                "GEM": "gem",
+                "OPENAI": "openai"
+              }
+            ]
           }
         },
         "type": "object",
@@ -6503,7 +7109,7 @@
           "items": {
             "items": {
               "anyOf": [
-                { "additionalProperties": true, "type": "object" },
+                { "$ref": "#/components/schemas/BlockInfo" },
                 { "$ref": "#/components/schemas/LibraryAgent" },
                 { "$ref": "#/components/schemas/StoreAgent" }
               ]
@@ -6661,6 +7267,10 @@
             "type": "string",
             "format": "date-time",
             "title": "Last Updated"
+          },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
           },
           "active_version_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -6892,6 +7502,10 @@
           "changes_summary": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Changes Summary"
+          },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
           }
         },
         "type": "object",
@@ -6929,6 +7543,10 @@
           "changes_summary": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Changes Summary"
+          },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
           }
         },
         "type": "object",
@@ -6980,7 +7598,7 @@
             "title": "Providers"
           },
           "top_blocks": {
-            "items": { "additionalProperties": true, "type": "object" },
+            "items": { "$ref": "#/components/schemas/BlockInfo" },
             "type": "array",
             "title": "Top Blocks"
           }
@@ -8589,10 +9207,28 @@
       }
     },
     "securitySchemes": {
-      "APIKeyHeader": {
+      "HTTPBearerJWT": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "jwt"
+      },
+      "APIKeyAuthenticator-X-Postmark-Webhook-Token": {
         "type": "apiKey",
         "in": "header",
         "name": "X-Postmark-Webhook-Token"
+      }
+    },
+    "responses": {
+      "HTTP401NotAuthenticatedError": {
+        "description": "Authentication required",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": { "detail": { "type": "string" } }
+            }
+          }
+        }
       }
     }
   }

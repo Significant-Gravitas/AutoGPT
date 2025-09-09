@@ -1,7 +1,6 @@
 import datetime
 import json
 
-import autogpt_libs.auth as autogpt_auth_lib
 import fastapi.testclient
 import pytest
 import pytest_mock
@@ -19,24 +18,21 @@ client = fastapi.testclient.TestClient(app)
 FIXED_NOW = datetime.datetime(2023, 1, 1, 0, 0, 0)
 
 
-def override_auth_middleware():
-    """Override auth middleware for testing"""
-    return {"sub": "test-user-id"}
+@pytest.fixture(autouse=True)
+def setup_app_auth(mock_jwt_user):
+    """Setup auth overrides for all tests in this module"""
+    from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
-
-def override_get_user_id():
-    """Override get_user_id for testing"""
-    return "test-user-id"
-
-
-app.dependency_overrides[autogpt_auth_lib.auth_middleware] = override_auth_middleware
-app.dependency_overrides[autogpt_auth_lib.depends.get_user_id] = override_get_user_id
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    yield
+    app.dependency_overrides.clear()
 
 
 @pytest.mark.asyncio
 async def test_get_library_agents_success(
     mocker: pytest_mock.MockFixture,
     snapshot: Snapshot,
+    test_user_id: str,
 ) -> None:
     mocked_value = library_model.LibraryAgentResponse(
         agents=[
@@ -54,6 +50,7 @@ async def test_get_library_agents_success(
                 credentials_input_schema={"type": "object", "properties": {}},
                 has_external_trigger=False,
                 status=library_model.LibraryAgentStatus.COMPLETED,
+                recommended_schedule_cron=None,
                 new_output=False,
                 can_access_graph=True,
                 is_latest_version=True,
@@ -73,6 +70,7 @@ async def test_get_library_agents_success(
                 credentials_input_schema={"type": "object", "properties": {}},
                 has_external_trigger=False,
                 status=library_model.LibraryAgentStatus.COMPLETED,
+                recommended_schedule_cron=None,
                 new_output=False,
                 can_access_graph=False,
                 is_latest_version=True,
@@ -100,7 +98,7 @@ async def test_get_library_agents_success(
     snapshot.assert_match(json.dumps(response.json(), indent=2), "lib_agts_search")
 
     mock_db_call.assert_called_once_with(
-        user_id="test-user-id",
+        user_id=test_user_id,
         search_term="test",
         sort_by=library_model.LibraryAgentSort.UPDATED_AT,
         page=1,
@@ -108,14 +106,14 @@ async def test_get_library_agents_success(
     )
 
 
-def test_get_library_agents_error(mocker: pytest_mock.MockFixture):
+def test_get_library_agents_error(mocker: pytest_mock.MockFixture, test_user_id: str):
     mock_db_call = mocker.patch("backend.server.v2.library.db.list_library_agents")
     mock_db_call.side_effect = Exception("Test error")
 
     response = client.get("/agents?search_term=test")
     assert response.status_code == 500
     mock_db_call.assert_called_once_with(
-        user_id="test-user-id",
+        user_id=test_user_id,
         search_term="test",
         sort_by=library_model.LibraryAgentSort.UPDATED_AT,
         page=1,
@@ -123,7 +121,9 @@ def test_get_library_agents_error(mocker: pytest_mock.MockFixture):
     )
 
 
-def test_add_agent_to_library_success(mocker: pytest_mock.MockFixture):
+def test_add_agent_to_library_success(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+):
     mock_library_agent = library_model.LibraryAgent(
         id="test-library-agent-id",
         graph_id="test-agent-1",
@@ -160,11 +160,11 @@ def test_add_agent_to_library_success(mocker: pytest_mock.MockFixture):
     assert data.graph_id == "test-agent-1"
 
     mock_db_call.assert_called_once_with(
-        store_listing_version_id="test-version-id", user_id="test-user-id"
+        store_listing_version_id="test-version-id", user_id=test_user_id
     )
 
 
-def test_add_agent_to_library_error(mocker: pytest_mock.MockFixture):
+def test_add_agent_to_library_error(mocker: pytest_mock.MockFixture, test_user_id: str):
     mock_db_call = mocker.patch(
         "backend.server.v2.library.db.add_store_agent_to_library"
     )
@@ -176,5 +176,5 @@ def test_add_agent_to_library_error(mocker: pytest_mock.MockFixture):
     assert response.status_code == 500
     assert "detail" in response.json()  # Verify error response structure
     mock_db_call.assert_called_once_with(
-        store_listing_version_id="test-version-id", user_id="test-user-id"
+        store_listing_version_id="test-version-id", user_id=test_user_id
     )

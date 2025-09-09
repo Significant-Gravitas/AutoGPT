@@ -65,8 +65,11 @@ export const SchedulesTable = ({
   const [selectedFilter, setSelectedFilter] = useState<string>(""); // Graph ID
 
   // Get user's timezone for displaying schedule times
-  const { data: timezoneData } = useGetV1GetUserTimezone();
-  const userTimezone = timezoneData?.data?.timezone || "UTC";
+  const { data: userTimezone } = useGetV1GetUserTimezone({
+    query: {
+      select: (res) => (res.status === 200 ? res.data.timezone : "UTC"),
+    },
+  });
 
   const filteredAndSortedSchedules = [...schedules]
     .filter(
@@ -259,7 +262,7 @@ export const SchedulesTable = ({
                   </TableCell>
                   <TableCell>
                     <span className="text-sm text-muted-foreground">
-                      {getTimezoneAbbreviation(userTimezone)}
+                      {userTimezone && getTimezoneAbbreviation(userTimezone)}
                     </span>
                   </TableCell>
                   <TableCell>

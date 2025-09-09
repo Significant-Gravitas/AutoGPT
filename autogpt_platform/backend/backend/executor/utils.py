@@ -4,20 +4,27 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future
-from typing import Any, Optional
+from typing import Any, Mapping, Optional, cast
 
 from pydantic import BaseModel, JsonValue, ValidationError
 
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
-from backend.data.block import Block, BlockData, BlockInput, BlockType, get_block
+from backend.data.block import (
+    Block,
+    BlockCostType,
+    BlockInput,
+    BlockOutputEntry,
+    BlockType,
+    get_block,
+)
 from backend.data.block_cost_config import BLOCK_COSTS
-from backend.data.cost import BlockCostType
 from backend.data.db import prisma
 from backend.data.execution import (
     ExecutionStatus,
     GraphExecutionStats,
     GraphExecutionWithNodes,
+    NodesInputMasks,
     UserContext,
 )
 from backend.data.graph import GraphModel, Node
@@ -239,7 +246,7 @@ def _tokenise(path: str) -> list[tuple[str, str]] | None:
 # --------------------------------------------------------------------------- #
 
 
-def parse_execution_output(output: BlockData, name: str) -> Any | None:
+def parse_execution_output(output: BlockOutputEntry, name: str) -> JsonValue | None:
     """
     Retrieve a nested value out of `output` using the flattened *name*.
 
@@ -263,7 +270,7 @@ def parse_execution_output(output: BlockData, name: str) -> Any | None:
     if tokens is None:
         return None
 
-    cur: Any = data
+    cur: JsonValue = data
     for delim, ident in tokens:
         if delim == LIST_SPLIT:
             # list[index]
@@ -428,7 +435,7 @@ def validate_exec(
 async def _validate_node_input_credentials(
     graph: GraphModel,
     user_id: str,
-    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+    nodes_input_masks: Optional[NodesInputMasks] = None,
 ) -> dict[str, dict[str, str]]:
     """
     Checks all credentials for all nodes of the graph and returns structured errors.
@@ -508,8 +515,8 @@ async def _validate_node_input_credentials(
 
 def make_node_credentials_input_map(
     graph: GraphModel,
-    graph_credentials_input: dict[str, CredentialsMetaInput],
-) -> dict[str, dict[str, JsonValue]]:
+    graph_credentials_input: Mapping[str, CredentialsMetaInput],
+) -> NodesInputMasks:
     """
     Maps credentials for an execution to the correct nodes.
 
@@ -544,8 +551,8 @@ def make_node_credentials_input_map(
 async def validate_graph_with_credentials(
     graph: GraphModel,
     user_id: str,
-    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
-) -> dict[str, dict[str, str]]:
+    nodes_input_masks: Optional[NodesInputMasks] = None,
+) -> Mapping[str, Mapping[str, str]]:
     """
     Validate graph including credentials and return structured errors per node.
 
@@ -575,7 +582,7 @@ async def _construct_starting_node_execution_input(
     graph: GraphModel,
     user_id: str,
     graph_inputs: BlockInput,
-    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+    nodes_input_masks: Optional[NodesInputMasks] = None,
 ) -> list[tuple[str, BlockInput]]:
     """
     Validates and prepares the input data for executing a graph.
@@ -616,7 +623,7 @@ async def _construct_starting_node_execution_input(
 
         # Extract request input data, and assign it to the input pin.
         if block.block_type == BlockType.INPUT:
-            input_name = node.input_default.get("name")
+            input_name = cast(str | None, node.input_default.get("name"))
             if input_name and input_name in graph_inputs:
                 input_data = {"value": graph_inputs[input_name]}
 
@@ -643,9 +650,9 @@ async def validate_and_construct_node_execution_input(
     user_id: str,
     graph_inputs: BlockInput,
     graph_version: Optional[int] = None,
-    graph_credentials_inputs: Optional[dict[str, CredentialsMetaInput]] = None,
-    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
-) -> tuple[GraphModel, list[tuple[str, BlockInput]], dict[str, dict[str, JsonValue]]]:
+    graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
+    nodes_input_masks: Optional[NodesInputMasks] = None,
+) -> tuple[GraphModel, list[tuple[str, BlockInput]], NodesInputMasks]:
     """
     Public wrapper that handles graph fetching, credential mapping, and validation+construction.
     This centralizes the logic used by both scheduler validation and actual execution.
@@ -659,7 +666,9 @@ async def validate_and_construct_node_execution_input(
         nodes_input_masks: Node inputs to use.
 
     Returns:
-        tuple[GraphModel, list[tuple[str, BlockInput]]]: Graph model and list of tuples for node execution input.
+        GraphModel: Full graph object for the given `graph_id`.
+        list[tuple[node_id, BlockInput]]: Starting node IDs with corresponding inputs.
+        dict[str, BlockInput]: Node input masks including all passed-in credentials.
 
     Raises:
         NotFoundError: If the graph is not found.
@@ -700,11 +709,11 @@ async def validate_and_construct_node_execution_input(
 
 
 def _merge_nodes_input_masks(
-    overrides_map_1: dict[str, dict[str, JsonValue]],
-    overrides_map_2: dict[str, dict[str, JsonValue]],
-) -> dict[str, dict[str, JsonValue]]:
+    overrides_map_1: NodesInputMasks,
+    overrides_map_2: NodesInputMasks,
+) -> NodesInputMasks:
     """Perform a per-node merge of input overrides"""
-    result = overrides_map_1.copy()
+    result = dict(overrides_map_1).copy()
     for node_id, overrides2 in overrides_map_2.items():
         if node_id in result:
             result[node_id] = {**result[node_id], **overrides2}
@@ -854,8 +863,8 @@ async def add_graph_execution(
     inputs: Optional[BlockInput] = None,
     preset_id: Optional[str] = None,
     graph_version: Optional[int] = None,
-    graph_credentials_inputs: Optional[dict[str, CredentialsMetaInput]] = None,
-    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+    graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
+    nodes_input_masks: Optional[NodesInputMasks] = None,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
@@ -879,7 +888,7 @@ async def add_graph_execution(
     else:
         edb = get_database_manager_async_client()
 
-    graph, starting_nodes_input, nodes_input_masks = (
+    graph, starting_nodes_input, compiled_nodes_input_masks = (
         await validate_and_construct_node_execution_input(
             graph_id=graph_id,
             user_id=user_id,
@@ -892,10 +901,15 @@ async def add_graph_execution(
     graph_exec = None
 
     try:
+        # Sanity check: running add_graph_execution with the properties of
+        # the graph_exec created here should create the same execution again.
         graph_exec = await edb.create_graph_execution(
             user_id=user_id,
             graph_id=graph_id,
             graph_version=graph.version,
+            inputs=inputs or {},
+            credential_inputs=graph_credentials_inputs,
+            nodes_input_masks=nodes_input_masks,
             starting_nodes_input=starting_nodes_input,
             preset_id=preset_id,
         )
@@ -904,9 +918,9 @@ async def add_graph_execution(
         user_context = await get_user_context(user_id)
 
         queue = await get_async_execution_queue()
-        graph_exec_entry = graph_exec.to_graph_execution_entry(user_context)
-        if nodes_input_masks:
-            graph_exec_entry.nodes_input_masks = nodes_input_masks
+        graph_exec_entry = graph_exec.to_graph_execution_entry(
+            user_context, compiled_nodes_input_masks
+        )
 
         logger.info(
             f"Created graph execution #{graph_exec.id} for graph "
@@ -952,7 +966,7 @@ async def add_graph_execution(
 class ExecutionOutputEntry(BaseModel):
     node: Node
     node_exec_id: str
-    data: BlockData
+    data: BlockOutputEntry
 
 
 class NodeExecutionProgress:

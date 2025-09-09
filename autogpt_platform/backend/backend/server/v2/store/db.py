@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime, timezone
 
@@ -9,6 +10,7 @@ import prisma.types
 
 import backend.server.v2.store.exceptions
 import backend.server.v2.store.model
+from backend.data.db import transaction
 from backend.data.graph import (
     GraphMeta,
     GraphModel,
@@ -70,7 +72,7 @@ async def get_store_agents(
     )
     sanitized_query = sanitize_query(search_query)
 
-    where_clause = {}
+    where_clause: prisma.types.StoreAgentWhereInput = {"is_available": True}
     if featured:
         where_clause["featured"] = featured
     if creators:
@@ -94,15 +96,13 @@ async def get_store_agents(
 
     try:
         agents = await prisma.models.StoreAgent.prisma().find_many(
-            where=prisma.types.StoreAgentWhereInput(**where_clause),
+            where=where_clause,
             order=order_by,
             skip=(page - 1) * page_size,
             take=page_size,
         )
 
-        total = await prisma.models.StoreAgent.prisma().count(
-            where=prisma.types.StoreAgentWhereInput(**where_clause)
-        )
+        total = await prisma.models.StoreAgent.prisma().count(where=where_clause)
         total_pages = (total + page_size - 1) // page_size
 
         store_agents: list[backend.server.v2.store.model.StoreAgent] = []
@@ -183,6 +183,13 @@ async def get_store_agent_details(
             store_listing.hasApprovedVersion if store_listing else False
         )
 
+        if store_listing and store_listing.ActiveVersion:
+            recommended_schedule_cron = (
+                store_listing.ActiveVersion.recommendedScheduleCron
+            )
+        else:
+            recommended_schedule_cron = None
+
         logger.debug(f"Found agent details for {username}/{agent_name}")
         return backend.server.v2.store.model.StoreAgentDetails(
             store_listing_version_id=agent.storeListingVersionId,
@@ -190,8 +197,8 @@ async def get_store_agent_details(
             agent_name=agent.agent_name,
             agent_video=agent.agent_video or "",
             agent_image=agent.agent_image,
-            creator=agent.creator_username,
-            creator_avatar=agent.creator_avatar,
+            creator=agent.creator_username or "",
+            creator_avatar=agent.creator_avatar or "",
             sub_heading=agent.sub_heading,
             description=agent.description,
             categories=agent.categories,
@@ -201,6 +208,7 @@ async def get_store_agent_details(
             last_updated=agent.updated_at,
             active_version_id=active_version_id,
             has_approved_version=has_approved_version,
+            recommended_schedule_cron=recommended_schedule_cron,
         )
     except backend.server.v2.store.exceptions.AgentNotFoundError:
         raise
@@ -263,8 +271,8 @@ async def get_store_agent_by_version_id(
             agent_name=agent.agent_name,
             agent_video=agent.agent_video or "",
             agent_image=agent.agent_image,
-            creator=agent.creator_username,
-            creator_avatar=agent.creator_avatar,
+            creator=agent.creator_username or "",
+            creator_avatar=agent.creator_avatar or "",
             sub_heading=agent.sub_heading,
             description=agent.description,
             categories=agent.categories,
@@ -562,6 +570,7 @@ async def create_store_submission(
     sub_heading: str = "",
     categories: list[str] = [],
     changes_summary: str | None = "Initial Submission",
+    recommended_schedule_cron: str | None = None,
 ) -> backend.server.v2.store.model.StoreSubmission:
     """
     Create the first (and only) store listing and thus submission as a normal user
@@ -655,6 +664,7 @@ async def create_store_submission(
                         submissionStatus=prisma.enums.SubmissionStatus.PENDING,
                         submittedAt=datetime.now(tz=timezone.utc),
                         changesSummary=changes_summary,
+                        recommendedScheduleCron=recommended_schedule_cron,
                     )
                 ]
             },
@@ -710,6 +720,7 @@ async def edit_store_submission(
     sub_heading: str = "",
     categories: list[str] = [],
     changes_summary: str | None = "Update submission",
+    recommended_schedule_cron: str | None = None,
 ) -> backend.server.v2.store.model.StoreSubmission:
     """
     Edit an existing store listing submission.
@@ -789,6 +800,7 @@ async def edit_store_submission(
                 sub_heading=sub_heading,
                 categories=categories,
                 changes_summary=changes_summary,
+                recommended_schedule_cron=recommended_schedule_cron,
             )
 
         # For PENDING submissions, we can update the existing version
@@ -804,6 +816,7 @@ async def edit_store_submission(
                     categories=categories,
                     subHeading=sub_heading,
                     changesSummary=changes_summary,
+                    recommendedScheduleCron=recommended_schedule_cron,
                 ),
             )
 
@@ -866,6 +879,7 @@ async def create_store_version(
     sub_heading: str = "",
     categories: list[str] = [],
     changes_summary: str | None = "Initial submission",
+    recommended_schedule_cron: str | None = None,
 ) -> backend.server.v2.store.model.StoreSubmission:
     """
     Create a new version for an existing store listing
@@ -935,6 +949,7 @@ async def create_store_version(
                 submissionStatus=prisma.enums.SubmissionStatus.PENDING,
                 submittedAt=datetime.now(),
                 changesSummary=changes_summary,
+                recommendedScheduleCron=recommended_schedule_cron,
                 storeListingId=store_listing_id,
             )
         )
@@ -1150,6 +1165,7 @@ async def get_my_agents(
                 last_edited=graph.updatedAt or graph.createdAt,
                 description=graph.description or "",
                 agent_image=library_agent.imageUrl,
+                recommended_schedule_cron=graph.recommendedScheduleCron,
             )
             for library_agent in library_agents
             if (graph := library_agent.AgentGraph)
@@ -1171,10 +1187,7 @@ async def get_my_agents(
         ) from e
 
 
-async def get_agent(
-    user_id: str | None,
-    store_listing_version_id: str,
-) -> GraphModel:
+async def get_agent(store_listing_version_id: str) -> GraphModel:
     """Get agent using the version ID and store listing version ID."""
     store_listing_version = (
         await prisma.models.StoreListingVersion.prisma().find_unique(
@@ -1186,7 +1199,6 @@ async def get_agent(
         raise ValueError(f"Store listing version {store_listing_version_id} not found")
 
     graph = await get_graph(
-        user_id=user_id,
         graph_id=store_listing_version.agentGraphId,
         version=store_listing_version.agentGraphVersion,
         for_export=True,
@@ -1204,40 +1216,103 @@ async def get_agent(
 #####################################################
 
 
-async def _get_missing_sub_store_listing(
-    graph: prisma.models.AgentGraph,
-) -> list[prisma.models.AgentGraph]:
-    """
-    Agent graph can have sub-graphs, and those sub-graphs also need to be store listed.
-    This method fetches the sub-graphs, and returns the ones not listed in the store.
-    """
-    sub_graphs = await get_sub_graphs(graph)
-    if not sub_graphs:
-        return []
+async def _approve_sub_agent(
+    tx,
+    sub_graph: prisma.models.AgentGraph,
+    main_agent_name: str,
+    main_agent_version: int,
+    main_agent_user_id: str,
+) -> None:
+    """Approve a single sub-agent by creating/updating store listings as needed"""
+    heading = f"Sub-agent of {main_agent_name} v{main_agent_version}"
 
-    # Fetch all the sub-graphs that are listed, and return the ones missing.
-    store_listed_sub_graphs = {
-        (listing.agentGraphId, listing.agentGraphVersion)
-        for listing in await prisma.models.StoreListingVersion.prisma().find_many(
-            where={
-                "OR": [
-                    {
-                        "agentGraphId": sub_graph.id,
-                        "agentGraphVersion": sub_graph.version,
-                    }
-                    for sub_graph in sub_graphs
-                ],
-                "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
-                "isDeleted": False,
-            }
+    # Find existing listing for this sub-agent
+    listing = await prisma.models.StoreListing.prisma(tx).find_first(
+        where={"agentGraphId": sub_graph.id, "isDeleted": False},
+        include={"Versions": True},
+    )
+
+    # Early return: Create new listing if none exists
+    if not listing:
+        await prisma.models.StoreListing.prisma(tx).create(
+            data=prisma.types.StoreListingCreateInput(
+                slug=f"sub-agent-{sub_graph.id[:8]}",
+                agentGraphId=sub_graph.id,
+                agentGraphVersion=sub_graph.version,
+                owningUserId=main_agent_user_id,
+                hasApprovedVersion=True,
+                Versions={
+                    "create": [
+                        _create_sub_agent_version_data(
+                            sub_graph, heading, main_agent_name
+                        )
+                    ]
+                },
+            )
         )
-    }
+        return
 
-    return [
-        sub_graph
-        for sub_graph in sub_graphs
-        if (sub_graph.id, sub_graph.version) not in store_listed_sub_graphs
-    ]
+    # Find version matching this sub-graph
+    matching_version = next(
+        (
+            v
+            for v in listing.Versions or []
+            if v.agentGraphId == sub_graph.id
+            and v.agentGraphVersion == sub_graph.version
+        ),
+        None,
+    )
+
+    # Early return: Approve existing version if found and not already approved
+    if matching_version:
+        if matching_version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED:
+            return  # Already approved, nothing to do
+
+        await prisma.models.StoreListingVersion.prisma(tx).update(
+            where={"id": matching_version.id},
+            data={
+                "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+                "reviewedAt": datetime.now(tz=timezone.utc),
+            },
+        )
+        await prisma.models.StoreListing.prisma(tx).update(
+            where={"id": listing.id}, data={"hasApprovedVersion": True}
+        )
+        return
+
+    # Create new version if no matching version found
+    next_version = max((v.version for v in listing.Versions or []), default=0) + 1
+    await prisma.models.StoreListingVersion.prisma(tx).create(
+        data={
+            **_create_sub_agent_version_data(sub_graph, heading, main_agent_name),
+            "version": next_version,
+            "storeListingId": listing.id,
+        }
+    )
+    await prisma.models.StoreListing.prisma(tx).update(
+        where={"id": listing.id}, data={"hasApprovedVersion": True}
+    )
+
+
+def _create_sub_agent_version_data(
+    sub_graph: prisma.models.AgentGraph, heading: str, main_agent_name: str
+) -> prisma.types.StoreListingVersionCreateInput:
+    """Create store listing version data for a sub-agent"""
+    return prisma.types.StoreListingVersionCreateInput(
+        agentGraphId=sub_graph.id,
+        agentGraphVersion=sub_graph.version,
+        name=sub_graph.name or heading,
+        submissionStatus=prisma.enums.SubmissionStatus.APPROVED,
+        subHeading=heading,
+        description=(
+            f"{heading}: {sub_graph.description}" if sub_graph.description else heading
+        ),
+        changesSummary=f"Auto-approved as sub-agent of {main_agent_name}",
+        isAvailable=False,
+        submittedAt=datetime.now(tz=timezone.utc),
+        imageUrls=[],  # Sub-agents don't need images
+        categories=[],  # Sub-agents don't need categories
+    )
 
 
 async def review_store_submission(
@@ -1275,33 +1350,45 @@ async def review_store_submission(
 
         # If approving, update the listing to indicate it has an approved version
         if is_approved and store_listing_version.AgentGraph:
-            heading = f"Sub-graph of {store_listing_version.name}v{store_listing_version.agentGraphVersion}"
-
-            sub_store_listing_versions = [
-                prisma.types.StoreListingVersionCreateWithoutRelationsInput(
-                    agentGraphId=sub_graph.id,
-                    agentGraphVersion=sub_graph.version,
-                    name=sub_graph.name or heading,
-                    submissionStatus=prisma.enums.SubmissionStatus.APPROVED,
-                    subHeading=heading,
-                    description=f"{heading}: {sub_graph.description}",
-                    changesSummary=f"This listing is added as a {heading} / #{store_listing_version.agentGraphId}.",
-                    isAvailable=False,  # Hide sub-graphs from the store by default.
-                    submittedAt=datetime.now(tz=timezone.utc),
+            async with transaction() as tx:
+                # Handle sub-agent approvals in transaction
+                await asyncio.gather(
+                    *[
+                        _approve_sub_agent(
+                            tx,
+                            sub_graph,
+                            store_listing_version.name,
+                            store_listing_version.agentGraphVersion,
+                            store_listing_version.StoreListing.owningUserId,
+                        )
+                        for sub_graph in await get_sub_graphs(
+                            store_listing_version.AgentGraph
+                        )
+                    ]
                 )
-                for sub_graph in await _get_missing_sub_store_listing(
-                    store_listing_version.AgentGraph
-                )
-            ]
 
-            await prisma.models.StoreListing.prisma().update(
-                where={"id": store_listing_version.StoreListing.id},
-                data={
-                    "hasApprovedVersion": True,
-                    "ActiveVersion": {"connect": {"id": store_listing_version_id}},
-                    "Versions": {"create": sub_store_listing_versions},
-                },
-            )
+                # Update the AgentGraph with store listing data
+                await prisma.models.AgentGraph.prisma().update(
+                    where={
+                        "graphVersionId": {
+                            "id": store_listing_version.agentGraphId,
+                            "version": store_listing_version.agentGraphVersion,
+                        }
+                    },
+                    data={
+                        "name": store_listing_version.name,
+                        "description": store_listing_version.description,
+                        "recommendedScheduleCron": store_listing_version.recommendedScheduleCron,
+                    },
+                )
+
+                await prisma.models.StoreListing.prisma(tx).update(
+                    where={"id": store_listing_version.StoreListing.id},
+                    data={
+                        "hasApprovedVersion": True,
+                        "ActiveVersion": {"connect": {"id": store_listing_version_id}},
+                    },
+                )
 
         # If rejecting an approved agent, update the StoreListing accordingly
         if is_rejecting_approved:

@@ -1,11 +1,14 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import { Text } from "../../../../atoms/Text/Text";
 import { Button } from "../../../../atoms/Button/Button";
 import { StepHeader } from "../StepHeader";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAgentSelectStep } from "./useAgentSelectStep";
+import { scrollbarStyles } from "@/components/styles/scrollbars";
+import { cn } from "@/lib/utils";
 
 interface Props {
   onSelect: (agentId: string, agentVersion: number) => void;
@@ -13,7 +16,12 @@ interface Props {
   onNext: (
     agentId: string,
     agentVersion: number,
-    agentData: { name: string; description: string; imageSrc: string },
+    agentData: {
+      name: string;
+      description: string;
+      imageSrc: string;
+      recommendedScheduleCron: string | null;
+    },
   ) => void;
   onOpenBuilder: () => void;
 }
@@ -110,7 +118,10 @@ export function AgentSelectStep({
           <div className="flex-grow overflow-hidden p-4 sm:p-6">
             <h3 className="sr-only">List of agents</h3>
             <div
-              className="h-[300px] overflow-y-auto pr-2 sm:h-[400px] md:h-[500px]"
+              className={cn(
+                scrollbarStyles,
+                "h-[300px] overflow-y-auto pr-2 sm:h-[400px] md:h-[500px]",
+              )}
               role="region"
               aria-labelledby="agentListHeading"
             >
@@ -142,11 +153,12 @@ export function AgentSelectStep({
                       aria-pressed={selectedAgentId === agent.id}
                     >
                       <div className="relative h-32 bg-zinc-400 sm:h-40">
-                        <img
+                        <Image
                           src={agent.imageSrc}
                           alt={agent.name}
-                          className="h-full w-full object-cover"
-                          loading="lazy"
+                          className="object-cover"
+                          fill
+                          sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, 33vw"
                         />
                       </div>
                       <div className="flex flex-col gap-2 p-3">

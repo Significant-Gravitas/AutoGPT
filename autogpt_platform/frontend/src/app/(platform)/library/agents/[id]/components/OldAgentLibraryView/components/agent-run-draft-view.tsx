@@ -8,7 +8,6 @@ import {
   LibraryAgentPreset,
   LibraryAgentPresetID,
   LibraryAgentPresetUpdatable,
-  LibraryAgentTriggerInfo,
   Schedule,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
@@ -17,23 +16,27 @@ import ActionButtonGroup from "@/components/agptui/action-button-group";
 import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { IconCross, IconPlay, IconSave } from "@/components/ui/icons";
-import { CalendarClockIcon, Trash2Icon } from "lucide-react";
-import { CronSchedulerDialog } from "@/components/cron-scheduler-dialog";
-import { CredentialsInput } from "@/components/integrations/credentials-input";
-import { TypeBasedInput } from "@/components/type-based-input";
+import { CalendarClockIcon, Trash2Icon, ClockIcon } from "lucide-react";
+import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+import { ScheduleTaskDialog } from "@/components/cron-scheduler-dialog";
+import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
+import { RunAgentInputs } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/RunAgentInputs/RunAgentInputs";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 import { cn, isEmpty } from "@/lib/utils";
 import SchemaTooltip from "@/components/SchemaTooltip";
+import { CopyIcon } from "@phosphor-icons/react";
+import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/ui/input";
 import {
   useToast,
   useToastOnFail,
 } from "@/components/molecules/Toast/use-toast";
 
+import { AgentStatus, AgentStatusChip } from "./agent-status-chip";
+
 export function AgentRunDraftView({
   graph,
   agentPreset,
-  triggerSetupInfo,
   doRun: _doRun,
   onRun,
   onCreatePreset,
@@ -43,10 +46,11 @@ export function AgentRunDraftView({
   onCreateSchedule,
   agentActions,
   className,
+  recommendedScheduleCron,
 }: {
   graph: GraphMeta;
-  triggerSetupInfo?: LibraryAgentTriggerInfo;
   agentActions?: ButtonAction[];
+  recommendedScheduleCron?: string | null;
   doRun?: (
     inputs: Record<string, any>,
     credentialsInputs: Record<string, CredentialsMetaInput>,
@@ -101,8 +105,8 @@ export function AgentRunDraftView({
   }, [agentPreset]);
 
   const agentInputSchema = useMemo(
-    () => triggerSetupInfo?.config_schema ?? graph.input_schema,
-    [graph, triggerSetupInfo],
+    () => graph.trigger_setup_info?.config_schema ?? graph.input_schema,
+    [graph],
   );
   const agentInputFields = useMemo(
     () =>
@@ -173,7 +177,7 @@ export function AgentRunDraftView({
         .executeGraph(graph.id, graph.version, inputValues, inputCredentials)
         .catch(toastOnFail("execute agent"));
 
-      if (newRun && onRun) onRun(newRun.graph_exec_id);
+      if (newRun && onRun) onRun(newRun.id);
     } else {
       await api
         .executeLibraryAgentPreset(agentPreset.id)
@@ -284,20 +288,10 @@ export function AgentRunDraftView({
 
   const doSetupTrigger = useCallback(async () => {
     // Setting up a trigger for non-webhook-triggered agents is not supported
-    if (!triggerSetupInfo || !onCreatePreset) return;
+    if (!graph.trigger_setup_info || !onCreatePreset) return;
 
     if (!presetName || !allRequiredInputsAreSet || !allCredentialsAreSet) {
       notifyMissingInputs();
-      return;
-    }
-
-    if (!triggerSetupInfo.credentials_input_name) {
-      // FIXME: implement support for manual-setup webhooks
-      toast({
-        variant: "destructive",
-        title: "🚧 Feature under construction",
-        description: "Setting up non-auto-setup triggers is not yet supported.",
-      });
       return;
     }
 
@@ -389,20 +383,21 @@ export function AgentRunDraftView({
             {
               label: (
                 <>
-                  <IconPlay className="mr-2 size-4" /> Run
+                  <CalendarClockIcon className="mr-2 size-4" /> Schedule run
                 </>
               ),
               variant: "accent",
-              callback: doRun,
-              extraProps: { "data-testid": "agent-run-button" },
+              callback: openScheduleDialog,
+              extraProps: { "data-testid": "agent-schedule-button" },
             },
             {
               label: (
                 <>
-                  <CalendarClockIcon className="mr-2 size-4" /> Schedule
+                  <IconPlay className="mr-2 size-4" /> Manual run
                 </>
               ),
-              callback: openScheduleDialog,
+              callback: doRun,
+              extraProps: { "data-testid": "agent-run-button" },
             },
             // {
             //   label: (
@@ -507,14 +502,91 @@ export function AgentRunDraftView({
     ],
   );
 
+  const triggerStatus: AgentStatus | null = !agentPreset
+    ? null
+    : !agentPreset.webhook
+      ? "broken"
+      : agentPreset.is_active
+        ? "active"
+        : "inactive";
+
   return (
     <div className={cn("agpt-div flex gap-6", className)}>
       <div className="flex min-w-0 flex-1 flex-col gap-4">
+        {graph.trigger_setup_info && agentPreset && (
+          <Card className="agpt-box">
+            <CardHeader className="flex-row items-center justify-between">
+              <CardTitle className="font-poppins text-lg">
+                Trigger status
+              </CardTitle>
+              {triggerStatus && <AgentStatusChip status={triggerStatus} />}
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              {!agentPreset.webhook_id ? (
+                /* Shouldn't happen, but technically possible */
+                <p className="text-sm text-destructive">
+                  This trigger is not attached to a webhook. Use &quot;Set up
+                  trigger&quot; to fix this.
+                </p>
+              ) : !graph.trigger_setup_info.credentials_input_name ? (
+                /* Expose webhook URL if not auto-setup */
+                <div className="text-sm">
+                  <p>
+                    This trigger is ready to be used. Use the Webhook URL below
+                    to set up the trigger connection with the service of your
+                    choosing.
+                  </p>
+                  <div className="nodrag mt-5 flex flex-col gap-1">
+                    Webhook URL:
+                    <div className="flex gap-2 rounded-md bg-gray-50 p-2">
+                      <code className="select-all text-sm">
+                        {agentPreset.webhook.url}
+                      </code>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="size-7 flex-none p-1"
+                        onClick={() =>
+                          agentPreset.webhook &&
+                          navigator.clipboard.writeText(agentPreset.webhook.url)
+                        }
+                        title="Copy webhook URL"
+                      >
+                        <CopyIcon className="size-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  This agent trigger is{" "}
+                  {agentPreset.is_active
+                    ? "ready. When a trigger is received, it will run with the provided settings."
+                    : "disabled. It will not respond to triggers until you enable it."}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         <Card className="agpt-box">
           <CardHeader>
             <CardTitle className="font-poppins text-lg">Input</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
+            {/* Schedule recommendation tip */}
+            {recommendedScheduleCron && !graph.has_external_trigger && (
+              <div className="flex items-center gap-2 rounded-md border border-violet-200 bg-violet-50 p-3">
+                <ClockIcon className="h-4 w-4 text-violet-600" />
+                <p className="text-sm text-violet-800">
+                  <strong>Tip:</strong> For best results, run this agent{" "}
+                  {humanizeCronExpression(
+                    recommendedScheduleCron,
+                  ).toLowerCase()}
+                </p>
+              </div>
+            )}
+
             {(agentPreset || graph.has_external_trigger) && (
               <>
                 {/* Preset name and description */}
@@ -596,7 +668,7 @@ export function AgentRunDraftView({
                   <SchemaTooltip description={inputSubSchema.description} />
                 </label>
 
-                <TypeBasedInput
+                <RunAgentInputs
                   schema={inputSubSchema}
                   value={inputValues[key] ?? inputSubSchema.default}
                   placeholder={inputSubSchema.description}
@@ -622,11 +694,12 @@ export function AgentRunDraftView({
             title={`${graph.has_external_trigger ? "Trigger" : agentPreset ? "Preset" : "Run"} actions`}
             actions={runActions}
           />
-          <CronSchedulerDialog
+          <ScheduleTaskDialog
             open={cronScheduleDialogOpen}
             setOpen={setCronScheduleDialogOpen}
-            afterCronCreation={doSetupSchedule}
+            onSubmit={doSetupSchedule}
             defaultScheduleName={graph.name}
+            defaultCronExpression={recommendedScheduleCron || undefined}
           />
 
           {agentActions && agentActions.length > 0 && (

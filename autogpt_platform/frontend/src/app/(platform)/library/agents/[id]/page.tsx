@@ -1,16 +1,10 @@
 "use client";
 
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-
-import { OldAgentLibraryView } from "./components/OldAgentLibraryView/OldAgentLibraryView";
 import { AgentRunsView } from "./components/AgentRunsView/AgentRunsView";
+import { OldAgentLibraryView } from "./components/OldAgentLibraryView/OldAgentLibraryView";
 
 export default function AgentLibraryPage() {
-  const isNewAgentRunsEnabled = useGetFlag(Flag.NEW_AGENT_RUNS);
-
-  if (isNewAgentRunsEnabled) {
-    return <AgentRunsView />;
-  }
-
-  return <OldAgentLibraryView />;
+  const isNewLibraryPageEnabled = useGetFlag(Flag.NEW_AGENT_RUNS);
+  return isNewLibraryPageEnabled ? <AgentRunsView /> : <OldAgentLibraryView />;
 }

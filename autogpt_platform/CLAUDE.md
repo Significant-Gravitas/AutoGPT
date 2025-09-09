@@ -61,23 +61,26 @@ poetry run pytest path/to/test.py --snapshot-update
 
 ```bash
 # Install dependencies
-cd frontend && npm install
+cd frontend && pnpm i
 
 # Start development server
-npm run dev
+pnpm dev
 
 # Run E2E tests
-npm run test
+pnpm test
 
 # Run Storybook for component development
-npm run storybook
+pnpm storybook
 
 # Build production
-npm run build
+pnpm build
 
 # Type checking
-npm run types
+pnpm types
 ```
+
+We have a components library in autogpt_platform/frontend/src/components/atoms that should be used when adding new pages and components. 
+
 
 ## Architecture Overview
 
@@ -149,12 +152,21 @@ Key models (defined in `/backend/schema.prisma`):
 
 **Adding a new block:**
 
+Follow the comprehensive [Block SDK Guide](../../../docs/content/platform/block-sdk-guide.md) which covers:
+- Provider configuration with `ProviderBuilder`
+- Block schema definition
+- Authentication (API keys, OAuth, webhooks)
+- Testing and validation
+- File organization
+
+Quick steps:
 1. Create new file in `/backend/backend/blocks/`
-2. Inherit from `Block` base class
-3. Define input/output schemas
-4. Implement `run` method
-5. Register in block registry
-6. Generate the block uuid using `uuid.uuid4()`
+2. Configure provider using `ProviderBuilder` in `_config.py`
+3. Inherit from `Block` base class
+4. Define input/output schemas using `BlockSchema`
+5. Implement async `run` method
+6. Generate unique block ID using `uuid.uuid4()`
+7. Test with `poetry run pytest backend/blocks/test/test_block.py`
 
 Note: when making many new blocks analyze the interfaces for each of these blocks and picture if they would go well together in a graph based editor or would they struggle to connect productively?
 ex: do the inputs and outputs tie well together?

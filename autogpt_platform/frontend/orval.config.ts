@@ -45,7 +45,8 @@ export default defineConfig({
       },
     },
     hooks: {
-      afterAllFilesWrite: "prettier --write",
+      afterAllFilesWrite:
+        "prettier --ignore-path= --write ./src/app/api/__generated__",
     },
   },
   // autogpt_zod_schema: {

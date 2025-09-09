@@ -37,13 +37,18 @@ import {
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { Key, storage } from "@/services/storage/local-storage";
-import { getTypeColor, findNewlyAddedBlockCoordinates } from "@/lib/utils";
+import {
+  getTypeColor,
+  findNewlyAddedBlockCoordinates,
+  beautifyString,
+} from "@/lib/utils";
 import { history } from "./history";
 import { CustomEdge } from "./CustomEdge";
 import ConnectionLine from "./ConnectionLine";
 import { Control, ControlPanel } from "@/components/edit/control/ControlPanel";
 import { SaveControl } from "@/components/edit/control/SaveControl";
 import { BlocksControl } from "@/components/edit/control/BlocksControl";
+import { GraphSearchControl } from "@/components/edit/control/GraphSearchControl";
 import { IconUndo2, IconRedo2 } from "@/components/ui/icons";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { startTutorial } from "./tutorial";
@@ -94,6 +99,7 @@ const FlowEditor: React.FC<{
     updateNode,
     getViewport,
     setViewport,
+    screenToFlowPosition,
   } = useReactFlow<CustomNode, CustomEdge>();
   const [nodeId, setNodeId] = useState<number>(1);
   const [isAnyModalOpen, setIsAnyModalOpen] = useState(false);
@@ -111,6 +117,8 @@ const FlowEditor: React.FC<{
     setAgentName,
     agentDescription,
     setAgentDescription,
+    agentRecommendedScheduleCron,
+    setAgentRecommendedScheduleCron,
     savedAgent,
     availableBlocks,
     availableFlows,
@@ -483,6 +491,74 @@ const FlowEditor: React.FC<{
     });
   }, [nodes, getViewport, setViewport]);
 
+  const navigateToNode = useCallback(
+    (nodeId: string) => {
+      const node = getNode(nodeId);
+      if (!node) return;
+
+      // Center the viewport on the selected node
+      const zoom = 1.2; // Slightly zoom in for better visibility
+      const nodeX = node.position.x + (node.width || 500) / 2;
+      const nodeY = node.position.y + (node.height || 400) / 2;
+
+      setViewport({
+        x: window.innerWidth / 2 - nodeX * zoom,
+        y: window.innerHeight / 2 - nodeY * zoom,
+        zoom: zoom,
+      });
+
+      // Add a temporary highlight effect to the node
+      updateNode(nodeId, {
+        style: {
+          ...node.style,
+          boxShadow: "0 0 20px 5px rgba(59, 130, 246, 0.8)",
+          transition: "box-shadow 0.3s ease-in-out",
+        },
+      });
+
+      // Remove highlight after a delay
+      setTimeout(() => {
+        updateNode(nodeId, {
+          style: {
+            ...node.style,
+            boxShadow: undefined,
+          },
+        });
+      }, 2000);
+    },
+    [getNode, setViewport, updateNode],
+  );
+
+  const highlightNode = useCallback(
+    (nodeId: string | null) => {
+      if (!nodeId) {
+        // Clear all highlights
+        nodes.forEach((node) => {
+          updateNode(node.id, {
+            style: {
+              ...node.style,
+              boxShadow: undefined,
+            },
+          });
+        });
+        return;
+      }
+
+      const node = getNode(nodeId);
+      if (!node) return;
+
+      // Add highlight effect without moving view
+      updateNode(nodeId, {
+        style: {
+          ...node.style,
+          boxShadow: "0 0 15px 3px rgba(59, 130, 246, 0.6)",
+          transition: "box-shadow 0.2s ease-in-out",
+        },
+      });
+    },
+    [getNode, updateNode, nodes],
+  );
+
   const addNode = useCallback(
     (blockId: string, nodeType: string, hardcodedValues: any = {}) => {
       const nodeSchema = availableBlocks.find((node) => node.id === blockId);
@@ -677,6 +753,86 @@ const FlowEditor: React.FC<{
   }, [isScheduling, savedAgent, toast, saveAgent]);
 
   const isNewBlockEnabled = useGetFlag(Flag.NEW_BLOCK_MENU);
+  const isGraphSearchEnabled = useGetFlag(Flag.GRAPH_SEARCH);
+
+  const onDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  }, []);
+
+  const onDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+
+      const blockData = event.dataTransfer.getData("application/reactflow");
+      if (!blockData) return;
+
+      try {
+        const { blockId, blockName, hardcodedValues } = JSON.parse(blockData);
+
+        // Convert screen coordinates to flow coordinates
+        const position = screenToFlowPosition({
+          x: event.clientX,
+          y: event.clientY,
+        });
+
+        // Find the block schema
+        const nodeSchema = availableBlocks.find((node) => node.id === blockId);
+        if (!nodeSchema) {
+          console.error(`Schema not found for block ID: ${blockId}`);
+          return;
+        }
+
+        // Create the new node at the drop position
+        const newNode: CustomNode = {
+          id: nodeId.toString(),
+          type: "custom",
+          position,
+          data: {
+            blockType: blockName,
+            blockCosts: nodeSchema.costs || [],
+            title: `${beautifyString(blockName)} ${nodeId}`,
+            description: nodeSchema.description,
+            categories: nodeSchema.categories,
+            inputSchema: nodeSchema.inputSchema,
+            outputSchema: nodeSchema.outputSchema,
+            hardcodedValues: hardcodedValues,
+            connections: [],
+            isOutputOpen: false,
+            block_id: blockId,
+            uiType: nodeSchema.uiType,
+          },
+        };
+
+        history.push({
+          type: "ADD_NODE",
+          payload: { node: { ...newNode, ...newNode.data } },
+          undo: () => {
+            deleteElements({ nodes: [{ id: newNode.id } as any], edges: [] });
+          },
+          redo: () => {
+            addNodes([newNode]);
+          },
+        });
+        addNodes([newNode]);
+        clearNodesStatusAndOutput();
+
+        setNodeId((prevId) => prevId + 1);
+      } catch (error) {
+        console.error("Failed to drop block:", error);
+      }
+    },
+    [
+      nodeId,
+      availableBlocks,
+      nodes,
+      edges,
+      addNodes,
+      screenToFlowPosition,
+      deleteElements,
+      clearNodesStatusAndOutput,
+    ],
+  );
 
   return (
     <FlowContext.Provider
@@ -695,6 +851,8 @@ const FlowEditor: React.FC<{
           onEdgesChange={onEdgesChange}
           onNodeDragStop={onNodeDragEnd}
           onNodeDragStart={onNodeDragStart}
+          onDrop={onDrop}
+          onDragOver={onDragOver}
           deleteKeyCode={["Backspace", "Delete"]}
           minZoom={0.1}
           maxZoom={2}
@@ -708,19 +866,31 @@ const FlowEditor: React.FC<{
               visualizeBeads={visualizeBeads}
               pinSavePopover={pinSavePopover}
               pinBlocksPopover={pinBlocksPopover}
+              nodes={nodes}
+              onNodeSelect={navigateToNode}
+              onNodeHover={highlightNode}
             />
           ) : (
             <ControlPanel
               className="absolute z-20"
               controls={editorControls}
               topChildren={
-                <BlocksControl
-                  pinBlocksPopover={pinBlocksPopover} // Pass the state to BlocksControl
-                  blocks={availableBlocks}
-                  addBlock={addNode}
-                  flows={availableFlows}
-                  nodes={nodes}
-                />
+                <>
+                  <BlocksControl
+                    pinBlocksPopover={pinBlocksPopover} // Pass the state to BlocksControl
+                    blocks={availableBlocks}
+                    addBlock={addNode}
+                    flows={availableFlows}
+                    nodes={nodes}
+                  />
+                  {isGraphSearchEnabled && (
+                    <GraphSearchControl
+                      nodes={nodes}
+                      onNodeSelect={navigateToNode}
+                      onNodeHover={highlightNode}
+                    />
+                  )}
+                </>
               }
               botChildren={
                 <SaveControl
@@ -731,6 +901,10 @@ const FlowEditor: React.FC<{
                   onDescriptionChange={setAgentDescription}
                   agentName={agentName}
                   onNameChange={setAgentName}
+                  agentRecommendedScheduleCron={agentRecommendedScheduleCron}
+                  onRecommendedScheduleCronChange={
+                    setAgentRecommendedScheduleCron
+                  }
                   pinSavePopover={pinSavePopover}
                 />
               }

@@ -48,6 +48,8 @@ export default function useAgentGraph(
   const [savedAgent, setSavedAgent] = useState<Graph | null>(null);
   const [agentDescription, setAgentDescription] = useState<string>("");
   const [agentName, setAgentName] = useState<string>("");
+  const [agentRecommendedScheduleCron, setAgentRecommendedScheduleCron] =
+    useState<string>("");
   const [allBlocks, setAllBlocks] = useState<Block[]>([]);
   const [availableFlows, setAvailableFlows] = useState<GraphMeta[]>([]);
   const [updateQueue, setUpdateQueue] = useState<NodeExecutionResult[]>([]);
@@ -155,6 +157,7 @@ export default function useAgentGraph(
     setSavedAgent(graph);
     setAgentName(graph.name);
     setAgentDescription(graph.description);
+    setAgentRecommendedScheduleCron(graph.recommended_schedule_cron || "");
 
     const getGraphName = (node: Node) => {
       if (node.input_default.agent_name) {
@@ -196,6 +199,7 @@ export default function useAgentGraph(
             hardcodedValues: node.input_default,
             webhook: node.webhook,
             uiType: block.uiType,
+            metadata: node.metadata,
             connections: graph.links
               .filter((l) => [l.source_id, l.sink_id].includes(node.id))
               .map((link) => ({
@@ -596,12 +600,16 @@ export default function useAgentGraph(
     return {
       name: agentName || `New Agent ${new Date().toISOString()}`,
       description: agentDescription || "",
+      recommended_schedule_cron: agentRecommendedScheduleCron || null,
       nodes: xyNodes.map(
         (node): NodeCreatable => ({
           id: node.id,
           block_id: node.data.block_id,
           input_default: prepareNodeInputData(node),
-          metadata: { position: node.position },
+          metadata: {
+            position: node.position,
+            ...(node.data.metadata || {}),
+          },
         }),
       ),
       links: links,
@@ -611,6 +619,7 @@ export default function useAgentGraph(
     xyEdges,
     agentName,
     agentDescription,
+    agentRecommendedScheduleCron,
     prepareNodeInputData,
     getToolFuncName,
   ]);
@@ -680,6 +689,7 @@ export default function useAgentGraph(
                   backend_id: backendNode.id,
                   webhook: backendNode.webhook,
                   executionResults: [],
+                  metadata: backendNode.metadata,
                 },
               }
             : null;
@@ -777,13 +787,13 @@ export default function useAgentGraph(
           credentialsInputs,
         );
 
-        setActiveExecutionID(graphExecution.graph_exec_id);
+        setActiveExecutionID(graphExecution.id);
 
         // Update URL params
         const path = new URLSearchParams(searchParams);
         path.set("flowID", savedAgent.id);
         path.set("flowVersion", savedAgent.version.toString());
-        path.set("flowExecutionID", graphExecution.graph_exec_id);
+        path.set("flowExecutionID", graphExecution.id);
         router.push(`${pathname}?${path.toString()}`);
 
         if (state?.completedSteps.includes("BUILDER_SAVE_AGENT")) {
@@ -927,6 +937,8 @@ export default function useAgentGraph(
     setAgentName,
     agentDescription,
     setAgentDescription,
+    agentRecommendedScheduleCron,
+    setAgentRecommendedScheduleCron,
     savedAgent,
     availableBlocks,
     availableFlows,
