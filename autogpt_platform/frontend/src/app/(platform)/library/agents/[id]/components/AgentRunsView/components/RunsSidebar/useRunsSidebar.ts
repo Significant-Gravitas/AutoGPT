@@ -17,7 +17,7 @@ type Args = {
 
 export function useRunsSidebar({ graphId, onSelectRun }: Args) {
   const params = useSearchParams();
-  const existingRunId = params.get("run") as string | undefined;
+  const existingRunId = params.get("executionId") as string | undefined;
   const [tabValue, setTabValue] = useState<"runs" | "scheduled">("runs");
 
   const runsQuery = useGetV1ListGraphExecutionsInfinite(
@@ -96,6 +96,12 @@ export function useRunsSidebar({ graphId, onSelectRun }: Args) {
 
   const schedules: GraphExecutionJobInfo[] =
     schedulesQuery.data?.status === 200 ? schedulesQuery.data.data : [];
+
+  // If there are no runs but there are schedules, and nothing is selected, auto-select the first schedule
+  useEffect(() => {
+    if (!existingRunId && runs.length === 0 && schedules.length > 0)
+      onSelectRun(`schedule:${schedules[0].id}`);
+  }, [existingRunId, runs.length, schedules, onSelectRun]);
 
   return {
     runs,

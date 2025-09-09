@@ -6,5 +6,5 @@ import { OldAgentLibraryView } from "./components/OldAgentLibraryView/OldAgentLi
 
 export default function AgentLibraryPage() {
   const isNewLibraryPageEnabled = useGetFlag(Flag.NEW_AGENT_RUNS);
-  return isNewLibraryPageEnabled ? <AgentRunsView /> : <OldAgentLibraryView />;
+  return true ? <AgentRunsView /> : <OldAgentLibraryView />;
 }
