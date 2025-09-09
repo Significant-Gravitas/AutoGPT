@@ -71,12 +71,26 @@ export const customMutator = async <
   const fullUrl = `${baseUrl}${url}${queryString}`;
 
   if (isServerSide()) {
-    try {
-      const token = await getServerAuthToken();
-      const authHeaders = createRequestHeaders(token, !!data, contentType);
-      headers = { ...headers, ...authHeaders };
-    } catch (error) {
-      console.warn("Failed to get server auth token:", error);
+    // Skip authentication for public store endpoints that don't require auth
+    const publicStoreEndpoints = [
+      '/api/store/agents',
+      '/api/store/creators',
+      '/api/store/creator/',
+      '/api/store/download/agents/',
+    ];
+    
+    const isPublicStoreEndpoint = publicStoreEndpoints.some(endpoint => 
+      url.startsWith(endpoint)
+    );
+    
+    if (!isPublicStoreEndpoint) {
+      try {
+        const token = await getServerAuthToken();
+        const authHeaders = createRequestHeaders(token, !!data, contentType);
+        headers = { ...headers, ...authHeaders };
+      } catch (error) {
+        console.warn("Failed to get server auth token:", error);
+      }
     }
   }
 

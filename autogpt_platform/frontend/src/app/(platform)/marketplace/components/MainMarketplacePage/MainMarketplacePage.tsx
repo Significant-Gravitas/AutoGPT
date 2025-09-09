@@ -40,17 +40,17 @@ export const MainMarkeplacePage = () => {
     <div className="mx-auto w-screen max-w-[1360px]">
       <main className="px-4">
         <HeroSection />
-        {featuredAgents && (
+        {featuredAgents?.agents && (
           <FeaturedSection featuredAgents={featuredAgents.agents} />
         )}
         {/* 100px margin because our featured sections button are placed 40px below the container */}
         <Separator className="mb-6 mt-24" />
 
-        {topAgents && (
+        {topAgents?.agents && (
           <AgentsSection sectionTitle="Top Agents" agents={topAgents.agents} />
         )}
         <Separator className="mb-[25px] mt-[60px]" />
-        {featuredCreators && (
+        {featuredCreators?.creators && (
           <FeaturedCreators featuredCreators={featuredCreators.creators} />
         )}
         <Separator className="mb-[25px] mt-[60px]" />

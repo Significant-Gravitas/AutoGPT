@@ -22,14 +22,23 @@ export async function generateMetadata({
   params: Promise<MarketplaceCreatorPageParams>;
 }): Promise<Metadata> {
   const params = await _params;
-  const { data: creator } = await getV2GetCreatorDetails(
-    params.creator.toLowerCase(),
-  );
+  try {
+    const { data: creator } = await getV2GetCreatorDetails(
+      params.creator.toLowerCase(),
+    );
 
-  return {
-    title: `${(creator as CreatorDetails).name} - AutoGPT Store`,
-    description: (creator as CreatorDetails).description,
-  };
+    return {
+      metadataBase: new URL(process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || 'https://platform.agpt.co'),
+      title: `${(creator as CreatorDetails).name} - AutoGPT Store`,
+      description: (creator as CreatorDetails).description,
+    };
+  } catch (_error) {
+    return {
+      metadataBase: new URL(process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || 'https://platform.agpt.co'),
+      title: `Creator - AutoGPT Store`,
+      description: 'View creator details on AutoGPT Marketplace',
+    };
+  }
 }
 
 export default async function Page({
@@ -41,12 +50,16 @@ export default async function Page({
 
   const params = await _params;
 
-  await Promise.all([
-    prefetchGetV2ListStoreAgentsQuery(queryClient, {
-      creator: params.creator,
-    }),
-    prefetchGetV2GetCreatorDetailsQuery(queryClient, params.creator),
-  ]);
+  try {
+    await Promise.all([
+      prefetchGetV2ListStoreAgentsQuery(queryClient, {
+        creator: params.creator,
+      }),
+      prefetchGetV2GetCreatorDetailsQuery(queryClient, params.creator),
+    ]);
+  } catch (error) {
+    console.error('Failed to prefetch creator data:', error);
+  }
 
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
