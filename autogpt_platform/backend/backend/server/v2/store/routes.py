@@ -1,3 +1,4 @@
+import functools
 import logging
 import tempfile
 import typing
@@ -18,6 +19,40 @@ import backend.util.json
 logger = logging.getLogger(__name__)
 
 router = fastapi.APIRouter()
+
+
+def cache_response(max_age: int = 3600):
+    """
+    Decorator to add cache headers to response.
+    
+    Args:
+        max_age: Maximum age in seconds (default 1 hour)
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            # Log that we're executing the function (not from cache)
+            logger.info(f"[CACHE MISS] Executing {func.__name__} - fetching from database")
+            
+            result = await func(*args, **kwargs)
+            
+            # Log that we're setting cache headers for future requests
+            logger.info(f"[CACHE SET] Setting cache headers for {func.__name__} (max-age={max_age}s)")
+            
+            # If it's already a Response object, add headers directly
+            if isinstance(result, fastapi.Response):
+                result.headers["Cache-Control"] = f"public, max-age={max_age}, s-maxage={max_age}, stale-while-revalidate=86400"
+                return result
+            
+            # Otherwise, create a JSONResponse with cache headers
+            return fastapi.responses.JSONResponse(
+                content=backend.util.json.loads(backend.util.json.dumps(result.model_dump() if hasattr(result, 'model_dump') else result)),
+                headers={
+                    "Cache-Control": f"public, max-age={max_age}, s-maxage={max_age}, stale-while-revalidate=86400"
+                }
+            )
+        return wrapper
+    return decorator
 
 
 ##############################################
@@ -108,6 +143,7 @@ async def update_or_create_profile(
     tags=["store", "public"],
     response_model=backend.server.v2.store.model.StoreAgentsResponse,
 )
+@cache_response(max_age=3600)  # 1 hour cache
 async def get_agents(
     featured: bool = False,
     creator: str | None = None,
@@ -181,6 +217,7 @@ async def get_agents(
     tags=["store", "public"],
     response_model=backend.server.v2.store.model.StoreAgentDetails,
 )
+@cache_response(max_age=3600)  # 1 hour cache
 async def get_agent(username: str, agent_name: str):
     """
     This is only used on the AgentDetails Page
@@ -308,6 +345,7 @@ async def create_review(
     tags=["store", "public"],
     response_model=backend.server.v2.store.model.CreatorsResponse,
 )
+@cache_response(max_age=3600)  # 1 hour cache
 async def get_creators(
     featured: bool = False,
     search_query: str | None = None,
@@ -360,6 +398,7 @@ async def get_creators(
     tags=["store", "public"],
     response_model=backend.server.v2.store.model.CreatorDetails,
 )
+@cache_response(max_age=3600)  # 1 hour cache
 async def get_creator(
     username: str,
 ):
@@ -705,6 +744,7 @@ async def generate_image(
     summary="Download agent file",
     tags=["store", "public"],
 )
+@cache_response(max_age=3600)  # 1 hour cache
 async def download_agent_file(
     store_listing_version_id: str = fastapi.Path(
         ..., description="The ID of the agent to download"
