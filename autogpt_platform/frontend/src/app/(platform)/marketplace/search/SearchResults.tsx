@@ -21,8 +21,12 @@ const getCachedSearchResults = unstable_cache(
       ]);
 
       return {
-        agents: ('agents' in agentsRes.data ? agentsRes.data.agents || [] : []) as StoreAgent[],
-        creators: ('creators' in creatorsRes.data ? creatorsRes.data.creators || [] : []) as Creator[],
+        agents: ("agents" in agentsRes.data
+          ? agentsRes.data.agents || []
+          : []) as StoreAgent[],
+        creators: ("creators" in creatorsRes.data
+          ? creatorsRes.data.creators || []
+          : []) as Creator[],
       };
     } catch (error) {
       console.error("Error fetching search results:", error);

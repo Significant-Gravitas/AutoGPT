@@ -28,15 +28,19 @@ export async function generateMetadata({
     );
 
     return {
-      metadataBase: new URL(process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || 'https://platform.agpt.co'),
+      metadataBase: new URL(
+        process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "https://platform.agpt.co",
+      ),
       title: `${(creator as CreatorDetails).name} - AutoGPT Store`,
       description: (creator as CreatorDetails).description,
     };
   } catch (_error) {
     return {
-      metadataBase: new URL(process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || 'https://platform.agpt.co'),
+      metadataBase: new URL(
+        process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "https://platform.agpt.co",
+      ),
       title: `Creator - AutoGPT Store`,
-      description: 'View creator details on AutoGPT Marketplace',
+      description: "View creator details on AutoGPT Marketplace",
     };
   }
 }
@@ -58,7 +62,7 @@ export default async function Page({
       prefetchGetV2GetCreatorDetailsQuery(queryClient, params.creator),
     ]);
   } catch (error) {
-    console.error('Failed to prefetch creator data:', error);
+    console.error("Failed to prefetch creator data:", error);
   }
 
   return (

@@ -28,15 +28,19 @@ export async function generateMetadata({
       params.slug,
     );
     return {
-      metadataBase: new URL(process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || 'https://platform.agpt.co'),
+      metadataBase: new URL(
+        process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "https://platform.agpt.co",
+      ),
       title: `${(creator_agent as StoreAgentDetails).agent_name} - AutoGPT Marketplace`,
       description: (creator_agent as StoreAgentDetails).description,
     };
   } catch (_error) {
     return {
-      metadataBase: new URL(process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || 'https://platform.agpt.co'),
+      metadataBase: new URL(
+        process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "https://platform.agpt.co",
+      ),
       title: `Agent - AutoGPT Marketplace`,
-      description: 'View agent details on AutoGPT Marketplace',
+      description: "View agent details on AutoGPT Marketplace",
     };
   }
 }
@@ -50,10 +54,14 @@ export default async function MarketplaceAgentPage({
 
   const params = await _params;
   const creator_lower = params.creator.toLowerCase();
-  
+
   try {
     await Promise.all([
-      prefetchGetV2GetSpecificAgentQuery(queryClient, creator_lower, params.slug),
+      prefetchGetV2GetSpecificAgentQuery(
+        queryClient,
+        creator_lower,
+        params.slug,
+      ),
       prefetchGetV2ListStoreAgentsQuery(queryClient, {
         creator: creator_lower,
       }),
@@ -79,7 +87,7 @@ export default async function MarketplaceAgentPage({
       );
     }
   } catch (error) {
-    console.error('Failed to prefetch agent data:', error);
+    console.error("Failed to prefetch agent data:", error);
   }
 
   return (

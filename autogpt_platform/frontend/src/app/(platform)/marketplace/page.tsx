@@ -12,7 +12,9 @@ export const revalidate = 600; // 10 minutes in seconds
 
 // FIX: Correct metadata
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || 'https://platform.agpt.co'),
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "https://platform.agpt.co",
+  ),
   title: "Marketplace - AutoGPT Platform",
   description: "Find and use AI Agents created by our community",
   applicationName: "AutoGPT Marketplace",
@@ -75,7 +77,7 @@ export default async function MarketplacePage(): Promise<React.ReactElement> {
     ]);
   } catch (error) {
     // Log the error but don't fail the page render
-    console.error('Failed to prefetch marketplace data:', error);
+    console.error("Failed to prefetch marketplace data:", error);
   }
 
   return (

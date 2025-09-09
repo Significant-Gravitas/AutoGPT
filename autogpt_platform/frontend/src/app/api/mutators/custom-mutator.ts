@@ -73,16 +73,16 @@ export const customMutator = async <
   if (isServerSide()) {
     // Skip authentication for public store endpoints that don't require auth
     const publicStoreEndpoints = [
-      '/api/store/agents',
-      '/api/store/creators',
-      '/api/store/creator/',
-      '/api/store/download/agents/',
+      "/api/store/agents",
+      "/api/store/creators",
+      "/api/store/creator/",
+      "/api/store/download/agents/",
     ];
-    
-    const isPublicStoreEndpoint = publicStoreEndpoints.some(endpoint => 
-      url.startsWith(endpoint)
+
+    const isPublicStoreEndpoint = publicStoreEndpoints.some((endpoint) =>
+      url.startsWith(endpoint),
     );
-    
+
     if (!isPublicStoreEndpoint) {
       try {
         const token = await getServerAuthToken();
