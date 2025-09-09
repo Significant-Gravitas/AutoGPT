@@ -8,12 +8,7 @@ import rehypeKatex from "rehype-katex";
 import rehypeHighlight from "rehype-highlight";
 import rehypeSlug from "rehype-slug";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
-import {
-  OutputRenderer,
-  OutputMetadata,
-  DownloadContent,
-  CopyContent,
-} from "../types";
+import { OutputRenderer, OutputMetadata, DownloadContent } from "../types";
 import "highlight.js/styles/github-dark.css";
 import "katex/dist/katex.min.css";
 
@@ -358,6 +353,7 @@ function renderMarkdown(
             }
 
             return (
+              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={src}
                 alt={alt}
@@ -400,19 +396,6 @@ function renderMarkdown(
       </ReactMarkdown>
     </div>
   );
-}
-
-function getCopyContentMarkdown(
-  value: unknown,
-  _metadata?: OutputMetadata,
-): CopyContent | null {
-  const markdownText = String(value);
-  return {
-    mimeType: "text/markdown",
-    data: markdownText,
-    alternativeMimeTypes: ["text/plain"],
-    fallbackText: markdownText,
-  };
 }
 
 function getDownloadContentMarkdown(
