@@ -8,6 +8,33 @@ export async function updateSession(request: NextRequest) {
     request,
   });
 
+  const pathname = request.nextUrl.pathname;
+  
+  // Skip auth checks for public pages that don't need authentication
+  // This significantly improves performance for high-traffic public pages
+  const publicPaths = [
+    '/marketplace',
+    '/marketplace/search',
+    '/marketplace/agent',
+    '/marketplace/creator',
+    '/api/store/agents',
+    '/api/store/creators',
+    '/api/store/creator',
+    '/api/store/download',
+    '/',
+    '/login',
+    '/signup',
+    '/reset-password',
+    '/health',
+  ];
+  
+  const isPublicPath = publicPaths.some(path => pathname.startsWith(path));
+  
+  // For public paths, skip Supabase auth check entirely
+  if (isPublicPath) {
+    return supabaseResponse;
+  }
+
   const supabaseUrl = getSupabaseUrl();
   const supabaseKey = getSupabaseAnonKey();
   const isAvailable = Boolean(supabaseUrl && supabaseKey);
@@ -44,7 +71,6 @@ export async function updateSession(request: NextRequest) {
     const userRole = user?.role;
 
     const url = request.nextUrl.clone();
-    const pathname = request.nextUrl.pathname;
 
     // IMPORTANT: Avoid writing any logic between createServerClient and
     // supabase.auth.getUser(). A simple mistake could make it very hard to debug
