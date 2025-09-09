@@ -2,55 +2,55 @@
 * @Significant-Gravitas/maintainers
 
 # Frontend
-autogpt_platform/frontend/ @lluis.agusti @kpczerwinski @Abhi
-classic/frontend/ @lluis.agusti @kpczerwinski @Abhi
+autogpt_platform/frontend/ @0ubbe @kcze @Abhi1992002
+classic/frontend/ @0ubbe @kcze @Abhi1992002
 
 # Backend
-autogpt_platform/backend/ @zamil.majdy @ntindle @pwuts @swiftyos
+autogpt_platform/backend/ @majdyz @ntindle @Pwuts @Swiftyos
 
 # Blocks
-autogpt_platform/backend/backend/blocks/ @swiftyos @ntindle @bently
+autogpt_platform/backend/backend/blocks/ @Swiftyos @ntindle @Bentlybro
 
 # Install / Docs
-autogpt_platform/installer/ @bently @pwuts
-docs/ @bently @pwuts
-*.md @bently @pwuts
-README* @bently @pwuts
+autogpt_platform/installer/ @Bentlybro @Pwuts
+docs/ @Bentlybro @Pwuts
+*.md @Bentlybro @Pwuts
+README* @Bentlybro @Pwuts
 
 # Docker changes
-**/Dockerfile* @ntindle @bently @lluis.agusti
-docker-compose*.yml @ntindle @bently @lluis.agusti
-docker-compose*.yaml @ntindle @bently @lluis.agusti
+**/Dockerfile* @ntindle @Bentlybro @0ubbe
+docker-compose*.yml @ntindle @Bentlybro @0ubbe
+docker-compose*.yaml @ntindle @Bentlybro @0ubbe
 
 # Database manager changes
-autogpt_platform/backend/backend/data/ @zamil.majdy
-schema.prisma @zamil.majdy
-**/migrations/ @zamil.majdy
+autogpt_platform/backend/backend/data/ @majdyz
+schema.prisma @majdyz
+**/migrations/ @majdyz
 
 # Notification changes
 autogpt_platform/backend/backend/notifications/ @ntindle
 autogpt_platform/backend/backend/notification.py @ntindle
 
 # Block SDK changes
-autogpt_platform/backend/backend/sdk/ @swiftyos
+autogpt_platform/backend/backend/sdk/ @Swiftyos
 
 # Auth changes
-autogpt_platform/autogpt_libs/autogpt_libs/auth/ @pwuts
+autogpt_platform/autogpt_libs/autogpt_libs/auth/ @Pwuts
 
 # Molecule/Atom changes
-autogpt_platform/frontend/src/components/molecules/ @lluis.agusti
-autogpt_platform/frontend/src/components/atoms/ @lluis.agusti
+autogpt_platform/frontend/src/components/molecules/ @0ubbe
+autogpt_platform/frontend/src/components/atoms/ @0ubbe
 
 # Classic changes
-classic/ @pwuts @bently
+classic/ @Pwuts @Bentlybro
 
 # Test changes
-**/test/ @Abhi
-**/*test*.py @Abhi
-**/*test*.ts @Abhi
-**/*test*.tsx @Abhi
-**/tests/ @Abhi
-**/*.test.* @Abhi
+**/test/ @Abhi1992002
+**/*test*.py @Abhi1992002
+**/*test*.ts @Abhi1992002
+**/*test*.tsx @Abhi1992002
+**/tests/ @Abhi1992002
+**/*.test.* @Abhi1992002
 
 # DevOps and workflows
 .github/workflows/ @Significant-Gravitas/devops
