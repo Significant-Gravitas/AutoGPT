@@ -18,7 +18,9 @@ from ._api import (
     create_record,
     delete_multiple_records,
     get_record,
+    get_table_schema,
     list_records,
+    normalize_records,
     update_multiple_records,
 )
 from ._config import airtable
@@ -85,7 +87,6 @@ class AirtableListRecordsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        from ._api import get_table_schema, normalize_records
 
         data = await list_records(
             credentials,
@@ -173,7 +174,6 @@ class AirtableGetRecordBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        from ._api import get_table_schema, normalize_records
 
         record = await get_record(
             credentials,
@@ -254,7 +254,6 @@ class AirtableCreateRecordsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        from ._api import get_table_schema, normalize_records
 
         data = await create_record(
             credentials,
