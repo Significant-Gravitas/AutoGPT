@@ -4066,6 +4066,66 @@
         }
       }
     },
+    "/api/library/agents/favorites": {
+      "get": {
+        "tags": ["v2", "library", "private"],
+        "summary": "List Favorite Library Agents",
+        "description": "Get all favorite agents in the user's library.\n\nArgs:\n    user_id: ID of the authenticated user.\n    page: Page number to retrieve.\n    page_size: Number of agents per page.\n\nReturns:\n    A LibraryAgentResponse containing favorite agents and pagination metadata.\n\nRaises:\n    HTTPException: If a server/database error occurs.",
+        "operationId": "getV2List favorite library agents",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Page number to retrieve (must be >= 1)",
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Number of agents per page (must be >= 1)",
+              "default": 15,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryAgentResponse" }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": { "application/json": {} }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
     "/api/library/agents/{library_agent_id}": {
       "get": {
         "tags": ["v2", "library", "private"],

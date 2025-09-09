@@ -35,6 +35,12 @@ export default defineConfig({
               useInfiniteQueryParam: "page",
             },
           },
+          "getV2List favorite library agents": {
+            query: {
+              useInfinite: true,
+              useInfiniteQueryParam: "page",
+            },
+          },
           "getV1List graph executions": {
             query: {
               useInfinite: true,
