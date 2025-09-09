@@ -1094,6 +1094,108 @@ class GmailGetThreadBlock(GmailBase):
         return thread
 
 
+async def _build_reply_message(
+    service, input_data, graph_exec_id: str, user_id: str
+) -> tuple[str, str]:
+    """
+    Builds a reply MIME message for Gmail threads.
+    
+    Returns:
+        tuple: (base64-encoded raw message, threadId)
+    """
+    # Get parent message for reply context
+    parent = await asyncio.to_thread(
+        lambda: service.users()
+        .messages()
+        .get(
+            userId="me",
+            id=input_data.parentMessageId,
+            format="metadata",
+            metadataHeaders=[
+                "Subject",
+                "References",
+                "Message-ID",
+                "From",
+                "To",
+                "Cc",
+                "Reply-To",
+            ],
+        )
+        .execute()
+    )
+
+    headers = {
+        h["name"].lower(): h["value"]
+        for h in parent.get("payload", {}).get("headers", [])
+    }
+    
+    # Determine recipients if not specified
+    if not (input_data.to or input_data.cc or input_data.bcc):
+        if input_data.replyAll:
+            recipients = [parseaddr(headers.get("from", ""))[1]]
+            recipients += [
+                addr for _, addr in getaddresses([headers.get("to", "")])
+            ]
+            recipients += [
+                addr for _, addr in getaddresses([headers.get("cc", "")])
+            ]
+            dedup: list[str] = []
+            for r in recipients:
+                if r and r not in dedup:
+                    dedup.append(r)
+            input_data.to = dedup
+        else:
+            sender = parseaddr(headers.get("reply-to", headers.get("from", "")))[1]
+            input_data.to = [sender] if sender else []
+    
+    # Set subject with Re: prefix if not already present
+    subject = input_data.subject or (f"Re: {headers.get('subject', '')}".strip())
+    
+    # Build references header for proper threading
+    references = headers.get("references", "").split()
+    if headers.get("message-id"):
+        references.append(headers["message-id"])
+    
+    # Create MIME message
+    msg = MIMEMultipart()
+    if input_data.to:
+        msg["To"] = ", ".join(input_data.to)
+    if input_data.cc:
+        msg["Cc"] = ", ".join(input_data.cc)
+    if input_data.bcc:
+        msg["Bcc"] = ", ".join(input_data.bcc)
+    msg["Subject"] = subject
+    if headers.get("message-id"):
+        msg["In-Reply-To"] = headers["message-id"]
+    if references:
+        msg["References"] = " ".join(references)
+    
+    # Use the helper function for consistent content type handling
+    msg.attach(_make_mime_text(input_data.body, input_data.content_type))
+    
+    # Handle attachments
+    for attach in input_data.attachments:
+        local_path = await store_media_file(
+            user_id=user_id,
+            graph_exec_id=graph_exec_id,
+            file=attach,
+            return_content=False,
+        )
+        abs_path = get_exec_file_path(graph_exec_id, local_path)
+        part = MIMEBase("application", "octet-stream")
+        with open(abs_path, "rb") as f:
+            part.set_payload(f.read())
+        encoders.encode_base64(part)
+        part.add_header(
+            "Content-Disposition", f"attachment; filename={Path(abs_path).name}"
+        )
+        msg.attach(part)
+    
+    # Encode message
+    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
+    return raw, input_data.threadId
+
+
 class GmailReplyBlock(GmailBase):
     """
     Replies to Gmail threads with intelligent content type detection.
@@ -1230,89 +1332,16 @@ class GmailReplyBlock(GmailBase):
     async def _reply(
         self, service, input_data: Input, graph_exec_id: str, user_id: str
     ) -> dict:
-        parent = await asyncio.to_thread(
-            lambda: service.users()
-            .messages()
-            .get(
-                userId="me",
-                id=input_data.parentMessageId,
-                format="metadata",
-                metadataHeaders=[
-                    "Subject",
-                    "References",
-                    "Message-ID",
-                    "From",
-                    "To",
-                    "Cc",
-                    "Reply-To",
-                ],
-            )
-            .execute()
+        # Build the reply message using the shared helper
+        raw, thread_id = await _build_reply_message(
+            service, input_data, graph_exec_id, user_id
         )
-
-        headers = {
-            h["name"].lower(): h["value"]
-            for h in parent.get("payload", {}).get("headers", [])
-        }
-        if not (input_data.to or input_data.cc or input_data.bcc):
-            if input_data.replyAll:
-                recipients = [parseaddr(headers.get("from", ""))[1]]
-                recipients += [
-                    addr for _, addr in getaddresses([headers.get("to", "")])
-                ]
-                recipients += [
-                    addr for _, addr in getaddresses([headers.get("cc", "")])
-                ]
-                dedup: list[str] = []
-                for r in recipients:
-                    if r and r not in dedup:
-                        dedup.append(r)
-                input_data.to = dedup
-            else:
-                sender = parseaddr(headers.get("reply-to", headers.get("from", "")))[1]
-                input_data.to = [sender] if sender else []
-        subject = input_data.subject or (f"Re: {headers.get('subject', '')}".strip())
-        references = headers.get("references", "").split()
-        if headers.get("message-id"):
-            references.append(headers["message-id"])
-
-        msg = MIMEMultipart()
-        if input_data.to:
-            msg["To"] = ", ".join(input_data.to)
-        if input_data.cc:
-            msg["Cc"] = ", ".join(input_data.cc)
-        if input_data.bcc:
-            msg["Bcc"] = ", ".join(input_data.bcc)
-        msg["Subject"] = subject
-        if headers.get("message-id"):
-            msg["In-Reply-To"] = headers["message-id"]
-        if references:
-            msg["References"] = " ".join(references)
-        # Use the new helper function for consistent content type handling
-        msg.attach(_make_mime_text(input_data.body, input_data.content_type))
-
-        for attach in input_data.attachments:
-            local_path = await store_media_file(
-                user_id=user_id,
-                graph_exec_id=graph_exec_id,
-                file=attach,
-                return_content=False,
-            )
-            abs_path = get_exec_file_path(graph_exec_id, local_path)
-            part = MIMEBase("application", "octet-stream")
-            with open(abs_path, "rb") as f:
-                part.set_payload(f.read())
-            encoders.encode_base64(part)
-            part.add_header(
-                "Content-Disposition", f"attachment; filename={Path(abs_path).name}"
-            )
-            msg.attach(part)
-
-        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
+        
+        # Send the message
         return await asyncio.to_thread(
             lambda: service.users()
             .messages()
-            .send(userId="me", body={"threadId": input_data.threadId, "raw": raw})
+            .send(userId="me", body={"threadId": thread_id, "raw": raw})
             .execute()
         )
 
@@ -1419,96 +1448,12 @@ class GmailDraftReplyBlock(GmailBase):
     async def _create_draft_reply(
         self, service, input_data: Input, graph_exec_id: str, user_id: str
     ) -> dict:
-        # Get parent message for reply context
-        parent = await asyncio.to_thread(
-            lambda: service.users()
-            .messages()
-            .get(
-                userId="me",
-                id=input_data.parentMessageId,
-                format="metadata",
-                metadataHeaders=[
-                    "Subject",
-                    "References",
-                    "Message-ID",
-                    "From",
-                    "To",
-                    "Cc",
-                    "Reply-To",
-                ],
-            )
-            .execute()
+        # Build the reply message using the shared helper
+        raw, thread_id = await _build_reply_message(
+            service, input_data, graph_exec_id, user_id
         )
-
-        headers = {
-            h["name"].lower(): h["value"]
-            for h in parent.get("payload", {}).get("headers", [])
-        }
-
-        # Determine recipients if not specified
-        if not (input_data.to or input_data.cc or input_data.bcc):
-            if input_data.replyAll:
-                recipients = [parseaddr(headers.get("from", ""))[1]]
-                recipients += [
-                    addr for _, addr in getaddresses([headers.get("to", "")])
-                ]
-                recipients += [
-                    addr for _, addr in getaddresses([headers.get("cc", "")])
-                ]
-                dedup: list[str] = []
-                for r in recipients:
-                    if r and r not in dedup:
-                        dedup.append(r)
-                input_data.to = dedup
-            else:
-                sender = parseaddr(headers.get("reply-to", headers.get("from", "")))[1]
-                input_data.to = [sender] if sender else []
-
-        # Set subject with Re: prefix if not already present
-        subject = input_data.subject or (f"Re: {headers.get('subject', '')}".strip())
-
-        # Build references header for proper threading
-        references = headers.get("references", "").split()
-        if headers.get("message-id"):
-            references.append(headers["message-id"])
-
-        # Create MIME message
-        msg = MIMEMultipart()
-        if input_data.to:
-            msg["To"] = ", ".join(input_data.to)
-        if input_data.cc:
-            msg["Cc"] = ", ".join(input_data.cc)
-        if input_data.bcc:
-            msg["Bcc"] = ", ".join(input_data.bcc)
-        msg["Subject"] = subject
-        if headers.get("message-id"):
-            msg["In-Reply-To"] = headers["message-id"]
-        if references:
-            msg["References"] = " ".join(references)
-
-        # Add body with proper content type handling
-        msg.attach(_make_mime_text(input_data.body, input_data.content_type))
-
-        # Handle attachments
-        for attach in input_data.attachments:
-            local_path = await store_media_file(
-                user_id=user_id,
-                graph_exec_id=graph_exec_id,
-                file=attach,
-                return_content=False,
-            )
-            abs_path = get_exec_file_path(graph_exec_id, local_path)
-            part = MIMEBase("application", "octet-stream")
-            with open(abs_path, "rb") as f:
-                part.set_payload(f.read())
-            encoders.encode_base64(part)
-            part.add_header(
-                "Content-Disposition", f"attachment; filename={Path(abs_path).name}"
-            )
-            msg.attach(part)
-
+        
         # Create draft with proper thread association
-        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
         draft = await asyncio.to_thread(
             lambda: service.users()
             .drafts()
@@ -1516,7 +1461,7 @@ class GmailDraftReplyBlock(GmailBase):
                 userId="me",
                 body={
                     "message": {
-                        "threadId": input_data.threadId,
+                        "threadId": thread_id,
                         "raw": raw,
                     }
                 },
