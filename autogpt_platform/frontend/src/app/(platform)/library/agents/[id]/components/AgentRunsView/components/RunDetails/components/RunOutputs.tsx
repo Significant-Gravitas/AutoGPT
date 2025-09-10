@@ -83,8 +83,8 @@ export function RunOutputs({ outputs }: RunOutputsProps) {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-end">
+    <div className="relative flex flex-col gap-4">
+      <div className="absolute -top-3 right-0">
         <OutputActions
           items={items.map((item) => ({
             value: item.value,
