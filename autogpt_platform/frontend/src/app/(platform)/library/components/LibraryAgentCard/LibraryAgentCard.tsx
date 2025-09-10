@@ -51,7 +51,6 @@ export default function LibraryAgentCard({
             alt={`${name} preview image`}
             fill
             className="object-cover"
-            priority
           />
         )}
         <div className="absolute bottom-4 left-4">
