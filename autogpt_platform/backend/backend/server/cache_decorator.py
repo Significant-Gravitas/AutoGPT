@@ -179,8 +179,10 @@ def ttl_cache(
             else:
                 # Fallback for non-request endpoints
                 cache_key = generate_cache_key(func, args, kwargs)
-            
-            logger.debug(f"[CACHE] Generated cache key for {func.__name__}: {cache_key}")
+
+            logger.debug(
+                f"[CACHE] Generated cache key for {func.__name__}: {cache_key}"
+            )
 
             # Check cache (cache is guaranteed to be non-None here)
             cached_result = cache.get(cache_key)

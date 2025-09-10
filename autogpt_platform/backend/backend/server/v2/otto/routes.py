@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Security
 
 from backend.server.cache_decorator import ttl_cache
 from backend.server.cache_manager import CacheComponent
+
 from .models import ApiResponse, ChatRequest
 from .service import OttoService
 
@@ -20,7 +21,7 @@ router = APIRouter()
     summary="Proxy Otto Chat Request",
 )
 @ttl_cache(
-    ttl_seconds=60, # To prevent the same question being asked multiple times
+    ttl_seconds=60,  # To prevent the same question being asked multiple times
     cache_component=CacheComponent.OTTO,
 )
 async def proxy_otto_request(

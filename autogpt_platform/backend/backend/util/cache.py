@@ -297,14 +297,20 @@ class TTLCache:
         with self._lock:
             try:
                 regex = re.compile(pattern)
-                
+
                 # Debug: log all keys in cache
                 if logger.isEnabledFor(logging.DEBUG):
-                    logger.debug(f"[CACHE INVALIDATE] Searching for pattern '{pattern}' in {len(self._cache)} keys")
-                    for key in list(self._cache.keys())[:5]:  # Log first 5 keys for debugging
+                    logger.debug(
+                        f"[CACHE INVALIDATE] Searching for pattern '{pattern}' in {len(self._cache)} keys"
+                    )
+                    for key in list(self._cache.keys())[
+                        :5
+                    ]:  # Log first 5 keys for debugging
                         logger.debug(f"[CACHE INVALIDATE] Cache key: {key}")
-                
-                keys_to_remove = [key for key in self._cache.keys() if regex.search(key)]
+
+                keys_to_remove = [
+                    key for key in self._cache.keys() if regex.search(key)
+                ]
                 freed_bytes = 0
                 for key in keys_to_remove:
                     _, _, size_bytes = self._cache[key]
@@ -317,7 +323,9 @@ class TTLCache:
                         f"[CACHE INVALIDATE] Invalidated {len(keys_to_remove)} keys matching pattern: {pattern} (freed {freed_bytes / 1024 / 1024:.2f} MB)"
                     )
                 else:
-                    logger.debug(f"[CACHE INVALIDATE] No keys found matching pattern: {pattern}")
+                    logger.debug(
+                        f"[CACHE INVALIDATE] No keys found matching pattern: {pattern}"
+                    )
                 return len(keys_to_remove)
             except re.error as e:
                 logger.error(f"Invalid regex pattern '{pattern}': {e}")

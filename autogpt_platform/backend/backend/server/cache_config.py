@@ -59,7 +59,7 @@ CACHE_KEY_PREFIXES = {
 }
 
 
-def get_cache_key_prefix(data_type: str, user_id: str = None, **kwargs) -> str:
+def get_cache_key_prefix(data_type: str, user_id: str | None = None, **kwargs) -> str:
     """
     Generate a cache key prefix for a specific data type.
 

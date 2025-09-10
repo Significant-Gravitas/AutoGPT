@@ -48,7 +48,7 @@ class CacheManager:
         settings = Settings()
 
         # Check if caching is enabled (default to True if not set)
-        cache_enabled = getattr(settings, 'cache_enabled', True)
+        cache_enabled = getattr(settings, "cache_enabled", True)
         if not cache_enabled:
             logger.info("[CACHE MANAGER] Caching is disabled globally")
             return
@@ -56,15 +56,19 @@ class CacheManager:
         # Create cache instances with configured sizes (in MB)
         # Use getattr with defaults in case settings don't have these attributes
         cache_configs = {
-            CacheComponent.STORE: getattr(settings, 'cache_store_max_size_mb', 100.0),
-            CacheComponent.LIBRARY: getattr(settings, 'cache_library_max_size_mb', 50.0),
-            CacheComponent.V1_API: getattr(settings, 'cache_v1_api_max_size_mb', 200.0),
-            CacheComponent.BUILDER: getattr(settings, 'cache_builder_max_size_mb', 50.0),
-            CacheComponent.OTTO: getattr(settings, 'cache_otto_max_size_mb', 20.0),
-            CacheComponent.ADMIN: getattr(settings, 'cache_admin_max_size_mb', 10.0),
+            CacheComponent.STORE: getattr(settings, "cache_store_max_size_mb", 100.0),
+            CacheComponent.LIBRARY: getattr(
+                settings, "cache_library_max_size_mb", 50.0
+            ),
+            CacheComponent.V1_API: getattr(settings, "cache_v1_api_max_size_mb", 200.0),
+            CacheComponent.BUILDER: getattr(
+                settings, "cache_builder_max_size_mb", 50.0
+            ),
+            CacheComponent.OTTO: getattr(settings, "cache_otto_max_size_mb", 20.0),
+            CacheComponent.ADMIN: getattr(settings, "cache_admin_max_size_mb", 10.0),
         }
 
-        default_ttl = getattr(settings, 'cache_default_ttl', 3600)
+        default_ttl = getattr(settings, "cache_default_ttl", 3600)
         for component, max_size_mb in cache_configs.items():
             self._caches[component] = TTLCache(
                 default_ttl=default_ttl, max_size_mb=max_size_mb
@@ -85,7 +89,7 @@ class CacheManager:
             TTLCache instance or None if caching is disabled
         """
         settings = Settings()
-        cache_enabled = getattr(settings, 'cache_enabled', True)
+        cache_enabled = getattr(settings, "cache_enabled", True)
         if not cache_enabled:
             return None
 

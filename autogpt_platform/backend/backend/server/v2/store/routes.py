@@ -16,7 +16,6 @@ import backend.server.v2.store.media
 import backend.server.v2.store.model
 import backend.util.json
 from backend.server.cache_decorator import ttl_cache
-from backend.server.cache_manager import CacheComponent
 
 logger = logging.getLogger(__name__)
 
