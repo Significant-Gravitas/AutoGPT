@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { Node, NodeChange, applyNodeChanges } from "@xyflow/react";
-import { CustomNode } from "../Flow/CustomNode/CustomNode";
+import { CustomNode } from "../FlowEditor/CustomNode/CustomNode";
 
 type NodeStore = {
   nodes: CustomNode[];

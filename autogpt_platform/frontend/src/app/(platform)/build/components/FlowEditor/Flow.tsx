@@ -2,6 +2,7 @@ import { ReactFlow, Background, Controls } from "@xyflow/react";
 import { useNodeStore } from "../store/nodeStore";
 import { CustomNode } from "./CustomNode/CustomNode";
 import { Button } from "@/components/atoms/Button/Button";
+import NewControlPanel from "../NewBlockMenu/NewControlPanel/NewControlPanel";
 
 export const Flow = () => {
   const initialNodes: CustomNode[] = [
@@ -62,7 +63,7 @@ export const Flow = () => {
   };
 
   return (
-    <div className="h-full w-full bg-slate-900">
+    <div className="realtw-full h-full dark:bg-slate-900">
       <ReactFlow
         nodes={nodes}
         onNodesChange={onNodesChange}
@@ -70,6 +71,7 @@ export const Flow = () => {
       >
         <Background />
         <Controls />
+        <NewControlPanel />
         <Button
           className="absolute right-4 top-12 z-50"
           onClick={handleAddNode}

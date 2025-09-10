@@ -7,7 +7,7 @@ import { GraphID } from "@/lib/autogpt-server-api/types";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect } from "react";
-import { Flow } from "./components/Flow/Flow";
+import { Flow } from "./components/FlowEditor/Flow";
 
 function BuilderContent() {
   const query = useSearchParams();
