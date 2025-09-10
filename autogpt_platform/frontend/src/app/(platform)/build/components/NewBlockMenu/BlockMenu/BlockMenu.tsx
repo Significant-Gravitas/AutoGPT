@@ -9,6 +9,7 @@ import { BlockMenuContent } from "../BlockMenuContent/BlockMenuContent";
 import { ControlPanelButton } from "../ControlPanelButton";
 import { useBlockMenu } from "./useBlockMenu";
 import { BlockMenuStateProvider } from "../block-menu-provider";
+import { LegoIcon } from "@phosphor-icons/react";
 
 interface BlockMenuProps {
   pinBlocksPopover: boolean;
@@ -37,7 +38,7 @@ export const BlockMenu: React.FC<BlockMenuProps> = ({
           className="rounded-none"
         >
           {/* Need to find phosphor icon alternative for this lucide icon */}
-          <ToyBrick className="h-5 w-6" strokeWidth={2} />
+          <LegoIcon className="h-6 w-6" />
         </ControlPanelButton>
       </PopoverTrigger>
 

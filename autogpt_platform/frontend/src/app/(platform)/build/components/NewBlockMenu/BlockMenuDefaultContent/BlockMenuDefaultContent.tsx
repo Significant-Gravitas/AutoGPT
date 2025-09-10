@@ -7,18 +7,6 @@ import { MarketplaceAgentsContent } from "../MarketplaceAgentsContent/Marketplac
 import { MyAgentsContent } from "../MyAgentsContent/MyAgentsContent";
 import { SuggestionContent } from "../SuggestionContent/SuggestionContent";
 
-export interface ActionBlock {
-  id: number;
-  title: string;
-  description: string;
-}
-
-export interface BlockListType {
-  id: number;
-  title: string;
-  description: string;
-}
-
 export const BlockMenuDefaultContent = () => {
   const { defaultState } = useBlockMenuContext();
 

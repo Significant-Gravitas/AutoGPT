@@ -8,8 +8,10 @@ import { BlockResponse } from "@/app/api/__generated__/models/blockResponse";
 import * as Sentry from "@sentry/nextjs";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useState } from "react";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 
 export const useAllBlockContent = () => {
+  const { toast } = useToast();
   const [loadingCategories, setLoadingCategories] = useState<Set<string>>(
     new Set(),
   );
@@ -72,6 +74,11 @@ export const useAllBlockContent = () => {
     } catch (error) {
       Sentry.captureException(error);
       setErrorLoadingCategories((prev) => new Set(prev).add(targetCategory));
+      toast({
+        title: "Error loading blocks",
+        description: "Please try again later",
+        variant: "destructive",
+      });
     } finally {
       setLoadingCategories((prev) => {
         const newSet = new Set(prev);
