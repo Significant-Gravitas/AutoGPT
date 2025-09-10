@@ -2,23 +2,16 @@ import { RunStatusBadge } from "../RunDetails/components/RunStatusBadge";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import {
-  PencilSimpleIcon,
   TrashIcon,
   StopIcon,
   PlayIcon,
-  ArrowSquareOut,
+  ArrowSquareOutIcon,
 } from "@phosphor-icons/react";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import moment from "moment";
 import { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
 import { useRunDetailHeader } from "./useRunDetailHeader";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/molecules/DropdownMenu/DropdownMenu";
-import Link from "next/link";
+import { AgentActions } from "./components/AgentActions";
 
 type Props = {
   agent: LibraryAgent;
@@ -77,40 +70,28 @@ export function RunDetailHeader({
                 >
                   <TrashIcon size={16} /> Delete run
                 </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="secondary" size="small">
-                      •••
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    {canStop ? (
-                      <DropdownMenuItem onClick={stopRun} disabled={isStopping}>
-                        <StopIcon size={14} className="mr-2" /> Stop run
-                      </DropdownMenuItem>
-                    ) : null}
-                    {openInBuilderHref ? (
-                      <DropdownMenuItem asChild>
-                        <Link
-                          href={openInBuilderHref}
-                          target="_blank"
-                          className="flex items-center gap-2"
-                        >
-                          <ArrowSquareOut size={14} /> Open in builder
-                        </Link>
-                      </DropdownMenuItem>
-                    ) : null}
-                    <DropdownMenuItem asChild>
-                      <Link
-                        href={`/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`}
-                        target="_blank"
-                        className="flex items-center gap-2"
-                      >
-                        <PencilSimpleIcon size={16} /> Edit agent
-                      </Link>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                {openInBuilderHref ? (
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    as="NextLink"
+                    href={openInBuilderHref}
+                    target="_blank"
+                  >
+                    <ArrowSquareOutIcon size={16} /> Open in builder
+                  </Button>
+                ) : null}
+                {canStop ? (
+                  <Button
+                    variant="destructive"
+                    size="small"
+                    onClick={stopRun}
+                    disabled={isStopping}
+                  >
+                    <StopIcon size={14} /> Stop run
+                  </Button>
+                ) : null}
+                <AgentActions agent={agent} />
               </div>
             ) : null}
           </div>
