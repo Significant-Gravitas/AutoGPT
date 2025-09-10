@@ -22,7 +22,7 @@ export function DefaultRunView() {
   } = useRunAgentModalContext();
 
   return (
-    <div className="mb-12 mt-6">
+    <div className="my-4">
       {defaultRunType === "automatic-trigger" && <WebhookTriggerBanner />}
 
       {/* Preset/Trigger fields */}
