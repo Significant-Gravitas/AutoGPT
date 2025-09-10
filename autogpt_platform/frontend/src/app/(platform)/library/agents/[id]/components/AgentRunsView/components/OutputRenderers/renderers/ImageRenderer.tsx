@@ -111,7 +111,6 @@ function renderImage(
   const altText = metadata?.filename || "Output image";
 
   return (
-    // eslint-disable-next-line react/jsx-no-comment-textnodes
     <div className="group relative">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
