@@ -1,6 +1,6 @@
 import * as React from "react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { StarRatingIcons } from "@/components/ui/icons";
+import Avatar, { AvatarFallback, AvatarImage } from "../atoms/Avatar/Avatar";
 
 interface CreatorInfoCardProps {
   username: string;
