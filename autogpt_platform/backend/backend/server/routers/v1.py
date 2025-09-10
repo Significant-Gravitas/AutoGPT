@@ -74,6 +74,8 @@ from backend.integrations.webhooks.graph_lifecycle_hooks import (
     on_graph_activate,
     on_graph_deactivate,
 )
+from backend.server.cache_decorator import ttl_cache
+from backend.server.cache_manager import CacheComponent
 from backend.server.model import (
     CreateAPIKeyRequest,
     CreateAPIKeyResponse,
@@ -162,6 +164,10 @@ async def update_user_email_route(
     summary="Get user timezone",
     tags=["auth"],
     dependencies=[Security(requires_user)],
+)
+@ttl_cache(
+    ttl_seconds=300,
+    cache_component=CacheComponent.V1_API,
 )
 async def get_user_timezone_route(
     user_data: dict = Security(get_jwt_payload),
@@ -272,6 +278,10 @@ async def is_onboarding_enabled():
     summary="List available blocks",
     tags=["blocks"],
     dependencies=[Security(requires_user)],
+)
+@ttl_cache(
+    ttl_seconds=3600,
+    cache_component=CacheComponent.V1_API,
 )
 def get_graph_blocks() -> Sequence[dict[Any, Any]]:
     blocks = [block() for block in get_blocks().values()]
@@ -394,6 +404,10 @@ async def upload_file(
     tags=["credits"],
     summary="Get user credits",
     dependencies=[Security(requires_user)],
+)
+@ttl_cache(
+    ttl_seconds=30,
+    cache_component=CacheComponent.V1_API,
 )
 async def get_user_credits(
     user_id: Annotated[str, Security(get_user_id)],
@@ -541,6 +555,10 @@ async def manage_payment_method(
     summary="Get credit history",
     dependencies=[Security(requires_user)],
 )
+@ttl_cache(
+    ttl_seconds=30,
+    cache_component=CacheComponent.V1_API,
+)
 async def get_credit_history(
     user_id: Annotated[str, Security(get_user_id)],
     transaction_time: datetime | None = None,
@@ -563,6 +581,10 @@ async def get_credit_history(
     tags=["credits"],
     summary="Get refund requests",
     dependencies=[Security(requires_user)],
+)
+@ttl_cache(
+    ttl_seconds=30,
+    cache_component=CacheComponent.V1_API,
 )
 async def get_refund_requests(
     user_id: Annotated[str, Security(get_user_id)],

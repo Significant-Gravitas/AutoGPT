@@ -9,6 +9,7 @@ import hashlib
 import inspect
 import json
 import logging
+import sys
 import threading
 import time
 from collections import OrderedDict
@@ -29,23 +30,56 @@ class TTLCache:
     - Thread-safe operations with read-write lock optimization
     """
 
-    def __init__(self, default_ttl: int = 3600, max_size: Optional[int] = None):
+    def __init__(self, default_ttl: int = 3600, max_size_mb: Optional[float] = None):
         """
         Initialize the TTL cache.
 
         Args:
             default_ttl: Default time-to-live in seconds (default: 3600)
-            max_size: Maximum number of entries (None for unlimited)
+            max_size_mb: Maximum cache size in megabytes (None for unlimited)
         """
-        self._cache: OrderedDict[str, Tuple[Any, float]] = OrderedDict()
+        self._cache: OrderedDict[str, Tuple[Any, float, int]] = (
+            OrderedDict()
+        )  # value, expiry, size_bytes
         self._default_ttl = default_ttl
-        self._max_size = max_size
+        self._max_size_mb = max_size_mb
+        self._current_size_bytes = 0
         # Using RLock for reentrant locking (same thread can acquire multiple times)
         # For true read-write optimization, we'd need threading.RWLock (not in stdlib)
         # or a third-party library. For now, RLock provides thread safety.
         self._lock = threading.RLock()
         self._last_cleanup = time.time()
         self._cleanup_interval = 60  # Cleanup expired entries every 60 seconds
+
+    def _estimate_size(self, obj: Any) -> int:
+        """
+        Estimate the memory size of an object in bytes.
+
+        Args:
+            obj: Object to estimate size for
+
+        Returns:
+            Estimated size in bytes
+        """
+        # Use sys.getsizeof for basic estimation, with recursive handling for containers
+        try:
+            size = sys.getsizeof(obj)
+
+            # Add sizes of nested objects for common containers
+            if isinstance(obj, dict):
+                size += sum(
+                    self._estimate_size(k) + self._estimate_size(v)
+                    for k, v in obj.items()
+                )
+            elif isinstance(obj, (list, tuple, set)):
+                size += sum(self._estimate_size(item) for item in obj)
+            elif hasattr(obj, "__dict__"):
+                size += self._estimate_size(obj.__dict__)
+
+            return size
+        except Exception:
+            # Fallback to a conservative estimate if we can't determine size
+            return 1024  # 1KB default
 
     def _cleanup_expired(self) -> None:
         """Remove expired entries from the cache."""
@@ -56,7 +90,7 @@ class TTLCache:
             return
 
         expired_keys = [
-            key for key, (_, expiry) in self._cache.items() if expiry < current_time
+            key for key, (_, expiry, _) in self._cache.items() if expiry < current_time
         ]
 
         if expired_keys:
@@ -64,26 +98,35 @@ class TTLCache:
                 f"[CACHE CLEANUP] Removing {len(expired_keys)} expired entries"
             )
             for key in expired_keys:
+                _, _, size_bytes = self._cache[key]
                 del self._cache[key]
-                logger.debug(f"[CACHE EXPIRED] Removed expired entry: {key[:16]}...")
+                self._current_size_bytes -= size_bytes
+                logger.debug(
+                    f"[CACHE EXPIRED] Removed expired entry: {key[:16]}... (freed {size_bytes} bytes)"
+                )
 
         self._last_cleanup = current_time
 
     def _evict_if_needed(self) -> None:
-        """Evict oldest entries if cache exceeds max_size."""
-        if self._max_size and len(self._cache) > self._max_size:
-            # Remove oldest entries until we're at max_size
-            evicted = 0
-            while len(self._cache) > self._max_size:
-                evicted_key, _ = self._cache.popitem(last=False)
-                evicted += 1
-                logger.info(
-                    f"[CACHE EVICT] Evicted entry due to size limit: {evicted_key[:16]}..."
-                )
-            if evicted > 0:
-                logger.info(
-                    f"[CACHE EVICT] Evicted {evicted} entries to maintain max_size={self._max_size}"
-                )
+        """Evict oldest entries if cache exceeds max_size_mb."""
+        if self._max_size_mb:
+            max_bytes = self._max_size_mb * 1024 * 1024  # Convert MB to bytes
+            if self._current_size_bytes > max_bytes:
+                # Remove oldest entries until we're under the size limit
+                evicted = 0
+                evicted_bytes = 0
+                while self._current_size_bytes > max_bytes and self._cache:
+                    evicted_key, (_, _, size_bytes) = self._cache.popitem(last=False)
+                    self._current_size_bytes -= size_bytes
+                    evicted_bytes += size_bytes
+                    evicted += 1
+                    logger.info(
+                        f"[CACHE EVICT] Evicted entry due to memory limit: {evicted_key[:16]}... (freed {size_bytes} bytes)"
+                    )
+                if evicted > 0:
+                    logger.info(
+                        f"[CACHE EVICT] Evicted {evicted} entries ({evicted_bytes / 1024 / 1024:.2f} MB) to maintain max_size_mb={self._max_size_mb}"
+                    )
 
     def get(self, key: str) -> Optional[Any]:
         """
@@ -102,13 +145,16 @@ class TTLCache:
                 logger.debug(f"[CACHE MISS] Key not found: {key[:16]}...")
                 return None
 
-            value, expiry = self._cache[key]
+            value, expiry, size_bytes = self._cache[key]
 
             current_time = time.time()
             if expiry < current_time:
                 # Entry has expired - need to modify cache
                 del self._cache[key]
-                logger.info(f"[CACHE EXPIRED] Entry expired and removed: {key[:16]}...")
+                self._current_size_bytes -= size_bytes
+                logger.info(
+                    f"[CACHE EXPIRED] Entry expired and removed: {key[:16]}... (freed {size_bytes} bytes)"
+                )
                 return None
 
             # Move to end for LRU tracking - this modifies the cache
@@ -132,19 +178,30 @@ class TTLCache:
             ttl = ttl or self._default_ttl
             expiry = time.time() + ttl
 
+            # Estimate size of the new value
+            value_size = self._estimate_size(value)
+
             # Check if this is an update or new entry
             is_update = key in self._cache
 
+            # If updating, subtract old size first
+            if is_update:
+                _, _, old_size = self._cache[key]
+                self._current_size_bytes -= old_size
+
             # Add/update the entry
-            self._cache[key] = (value, expiry)
+            self._cache[key] = (value, expiry, value_size)
             self._cache.move_to_end(key)
+            self._current_size_bytes += value_size
 
             if is_update:
                 logger.info(
-                    f"[CACHE UPDATE] Updated entry: {key[:16]}... (TTL: {ttl}s)"
+                    f"[CACHE UPDATE] Updated entry: {key[:16]}... (TTL: {ttl}s, size: {value_size} bytes)"
                 )
             else:
-                logger.info(f"[CACHE SET] Added new entry: {key[:16]}... (TTL: {ttl}s)")
+                logger.info(
+                    f"[CACHE SET] Added new entry: {key[:16]}... (TTL: {ttl}s, size: {value_size} bytes)"
+                )
 
             # Cleanup and evict if needed
             self._cleanup_expired()
@@ -167,14 +224,131 @@ class TTLCache:
         with self._lock:
             current_time = time.time()
             valid_entries = sum(
-                1 for _, expiry in self._cache.values() if expiry >= current_time
+                1 for _, expiry, _ in self._cache.values() if expiry >= current_time
             )
             return {
                 "total_entries": len(self._cache),
                 "valid_entries": valid_entries,
                 "expired_entries": len(self._cache) - valid_entries,
-                "max_size": self._max_size,
+                "max_size_mb": self._max_size_mb,
+                "current_size_mb": self._current_size_bytes / 1024 / 1024,
             }
+
+    def invalidate_key(self, key: str) -> bool:
+        """
+        Invalidate a specific cache key.
+
+        Args:
+            key: The cache key to invalidate
+
+        Returns:
+            True if key was found and invalidated, False otherwise
+        """
+        with self._lock:
+            if key in self._cache:
+                _, _, size_bytes = self._cache[key]
+                del self._cache[key]
+                self._current_size_bytes -= size_bytes
+                logger.info(
+                    f"[CACHE INVALIDATE] Invalidated key: {key[:16]}... (freed {size_bytes} bytes)"
+                )
+                return True
+            return False
+
+    def invalidate_prefix(self, prefix: str) -> int:
+        """
+        Invalidate all cache keys starting with a prefix.
+
+        Args:
+            prefix: The prefix to match
+
+        Returns:
+            Number of keys invalidated
+        """
+        with self._lock:
+            keys_to_remove = [
+                key for key in self._cache.keys() if key.startswith(prefix)
+            ]
+            freed_bytes = 0
+            for key in keys_to_remove:
+                _, _, size_bytes = self._cache[key]
+                del self._cache[key]
+                self._current_size_bytes -= size_bytes
+                freed_bytes += size_bytes
+
+            if keys_to_remove:
+                logger.info(
+                    f"[CACHE INVALIDATE] Invalidated {len(keys_to_remove)} keys with prefix: {prefix} (freed {freed_bytes / 1024 / 1024:.2f} MB)"
+                )
+            return len(keys_to_remove)
+
+    def invalidate_pattern(self, pattern: str) -> int:
+        """
+        Invalidate all cache keys matching a pattern.
+
+        Args:
+            pattern: Regular expression pattern to match
+
+        Returns:
+            Number of keys invalidated
+        """
+        import re
+
+        with self._lock:
+            try:
+                regex = re.compile(pattern)
+                
+                # Debug: log all keys in cache
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(f"[CACHE INVALIDATE] Searching for pattern '{pattern}' in {len(self._cache)} keys")
+                    for key in list(self._cache.keys())[:5]:  # Log first 5 keys for debugging
+                        logger.debug(f"[CACHE INVALIDATE] Cache key: {key}")
+                
+                keys_to_remove = [key for key in self._cache.keys() if regex.search(key)]
+                freed_bytes = 0
+                for key in keys_to_remove:
+                    _, _, size_bytes = self._cache[key]
+                    del self._cache[key]
+                    self._current_size_bytes -= size_bytes
+                    freed_bytes += size_bytes
+
+                if keys_to_remove:
+                    logger.info(
+                        f"[CACHE INVALIDATE] Invalidated {len(keys_to_remove)} keys matching pattern: {pattern} (freed {freed_bytes / 1024 / 1024:.2f} MB)"
+                    )
+                else:
+                    logger.debug(f"[CACHE INVALIDATE] No keys found matching pattern: {pattern}")
+                return len(keys_to_remove)
+            except re.error as e:
+                logger.error(f"Invalid regex pattern '{pattern}': {e}")
+                return 0
+
+    def invalidate_user(self, user_id: str) -> int:
+        """
+        Invalidate all cache entries for a specific user.
+
+        Args:
+            user_id: The user ID to invalidate cache for
+
+        Returns:
+            Number of keys invalidated
+        """
+        # Common patterns for user-specific cache keys
+        patterns = [
+            f".*user_id.*{user_id}.*",
+            f".*{user_id}.*",
+            f".*user.*{user_id}.*",
+        ]
+
+        total_invalidated = 0
+        for pattern in patterns:
+            total_invalidated += self.invalidate_pattern(pattern)
+
+        if total_invalidated > 0:
+            logger.info(
+                f"[CACHE INVALIDATE] Invalidated {total_invalidated} keys for user: {user_id}"
+            )
+        return total_invalidated
 
 
 def generate_cache_key(

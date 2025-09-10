@@ -15,7 +15,8 @@ import backend.server.v2.store.image_gen
 import backend.server.v2.store.media
 import backend.server.v2.store.model
 import backend.util.json
-from backend.server.v2.store.cache import ttl_cache
+from backend.server.cache_decorator import ttl_cache
+from backend.server.cache_manager import CacheComponent
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,8 @@ async def update_or_create_profile(
         updated_profile = await backend.server.v2.store.db.update_profile(
             user_id=user_id, profile=profile
         )
+        # Invalidate the cache for this user's profile
+        backend.server.v2.store.cache.invalidate_user_profile_cache(user_id)
         return updated_profile
     except Exception as e:
         logger.exception("Failed to update profile for user %s: %s", user_id, e)
@@ -215,6 +218,7 @@ async def get_agent(username: str, agent_name: str):
     tags=["store"],
     dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
 )
+@ttl_cache(ttl_seconds=3600)  # 1 hour cache
 async def get_graph_meta_by_store_listing_version_id(store_listing_version_id: str):
     """
     Get Agent Graph from Store Listing Version ID.
@@ -239,6 +243,7 @@ async def get_graph_meta_by_store_listing_version_id(store_listing_version_id: s
     dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
     response_model=backend.server.v2.store.model.StoreAgentDetails,
 )
+@ttl_cache(ttl_seconds=3600)  # 1 hour cache
 async def get_store_agent(store_listing_version_id: str):
     """
     Get Store Agent Details from Store Listing Version ID.
@@ -399,6 +404,7 @@ async def get_creator(
     dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
     response_model=backend.server.v2.store.model.MyAgentsResponse,
 )
+@ttl_cache(ttl_seconds=30)
 async def get_my_agents(
     user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
     page: typing.Annotated[int, fastapi.Query(ge=1)] = 1,
@@ -459,6 +465,7 @@ async def delete_submission(
     dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
     response_model=backend.server.v2.store.model.StoreSubmissionsResponse,
 )
+@ttl_cache(ttl_seconds=30)
 async def get_submissions(
     user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
     page: int = 1,
