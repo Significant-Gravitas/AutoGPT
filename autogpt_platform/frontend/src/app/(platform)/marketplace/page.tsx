@@ -7,14 +7,10 @@ import { getQueryClient } from "@/lib/react-query/queryClient";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { MainMarkeplacePage } from "./components/MainMarketplacePage/MainMarketplacePage";
 
-// Enable ISR with 10-minute revalidation
-export const revalidate = 600; // 10 minutes in seconds
+export const dynamic = "force-dynamic";
 
 // FIX: Correct metadata
 export const metadata: Metadata = {
-  metadataBase: new URL(
-    process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "https://platform.agpt.co",
-  ),
   title: "Marketplace - AutoGPT Platform",
   description: "Find and use AI Agents created by our community",
   applicationName: "AutoGPT Marketplace",
@@ -60,25 +56,18 @@ export const metadata: Metadata = {
 export default async function MarketplacePage(): Promise<React.ReactElement> {
   const queryClient = getQueryClient();
 
-  // Try to prefetch data but don't fail if the API is down
-  // The client-side will handle fetching with proper error handling
-  try {
-    await Promise.all([
-      prefetchGetV2ListStoreAgentsQuery(queryClient, {
-        featured: true,
-      }),
-      prefetchGetV2ListStoreAgentsQuery(queryClient, {
-        sorted_by: "runs",
-      }),
-      prefetchGetV2ListStoreCreatorsQuery(queryClient, {
-        featured: true,
-        sorted_by: "num_agents",
-      }),
-    ]);
-  } catch (error) {
-    // Log the error but don't fail the page render
-    console.error("Failed to prefetch marketplace data:", error);
-  }
+  await Promise.all([
+    prefetchGetV2ListStoreAgentsQuery(queryClient, {
+      featured: true,
+    }),
+    prefetchGetV2ListStoreAgentsQuery(queryClient, {
+      sorted_by: "runs",
+    }),
+    prefetchGetV2ListStoreCreatorsQuery(queryClient, {
+      featured: true,
+      sorted_by: "num_agents",
+    }),
+  ]);
 
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>

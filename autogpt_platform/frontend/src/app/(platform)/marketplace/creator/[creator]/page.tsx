@@ -9,8 +9,7 @@ import { MainCreatorPage } from "../../components/MainCreatorPage/MainCreatorPag
 import { Metadata } from "next";
 import { CreatorDetails } from "@/app/api/__generated__/models/creatorDetails";
 
-// Enable ISR with 10-minute revalidation
-export const revalidate = 600; // 10 minutes in seconds
+export const dynamic = "force-dynamic";
 
 export interface MarketplaceCreatorPageParams {
   creator: string;
@@ -22,27 +21,14 @@ export async function generateMetadata({
   params: Promise<MarketplaceCreatorPageParams>;
 }): Promise<Metadata> {
   const params = await _params;
-  try {
-    const { data: creator } = await getV2GetCreatorDetails(
-      params.creator.toLowerCase(),
-    );
+  const { data: creator } = await getV2GetCreatorDetails(
+    params.creator.toLowerCase(),
+  );
 
-    return {
-      metadataBase: new URL(
-        process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "https://platform.agpt.co",
-      ),
-      title: `${(creator as CreatorDetails).name} - AutoGPT Store`,
-      description: (creator as CreatorDetails).description,
-    };
-  } catch (_error) {
-    return {
-      metadataBase: new URL(
-        process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "https://platform.agpt.co",
-      ),
-      title: `Creator - AutoGPT Store`,
-      description: "View creator details on AutoGPT Marketplace",
-    };
-  }
+  return {
+    title: `${(creator as CreatorDetails).name} - AutoGPT Store`,
+    description: (creator as CreatorDetails).description,
+  };
 }
 
 export default async function Page({
@@ -54,16 +40,12 @@ export default async function Page({
 
   const params = await _params;
 
-  try {
-    await Promise.all([
-      prefetchGetV2ListStoreAgentsQuery(queryClient, {
-        creator: params.creator,
-      }),
-      prefetchGetV2GetCreatorDetailsQuery(queryClient, params.creator),
-    ]);
-  } catch (error) {
-    console.error("Failed to prefetch creator data:", error);
-  }
+  await Promise.all([
+    prefetchGetV2ListStoreAgentsQuery(queryClient, {
+      creator: params.creator,
+    }),
+    prefetchGetV2GetCreatorDetailsQuery(queryClient, params.creator),
+  ]);
 
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>

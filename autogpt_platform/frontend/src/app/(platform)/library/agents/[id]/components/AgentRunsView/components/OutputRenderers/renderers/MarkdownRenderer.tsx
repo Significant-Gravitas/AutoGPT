@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -352,22 +351,20 @@ function renderMarkdown(
             </del>
           ),
           // Image handling
-          img: ({ src, alt }) => {
+          img: ({ src, alt, ...props }) => {
             // Check if it's a video URL pattern
             if (src && isVideoUrl(src)) {
               return renderVideoEmbed(src);
             }
 
             return (
-              <Image
-                src={src || ""}
-                alt={alt || ""}
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={src}
+                alt={alt}
                 className="my-4 h-auto max-w-full rounded-lg shadow-md"
-                width={800}
-                height={600}
-                style={{ width: "auto", height: "auto" }}
                 loading="lazy"
-                unoptimized={src?.startsWith("data:")}
+                {...props}
               />
             );
           },
@@ -414,8 +411,8 @@ function getCopyContentMarkdown(
   return {
     mimeType: "text/markdown",
     data: markdownText,
-    alternativeMimeTypes: ["text/plain"],
     fallbackText: markdownText,
+    alternativeMimeTypes: ["text/plain"],
   };
 }
 
