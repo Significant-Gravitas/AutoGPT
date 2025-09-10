@@ -97,7 +97,6 @@
     "shepherd.js": "14.5.1",
     "sonner": "2.0.7",
     "tailwind-merge": "2.6.0",
-    "tailwind-scrollbar": "4.0.2",
     "tailwindcss-animate": "1.0.7",
     "uuid": "11.1.0",
     "vaul": "1.1.2",
@@ -138,6 +137,7 @@
     "prettier-plugin-tailwindcss": "0.6.14",
     "require-in-the-middle": "7.5.2",
     "storybook": "9.1.2",
+    "tailwind-scrollbar": "4.0.2",
     "tailwindcss": "3.4.17",
     "typescript": "5.9.2"
   },

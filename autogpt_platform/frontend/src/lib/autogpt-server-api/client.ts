@@ -662,6 +662,13 @@ export default class BackendAPI {
     return this._get("/library/agents", params);
   }
 
+  listFavoriteLibraryAgents(params?: {
+    page?: number;
+    page_size?: number;
+  }): Promise<LibraryAgentResponse> {
+    return this._get("/library/agents/favorites", params);
+  }
+
   getLibraryAgent(id: LibraryAgentID): Promise<LibraryAgent> {
     return this._get(`/library/agents/${id}`);
   }
