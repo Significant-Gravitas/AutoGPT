@@ -12,8 +12,19 @@ export const Flow = () => {
         hardcodedValues: {},
         title: "Node 1",
         description: "First node",
-        inputSchema: {},
-        outputSchema: {},
+        inputSchema: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+          },
+          name: "Node 1",
+        },
+        outputSchema: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+          },
+        },
       },
       type: "custom",
     },
@@ -24,8 +35,18 @@ export const Flow = () => {
         hardcodedValues: {},
         title: "Node 2",
         description: "Second node",
-        inputSchema: {},
-        outputSchema: {},
+        inputSchema: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+          },
+        },
+        outputSchema: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+          },
+        },
       },
       type: "custom",
     },
