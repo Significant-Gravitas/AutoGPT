@@ -4,7 +4,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { ToyBrick } from "lucide-react";
 import { BlockMenuContent } from "../BlockMenuContent/BlockMenuContent";
 import { ControlPanelButton } from "../ControlPanelButton";
 import { useBlockMenu } from "./useBlockMenu";
