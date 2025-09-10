@@ -51,7 +51,6 @@ export const StoreCard: React.FC<StoreCardProps> = ({
             alt={`${agentName} preview image`}
             fill
             className="object-cover"
-            priority
           />
         )}
         {!hideAvatar && (
