@@ -10,6 +10,7 @@ import functools
 import hashlib
 import json
 import logging
+import os
 from json import loads
 from typing import Any, Callable, Dict, Optional
 
@@ -141,6 +142,10 @@ def ttl_cache(
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         async def async_wrapper(*args, **kwargs):
+            # Disable caching during tests to avoid test interference
+            if os.environ.get("DISABLE_CACHE_IN_TESTS") == "true":
+                return await func(*args, **kwargs)
+
             # Lazy cache resolution to avoid initialization issues
             if cache_instance:
                 cache = cache_instance

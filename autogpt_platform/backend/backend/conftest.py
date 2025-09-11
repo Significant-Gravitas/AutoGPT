@@ -8,6 +8,9 @@ from backend.util.logging import configure_logging
 
 load_dotenv()
 
+# Disable caching during tests to avoid test interference
+os.environ["DISABLE_CACHE_IN_TESTS"] = "true"
+
 #  NOTE: You can run tests like with the --log-cli-level=INFO to see the logs
 # Set up logging
 configure_logging()
