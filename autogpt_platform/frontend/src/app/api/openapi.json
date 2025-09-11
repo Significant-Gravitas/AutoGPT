@@ -2148,8 +2148,18 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": { "$ref": "#/components/schemas/APIKeyInfo" },
-                  "type": "array",
+                  "anyOf": [
+                    {
+                      "items": {
+                        "$ref": "#/components/schemas/APIKeyWithoutHash"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "additionalProperties": { "type": "string" },
+                      "type": "object"
+                    }
+                  ],
                   "title": "Response Getv1List User Api Keys"
                 }
               }
@@ -2220,7 +2230,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/APIKeyInfo" }
+                "schema": { "$ref": "#/components/schemas/APIKeyWithoutHash" }
               }
             }
           },
@@ -2256,7 +2266,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/APIKeyInfo" }
+                "schema": { "$ref": "#/components/schemas/APIKeyWithoutHash" }
               }
             }
           },
@@ -2294,7 +2304,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/APIKeyInfo" }
+                "schema": { "$ref": "#/components/schemas/APIKeyWithoutHash" }
               }
             }
           },
@@ -2342,7 +2352,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/APIKeyInfo" }
+                "schema": { "$ref": "#/components/schemas/APIKeyWithoutHash" }
               }
             }
           },
@@ -4508,20 +4518,22 @@
         "required": ["provider", "api_key"],
         "title": "APIKeyCredentials"
       },
-      "APIKeyInfo": {
+      "APIKeyPermission": {
+        "type": "string",
+        "enum": ["EXECUTE_GRAPH", "READ_GRAPH", "EXECUTE_BLOCK", "READ_BLOCK"],
+        "title": "APIKeyPermission"
+      },
+      "APIKeyStatus": {
+        "type": "string",
+        "enum": ["ACTIVE", "REVOKED", "SUSPENDED"],
+        "title": "APIKeyStatus"
+      },
+      "APIKeyWithoutHash": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
-          "head": {
-            "type": "string",
-            "title": "Head",
-            "description": "The first 8 characters of the key"
-          },
-          "tail": {
-            "type": "string",
-            "title": "Tail",
-            "description": "The last 8 characters of the key"
-          },
+          "prefix": { "type": "string", "title": "Prefix" },
+          "postfix": { "type": "string", "title": "Postfix" },
           "status": { "$ref": "#/components/schemas/APIKeyStatus" },
           "permissions": {
             "items": { "$ref": "#/components/schemas/APIKeyPermission" },
@@ -4557,24 +4569,17 @@
         "required": [
           "id",
           "name",
-          "head",
-          "tail",
+          "prefix",
+          "postfix",
           "status",
           "permissions",
           "created_at",
+          "last_used_at",
+          "revoked_at",
+          "description",
           "user_id"
         ],
-        "title": "APIKeyInfo"
-      },
-      "APIKeyPermission": {
-        "type": "string",
-        "enum": ["EXECUTE_GRAPH", "READ_GRAPH", "EXECUTE_BLOCK", "READ_BLOCK"],
-        "title": "APIKeyPermission"
-      },
-      "APIKeyStatus": {
-        "type": "string",
-        "enum": ["ACTIVE", "REVOKED", "SUSPENDED"],
-        "title": "APIKeyStatus"
+        "title": "APIKeyWithoutHash"
       },
       "AddUserCreditsResponse": {
         "properties": {
@@ -5017,7 +5022,7 @@
       },
       "CreateAPIKeyResponse": {
         "properties": {
-          "api_key": { "$ref": "#/components/schemas/APIKeyInfo" },
+          "api_key": { "$ref": "#/components/schemas/APIKeyWithoutHash" },
           "plain_text_key": { "type": "string", "title": "Plain Text Key" }
         },
         "type": "object",
