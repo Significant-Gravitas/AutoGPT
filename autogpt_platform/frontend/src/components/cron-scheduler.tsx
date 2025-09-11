@@ -38,10 +38,12 @@ const months = [
 
 type CronSchedulerProps = {
   onCronExpressionChange: (cronExpression: string) => void;
+  initialCronExpression?: string;
 };
 
 export function CronScheduler({
   onCronExpressionChange,
+  initialCronExpression,
 }: CronSchedulerProps): React.ReactElement {
   const [frequency, setFrequency] = useState<CronFrequency>("daily");
   const [selectedMinute, setSelectedMinute] = useState<string>("0");
@@ -53,7 +55,142 @@ export function CronScheduler({
     value: number;
     unit: "minutes" | "hours" | "days";
   }>({ value: 1, unit: "minutes" });
-  const [showCustomDays, setShowCustomDays] = useState<boolean>(false);
+
+  // Parse initial cron expression and set state
+  useEffect(() => {
+    if (!initialCronExpression) {
+      // Reset to defaults when no initial expression
+      setFrequency("daily");
+      setSelectedWeekDays([]);
+      setSelectedMonthDays([]);
+      setSelectedMonths([]);
+      return;
+    }
+
+    const parts = initialCronExpression.trim().split(/\s+/);
+    if (parts.length !== 5) return;
+
+    const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+
+    // Reset all state first
+    setSelectedWeekDays([]);
+    setSelectedMonthDays([]);
+    setSelectedMonths([]);
+
+    // Parse patterns in order of specificity
+    if (
+      minute === "*" &&
+      hour === "*" &&
+      dayOfMonth === "*" &&
+      month === "*" &&
+      dayOfWeek === "*"
+    ) {
+      setFrequency("every minute");
+    } else if (
+      hour === "*" &&
+      dayOfMonth === "*" &&
+      month === "*" &&
+      dayOfWeek === "*" &&
+      !minute.includes("/")
+    ) {
+      setFrequency("hourly");
+      setSelectedMinute(minute);
+    } else if (
+      minute.startsWith("*/") &&
+      hour === "*" &&
+      dayOfMonth === "*" &&
+      month === "*" &&
+      dayOfWeek === "*"
+    ) {
+      setFrequency("custom");
+      const interval = parseInt(minute.substring(2));
+      if (!isNaN(interval)) {
+        setCustomInterval({ value: interval, unit: "minutes" });
+      }
+    } else if (
+      hour.startsWith("*/") &&
+      minute === "0" &&
+      dayOfMonth === "*" &&
+      month === "*" &&
+      dayOfWeek === "*"
+    ) {
+      setFrequency("custom");
+      const interval = parseInt(hour.substring(2));
+      if (!isNaN(interval)) {
+        setCustomInterval({ value: interval, unit: "hours" });
+      }
+    } else if (
+      dayOfMonth.startsWith("*/") &&
+      month === "*" &&
+      dayOfWeek === "*" &&
+      !minute.includes("/") &&
+      !hour.includes("/")
+    ) {
+      setFrequency("custom");
+      const interval = parseInt(dayOfMonth.substring(2));
+      if (!isNaN(interval)) {
+        setCustomInterval({ value: interval, unit: "days" });
+        const hourNum = parseInt(hour);
+        const minuteNum = parseInt(minute);
+        if (!isNaN(hourNum) && !isNaN(minuteNum)) {
+          setSelectedTime(
+            `${hourNum.toString().padStart(2, "0")}:${minuteNum.toString().padStart(2, "0")}`,
+          );
+        }
+      }
+    } else if (dayOfMonth === "*" && month === "*" && dayOfWeek === "*") {
+      setFrequency("daily");
+      const hourNum = parseInt(hour);
+      const minuteNum = parseInt(minute);
+      if (!isNaN(hourNum) && !isNaN(minuteNum)) {
+        setSelectedTime(
+          `${hourNum.toString().padStart(2, "0")}:${minuteNum.toString().padStart(2, "0")}`,
+        );
+      }
+    } else if (dayOfWeek !== "*" && dayOfMonth === "*" && month === "*") {
+      setFrequency("weekly");
+      const hourNum = parseInt(hour);
+      const minuteNum = parseInt(minute);
+      if (!isNaN(hourNum) && !isNaN(minuteNum)) {
+        setSelectedTime(
+          `${hourNum.toString().padStart(2, "0")}:${minuteNum.toString().padStart(2, "0")}`,
+        );
+      }
+      const days = dayOfWeek
+        .split(",")
+        .map((d) => parseInt(d))
+        .filter((d) => !isNaN(d));
+      setSelectedWeekDays(days);
+    } else if (dayOfMonth !== "*" && month === "*" && dayOfWeek === "*") {
+      setFrequency("monthly");
+      const hourNum = parseInt(hour);
+      const minuteNum = parseInt(minute);
+      if (!isNaN(hourNum) && !isNaN(minuteNum)) {
+        setSelectedTime(
+          `${hourNum.toString().padStart(2, "0")}:${minuteNum.toString().padStart(2, "0")}`,
+        );
+      }
+      const days = dayOfMonth
+        .split(",")
+        .map((d) => parseInt(d))
+        .filter((d) => !isNaN(d) && d >= 1 && d <= 31);
+      setSelectedMonthDays(days);
+    } else if (dayOfMonth !== "*" && month !== "*" && dayOfWeek === "*") {
+      setFrequency("yearly");
+      const hourNum = parseInt(hour);
+      const minuteNum = parseInt(minute);
+      if (!isNaN(hourNum) && !isNaN(minuteNum)) {
+        setSelectedTime(
+          `${hourNum.toString().padStart(2, "0")}:${minuteNum.toString().padStart(2, "0")}`,
+        );
+      }
+      const months = month
+        .split(",")
+        .map((m) => parseInt(m))
+        .filter((m) => !isNaN(m) && m >= 1 && m <= 12);
+      setSelectedMonths(months);
+    }
+  }, [initialCronExpression]);
 
   useEffect(() => {
     const cronExpr = makeCronExpression({
@@ -225,9 +362,8 @@ export function CronScheduler({
           <Label>Days of Month</Label>
           <div className="flex gap-2">
             <Button
-              variant={!showCustomDays ? "default" : "outline"}
+              variant={selectedMonthDays.length === 31 ? "default" : "outline"}
               onClick={() => {
-                setShowCustomDays(false);
                 setSelectedMonthDays(
                   Array.from({ length: 31 }, (_, i) => i + 1),
                 );
@@ -236,9 +372,12 @@ export function CronScheduler({
               All Days
             </Button>
             <Button
-              variant={showCustomDays ? "default" : "outline"}
+              variant={
+                selectedMonthDays.length < 31 && selectedMonthDays.length > 0
+                  ? "default"
+                  : "outline"
+              }
               onClick={() => {
-                setShowCustomDays(true);
                 setSelectedMonthDays([]);
               }}
             >
@@ -257,7 +396,7 @@ export function CronScheduler({
               Last Day
             </Button>
           </div>
-          {showCustomDays && (
+          {selectedMonthDays.length < 31 && (
             <div className="flex flex-wrap gap-2">
               {Array.from({ length: 31 }, (_, i) => (
                 <Button

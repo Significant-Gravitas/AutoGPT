@@ -1,8 +1,11 @@
 import Link from "next/link";
 import Image from "next/image";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import Avatar, {
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/atoms/Avatar/Avatar";
 
 interface LibraryAgentCardProps {
   agent: LibraryAgent;
@@ -51,7 +54,6 @@ export default function LibraryAgentCard({
             alt={`${name} preview image`}
             fill
             className="object-cover"
-            priority
           />
         )}
         <div className="absolute bottom-4 left-4">

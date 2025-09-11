@@ -41,7 +41,7 @@ export const NewControlPanel = ({
   className,
 }: ControlPanelProps) => {
   const isGraphSearchEnabled = useGetFlag(Flag.GRAPH_SEARCH);
-  
+
   const {
     blockMenuSelected,
     setBlockMenuSelected,
@@ -71,14 +71,14 @@ export const NewControlPanel = ({
         disabled: !history.canRedo(),
       },
     ],
-    []
+    [],
   );
 
   return (
     <section
       className={cn(
         "absolute left-4 top-24 z-10 w-[4.25rem] overflow-hidden rounded-[1rem] border-none bg-white p-0 shadow-[0_1px_5px_0_rgba(0,0,0,0.1)]",
-        className
+        className,
       )}
     >
       <div className="flex flex-col items-center justify-center rounded-[1rem] p-0">

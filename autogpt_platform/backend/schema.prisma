@@ -111,6 +111,7 @@ model AgentGraph {
 
   name        String?
   description String?
+  recommendedScheduleCron String?
 
   isActive Boolean @default(true)
 
@@ -639,6 +640,7 @@ view StoreAgent {
   runs             Int
   rating           Float
   versions         String[]
+  is_available     Boolean  @default(true)
 
   // Materialized views used (refreshed every 15 minutes via pg_cron):
   // - mv_agent_run_counts - Pre-aggregated agent execution counts by agentGraphId
@@ -786,6 +788,8 @@ model StoreListingVersion {
   reviewComments   String? // Comments visible to creator
   reviewedAt       DateTime?
 
+  recommendedScheduleCron String? // cron expression like "0 9 * * *"
+
   // Reviews for this specific version
   Reviews StoreListingReview[]
   
@@ -881,11 +885,13 @@ enum APIKeyPermission {
 }
 
 model APIKey {
-  id          String             @id @default(uuid())
-  name        String
-  prefix      String // First 8 chars for identification
-  postfix     String
-  key         String             @unique // Hashed key
+  id   String  @id @default(uuid())
+  name String
+  head String // First few chars for identification
+  tail String
+  hash String  @unique
+  salt String? // null for legacy unsalted keys
+
   status      APIKeyStatus       @default(ACTIVE)
   permissions APIKeyPermission[]
 
@@ -899,7 +905,7 @@ model APIKey {
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([prefix, name])
+  @@index([head, name])
   @@index([userId, status])
 }
 

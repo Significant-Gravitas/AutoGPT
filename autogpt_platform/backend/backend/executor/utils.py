@@ -12,9 +12,15 @@ from pydantic import BaseModel, JsonValue, SecretStr, ValidationError
 
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
-from backend.data.block import Block, BlockInput, BlockOutputEntry, BlockType, get_block
+from backend.data.block import (
+    Block,
+    BlockCostType,
+    BlockInput,
+    BlockOutputEntry,
+    BlockType,
+    get_block,
+)
 from backend.data.block_cost_config import BLOCK_COSTS
-from backend.data.cost import BlockCostType
 from backend.data.db import prisma
 from backend.data.execution import (
     ExecutionStatus,

@@ -1729,9 +1729,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ExecuteGraphResponse"
-                }
+                "schema": { "$ref": "#/components/schemas/GraphExecutionMeta" }
               }
             }
           },
@@ -2150,18 +2148,8 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "anyOf": [
-                    {
-                      "items": {
-                        "$ref": "#/components/schemas/APIKeyWithoutHash"
-                      },
-                      "type": "array"
-                    },
-                    {
-                      "additionalProperties": { "type": "string" },
-                      "type": "object"
-                    }
-                  ],
+                  "items": { "$ref": "#/components/schemas/APIKeyInfo" },
+                  "type": "array",
                   "title": "Response Getv1List User Api Keys"
                 }
               }
@@ -2232,7 +2220,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/APIKeyWithoutHash" }
+                "schema": { "$ref": "#/components/schemas/APIKeyInfo" }
               }
             }
           },
@@ -2268,7 +2256,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/APIKeyWithoutHash" }
+                "schema": { "$ref": "#/components/schemas/APIKeyInfo" }
               }
             }
           },
@@ -2306,7 +2294,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/APIKeyWithoutHash" }
+                "schema": { "$ref": "#/components/schemas/APIKeyInfo" }
               }
             }
           },
@@ -2354,7 +2342,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/APIKeyWithoutHash" }
+                "schema": { "$ref": "#/components/schemas/APIKeyInfo" }
               }
             }
           },
@@ -3924,11 +3912,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Postv2Execute A Preset"
-                }
+                "schema": { "$ref": "#/components/schemas/GraphExecutionMeta" }
               }
             }
           },
@@ -4897,22 +4881,20 @@
         "required": ["provider", "api_key"],
         "title": "APIKeyCredentials"
       },
-      "APIKeyPermission": {
-        "type": "string",
-        "enum": ["EXECUTE_GRAPH", "READ_GRAPH", "EXECUTE_BLOCK", "READ_BLOCK"],
-        "title": "APIKeyPermission"
-      },
-      "APIKeyStatus": {
-        "type": "string",
-        "enum": ["ACTIVE", "REVOKED", "SUSPENDED"],
-        "title": "APIKeyStatus"
-      },
-      "APIKeyWithoutHash": {
+      "APIKeyInfo": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
-          "prefix": { "type": "string", "title": "Prefix" },
-          "postfix": { "type": "string", "title": "Postfix" },
+          "head": {
+            "type": "string",
+            "title": "Head",
+            "description": "The first 8 characters of the key"
+          },
+          "tail": {
+            "type": "string",
+            "title": "Tail",
+            "description": "The last 8 characters of the key"
+          },
           "status": { "$ref": "#/components/schemas/APIKeyStatus" },
           "permissions": {
             "items": { "$ref": "#/components/schemas/APIKeyPermission" },
@@ -4948,17 +4930,24 @@
         "required": [
           "id",
           "name",
-          "prefix",
-          "postfix",
+          "head",
+          "tail",
           "status",
           "permissions",
           "created_at",
-          "last_used_at",
-          "revoked_at",
-          "description",
           "user_id"
         ],
-        "title": "APIKeyWithoutHash"
+        "title": "APIKeyInfo"
+      },
+      "APIKeyPermission": {
+        "type": "string",
+        "enum": ["EXECUTE_GRAPH", "READ_GRAPH", "EXECUTE_BLOCK", "READ_BLOCK"],
+        "title": "APIKeyPermission"
+      },
+      "APIKeyStatus": {
+        "type": "string",
+        "enum": ["ACTIVE", "REVOKED", "SUSPENDED"],
+        "title": "APIKeyStatus"
       },
       "AddUserCreditsResponse": {
         "properties": {
@@ -5033,6 +5022,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
+          },
           "nodes": {
             "items": { "$ref": "#/components/schemas/Node" },
             "type": "array",
@@ -5069,6 +5062,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
+          },
           "nodes": {
             "items": { "$ref": "#/components/schemas/Node" },
             "type": "array",
@@ -5130,7 +5127,7 @@
           "name": { "type": "string", "title": "Name" },
           "total_blocks": { "type": "integer", "title": "Total Blocks" },
           "blocks": {
-            "items": { "additionalProperties": true, "type": "object" },
+            "items": { "$ref": "#/components/schemas/BlockInfo" },
             "type": "array",
             "title": "Blocks"
           }
@@ -5139,10 +5136,80 @@
         "required": ["name", "total_blocks", "blocks"],
         "title": "BlockCategoryResponse"
       },
+      "BlockCost": {
+        "properties": {
+          "cost_amount": { "type": "integer", "title": "Cost Amount" },
+          "cost_filter": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Cost Filter"
+          },
+          "cost_type": { "$ref": "#/components/schemas/BlockCostType" }
+        },
+        "type": "object",
+        "required": ["cost_amount", "cost_filter", "cost_type"],
+        "title": "BlockCost"
+      },
+      "BlockCostType": {
+        "type": "string",
+        "enum": ["run", "byte", "second"],
+        "title": "BlockCostType"
+      },
+      "BlockInfo": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "inputSchema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Inputschema"
+          },
+          "outputSchema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Outputschema"
+          },
+          "costs": {
+            "items": { "$ref": "#/components/schemas/BlockCost" },
+            "type": "array",
+            "title": "Costs"
+          },
+          "description": { "type": "string", "title": "Description" },
+          "categories": {
+            "items": {
+              "additionalProperties": { "type": "string" },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Categories"
+          },
+          "contributors": {
+            "items": { "additionalProperties": true, "type": "object" },
+            "type": "array",
+            "title": "Contributors"
+          },
+          "staticOutput": { "type": "boolean", "title": "Staticoutput" },
+          "uiType": { "type": "string", "title": "Uitype" }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "inputSchema",
+          "outputSchema",
+          "costs",
+          "description",
+          "categories",
+          "contributors",
+          "staticOutput",
+          "uiType"
+        ],
+        "title": "BlockInfo"
+      },
       "BlockResponse": {
         "properties": {
           "blocks": {
-            "items": { "additionalProperties": true, "type": "object" },
+            "items": { "$ref": "#/components/schemas/BlockInfo" },
             "type": "array",
             "title": "Blocks"
           },
@@ -5236,6 +5303,13 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Inputs"
+          },
+          "credential_inputs": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CredentialsMetaInput"
+            },
+            "type": "object",
+            "title": "Credential Inputs"
           }
         },
         "type": "object",
@@ -5316,7 +5390,7 @@
       },
       "CreateAPIKeyResponse": {
         "properties": {
-          "api_key": { "$ref": "#/components/schemas/APIKeyWithoutHash" },
+          "api_key": { "$ref": "#/components/schemas/APIKeyInfo" },
           "plain_text_key": { "type": "string", "title": "Plain Text Key" }
         },
         "type": "object",
@@ -5542,14 +5616,6 @@
         "required": ["url", "relevance_score"],
         "title": "Document"
       },
-      "ExecuteGraphResponse": {
-        "properties": {
-          "graph_exec_id": { "type": "string", "title": "Graph Exec Id" }
-        },
-        "type": "object",
-        "required": ["graph_exec_id"],
-        "title": "ExecuteGraphResponse"
-      },
       "Graph": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -5561,6 +5627,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
+          },
           "nodes": {
             "items": { "$ref": "#/components/schemas/Node" },
             "type": "array",
@@ -5897,6 +5967,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
+          },
           "forked_from_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Forked From Id"
@@ -5967,6 +6041,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
+          },
           "nodes": {
             "items": { "$ref": "#/components/schemas/NodeModel" },
             "type": "array",
@@ -6194,6 +6272,10 @@
           "is_latest_version": {
             "type": "boolean",
             "title": "Is Latest Version"
+          },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
           }
         },
         "type": "object",
@@ -6501,6 +6583,10 @@
             "type": "string",
             "format": "date-time",
             "title": "Last Edited"
+          },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
           }
         },
         "type": "object",
@@ -7417,7 +7503,7 @@
           "items": {
             "items": {
               "anyOf": [
-                { "additionalProperties": true, "type": "object" },
+                { "$ref": "#/components/schemas/BlockInfo" },
                 { "$ref": "#/components/schemas/LibraryAgent" },
                 { "$ref": "#/components/schemas/StoreAgent" }
               ]
@@ -7668,6 +7754,10 @@
             "format": "date-time",
             "title": "Last Updated"
           },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
+          },
           "active_version_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Active Version Id"
@@ -7898,6 +7988,10 @@
           "changes_summary": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Changes Summary"
+          },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
           }
         },
         "type": "object",
@@ -7935,6 +8029,10 @@
           "changes_summary": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Changes Summary"
+          },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
           }
         },
         "type": "object",
@@ -7986,7 +8084,7 @@
             "title": "Providers"
           },
           "top_blocks": {
-            "items": { "additionalProperties": true, "type": "object" },
+            "items": { "$ref": "#/components/schemas/BlockInfo" },
             "type": "array",
             "title": "Top Blocks"
           }

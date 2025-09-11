@@ -1,6 +1,9 @@
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Image from "next/image";
 import { StarRatingIcons } from "@/components/ui/icons";
+import Avatar, {
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/atoms/Avatar/Avatar";
 
 interface StoreCardProps {
   agentName: string;
@@ -51,7 +54,6 @@ export const StoreCard: React.FC<StoreCardProps> = ({
             alt={`${agentName} preview image`}
             fill
             className="object-cover"
-            priority
           />
         )}
         {!hideAvatar && (

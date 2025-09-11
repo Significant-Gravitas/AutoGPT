@@ -109,7 +109,7 @@ const TabsLineTrigger = React.forwardRef<
         elementRef.current = node;
       }}
       className={cn(
-        "relative inline-flex items-center justify-center whitespace-nowrap px-3 py-2 font-sans text-[1rem] font-medium leading-[1.5rem] text-zinc-700 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-purple-600",
+        "relative inline-flex items-center justify-center whitespace-nowrap px-3 py-3 font-sans text-[1rem] font-medium leading-[1.5rem] text-zinc-700 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-purple-600",
         className,
       )}
       {...props}

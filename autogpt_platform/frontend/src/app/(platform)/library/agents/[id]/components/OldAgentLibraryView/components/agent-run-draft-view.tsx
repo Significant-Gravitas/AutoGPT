@@ -16,8 +16,9 @@ import ActionButtonGroup from "@/components/agptui/action-button-group";
 import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { IconCross, IconPlay, IconSave } from "@/components/ui/icons";
-import { CalendarClockIcon, Trash2Icon } from "lucide-react";
-import { CronSchedulerDialog } from "@/components/cron-scheduler-dialog";
+import { CalendarClockIcon, Trash2Icon, ClockIcon } from "lucide-react";
+import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+import { ScheduleTaskDialog } from "@/components/cron-scheduler-dialog";
 import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
 import { RunAgentInputs } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/RunAgentInputs/RunAgentInputs";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
@@ -45,9 +46,11 @@ export function AgentRunDraftView({
   onCreateSchedule,
   agentActions,
   className,
+  recommendedScheduleCron,
 }: {
   graph: GraphMeta;
   agentActions?: ButtonAction[];
+  recommendedScheduleCron?: string | null;
   doRun?: (
     inputs: Record<string, any>,
     credentialsInputs: Record<string, CredentialsMetaInput>,
@@ -174,7 +177,7 @@ export function AgentRunDraftView({
         .executeGraph(graph.id, graph.version, inputValues, inputCredentials)
         .catch(toastOnFail("execute agent"));
 
-      if (newRun && onRun) onRun(newRun.graph_exec_id);
+      if (newRun && onRun) onRun(newRun.id);
     } else {
       await api
         .executeLibraryAgentPreset(agentPreset.id)
@@ -380,20 +383,21 @@ export function AgentRunDraftView({
             {
               label: (
                 <>
-                  <IconPlay className="mr-2 size-4" /> Run
+                  <CalendarClockIcon className="mr-2 size-4" /> Schedule run
                 </>
               ),
               variant: "accent",
-              callback: doRun,
-              extraProps: { "data-testid": "agent-run-button" },
+              callback: openScheduleDialog,
+              extraProps: { "data-testid": "agent-schedule-button" },
             },
             {
               label: (
                 <>
-                  <CalendarClockIcon className="mr-2 size-4" /> Schedule
+                  <IconPlay className="mr-2 size-4" /> Manual run
                 </>
               ),
-              callback: openScheduleDialog,
+              callback: doRun,
+              extraProps: { "data-testid": "agent-run-button" },
             },
             // {
             //   label: (
@@ -570,6 +574,19 @@ export function AgentRunDraftView({
             <CardTitle className="font-poppins text-lg">Input</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
+            {/* Schedule recommendation tip */}
+            {recommendedScheduleCron && !graph.has_external_trigger && (
+              <div className="flex items-center gap-2 rounded-md border border-violet-200 bg-violet-50 p-3">
+                <ClockIcon className="h-4 w-4 text-violet-600" />
+                <p className="text-sm text-violet-800">
+                  <strong>Tip:</strong> For best results, run this agent{" "}
+                  {humanizeCronExpression(
+                    recommendedScheduleCron,
+                  ).toLowerCase()}
+                </p>
+              </div>
+            )}
+
             {(agentPreset || graph.has_external_trigger) && (
               <>
                 {/* Preset name and description */}
@@ -677,11 +694,12 @@ export function AgentRunDraftView({
             title={`${graph.has_external_trigger ? "Trigger" : agentPreset ? "Preset" : "Run"} actions`}
             actions={runActions}
           />
-          <CronSchedulerDialog
+          <ScheduleTaskDialog
             open={cronScheduleDialogOpen}
             setOpen={setCronScheduleDialogOpen}
-            afterCronCreation={doSetupSchedule}
+            onSubmit={doSetupSchedule}
             defaultScheduleName={graph.name}
+            defaultCronExpression={recommendedScheduleCron || undefined}
           />
 
           {agentActions && agentActions.length > 0 && (
