@@ -48,7 +48,7 @@ export function APIKeysSection() {
                   <TableCell>{key.name}</TableCell>
                   <TableCell data-testid="api-key-id">
                     <div className="rounded-md border p-1 px-2 text-xs">
-                      {`${key.prefix}******************${key.postfix}`}
+                      {`${key.head}******************${key.tail}`}
                     </div>
                   </TableCell>
                   <TableCell>

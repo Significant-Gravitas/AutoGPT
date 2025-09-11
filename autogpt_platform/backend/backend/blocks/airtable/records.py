@@ -241,7 +241,6 @@ class AirtableCreateRecordsBlock(Block):
 
     class Output(BlockSchema):
         records: list[dict] = SchemaField(description="Array of created record objects")
-        details: dict = SchemaField(description="Details of the created records")
 
     def __init__(self):
         super().__init__(

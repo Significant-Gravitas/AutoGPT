@@ -1,13 +1,14 @@
 import React from "react";
 import { MenuItem } from "../MenuItem";
-import { DefaultStateType } from "../block-menu-provider";
+import { DefaultStateType, useBlockMenuContext } from "../block-menu-provider";
 import { useBlockMenuSidebar } from "./useBlockMenuSidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
 export const BlockMenuSidebar = () => {
-  const { blockCounts, setDefaultState, defaultState, isLoading, isError, error } = useBlockMenuSidebar();
-
+  const { data, setDefaultState, defaultState, isLoading, isError, error } =
+    useBlockMenuSidebar();
+  const { setIntegration } = useBlockMenuContext();
   if (isLoading) {
     return (
       <div className="w-fit space-y-2 px-4 pt-4">
@@ -21,10 +22,24 @@ export const BlockMenuSidebar = () => {
     );
   }
   if (isError) {
-    return <div className="w-fit space-y-2 px-4 pt-4">
-      <ErrorCard className="w-[12.875rem]" httpError={{status: 500, statusText: "Internal Server Error", message: error?.detail || 'An error occurred'}} />
+    return (
+      <div className="w-fit space-y-2 px-4 pt-4">
+        <ErrorCard
+          className="w-[12.875rem]"
+          isSuccess={false}
+          responseError={error || undefined}
+          context="block menu"
+          httpError={{
+            status: data?.status,
+            statusText: "Internal Server Error",
+            message: (error?.detail as string) || "An error occurred",
+          }}
+        />
       </div>
+    );
   }
+
+  const blockCounts = data?.blockCounts;
 
   const topLevelMenuItems = [
     {
@@ -62,7 +77,8 @@ export const BlockMenuSidebar = () => {
       type: "integrations",
       number: blockCounts?.integrations,
       onClick: () => {
-        setDefaultState("integrations");
+        setDefaultState(DefaultStateType.INTEGRATIONS);
+        setIntegration(undefined);
       },
     },
     {
