@@ -63,22 +63,26 @@ class TestTTLCache:
             value = f"value{i}" * 10  # Make values larger to trigger eviction sooner
             cache.set(key, value)
             added_keys.append(key)
-            
+
             # Check if eviction has occurred
             if cache.size() < len(added_keys):
                 # Eviction happened - verify oldest entries are gone
                 evicted_count = len(added_keys) - cache.size()
-                
+
                 # Check that the first entries were evicted (FIFO/LRU)
                 for j in range(evicted_count):
-                    assert cache.get(added_keys[j]) is None, f"Expected {added_keys[j]} to be evicted"
-                
+                    assert (
+                        cache.get(added_keys[j]) is None
+                    ), f"Expected {added_keys[j]} to be evicted"
+
                 # Check that recent entries are still present
                 for j in range(evicted_count, len(added_keys)):
-                    assert cache.get(added_keys[j]) is not None, f"Expected {added_keys[j]} to still be present"
-                
+                    assert (
+                        cache.get(added_keys[j]) is not None
+                    ), f"Expected {added_keys[j]} to still be present"
+
                 return  # Test passed
-        
+
         # If we added 10 entries without eviction, the cache is too large
         assert False, "Cache size limit not working - no eviction occurred"
 
@@ -91,16 +95,14 @@ class TestTTLCache:
         cache.set("key1", "value1")
         cache.set("key2", "value2")
         cache.set("key3", "value3")
-        
-        initial_size = cache.size()
-        
+
         # Access key1 to make it most recently used
         _ = cache.get("key1")
-        
+
         # Add more entries to trigger eviction
         for i in range(4, 20):
             cache.set(f"key{i}", f"value{i}")
-            
+
             # Check if we've started evicting
             if cache.size() < i:
                 # Some eviction occurred
@@ -109,7 +111,7 @@ class TestTTLCache:
                 # Just verify that eviction is happening
                 assert cache.size() < 20, "Eviction should limit cache size"
                 return
-        
+
         # Verify the cache has a size limit
         assert cache.size() < 20, "Cache should have evicted some entries"
 
