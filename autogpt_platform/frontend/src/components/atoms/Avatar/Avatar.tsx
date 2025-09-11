@@ -93,14 +93,16 @@ export function AvatarImage({
 }: AvatarImageProps): JSX.Element | null {
   const { setIsLoaded, setHasImage } = useAvatarContext();
 
+  const normalizedSrc = typeof src === "string" ? src.trim() : src;
+
   useEffect(
     function setHasImageOnSrcChange() {
-      setHasImage(Boolean(src));
+      setHasImage(Boolean(normalizedSrc));
     },
-    [src, setHasImage],
+    [normalizedSrc, setHasImage],
   );
 
-  if (!src) return null;
+  if (!normalizedSrc) return null;
 
   const sizeFromClass = getAvatarSizeFromClassName(className);
   const computedWidth = width || sizeFromClass || 40;
@@ -120,7 +122,7 @@ export function AvatarImage({
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={src}
+        src={normalizedSrc}
         alt={alt || "Avatar image"}
         className={["h-full w-full object-cover", className || ""].join(" ")}
         width={computedWidth}
@@ -142,7 +144,7 @@ export function AvatarImage({
 
   return (
     <Image
-      src={src}
+      src={normalizedSrc}
       alt={alt || "Avatar image"}
       className={["h-full w-full object-cover", className || ""].join(" ")}
       width={fill ? undefined : computedWidth}

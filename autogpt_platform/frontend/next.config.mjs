@@ -12,6 +12,23 @@ const nextConfig = {
       "ideogram.ai", // for generated images
       "picsum.photos", // for placeholder images
     ],
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "storage.googleapis.com",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "storage.cloud.google.com",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "lh3.googleusercontent.com",
+        pathname: "/**",
+      },
+    ],
   },
   output: "standalone",
   transpilePackages: ["geist"],
