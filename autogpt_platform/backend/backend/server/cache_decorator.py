@@ -143,7 +143,8 @@ def ttl_cache(
         @functools.wraps(func)
         async def async_wrapper(*args, **kwargs):
             # Disable caching during tests to avoid test interference
-            if os.environ.get("DISABLE_CACHE_IN_TESTS") == "true":
+            if (os.environ.get("DISABLE_CACHE_IN_TESTS") == "true" or 
+                os.environ.get("CACHE_ENABLED") == "false"):
                 return await func(*args, **kwargs)
 
             # Lazy cache resolution to avoid initialization issues
