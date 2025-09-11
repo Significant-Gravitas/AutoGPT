@@ -52,18 +52,18 @@ class TestTTLCache:
 
     def test_max_size_eviction(self):
         """Test LRU eviction when max size is reached."""
-        # Set a very small size limit (0.0002 MB = ~200 bytes)
-        cache = TTLCache(default_ttl=10, max_size_mb=0.0002)
+        # Set a very small size limit (0.00025 MB = ~250 bytes)
+        cache = TTLCache(default_ttl=10, max_size_mb=0.00025)
 
         # Add entries that will exceed the size limit
-        # Each entry is about 55 bytes, so 3 entries = ~165 bytes
+        # Each entry is about 71 bytes (55 + 16 buffer), so 3 entries = ~213 bytes
         cache.set("key1", "value1")
         cache.set("key2", "value2")
         cache.set("key3", "value3")
 
         assert cache.size() == 3
 
-        # Adding another should trigger eviction (total would be ~220 bytes > 200 bytes)
+        # Adding another should trigger eviction (total would be ~284 bytes > 250 bytes)
         cache.set("key4", "value4")
 
         # Oldest entry (key1) should be evicted
@@ -74,8 +74,8 @@ class TestTTLCache:
 
     def test_lru_ordering(self):
         """Test that LRU ordering is maintained."""
-        # Set a very small size limit to trigger eviction (0.0002 MB = ~200 bytes)
-        cache = TTLCache(default_ttl=10, max_size_mb=0.0002)
+        # Set a very small size limit to trigger eviction (0.00025 MB = ~250 bytes)
+        cache = TTLCache(default_ttl=10, max_size_mb=0.00025)
 
         cache.set("key1", "value1")
         cache.set("key2", "value2")

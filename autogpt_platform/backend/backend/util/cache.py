@@ -76,6 +76,10 @@ class TTLCache:
             elif hasattr(obj, "__dict__"):
                 size += self._estimate_size(obj.__dict__)
 
+            # Add a small buffer for Python object overhead which varies by version
+            # This helps ensure consistent behavior across Python 3.11, 3.12, and 3.13
+            size += 16
+
             return size
         except Exception:
             # Fallback to a conservative estimate if we can't determine size
@@ -120,7 +124,7 @@ class TTLCache:
                     self._current_size_bytes -= size_bytes
                     evicted_bytes += size_bytes
                     evicted += 1
-                    logger.info(
+                    logger.debug(
                         f"[CACHE EVICT] Evicted entry due to memory limit: {evicted_key[:16]}... (freed {size_bytes} bytes)"
                     )
                 if evicted > 0:
