@@ -241,6 +241,7 @@ class AirtableCreateRecordsBlock(Block):
 
     class Output(BlockSchema):
         records: list[dict] = SchemaField(description="Array of created record objects")
+        details: dict = SchemaField(description="Details of the created records")
 
     def __init__(self):
         super().__init__(
@@ -279,6 +280,9 @@ class AirtableCreateRecordsBlock(Block):
             result_records = normalized_data["records"]
 
         yield "records", result_records
+        details = data.get("details", None)
+        if details:
+            yield "details", details
 
 
 class AirtableUpdateRecordsBlock(Block):
