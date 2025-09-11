@@ -1,6 +1,10 @@
+import React from "react";
 import { Node as XYNode, NodeProps } from "@xyflow/react";
 import { FormCreator } from "./FormCreator";
 import { RJSFSchema } from "@rjsf/utils";
+import { Text } from "@/components/atoms/Text/Text";
+import { useCustomNodeStore } from "./store/customNodeStore";
+import { Switch } from "@/components/atoms/Switch/Switch";
 
 export type CustomNodeData = {
   hardcodedValues: {
@@ -14,10 +18,36 @@ export type CustomNodeData = {
 
 export type CustomNode = XYNode<CustomNodeData, "custom">;
 
-export const CustomNode: React.FC<NodeProps<CustomNode>> = ({ data }) => {
-  return (
-    <div className="min-h-[120px] min-w-[200px] rounded-lg border-2 border-gray-300 bg-white p-6 shadow-lg">
-      <FormCreator jsonSchema={data.inputSchema} />
-    </div>
-  );
-};
+export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
+  ({ data, id }) => {
+    console.log(JSON.stringify(data.inputSchema, null, 2));
+    const { getShowAdvanced, toggleAdvanced } = useCustomNodeStore();
+    return (
+      <div className="rounded-xl border border-slate-200/60 bg-gradient-to-br from-white to-slate-50/30 shadow-lg shadow-slate-900/5 backdrop-blur-sm">
+        {/* Header */}
+        <div className="flex h-14 items-center justify-center rounded-xl border-b border-slate-200/50 bg-gradient-to-r from-slate-50/80 to-white/90">
+          <Text
+            variant="large-semibold"
+            className="tracking-tight text-slate-800"
+          >
+            {data.title}
+          </Text>
+        </div>
+
+        <div className="bg-white/40 pb-6 pr-6">
+          <FormCreator jsonSchema={data.inputSchema} nodeId={id} />
+        </div>
+
+        <div className="flex items-center justify-between gap-2 rounded-b-xl border-t border-slate-200/50 bg-gradient-to-r from-slate-50/60 to-white/80 px-5 py-3.5">
+          <Text variant="body" className="font-medium text-slate-700">
+            Advanced
+          </Text>
+          <Switch
+            onCheckedChange={() => toggleAdvanced(id)}
+            checked={getShowAdvanced(id)}
+          />
+        </div>
+      </div>
+    );
+  },
+);
