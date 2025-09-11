@@ -252,13 +252,19 @@ async def health():
 
 class AgentServer(backend.util.service.AppProcess):
     def run(self):
-        server_app = starlette.middleware.cors.CORSMiddleware(
-            app=app,
-            allow_origins=settings.config.backend_cors_allow_origins,
-            allow_credentials=True,
-            allow_methods=["*"],  # Allows all methods
-            allow_headers=["*"],  # Allows all headers
-        )
+
+        if settings.config.enable_cors_all_origins:
+            server_app = starlette.middleware.cors.CORSMiddleware(
+                app=app,
+                allow_origins=settings.config.backend_cors_allow_origins,
+                allow_credentials=True,
+                allow_methods=["*"],  # Allows all methods
+                allow_headers=["*"],  # Allows all headers
+            )
+        else:
+            logger.info("CORS is disabled")
+            server_app = app
+
         uvicorn.run(
             server_app,
             host=backend.util.settings.Config().agent_api_host,

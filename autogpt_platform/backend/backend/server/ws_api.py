@@ -295,14 +295,17 @@ async def health():
 
 class WebsocketServer(AppProcess):
     def run(self):
-        logger.info(f"CORS allow origins: {settings.config.backend_cors_allow_origins}")
-        server_app = CORSMiddleware(
-            app=app,
-            allow_origins=settings.config.backend_cors_allow_origins,
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
+        if settings.config.enable_cors_all_origins:
+            server_app = CORSMiddleware(
+                app=app,
+                allow_origins=settings.config.backend_cors_allow_origins,
+                allow_credentials=True,
+                allow_methods=["*"],
+                allow_headers=["*"],
+            )
+        else:
+            logger.info("CORS is disabled")
+            server_app = app
 
         uvicorn.run(
             server_app,

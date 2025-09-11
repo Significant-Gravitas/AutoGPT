@@ -368,6 +368,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum message size limit for communication with the message bus",
     )
 
+    enable_cors_all_origins: bool = Field(
+        default=True,
+        description="Whether to enable all CORS origins",
+    )
+
     backend_cors_allow_origins: List[str] = Field(default=["http://localhost:3000"])
 
     @field_validator("backend_cors_allow_origins")
