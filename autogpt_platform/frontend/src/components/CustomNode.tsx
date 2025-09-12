@@ -882,7 +882,7 @@ export const CustomNode = React.memo(
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <h3 className="font-roboto cursor-default text-lg">
+                        <h3 className="font-roboto sentry-unmask cursor-default text-lg">
                           <TextRenderer
                             value={displayTitle}
                             truncateLengthLimit={80}
