@@ -5,7 +5,7 @@ import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/component
 import { useRunAgentModalContext } from "../../context";
 import { RunAgentInputs } from "../../../RunAgentInputs/RunAgentInputs";
 
-export function DefaultRunView() {
+export function ModalRunSection() {
   const {
     agent,
     defaultRunType,
