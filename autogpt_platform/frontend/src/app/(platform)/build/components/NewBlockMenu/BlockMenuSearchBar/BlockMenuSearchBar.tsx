@@ -12,7 +12,13 @@ interface BlockMenuSearchBarProps {
 export const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
   className = "",
 }) => {
-  const { handleClear, inputRef, localQuery, setLocalQuery, debouncedSetSearchQuery } = useBlockMenuSearchBar();
+  const {
+    handleClear,
+    inputRef,
+    localQuery,
+    setLocalQuery,
+    debouncedSetSearchQuery,
+  } = useBlockMenuSearchBar();
 
   return (
     <div
@@ -22,7 +28,10 @@ export const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
       )}
     >
       <div className="flex h-6 w-6 items-center justify-center">
-        <MagnifyingGlassIcon className="h-6 w-6 text-zinc-700" strokeWidth={2} />
+        <MagnifyingGlassIcon
+          className="h-6 w-6 text-zinc-700"
+          strokeWidth={2}
+        />
       </div>
       <Input
         ref={inputRef}
