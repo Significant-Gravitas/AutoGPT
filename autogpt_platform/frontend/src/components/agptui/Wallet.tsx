@@ -7,16 +7,137 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { X } from "lucide-react";
+import { Text } from "@/components/atoms/Text/Text";
 import { PopoverClose } from "@radix-ui/react-popover";
 import { TaskGroups } from "../onboarding/WalletTaskGroups";
 import { ScrollArea } from "../ui/scroll-area";
+import { OnboardingStep } from "@/lib/autogpt-server-api";
 import { useOnboarding } from "../onboarding/onboarding-provider";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import * as party from "party-js";
 import WalletRefill from "./WalletRefill";
 
+export interface Task {
+  id: OnboardingStep;
+  name: string;
+  amount: number;
+  details: string;
+  video?: string;
+}
+
+export interface TaskGroup {
+  name: string;
+  details: string;
+  tasks: Task[];
+  isOpen: boolean;
+}
+
 export default function Wallet() {
+  const [groups, setGroups] = useState<TaskGroup[]>([
+    {
+      name: "First Wins",
+      details: "Kickstart your journey with quick wins.",
+      isOpen: true,
+      tasks: [
+        {
+          id: "GET_RESULTS",
+          name: "Complete onboarding and see your first agent's results",
+          amount: 3,
+          details: "",
+        },
+        {
+          id: "MARKETPLACE_VISIT",
+          name: "Go to Marketplace",
+          amount: 1,
+          details: "Click Marketplace in the top navigation",
+          video: "/onboarding/marketplace-visit.mp4",
+        },
+        {
+          id: "MARKETPLACE_ADD_AGENT",
+          name: "Find and add an agent",
+          amount: 1,
+          details:
+            "Search for an agent in the Marketplace and add it to your Library",
+          video: "/onboarding/marketplace-add.mp4",
+        },
+        {
+          id: "MARKETPLACE_RUN_AGENT",
+          name: "Open the Library page and run an agent",
+          amount: 1,
+          details:
+            "Go to the Library, open an agent you want, and run it",
+          video: "/onboarding/marketplace-run.mp4",
+        },
+        {
+          id: "BUILDER_SAVE_AGENT",
+          name: "Place your first blocks and save your agent",
+          amount: 1,
+          details:
+            "Open block library on the left and add a block to the canvas then save your agent",
+          video: "/onboarding/builder-save.mp4",
+        },
+      ],
+    },
+    {
+      name: "Consistency Challenge",
+      isOpen: true,
+      details: "Build your rhythm and make agents part of your routine.",
+      tasks: [
+        {
+          id: "RE_RUN_AGENT",
+          name: "Re-run an agent",
+          amount: 1,
+          details: "Re-run an agent from the Library",
+        },
+        {
+          id: "SCHEDULE_AGENT",
+          name: "Schedule your first agent",
+          amount: 1,
+          details: "Schedule an agent to run on a recurring basis",
+        },
+        {
+          id: "RUN_AGENTS",
+          name: "Run 10 agents",
+          amount: 3,
+          details: "Run agents from Library or Builder 10 times",
+        },
+        {
+          id: "RUN_3_DAYS",
+          name: "Run agents 3 days in a row",
+          amount: 1,
+          details: "Run any agents from the Library or Builder for 3 days in a row",
+        },
+      ],
+    },
+    {
+      name: "The Pro Playground",
+      details: "Master powerful features to supercharge your workflow.",
+      isOpen: true,
+      tasks: [
+        {
+          id: "TRIGGER_WEBHOOK",
+          name: "Trigger an agent via webhook",
+          amount: 1,
+          details:
+            "In the Builder, go to Settings and copy the Webhook URL. Use it to trigger your agent from another app.",
+        },
+        {
+          id: "RUN_14_DAYS",
+          name: "Run agents 14 days in a row",
+          amount: 3,
+          details: "Run any agents from the Library or Builder for 10 days in a row",
+        },
+        {
+          id: "RUN_AGENTS_100",
+          name: "Complete 100 agent runs",
+          amount: 3,
+          details: "Let your agents run and complete 100 tasks in total",
+        },
+      ],
+    },
+  ]);
+
   const { credits, formatCredits, fetchCredits } = useCredits({
     fetchInitialCredits: true,
   });
@@ -29,6 +150,18 @@ export default function Wallet() {
   const [stepsLength, setStepsLength] = useState<number | null>(
     state?.completedSteps?.length || null,
   );
+
+  const totalCount = useMemo(() => {
+    return groups.reduce((acc, group) => acc + group.tasks.length, 0);
+  }, [groups]);
+
+  // Get total completed count for all groups
+  const completedCount = useMemo(() => {
+    return groups.reduce(
+      (acc, group) => acc + group.tasks.filter((task) => state?.completedSteps?.includes(task.id)).length,
+      0,
+    );
+  }, [groups, state?.completedSteps]);
 
   const walletRef = useRef<HTMLButtonElement | null>(null);
 
@@ -124,9 +257,16 @@ export default function Wallet() {
             <span className="text-sm font-semibold">
               {formatCredits(credits)}
             </span>
-            {state?.notificationDot && (
+            {completedCount < totalCount && (
               <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"></span>
             )}
+            <div
+              className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-white px-4 py-2 shadow-md group-hover:block"
+            >
+              <Text variant="body-medium">
+                {completedCount} of {totalCount} rewards claimed
+              </Text>
+            </div>
           </button>
           <div
             className={cn(
@@ -169,7 +309,10 @@ export default function Wallet() {
           <p className="mx-1 my-1 font-sans text-xs font-normal text-zinc-500">
             Complete the following tasks to earn more credits!
           </p>
-          <TaskGroups />
+          <TaskGroups
+            groups={groups}
+            setGroups={setGroups}
+          />
         </ScrollArea>
       </PopoverContent>
     </Popover>

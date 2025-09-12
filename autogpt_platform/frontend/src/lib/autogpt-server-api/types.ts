@@ -903,6 +903,7 @@ export interface RefundRequest {
 }
 
 export type OnboardingStep =
+  // Introductory onboarding (Library)
   | "WELCOME"
   | "USAGE_REASON"
   | "INTEGRATIONS"
@@ -910,14 +911,21 @@ export type OnboardingStep =
   | "AGENT_NEW_RUN"
   | "AGENT_INPUT"
   | "CONGRATS"
+  // First Wins
   | "GET_RESULTS"
-  | "RUN_AGENTS"
   | "MARKETPLACE_VISIT"
   | "MARKETPLACE_ADD_AGENT"
   | "MARKETPLACE_RUN_AGENT"
-  | "BUILDER_OPEN"
   | "BUILDER_SAVE_AGENT"
-  | "BUILDER_RUN_AGENT";
+  // Consistency Challenge
+  | "RE_RUN_AGENT"
+  | "SCHEDULE_AGENT"
+  | "RUN_AGENTS"
+  | "RUN_3_DAYS"
+  // The Pro Playground
+  | "TRIGGER_WEBHOOK"
+  | "RUN_14_DAYS"
+  | "RUN_AGENTS_100"
 
 export interface UserOnboarding {
   completedSteps: OnboardingStep[];

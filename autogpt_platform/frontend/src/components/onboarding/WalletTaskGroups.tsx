@@ -1,102 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, Check } from "lucide-react";
-import { OnboardingStep } from "@/lib/autogpt-server-api";
+import { ChevronDown, Check, BadgeQuestionMark } from "lucide-react";
 import { useOnboarding } from "./onboarding-provider";
 import { cn } from "@/lib/utils";
 import * as party from "party-js";
+import { Task, TaskGroup } from "../agptui/Wallet";
 
-interface Task {
-  id: OnboardingStep;
-  name: string;
-  amount: number;
-  details: string;
-  video?: string;
+interface Props {
+  groups: TaskGroup[];
+  setGroups: React.Dispatch<React.SetStateAction<TaskGroup[]>>;
 }
 
-interface TaskGroup {
-  name: string;
-  tasks: Task[];
-  isOpen: boolean;
-}
-
-export function TaskGroups() {
-  const [groups, setGroups] = useState<TaskGroup[]>([
-    {
-      name: "Run your first agents",
-      isOpen: true,
-      tasks: [
-        {
-          id: "GET_RESULTS",
-          name: "Complete onboarding and see your first agent's results",
-          amount: 3,
-          details: "",
-        },
-        {
-          id: "RUN_AGENTS",
-          name: "Run 10 agents",
-          amount: 3,
-          details: "Run agents from Library or Builder 10 times",
-        },
-      ],
-    },
-    {
-      name: "Explore the Marketplace",
-      isOpen: true,
-      tasks: [
-        {
-          id: "MARKETPLACE_VISIT",
-          name: "Go to Marketplace",
-          amount: 0,
-          details: "Click Marketplace in the top navigation",
-          video: "/onboarding/marketplace-visit.mp4",
-        },
-        {
-          id: "MARKETPLACE_ADD_AGENT",
-          name: "Find an agent",
-          amount: 1,
-          details:
-            "Search for an agent in the Marketplace, like a code generator or research assistant and add it to your Library",
-          video: "/onboarding/marketplace-add.mp4",
-        },
-        {
-          id: "MARKETPLACE_RUN_AGENT",
-          name: "Try out your agent",
-          amount: 1,
-          details:
-            "Run the agent you found in the Marketplace from the Library - whether it's a writing assistant, data analyzer, or something else",
-          video: "/onboarding/marketplace-run.mp4",
-        },
-      ],
-    },
-    {
-      name: "Build your own agent",
-      isOpen: true,
-      tasks: [
-        {
-          id: "BUILDER_OPEN",
-          name: "Open the Builder",
-          amount: 0,
-          details: "Click Builder in the top navigation",
-          video: "/onboarding/builder-open.mp4",
-        },
-        {
-          id: "BUILDER_SAVE_AGENT",
-          name: "Place your first blocks and save your agent",
-          amount: 1,
-          details:
-            "Open block library on the left and add a block to the canvas then save your agent",
-          video: "/onboarding/builder-save.mp4",
-        },
-        {
-          id: "BUILDER_RUN_AGENT",
-          name: "Run your agent",
-          amount: 1,
-          details: "Run your agent from the Builder",
-          video: "/onboarding/builder-run.mp4",
-        },
-      ],
-    },
-  ]);
+export function TaskGroups({
+  groups,
+  setGroups,
+}: Props) {
   const { state, updateState } = useOnboarding();
   const refs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -217,12 +134,13 @@ export function TaskGroups() {
             className="flex cursor-pointer items-center justify-between p-3"
             onClick={() => toggleGroup(group.name)}
           >
-            {/* Name and completed count */}
+            {/* Name, details and completed count */}
             <div className="flex-1">
               <div className="text-sm font-medium text-zinc-900">
                 {group.name}
               </div>
               <div className="mt-1 text-xs font-normal leading-tight text-zinc-500">
+                {group.details}<br />
                 {getCompletedCount(group.tasks)} of {group.tasks.length}{" "}
                 completed
               </div>
