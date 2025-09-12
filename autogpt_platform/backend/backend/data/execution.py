@@ -92,7 +92,7 @@ ExecutionStatus = AgentExecutionStatus
 NodeInputMask = Mapping[str, JsonValue]
 NodesInputMasks = Mapping[str, NodeInputMask]
 
-# dest: source 
+# dest: source
 VALID_STATUS_TRANSITIONS = {
     ExecutionStatus.QUEUED: [
         ExecutionStatus.INCOMPLETE,
@@ -772,7 +772,11 @@ async def update_graph_execution_stats(
 
     if status:
         if allowed_from := VALID_STATUS_TRANSITIONS.get(status, []):
-            where_clause["executionStatus"] = cast(Any, {"in": allowed_from})
+            # Add OR clause to check if current status is one of the allowed source statuses
+            where_clause["AND"] = [
+                {"id": graph_exec_id},
+                {"OR": [{"executionStatus": s} for s in allowed_from]},
+            ]
         else:
             raise ValueError(
                 f"Status {status} cannot be set via update for execution {graph_exec_id}. "
