@@ -116,7 +116,7 @@ export default function Wallet() {
             )}
             onClick={onWalletOpen}
           >
-            Wallet{" "}
+            Earn credits{" "}
             <span className="text-sm font-semibold">
               {formatCredits(credits)}
             </span>
@@ -145,7 +145,7 @@ export default function Wallet() {
           </span>
           <div className="flex items-center text-sm font-semibold text-violet-700">
             <div className="rounded-lg bg-violet-100 px-3 py-2">
-              Wallet{" "}
+              Earn credits{" "}
               <span className="font-semibold">{formatCredits(credits)}</span>
             </div>
             <PopoverClose>
