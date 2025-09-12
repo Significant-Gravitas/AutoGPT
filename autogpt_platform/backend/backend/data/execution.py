@@ -92,6 +92,7 @@ ExecutionStatus = AgentExecutionStatus
 NodeInputMask = Mapping[str, JsonValue]
 NodesInputMasks = Mapping[str, NodeInputMask]
 
+# dest: source 
 VALID_STATUS_TRANSITIONS = {
     ExecutionStatus.QUEUED: [
         ExecutionStatus.INCOMPLETE,
