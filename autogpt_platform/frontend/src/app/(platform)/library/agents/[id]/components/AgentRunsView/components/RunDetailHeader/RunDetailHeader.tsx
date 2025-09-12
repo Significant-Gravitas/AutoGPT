@@ -1,3 +1,4 @@
+import React, { useState } from "react";
 import { RunStatusBadge } from "../RunDetails/components/RunStatusBadge";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
@@ -11,7 +12,8 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import moment from "moment";
 import { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
 import { useRunDetailHeader } from "./useRunDetailHeader";
-import { AgentActions } from "./components/AgentActions";
+import { AgentActionsDropdown } from "../AgentActionsDropdown";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
 
 type Props = {
   agent: LibraryAgent;
@@ -28,6 +30,8 @@ export function RunDetailHeader({
   onSelectRun,
   onClearSelectedRun,
 }: Props) {
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
   const {
     stopRun,
     canStop,
@@ -38,6 +42,11 @@ export function RunDetailHeader({
     isRunningAgain,
     openInBuilderHref,
   } = useRunDetailHeader(agent.graph_id, run, onSelectRun, onClearSelectedRun);
+
+  async function handleDeleteRun() {
+    await deleteRun();
+    setShowDeleteDialog(false);
+  }
   return (
     <div>
       <div className="flex w-full items-center justify-between">
@@ -65,10 +74,9 @@ export function RunDetailHeader({
                 <Button
                   variant="secondary"
                   size="small"
-                  onClick={deleteRun}
-                  loading={isDeleting}
+                  onClick={() => setShowDeleteDialog(true)}
                 >
-                  <TrashIcon size={16} /> Delete run
+                  <TrashIcon size={16} /> Delete
                 </Button>
                 {openInBuilderHref ? (
                   <Button
@@ -91,7 +99,7 @@ export function RunDetailHeader({
                     <StopIcon size={14} /> Stop run
                   </Button>
                 ) : null}
-                <AgentActions agent={agent} />
+                <AgentActionsDropdown agent={agent} />
               </div>
             ) : null}
           </div>
@@ -145,6 +153,40 @@ export function RunDetailHeader({
           ) : null}
         </div>
       </div>
+
+      <Dialog
+        controlled={{
+          isOpen: showDeleteDialog,
+          set: setShowDeleteDialog,
+        }}
+        styling={{ maxWidth: "32rem" }}
+        title="Delete run"
+      >
+        <Dialog.Content>
+          <div>
+            <Text variant="large">
+              Are you sure you want to delete this run? This action cannot be
+              undone.
+            </Text>
+            <Dialog.Footer>
+              <Button
+                variant="secondary"
+                disabled={isDeleting}
+                onClick={() => setShowDeleteDialog(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDeleteRun}
+                loading={isDeleting}
+              >
+                Delete
+              </Button>
+            </Dialog.Footer>
+          </div>
+        </Dialog.Content>
+      </Dialog>
     </div>
   );
 }
