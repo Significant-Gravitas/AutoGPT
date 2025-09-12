@@ -1,6 +1,45 @@
-from typing import Optional
+from typing import Any, Optional
 
 from backend.sdk import BaseModel, SchemaField
+
+
+def _to_camel_case(value: str) -> str:
+    """Convert snake_case string to camelCase.
+
+    Args:
+        value: Snake case string to convert
+
+    Returns:
+        String converted to camelCase format
+    """
+    parts = value.split("_")
+    return parts[0] + "".join(part.capitalize() for part in parts[1:])
+
+
+def to_camel_case_dict(data: dict[str, Any]) -> dict[str, Any]:
+    """Recursively convert dictionary keys from snake_case to camelCase.
+
+    Handles nested dictionaries and lists containing dictionaries by recursively
+    converting all snake_case keys to camelCase format.
+
+    Args:
+        data: Dictionary with snake_case keys to convert
+
+    Returns:
+        Dictionary with all keys converted to camelCase
+    """
+    result: dict[str, Any] = {}
+    for key, val in data.items():
+        camel_key = _to_camel_case(key)
+        if isinstance(val, dict):
+            result[camel_key] = to_camel_case_dict(val)
+        elif isinstance(val, list):
+            result[camel_key] = [
+                to_camel_case_dict(v) if isinstance(v, dict) else v for v in val
+            ]
+        else:
+            result[camel_key] = val
+    return result
 
 
 class TextSettings(BaseModel):
