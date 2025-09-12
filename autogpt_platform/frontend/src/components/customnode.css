@@ -4,11 +4,6 @@
   transition: border-color 0.3s ease-in-out;
 }
 
-.custom-node [data-id="input-handles"],
-.custom-node [data-id="input-handles"] > div > div {
-  margin-bottom: 1rem;
-}
-
 .custom-node .custom-switch {
   padding: 0.5rem 1.25rem;
   display: flex;

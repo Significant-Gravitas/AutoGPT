@@ -5673,6 +5673,11 @@
             "default": []
           },
           "user_id": { "type": "string", "title": "User Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
           "input_schema": {
             "additionalProperties": true,
             "type": "object",
@@ -5709,6 +5714,7 @@
           "name",
           "description",
           "user_id",
+          "created_at",
           "input_schema",
           "output_schema",
           "has_external_trigger",
@@ -5931,6 +5937,11 @@
           },
           "id": { "type": "string", "title": "Id" },
           "user_id": { "type": "string", "title": "User Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
           "updated_at": {
             "type": "string",
             "format": "date-time",
@@ -5953,6 +5964,7 @@
           "description",
           "id",
           "user_id",
+          "created_at",
           "updated_at",
           "webhook"
         ],
