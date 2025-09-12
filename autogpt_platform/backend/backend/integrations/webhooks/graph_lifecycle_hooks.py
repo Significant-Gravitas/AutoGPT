@@ -56,12 +56,35 @@ async def _on_graph_activate(graph: "BaseGraph | GraphModel", user_id: str):
                 )
             )
             and (creds_meta := new_node.input_default.get(creds_field_name))
-            and not (node_credentials := await get_credentials(creds_meta["id"]))
         ):
-            raise ValueError(
-                f"Node #{new_node.id} input '{creds_field_name}' updated with "
-                f"non-existent credentials #{creds_meta['id']}"
-            )
+            try:
+                node_credentials = await get_credentials(creds_meta["id"])
+                if not node_credentials:
+                    raise ValueError(
+                        f"Node #{new_node.id} input '{creds_field_name}' updated with "
+                        f"non-existent credentials #{creds_meta['id']}"
+                    )
+            except Exception as e:
+                # Check if this is an OAuth refresh token error
+                error_msg = str(e).lower()
+                if (
+                    "invalid_grant" in error_msg
+                    or "invalid token" in error_msg  
+                    or "token expired" in error_msg
+                    or "refresh token" in error_msg
+                ):
+                    logger.warning(
+                        f"Node #{new_node.id} has OAuth credentials that need re-authentication. "
+                        f"The graph update will proceed, but the node may fail at execution time. "
+                        f"Credentials ID: {creds_meta['id']}. Error: {e}"
+                    )
+                    # Don't fail the graph update - allow it to proceed without validated credentials
+                    # The node will fail at execution time if credentials are actually invalid
+                    node_credentials = None
+                else:
+                    # Re-raise non-OAuth credential errors
+                    logger.error(f"Unexpected error validating credentials: {e}")
+                    raise
 
         updated_node = await on_node_activate(
             user_id, graph.id, new_node, credentials=node_credentials
@@ -93,12 +116,33 @@ async def on_graph_deactivate(graph: "GraphModel", user_id: str):
                 )
             )
             and (creds_meta := node.input_default.get(creds_field_name))
-            and not (node_credentials := await get_credentials(creds_meta["id"]))
         ):
-            logger.error(
-                f"Node #{node.id} input '{creds_field_name}' referenced non-existent "
-                f"credentials #{creds_meta['id']}"
-            )
+            try:
+                node_credentials = await get_credentials(creds_meta["id"])
+                if not node_credentials:
+                    logger.error(
+                        f"Node #{node.id} input '{creds_field_name}' referenced non-existent "
+                        f"credentials #{creds_meta['id']}"
+                    )
+            except Exception as e:
+                # Check if this is an OAuth refresh token error
+                error_msg = str(e).lower()
+                if (
+                    "invalid_grant" in error_msg
+                    or "invalid token" in error_msg  
+                    or "token expired" in error_msg
+                    or "refresh token" in error_msg
+                ):
+                    logger.warning(
+                        f"Node #{node.id} has OAuth credentials that need re-authentication. "
+                        f"Proceeding with deactivation. Credentials ID: {creds_meta['id']}. Error: {e}"
+                    )
+                    # Don't fail the graph deactivation - allow it to proceed
+                    node_credentials = None
+                else:
+                    # Re-raise non-OAuth credential errors
+                    logger.error(f"Unexpected error validating credentials during deactivation: {e}")
+                    raise
 
         updated_node = await on_node_deactivate(
             user_id, node, credentials=node_credentials
