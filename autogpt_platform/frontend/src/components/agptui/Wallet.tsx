@@ -24,6 +24,7 @@ export default function Wallet() {
   const { state, updateState } = useOnboarding();
   const [prevCredits, setPrevCredits] = useState<number | null>(credits);
   const [flash, setFlash] = useState(false);
+  const [walletOpen, setWalletOpen] = useState(state?.walletShown || false);
 
   const [stepsLength, setStepsLength] = useState<number | null>(
     state?.completedSteps?.length || null,
@@ -32,12 +33,12 @@ export default function Wallet() {
   const walletRef = useRef<HTMLButtonElement | null>(null);
 
   const onWalletOpen = useCallback(async () => {
-    if (state?.notificationDot) {
-      updateState({ notificationDot: false });
+    if (!state?.walletShown) {
+      updateState({ walletShown: true });
     }
     // Refresh credits when the wallet is opened
     fetchCredits();
-  }, [state?.notificationDot, updateState, fetchCredits]);
+  }, [state?.walletShown, updateState, fetchCredits]);
 
   const fadeOut = useMemo(
     () =>
@@ -106,7 +107,10 @@ export default function Wallet() {
   }, [credits, prevCredits]);
 
   return (
-    <Popover>
+    <Popover
+      open={walletOpen}
+      onOpenChange={setWalletOpen}
+    >
       <PopoverTrigger asChild>
         <div className="relative inline-block">
           <button

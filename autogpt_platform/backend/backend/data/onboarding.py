@@ -30,7 +30,7 @@ user_credit = get_user_credit_model()
 
 class UserOnboardingUpdate(pydantic.BaseModel):
     completedSteps: Optional[list[OnboardingStep]] = None
-    notificationDot: Optional[bool] = None
+    walletShown: Optional[bool] = None
     notified: Optional[list[OnboardingStep]] = None
     usageReason: Optional[str] = None
     integrations: Optional[list[str]] = None
@@ -65,8 +65,8 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
         ):
             if step in data.completedSteps:
                 await reward_user(user_id, step)
-    if data.notificationDot is not None:
-        update["notificationDot"] = data.notificationDot
+    if data.walletShown is not None:
+        update["walletShown"] = data.walletShown
     if data.notified is not None:
         update["notified"] = list(set(data.notified))
     if data.usageReason is not None:

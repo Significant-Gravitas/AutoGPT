@@ -86,7 +86,7 @@ model UserOnboarding {
   updatedAt DateTime? @updatedAt
 
   completedSteps                OnboardingStep[] @default([])
-  notificationDot               Boolean          @default(true)
+  walletShown                   Boolean          @default(false)
   notified                      OnboardingStep[] @default([])
   rewardedFor                   OnboardingStep[] @default([])
   usageReason                   String?

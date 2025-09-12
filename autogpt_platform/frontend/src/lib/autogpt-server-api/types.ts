@@ -921,7 +921,7 @@ export type OnboardingStep =
 
 export interface UserOnboarding {
   completedSteps: OnboardingStep[];
-  notificationDot: boolean;
+  walletShown: boolean;
   notified: OnboardingStep[];
   rewardedFor: OnboardingStep[];
   usageReason: string | null;

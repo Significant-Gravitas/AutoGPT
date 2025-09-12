@@ -125,7 +125,7 @@ export default function OnboardingProvider({
           // Handle initial state
           return {
             completedSteps: [],
-            notificationDot: false,
+            walletShown: true,
             notified: [],
             rewardedFor: [],
             usageReason: null,
