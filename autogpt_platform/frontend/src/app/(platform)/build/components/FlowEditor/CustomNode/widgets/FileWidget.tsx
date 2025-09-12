@@ -1,10 +1,10 @@
-import { Input } from "@/components/ui/input";
 import { WidgetProps } from "@rjsf/utils";
+import { InputRenderer, InputType } from "../InputRenderer";
 
 export const FileWidget = (props: WidgetProps) => {
   const { onChange, multiple = false, disabled, readonly } = props;
 
-  // For standard RJSF, upload value must be a string (usually base64) or array of strings for multiple
+  // TODO: Need a lot of work here
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files || files.length === 0) {
@@ -21,11 +21,17 @@ export const FileWidget = (props: WidgetProps) => {
   };
 
   return (
-    <Input
-      type="file"
-      multiple={multiple}
-      disabled={disabled || readonly}
+    <InputRenderer
+      type={InputType.FILE}
+      id={props.id}
+      value={props.value}
       onChange={handleChange}
+      disabled={props.disabled}
+      readonly={props.readonly}
+      placeholder={props.placeholder || ""}
+      required={props.required}
+      autofocus={props.autofocus}
+      multiple={multiple}
     />
   );
 };

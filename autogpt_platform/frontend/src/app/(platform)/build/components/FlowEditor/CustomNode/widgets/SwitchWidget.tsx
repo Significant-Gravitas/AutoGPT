@@ -1,15 +1,20 @@
-import { Switch } from "@/components/atoms/Switch/Switch";
 import { WidgetProps } from "@rjsf/utils";
+import { InputRenderer, InputType } from "../InputRenderer";
 
 export function SwitchWidget(props: WidgetProps) {
   const { value = false, onChange, disabled, readonly, autofocus } = props;
 
   return (
-    <Switch
-      checked={Boolean(value)}
-      onCheckedChange={(checked) => onChange(checked)}
-      disabled={disabled || readonly}
-      autoFocus={autofocus}
+    <InputRenderer
+      type={InputType.BOOLEAN}
+      onChange={onChange}
+      value={value}
+      id={props.id}
+      placeholder={props.placeholder || ""}
+      required={props.required}
+      disabled={disabled}
+      readonly={readonly}
+      autofocus={autofocus}
     />
   );
 }

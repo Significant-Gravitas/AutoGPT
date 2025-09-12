@@ -1,14 +1,18 @@
-import { Input } from "@/components/ui/input";
 import { WidgetProps } from "@rjsf/utils";
+import { InputRenderer, InputType } from "../InputRenderer";
 
 export const TextInputWidget = (props: WidgetProps) => {
   return (
-    <Input
+    <InputRenderer
+      type={InputType.STRING}
+      value={props.value}
       id={props.id}
-      value={props.value || ""}
-      onChange={(e) => props.onChange(e.target.value)}
       placeholder={props.placeholder || ""}
       required={props.required}
+      onChange={props.onChange}
+      disabled={props.disabled}
+      readonly={props.readonly}
+      autofocus={props.autofocus}
     />
   );
 };

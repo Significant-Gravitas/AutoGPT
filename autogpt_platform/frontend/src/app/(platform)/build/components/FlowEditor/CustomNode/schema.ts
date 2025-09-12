@@ -6,5 +6,7 @@ export const uiSchema = {
     id: { "ui:autofocus": true },
     title: { "ui:placeholder": "Optional title" },
   },
-  root_value: { "ui:field": "AnyField" },
+  properties: {
+    "ui:field": "CustomObjectField",
+  },
 };

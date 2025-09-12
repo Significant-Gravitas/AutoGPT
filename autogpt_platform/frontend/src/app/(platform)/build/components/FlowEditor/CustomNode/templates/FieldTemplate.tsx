@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Text } from "@/components/atoms/Text/Text";
 import { useCustomNodeStore } from "../store/customNodeStore";
-import { Handle, Position } from "@xyflow/react";
+import NodeHandle from "../NodeHandle";
 
 const FieldTemplate: React.FC<FieldTemplateProps> = ({
   id,
@@ -25,31 +25,13 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
   if (!getShowAdvanced(nodeId) && schema.advanced === true) {
     return null;
   }
-  const Dot: React.FC<{ isConnected?: boolean; type?: string }> = ({
-    isConnected = false,
-    type = "string",
-  }) => (
-    <div
-      className={`h-3 w-3 rounded-full border-2 ${
-        isConnected
-          ? "border-gray-400 bg-gray-400"
-          : "border-gray-300 bg-white hover:border-gray-400"
-      }`}
-    />
-  );
 
+  const fieldKey = id?.split("_").slice(1, -1).join("_") || "";
   return (
-    <div className="mt-4 min-w-[300px] max-w-md space-y-1">
-      {label && (
-        <label htmlFor={id} className="flex items-center gap-1">
-          <Handle
-            type="target"
-            position={Position.Left}
-            id={id}
-            className="-ml-3.5 mr-2"
-          >
-            <Dot isConnected={false} type={schema.type as string} />
-          </Handle>
+    <div className="mt-4 w-[400px] space-y-1">
+      {label && schema.type && (
+        <label htmlFor={fieldKey} className="flex items-center gap-1">
+          <NodeHandle id={id} isConnected={false} side="left" />
           <Text variant="body" className="line-clamp-1">
             {label}
           </Text>
@@ -57,7 +39,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
             ({schema.type})
           </Text>
           {required && <span style={{ color: "red" }}>*</span>}
-          {description && (
+          {description?.props?.description && (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>

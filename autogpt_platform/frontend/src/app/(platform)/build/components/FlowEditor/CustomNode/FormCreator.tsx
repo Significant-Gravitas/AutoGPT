@@ -9,8 +9,7 @@ import { uiSchema } from "./schema";
 
 export const FormCreator = React.memo(
   ({ jsonSchema, nodeId }: { jsonSchema: RJSFSchema; nodeId: string }) => {
-    jsonSchema.title = "";
-
+    console.log(JSON.stringify(jsonSchema, null, 2));
     const handleChange = (formData: any) => {
       console.log(formData);
     };

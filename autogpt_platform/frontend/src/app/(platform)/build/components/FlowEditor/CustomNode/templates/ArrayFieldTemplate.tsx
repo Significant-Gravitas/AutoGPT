@@ -1,7 +1,7 @@
 import React from "react";
 import { ArrayFieldTemplateProps } from "@rjsf/utils";
-import { Button } from "@/components/ui/button";
 import { Plus, X } from "lucide-react";
+import { Button } from "@/components/atoms/Button/Button";
 
 function ArrayFieldTemplate(props: ArrayFieldTemplateProps) {
   const { items, canAdd, onAddClick, disabled, readonly } = props;
@@ -10,17 +10,15 @@ function ArrayFieldTemplate(props: ArrayFieldTemplateProps) {
     <div className="space-y-2">
       <div>
         {items.map((element) => (
-          <div
-            key={element.key}
-            className="-ml-2 flex items-center justify-center gap-2"
-          >
-            <div className="flex-1">{element.children}</div>
+          <div key={element.key} className="-ml-2 flex items-center gap-2">
+            {element.children}
 
             {element.hasRemove && !readonly && !disabled && (
               <Button
                 type="button"
+                variant="secondary"
                 className="relative top-5"
-                size="sm"
+                size="small"
                 onClick={element.onDropIndexClick(element.index)}
               >
                 <X className="h-4 w-4" />
@@ -33,8 +31,7 @@ function ArrayFieldTemplate(props: ArrayFieldTemplateProps) {
       {canAdd && !readonly && !disabled && (
         <Button
           type="button"
-          variant="outline"
-          size="sm"
+          size="small"
           onClick={onAddClick}
           className="w-full"
         >
