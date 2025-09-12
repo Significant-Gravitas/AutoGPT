@@ -8,12 +8,14 @@ import fastapi
 import fastapi.responses
 
 import backend.data.graph
+import backend.server.v2.store.cache
 import backend.server.v2.store.db
 import backend.server.v2.store.exceptions
 import backend.server.v2.store.image_gen
 import backend.server.v2.store.media
 import backend.server.v2.store.model
 import backend.util.json
+from backend.server.cache_decorator import ttl_cache
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +87,8 @@ async def update_or_create_profile(
         updated_profile = await backend.server.v2.store.db.update_profile(
             user_id=user_id, profile=profile
         )
+        # Invalidate the cache for this user's profile
+        backend.server.v2.store.cache.invalidate_user_profile_cache(user_id)
         return updated_profile
     except Exception as e:
         logger.exception("Failed to update profile for user %s: %s", user_id, e)
@@ -108,6 +112,7 @@ async def update_or_create_profile(
     tags=["store", "public"],
     response_model=backend.server.v2.store.model.StoreAgentsResponse,
 )
+@ttl_cache(ttl_seconds=3600)  # 1 hour cache
 async def get_agents(
     featured: bool = False,
     creator: str | None = None,
@@ -181,6 +186,7 @@ async def get_agents(
     tags=["store", "public"],
     response_model=backend.server.v2.store.model.StoreAgentDetails,
 )
+@ttl_cache(ttl_seconds=3600)  # 1 hour cache
 async def get_agent(username: str, agent_name: str):
     """
     This is only used on the AgentDetails Page
@@ -211,6 +217,7 @@ async def get_agent(username: str, agent_name: str):
     tags=["store"],
     dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
 )
+@ttl_cache(ttl_seconds=3600)  # 1 hour cache
 async def get_graph_meta_by_store_listing_version_id(store_listing_version_id: str):
     """
     Get Agent Graph from Store Listing Version ID.
@@ -235,6 +242,7 @@ async def get_graph_meta_by_store_listing_version_id(store_listing_version_id: s
     dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
     response_model=backend.server.v2.store.model.StoreAgentDetails,
 )
+@ttl_cache(ttl_seconds=3600)  # 1 hour cache
 async def get_store_agent(store_listing_version_id: str):
     """
     Get Store Agent Details from Store Listing Version ID.
@@ -308,6 +316,7 @@ async def create_review(
     tags=["store", "public"],
     response_model=backend.server.v2.store.model.CreatorsResponse,
 )
+@ttl_cache(ttl_seconds=1800)  # 30 minutes cache for creators
 async def get_creators(
     featured: bool = False,
     search_query: str | None = None,
@@ -360,6 +369,7 @@ async def get_creators(
     tags=["store", "public"],
     response_model=backend.server.v2.store.model.CreatorDetails,
 )
+@ttl_cache(ttl_seconds=1800)  # 30 minutes cache for creator details
 async def get_creator(
     username: str,
 ):
@@ -393,6 +403,7 @@ async def get_creator(
     dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
     response_model=backend.server.v2.store.model.MyAgentsResponse,
 )
+@ttl_cache(ttl_seconds=30)
 async def get_my_agents(
     user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
     page: typing.Annotated[int, fastapi.Query(ge=1)] = 1,
@@ -453,6 +464,7 @@ async def delete_submission(
     dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
     response_model=backend.server.v2.store.model.StoreSubmissionsResponse,
 )
+@ttl_cache(ttl_seconds=30)
 async def get_submissions(
     user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
     page: int = 1,
@@ -705,6 +717,7 @@ async def generate_image(
     summary="Download agent file",
     tags=["store", "public"],
 )
+@ttl_cache(ttl_seconds=7200)  # 2 hours cache for downloads
 async def download_agent_file(
     store_listing_version_id: str = fastapi.Path(
         ..., description="The ID of the agent to download"

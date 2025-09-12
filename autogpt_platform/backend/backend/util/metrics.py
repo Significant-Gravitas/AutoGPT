@@ -4,6 +4,7 @@ from enum import Enum
 import sentry_sdk
 from pydantic import SecretStr
 from sentry_sdk.integrations.anthropic import AnthropicIntegration
+from sentry_sdk.integrations.asyncio import AsyncioIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 
 from backend.util.settings import Settings
@@ -25,6 +26,7 @@ def sentry_init():
         environment=f"app:{settings.config.app_env.value}-behave:{settings.config.behave_as.value}",
         _experiments={"enable_logs": True},
         integrations=[
+            AsyncioIntegration(),
             LoggingIntegration(sentry_logs_level=logging.INFO),
             AnthropicIntegration(
                 include_prompts=False,

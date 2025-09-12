@@ -160,11 +160,12 @@ jobs:
 
       - name: Run docker compose
         run: |
-          NEXT_PUBLIC_PW_TEST=true docker compose -f ../docker-compose.yml up -d
+          NEXT_PUBLIC_PW_TEST=true CACHE_ENABLED=false docker compose -f ../docker-compose.yml up -d
         env:
           DOCKER_BUILDKIT: 1
           BUILDX_CACHE_FROM: type=local,src=/tmp/.buildx-cache
           BUILDX_CACHE_TO: type=local,dest=/tmp/.buildx-cache-new,mode=max
+          CACHE_ENABLED: false
 
       - name: Move cache
         run: |
