@@ -914,29 +914,30 @@ async def add_graph_execution(
             preset_id=preset_id,
         )
 
-        # Fetch user context for the graph execution
-        user_context = await get_user_context(user_id)
-
-        queue = await get_async_execution_queue()
         graph_exec_entry = graph_exec.to_graph_execution_entry(
-            user_context, compiled_nodes_input_masks
+            user_context=await get_user_context(user_id),
+            compiled_nodes_input_masks=compiled_nodes_input_masks,
         )
-
         logger.info(
             f"Created graph execution #{graph_exec.id} for graph "
             f"#{graph_id} with {len(starting_nodes_input)} starting nodes. "
             f"Now publishing to execution queue."
         )
 
-        await queue.publish_message(
+        exec_queue = await get_async_execution_queue()
+        await exec_queue.publish_message(
             routing_key=GRAPH_EXECUTION_ROUTING_KEY,
             message=graph_exec_entry.model_dump_json(),
             exchange=GRAPH_EXECUTION_EXCHANGE,
         )
         logger.info(f"Published execution {graph_exec.id} to RabbitMQ queue")
 
-        bus = get_async_execution_event_bus()
-        await bus.publish(graph_exec)
+        graph_exec.status = ExecutionStatus.QUEUED
+        await edb.update_graph_execution_stats(
+            graph_exec_id=graph_exec.id,
+            status=graph_exec.status,
+        )
+        await get_async_execution_event_bus().publish(graph_exec)
 
         return graph_exec
     except BaseException as e:
