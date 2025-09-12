@@ -76,12 +76,7 @@ WORKDIR /app/autogpt_platform/backend
 
 FROM server_dependencies AS migrate
 
-# First install dependencies (these change less frequently)
-COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.toml /app/autogpt_platform/backend/
-WORKDIR /app/autogpt_platform/backend
-RUN poetry install --no-ansi --no-root
-
-# Then copy migration-specific files (these change more frequently)
+# Migration stage only needs schema and migrations - much lighter than full backend
 COPY autogpt_platform/backend/schema.prisma /app/autogpt_platform/backend/
 COPY autogpt_platform/backend/migrations /app/autogpt_platform/backend/migrations
 
