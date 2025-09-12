@@ -129,6 +129,15 @@ export function TaskGroups() {
     [isTaskCompleted],
   );
 
+  useEffect(() => {
+    // Close completed groups
+    setGroups((prevGroups) =>
+      prevGroups.map((group) =>
+        isGroupCompleted(group) ? { ...group, isOpen: false } : group,
+      ),
+    );
+  }, [state?.completedSteps, isGroupCompleted]);
+
   const setRef = (name: string) => (el: HTMLDivElement | null) => {
     if (el) {
       refs.current[name] = el;
