@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from datetime import datetime, timezone
 
 import fastapi
@@ -25,10 +26,28 @@ from backend.data.notifications import (
     NotificationEventModel,
 )
 from backend.notifications.notifications import queue_notification_async
+from backend.server.v2.store.embeddings import SearchFieldType, StoreAgentSearchService
+from backend.server.v2.store.embeddings import (
+    SubmissionStatus as SearchSubmissionStatus,
+)
+from backend.server.v2.store.embeddings import create_embedding
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 settings = Settings()
+
+# Initialize the search service with database URL
+search_service: StoreAgentSearchService | None = None
+
+
+def get_search_service() -> StoreAgentSearchService:
+    """Get or create the search service instance"""
+    global search_service
+    if search_service is None:
+        # Get database URL from environment variable (same as Prisma uses)
+        db_url = os.getenv("DATABASE_URL", "postgresql://localhost:5432")
+        search_service = StoreAgentSearchService(db_url)
+    return search_service
 
 
 # Constants for default admin values
@@ -53,6 +72,114 @@ def sanitize_query(query: str | None) -> str | None:
         .replace("/*", "\\/*")
         .replace("*/", "\\*/")
     )
+
+
+async def search_store_agents(
+    search_query: str,
+    limit: int = 30,
+) -> backend.server.v2.store.model.StoreAgentsResponse:
+    """
+    Search for store agents using embeddings with SQLAlchemy.
+    Falls back to text search if embedding creation fails.
+    """
+    try:
+        # Try to create embedding for semantic search
+        query_embedding = await create_embedding(search_query)
+
+        if query_embedding is None:
+            # Fallback to text-based search if embedding fails
+            logger.warning(
+                f"Failed to create embedding for query: {search_query}. "
+                "Falling back to text search."
+            )
+            return await get_store_agents(
+                search_query=search_query,
+                page=1,
+                page_size=limit,
+            )
+
+        # Use SQLAlchemy service for vector search
+        service = get_search_service()
+        results = await service.search_by_embedding(query_embedding, limit=limit)
+    except Exception as e:
+        logger.error(f"Error during vector search: {e}. Falling back to text search.")
+        # Fallback to regular text search on any error
+        return await get_store_agents(
+            search_query=search_query,
+            page=1,
+            page_size=30,
+        )
+
+    # Convert raw results to StoreAgent models
+    agents = []
+    for row in results:
+        try:
+            # Handle agent_image - it could be a list or a single string
+            agent_image = row.get("agent_image", "")
+            if isinstance(agent_image, list) and agent_image:
+                agent_image = str(agent_image[0])
+            elif not agent_image:
+                agent_image = ""
+            else:
+                agent_image = str(agent_image)
+
+            agent = backend.server.v2.store.model.StoreAgent(
+                slug=row.get("slug", ""),
+                agent_name=row.get("agent_name", ""),
+                agent_image=agent_image,
+                creator=row.get("creator_username") or "Needs Profile",
+                creator_avatar=row.get("creator_avatar") or "",
+                sub_heading=row.get("sub_heading", ""),
+                description=row.get("description", ""),
+                runs=row.get("runs", 0),
+                rating=(
+                    float(row.get("rating", 0.0))
+                    if row.get("rating") is not None
+                    else 0.0
+                ),
+            )
+            agents.append(agent)
+        except Exception as e:
+            logger.error(f"Error creating StoreAgent from search result: {e}")
+            continue
+
+    return backend.server.v2.store.model.StoreAgentsResponse(
+        agents=agents,
+        pagination=backend.server.v2.store.model.Pagination(
+            current_page=1,
+            total_items=len(agents),
+            total_pages=1,
+            page_size=20,
+        ),
+    )
+
+
+async def search_agents(
+    search_query: str,
+    featured: bool | None = None,
+    creators: list[str] | None = None,
+    category: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> backend.server.v2.store.model.StoreAgentsResponse:
+    """
+    Search for store agents using embeddings with optional filters.
+    Falls back to text search if embedding service is unavailable.
+    """
+    try:
+        # Try vector search first
+        return await search_store_agents(search_query)
+    except Exception as e:
+        logger.error(f"Vector search failed: {e}. Using text search fallback.")
+        # Fallback to text search with filters
+        return await get_store_agents(
+            featured=featured or False,
+            creators=creators,
+            search_query=search_query,
+            category=category,
+            page=page,
+            page_size=page_size,
+        )
 
 
 async def get_store_agents(
@@ -124,7 +251,6 @@ async def get_store_agents(
                 store_agents.append(store_agent)
             except Exception as e:
                 # Skip this agent if there was an error
-                # You could log the error here if needed
                 logger.error(
                     f"Error parsing Store agent when getting store agents from db: {e}"
                 )
@@ -1448,6 +1574,64 @@ async def review_store_submission(
             raise backend.server.v2.store.exceptions.DatabaseError(
                 f"Failed to update store listing version {store_listing_version_id}"
             )
+
+        # Create embeddings if approved
+        if is_approved and submission.StoreListing:
+            try:
+                service = get_search_service()
+
+                # Create embeddings for the approved listing
+                fields_to_embed = [
+                    ("name", submission.name, SearchFieldType.NAME),
+                    (
+                        "description",
+                        submission.description,
+                        SearchFieldType.DESCRIPTION,
+                    ),
+                ]
+
+                if submission.subHeading:
+                    fields_to_embed.append(
+                        (
+                            "subHeading",
+                            submission.subHeading,
+                            SearchFieldType.SUBHEADING,
+                        )
+                    )
+
+                if submission.categories:
+                    categories_text = ", ".join(submission.categories)
+                    fields_to_embed.append(
+                        ("categories", categories_text, SearchFieldType.CATEGORIES)
+                    )
+
+                for field_name, field_value, field_type in fields_to_embed:
+                    # Create embedding asynchronously
+                    embedding = await create_embedding(field_value)
+
+                    # Only store if embedding was created successfully
+                    if embedding:
+                        await service.upsert_search_record(
+                            store_listing_version_id=store_listing_version_id,
+                            store_listing_id=submission.StoreListing.id,
+                            field_name=field_name,
+                            field_value=field_value,
+                            embedding=embedding,
+                            field_type=field_type,
+                            submission_status=SearchSubmissionStatus.APPROVED,
+                            is_available=submission.isAvailable,
+                        )
+                    else:
+                        logger.warning(
+                            f"Failed to create embedding for {field_name} in listing {store_listing_version_id}. "
+                            "Search indexing skipped for this field."
+                        )
+            except Exception as e:
+                # Log error but don't fail the approval process
+                logger.error(
+                    f"Error creating search embeddings for listing {store_listing_version_id}: {e}. "
+                    "Approval will continue without search indexing."
+                )
 
         # Send email notification to the agent creator
         if store_listing_version.AgentGraph and store_listing_version.AgentGraph.User:

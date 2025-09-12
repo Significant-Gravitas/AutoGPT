@@ -2,6 +2,7 @@ import {
   ApiError,
   makeAuthenticatedFileUpload,
   makeAuthenticatedRequest,
+  getServerAuthToken,
 } from "@/lib/autogpt-server-api/helpers";
 import { getAgptServerBaseUrl } from "@/lib/env-config";
 import { NextRequest, NextResponse } from "next/server";
@@ -160,6 +161,58 @@ async function handler(
 
   const method = req.method;
   const contentType = req.headers.get("Content-Type");
+
+  // Special handling for SSE streaming endpoints
+  const isStreamingEndpoint = path.some(segment => segment === "stream");
+  if (isStreamingEndpoint && method === "GET") {
+    try {
+      const token = await getServerAuthToken();
+      const headers: HeadersInit = {};
+      
+      if (token && token !== "no-token-found") {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      
+      // Forward the request to the backend
+      const response = await fetch(backendUrl, {
+        method: "GET",
+        headers,
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        return NextResponse.json(
+          { error: `Failed to stream: ${error}` },
+          { status: response.status }
+        );
+      }
+
+      // Stream the SSE response directly
+      const stream = response.body;
+      if (!stream) {
+        return NextResponse.json(
+          { error: "No stream available" },
+          { status: 502 }
+        );
+      }
+
+      // Return the streaming response with proper SSE headers
+      return new NextResponse(stream, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive",
+        },
+      });
+    } catch (error) {
+      return createErrorResponse(
+        error,
+        path.map((s) => `/${s}`).join(""),
+        method,
+      );
+    }
+  }
 
   let responseBody: any;
   const responseHeaders: Record<string, string> = {

@@ -13,6 +13,10 @@ const API_PROXY_BASE_URL = `${FRONTEND_BASE_URL}/api/proxy`; // Sending request 
 
 const getBaseUrl = (): string => {
   if (!isServerSide()) {
+    // In the browser, use the current origin to handle dynamic ports
+    if (typeof window !== "undefined") {
+      return `${window.location.origin}/api/proxy`;
+    }
     return API_PROXY_BASE_URL;
   } else {
     return getAgptServerBaseUrl();

@@ -234,7 +234,7 @@ def test_get_agents_search(
             page_size=20,
         ),
     )
-    mock_db_call = mocker.patch("backend.server.v2.store.db.get_store_agents")
+    mock_db_call = mocker.patch("backend.server.v2.store.db.search_agents")
     mock_db_call.return_value = mocked_value
     response = client.get("/agents?search_query=specific")
     assert response.status_code == 200
@@ -246,10 +246,9 @@ def test_get_agents_search(
     snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(json.dumps(response.json(), indent=2), "agts_search")
     mock_db_call.assert_called_once_with(
+        search_query="specific",
         featured=False,
         creators=None,
-        sorted_by=None,
-        search_query="specific",
         category=None,
         page=1,
         page_size=20,

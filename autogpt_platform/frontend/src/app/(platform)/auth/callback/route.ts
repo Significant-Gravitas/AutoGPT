@@ -45,7 +45,8 @@ export async function GET(request: Request) {
         const api = new BackendAPI();
         await api.createUser();
 
-        if (await shouldShowOnboarding()) {
+        // Only show onboarding if no explicit next URL is provided
+        if (next === "/" && (await shouldShowOnboarding())) {
           next = "/onboarding";
           revalidatePath("/onboarding", "layout");
         } else {
