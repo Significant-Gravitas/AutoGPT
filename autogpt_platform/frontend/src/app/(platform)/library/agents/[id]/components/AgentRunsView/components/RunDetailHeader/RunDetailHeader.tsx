@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import { RunStatusBadge } from "../RunDetails/components/RunStatusBadge";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
@@ -30,23 +30,19 @@ export function RunDetailHeader({
   onSelectRun,
   onClearSelectedRun,
 }: Props) {
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-
   const {
-    stopRun,
     canStop,
     isStopping,
-    deleteRun,
     isDeleting,
-    runAgain,
     isRunningAgain,
     openInBuilderHref,
+    showDeleteDialog,
+    handleStopRun,
+    handleRunAgain,
+    handleDeleteRun,
+    handleShowDeleteDialog,
   } = useRunDetailHeader(agent.graph_id, run, onSelectRun, onClearSelectedRun);
 
-  async function handleDeleteRun() {
-    await deleteRun();
-    setShowDeleteDialog(false);
-  }
   return (
     <div>
       <div className="flex w-full items-center justify-between">
@@ -66,7 +62,7 @@ export function RunDetailHeader({
                 <Button
                   variant="secondary"
                   size="small"
-                  onClick={runAgain}
+                  onClick={handleRunAgain}
                   loading={isRunningAgain}
                 >
                   <PlayIcon size={16} /> Run again
@@ -74,7 +70,7 @@ export function RunDetailHeader({
                 <Button
                   variant="secondary"
                   size="small"
-                  onClick={() => setShowDeleteDialog(true)}
+                  onClick={() => handleShowDeleteDialog(true)}
                 >
                   <TrashIcon size={16} /> Delete
                 </Button>
@@ -93,7 +89,7 @@ export function RunDetailHeader({
                   <Button
                     variant="destructive"
                     size="small"
-                    onClick={stopRun}
+                    onClick={handleStopRun}
                     disabled={isStopping}
                   >
                     <StopIcon size={14} /> Stop run
@@ -157,7 +153,7 @@ export function RunDetailHeader({
       <Dialog
         controlled={{
           isOpen: showDeleteDialog,
-          set: setShowDeleteDialog,
+          set: handleShowDeleteDialog,
         }}
         styling={{ maxWidth: "32rem" }}
         title="Delete run"
@@ -172,7 +168,7 @@ export function RunDetailHeader({
               <Button
                 variant="secondary"
                 disabled={isDeleting}
-                onClick={() => setShowDeleteDialog(false)}
+                onClick={() => handleShowDeleteDialog(false)}
               >
                 Cancel
               </Button>
