@@ -88,7 +88,7 @@
     "react-markdown": "9.0.3",
     "react-modal": "3.16.3",
     "react-shepherd": "6.1.9",
-    "react-window": "1.8.11",
+    "react-window": "2.1.0",
     "recharts": "3.1.2",
     "rehype-autolink-headings": "7.1.0",
     "rehype-highlight": "7.0.2",
