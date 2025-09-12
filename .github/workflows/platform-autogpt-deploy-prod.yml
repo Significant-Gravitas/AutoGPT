@@ -4,12 +4,6 @@ on:
   release:
     types: [published]
   workflow_dispatch:
-    inputs:
-      git_ref:
-        description: 'Git ref (branch/tag) of AutoGPT to deploy'
-        required: true
-        default: 'master'
-        type: string
 
 permissions:
   contents: 'read'
@@ -25,7 +19,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.git_ref || github.ref_name }}
+          ref: ${{ github.ref_name || 'master' }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -56,4 +50,5 @@ jobs:
           token: ${{ secrets.DEPLOY_TOKEN }}
           repository: Significant-Gravitas/AutoGPT_cloud_infrastructure
           event-type: build_deploy_prod
-          client-payload: '{"ref": "${{ github.event.inputs.git_ref || github.ref }}", "repository": "${{ github.repository }}"}'
+          client-payload: |
+            {"ref": "${{ github.ref_name || 'master' }}", "repository": "${{ github.repository }}"}
