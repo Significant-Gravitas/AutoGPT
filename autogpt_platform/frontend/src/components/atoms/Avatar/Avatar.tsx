@@ -8,6 +8,7 @@ import React, {
   useState,
 } from "react";
 import Image, { ImageProps } from "next/image";
+import BoringAvatarWrapper from "@/components/ui/BoringAvatarWrapper";
 
 type AvatarContextValue = {
   isLoaded: boolean;
@@ -91,7 +92,7 @@ export function AvatarImage({
   unoptimized,
   ...rest
 }: AvatarImageProps): JSX.Element | null {
-  const { setIsLoaded, setHasImage } = useAvatarContext();
+  const { setIsLoaded, setHasImage, hasImage } = useAvatarContext();
 
   const normalizedSrc = typeof src === "string" ? src.trim() : src;
 
@@ -102,7 +103,7 @@ export function AvatarImage({
     [normalizedSrc, setHasImage],
   );
 
-  if (!normalizedSrc) return null;
+  if (!normalizedSrc || !hasImage) return null;
 
   const sizeFromClass = getAvatarSizeFromClassName(className);
   const computedWidth = width || sizeFromClass || 40;
@@ -172,15 +173,23 @@ export function AvatarFallback({
   const { isLoaded, hasImage } = useAvatarContext();
   const show = !isLoaded || !hasImage;
   if (!show) return null;
+  const computedSize = _size || getAvatarSizeFromClassName(className) || 40;
+  const name =
+    typeof children === "string" && children.trim() ? children : "User";
   return (
     <span
       className={[
-        "flex h-full w-full items-center justify-center rounded-full bg-neutral-200 text-neutral-600",
+        "flex h-full w-full items-center justify-center rounded-full bg-neutral-200 text-lg text-neutral-600",
         className || "",
       ].join(" ")}
       {...props}
     >
-      {children}
+      <BoringAvatarWrapper
+        size={computedSize}
+        name={name}
+        variant="marble"
+        colors={["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"]}
+      />
     </span>
   );
 }
