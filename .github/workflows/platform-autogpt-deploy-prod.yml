@@ -3,6 +3,7 @@ name: AutoGPT Platform - Deploy Prod Environment
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: 'read'
@@ -17,6 +18,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name || 'master' }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -36,7 +39,7 @@ jobs:
           DATABASE_URL: ${{ secrets.BACKEND_DATABASE_URL }}
           DIRECT_URL: ${{ secrets.BACKEND_DATABASE_URL }}
 
-          
+
   trigger:
     needs: migrate
     runs-on: ubuntu-latest
@@ -47,4 +50,5 @@ jobs:
           token: ${{ secrets.DEPLOY_TOKEN }}
           repository: Significant-Gravitas/AutoGPT_cloud_infrastructure
           event-type: build_deploy_prod
-          client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}", "repository": "${{ github.repository }}"}'
+          client-payload: |
+            {"ref": "${{ github.ref_name || 'master' }}", "repository": "${{ github.repository }}"}
