@@ -11,13 +11,16 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useEdgeStore } from "../../store/edgeStore";
 
 export const OutputHandler = ({
   outputSchema,
+  nodeId,
 }: {
   outputSchema: RJSFSchema;
+  nodeId: string;
 }) => {
-  console.log(JSON.stringify(outputSchema, null, 2));
+  const { isOutputConnected } = useEdgeStore();
 
   // Extract properties from the schema
   const properties = outputSchema?.properties || {};
@@ -75,7 +78,11 @@ export const OutputHandler = ({
                   ({property?.type || "unknown"})
                 </Text>
               </Text>
-              <NodeHandle id={key} isConnected={false} side="right" />
+              <NodeHandle
+                id={key}
+                isConnected={isOutputConnected(nodeId, key)}
+                side="right"
+              />
             </div>
           ))}
         </div>

@@ -1,138 +1,105 @@
-import React, { useState, useEffect } from "react";
+// autogpt_platform/frontend/src/app/(platform)/build/components/FlowEditor/CustomNode/fields/AnyOfField.tsx
+import React, { useMemo, useState } from "react";
 import { FieldProps } from "@rjsf/utils";
 
-import { LocalValuedInput } from "@/components/ui/input";
 import { Text } from "@/components/atoms/Text/Text";
 import { Switch } from "@/components/atoms/Switch/Switch";
-import { Input } from "@/components/atoms/Input/Input";
 import { Select } from "@/components/atoms/Select/Select";
-import { DateInputWidget } from "../widgets/DateInputWidget";
+import { InputRenderer, InputType } from "../InputRenderer";
 
-// Create your custom AnyOf field
-export const AnyOfField = (props: FieldProps) => {
-  const { schema, formData, onChange, name } = props;
+type TypeOption = {
+  type: string;
+  title: string;
+  index: number;
+  format?: string;
+};
 
-  // Extract types from anyOf schema
-  const typeOptions =
-    schema.anyOf?.map((option: any, index: number) => ({
-      type: option.type || "string",
-      title: option.title || `Option ${index + 1}`,
-      index,
-    })) || [];
+function resolveInputType(type?: string, format?: string): InputType {
+  if (!type) return InputType.STRING;
+  if (type === "string") {
+    if (format === "date") return InputType.DATE;
+    if (format === "time") return InputType.TIME;
+    if (format === "date-time") return InputType.DATE_TIME;
+    return InputType.STRING;
+  }
+  if (type === "number" || type === "integer") return InputType.NUMBER;
+  if (type === "boolean") return InputType.BOOLEAN;
+  if (type === "array") return InputType.ARRAY;
+  if (type === "object") return InputType.OBJECT;
+  return InputType.STRING;
+}
 
-  // Check if this is a nullable type (e.g., string | null, number | null)
-  const isNullableType =
-    typeOptions.length === 2 &&
-    typeOptions.some((opt) => opt.type === "null") &&
-    typeOptions.some((opt) => opt.type !== "null");
-
-  // Get the non-null type for nullable fields
-  const nonNullType = isNullableType
-    ? typeOptions.find((opt) => opt.type !== "null")?.type
-    : null;
-
-  // State for nullable fields
-  const [isEnabled, setIsEnabled] = useState<boolean>(
-    formData !== null && formData !== undefined,
+export const AnyOfField = ({
+  schema,
+  formData,
+  onChange,
+  name,
+}: FieldProps) => {
+  const typeOptions: TypeOption[] = useMemo(
+    () =>
+      schema.anyOf?.map((opt: any, i: number) => ({
+        type: opt.type || "string",
+        title: opt.title || `Option ${i + 1}`,
+        index: i,
+        format: opt.format,
+      })) || [],
+    [schema.anyOf],
   );
 
-  // Default to first type if available (for non-nullable fields)
-  const [selectedType, setSelectedType] = useState<any>(
-    isNullableType ? nonNullType : schema.default || typeOptions[0]?.type,
+  const isNullableType = useMemo(
+    () =>
+      typeOptions.length === 2 &&
+      typeOptions.some((o) => o.type === "null") &&
+      typeOptions.some((o) => o.type !== "null"),
+    [typeOptions],
   );
 
-  // Initialize with first type on mount
-  useEffect(() => {
-    if (!isNullableType && typeOptions.length > 0 && !formData) {
-      setSelectedType(typeOptions[0].type);
-    }
-  }, [typeOptions, formData, isNullableType]);
+  const nonNull = useMemo(
+    () => (isNullableType ? typeOptions.find((o) => o.type !== "null") : null),
+    [isNullableType, typeOptions],
+  );
 
-  // Update enabled state when formData changes (for nullable fields)
-  useEffect(() => {
-    if (isNullableType) {
-      setIsEnabled(formData !== null && formData !== undefined);
-    }
-  }, [formData, isNullableType]);
+  const initialSelectedType = useMemo(() => {
+    const def = schema.default;
+    const first = typeOptions[0]?.type || "string";
+    if (isNullableType) return nonNull?.type || "string";
+    if (typeof def === "string" && typeOptions.some((o) => o.type === def))
+      return def;
+    return first;
+  }, [schema.default, typeOptions, isNullableType, nonNull?.type]);
 
-  const handleTypeChange = (newType: string) => {
-    setSelectedType(newType);
-    // Clear the current value when type changes
-    onChange(undefined);
+  const [selectedType, setSelectedType] = useState<string>(initialSelectedType);
+
+  const isEnabled = formData !== null && formData !== undefined;
+
+  const handleTypeChange = (t: string) => {
+    setSelectedType(t);
+    onChange(undefined); // clear current value when switching type
   };
 
-  const handleValueChange = (value: any) => {
-    onChange(value);
-  };
-
-  // Handle nullable field switch change
   const handleNullableToggle = (checked: boolean) => {
-    setIsEnabled(checked);
-    if (!checked) {
-      // Set to null when unchecked
-      onChange(null);
-    } else {
-      // Clear value when enabling (let user input new value)
-      onChange(undefined);
-    }
+    onChange(checked ? undefined : null);
   };
 
-  const renderInputForType = (
-    inputType: string = selectedType,
-    format?: string,
-  ) => {
-    switch (inputType) {
-      case "string":
-        return (
-          <Input
-            hideLabel={true}
-            label={""}
-            id={`${name}-input`}
-            size="small"
-            wrapperClassName="mb-0"
-            type="text"
-            value={formData || ""}
-            onChange={(e) => handleValueChange(e.target.value)}
-            placeholder={`Enter ${inputType} value`}
-            className="w-full"
-          />
-        );
-      case "number":
-        return (
-          <Input
-            hideLabel={true}
-            label={""}
-            id={`${name}-input`}
-            size="small"
-            wrapperClassName="mb-0"
-            type="number"
-            value={formData || ""}
-            onChange={(e) => handleValueChange(Number(e.target.value))}
-            placeholder={`Enter ${inputType} value`}
-            className="w-full"
-          />
-        );
-      case "boolean":
-        return (
-          <Switch
-            checked={formData}
-            onCheckedChange={(value) => handleValueChange(value)}
-          />
-        );
-      default:
-        return (
-          <LocalValuedInput
-            type="text"
-            value={formData || ""}
-            onChange={(e) => handleValueChange(e.target.value)}
-            placeholder={`Enter ${inputType} value`}
-            className="w-full"
-          />
-        );
-    }
+  const handleValueChange = (value: any) => onChange(value);
+
+  const renderInput = (t: string, fmt?: string) => {
+    const inputType = resolveInputType(t, fmt);
+    return (
+      <InputRenderer
+        type={inputType}
+        id={`${name}-input`}
+        value={
+          // Keep controlled inputs stable
+          formData ?? (inputType === InputType.NUMBER ? "" : "")
+        }
+        placeholder={`Enter ${name}`}
+        required={false}
+        onChange={handleValueChange}
+      />
+    );
   };
 
-  // Render nullable type UI
   if (isNullableType) {
     return (
       <div className="flex flex-col gap-2">
@@ -142,17 +109,20 @@ export const AnyOfField = (props: FieldProps) => {
               {name.charAt(0).toUpperCase() + name.slice(1)}
             </Text>
             <Text variant="small" className="!text-green-500">
-              ({nonNullType} | null)
+              ({nonNull?.type} | null)
             </Text>
           </div>
           <Switch checked={isEnabled} onCheckedChange={handleNullableToggle} />
         </div>
-        {isEnabled && renderInputForType(nonNullType, schema.format)}
+        {isEnabled && renderInput(nonNull?.type || "string", nonNull?.format)}
       </div>
     );
   }
 
-  // Render regular select dropdown UI for non-nullable types
+  const currentFormat = typeOptions.find(
+    (o) => o.type === selectedType,
+  )?.format;
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-1">
@@ -165,16 +135,13 @@ export const AnyOfField = (props: FieldProps) => {
           hideLabel={true}
           value={selectedType}
           onValueChange={handleTypeChange}
-          options={typeOptions.map((option) => ({
-            value: option.type,
-            label: option.type,
-          }))}
+          options={typeOptions.map((o) => ({ value: o.type, label: o.type }))}
           size="small"
           wrapperClassName="!mb-0 "
           className="h-6 w-fit gap-1 pl-3 pr-2"
         />
       </div>
-      {renderInputForType()}
+      {renderInput(selectedType, currentFormat)}
     </div>
   );
 };

@@ -12,6 +12,7 @@ type NodeStore = {
   addNode: (node: CustomNode) => void;
   addBlock: (block: BlockInfo) => void;
   incrementNodeCounter: () => void;
+  updateNodeData: (nodeId: string, data: Partial<CustomNode["data"]>) => void;
 };
 
 export const useNodeStore = create<NodeStore>((set, get) => ({
@@ -44,4 +45,10 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
       nodes: [...state.nodes, customNode],
     }));
   },
+  updateNodeData: (nodeId, data) =>
+    set((state) => ({
+      nodes: state.nodes.map((n) =>
+        n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n,
+      ),
+    })),
 }));

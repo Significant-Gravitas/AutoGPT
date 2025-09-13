@@ -5,6 +5,9 @@ import NewControlPanel from "../NewBlockMenu/NewControlPanel/NewControlPanel";
 import { useShallow } from "zustand/react/shallow";
 import { useMemo } from "react";
 import { CustomNode } from "./CustomNode/CustomNode";
+import { useCustomEdge } from "./CustomNode/hooks/useCustomEdge";
+import { RightSidebar } from "../RIghtSidebar";
+import CustomEdge from "./CustomEdge/CustomEdge";
 
 export const Flow = () => {
   // All these 3 are working perfectly
@@ -13,6 +16,7 @@ export const Flow = () => {
     useShallow((state) => state.onNodesChange),
   );
   const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
+  const { edges, onConnect, onEdgesChange } = useCustomEdge();
 
   return (
     <div className="realtw-full h-full dark:bg-slate-900">
@@ -20,10 +24,15 @@ export const Flow = () => {
         nodes={nodes}
         onNodesChange={onNodesChange}
         nodeTypes={nodeTypes}
+        edges={edges}
+        onConnect={onConnect}
+        onEdgesChange={onEdgesChange}
+        edgeTypes={{ custom: CustomEdge }}
       >
         <Background />
         <Controls />
         <NewControlPanel />
+        <RightSidebar />
       </ReactFlow>
     </div>
   );

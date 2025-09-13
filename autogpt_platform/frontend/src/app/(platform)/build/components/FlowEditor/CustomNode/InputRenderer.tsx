@@ -68,8 +68,8 @@ export const InputRenderer = (props: InputRendererProps) => {
           size="small"
           wrapperClassName="mb-0"
           id={id}
-          value={value}
-          onChange={onChange}
+          value={value ?? ""}
+          onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder || ""}
           required={required}
         />
@@ -82,8 +82,8 @@ export const InputRenderer = (props: InputRendererProps) => {
           label={""}
           size="small"
           wrapperClassName="mb-0"
-          value={value}
-          onChange={onChange}
+          value={value ?? ""}
+          onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder || ""}
           required={required}
         />
@@ -160,7 +160,7 @@ export const InputRenderer = (props: InputRendererProps) => {
           id={id}
           hideLabel={true}
           size="small"
-          value={value}
+          value={value ?? ""}
           onValueChange={onChange}
           options={
             options?.map((option) => ({

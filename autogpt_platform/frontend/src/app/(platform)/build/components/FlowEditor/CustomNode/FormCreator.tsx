@@ -6,12 +6,13 @@ import { widgets } from "./widgets";
 import { fields } from "./fields";
 import { templates } from "./templates";
 import { uiSchema } from "./schema";
+import { useNodeStore } from "../../store/nodeStore";
 
 export const FormCreator = React.memo(
   ({ jsonSchema, nodeId }: { jsonSchema: RJSFSchema; nodeId: string }) => {
-    console.log(JSON.stringify(jsonSchema, null, 2));
-    const handleChange = (formData: any) => {
-      console.log(formData);
+    const updateNodeData = useNodeStore((state) => state.updateNodeData);
+    const handleChange = ({ formData }: any) => {
+      updateNodeData(nodeId, { hardcodedValues: formData });
     };
 
     return (

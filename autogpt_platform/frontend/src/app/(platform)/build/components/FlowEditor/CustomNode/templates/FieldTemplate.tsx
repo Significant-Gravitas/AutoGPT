@@ -10,6 +10,8 @@ import {
 import { Text } from "@/components/atoms/Text/Text";
 import { useCustomNodeStore } from "../store/customNodeStore";
 import NodeHandle from "../NodeHandle";
+import { useHandleStore } from "../../../store/handleStore";
+import { useEdgeStore } from "../../../store/edgeStore";
 
 const FieldTemplate: React.FC<FieldTemplateProps> = ({
   id,
@@ -21,17 +23,22 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
   formContext,
 }) => {
   const { getShowAdvanced } = useCustomNodeStore();
+  const { isInputConnected } = useEdgeStore();
+  const { fromRjsfId } = useHandleStore();
   const { nodeId } = formContext;
+
+  const fieldKey = fromRjsfId(id);
+  const isConnected = isInputConnected(nodeId, fieldKey);
+
   if (!getShowAdvanced(nodeId) && schema.advanced === true) {
     return null;
   }
 
-  const fieldKey = id?.split("_").slice(1, -1).join("_") || "";
   return (
     <div className="mt-4 w-[400px] space-y-1">
       {label && schema.type && (
-        <label htmlFor={fieldKey} className="flex items-center gap-1">
-          <NodeHandle id={id} isConnected={false} side="left" />
+        <label htmlFor={id} className="flex items-center gap-1">
+          <NodeHandle id={fieldKey} isConnected={isConnected} side="left" />
           <Text variant="body" className="line-clamp-1">
             {label}
           </Text>
@@ -57,7 +64,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
           )}
         </label>
       )}
-      <div className="pl-2">{children}</div>
+      {!isConnected && <div className="pl-2">{children}</div>}{" "}
     </div>
   );
 };

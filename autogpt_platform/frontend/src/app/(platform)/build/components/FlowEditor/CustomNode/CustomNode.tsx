@@ -22,7 +22,6 @@ export type CustomNode = XYNode<CustomNodeData, "custom">;
 
 export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
   ({ data, id }) => {
-    console.log(JSON.stringify(data.inputSchema, null, 2));
     const { getShowAdvanced, toggleAdvanced } = useCustomNodeStore();
     return (
       <div className="rounded-xl border border-slate-200/60 bg-gradient-to-br from-white to-slate-50/30 shadow-lg shadow-slate-900/5 backdrop-blur-sm">
@@ -56,7 +55,7 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
         </div>
 
         {/* Output Handles */}
-        <OutputHandler outputSchema={data.outputSchema} />
+        <OutputHandler outputSchema={data.outputSchema} nodeId={id} />
       </div>
     );
   },
