@@ -1,14 +1,14 @@
-import { Separator } from "@/components/ui/separator";
+// import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import React, { useMemo } from "react";
 import { BlockMenu } from "../BlockMenu/BlockMenu";
 import { useNewControlPanel } from "./useNewControlPanel";
-import { NewSaveControl } from "../SaveControl/NewSaveControl";
+// import { NewSaveControl } from "../SaveControl/NewSaveControl";
 import { GraphExecutionID } from "@/lib/autogpt-server-api";
 import { history } from "@/components/history";
-import { ControlPanelButton } from "../ControlPanelButton";
+// import { ControlPanelButton } from "../ControlPanelButton";
 import { ArrowUUpLeftIcon, ArrowUUpRightIcon } from "@phosphor-icons/react";
-import { GraphSearchMenu } from "../GraphMenu/GraphMenu";
+// import { GraphSearchMenu } from "../GraphMenu/GraphMenu";
 import { CustomNode } from "@/components/CustomNode";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
@@ -19,7 +19,24 @@ export type Control = {
   onClick: () => void;
 };
 
-export const NewControlPanel = () => {
+export type NewControlPanelProps = {
+  flowExecutionID?: GraphExecutionID | undefined;
+  visualizeBeads?: "no" | "static" | "animate";
+  pinSavePopover?: boolean;
+  pinBlocksPopover?: boolean;
+  nodes?: CustomNode[];
+  onNodeSelect?: (nodeId: string) => void;
+  onNodeHover?: (nodeId: string) => void;
+};
+export const NewControlPanel = ({
+  flowExecutionID,
+  visualizeBeads,
+  pinSavePopover,
+  pinBlocksPopover,
+  nodes,
+  onNodeSelect,
+  onNodeHover,
+}: NewControlPanelProps) => {
   const isGraphSearchEnabled = useGetFlag(Flag.GRAPH_SEARCH);
 
   const {

@@ -4,10 +4,10 @@ import { useNodeStore } from "../store/nodeStore";
 import NewControlPanel from "../NewBlockMenu/NewControlPanel/NewControlPanel";
 import { useShallow } from "zustand/react/shallow";
 import { useMemo } from "react";
-import { CustomNode } from "./CustomNode/CustomNode";
-import { useCustomEdge } from "./CustomNode/hooks/useCustomEdge";
+import { CustomNode } from "./nodes/CustomNode";
+import { useCustomEdge } from "./edges/useCustomEdge";
 import { RightSidebar } from "../RIghtSidebar";
-import CustomEdge from "./CustomEdge/CustomEdge";
+import CustomEdge from "./edges/CustomEdge";
 
 export const Flow = () => {
   // All these 3 are working perfectly

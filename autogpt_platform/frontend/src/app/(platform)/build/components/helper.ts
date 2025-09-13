@@ -1,5 +1,5 @@
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
-import { CustomNodeData } from "./FlowEditor/CustomNode/CustomNode";
+import { CustomNodeData } from "./FlowEditor/nodes/CustomNode";
 
 export const convertBlockInfoIntoCustomNodeData = (block: BlockInfo) => {
   const customNodeData: CustomNodeData = {

@@ -3,10 +3,11 @@ import { Node as XYNode, NodeProps } from "@xyflow/react";
 import { FormCreator } from "./FormCreator";
 import { RJSFSchema } from "@rjsf/utils";
 import { Text } from "@/components/atoms/Text/Text";
-import { useCustomNodeStore } from "./store/customNodeStore";
+
 import { Switch } from "@/components/atoms/Switch/Switch";
-import { preprocessInputSchema } from "./processors/input-schema-pre-processor";
+import { preprocessInputSchema } from "../processors/input-schema-pre-processor";
 import { OutputHandler } from "./OutputHandler";
+import { useNodeStore } from "../../store/nodeStore";
 
 export type CustomNodeData = {
   hardcodedValues: {
@@ -22,7 +23,11 @@ export type CustomNode = XYNode<CustomNodeData, "custom">;
 
 export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
   ({ data, id }) => {
-    const { getShowAdvanced, toggleAdvanced } = useCustomNodeStore();
+    const { getShowAdvanced, toggleAdvanced } = useNodeStore((state) => ({
+      getShowAdvanced: state.getShowAdvanced,
+      toggleAdvanced: state.toggleAdvanced,
+    }));
+
     return (
       <div className="rounded-xl border border-slate-200/60 bg-gradient-to-br from-white to-slate-50/30 shadow-lg shadow-slate-900/5 backdrop-blur-sm">
         {/* Header */}

@@ -8,10 +8,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Text } from "@/components/atoms/Text/Text";
-import { useCustomNodeStore } from "../store/customNodeStore";
-import NodeHandle from "../NodeHandle";
-import { useHandleStore } from "../../../store/handleStore";
+
+import NodeHandle from "../../handlers/NodeHandle";
+import { fromRjsfId } from "../../handlers/helpers";
 import { useEdgeStore } from "../../../store/edgeStore";
+import { useNodeStore } from "../../../store/nodeStore";
 
 const FieldTemplate: React.FC<FieldTemplateProps> = ({
   id,
@@ -22,9 +23,8 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
   schema,
   formContext,
 }) => {
-  const { getShowAdvanced } = useCustomNodeStore();
+  const getShowAdvanced = useNodeStore((state) => state.getShowAdvanced);
   const { isInputConnected } = useEdgeStore();
-  const { fromRjsfId } = useHandleStore();
   const { nodeId } = formContext;
 
   const fieldKey = fromRjsfId(id);

@@ -4,7 +4,7 @@ import { CaretDownIcon, InfoIcon } from "@phosphor-icons/react";
 import { RJSFSchema } from "@rjsf/utils";
 import { useState } from "react";
 
-import NodeHandle from "./NodeHandle";
+import NodeHandle from "../handlers/NodeHandle";
 import {
   Tooltip,
   TooltipContent,
