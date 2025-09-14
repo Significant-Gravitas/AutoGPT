@@ -74,19 +74,67 @@ class ConditionBlock(Block):
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         operator = input_data.operator
 
-        value1 = input_data.value1
-        if isinstance(value1, str):
-            try:
-                value1 = float(value1.strip())
-            except ValueError:
-                value1 = value1.strip()
+        def normalize_value(value):
+            """Normalize a value for comparison, ensuring consistent types."""
+            if value is None:
+                return None
+            
+            if isinstance(value, str):
+                # Strip whitespace
+                value = value.strip()
+                
+                # Handle empty strings - treat as None/0 for numeric comparisons
+                if value == "":
+                    return None
+                
+                # Try to convert to number if possible
+                try:
+                    # Try int first, then float
+                    if '.' in value or 'e' in value.lower():
+                        return float(value)
+                    else:
+                        return int(value)
+                except ValueError:
+                    # Keep as string if conversion fails
+                    return value
+            
+            return value
 
-        value2 = input_data.value2
-        if isinstance(value2, str):
-            try:
-                value2 = float(value2.strip())
-            except ValueError:
-                value2 = value2.strip()
+        value1 = normalize_value(input_data.value1)
+        value2 = normalize_value(input_data.value2)
+
+        # Handle None values - convert to appropriate defaults based on the other value
+        if value1 is None and value2 is None:
+            # Both None - treat as equal
+            value1 = value2 = 0
+        elif value1 is None:
+            # value1 is None - use same type as value2 with default value
+            if isinstance(value2, (int, float)):
+                value1 = 0
+            else:
+                value1 = ""
+        elif value2 is None:
+            # value2 is None - use same type as value1 with default value
+            if isinstance(value1, (int, float)):
+                value2 = 0
+            else:
+                value2 = ""
+
+        # Ensure both values are compatible types for comparison
+        if type(value1) != type(value2):
+            # If one is numeric and the other is string, try to convert string to number
+            if isinstance(value1, (int, float)) and isinstance(value2, str):
+                try:
+                    value2 = float(value2) if '.' in value2 or 'e' in value2.lower() else int(value2)
+                except ValueError:
+                    # Can't convert - convert number to string instead
+                    value1 = str(value1)
+            elif isinstance(value2, (int, float)) and isinstance(value1, str):
+                try:
+                    value1 = float(value1) if '.' in value1 or 'e' in value1.lower() else int(value1)
+                except ValueError:
+                    # Can't convert - convert number to string instead
+                    value2 = str(value2)
 
         yes_value = input_data.yes_value if input_data.yes_value is not None else value1
         no_value = input_data.no_value if input_data.no_value is not None else value2
