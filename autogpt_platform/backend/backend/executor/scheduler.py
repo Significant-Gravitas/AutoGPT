@@ -191,15 +191,22 @@ class GraphExecutionJobInfo(GraphExecutionJobArgs):
     id: str
     name: str
     next_run_time: str
+    timezone: str = Field(default="UTC", description="Timezone used for scheduling")
 
     @staticmethod
     def from_db(
         job_args: GraphExecutionJobArgs, job_obj: JobObj
     ) -> "GraphExecutionJobInfo":
+        # Extract timezone from the trigger if it's a CronTrigger
+        timezone_str = "UTC"
+        if hasattr(job_obj.trigger, "timezone"):
+            timezone_str = str(job_obj.trigger.timezone)
+
         return GraphExecutionJobInfo(
             id=job_obj.id,
             name=job_obj.name,
             next_run_time=job_obj.next_run_time.isoformat(),
+            timezone=timezone_str,
             **job_args.model_dump(),
         )
 
@@ -408,7 +415,25 @@ class Scheduler(AppService):
             )
         )
 
-        logger.info(f"Scheduling job for user {user_id} in UTC (cron: {cron})")
+        # Fetch user's timezone for scheduling
+        from backend.data.user import get_user_by_id
+
+        user = run_async(get_user_by_id(user_id))
+
+        # Use user's timezone if set, otherwise default to UTC
+        # Note: We can't auto-detect timezone server-side, it must be set by the client
+        if user.timezone and user.timezone != "not-set":
+            user_timezone = user.timezone
+        else:
+            user_timezone = "UTC"
+            logger.warning(
+                f"User {user_id} has no timezone set, using UTC for scheduling. "
+                f"User should set their timezone in settings for correct scheduling."
+            )
+
+        logger.info(
+            f"Scheduling job for user {user_id} with timezone {user_timezone} (cron: {cron})"
+        )
 
         job_args = GraphExecutionJobArgs(
             user_id=user_id,
@@ -422,12 +447,12 @@ class Scheduler(AppService):
             execute_graph,
             kwargs=job_args.model_dump(),
             name=name,
-            trigger=CronTrigger.from_crontab(cron, timezone="UTC"),
+            trigger=CronTrigger.from_crontab(cron, timezone=user_timezone),
             jobstore=Jobstores.EXECUTION.value,
             replace_existing=True,
         )
         logger.info(
-            f"Added job {job.id} with cron schedule '{cron}' in UTC, input data: {input_data}"
+            f"Added job {job.id} with cron schedule '{cron}' in timezone {user_timezone}, input data: {input_data}"
         )
         return GraphExecutionJobInfo.from_db(job_args, job)
 
