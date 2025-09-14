@@ -2,13 +2,17 @@
 // The config you add here will be used whenever the server handles a request.
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
-import { BehaveAs, getBehaveAs, getEnvironmentStr } from "@/lib/utils";
+import {
+  AppEnv,
+  BehaveAs,
+  getAppEnv,
+  getBehaveAs,
+  getEnvironmentStr,
+} from "@/lib/utils";
 import * as Sentry from "@sentry/nextjs";
 // import { NodeProfilingIntegration } from "@sentry/profiling-node";
 
-const isProdOrDev =
-  process.env.NODE_ENV === "production" ||
-  process.env.NODE_ENV === "development";
+const isProdOrDev = [AppEnv.PROD, AppEnv.DEV].includes(getAppEnv());
 
 const isCloud = getBehaveAs() === BehaveAs.CLOUD;
 const isDisabled = process.env.DISABLE_SENTRY === "true";

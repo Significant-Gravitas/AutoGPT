@@ -41,7 +41,6 @@ export const NewSaveControl = ({
   setBlockMenuSelected,
   pinSavePopover,
 }: SaveControlProps) => {
-
   const handleSave = useCallback(() => {
     onSave();
   }, [onSave]);
@@ -51,8 +50,8 @@ export const NewSaveControl = ({
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key === "s") {
-        event.preventDefault(); 
-        handleSave(); 
+        event.preventDefault();
+        handleSave();
         toast({
           duration: 2000,
           title: "All changes saved successfully!",

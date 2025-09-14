@@ -14,6 +14,7 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AgentInputsReadOnly } from "../AgentInputsReadOnly/AgentInputsReadOnly";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
+import { RunOutputs } from "./components/RunOutputs";
 
 interface RunDetailsProps {
   agent: LibraryAgent;
@@ -74,28 +75,10 @@ export function RunDetails({
           <RunDetailCard>
             {isLoading ? (
               <div className="text-neutral-500">Loading…</div>
-            ) : !run ||
-              !("outputs" in run) ||
-              Object.keys(run.outputs || {}).length === 0 ? (
-              <div className="text-neutral-600">No output from this run.</div>
+            ) : run && "outputs" in run ? (
+              <RunOutputs outputs={run.outputs as any} />
             ) : (
-              <div className="flex flex-col gap-4">
-                {Object.entries(run.outputs).map(([key, values]) => (
-                  <div key={key} className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium">{key}</label>
-                    {values.map((value, i) => (
-                      <p
-                        key={i}
-                        className="whitespace-pre-wrap break-words text-sm text-neutral-700"
-                      >
-                        {typeof value === "object"
-                          ? JSON.stringify(value, undefined, 2)
-                          : String(value)}
-                      </p>
-                    ))}
-                  </div>
-                ))}
-              </div>
+              <div className="text-neutral-600">No output from this run.</div>
             )}
           </RunDetailCard>
         </TabsLineContent>

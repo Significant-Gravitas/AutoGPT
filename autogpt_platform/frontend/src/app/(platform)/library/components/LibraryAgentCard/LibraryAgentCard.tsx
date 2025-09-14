@@ -5,12 +5,15 @@ import Image from "next/image";
 import { Heart } from "@phosphor-icons/react";
 import { useState } from "react";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import BackendAPI, { LibraryAgentID } from "@/lib/autogpt-server-api";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import Avatar, {
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/atoms/Avatar/Avatar";
 
 interface LibraryAgentCardProps {
   agent: LibraryAgent;
@@ -94,7 +97,6 @@ export default function LibraryAgentCard({
             alt={`${name} preview image`}
             fill
             className="object-cover"
-            priority
           />
         )}
         {isAgentFavoritingEnabled && (
