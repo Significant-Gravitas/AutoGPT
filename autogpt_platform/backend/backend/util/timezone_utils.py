@@ -42,6 +42,44 @@ def convert_cron_to_utc(cron_expr: str, user_timezone: str) -> str:
                 "Cron expression must have 5 fields (minute hour day month weekday)"
             )
 
+        minute_field, hour_field = cron_fields[0], cron_fields[1]
+
+        # Special handling for patterns that should not be timezone-converted
+        # These patterns are timezone-independent and should be preserved as-is
+        
+        # Every minute: * * * * *
+        if cron_expr == "* * * * *":
+            logger.debug(f"Preserving timezone-independent cron '{cron_expr}' (every minute)")
+            return cron_expr
+            
+        # Every N minutes: */N * * * *
+        if (minute_field.startswith("*/") and 
+            hour_field == "*" and 
+            cron_fields[2] == "*" and 
+            cron_fields[3] == "*" and 
+            cron_fields[4] == "*"):
+            logger.debug(f"Preserving timezone-independent cron '{cron_expr}' (every N minutes)")
+            return cron_expr
+            
+        # Every hour at specific minute: M * * * *
+        if (not minute_field.startswith("*/") and 
+            minute_field != "*" and
+            hour_field == "*" and 
+            cron_fields[2] == "*" and 
+            cron_fields[3] == "*" and 
+            cron_fields[4] == "*"):
+            logger.debug(f"Preserving timezone-independent cron '{cron_expr}' (every hour at minute {minute_field})")
+            return cron_expr
+            
+        # Every N hours: M */N * * *
+        if (hour_field.startswith("*/") and 
+            cron_fields[2] == "*" and 
+            cron_fields[3] == "*" and 
+            cron_fields[4] == "*"):
+            logger.debug(f"Preserving timezone-independent cron '{cron_expr}' (every N hours)")
+            return cron_expr
+
+        # For timezone-dependent patterns, perform the conversion
         # Get the current time in the user's timezone
         now_user = datetime.now(user_tz)
 
