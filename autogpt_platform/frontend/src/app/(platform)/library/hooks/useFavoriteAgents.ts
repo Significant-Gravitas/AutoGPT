@@ -1,24 +1,50 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
-import BackendAPI from "@/lib/autogpt-server-api";
+"use client";
+
+import { useGetV2ListFavoriteLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
+import { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgentResponse";
 
 export function useFavoriteAgents() {
-  const api = new BackendAPI();
+  const {
+    data: agents,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading: agentLoading,
+  } = useGetV2ListFavoriteLibraryAgentsInfinite(
+    {
+      page: 1,
+      page_size: 10,
+    },
+    {
+      query: {
+        getNextPageParam: (lastPage) => {
+          const pagination = (lastPage.data as LibraryAgentResponse).pagination;
+          const isMore =
+            pagination.current_page * pagination.page_size <
+            pagination.total_items;
 
-  return useInfiniteQuery({
-    queryKey: ["favoriteLibraryAgents"],
-    queryFn: async ({ pageParam = 1 }) => {
-      // Call the API method to list favorite library agents
-      const response = await api.listFavoriteLibraryAgents({
-        page: pageParam,
-        page_size: 10,
-      });
-      return response;
+          return isMore ? pagination.current_page + 1 : undefined;
+        },
+      },
     },
-    getNextPageParam: (lastPage, pages) => {
-      const currentPage = pages.length;
-      const totalPages = lastPage.pagination.total_pages;
-      return currentPage < totalPages ? currentPage + 1 : undefined;
-    },
-    initialPageParam: 1,
-  });
+  );
+
+  const allAgents =
+    agents?.pages?.flatMap((page) => {
+      const response = page.data as LibraryAgentResponse;
+      return response.agents;
+    }) ?? [];
+
+  const agentCount = agents?.pages?.[0]
+    ? (agents.pages[0].data as LibraryAgentResponse).pagination.total_items
+    : 0;
+
+  return {
+    allAgents,
+    agentLoading,
+    hasNextPage,
+    agentCount,
+    isFetchingNextPage,
+    fetchNextPage,
+  };
 }

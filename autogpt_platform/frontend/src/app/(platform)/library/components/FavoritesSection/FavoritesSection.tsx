@@ -10,20 +10,13 @@ import { cn } from "@/lib/utils";
 
 export default function FavoritesSection() {
   const isAgentFavoritingEnabled = useGetFlag(Flag.AGENT_FAVORITING);
-  const { data, isLoading, error } = useFavoriteAgents();
+  const { allAgents: favoriteAgents, agentLoading: isLoading } =
+    useFavoriteAgents();
 
   // Only show this section if the feature flag is enabled
   if (!isAgentFavoritingEnabled) {
     return null;
   }
-
-  // Don't show the section if there's an error
-  if (error) {
-    return null;
-  }
-
-  // Get all favorite agents from all pages
-  const favoriteAgents = data?.pages.flatMap((page) => page.agents) || [];
 
   // Don't show the section if there are no favorites
   if (!isLoading && favoriteAgents.length === 0) {
