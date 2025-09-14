@@ -3,7 +3,8 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Heart } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import BackendAPI, { LibraryAgentID } from "@/lib/autogpt-server-api";
@@ -36,6 +37,12 @@ export default function LibraryAgentCard({
   const [isUpdating, setIsUpdating] = useState(false);
   const { toast } = useToast();
   const api = new BackendAPI();
+  const queryClient = useQueryClient();
+
+  // Sync local state with prop when it changes (e.g., after query invalidation)
+  useEffect(() => {
+    setIsFavorite(is_favorite);
+  }, [is_favorite]);
 
   const handleToggleFavorite = async (e: React.MouseEvent) => {
     e.preventDefault(); // Prevent navigation when clicking the heart
@@ -49,6 +56,21 @@ export default function LibraryAgentCard({
         is_favorite: !isFavorite,
       });
       setIsFavorite(!isFavorite);
+
+      // Invalidate both queries to refresh both sections
+      // Use predicate to match all library agent queries regardless of params
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["/api/library/agents/favorites"],
+        }),
+        queryClient.invalidateQueries({
+          predicate: (query) => {
+            const key = query.queryKey;
+            return Array.isArray(key) && key[0] === "/api/library/agents";
+          },
+        }),
+      ]);
+
       toast({
         title: isFavorite ? "Removed from favorites" : "Added to favorites",
         description: `${name} has been ${isFavorite ? "removed from" : "added to"} your favorites.`,
