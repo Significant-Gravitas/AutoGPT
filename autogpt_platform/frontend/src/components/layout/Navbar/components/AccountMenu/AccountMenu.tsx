@@ -1,4 +1,3 @@
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Popover,
   PopoverContent,
@@ -9,6 +8,10 @@ import * as React from "react";
 import { getAccountMenuOptionIcon, MenuItemGroup } from "../../helpers";
 import { AccountLogoutOption } from "./components/AccountLogoutOption";
 import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
+import Avatar, {
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/atoms/Avatar/Avatar";
 
 interface Props {
   userName?: string;

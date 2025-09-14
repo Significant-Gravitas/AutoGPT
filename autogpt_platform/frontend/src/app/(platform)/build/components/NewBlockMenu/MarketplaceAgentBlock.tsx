@@ -1,11 +1,15 @@
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { ExternalLink, Loader2, Plus } from "lucide-react";
 import Image from "next/image";
 import React, { ButtonHTMLAttributes } from "react";
 import Link from "next/link";
 import { highlightText } from "./helpers";
+import {
+  ArrowSquareOutIcon,
+  CircleNotchIcon,
+  PlusIcon,
+} from "@phosphor-icons/react";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
@@ -89,7 +93,10 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
             <span className="font-sans text-xs leading-5 text-blue-700 underline">
               Agent page
             </span>
-            <ExternalLink className="h-4 w-4 text-blue-700" strokeWidth={1} />
+            <ArrowSquareOutIcon
+              className="h-4 w-4 text-blue-700"
+              strokeWidth={1}
+            />
           </Link>
         </div>
       </div>
@@ -99,9 +106,9 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
         )}
       >
         {!loading ? (
-          <Plus className="h-5 w-5 text-zinc-50" strokeWidth={2} />
+          <PlusIcon className="h-5 w-5 text-zinc-50" strokeWidth={2} />
         ) : (
-          <Loader2 className="h-5 w-5 animate-spin" />
+          <CircleNotchIcon className="h-5 w-5 animate-spin" />
         )}
       </div>
     </Button>

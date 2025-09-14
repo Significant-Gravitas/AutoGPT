@@ -1,10 +1,9 @@
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { beautifyString, cn } from "@/lib/utils";
-import { Plus } from "lucide-react";
-import React, { ButtonHTMLAttributes } from "react";import { highlightText } from "./helpers";
-;
-
+import React, { ButtonHTMLAttributes } from "react";
+import { highlightText } from "./helpers";
+import { PlusIcon } from "@phosphor-icons/react";
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
   description?: string;
@@ -56,7 +55,7 @@ export const Block: BlockComponent = ({
           "flex h-7 w-7 items-center justify-center rounded-[0.5rem] bg-zinc-700 group-disabled:bg-zinc-400",
         )}
       >
-        <Plus className="h-5 w-5 text-zinc-50" strokeWidth={2} />
+        <PlusIcon className="h-5 w-5 text-zinc-50" />
       </div>
     </Button>
   );

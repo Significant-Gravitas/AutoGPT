@@ -22,6 +22,7 @@
     "1.1.0"
   ],
   "last_updated": "2023-01-01T00:00:00",
+  "recommended_schedule_cron": null,
   "active_version_id": null,
   "has_approved_version": false
 }

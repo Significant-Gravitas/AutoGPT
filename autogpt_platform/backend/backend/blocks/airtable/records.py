@@ -2,7 +2,7 @@
 Airtable record operation blocks.
 """
 
-from typing import Optional
+from typing import Optional, cast
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -18,7 +18,9 @@ from ._api import (
     create_record,
     delete_multiple_records,
     get_record,
+    get_table_schema,
     list_records,
+    normalize_records,
     update_multiple_records,
 )
 from ._config import airtable
@@ -54,11 +56,23 @@ class AirtableListRecordsBlock(Block):
         return_fields: list[str] = SchemaField(
             description="Specific fields to return (comma-separated)", default=[]
         )
+        normalize_output: bool = SchemaField(
+            description="Normalize output to include all fields with proper empty values (disable to skip schema fetch and get raw Airtable response)",
+            default=True,
+        )
+        include_field_metadata: bool = SchemaField(
+            description="Include field type and configuration metadata (requires normalize_output=true)",
+            default=False,
+        )
 
     class Output(BlockSchema):
         records: list[dict] = SchemaField(description="Array of record objects")
         offset: Optional[str] = SchemaField(
             description="Offset for next page (null if no more records)", default=None
+        )
+        field_metadata: Optional[dict] = SchemaField(
+            description="Field type and configuration metadata (only when include_field_metadata=true)",
+            default=None,
         )
 
     def __init__(self):
@@ -73,6 +87,7 @@ class AirtableListRecordsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+
         data = await list_records(
             credentials,
             input_data.base_id,
@@ -88,8 +103,33 @@ class AirtableListRecordsBlock(Block):
             fields=input_data.return_fields if input_data.return_fields else None,
         )
 
-        yield "records", data.get("records", [])
-        yield "offset", data.get("offset", None)
+        records = data.get("records", [])
+
+        # Normalize output if requested
+        if input_data.normalize_output:
+            # Fetch table schema
+            table_schema = await get_table_schema(
+                credentials, input_data.base_id, input_data.table_id_or_name
+            )
+
+            # Normalize the records
+            normalized_data = await normalize_records(
+                records,
+                table_schema,
+                include_field_metadata=input_data.include_field_metadata,
+            )
+
+            yield "records", normalized_data["records"]
+            yield "offset", data.get("offset", None)
+
+            if (
+                input_data.include_field_metadata
+                and "field_metadata" in normalized_data
+            ):
+                yield "field_metadata", normalized_data["field_metadata"]
+        else:
+            yield "records", records
+            yield "offset", data.get("offset", None)
 
 
 class AirtableGetRecordBlock(Block):
@@ -104,11 +144,23 @@ class AirtableGetRecordBlock(Block):
         base_id: str = SchemaField(description="The Airtable base ID")
         table_id_or_name: str = SchemaField(description="Table ID or name")
         record_id: str = SchemaField(description="The record ID to retrieve")
+        normalize_output: bool = SchemaField(
+            description="Normalize output to include all fields with proper empty values (disable to skip schema fetch and get raw Airtable response)",
+            default=True,
+        )
+        include_field_metadata: bool = SchemaField(
+            description="Include field type and configuration metadata (requires normalize_output=true)",
+            default=False,
+        )
 
     class Output(BlockSchema):
         id: str = SchemaField(description="The record ID")
         fields: dict = SchemaField(description="The record fields")
         created_time: str = SchemaField(description="The record created time")
+        field_metadata: Optional[dict] = SchemaField(
+            description="Field type and configuration metadata (only when include_field_metadata=true)",
+            default=None,
+        )
 
     def __init__(self):
         super().__init__(
@@ -122,6 +174,7 @@ class AirtableGetRecordBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+
         record = await get_record(
             credentials,
             input_data.base_id,
@@ -129,9 +182,34 @@ class AirtableGetRecordBlock(Block):
             input_data.record_id,
         )
 
-        yield "id", record.get("id", None)
-        yield "fields", record.get("fields", None)
-        yield "created_time", record.get("createdTime", None)
+        # Normalize output if requested
+        if input_data.normalize_output:
+            # Fetch table schema
+            table_schema = await get_table_schema(
+                credentials, input_data.base_id, input_data.table_id_or_name
+            )
+
+            # Normalize the single record (wrap in list and unwrap result)
+            normalized_data = await normalize_records(
+                [record],
+                table_schema,
+                include_field_metadata=input_data.include_field_metadata,
+            )
+
+            normalized_record = normalized_data["records"][0]
+            yield "id", normalized_record.get("id", None)
+            yield "fields", normalized_record.get("fields", None)
+            yield "created_time", normalized_record.get("createdTime", None)
+
+            if (
+                input_data.include_field_metadata
+                and "field_metadata" in normalized_data
+            ):
+                yield "field_metadata", normalized_data["field_metadata"]
+        else:
+            yield "id", record.get("id", None)
+            yield "fields", record.get("fields", None)
+            yield "created_time", record.get("createdTime", None)
 
 
 class AirtableCreateRecordsBlock(Block):
@@ -147,6 +225,10 @@ class AirtableCreateRecordsBlock(Block):
         table_id_or_name: str = SchemaField(description="Table ID or name")
         records: list[dict] = SchemaField(
             description="Array of records to create (each with 'fields' object)"
+        )
+        skip_normalization: bool = SchemaField(
+            description="Skip output normalization to get raw Airtable response (faster but may have missing fields)",
+            default=False,
         )
         typecast: bool = SchemaField(
             description="Automatically convert string values to appropriate types",
@@ -173,7 +255,7 @@ class AirtableCreateRecordsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # The create_record API expects records in a specific format
+
         data = await create_record(
             credentials,
             input_data.base_id,
@@ -182,8 +264,22 @@ class AirtableCreateRecordsBlock(Block):
             typecast=input_data.typecast if input_data.typecast else None,
             return_fields_by_field_id=input_data.return_fields_by_field_id,
         )
+        result_records = cast(list[dict], data.get("records", []))
 
-        yield "records", data.get("records", [])
+        # Normalize output unless explicitly disabled
+        if not input_data.skip_normalization and result_records:
+            # Fetch table schema
+            table_schema = await get_table_schema(
+                credentials, input_data.base_id, input_data.table_id_or_name
+            )
+
+            # Normalize the records
+            normalized_data = await normalize_records(
+                result_records, table_schema, include_field_metadata=False
+            )
+            result_records = normalized_data["records"]
+
+        yield "records", result_records
         details = data.get("details", None)
         if details:
             yield "details", details

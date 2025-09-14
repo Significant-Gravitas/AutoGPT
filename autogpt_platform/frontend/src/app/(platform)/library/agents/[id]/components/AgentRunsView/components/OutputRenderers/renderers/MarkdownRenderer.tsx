@@ -358,6 +358,7 @@ function renderMarkdown(
             }
 
             return (
+              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={src}
                 alt={alt}
@@ -410,8 +411,8 @@ function getCopyContentMarkdown(
   return {
     mimeType: "text/markdown",
     data: markdownText,
-    alternativeMimeTypes: ["text/plain"],
     fallbackText: markdownText,
+    alternativeMimeTypes: ["text/plain"],
   };
 }
 
