@@ -4074,7 +4074,8 @@
               "description": "Page number to retrieve (must be >= 1)",
               "default": 1,
               "title": "Page"
-            }
+            },
+            "description": "Page number to retrieve (must be >= 1)"
           },
           {
             "name": "page_size",
@@ -4086,7 +4087,8 @@
               "description": "Number of agents per page (must be >= 1)",
               "default": 15,
               "title": "Page Size"
-            }
+            },
+            "description": "Number of agents per page (must be >= 1)"
           }
         ],
         "responses": {

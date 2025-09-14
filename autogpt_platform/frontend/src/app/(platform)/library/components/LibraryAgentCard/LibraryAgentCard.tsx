@@ -69,7 +69,7 @@ export default function LibraryAgentCard({
     <div
       data-testid="library-agent-card"
       data-agent-id={id}
-      className="inline-flex w-full max-w-[434px] flex-col items-start justify-start gap-2.5 rounded-[26px] bg-white transition-all duration-300 hover:shadow-lg dark:bg-transparent dark:hover:shadow-gray-700"
+      className="group inline-flex w-full max-w-[434px] flex-col items-start justify-start gap-2.5 rounded-[26px] bg-white transition-all duration-300 hover:shadow-lg dark:bg-transparent dark:hover:shadow-gray-700"
     >
       <Link
         href={`/library/agents/${id}`}
@@ -107,6 +107,7 @@ export default function LibraryAgentCard({
               "hover:scale-110 hover:bg-white",
               "focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2",
               isUpdating && "cursor-not-allowed opacity-50",
+              !isFavorite && "opacity-0 group-hover:opacity-100",
             )}
             disabled={isUpdating}
             aria-label={
