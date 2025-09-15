@@ -87,14 +87,14 @@ GRAPH_OPERATIONS = Counter(
 )
 
 BLOCK_OPERATIONS = Counter(
-    "autogpt_block_operations_total", 
+    "autogpt_block_operations_total",
     "Block operations by type",
     labelnames=["operation", "block_category", "status"],
 )
 
 USER_OPERATIONS = Counter(
     "autogpt_user_operations_total",
-    "User operations by type", 
+    "User operations by type",
     labelnames=["operation", "status"],  # login, register, update_profile, etc.
 )
 
