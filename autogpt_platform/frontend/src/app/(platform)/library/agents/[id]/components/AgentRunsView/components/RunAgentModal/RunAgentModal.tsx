@@ -141,9 +141,7 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
                             : "Agent Setup"
                         }
                       />
-                      <div>
-                        <ModalRunSection />
-                      </div>
+                      <ModalRunSection />
                     </>
                   </RunAgentModalContextProvider>
                 ) : null}
@@ -164,7 +162,9 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
               <Button
                 variant="secondary"
                 onClick={handleOpenScheduleModal}
-                disabled={isExecuting || isSettingUpTrigger}
+                disabled={
+                  isExecuting || isSettingUpTrigger || !allRequiredInputsAreSet
+                }
               >
                 <AlarmIcon size={16} />
                 Schedule Agent
@@ -174,7 +174,7 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
                 onRun={handleRun}
                 isExecuting={isExecuting}
                 isSettingUpTrigger={isSettingUpTrigger}
-                allRequiredInputsAreSet={allRequiredInputsAreSet}
+                isRunReady={allRequiredInputsAreSet}
               />
             </div>
             <ScheduleAgentModal

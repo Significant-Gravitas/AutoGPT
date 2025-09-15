@@ -23,7 +23,7 @@ export function ModalRunSection() {
   } = useRunAgentModalContext();
 
   return (
-    <div className="my-4">
+    <div className="mb-10 mt-4">
       {defaultRunType === "automatic-trigger" && <WebhookTriggerBanner />}
 
       {/* Preset/Trigger fields */}
@@ -83,7 +83,7 @@ export function ModalRunSection() {
 
       {/* Regular inputs */}
       {Object.entries(agentInputFields || {}).map(([key, inputSubSchema]) => (
-        <div key={key} className="flex flex-col gap-0 space-y-2">
+        <div key={key} className="flex w-full flex-col gap-0 space-y-2">
           <label className="flex items-center gap-1 text-sm font-medium">
             {inputSubSchema.title || key}
             <SchemaTooltip description={inputSubSchema.description} />

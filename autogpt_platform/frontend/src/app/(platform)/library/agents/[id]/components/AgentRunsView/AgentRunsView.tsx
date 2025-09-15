@@ -5,8 +5,8 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useAgentRunsView } from "./useAgentRunsView";
 import { AgentRunsLoading } from "./components/AgentRunsLoading";
 import { RunsSidebar } from "./components/RunsSidebar/RunsSidebar";
-import { RunDetails } from "./components/RunDetails/RunDetails";
-import { ScheduleDetails } from "./components/ScheduleDetails/ScheduleDetails";
+import { SelectedRunView } from "./components/SelectedRunView/SelectedRunView";
+import { SelectedScheduleView } from "./components/SelectedScheduleView/SelectedScheduleView";
 import { EmptyAgentRuns } from "./components/EmptyAgentRuns/EmptyAgentRuns";
 import { Button } from "@/components/atoms/Button/Button";
 import { RunAgentModal } from "./components/RunAgentModal/RunAgentModal";
@@ -50,7 +50,7 @@ export function AgentRunsView() {
       }
     >
       <div className={showSidebarLayout ? "p-4 pl-5" : "hidden p-4 pl-5"}>
-        <div className="mb-6">
+        <div className="mb-4">
           <RunAgentModal
             triggerSlot={
               <Button variant="primary" size="large" className="w-full">
@@ -82,13 +82,13 @@ export function AgentRunsView() {
         <div className="mt-1">
           {selectedRun ? (
             selectedRun.startsWith("schedule:") ? (
-              <ScheduleDetails
+              <SelectedScheduleView
                 agent={agent}
                 scheduleId={selectedRun.replace("schedule:", "")}
                 onClearSelectedRun={handleClearSelectedRun}
               />
             ) : (
-              <RunDetails
+              <SelectedRunView
                 agent={agent}
                 runId={selectedRun}
                 onSelectRun={handleSelectRun}
