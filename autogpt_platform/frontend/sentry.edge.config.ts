@@ -39,4 +39,8 @@ Sentry.init({
   debug: false,
 
   enableLogs: true,
+  integrations: [
+    Sentry.captureConsoleIntegration(),
+    Sentry.extraErrorDataIntegration(),
+  ],
 });

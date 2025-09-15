@@ -8,6 +8,10 @@ from fastapi.responses import Response
 import backend.server.v2.library.db as library_db
 import backend.server.v2.library.model as library_model
 import backend.server.v2.store.exceptions as store_exceptions
+from backend.server.cache_config import get_ttl
+from backend.server.cache_decorator import ttl_cache
+from backend.server.cache_manager import CacheComponent
+from backend.server.v2.library.cache import invalidate_user_library_cache
 from backend.util.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -25,6 +29,10 @@ router = APIRouter(
     responses={
         500: {"description": "Server error", "content": {"application/json": {}}},
     },
+)
+@ttl_cache(
+    ttl_seconds=get_ttl("user_library"),  # 1 minute cache
+    cache_component=CacheComponent.LIBRARY,
 )
 async def list_library_agents(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
@@ -162,10 +170,13 @@ async def add_marketplace_agent_to_library(
         HTTPException(500): If a server/database error occurs.
     """
     try:
-        return await library_db.add_store_agent_to_library(
+        result = await library_db.add_store_agent_to_library(
             store_listing_version_id=store_listing_version_id,
             user_id=user_id,
         )
+        # Invalidate user's library cache after adding
+        invalidate_user_library_cache(user_id)
+        return result
 
     except store_exceptions.AgentNotFoundError as e:
         logger.warning(

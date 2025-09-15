@@ -196,6 +196,40 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The URL for the Otto API service",
     )
 
+    # Cache configuration
+    cache_enabled: bool = Field(
+        default=True,
+        description="Enable/disable caching globally",
+    )
+    cache_default_ttl: int = Field(
+        default=3600,
+        description="Default cache TTL in seconds",
+    )
+    cache_store_max_size_mb: float = Field(
+        default=100.0,
+        description="Maximum cache size in MB for store cache",
+    )
+    cache_library_max_size_mb: float = Field(
+        default=50.0,
+        description="Maximum cache size in MB for library cache",
+    )
+    cache_v1_api_max_size_mb: float = Field(
+        default=200.0,
+        description="Maximum cache size in MB for v1 API cache",
+    )
+    cache_builder_max_size_mb: float = Field(
+        default=50.0,
+        description="Maximum cache size in MB for builder cache",
+    )
+    cache_otto_max_size_mb: float = Field(
+        default=20.0,
+        description="Maximum cache size in MB for Otto cache",
+    )
+    cache_admin_max_size_mb: float = Field(
+        default=10.0,
+        description="Maximum cache size in MB for admin cache",
+    )
+
     platform_base_url: str = Field(
         default="",
         description="Must be set so the application knows where it's hosted at. "
