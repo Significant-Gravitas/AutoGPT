@@ -3,51 +3,19 @@
 import React from "react";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
+import { toDisplayName } from "@/components/integrations/helper";
+import {
+  getAgentCredentialsFields,
+  getAgentInputFields,
+  getCredentialTypeDisplayName,
+  renderValue,
+} from "./helpers";
 
 type Props = {
   agent: LibraryAgent;
   inputs?: Record<string, any> | null;
   credentialInputs?: Record<string, CredentialsMetaInput> | null;
 };
-
-function getAgentInputFields(agent: LibraryAgent): Record<string, any> {
-  const schema = agent.input_schema as unknown as {
-    properties?: Record<string, any>;
-  } | null;
-  if (!schema || !schema.properties) return {};
-  const properties = schema.properties as Record<string, any>;
-  const visibleEntries = Object.entries(properties).filter(
-    ([, sub]) => !sub?.hidden,
-  );
-  return Object.fromEntries(visibleEntries);
-}
-
-function getAgentCredentialsFields(agent: LibraryAgent): Record<string, any> {
-  if (
-    !agent.credentials_input_schema ||
-    typeof agent.credentials_input_schema !== "object" ||
-    !("properties" in agent.credentials_input_schema) ||
-    !agent.credentials_input_schema.properties
-  ) {
-    return {};
-  }
-  return agent.credentials_input_schema.properties as Record<string, any>;
-}
-
-function renderValue(value: any): string {
-  if (value === undefined || value === null) return "";
-  if (
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
-  )
-    return String(value);
-  try {
-    return JSON.stringify(value, undefined, 2);
-  } catch {
-    return String(value);
-  }
-}
 
 export function AgentInputsReadOnly({
   agent,
@@ -90,40 +58,16 @@ export function AgentInputsReadOnly({
             const credential = credentialInputs![key];
             if (!credential) return null;
 
-            const getProviderDisplayName = (provider: string) => {
-              const providerMap: Record<string, string> = {
-                linear: "Linear",
-                github: "GitHub",
-                openai: "OpenAI",
-                google: "Google",
-                http: "HTTP",
-                slack: "Slack",
-                notion: "Notion",
-                discord: "Discord",
-              };
-              return providerMap[provider.toLowerCase()] || provider;
-            };
-
-            const getTypeDisplayName = (type: string) => {
-              const typeMap: Record<string, string> = {
-                api_key: "API key",
-                oauth2: "OAuth2",
-                user_password: "Username/Password",
-                host_scoped: "Host-Scoped",
-              };
-              return typeMap[type] || type;
-            };
-
             return (
               <div key={key} className="flex flex-col gap-4">
                 <h3 className="text-lg font-medium text-neutral-900">
-                  {getProviderDisplayName(credential.provider)} credentials
+                  {toDisplayName(credential.provider)} credentials
                 </h3>
                 <div className="flex flex-col gap-3">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-neutral-600">Name</span>
                     <span className="text-neutral-600">
-                      {getTypeDisplayName(credential.type)}
+                      {getCredentialTypeDisplayName(credential.type)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-sm">

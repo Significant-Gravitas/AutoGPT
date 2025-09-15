@@ -5,6 +5,8 @@ import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/component
 import { useRunAgentModalContext } from "../../context";
 import { RunAgentInputs } from "../../../RunAgentInputs/RunAgentInputs";
 import { Text } from "@/components/atoms/Text/Text";
+import { toDisplayName } from "@/components/integrations/helper";
+import { getCredentialTypeDisplayName } from "./helpers";
 
 export function ModalRunSection() {
   const {
@@ -107,34 +109,10 @@ export function ModalRunSection() {
               const credential = inputCredentials[key];
               if (!credential) return null;
 
-              const getProviderDisplayName = (provider: string) => {
-                const providerMap: Record<string, string> = {
-                  linear: "Linear",
-                  github: "GitHub",
-                  openai: "OpenAI",
-                  google: "Google",
-                  http: "HTTP",
-                  slack: "Slack",
-                  notion: "Notion",
-                  discord: "Discord",
-                };
-                return providerMap[provider.toLowerCase()] || provider;
-              };
-
-              const getTypeDisplayName = (type: string) => {
-                const typeMap: Record<string, string> = {
-                  api_key: "API key",
-                  oauth2: "OAuth2",
-                  user_password: "Username/Password",
-                  host_scoped: "Host-Scoped",
-                };
-                return typeMap[type] || type;
-              };
-
               return (
                 <div key={key} className="flex flex-col gap-4">
                   <Text variant="body-medium" as="h3">
-                    {getProviderDisplayName(credential.provider)} credentials
+                    {toDisplayName(credential.provider)} credentials
                   </Text>
                   <div className="flex flex-col gap-3">
                     <div className="flex items-center justify-between text-sm">
@@ -150,7 +128,7 @@ export function ModalRunSection() {
                         as="span"
                         className="!text-neutral-600"
                       >
-                        {getTypeDisplayName(credential.type)}
+                        {getCredentialTypeDisplayName(credential.type)}
                       </Text>
                     </div>
                     <div className="flex items-center justify-between text-sm">
