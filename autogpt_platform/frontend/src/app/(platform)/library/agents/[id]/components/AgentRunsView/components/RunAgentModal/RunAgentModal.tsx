@@ -14,15 +14,24 @@ import { AgentDetails } from "./components/AgentDetails/AgentDetails";
 import { RunActions } from "./components/RunActions/RunActions";
 import { ScheduleAgentModal } from "../ScheduleAgentModal/ScheduleAgentModal";
 import { AlarmIcon } from "@phosphor-icons/react";
+import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
+import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 
 interface Props {
   triggerSlot: React.ReactNode;
   agent: LibraryAgent;
   agentId: string;
   agentVersion?: number;
+  onRunCreated?: (execution: GraphExecutionMeta) => void;
+  onScheduleCreated?: (schedule: GraphExecutionJobInfo) => void;
 }
 
-export function RunAgentModal({ triggerSlot, agent }: Props) {
+export function RunAgentModal({
+  triggerSlot,
+  agent,
+  onRunCreated,
+  onScheduleCreated,
+}: Props) {
   const {
     // UI state
     isOpen,
@@ -58,7 +67,9 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
 
     // Actions
     handleRun,
-  } = useAgentRunModal(agent);
+  } = useAgentRunModal(agent, {
+    onRun: onRunCreated,
+  });
 
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
 
@@ -95,6 +106,12 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
 
   function handleCloseScheduleModal() {
     setIsScheduleModalOpen(false);
+  }
+
+  function handleScheduleCreated(schedule: GraphExecutionJobInfo) {
+    handleCloseScheduleModal();
+    setIsOpen(false); // Close the main RunAgentModal
+    onScheduleCreated?.(schedule);
   }
 
   return (
@@ -183,7 +200,7 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
               agent={agent}
               inputValues={inputValues}
               inputCredentials={inputCredentials}
-              onScheduleCreated={handleCloseScheduleModal}
+              onScheduleCreated={handleScheduleCreated}
             />
           </Dialog.Footer>
         </Dialog.Content>

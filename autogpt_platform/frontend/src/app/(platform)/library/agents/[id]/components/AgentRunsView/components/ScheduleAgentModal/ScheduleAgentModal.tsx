@@ -7,6 +7,7 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { ModalScheduleSection } from "./components/ModalScheduleSection/ModalScheduleSection";
 import { Text } from "@/components/atoms/Text/Text";
 import { useScheduleAgentModal } from "./useScheduleAgentModal";
+import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 
 interface Props {
   isOpen: boolean;
@@ -14,7 +15,7 @@ interface Props {
   agent: LibraryAgent;
   inputValues: Record<string, any>;
   inputCredentials: Record<string, any>;
-  onScheduleCreated?: () => void;
+  onScheduleCreated?: (schedule: GraphExecutionJobInfo) => void;
 }
 
 export function ScheduleAgentModal({
@@ -36,8 +37,8 @@ export function ScheduleAgentModal({
     handleSetCronExpression,
     resetForm,
   } = useScheduleAgentModal(agent, inputValues, inputCredentials, {
-    onCreateSchedule: () => {
-      onScheduleCreated?.();
+    onCreateSchedule: (schedule) => {
+      onScheduleCreated?.(schedule);
     },
     onClose: onClose,
   });
