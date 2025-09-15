@@ -7,7 +7,7 @@ import { getGetV1ListGraphExecutionsInfiniteQueryOptions } from "@/app/api/__gen
 import {
   parseCronToForm,
   validateSchedule,
-} from "../../../RunAgentModal/components/ScheduleView/helpers";
+} from "../../../RunAgentModal/components/ModalScheduleSection/helpers";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 
