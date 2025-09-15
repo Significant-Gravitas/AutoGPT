@@ -304,7 +304,6 @@ async def websocket_router(
         manager.disconnect_socket(websocket)
         logger.debug("WebSocket client disconnected")
     finally:
-        # Ensure connection is tracked on any disconnect
         update_websocket_connections(user_id, -1)
 
 
