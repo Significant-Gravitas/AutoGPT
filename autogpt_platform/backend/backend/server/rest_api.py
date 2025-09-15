@@ -36,6 +36,7 @@ import backend.util.settings
 from backend.blocks.llm import LlmModel
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
+from backend.monitoring.instrumentation import instrument_fastapi
 from backend.server.external.api import external_app
 from backend.server.middleware.security import SecurityHeadersMiddleware
 from backend.util import json
@@ -138,6 +139,16 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 # Add 401 responses to authenticated endpoints in OpenAPI spec
 add_auth_responses_to_openapi(app)
+
+# Add Prometheus instrumentation
+instrument_fastapi(
+    app,
+    service_name="rest-api",
+    expose_endpoint=True,
+    endpoint="/metrics",
+    include_in_schema=settings.config.app_env
+    == backend.util.settings.AppEnvironment.LOCAL,
+)
 
 
 def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
