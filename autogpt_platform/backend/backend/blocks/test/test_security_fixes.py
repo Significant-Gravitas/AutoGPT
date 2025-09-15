@@ -156,8 +156,9 @@ class TestXMLParserBlockSecurity:
         """Test XML input size limits."""
         block = XMLParserBlock()
 
-        # Test with large XML
-        large_xml = "<root>" + "<item>data</item>" * 100000 + "</root>"
+        # Test with large XML - need to exceed 10MB limit
+        # Each "<item>data</item>" is 17 chars, need ~620K items for >10MB
+        large_xml = "<root>" + "<item>data</item>" * 620000 + "</root>"
 
         with pytest.raises(ValueError, match="XML too large"):
             async for _ in block.run(XMLParserBlock.Input(input_xml=large_xml)):
@@ -167,11 +168,19 @@ class TestXMLParserBlockSecurity:
 class TestStoreMediaFileSecurity:
     """Test file storage security limits."""
 
-    @patch("backend.util.file.get_cloud_storage_handler")
     @patch("backend.util.file.scan_content_safe")
-    async def test_file_size_limits(self, mock_scan, mock_cloud_storage):
+    @patch("backend.util.file.get_cloud_storage_handler")
+    async def test_file_size_limits(self, mock_cloud_storage, mock_scan):
         """Test file size limits."""
-        mock_cloud_storage.return_value.is_cloud_path.return_value = False
+        # Mock cloud storage handler - get_cloud_storage_handler is async
+        # but is_cloud_path and parse_cloud_path are sync methods
+        from unittest.mock import MagicMock, AsyncMock
+        mock_handler = MagicMock()
+        mock_handler.is_cloud_path.return_value = False
+        # Make get_cloud_storage_handler an async function that returns the mock handler
+        async def async_get_handler():
+            return mock_handler
+        mock_cloud_storage.side_effect = async_get_handler
         mock_scan.return_value = None
 
         # Test with large base64 content
@@ -185,11 +194,16 @@ class TestStoreMediaFileSecurity:
                 user_id="test_user",
             )
 
-    @patch("backend.util.file.get_cloud_storage_handler")
     @patch("backend.util.file.scan_content_safe")
-    async def test_directory_size_limits(self, mock_scan, mock_cloud_storage):
+    @patch("backend.util.file.get_cloud_storage_handler")
+    async def test_directory_size_limits(self, mock_cloud_storage, mock_scan):
         """Test directory size limits."""
-        mock_cloud_storage.return_value.is_cloud_path.return_value = False
+        from unittest.mock import MagicMock
+        mock_handler = MagicMock()
+        mock_handler.is_cloud_path.return_value = False
+        async def async_get_handler():
+            return mock_handler
+        mock_cloud_storage.side_effect = async_get_handler
         mock_scan.return_value = None
 
         # This test would require creating actual large directories
