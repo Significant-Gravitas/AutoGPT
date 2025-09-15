@@ -45,8 +45,8 @@ export function AgentRunsView() {
     <div
       className={
         showSidebarLayout
-          ? "grid h-screen grid-cols-1 gap-0 pt-6 md:gap-4 lg:grid-cols-[25%_70%]"
-          : "grid h-screen grid-cols-1 gap-0 pt-6 md:gap-4"
+          ? "grid h-screen grid-cols-1 gap-0 pt-3 md:gap-4 lg:grid-cols-[25%_70%]"
+          : "grid h-screen grid-cols-1 gap-0 pt-3 md:gap-4"
       }
     >
       <div className={showSidebarLayout ? "p-4 pl-5" : "hidden p-4 pl-5"}>
