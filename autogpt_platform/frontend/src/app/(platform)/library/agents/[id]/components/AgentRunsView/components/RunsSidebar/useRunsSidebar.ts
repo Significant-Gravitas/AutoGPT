@@ -4,18 +4,27 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useGetV1ListGraphExecutionsInfinite } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
-import { GraphExecutionsPaginated } from "@/app/api/__generated__/models/graphExecutionsPaginated";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { useSearchParams } from "next/navigation";
-
-const AGENT_RUNNING_POLL_INTERVAL = 1500;
+import { okData } from "@/app/api/helpers";
+import {
+  getRunsPollingInterval,
+  computeRunsCount,
+  getNextRunsPageParam,
+  extractRunsFromPages,
+} from "./helpers";
 
 type Args = {
   graphId?: string;
   onSelectRun: (runId: string) => void;
+  onCountsChange?: (info: {
+    runsCount: number;
+    schedulesCount: number;
+    loading?: boolean;
+  }) => void;
 };
 
-export function useRunsSidebar({ graphId, onSelectRun }: Args) {
+export function useRunsSidebar({ graphId, onSelectRun, onCountsChange }: Args) {
   const params = useSearchParams();
   const existingRunId = params.get("executionId") as string | undefined;
   const [tabValue, setTabValue] = useState<"runs" | "scheduled">("runs");
@@ -26,38 +35,11 @@ export function useRunsSidebar({ graphId, onSelectRun }: Args) {
     {
       query: {
         enabled: !!graphId,
-        // Lightweight polling so statuses refresh; only poll if any run is active
-        refetchInterval: (q) => {
-          if (tabValue !== "runs") return false;
-          const pages = q.state.data?.pages as
-            | Array<{ data: unknown }>
-            | undefined;
-          if (!pages || pages.length === 0) return false;
-          try {
-            const executions = pages.flatMap((p) => {
-              const response = p.data as GraphExecutionsPaginated;
-              return response.executions || [];
-            });
-            const hasActive = executions.some(
-              (e: { status?: string }) =>
-                e.status === "RUNNING" || e.status === "QUEUED",
-            );
-            return hasActive ? AGENT_RUNNING_POLL_INTERVAL : false;
-          } catch {
-            return false;
-          }
-        },
+        refetchInterval: (q) =>
+          getRunsPollingInterval(q.state.data?.pages, tabValue === "runs"),
         refetchIntervalInBackground: true,
         refetchOnWindowFocus: false,
-        getNextPageParam: (lastPage) => {
-          const pagination = (lastPage.data as GraphExecutionsPaginated)
-            .pagination;
-          const hasMore =
-            pagination.current_page * pagination.page_size <
-            pagination.total_items;
-
-          return hasMore ? pagination.current_page + 1 : undefined;
-        },
+        getNextPageParam: getNextRunsPageParam,
       },
     },
   );
@@ -65,18 +47,30 @@ export function useRunsSidebar({ graphId, onSelectRun }: Args) {
   const schedulesQuery = useGetV1ListExecutionSchedulesForAGraph(
     graphId || "",
     {
-      query: { enabled: !!graphId },
+      query: {
+        enabled: !!graphId,
+        select: (r) => okData<GraphExecutionJobInfo[]>(r) ?? [],
+      },
     },
   );
 
   const runs = useMemo(
-    () =>
-      runsQuery.data?.pages.flatMap((p) => {
-        const response = p.data as GraphExecutionsPaginated;
-        return response.executions;
-      }) || [],
+    () => extractRunsFromPages(runsQuery.data),
     [runsQuery.data],
   );
+
+  const schedules = schedulesQuery.data || [];
+
+  const runsCount = computeRunsCount(runsQuery.data, runs.length);
+  const schedulesCount = schedules.length;
+  const loading = !schedulesQuery.isSuccess || !runsQuery.isSuccess;
+
+  // Notify parent about counts and loading state
+  useEffect(() => {
+    if (onCountsChange) {
+      onCountsChange({ runsCount, schedulesCount, loading });
+    }
+  }, [runsCount, schedulesCount, loading, onCountsChange]);
 
   useEffect(() => {
     if (runs.length > 0) {
@@ -94,9 +88,6 @@ export function useRunsSidebar({ graphId, onSelectRun }: Args) {
     else setTabValue("runs");
   }, [existingRunId]);
 
-  const schedules: GraphExecutionJobInfo[] =
-    schedulesQuery.data?.status === 200 ? schedulesQuery.data.data : [];
-
   // If there are no runs but there are schedules, and nothing is selected, auto-select the first schedule
   useEffect(() => {
     if (!existingRunId && runs.length === 0 && schedules.length > 0)
@@ -107,17 +98,12 @@ export function useRunsSidebar({ graphId, onSelectRun }: Args) {
     runs,
     schedules,
     error: schedulesQuery.error || runsQuery.error,
-    loading: !schedulesQuery.isSuccess || !runsQuery.isSuccess,
+    loading,
     runsQuery,
     tabValue,
     setTabValue,
-    runsCount:
-      (
-        runsQuery.data?.pages.at(-1)?.data as
-          | GraphExecutionsPaginated
-          | undefined
-      )?.pagination.total_items || runs.length,
-    schedulesCount: schedules.length,
+    runsCount,
+    schedulesCount,
     fetchMoreRuns: runsQuery.fetchNextPage,
     hasMoreRuns: runsQuery.hasNextPage,
     isFetchingMoreRuns: runsQuery.isFetchingNextPage,
