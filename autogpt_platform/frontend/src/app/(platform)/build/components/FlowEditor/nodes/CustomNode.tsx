@@ -23,10 +23,11 @@ export type CustomNode = XYNode<CustomNodeData, "custom">;
 
 export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
   ({ data, id }) => {
-    const { getShowAdvanced, toggleAdvanced } = useNodeStore((state) => ({
-      getShowAdvanced: state.getShowAdvanced,
-      toggleAdvanced: state.toggleAdvanced,
-    }));
+    const showAdvanced = useNodeStore(
+      (state) => state.nodeAdvancedStates[id] || false,
+    );
+    const setShowAdvanced = useNodeStore((state) => state.setShowAdvanced);
+    const toggleAdvanced = useNodeStore((state) => state.toggleAdvanced);
 
     return (
       <div className="rounded-xl border border-slate-200/60 bg-gradient-to-br from-white to-slate-50/30 shadow-lg shadow-slate-900/5 backdrop-blur-sm">
@@ -54,8 +55,8 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
             Advanced
           </Text>
           <Switch
-            onCheckedChange={() => toggleAdvanced(id)}
-            checked={getShowAdvanced(id)}
+            onCheckedChange={(checked) => setShowAdvanced(id, checked)}
+            checked={showAdvanced}
           />
         </div>
 

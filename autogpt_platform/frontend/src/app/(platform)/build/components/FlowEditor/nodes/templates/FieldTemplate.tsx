@@ -23,14 +23,17 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
   schema,
   formContext,
 }) => {
-  const getShowAdvanced = useNodeStore((state) => state.getShowAdvanced);
   const { isInputConnected } = useEdgeStore();
   const { nodeId } = formContext;
+
+  const showAdvanced = useNodeStore(
+    (state) => state.nodeAdvancedStates[nodeId] ?? false,
+  );
 
   const fieldKey = fromRjsfId(id);
   const isConnected = isInputConnected(nodeId, fieldKey);
 
-  if (!getShowAdvanced(nodeId) && schema.advanced === true) {
+  if (!showAdvanced && schema.advanced === true) {
     return null;
   }
 
