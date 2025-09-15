@@ -14,7 +14,7 @@ interface Props {
   onValidityChange?: (valid: boolean) => void;
 }
 
-export function ScheduleView({
+export function ModalScheduleSection({
   scheduleName,
   cronExpression: _cronExpression,
   recommendedScheduleCron,
