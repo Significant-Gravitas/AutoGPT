@@ -398,7 +398,7 @@ class GraphModel(Graph):
 
     @property
     def webhook_input_node(self) -> NodeModel | None:  # type: ignore
-        return super().webhook_input_node  # type: ignore
+        return cast(NodeModel, super().webhook_input_node)
 
     def meta(self) -> "GraphMeta":
         """
