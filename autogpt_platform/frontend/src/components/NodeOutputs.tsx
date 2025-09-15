@@ -1,7 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 import { ContentRenderer } from "./ui/render";
 import { beautifyString } from "@/lib/utils";
+import { Maximize2 } from "lucide-react";
+import { Button } from "./ui/button";
 import * as Separator from "@radix-ui/react-separator";
+import ExpandableOutputDialog from "./ExpandableOutputDialog";
 
 type NodeOutputsProps = {
   title?: string;
@@ -14,14 +17,47 @@ export default function NodeOutputs({
   truncateLongData,
   data,
 }: NodeOutputsProps) {
+  const [expandedDialog, setExpandedDialog] = useState<{
+    isOpen: boolean;
+    execId: string;
+    pinName: string;
+    data: any[];
+  } | null>(null);
+
+  const openExpandedView = (pinName: string, pinData: any[]) => {
+    setExpandedDialog({
+      isOpen: true,
+      execId: title || "Node Output",
+      pinName,
+      data: pinData,
+    });
+  };
+
+  const closeExpandedView = () => {
+    setExpandedDialog(null);
+  };
   return (
     <div className="m-4 space-y-4">
       {title && <strong className="mt-2flex">{title}</strong>}
       {Object.entries(data).map(([pin, dataArray]) => (
-        <div key={pin} className="">
-          <div className="flex items-center">
-            <strong className="mr-2">Pin:</strong>
-            <span>{beautifyString(pin)}</span>
+        <div key={pin} className="group">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <strong className="mr-2">Pin:</strong>
+              <span>{beautifyString(pin)}</span>
+            </div>
+            {(truncateLongData || dataArray.length > 10) && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => openExpandedView(pin, dataArray)}
+                className="hidden items-center gap-1 group-hover:flex"
+                title="Expand Full View"
+              >
+                <Maximize2 size={14} />
+                Expand
+              </Button>
+            )}
           </div>
           <div className="mt-2">
             <strong className="mr-2">Data:</strong>
@@ -48,6 +84,16 @@ export default function NodeOutputs({
           </div>
         </div>
       ))}
+
+      {expandedDialog && (
+        <ExpandableOutputDialog
+          isOpen={expandedDialog.isOpen}
+          onClose={closeExpandedView}
+          execId={expandedDialog.execId}
+          pinName={expandedDialog.pinName}
+          data={expandedDialog.data}
+        />
+      )}
     </div>
   );
 }
