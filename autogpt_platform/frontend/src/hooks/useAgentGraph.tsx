@@ -641,7 +641,7 @@ export default function useAgentGraph(
     let newSavedAgent: Graph;
     if (savedAgent && graphsEquivalent(savedAgent, payload)) {
       console.warn("No need to save: Graph is the same as version on server");
-      newSavedAgent = savedAgent;
+      return savedAgent;
     } else {
       console.debug(
         "Saving new Graph version; old vs new:",
