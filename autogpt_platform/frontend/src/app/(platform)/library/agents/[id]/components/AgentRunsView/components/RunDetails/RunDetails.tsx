@@ -85,7 +85,11 @@ export function RunDetails({
 
         <TabsLineContent value="input">
           <RunDetailCard>
-            <AgentInputsReadOnly agent={agent} inputs={(run as any)?.inputs} />
+            <AgentInputsReadOnly
+              agent={agent}
+              inputs={(run as any)?.inputs}
+              credentialInputs={(run as any)?.credential_inputs}
+            />
           </RunDetailCard>
         </TabsLineContent>
       </TabsLine>

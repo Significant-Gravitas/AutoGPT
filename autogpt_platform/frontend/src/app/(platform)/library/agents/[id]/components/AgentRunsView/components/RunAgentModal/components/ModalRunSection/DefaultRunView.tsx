@@ -4,6 +4,7 @@ import SchemaTooltip from "@/components/SchemaTooltip";
 import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
 import { useRunAgentModalContext } from "../../context";
 import { RunAgentInputs } from "../../../RunAgentInputs/RunAgentInputs";
+import { Text } from "@/components/atoms/Text/Text";
 
 export function ModalRunSection() {
   const {
@@ -97,6 +98,80 @@ export function ModalRunSection() {
           />
         </div>
       ))}
+
+      {/* Selected Credentials Preview */}
+      {Object.keys(inputCredentials).length > 0 && (
+        <div className="mt-6 flex flex-col gap-6">
+          {Object.entries(agentCredentialsInputFields || {}).map(
+            ([key, _sub]) => {
+              const credential = inputCredentials[key];
+              if (!credential) return null;
+
+              const getProviderDisplayName = (provider: string) => {
+                const providerMap: Record<string, string> = {
+                  linear: "Linear",
+                  github: "GitHub",
+                  openai: "OpenAI",
+                  google: "Google",
+                  http: "HTTP",
+                  slack: "Slack",
+                  notion: "Notion",
+                  discord: "Discord",
+                };
+                return providerMap[provider.toLowerCase()] || provider;
+              };
+
+              const getTypeDisplayName = (type: string) => {
+                const typeMap: Record<string, string> = {
+                  api_key: "API key",
+                  oauth2: "OAuth2",
+                  user_password: "Username/Password",
+                  host_scoped: "Host-Scoped",
+                };
+                return typeMap[type] || type;
+              };
+
+              return (
+                <div key={key} className="flex flex-col gap-4">
+                  <Text variant="body-medium" as="h3">
+                    {getProviderDisplayName(credential.provider)} credentials
+                  </Text>
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between text-sm">
+                      <Text
+                        variant="body"
+                        as="span"
+                        className="!text-neutral-600"
+                      >
+                        Name
+                      </Text>
+                      <Text
+                        variant="body"
+                        as="span"
+                        className="!text-neutral-600"
+                      >
+                        {getTypeDisplayName(credential.type)}
+                      </Text>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <Text
+                        variant="body"
+                        as="span"
+                        className="!text-neutral-900"
+                      >
+                        {credential.title || "Untitled"}
+                      </Text>
+                      <span className="font-mono text-neutral-400">
+                        {"*".repeat(25)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            },
+          )}
+        </div>
+      )}
     </div>
   );
 }

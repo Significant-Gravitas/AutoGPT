@@ -119,6 +119,7 @@ export function ScheduleDetails({
               <AgentInputsReadOnly
                 agent={agent}
                 inputs={schedule?.input_data}
+                credentialInputs={schedule?.input_credentials}
               />
             </div>
           </RunDetailCard>
