@@ -8,14 +8,12 @@ import { useAgentRunModal } from "./useAgentRunModal";
 import { ModalHeader } from "./components/ModalHeader/ModalHeader";
 import { AgentCostSection } from "./components/AgentCostSection/AgentCostSection";
 import { AgentSectionHeader } from "./components/AgentSectionHeader/AgentSectionHeader";
-import { ModalRunSection } from "./components/ModalRunSection/DefaultRunView";
+import { ModalRunSection } from "./components/ModalRunSection/ModalRunSection";
 import { RunAgentModalContextProvider } from "./context";
-import { ModalScheduleSection } from "./components/ModalScheduleSection/ScheduleView";
 import { AgentDetails } from "./components/AgentDetails/AgentDetails";
 import { RunActions } from "./components/RunActions/RunActions";
-import { ScheduleActions } from "./components/ScheduleActions/ScheduleActions";
-import { Text } from "@/components/atoms/Text/Text";
-import { AlarmIcon, TrashIcon } from "@phosphor-icons/react";
+import { ScheduleAgentModal } from "../ScheduleAgentModal/ScheduleAgentModal";
+import { AlarmIcon } from "@phosphor-icons/react";
 
 interface Props {
   triggerSlot: React.ReactNode;
@@ -29,7 +27,6 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
     // UI state
     isOpen,
     setIsOpen,
-    showScheduleView,
 
     // Run mode
     defaultRunType,
@@ -48,10 +45,6 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
     setPresetName,
     setPresetDescription,
 
-    // Scheduling
-    scheduleName,
-    cronExpression,
-
     // Validation/readiness
     allRequiredInputsAreSet,
 
@@ -61,19 +54,13 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
 
     // Async states
     isExecuting,
-    isCreatingSchedule,
     isSettingUpTrigger,
 
     // Actions
     handleRun,
-    handleSchedule,
-    handleShowSchedule,
-    handleGoBack,
-    handleSetScheduleName,
-    handleSetCronExpression,
   } = useAgentRunModal(agent);
 
-  const [isScheduleFormValid, setIsScheduleFormValid] = useState(true);
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
 
   const hasAnySetupFields =
     Object.keys(agentInputFields || {}).length > 0 ||
@@ -100,14 +87,14 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
 
   function handleSetOpen(open: boolean) {
     setIsOpen(open);
-    // Always reset to Run view when opening/closing
-    if (open || !open) handleGoBack();
   }
 
-  function handleRemoveSchedule() {
-    handleGoBack();
-    handleSetScheduleName("");
-    handleSetCronExpression("");
+  function handleOpenScheduleModal() {
+    setIsScheduleModalOpen(true);
+  }
+
+  function handleCloseScheduleModal() {
+    setIsScheduleModalOpen(false);
   }
 
   return (
@@ -162,53 +149,6 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
                 ) : null}
               </div>
 
-              {/* Schedule Section - always visible */}
-              <div className="mt-4">
-                <AgentSectionHeader title="Schedule Setup" />
-                {showScheduleView ? (
-                  <>
-                    <div className="my-4 flex justify-start">
-                      <Button
-                        variant="secondary"
-                        size="small"
-                        onClick={handleRemoveSchedule}
-                      >
-                        <TrashIcon size={16} />
-                        Remove schedule
-                      </Button>
-                    </div>
-                    <ModalScheduleSection
-                      scheduleName={scheduleName}
-                      cronExpression={cronExpression}
-                      recommendedScheduleCron={agent.recommended_schedule_cron}
-                      onScheduleNameChange={handleSetScheduleName}
-                      onCronExpressionChange={handleSetCronExpression}
-                      onValidityChange={setIsScheduleFormValid}
-                    />
-                  </>
-                ) : (
-                  <div className="mt-2 flex flex-col items-start gap-2">
-                    <Text variant="body" className="mb-3 !text-zinc-500">
-                      No schedule configured. Create a schedule to run this
-                      agent automatically at a specific time.{" "}
-                      {agent.recommended_schedule_cron && (
-                        <span className="text-blue-600">
-                          This agent has a recommended schedule.
-                        </span>
-                      )}
-                    </Text>
-                    <Button
-                      variant="secondary"
-                      size="small"
-                      onClick={handleShowSchedule}
-                    >
-                      <AlarmIcon size={16} />
-                      Create schedule
-                    </Button>
-                  </div>
-                )}
-              </div>
-
               {/* Agent Details Section */}
               <div className="mt-8">
                 <AgentSectionHeader title="Agent Details" />
@@ -220,17 +160,15 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
             className="fixed bottom-1 left-0 z-10 w-full bg-white p-4"
             style={{ boxShadow: "0px -8px 10px white" }}
           >
-            {showScheduleView ? (
-              <ScheduleActions
-                onSchedule={handleSchedule}
-                isCreatingSchedule={isCreatingSchedule}
-                allRequiredInputsAreSet={
-                  allRequiredInputsAreSet &&
-                  !!scheduleName.trim() &&
-                  isScheduleFormValid
-                }
-              />
-            ) : (
+            <div className="flex items-center justify-end gap-3">
+              <Button
+                variant="secondary"
+                onClick={handleOpenScheduleModal}
+                disabled={isExecuting || isSettingUpTrigger}
+              >
+                <AlarmIcon size={16} />
+                Schedule Agent
+              </Button>
               <RunActions
                 defaultRunType={defaultRunType}
                 onRun={handleRun}
@@ -238,7 +176,15 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
                 isSettingUpTrigger={isSettingUpTrigger}
                 allRequiredInputsAreSet={allRequiredInputsAreSet}
               />
-            )}
+            </div>
+            <ScheduleAgentModal
+              isOpen={isScheduleModalOpen}
+              onClose={handleCloseScheduleModal}
+              agent={agent}
+              inputValues={inputValues}
+              inputCredentials={inputCredentials}
+              onScheduleCreated={handleCloseScheduleModal}
+            />
           </Dialog.Footer>
         </Dialog.Content>
       </Dialog>

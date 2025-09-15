@@ -7,13 +7,8 @@ import {
   usePostV1ExecuteGraphAgent,
   getGetV1ListGraphExecutionsInfiniteQueryOptions,
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
-import {
-  usePostV1CreateExecutionSchedule as useCreateSchedule,
-  getGetV1ListExecutionSchedulesForAGraphQueryKey,
-} from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { usePostV2SetupTrigger } from "@/app/api/__generated__/endpoints/presets/presets";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
-import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 
 export type RunVariant =
@@ -24,7 +19,6 @@ export type RunVariant =
 
 interface UseAgentRunModalCallbacks {
   onRun?: (execution: GraphExecutionMeta) => void;
-  onCreateSchedule?: (schedule: GraphExecutionJobInfo) => void;
   onSetupTrigger?: (preset: LibraryAgentPreset) => void;
 }
 
@@ -35,18 +29,12 @@ export function useAgentRunModal(
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
-  const [showScheduleView, setShowScheduleView] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
   const [inputCredentials, setInputCredentials] = useState<Record<string, any>>(
     {},
   );
   const [presetName, setPresetName] = useState<string>("");
   const [presetDescription, setPresetDescription] = useState<string>("");
-  const defaultScheduleName = useMemo(() => `Run ${agent.name}`, [agent.name]);
-  const [scheduleName, setScheduleName] = useState(defaultScheduleName);
-  const [cronExpression, setCronExpression] = useState(
-    agent.recommended_schedule_cron || "0 9 * * 1",
-  );
 
   // Determine the default run type based on agent capabilities
   const defaultRunType: RunVariant = agent.has_external_trigger
@@ -74,33 +62,6 @@ export function useAgentRunModal(
       onError: (error: any) => {
         toast({
           title: "❌ Failed to execute agent",
-          description: error.message || "An unexpected error occurred.",
-          variant: "destructive",
-        });
-      },
-    },
-  });
-
-  const createScheduleMutation = useCreateSchedule({
-    mutation: {
-      onSuccess: (response) => {
-        if (response.status === 200) {
-          toast({
-            title: "Schedule created",
-          });
-          callbacks?.onCreateSchedule?.(response.data);
-          // Invalidate schedules list for this graph
-          queryClient.invalidateQueries({
-            queryKey: getGetV1ListExecutionSchedulesForAGraphQueryKey(
-              agent.graph_id,
-            ),
-          });
-          setIsOpen(false);
-        }
-      },
-      onError: (error: any) => {
-        toast({
-          title: "❌ Failed to create schedule",
           description: error.message || "An unexpected error occurred.",
           variant: "destructive",
         });
@@ -202,33 +163,25 @@ export function useAgentRunModal(
     [allRequiredInputsAreSetRaw, credentialsRequired, allCredentialsAreSet],
   );
 
-  const notifyMissingRequirements = useCallback(
-    (needScheduleName: boolean = false) => {
-      const allMissingFields = (
-        needScheduleName && !scheduleName ? ["schedule_name"] : []
-      )
-        .concat(missingInputs)
-        .concat(
-          credentialsRequired && !allCredentialsAreSet
-            ? missingCredentials.map((k) => `credentials:${k}`)
-            : [],
-        );
+  const notifyMissingRequirements = useCallback(() => {
+    const allMissingFields = missingInputs.concat(
+      credentialsRequired && !allCredentialsAreSet
+        ? missingCredentials.map((k) => `credentials:${k}`)
+        : [],
+    );
 
-      toast({
-        title: "⚠️ Missing required inputs",
-        description: `Please provide: ${allMissingFields.map((k) => `"${k}"`).join(", ")}`,
-        variant: "destructive",
-      });
-    },
-    [
-      missingInputs,
-      scheduleName,
-      toast,
-      credentialsRequired,
-      allCredentialsAreSet,
-      missingCredentials,
-    ],
-  );
+    toast({
+      title: "⚠️ Missing required inputs",
+      description: `Please provide: ${allMissingFields.map((k) => `"${k}"`).join(", ")}`,
+      variant: "destructive",
+    });
+  }, [
+    missingInputs,
+    toast,
+    credentialsRequired,
+    allCredentialsAreSet,
+    missingCredentials,
+  ]);
 
   // Action handlers
   const handleRun = useCallback(() => {
@@ -239,7 +192,7 @@ export function useAgentRunModal(
 
     if (defaultRunType === "automatic-trigger") {
       // Setup trigger
-      if (!scheduleName.trim()) {
+      if (!presetName.trim()) {
         toast({
           title: "⚠️ Trigger name required",
           description: "Please provide a name for your trigger.",
@@ -250,7 +203,7 @@ export function useAgentRunModal(
 
       setupTriggerMutation.mutate({
         data: {
-          name: presetName || scheduleName,
+          name: presetName,
           description: presetDescription || `Trigger for ${agent.name}`,
           graph_id: agent.graph_id,
           graph_version: agent.graph_version,
@@ -272,7 +225,6 @@ export function useAgentRunModal(
   }, [
     allRequiredInputsAreSet,
     defaultRunType,
-    scheduleName,
     inputValues,
     inputCredentials,
     agent,
@@ -284,67 +236,6 @@ export function useAgentRunModal(
     toast,
   ]);
 
-  const handleSchedule = useCallback(() => {
-    if (!allRequiredInputsAreSet) {
-      notifyMissingRequirements(true);
-      return;
-    }
-
-    if (!scheduleName.trim()) {
-      toast({
-        title: "⚠️ Schedule name required",
-        description: "Please provide a name for your schedule.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    createScheduleMutation.mutate({
-      graphId: agent.graph_id,
-      data: {
-        name: presetName || scheduleName,
-        cron: cronExpression,
-        inputs: inputValues,
-        graph_version: agent.graph_version,
-        credentials: inputCredentials,
-      },
-    });
-  }, [
-    allRequiredInputsAreSet,
-    scheduleName,
-    cronExpression,
-    inputValues,
-    inputCredentials,
-    agent,
-    notifyMissingRequirements,
-    createScheduleMutation,
-    toast,
-  ]);
-
-  function handleShowSchedule() {
-    // Initialize with sensible defaults when entering schedule view
-    setScheduleName((prev) => prev || defaultScheduleName);
-    setCronExpression(
-      (prev) => prev || agent.recommended_schedule_cron || "0 9 * * 1",
-    );
-    setShowScheduleView(true);
-  }
-
-  function handleGoBack() {
-    setShowScheduleView(false);
-    // Reset schedule fields on exit
-    setScheduleName(defaultScheduleName);
-    setCronExpression(agent.recommended_schedule_cron || "0 9 * * 1");
-  }
-
-  function handleSetScheduleName(name: string) {
-    setScheduleName(name);
-  }
-
-  function handleSetCronExpression(expression: string) {
-    setCronExpression(expression);
-  }
-
   const hasInputFields = useMemo(() => {
     return Object.keys(agentInputFields).length > 0;
   }, [agentInputFields]);
@@ -353,7 +244,6 @@ export function useAgentRunModal(
     // UI state
     isOpen,
     setIsOpen,
-    showScheduleView,
 
     // Run mode
     defaultRunType,
@@ -372,10 +262,6 @@ export function useAgentRunModal(
     setPresetName,
     setPresetDescription,
 
-    // Scheduling
-    scheduleName,
-    cronExpression,
-
     // Validation/readiness
     allRequiredInputsAreSet,
     missingInputs,
@@ -387,15 +273,9 @@ export function useAgentRunModal(
 
     // Async states
     isExecuting: executeGraphMutation.isPending,
-    isCreatingSchedule: createScheduleMutation.isPending,
     isSettingUpTrigger: setupTriggerMutation.isPending,
 
     // Actions
     handleRun,
-    handleSchedule,
-    handleShowSchedule,
-    handleGoBack,
-    handleSetScheduleName,
-    handleSetCronExpression,
   };
 }
