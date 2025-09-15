@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import logging
+import time
 from collections import defaultdict
 from datetime import datetime
 from typing import Annotated, Any, Sequence
@@ -279,8 +280,6 @@ def get_graph_blocks() -> Sequence[dict[Any, Any]]:
     dependencies=[Security(requires_user)],
 )
 async def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlockOutput:
-    import time
-
     obj = get_block(block_id)
     if not obj:
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
