@@ -5369,7 +5369,13 @@
           },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
-          "next_run_time": { "type": "string", "title": "Next Run Time" }
+          "next_run_time": { "type": "string", "title": "Next Run Time" },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "description": "Timezone used for scheduling",
+            "default": "UTC"
+          }
         },
         "type": "object",
         "required": [
@@ -7051,6 +7057,11 @@
             },
             "type": "object",
             "title": "Credentials"
+          },
+          "timezone": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Timezone",
+            "description": "User's timezone for scheduling (e.g., 'America/New_York'). If not provided, will use user's saved timezone or UTC."
           }
         },
         "type": "object",
