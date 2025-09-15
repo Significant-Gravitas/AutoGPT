@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Heart } from "@phosphor-icons/react";
 import { useState, useEffect } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { getQueryClient } from "@/lib/react-query/queryClient";
 
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import BackendAPI, { LibraryAgentID } from "@/lib/autogpt-server-api";
