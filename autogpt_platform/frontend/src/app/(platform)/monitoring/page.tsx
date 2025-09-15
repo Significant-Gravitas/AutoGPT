@@ -1,12 +1,12 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
 
+import { GraphExecutionMeta, LibraryAgent } from "@/lib/autogpt-server-api";
+import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import {
-  GraphExecutionMeta,
-  Schedule,
-  LibraryAgent,
-  ScheduleID,
-} from "@/lib/autogpt-server-api";
+  useGetV1ListExecutionSchedulesForAUser,
+  useDeleteV1DeleteExecutionSchedule,
+} from "@/app/api/__generated__/endpoints/schedules/schedules";
 
 import { Card } from "@/components/ui/card";
 import {
@@ -22,26 +22,29 @@ import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 const Monitor = () => {
   const [flows, setFlows] = useState<LibraryAgent[]>([]);
   const [executions, setExecutions] = useState<GraphExecutionMeta[]>([]);
-  const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [selectedFlow, setSelectedFlow] = useState<LibraryAgent | null>(null);
   const [selectedRun, setSelectedRun] = useState<GraphExecutionMeta | null>(
     null,
   );
-  const [sortColumn, setSortColumn] = useState<keyof Schedule>("id");
+  const [sortColumn, setSortColumn] =
+    useState<keyof GraphExecutionJobInfo>("id");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const api = useBackendAPI();
 
-  const fetchSchedules = useCallback(async () => {
-    setSchedules(await api.listAllGraphsExecutionSchedules());
-  }, [api]);
+  // Use generated API hooks for schedules
+  const { data: schedulesResponse, refetch: refetchSchedules } =
+    useGetV1ListExecutionSchedulesForAUser();
+  const deleteScheduleMutation = useDeleteV1DeleteExecutionSchedule();
+
+  const schedules =
+    schedulesResponse?.status === 200 ? schedulesResponse.data : [];
 
   const removeSchedule = useCallback(
-    async (scheduleId: ScheduleID) => {
-      const removedSchedule =
-        await api.deleteGraphExecutionSchedule(scheduleId);
-      setSchedules(schedules.filter((s) => s.id !== removedSchedule.id));
+    async (scheduleId: string) => {
+      await deleteScheduleMutation.mutateAsync({ scheduleId });
+      refetchSchedules();
     },
-    [schedules, api],
+    [deleteScheduleMutation, refetchSchedules],
   );
 
   const fetchAgents = useCallback(() => {
@@ -58,10 +61,6 @@ const Monitor = () => {
   }, [fetchAgents]);
 
   useEffect(() => {
-    fetchSchedules();
-  }, [fetchSchedules]);
-
-  useEffect(() => {
     const intervalId = setInterval(() => fetchAgents(), 5000);
     return () => clearInterval(intervalId);
   }, [fetchAgents, flows]);
@@ -70,7 +69,7 @@ const Monitor = () => {
   const column2 = "md:col-span-3 lg:col-span-2 xl:col-span-3";
   const column3 = "col-span-full xl:col-span-4 xxl:col-span-5";
 
-  const handleSort = (column: keyof Schedule) => {
+  const handleSort = (column: keyof GraphExecutionJobInfo) => {
     if (sortColumn === column) {
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
     } else {
