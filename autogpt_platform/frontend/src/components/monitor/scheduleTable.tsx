@@ -1,4 +1,5 @@
-import { LibraryAgent, Schedule, ScheduleID } from "@/lib/autogpt-server-api";
+import { LibraryAgent } from "@/lib/autogpt-server-api";
+import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -39,12 +40,12 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 
 interface SchedulesTableProps {
-  schedules: Schedule[];
+  schedules: GraphExecutionJobInfo[];
   agents: LibraryAgent[];
-  onRemoveSchedule: (scheduleId: ScheduleID, enabled: boolean) => void;
-  sortColumn: keyof Schedule;
+  onRemoveSchedule: (scheduleId: string, enabled: boolean) => void;
+  sortColumn: keyof GraphExecutionJobInfo;
   sortDirection: "asc" | "desc";
-  onSort: (column: keyof Schedule) => void;
+  onSort: (column: keyof GraphExecutionJobInfo) => void;
 }
 
 export const SchedulesTable = ({
@@ -84,7 +85,7 @@ export const SchedulesTable = ({
       return String(bValue).localeCompare(String(aValue));
     });
 
-  const handleToggleSchedule = (scheduleId: ScheduleID, enabled: boolean) => {
+  const handleToggleSchedule = (scheduleId: string, enabled: boolean) => {
     onRemoveSchedule(scheduleId, enabled);
     if (!enabled) {
       toast({
@@ -257,12 +258,14 @@ export const SchedulesTable = ({
                   </TableCell>
                   <TableCell>
                     <Badge variant="secondary">
-                      {humanizeCronExpression(schedule.cron, userTimezone)}
+                      {humanizeCronExpression(schedule.cron)}
                     </Badge>
                   </TableCell>
                   <TableCell>
                     <span className="text-sm text-muted-foreground">
-                      {userTimezone && getTimezoneAbbreviation(userTimezone)}
+                      {schedule.timezone
+                        ? getTimezoneAbbreviation(schedule.timezone)
+                        : userTimezone && getTimezoneAbbreviation(userTimezone)}
                     </span>
                   </TableCell>
                   <TableCell>
