@@ -66,7 +66,9 @@ from backend.integrations.webhooks.graph_lifecycle_hooks import (
 )
 from backend.monitoring.instrumentation import (
     record_block_execution,
+    record_block_operation,
     record_graph_execution,
+    record_graph_operation,
 )
 from backend.server.model import (
     CreateAPIKeyRequest,
@@ -100,6 +102,30 @@ def _create_file_size_error(size_bytes: int, max_size_mb: int) -> HTTPException:
 
 settings = Settings()
 logger = logging.getLogger(__name__)
+
+
+def _get_block_category(block_type: str) -> str:
+    """Categorize block types to prevent cardinality explosion."""
+    block_type_lower = block_type.lower()
+    
+    if any(x in block_type_lower for x in ["llm", "gpt", "claude", "openai", "anthropic"]):
+        return "llm"
+    elif any(x in block_type_lower for x in ["search", "google", "web"]):
+        return "search"  
+    elif any(x in block_type_lower for x in ["data", "json", "csv", "database"]):
+        return "data"
+    elif any(x in block_type_lower for x in ["text", "string", "format"]):
+        return "text"
+    elif any(x in block_type_lower for x in ["file", "upload", "download"]):
+        return "file"
+    elif any(x in block_type_lower for x in ["email", "slack", "discord", "notification"]):
+        return "communication"
+    elif any(x in block_type_lower for x in ["time", "date", "schedule"]):
+        return "time"
+    elif any(x in block_type_lower for x in ["condition", "if", "loop", "branch"]):
+        return "control"
+    else:
+        return "other"
 
 _user_credit_model = get_user_credit_model()
 
@@ -296,6 +322,12 @@ async def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlock
         record_block_execution(
             block_type=block_type, status="success", duration=duration
         )
+        
+        # Record operation-level metric with category
+        block_category = _get_block_category(block_type)
+        record_block_operation(
+            operation="execute", block_category=block_category, status="success"
+        )
 
         return output
     except Exception:
@@ -303,6 +335,12 @@ async def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlock
         duration = time.time() - start_time
         block_type = obj.__class__.__name__
         record_block_execution(block_type=block_type, status="error", duration=duration)
+        
+        # Record operation-level metric with category
+        block_category = _get_block_category(block_type)
+        record_block_operation(
+            operation="execute", block_category=block_category, status="error"
+        )
         raise
 
 
@@ -809,12 +847,14 @@ async def execute_graph(
         )
         # Record successful graph execution
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
+        record_graph_operation(operation="execute", status="success")
         return result
     except GraphValidationError as e:
         # Record failed graph execution
         record_graph_execution(
             graph_id=graph_id, status="validation_error", user_id=user_id
         )
+        record_graph_operation(operation="execute", status="validation_error")
         # Return structured validation errors that the frontend can parse
         raise HTTPException(
             status_code=400,
@@ -828,6 +868,7 @@ async def execute_graph(
     except Exception:
         # Record any other failures
         record_graph_execution(graph_id=graph_id, status="error", user_id=user_id)
+        record_graph_operation(operation="execute", status="error")
         raise
 
 
