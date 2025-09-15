@@ -10,7 +10,6 @@ import {
 import { usePostV2SetupTrigger } from "@/app/api/__generated__/endpoints/presets/presets";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
-import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 
 export type RunVariant =
   | "manual"
@@ -36,22 +35,6 @@ export function useAgentRunModal(
   );
   const [presetName, setPresetName] = useState<string>("");
   const [presetDescription, setPresetDescription] = useState<string>("");
-
-  const defaultScheduleName = useMemo(() => `Run ${agent.name}`, [agent.name]);
-  
-  const [scheduleName, setScheduleName] = useState(defaultScheduleName);
-  
-  const [cronExpression, setCronExpression] = useState(
-    agent.recommended_schedule_cron || "0 9 * * 1",
-  );
-
-  // Get user timezone for scheduling
-  const { data: userTimezone } = useGetV1GetUserTimezone({
-    query: {
-      select: (res) => (res.status === 200 ? res.data.timezone : undefined),
-    },
-  });
-
   // Determine the default run type based on agent capabilities
   const defaultRunType: RunVariant = agent.has_external_trigger
     ? "automatic-trigger"
@@ -250,46 +233,6 @@ export function useAgentRunModal(
     setupTriggerMutation,
     executeGraphMutation,
     toast,
-  ]);
-
-  const handleSchedule = useCallback(() => {
-    if (!allRequiredInputsAreSet) {
-      notifyMissingRequirements(true);
-      return;
-    }
-
-    if (!scheduleName.trim()) {
-      toast({
-        title: "⚠️ Schedule name required",
-        description: "Please provide a name for your schedule.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    createScheduleMutation.mutate({
-      graphId: agent.graph_id,
-      data: {
-        name: presetName || scheduleName,
-        cron: cronExpression,
-        inputs: inputValues,
-        graph_version: agent.graph_version,
-        credentials: inputCredentials,
-        timezone:
-          userTimezone && userTimezone !== "not-set" ? userTimezone : undefined,
-      },
-    });
-  }, [
-    allRequiredInputsAreSet,
-    scheduleName,
-    cronExpression,
-    inputValues,
-    inputCredentials,
-    agent,
-    notifyMissingRequirements,
-    createScheduleMutation,
-    toast,
-    userTimezone,
   ]);
 
   const hasInputFields = useMemo(() => {
