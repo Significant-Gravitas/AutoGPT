@@ -98,7 +98,7 @@ export function ScheduleDetails({
               run={undefined}
               scheduleRecurrence={
                 schedule
-                  ? `${humanizeCronExpression(schedule.cron || "", userTzRes)} · ${getTimezoneDisplayName(userTzRes || "UTC")}`
+                  ? `${humanizeCronExpression(schedule.cron || "")} · ${getTimezoneDisplayName(schedule.timezone || userTzRes || "UTC")}`
                   : undefined
               }
             />
@@ -161,10 +161,12 @@ export function ScheduleDetails({
                     Recurrence
                   </Text>
                   <p className="text-sm text-zinc-600">
-                    {humanizeCronExpression(schedule.cron, userTzRes)}
+                    {humanizeCronExpression(schedule.cron)}
                     {" • "}
                     <span className="text-xs text-zinc-600">
-                      {getTimezoneDisplayName(userTzRes || "UTC")}
+                      {getTimezoneDisplayName(
+                        schedule.timezone || userTzRes || "UTC",
+                      )}
                     </span>
                   </p>
                 </div>
@@ -187,7 +189,9 @@ export function ScheduleDetails({
                     )}{" "}
                     •{" "}
                     <span className="text-xs text-zinc-600">
-                      {getTimezoneDisplayName(userTzRes || "UTC")}
+                      {getTimezoneDisplayName(
+                        schedule.timezone || userTzRes || "UTC",
+                      )}
                     </span>
                   </p>
                 </div>
