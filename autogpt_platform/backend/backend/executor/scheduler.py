@@ -402,6 +402,7 @@ class Scheduler(AppService):
         input_data: BlockInput,
         input_credentials: dict[str, CredentialsMetaInput],
         name: Optional[str] = None,
+        user_timezone: str | None = None,
     ) -> GraphExecutionJobInfo:
         # Validate the graph before scheduling to prevent runtime failures
         # We don't need the return value, just want the validation to run
@@ -415,20 +416,13 @@ class Scheduler(AppService):
             )
         )
 
-        # Fetch user's timezone for scheduling
-        from backend.data.user import get_user_by_id
-
-        user = run_async(get_user_by_id(user_id))
-
-        # Use user's timezone if set, otherwise default to UTC
-        # Note: We can't auto-detect timezone server-side, it must be set by the client
-        if user.timezone and user.timezone != "not-set":
-            user_timezone = user.timezone
-        else:
+        # Use provided timezone or default to UTC
+        # Note: Timezone should be passed from the client to avoid database lookups
+        if not user_timezone:
             user_timezone = "UTC"
             logger.warning(
-                f"User {user_id} has no timezone set, using UTC for scheduling. "
-                f"User should set their timezone in settings for correct scheduling."
+                f"No timezone provided for user {user_id}, using UTC for scheduling. "
+                f"Client should pass user's timezone for correct scheduling."
             )
 
         logger.info(
