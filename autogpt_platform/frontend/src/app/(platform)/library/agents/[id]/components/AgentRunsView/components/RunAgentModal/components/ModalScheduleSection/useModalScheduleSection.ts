@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 
-interface UseScheduleViewOptions {
+interface Args {
   onCronExpressionChange: (expression: string) => void;
 }
 
-export function useScheduleView({
-  onCronExpressionChange,
-}: UseScheduleViewOptions) {
+export function useModalScheduleSection({ onCronExpressionChange }: Args) {
   const repeatOptions = useMemo(
     () => [
       { value: "daily", label: "Daily" },
