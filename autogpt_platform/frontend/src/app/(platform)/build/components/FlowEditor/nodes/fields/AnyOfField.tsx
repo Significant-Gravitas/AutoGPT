@@ -13,7 +13,6 @@ type TypeOption = {
   index: number;
   format?: string;
 };
-
 function resolveInputType(type?: string, format?: string): InputType {
   if (!type) return InputType.STRING;
   if (type === "string") {
@@ -27,6 +26,22 @@ function resolveInputType(type?: string, format?: string): InputType {
   if (type === "array") return InputType.ARRAY;
   if (type === "object") return InputType.OBJECT;
   return InputType.STRING;
+}
+
+// Use a concrete default when enabling nullable fields so the switch stays on
+function defaultValueFor(type?: string, format?: string) {
+  const inputType = resolveInputType(type, format);
+  switch (inputType) {
+    case InputType.BOOLEAN:
+      return false;
+    case InputType.ARRAY:
+      return [];
+    case InputType.OBJECT:
+      return {};
+    // STRING, NUMBER, DATE, TIME, DATE_TIME → empty string works for our inputs
+    default:
+      return "";
+  }
 }
 
 export const AnyOfField = ({
@@ -78,7 +93,11 @@ export const AnyOfField = ({
   };
 
   const handleNullableToggle = (checked: boolean) => {
-    onChange(checked ? undefined : null);
+    if (checked) {
+      onChange(defaultValueFor(nonNull?.type, nonNull?.format));
+    } else {
+      onChange(null);
+    }
   };
 
   const handleValueChange = (value: any) => onChange(value);
@@ -99,6 +118,25 @@ export const AnyOfField = ({
       />
     );
   };
+
+  if (isNullableType) {
+    return (
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1">
+            <Text variant="body">
+              {name.charAt(0).toUpperCase() + name.slice(1)}
+            </Text>
+            <Text variant="small" className="!text-green-500">
+              ({nonNull?.type} | null)
+            </Text>
+          </div>
+          <Switch checked={isEnabled} onCheckedChange={handleNullableToggle} />
+        </div>
+        {isEnabled && renderInput(nonNull?.type || "string", nonNull?.format)}
+      </div>
+    );
+  }
 
   if (isNullableType) {
     return (
