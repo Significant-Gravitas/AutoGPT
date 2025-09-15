@@ -797,6 +797,7 @@ export type Schedule = {
   input_data: Record<string, any>;
   input_credentials: Record<string, CredentialsMetaInput>;
   next_run_time: Date;
+  timezone: string;
 };
 
 export type ScheduleID = Brand<string, "ScheduleID">;

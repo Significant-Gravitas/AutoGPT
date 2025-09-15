@@ -8,9 +8,9 @@ import { useAgentRunModal } from "./useAgentRunModal";
 import { ModalHeader } from "./components/ModalHeader/ModalHeader";
 import { AgentCostSection } from "./components/AgentCostSection/AgentCostSection";
 import { AgentSectionHeader } from "./components/AgentSectionHeader/AgentSectionHeader";
-import { DefaultRunView } from "./components/DefaultRunView/DefaultRunView";
+import { ModalRunSection } from "./components/ModalRunSection/DefaultRunView";
 import { RunAgentModalContextProvider } from "./context";
-import { ScheduleView } from "./components/ScheduleView/ScheduleView";
+import { ModalScheduleSection } from "./components/ModalScheduleSection/ScheduleView";
 import { AgentDetails } from "./components/AgentDetails/AgentDetails";
 import { RunActions } from "./components/RunActions/RunActions";
 import { ScheduleActions } from "./components/ScheduleActions/ScheduleActions";
@@ -155,7 +155,7 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
                         }
                       />
                       <div>
-                        <DefaultRunView />
+                        <ModalRunSection />
                       </div>
                     </>
                   </RunAgentModalContextProvider>
@@ -163,11 +163,11 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
               </div>
 
               {/* Schedule Section - always visible */}
-              <div className="mt-8">
+              <div className="mt-4">
                 <AgentSectionHeader title="Schedule Setup" />
                 {showScheduleView ? (
                   <>
-                    <div className="mb-3 flex justify-start">
+                    <div className="my-4 flex justify-start">
                       <Button
                         variant="secondary"
                         size="small"
@@ -177,7 +177,7 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
                         Remove schedule
                       </Button>
                     </div>
-                    <ScheduleView
+                    <ModalScheduleSection
                       scheduleName={scheduleName}
                       cronExpression={cronExpression}
                       recommendedScheduleCron={agent.recommended_schedule_cron}
@@ -187,7 +187,7 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
                     />
                   </>
                 ) : (
-                  <div className="flex flex-col items-start gap-2">
+                  <div className="mt-2 flex flex-col items-start gap-2">
                     <Text variant="body" className="mb-3 !text-zinc-500">
                       No schedule configured. Create a schedule to run this
                       agent automatically at a specific time.{" "}

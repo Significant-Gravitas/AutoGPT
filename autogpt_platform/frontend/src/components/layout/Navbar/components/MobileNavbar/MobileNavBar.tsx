@@ -1,6 +1,5 @@
 "use client";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Popover,
   PopoverContent,
@@ -15,6 +14,10 @@ import { MenuItemGroup } from "../../helpers";
 import { MobileNavbarMenuItem } from "./components/MobileNavbarMenuItem";
 import { Button } from "@/components/atoms/Button/Button";
 import { CaretUpIcon, ListIcon } from "@phosphor-icons/react";
+import Avatar, {
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/atoms/Avatar/Avatar";
 
 interface MobileNavBarProps {
   userName?: string;
