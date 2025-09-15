@@ -14,17 +14,25 @@ from prometheus_fastapi_instrumentator import Instrumentator, metrics
 
 logger = logging.getLogger(__name__)
 
-# Custom business metrics
+# Custom business metrics with controlled cardinality
 GRAPH_EXECUTIONS = Counter(
     "autogpt_graph_executions_total",
     "Total number of graph executions",
-    labelnames=["graph_id", "status", "user_id"],
+    labelnames=[
+        "status"
+    ],  # Removed graph_id and user_id to prevent cardinality explosion
+)
+
+GRAPH_EXECUTIONS_BY_USER = Counter(
+    "autogpt_graph_executions_by_user_total",
+    "Total number of graph executions by user (sampled)",
+    labelnames=["status"],  # Only status, user_id tracked separately when needed
 )
 
 BLOCK_EXECUTIONS = Counter(
     "autogpt_block_executions_total",
     "Total number of block executions",
-    labelnames=["block_type", "status"],
+    labelnames=["block_type", "status"],  # block_type is bounded
 )
 
 BLOCK_DURATION = Histogram(
@@ -35,9 +43,9 @@ BLOCK_DURATION = Histogram(
 )
 
 WEBSOCKET_CONNECTIONS = Gauge(
-    "autogpt_websocket_connections",
-    "Current number of active WebSocket connections",
-    labelnames=["user_id"],
+    "autogpt_websocket_connections_total",
+    "Total number of active WebSocket connections",
+    # Removed user_id label - track total only to prevent cardinality explosion
 )
 
 SCHEDULER_JOBS = Gauge(
@@ -74,7 +82,7 @@ API_KEY_USAGE = Counter(
 RATE_LIMIT_HITS = Counter(
     "autogpt_rate_limit_hits_total",
     "Number of rate limit hits",
-    labelnames=["endpoint", "user_id"],
+    labelnames=["endpoint"],  # Removed user_id to prevent cardinality explosion
 )
 
 SERVICE_INFO = Info(
@@ -185,7 +193,12 @@ def instrument_fastapi(
 
 def record_graph_execution(graph_id: str, status: str, user_id: str):
     """Record a graph execution event."""
-    GRAPH_EXECUTIONS.labels(graph_id=graph_id, status=status, user_id=user_id).inc()
+    # Track overall executions without high-cardinality labels
+    GRAPH_EXECUTIONS.labels(status=status).inc()
+
+    # Optionally track per-user executions (implement sampling if needed)
+    # For now, just track status to avoid cardinality explosion
+    GRAPH_EXECUTIONS_BY_USER.labels(status=status).inc()
 
 
 def record_block_execution(block_type: str, status: str, duration: float):
@@ -196,10 +209,11 @@ def record_block_execution(block_type: str, status: str, duration: float):
 
 def update_websocket_connections(user_id: str, delta: int):
     """Update the number of active WebSocket connections."""
+    # Track total connections without user_id to prevent cardinality explosion
     if delta > 0:
-        WEBSOCKET_CONNECTIONS.labels(user_id=user_id).inc(delta)
+        WEBSOCKET_CONNECTIONS.inc(delta)
     else:
-        WEBSOCKET_CONNECTIONS.labels(user_id=user_id).dec(abs(delta))
+        WEBSOCKET_CONNECTIONS.dec(abs(delta))
 
 
 def record_database_query(operation: str, table: str, duration: float):
@@ -224,4 +238,4 @@ def record_api_key_usage(provider: str, block_type: str, status: str):
 
 def record_rate_limit_hit(endpoint: str, user_id: str):
     """Record a rate limit hit."""
-    RATE_LIMIT_HITS.labels(endpoint=endpoint, user_id=user_id).inc()
+    RATE_LIMIT_HITS.labels(endpoint=endpoint).inc()
