@@ -1,11 +1,16 @@
 import { cn } from "@/lib/utils";
 import { X } from "@phosphor-icons/react";
 import * as RXDialog from "@radix-ui/react-dialog";
-import { CSSProperties, PropsWithChildren } from "react";
+import {
+  CSSProperties,
+  PropsWithChildren,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { DialogCtx } from "../useDialogCtx";
 import { modalStyles } from "./styles";
-import styles from "./styles.module.css";
-import { Button } from "@/components/atoms/Button/Button";
+import { scrollbarStyles } from "@/components/styles/scrollbars";
 
 type BaseProps = DialogCtx & PropsWithChildren;
 
@@ -22,6 +27,25 @@ export function DialogWrap({
   isForceOpen,
   handleClose,
 }: Props) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [hasVerticalScrollbar, setHasVerticalScrollbar] = useState(false);
+
+  useEffect(() => {
+    function update() {
+      const el = scrollRef.current;
+      if (!el) return;
+      setHasVerticalScrollbar(el.scrollHeight > el.clientHeight + 1);
+    }
+    update();
+    const ro = new ResizeObserver(update);
+    if (scrollRef.current) ro.observe(scrollRef.current);
+    window.addEventListener("resize", update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+
   return (
     <RXDialog.Portal>
       <RXDialog.Overlay className={modalStyles.overlay} />
@@ -51,17 +75,23 @@ export function DialogWrap({
           )}
 
           {isForceOpen && !handleClose ? null : (
-            <Button
-              variant="ghost"
+            <button
               onClick={handleClose}
               aria-label="Close"
-              className="absolute -right-2 top-2 z-50 hover:border-transparent hover:bg-transparent"
+              className="absolute right-4 top-4 z-50 hover:border-transparent hover:bg-transparent focus:border-none focus:outline-none"
             >
               <X className={modalStyles.icon} />
-            </Button>
+            </button>
           )}
         </div>
-        <div className={`overflow-y-auto ${styles.scrollableContent}`}>
+        <div
+          ref={scrollRef}
+          className={cn("overflow-y-auto overflow-x-hidden", scrollbarStyles)}
+          style={{
+            scrollbarGutter: "stable",
+            marginRight: hasVerticalScrollbar ? "-14px" : "0px",
+          }}
+        >
           {children}
         </div>
       </RXDialog.Content>

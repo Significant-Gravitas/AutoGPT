@@ -1,9 +1,10 @@
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel
 
 import backend.server.v2.library.model as library_model
 import backend.server.v2.store.model as store_model
+from backend.data.block import BlockInfo
 from backend.integrations.providers import ProviderName
 from backend.util.models import Pagination
 
@@ -16,29 +17,27 @@ FilterType = Literal[
 
 BlockType = Literal["all", "input", "action", "output"]
 
-BlockData = dict[str, Any]
-
 
 # Suggestions
 class SuggestionsResponse(BaseModel):
     otto_suggestions: list[str]
     recent_searches: list[str]
     providers: list[ProviderName]
-    top_blocks: list[BlockData]
+    top_blocks: list[BlockInfo]
 
 
 # All blocks
 class BlockCategoryResponse(BaseModel):
     name: str
     total_blocks: int
-    blocks: list[BlockData]
+    blocks: list[BlockInfo]
 
     model_config = {"use_enum_values": False}  # <== use enum names like "AI"
 
 
 # Input/Action/Output and see all for block categories
 class BlockResponse(BaseModel):
-    blocks: list[BlockData]
+    blocks: list[BlockInfo]
     pagination: Pagination
 
 
@@ -71,7 +70,7 @@ class SearchBlocksResponse(BaseModel):
 
 
 class SearchResponse(BaseModel):
-    items: list[BlockData | library_model.LibraryAgent | store_model.StoreAgent]
+    items: list[BlockInfo | library_model.LibraryAgent | store_model.StoreAgent]
     total_items: dict[FilterType, int]
     page: int
     more_pages: bool

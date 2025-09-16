@@ -15,14 +15,10 @@ import { cn } from "@/lib/utils";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/atoms/Button/Button";
-import LoadingBox from "@/components/ui/loading";
-import { PlusIcon } from "@phosphor-icons/react";
+import LoadingBox, { LoadingSpinner } from "@/components/ui/loading";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-
-import { RunAgentModal } from "../../AgentRunsView/components/RunAgentModal/RunAgentModal";
 import { AgentRunsQuery } from "../use-agent-runs";
 import { agentRunStatusMap } from "./agent-run-status-chip";
 import { AgentRunSummaryCard } from "./agent-run-summary-card";
@@ -49,6 +45,7 @@ export function AgentRunsSelectorList({
   agent,
   agentRunsQuery: {
     agentRuns,
+    agentRunCount,
     agentRunsLoading,
     hasMoreRuns,
     fetchMoreRuns,
@@ -72,8 +69,6 @@ export function AgentRunsSelectorList({
     "runs",
   );
 
-  const isNewAgentRunsEnabled = useGetFlag(Flag.NEW_AGENT_RUNS);
-
   useEffect(() => {
     if (selectedView.type === "schedule") {
       setActiveListTab("scheduled");
@@ -86,17 +81,7 @@ export function AgentRunsSelectorList({
 
   return (
     <aside className={cn("flex flex-col gap-4", className)}>
-      {isNewAgentRunsEnabled ? (
-        <RunAgentModal
-          triggerSlot={
-            <Button variant="primary" size="large" className="w-full">
-              <PlusIcon size={20} /> New Run
-            </Button>
-          }
-          agent={agent}
-          agentId={agent.id.toString()}
-        />
-      ) : allowDraftNewRun ? (
+      {allowDraftNewRun ? (
         <Button
           className={"mb-4 hidden lg:flex"}
           onClick={onSelectDraftNewRun}
@@ -113,7 +98,9 @@ export function AgentRunsSelectorList({
           onClick={() => setActiveListTab("runs")}
         >
           <span>Runs</span>
-          <span className="text-neutral-600">{agentRuns.length}</span>
+          <span className="text-neutral-600">
+            {agentRunCount ?? <LoadingSpinner className="size-4" />}
+          </span>
         </Badge>
 
         <Badge
@@ -215,7 +202,7 @@ export function AgentRunsSelectorList({
                         timestamp={run.started_at}
                         selected={selectedView.id === run.id}
                         onClick={() => onSelectRun(run.id)}
-                        onDelete={() => doDeleteRun(run)}
+                        onDelete={() => doDeleteRun(run as GraphExecutionMeta)}
                         onPinAsPreset={
                           doCreatePresetFromRun
                             ? () => doCreatePresetFromRun(run.id)

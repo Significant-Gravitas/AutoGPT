@@ -14,6 +14,7 @@ class MyAgent(pydantic.BaseModel):
     agent_image: str | None = None
     description: str
     last_edited: datetime.datetime
+    recommended_schedule_cron: str | None = None
 
 
 class MyAgentsResponse(pydantic.BaseModel):
@@ -53,6 +54,7 @@ class StoreAgentDetails(pydantic.BaseModel):
     rating: float
     versions: list[str]
     last_updated: datetime.datetime
+    recommended_schedule_cron: str | None = None
 
     active_version_id: str | None = None
     has_approved_version: bool = False
@@ -157,6 +159,7 @@ class StoreSubmissionRequest(pydantic.BaseModel):
     description: str = ""
     categories: list[str] = []
     changes_summary: str | None = None
+    recommended_schedule_cron: str | None = None
 
 
 class StoreSubmissionEditRequest(pydantic.BaseModel):
@@ -167,6 +170,7 @@ class StoreSubmissionEditRequest(pydantic.BaseModel):
     description: str = ""
     categories: list[str] = []
     changes_summary: str | None = None
+    recommended_schedule_cron: str | None = None
 
 
 class ProfileDetails(pydantic.BaseModel):
