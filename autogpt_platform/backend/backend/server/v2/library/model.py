@@ -43,6 +43,7 @@ class LibraryAgent(pydantic.BaseModel):
 
     name: str
     description: str
+    instructions: str | None = None
 
     input_schema: dict[str, Any]  # Should be BlockIOObjectSubSchema in frontend
     output_schema: dict[str, Any]
@@ -123,6 +124,7 @@ class LibraryAgent(pydantic.BaseModel):
             updated_at=updated_at,
             name=graph.name,
             description=graph.description,
+            instructions=graph.instructions,
             input_schema=graph.input_schema,
             output_schema=graph.output_schema,
             credentials_input_schema=(
