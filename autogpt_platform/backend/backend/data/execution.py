@@ -1021,6 +1021,18 @@ class NodeExecutionEvent(NodeExecutionResult):
     )
 
 
+class SharedExecutionResponse(BaseModel):
+    """Public-safe response for shared executions"""
+
+    id: str
+    graph_name: str
+    graph_description: Optional[str]
+    status: ExecutionStatus
+    created_at: datetime
+    outputs: CompletedBlockOutput  # Only the final outputs, no intermediate data
+    # Deliberately exclude: user_id, inputs, credentials, node details
+
+
 ExecutionEvent = Annotated[
     GraphExecutionEvent | NodeExecutionEvent, Field(discriminator="event_type")
 ]
@@ -1198,3 +1210,72 @@ async def get_block_error_stats(
         )
         for row in result
     ]
+
+
+async def update_graph_execution_share_status(
+    execution_id: str,
+    user_id: str,
+    is_shared: bool,
+    share_token: str | None,
+    shared_at: datetime | None,
+) -> None:
+    """Update the sharing status of a graph execution."""
+    await AgentGraphExecution.prisma().update(
+        where={"id": execution_id},
+        data={
+            "isShared": is_shared,
+            "shareToken": share_token,
+            "sharedAt": shared_at,
+        },
+    )
+
+
+async def get_graph_execution_by_share_token(
+    share_token: str,
+) -> SharedExecutionResponse | None:
+    """Get a shared execution with limited public-safe data."""
+    execution = await AgentGraphExecution.prisma().find_first(
+        where={
+            "shareToken": share_token,
+            "isShared": True,
+            "isDeleted": False,
+        },
+        include={
+            "AgentGraph": True,
+            "NodeExecutions": {
+                "include": {
+                    "Output": True,
+                    "Node": {
+                        "include": {
+                            "AgentBlock": True,
+                        }
+                    },
+                },
+            },
+        },
+    )
+
+    if not execution:
+        return None
+
+    # Extract outputs from OUTPUT blocks only (consistent with GraphExecution.from_db)
+    outputs: CompletedBlockOutput = defaultdict(list)
+    for node_exec in execution.NodeExecutions:
+        if node_exec.Node and node_exec.Node.AgentBlock:
+            # Get the block definition to check its type
+            block = get_block(node_exec.Node.AgentBlock.id)
+            if block and block.block_type == BlockType.OUTPUT:
+                if node_exec.Output:
+                    for output in node_exec.Output:
+                        outputs[output.name].append(
+                            type_utils.convert(output.data, type[Any])
+                        )
+
+    return SharedExecutionResponse(
+        id=execution.id,
+        graph_name=execution.AgentGraph.name or "Untitled Agent",
+        graph_description=execution.AgentGraph.description,
+        status=ExecutionStatus(execution.executionStatus),
+        created_at=execution.createdAt,
+        outputs=outputs,
+    )

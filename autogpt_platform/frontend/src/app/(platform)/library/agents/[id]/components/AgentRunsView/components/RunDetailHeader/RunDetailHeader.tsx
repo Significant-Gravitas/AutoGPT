@@ -14,6 +14,7 @@ import { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
 import { useRunDetailHeader } from "./useRunDetailHeader";
 import { AgentActionsDropdown } from "../AgentActionsDropdown";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { ShareButton } from "@/components/ShareButton";
 
 type Props = {
   agent: LibraryAgent;
@@ -68,6 +69,7 @@ export function RunDetailHeader({
                 >
                   <PlayIcon size={16} /> Run again
                 </Button>
+                <ShareButton graphId={agent.graph_id} executionId={run.id} />
                 {!isRunning ? (
                   <Button
                     variant="secondary"

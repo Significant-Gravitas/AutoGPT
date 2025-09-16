@@ -32,6 +32,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         "/api/v1/store/categories",
         "/api/store/featured",
         "/api/v1/store/featured",
+        # Public shared execution pages
+        "/api/v1/public/shared",
         # Public graph templates (read-only, no user data)
         "/api/graphs/templates",
         "/api/v1/graphs/templates",
@@ -80,6 +82,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+        # Add noindex header for shared execution pages
+        if "/public/shared" in request.url.path:
+            response.headers["X-Robots-Tag"] = "noindex, nofollow"
 
         # Default: Disable caching for all endpoints
         # Only allow caching for explicitly permitted paths

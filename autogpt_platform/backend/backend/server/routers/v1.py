@@ -958,6 +958,96 @@ async def delete_graph_execution(
     )
 
 
+@v1_router.post(
+    "/graphs/{graph_id}/executions/{graph_exec_id}/share",
+    dependencies=[Security(requires_user)],
+)
+async def enable_execution_sharing(
+    request: Request,
+    graph_id: Annotated[str, Path],
+    graph_exec_id: Annotated[str, Path],
+    user_id: Annotated[str, Security(get_user_id)],
+) -> dict[str, str]:
+    """Enable sharing for a graph execution."""
+    import uuid
+    from datetime import datetime, timezone
+
+    # Debug logging
+    logger.info(f"Enable sharing request - Method: {request.method}")
+    logger.info(f"Enable sharing request - Headers: {dict(request.headers)}")
+    logger.info(
+        f"Enable sharing request - Content-Type: {request.headers.get('content-type')}"
+    )
+    logger.info(
+        f"Enable sharing request - Path params: graph_id={graph_id}, exec_id={graph_exec_id}"
+    )
+
+    # Verify the execution belongs to the user
+    execution = await execution_db.get_graph_execution(
+        user_id=user_id, execution_id=graph_exec_id
+    )
+    if not execution:
+        raise HTTPException(status_code=404, detail="Execution not found")
+
+    # Generate a unique share token
+    share_token = str(uuid.uuid4())
+
+    # Update the execution with share info
+    await execution_db.update_graph_execution_share_status(
+        execution_id=graph_exec_id,
+        user_id=user_id,
+        is_shared=True,
+        share_token=share_token,
+        shared_at=datetime.now(timezone.utc),
+    )
+
+    # Return the share URL
+    frontend_url = Settings().secrets.frontend_base_url or "http://localhost:3000"
+    share_url = f"{frontend_url}/share/{share_token}"
+
+    return {"share_url": share_url, "share_token": share_token}
+
+
+@v1_router.delete(
+    "/graphs/{graph_id}/executions/{graph_exec_id}/share",
+    status_code=HTTP_204_NO_CONTENT,
+    dependencies=[Security(requires_user)],
+)
+async def disable_execution_sharing(
+    graph_id: Annotated[str, Path],
+    graph_exec_id: Annotated[str, Path],
+    user_id: Annotated[str, Security(get_user_id)],
+) -> None:
+    """Disable sharing for a graph execution."""
+    # Verify the execution belongs to the user
+    execution = await execution_db.get_graph_execution(
+        user_id=user_id, execution_id=graph_exec_id
+    )
+    if not execution:
+        raise HTTPException(status_code=404, detail="Execution not found")
+
+    # Remove share info
+    await execution_db.update_graph_execution_share_status(
+        execution_id=graph_exec_id,
+        user_id=user_id,
+        is_shared=False,
+        share_token=None,
+        shared_at=None,
+    )
+
+
+@v1_router.get("/public/shared/{share_token}")
+async def get_shared_execution(
+    share_token: str,
+) -> execution_db.SharedExecutionResponse:
+    """Get a shared graph execution by share token (no auth required)."""
+    execution = await execution_db.get_graph_execution_by_share_token(share_token)
+    if not execution:
+        raise HTTPException(status_code=404, detail="Shared execution not found")
+
+    return execution
+
+
 ########################################################
 ##################### Schedules ########################
 ########################################################
