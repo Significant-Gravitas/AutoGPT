@@ -116,17 +116,17 @@ async def test_get_store_agent_details(mocker):
 
     # Mock StoreAgent prisma call - need to handle multiple calls
     mock_store_agent = mocker.patch("prisma.models.StoreAgent.prisma")
-    
+
     # Set up side_effect to return different results for different calls
     def mock_find_first_side_effect(*args, **kwargs):
-        where_clause = kwargs.get('where', {})
-        if 'storeListingVersionId' in where_clause:
+        where_clause = kwargs.get("where", {})
+        if "storeListingVersionId" in where_clause:
             # Second call for active version
             return mock_active_agent
         else:
             # First call for initial lookup
             return mock_agent
-    
+
     mock_store_agent.return_value.find_first = mocker.AsyncMock(
         side_effect=mock_find_first_side_effect
     )
@@ -152,16 +152,20 @@ async def test_get_store_agent_details(mocker):
     assert result.agent_name == "Test Agent Active"  # From active version
     assert result.active_version_id == "active-version-id"
     assert result.has_approved_version is True
-    assert result.store_listing_version_id == "active-version-id"  # Should be active version ID
+    assert (
+        result.store_listing_version_id == "active-version-id"
+    )  # Should be active version ID
 
     # Verify mocks called correctly - now expecting 2 calls
     assert mock_store_agent.return_value.find_first.call_count == 2
-    
+
     # Check the specific calls
     calls = mock_store_agent.return_value.find_first.call_args_list
-    assert calls[0] == mocker.call(where={"creator_username": "creator", "slug": "test-agent"})
+    assert calls[0] == mocker.call(
+        where={"creator_username": "creator", "slug": "test-agent"}
+    )
     assert calls[1] == mocker.call(where={"storeListingVersionId": "active-version-id"})
-    
+
     mock_store_listing_db.return_value.find_first.assert_called_once()
     # Mock data
     mock_agent = prisma.models.StoreAgent(
