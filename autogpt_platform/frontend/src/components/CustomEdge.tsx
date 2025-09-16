@@ -17,7 +17,7 @@ import {
 import "./customedge.css";
 import { X } from "lucide-react";
 import { useBezierPath } from "@/hooks/useBezierPath";
-import { FlowContext } from "./Flow";
+import { BuilderContext } from "./Flow";
 import { NodeExecutionResult } from "@/lib/autogpt-server-api";
 
 export type CustomEdgeData = {
@@ -60,7 +60,7 @@ export function CustomEdge({
     targetY - 5,
   );
   const { deleteElements } = useReactFlow<Node, CustomEdge>();
-  const { visualizeBeads } = useContext(FlowContext) ?? {
+  const { visualizeBeads } = useContext(BuilderContext) ?? {
     visualizeBeads: "no",
   };
 
