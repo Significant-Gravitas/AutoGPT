@@ -587,6 +587,33 @@ export function AgentRunDraftView({
               </div>
             )}
 
+            {/* Setup Instructions */}
+            {graph.instructions && (
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <div className="mb-2 flex items-center gap-2">
+                  <svg
+                    className="h-4 w-4 text-gray-600"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  <h3 className="text-sm font-medium text-gray-900">
+                    Setup Instructions
+                  </h3>
+                </div>
+                <p className="whitespace-pre-wrap text-sm text-gray-700">
+                  {graph.instructions}
+                </p>
+              </div>
+            )}
+
             {(agentPreset || graph.has_external_trigger) && (
               <>
                 {/* Preset name and description */}

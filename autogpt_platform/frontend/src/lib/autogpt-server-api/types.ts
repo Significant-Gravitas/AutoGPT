@@ -298,6 +298,7 @@ export type GraphMeta = {
   is_active: boolean;
   name: string;
   description: string;
+  instructions?: string | null;
   recommended_schedule_cron: string | null;
   forked_from_id?: GraphID | null;
   forked_from_version?: number | null;
