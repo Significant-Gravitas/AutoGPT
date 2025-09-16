@@ -21,7 +21,7 @@ export const extendedButtonVariants = cva(
       },
       size: {
         small: "px-3 py-2 text-sm gap-1.5 h-[2.25rem]",
-        large: "px-4 py-3 text-sm gap-2",
+        large: "px-4 py-3 text-sm gap-2 h-[3.25rem]",
         icon: "p-3 min-w-0",
       },
     },

@@ -228,5 +228,7 @@ export function RunAgentInputs({
       );
   }
 
-  return <div className="no-drag relative flex">{innerInputElement}</div>;
+  return (
+    <div className="no-drag relative flex w-full">{innerInputElement}</div>
+  );
 }

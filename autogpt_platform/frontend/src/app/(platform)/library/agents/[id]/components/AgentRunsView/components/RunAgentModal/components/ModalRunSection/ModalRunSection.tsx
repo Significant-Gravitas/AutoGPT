@@ -4,6 +4,9 @@ import SchemaTooltip from "@/components/SchemaTooltip";
 import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
 import { useRunAgentModalContext } from "../../context";
 import { RunAgentInputs } from "../../../RunAgentInputs/RunAgentInputs";
+import { Text } from "@/components/atoms/Text/Text";
+import { toDisplayName } from "@/components/integrations/helper";
+import { getCredentialTypeDisplayName } from "./helpers";
 
 export function ModalRunSection() {
   const {
@@ -22,7 +25,7 @@ export function ModalRunSection() {
   } = useRunAgentModalContext();
 
   return (
-    <div className="my-4">
+    <div className="mb-10 mt-4">
       {defaultRunType === "automatic-trigger" && <WebhookTriggerBanner />}
 
       {/* Preset/Trigger fields */}
@@ -82,7 +85,7 @@ export function ModalRunSection() {
 
       {/* Regular inputs */}
       {Object.entries(agentInputFields || {}).map(([key, inputSubSchema]) => (
-        <div key={key} className="flex flex-col gap-0 space-y-2">
+        <div key={key} className="flex w-full flex-col gap-0 space-y-2">
           <label className="flex items-center gap-1 text-sm font-medium">
             {inputSubSchema.title || key}
             <SchemaTooltip description={inputSubSchema.description} />
@@ -97,6 +100,56 @@ export function ModalRunSection() {
           />
         </div>
       ))}
+
+      {/* Selected Credentials Preview */}
+      {Object.keys(inputCredentials).length > 0 && (
+        <div className="mt-6 flex flex-col gap-6">
+          {Object.entries(agentCredentialsInputFields || {}).map(
+            ([key, _sub]) => {
+              const credential = inputCredentials[key];
+              if (!credential) return null;
+
+              return (
+                <div key={key} className="flex flex-col gap-4">
+                  <Text variant="body-medium" as="h3">
+                    {toDisplayName(credential.provider)} credentials
+                  </Text>
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between text-sm">
+                      <Text
+                        variant="body"
+                        as="span"
+                        className="!text-neutral-600"
+                      >
+                        Name
+                      </Text>
+                      <Text
+                        variant="body"
+                        as="span"
+                        className="!text-neutral-600"
+                      >
+                        {getCredentialTypeDisplayName(credential.type)}
+                      </Text>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <Text
+                        variant="body"
+                        as="span"
+                        className="!text-neutral-900"
+                      >
+                        {credential.title || "Untitled"}
+                      </Text>
+                      <span className="font-mono text-neutral-400">
+                        {"*".repeat(25)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            },
+          )}
+        </div>
+      )}
     </div>
   );
 }
