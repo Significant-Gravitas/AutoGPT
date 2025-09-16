@@ -67,16 +67,17 @@ export function AgentRunsView() {
         </div>
 
         {/* Setup Instructions */}
-        {agent.instructions && (
-          <div className="mb-6 rounded-lg border border-gray-200 bg-gray-50 p-4">
-            <h3 className="mb-2 text-sm font-semibold text-gray-900">
-              Setup Instructions
-            </h3>
-            <p className="whitespace-pre-wrap text-sm text-gray-700">
-              {agent.instructions}
-            </p>
+        <div className="mb-6 rounded-lg border border-gray-200 bg-gray-50 p-4">
+          <h3 className="mb-2 text-sm font-semibold text-gray-900">
+            Setup Instructions
+          </h3>
+          <p className="whitespace-pre-wrap text-sm text-gray-700">
+            {agent.instructions || "No instructions provided for this agent."}
+          </p>
+          <div className="mt-2 text-xs text-gray-500">
+            Debug: instructions = {JSON.stringify(agent.instructions)}
           </div>
-        )}
+        </div>
 
         <RunsSidebar
           agent={agent}
