@@ -3,9 +3,9 @@ import { ReactNode } from "react";
 
 export default function PlatformLayout({ children }: { children: ReactNode }) {
   return (
-    <>
+    <main className="flex h-screen w-screen flex-col">
       <Navbar />
-      <main>{children}</main>
-    </>
+      <section className="flex-1">{children}</section>
+    </main>
   );
 }
