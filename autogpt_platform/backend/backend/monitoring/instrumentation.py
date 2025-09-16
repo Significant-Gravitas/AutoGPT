@@ -86,12 +86,6 @@ GRAPH_OPERATIONS = Counter(
     labelnames=["operation", "status"],  # create, update, delete, execute, etc.
 )
 
-BLOCK_OPERATIONS = Counter(
-    "autogpt_block_operations_total",
-    "Block operations by type",
-    labelnames=["operation", "block_category", "status"],
-)
-
 USER_OPERATIONS = Counter(
     "autogpt_user_operations_total",
     "User operations by type",
@@ -263,13 +257,6 @@ def record_rate_limit_hit(endpoint: str, user_id: str):
 def record_graph_operation(operation: str, status: str):
     """Record a graph operation (create, update, delete, execute, etc.)."""
     GRAPH_OPERATIONS.labels(operation=operation, status=status).inc()
-
-
-def record_block_operation(operation: str, block_category: str, status: str):
-    """Record a block operation with category (llm, search, data, etc.)."""
-    BLOCK_OPERATIONS.labels(
-        operation=operation, block_category=block_category, status=status
-    ).inc()
 
 
 def record_user_operation(operation: str, status: str):
