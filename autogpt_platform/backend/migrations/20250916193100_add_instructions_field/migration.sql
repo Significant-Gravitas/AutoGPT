@@ -1,3 +1,7 @@
+-- Add instructions field to AgentGraph and StoreListingVersion tables and update StoreSubmission view
+
+BEGIN;
+
 -- AddColumn
 ALTER TABLE "AgentGraph" ADD COLUMN     "instructions" TEXT;
 
@@ -45,3 +49,5 @@ GROUP BY sl.id, sl."owningUserId", slv.id, slv."agentGraphId", slv.version, sl.s
          slv."subHeading", slv.description, slv.instructions, slv."imageUrls", slv."submittedAt",
          slv."submissionStatus", slv."reviewerId", slv."reviewComments", slv."internalComments",
          slv."reviewedAt", slv."changesSummary", slv."videoUrl", slv.categories, ar.run_count;
+
+COMMIT;
