@@ -48,7 +48,7 @@ export default function LibraryAgentCard({
     // Update the agent in all library agent queries
     queryClient.setQueriesData(
       { queryKey: ["/api/library/agents"] },
-      (oldData: any) => {
+      (oldData: InfiniteData<getV2ListLibraryAgentsResponse, number | undefined> | undefined) => {
         if (!oldData?.pages) return oldData;
 
         return {
