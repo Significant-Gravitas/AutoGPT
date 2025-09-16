@@ -1,7 +1,6 @@
 "use client";
 
 import { useGetV2ListFavoriteLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
-import { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgentResponse";
 
 export function useFavoriteAgents() {
   const {
