@@ -86,18 +86,6 @@ export const customMutator = async <
     }
   }
 
-  // Debug logging for share endpoints
-  if (fullUrl.includes("/share")) {
-    console.log("Share endpoint request:", {
-      url: fullUrl,
-      method,
-      headers,
-      body: data,
-      hasBody: !!data,
-      bodyType: data ? typeof data : "none",
-    });
-  }
-
   const response = await fetch(fullUrl, {
     ...requestOptions,
     method,

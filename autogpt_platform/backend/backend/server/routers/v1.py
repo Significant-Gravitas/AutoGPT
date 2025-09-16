@@ -963,7 +963,6 @@ async def delete_graph_execution(
     dependencies=[Security(requires_user)],
 )
 async def enable_execution_sharing(
-    request: Request,
     graph_id: Annotated[str, Path],
     graph_exec_id: Annotated[str, Path],
     user_id: Annotated[str, Security(get_user_id)],
@@ -971,16 +970,6 @@ async def enable_execution_sharing(
     """Enable sharing for a graph execution."""
     import uuid
     from datetime import datetime, timezone
-
-    # Debug logging
-    logger.info(f"Enable sharing request - Method: {request.method}")
-    logger.info(f"Enable sharing request - Headers: {dict(request.headers)}")
-    logger.info(
-        f"Enable sharing request - Content-Type: {request.headers.get('content-type')}"
-    )
-    logger.info(
-        f"Enable sharing request - Path params: graph_id={graph_id}, exec_id={graph_exec_id}"
-    )
 
     # Verify the execution belongs to the user
     execution = await execution_db.get_graph_execution(

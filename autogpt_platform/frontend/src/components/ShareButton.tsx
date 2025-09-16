@@ -46,11 +46,6 @@ export function ShareButton({
   const loading = isEnabling || isDisabling;
 
   const handleShare = () => {
-    console.log("Enabling sharing with params:", {
-      graphId,
-      graphExecId: executionId,
-    });
-
     enableSharing(
       {
         graphId,
@@ -58,7 +53,6 @@ export function ShareButton({
       },
       {
         onSuccess: (response) => {
-          console.log("Share response:", response);
           if (response.data) {
             if (response.status !== 200) {
               toast({
@@ -77,8 +71,7 @@ export function ShareButton({
             });
           }
         },
-        onError: (error) => {
-          console.error("Share error:", error);
+        onError: () => {
           toast({
             title: "Error",
             description: "Failed to enable sharing. Please try again.",
