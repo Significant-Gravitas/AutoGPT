@@ -114,7 +114,7 @@ export default function LibraryAgentCard({
                       },
                     },
                   },
-                  ...oldData.pages.slice(1).map((page: any) =>
+                  ...oldData.pages.slice(1).map((page) =>
                     page.status === 200
                       ? {
                           ...page,
