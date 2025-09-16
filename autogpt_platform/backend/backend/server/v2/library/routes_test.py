@@ -54,6 +54,7 @@ async def test_get_library_agents_success(
                 new_output=False,
                 can_access_graph=True,
                 is_latest_version=True,
+                is_favorite=False,
                 updated_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
             ),
             library_model.LibraryAgent(
@@ -74,6 +75,7 @@ async def test_get_library_agents_success(
                 new_output=False,
                 can_access_graph=False,
                 is_latest_version=True,
+                is_favorite=False,
                 updated_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
             ),
         ],
@@ -121,6 +123,76 @@ def test_get_library_agents_error(mocker: pytest_mock.MockFixture, test_user_id:
     )
 
 
+@pytest.mark.asyncio
+async def test_get_favorite_library_agents_success(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    mocked_value = library_model.LibraryAgentResponse(
+        agents=[
+            library_model.LibraryAgent(
+                id="test-agent-1",
+                graph_id="test-agent-1",
+                graph_version=1,
+                name="Favorite Agent 1",
+                description="Test Favorite Description 1",
+                image_url=None,
+                creator_name="Test Creator",
+                creator_image_url="",
+                input_schema={"type": "object", "properties": {}},
+                output_schema={"type": "object", "properties": {}},
+                credentials_input_schema={"type": "object", "properties": {}},
+                has_external_trigger=False,
+                status=library_model.LibraryAgentStatus.COMPLETED,
+                recommended_schedule_cron=None,
+                new_output=False,
+                can_access_graph=True,
+                is_latest_version=True,
+                is_favorite=True,
+                updated_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
+            ),
+        ],
+        pagination=Pagination(
+            total_items=1, total_pages=1, current_page=1, page_size=15
+        ),
+    )
+    mock_db_call = mocker.patch(
+        "backend.server.v2.library.db.list_favorite_library_agents"
+    )
+    mock_db_call.return_value = mocked_value
+
+    response = client.get("/agents/favorites")
+    assert response.status_code == 200
+
+    data = library_model.LibraryAgentResponse.model_validate(response.json())
+    assert len(data.agents) == 1
+    assert data.agents[0].is_favorite is True
+    assert data.agents[0].name == "Favorite Agent 1"
+
+    mock_db_call.assert_called_once_with(
+        user_id=test_user_id,
+        page=1,
+        page_size=15,
+    )
+
+
+def test_get_favorite_library_agents_error(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+):
+    mock_db_call = mocker.patch(
+        "backend.server.v2.library.db.list_favorite_library_agents"
+    )
+    mock_db_call.side_effect = Exception("Test error")
+
+    response = client.get("/agents/favorites")
+    assert response.status_code == 500
+    mock_db_call.assert_called_once_with(
+        user_id=test_user_id,
+        page=1,
+        page_size=15,
+    )
+
+
 def test_add_agent_to_library_success(
     mocker: pytest_mock.MockFixture, test_user_id: str
 ):
@@ -141,6 +213,7 @@ def test_add_agent_to_library_success(
         new_output=False,
         can_access_graph=True,
         is_latest_version=True,
+        is_favorite=False,
         updated_at=FIXED_NOW,
     )
 
