@@ -961,11 +961,13 @@ async def delete_graph_execution(
 
 class ShareRequest(pydantic.BaseModel):
     """Optional request body for share endpoint."""
+
     pass  # Empty body is fine
 
 
 class ShareResponse(pydantic.BaseModel):
     """Response from share endpoints."""
+
     share_url: str
     share_token: str
 
@@ -1037,7 +1039,10 @@ async def disable_execution_sharing(
 
 @v1_router.get("/public/shared/{share_token}")
 async def get_shared_execution(
-    share_token: Annotated[str, Path(regex=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")],
+    share_token: Annotated[
+        str,
+        Path(regex=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+    ],
 ) -> execution_db.SharedExecutionResponse:
     """Get a shared graph execution by share token (no auth required)."""
     execution = await execution_db.get_graph_execution_by_share_token(share_token)
