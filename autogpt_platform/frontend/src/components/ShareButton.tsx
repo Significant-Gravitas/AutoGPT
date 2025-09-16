@@ -12,7 +12,12 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ShareFat, Copy, Check, Warning } from "@phosphor-icons/react";
+import {
+  ShareFatIcon,
+  CopyIcon,
+  CheckIcon,
+  WarningIcon,
+} from "@phosphor-icons/react";
 import { useToast } from "./molecules/Toast/use-toast";
 import {
   usePostV1EnableExecutionSharing,
@@ -118,7 +123,7 @@ export function ShareButton({
         title: "Copied!",
         description: "Share link copied to clipboard.",
       });
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "Failed to copy link. Please try again.",
@@ -131,7 +136,7 @@ export function ShareButton({
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         <Button variant="secondary" size="small">
-          <ShareFat size={16} />
+          <ShareFatIcon size={16} />
           Share
         </Button>
       </DialogTrigger>
@@ -149,7 +154,7 @@ export function ShareButton({
           {!isShared ? (
             <>
               <Alert>
-                <Warning className="h-4 w-4" />
+                <WarningIcon className="h-4 w-4" />
                 <AlertDescription>
                   When you enable sharing, the output of this agent run will be
                   publicly accessible to anyone with the link. The page will
@@ -174,11 +179,11 @@ export function ShareButton({
                   className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-input bg-background text-sm font-medium ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
                   type="button"
                 >
-                  {copied ? <Check size={16} /> : <Copy size={16} />}
+                  {copied ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
                 </button>
               </div>
               <Alert>
-                <Warning className="h-4 w-4" />
+                <WarningIcon className="h-4 w-4" />
                 <AlertDescription>
                   This link is publicly accessible. Only share it with people
                   you trust. The shared page includes noindex directives to
