@@ -5,8 +5,13 @@ import Image from "next/image";
 import { Heart } from "@phosphor-icons/react";
 import { useState, useEffect } from "react";
 import { getQueryClient } from "@/lib/react-query/queryClient";
+import { InfiniteData } from "@tanstack/react-query";
 
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import {
+  getV2ListLibraryAgentsResponse,
+  getV2ListFavoriteLibraryAgentsResponse,
+} from "@/app/api/__generated__/endpoints/library/library";
 import BackendAPI, { LibraryAgentID } from "@/lib/autogpt-server-api";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/molecules/Toast/use-toast";
