@@ -4649,6 +4649,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
@@ -4689,6 +4693,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
@@ -5228,6 +5236,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
@@ -5574,6 +5586,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
@@ -5648,6 +5664,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
@@ -5842,6 +5862,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "input_schema": {
             "additionalProperties": true,
             "type": "object",
@@ -7257,6 +7281,10 @@
           "creator_avatar": { "type": "string", "title": "Creator Avatar" },
           "sub_heading": { "type": "string", "title": "Sub Heading" },
           "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "categories": {
             "items": { "type": "string" },
             "type": "array",
@@ -7409,6 +7437,10 @@
           "sub_heading": { "type": "string", "title": "Sub Heading" },
           "slug": { "type": "string", "title": "Slug" },
           "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "image_urls": {
             "items": { "type": "string" },
             "type": "array",
@@ -7499,6 +7531,10 @@
             "title": "Description",
             "default": ""
           },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "categories": {
             "items": { "type": "string" },
             "type": "array",
@@ -7539,6 +7575,10 @@
             "type": "string",
             "title": "Description",
             "default": ""
+          },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
           },
           "categories": {
             "items": { "type": "string" },

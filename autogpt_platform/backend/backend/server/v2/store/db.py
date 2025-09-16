@@ -726,6 +726,7 @@ async def edit_store_submission(
     categories: list[str] = [],
     changes_summary: str | None = "Update submission",
     recommended_schedule_cron: str | None = None,
+    instructions: str | None = None,
 ) -> backend.server.v2.store.model.StoreSubmission:
     """
     Edit an existing store listing submission.
@@ -806,6 +807,7 @@ async def edit_store_submission(
                 categories=categories,
                 changes_summary=changes_summary,
                 recommended_schedule_cron=recommended_schedule_cron,
+                instructions=instructions,
             )
 
         # For PENDING submissions, we can update the existing version
@@ -822,6 +824,7 @@ async def edit_store_submission(
                     subHeading=sub_heading,
                     changesSummary=changes_summary,
                     recommendedScheduleCron=recommended_schedule_cron,
+                    instructions=instructions,
                 ),
             )
 

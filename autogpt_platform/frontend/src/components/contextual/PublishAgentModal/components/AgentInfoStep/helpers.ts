@@ -44,7 +44,10 @@ export const publishAgentSchema = z.object({
   instructions: z
     .string()
     .optional()
-    .refine((val) => !val || val.length <= 2000, "Instructions must be less than 2000 characters"),
+    .refine(
+      (val) => !val || val.length <= 2000,
+      "Instructions must be less than 2000 characters",
+    ),
 });
 
 export type PublishAgentFormData = z.infer<typeof publishAgentSchema>;
