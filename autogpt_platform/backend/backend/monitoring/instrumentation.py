@@ -211,7 +211,13 @@ def instrument_fastapi(
 
 
 def record_graph_execution(graph_id: str, status: str, user_id: str):
-    """Record a graph execution event."""
+    """Record a graph execution event.
+
+    Args:
+        graph_id: Graph identifier (kept for future sampling/debugging)
+        status: Execution status (success/error/validation_error)
+        user_id: User identifier (kept for future sampling/debugging)
+    """
     # Track overall executions without high-cardinality labels
     GRAPH_EXECUTIONS.labels(status=status).inc()
 
@@ -227,7 +233,12 @@ def record_block_execution(block_type: str, status: str, duration: float):
 
 
 def update_websocket_connections(user_id: str, delta: int):
-    """Update the number of active WebSocket connections."""
+    """Update the number of active WebSocket connections.
+
+    Args:
+        user_id: User identifier (kept for future sampling/debugging)
+        delta: Change in connection count (+1 for connect, -1 for disconnect)
+    """
     # Track total connections without user_id to prevent cardinality explosion
     if delta > 0:
         WEBSOCKET_CONNECTIONS.inc(delta)
@@ -256,7 +267,12 @@ def record_api_key_usage(provider: str, block_type: str, status: str):
 
 
 def record_rate_limit_hit(endpoint: str, user_id: str):
-    """Record a rate limit hit."""
+    """Record a rate limit hit.
+
+    Args:
+        endpoint: API endpoint that was rate limited
+        user_id: User identifier (kept for future sampling/debugging)
+    """
     RATE_LIMIT_HITS.labels(endpoint=endpoint).inc()
 
 
