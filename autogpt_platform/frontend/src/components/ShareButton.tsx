@@ -50,6 +50,7 @@ export function ShareButton({
       {
         graphId,
         graphExecId: executionId,
+        data: {}, // Empty ShareRequest
       },
       {
         onSuccess: (response) => {

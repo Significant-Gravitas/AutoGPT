@@ -17,10 +17,9 @@ export default function SharePage() {
     isLoading: loading,
     error,
   } = useGetV1GetSharedExecution(token);
-  const executionData = response?.data;
 
-  // Check for 404 or other error states
-  const is404 = response?.status === 404 || error?.message?.includes("404");
+  const executionData = response?.status === 200 ? response.data : undefined;
+  const is404 = !loading && !executionData;
 
   if (loading) {
     return (
