@@ -32,8 +32,6 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         "/api/v1/store/categories",
         "/api/store/featured",
         "/api/v1/store/featured",
-        # Public shared execution pages
-        "/api/v1/public/shared",
         # Public graph templates (read-only, no user data)
         "/api/graphs/templates",
         "/api/v1/graphs/templates",
