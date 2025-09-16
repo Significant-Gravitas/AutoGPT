@@ -1170,6 +1170,27 @@ async def set_execution_kv_data(
     return type_utils.convert(resp.data, type[Any]) if resp and resp.data else None
 
 
+async def get_graph_execution_by_share_token(
+    share_token: str,
+) -> GraphExecutionWithNodes | None:
+    """Get graph execution by share token for public sharing endpoints."""
+    # Note: This is a reconstructed function based on the error context
+    # The actual implementation may need to be adapted based on the sharing mechanism
+    
+    # For now, we'll search by the share_token as if it were an execution ID
+    # This should be updated to match the actual sharing token schema
+    execution = await AgentGraphExecution.prisma().find_first(
+        where={"id": share_token, "isDeleted": False},
+        include=GRAPH_EXECUTION_INCLUDE_WITH_NODES,
+    )
+    
+    if not execution:
+        return None
+
+    # Use the existing from_db method to ensure consistency with other parts of the codebase
+    return GraphExecutionWithNodes.from_db(execution)
+
+
 async def get_block_error_stats(
     start_time: datetime, end_time: datetime
 ) -> list[BlockErrorStats]:

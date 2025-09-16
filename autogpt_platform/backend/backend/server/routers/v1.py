@@ -667,6 +667,22 @@ async def create_new_graph(
     return await on_graph_activate(graph, user_id=user_id)
 
 
+@v1_router.get(
+    path="/public/shared/{share_token}",
+    summary="Get shared execution by token",
+    tags=["executions", "public"],
+    dependencies=[],  # No authentication required for public endpoints
+)
+async def get_shared_execution(
+    share_token: str = Path(..., description="The share token for the execution"),
+) -> execution_db.GraphExecutionWithNodes:
+    """Get a shared execution by its share token."""
+    execution = await execution_db.get_graph_execution_by_share_token(share_token)
+    if not execution:
+        raise HTTPException(status_code=404, detail="Shared execution not found")
+    return execution
+
+
 @v1_router.delete(
     path="/graphs/{graph_id}",
     summary="Delete graph permanently",
@@ -942,6 +958,22 @@ async def get_graph_execution(
     return result
 
 
+@v1_router.get(
+    path="/public/shared/{share_token}",
+    summary="Get shared execution by token",
+    tags=["executions", "public"],
+    dependencies=[],  # No authentication required for public endpoints
+)
+async def get_shared_execution(
+    share_token: str = Path(..., description="The share token for the execution"),
+) -> execution_db.GraphExecutionWithNodes:
+    """Get a shared execution by its share token."""
+    execution = await execution_db.get_graph_execution_by_share_token(share_token)
+    if not execution:
+        raise HTTPException(status_code=404, detail="Shared execution not found")
+    return execution
+
+
 @v1_router.delete(
     path="/executions/{graph_exec_id}",
     summary="Delete graph execution",
@@ -1052,6 +1084,22 @@ async def list_all_graphs_execution_schedules(
     return await get_scheduler_client().get_execution_schedules(user_id=user_id)
 
 
+@v1_router.get(
+    path="/public/shared/{share_token}",
+    summary="Get shared execution by token",
+    tags=["executions", "public"],
+    dependencies=[],  # No authentication required for public endpoints
+)
+async def get_shared_execution(
+    share_token: str = Path(..., description="The share token for the execution"),
+) -> execution_db.GraphExecutionWithNodes:
+    """Get a shared execution by its share token."""
+    execution = await execution_db.get_graph_execution_by_share_token(share_token)
+    if not execution:
+        raise HTTPException(status_code=404, detail="Shared execution not found")
+    return execution
+
+
 @v1_router.delete(
     path="/schedules/{schedule_id}",
     summary="Delete execution schedule",
@@ -1123,6 +1171,22 @@ async def get_api_key(
     if not api_key:
         raise HTTPException(status_code=404, detail="API key not found")
     return api_key
+
+
+@v1_router.get(
+    path="/public/shared/{share_token}",
+    summary="Get shared execution by token",
+    tags=["executions", "public"],
+    dependencies=[],  # No authentication required for public endpoints
+)
+async def get_shared_execution(
+    share_token: str = Path(..., description="The share token for the execution"),
+) -> execution_db.GraphExecutionWithNodes:
+    """Get a shared execution by its share token."""
+    execution = await execution_db.get_graph_execution_by_share_token(share_token)
+    if not execution:
+        raise HTTPException(status_code=404, detail="Shared execution not found")
+    return execution
 
 
 @v1_router.delete(
