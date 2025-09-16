@@ -1268,21 +1268,28 @@ async def get_graph_execution_by_share_token(
 
     # Extract outputs from OUTPUT blocks only (consistent with GraphExecution.from_db)
     outputs: CompletedBlockOutput = defaultdict(list)
-    for node_exec in execution.NodeExecutions:
-        if node_exec.Node and node_exec.Node.AgentBlock:
-            # Get the block definition to check its type
-            block = get_block(node_exec.Node.AgentBlock.id)
-            if block and block.block_type == BlockType.OUTPUT:
-                if node_exec.Output:
-                    for output in node_exec.Output:
-                        outputs[output.name].append(
-                            type_utils.convert(output.data, type[Any])
-                        )
+    if execution.NodeExecutions:
+        for node_exec in execution.NodeExecutions:
+            if node_exec.Node and node_exec.Node.AgentBlock:
+                # Get the block definition to check its type
+                block = get_block(node_exec.Node.AgentBlock.id)
+                if block and block.block_type == BlockType.OUTPUT:
+                    if node_exec.Output:
+                        for output in node_exec.Output:
+                            outputs[output.name].append(
+                                type_utils.convert(output.data, type[Any])
+                            )
 
     return SharedExecutionResponse(
         id=execution.id,
-        graph_name=execution.AgentGraph.name or "Untitled Agent",
-        graph_description=execution.AgentGraph.description,
+        graph_name=(
+            execution.AgentGraph.name
+            if (execution.AgentGraph and execution.AgentGraph.name)
+            else "Untitled Agent"
+        ),
+        graph_description=(
+            execution.AgentGraph.description if execution.AgentGraph else None
+        ),
         status=ExecutionStatus(execution.executionStatus),
         created_at=execution.createdAt,
         outputs=outputs,

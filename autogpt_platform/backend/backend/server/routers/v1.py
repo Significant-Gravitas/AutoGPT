@@ -1003,7 +1003,7 @@ async def enable_execution_sharing(
     )
 
     # Return the share URL
-    frontend_url = Settings().secrets.frontend_base_url or "http://localhost:3000"
+    frontend_url = Settings().config.frontend_base_url or "http://localhost:3000"
     share_url = f"{frontend_url}/share/{share_token}"
 
     return ShareResponse(share_url=share_url, share_token=share_token)
