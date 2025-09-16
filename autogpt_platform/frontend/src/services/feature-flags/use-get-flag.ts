@@ -11,6 +11,7 @@ export enum Flag {
   GRAPH_SEARCH = "graph-search",
   ENABLE_ENHANCED_OUTPUT_HANDLING = "enable-enhanced-output-handling",
   SHARE_EXECUTION_RESULTS = "share-execution-results",
+  AGENT_FAVORITING = "agent-favoriting",
 }
 
 export type FlagValues = {
@@ -21,6 +22,7 @@ export type FlagValues = {
   [Flag.GRAPH_SEARCH]: boolean;
   [Flag.ENABLE_ENHANCED_OUTPUT_HANDLING]: boolean;
   [Flag.SHARE_EXECUTION_RESULTS]: boolean;
+  [Flag.AGENT_FAVORITING]: boolean;
 };
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -33,6 +35,7 @@ const mockFlags = {
   [Flag.GRAPH_SEARCH]: true,
   [Flag.ENABLE_ENHANCED_OUTPUT_HANDLING]: false,
   [Flag.SHARE_EXECUTION_RESULTS]: false,
+  [Flag.AGENT_FAVORITING]: false,
 };
 
 export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] | null {

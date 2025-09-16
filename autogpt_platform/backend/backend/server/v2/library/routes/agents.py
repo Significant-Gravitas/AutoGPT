@@ -79,6 +79,54 @@ async def list_library_agents(
         ) from e
 
 
+@router.get(
+    "/favorites",
+    summary="List Favorite Library Agents",
+    responses={
+        500: {"description": "Server error", "content": {"application/json": {}}},
+    },
+)
+async def list_favorite_library_agents(
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+    page: int = Query(
+        1,
+        ge=1,
+        description="Page number to retrieve (must be >= 1)",
+    ),
+    page_size: int = Query(
+        15,
+        ge=1,
+        description="Number of agents per page (must be >= 1)",
+    ),
+) -> library_model.LibraryAgentResponse:
+    """
+    Get all favorite agents in the user's library.
+
+    Args:
+        user_id: ID of the authenticated user.
+        page: Page number to retrieve.
+        page_size: Number of agents per page.
+
+    Returns:
+        A LibraryAgentResponse containing favorite agents and pagination metadata.
+
+    Raises:
+        HTTPException: If a server/database error occurs.
+    """
+    try:
+        return await library_db.list_favorite_library_agents(
+            user_id=user_id,
+            page=page,
+            page_size=page_size,
+        )
+    except Exception as e:
+        logger.error(f"Could not list favorite library agents for user #{user_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        ) from e
+
+
 @router.get("/{library_agent_id}", summary="Get Library Agent")
 async def get_library_agent(
     library_agent_id: str,
