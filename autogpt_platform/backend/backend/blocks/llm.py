@@ -910,7 +910,8 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
 
         if input_data.expected_format:
             expected_format = [
-                f"{repr(k)}: {repr(v)}" for k, v in input_data.expected_format.items()
+                f"{json.dumps(k)}: {json.dumps(v)}"
+                for k, v in input_data.expected_format.items()
             ]
             if input_data.list_result:
                 format_prompt = (
