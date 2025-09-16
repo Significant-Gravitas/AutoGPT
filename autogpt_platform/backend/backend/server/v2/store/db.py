@@ -1391,6 +1391,7 @@ async def review_store_submission(
                         "name": store_listing_version.name,
                         "description": store_listing_version.description,
                         "recommendedScheduleCron": store_listing_version.recommendedScheduleCron,
+                        "instructions": store_listing_version.instructions,
                     },
                 )
 
