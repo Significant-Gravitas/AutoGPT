@@ -81,7 +81,7 @@ export default function LibraryAgentCard({
         if (newIsFavorite) {
           // Add to favorites if not already there
           const exists = oldData.pages.some(
-            (page: any) =>
+            (page) =>
               page.status === 200 &&
               page.data.agents.some((agent: LibraryAgent) => agent.id === id),
           );
