@@ -146,16 +146,23 @@ class TestAutoRegistry:
         """Test API key environment variable registration."""
         import os
 
+        from backend.sdk.builder import ProviderBuilder
+
         # Set up a test environment variable
         os.environ["TEST_API_KEY"] = "test-api-key-value"
 
         try:
-            AutoRegistry.register_api_key("test_provider", "TEST_API_KEY")
+            # Use ProviderBuilder which calls register_api_key and creates the credential
+            provider = (
+                ProviderBuilder("test_provider")
+                .with_api_key("TEST_API_KEY", "Test API Key")
+                .build()
+            )
 
             # Verify the mapping is stored
             assert AutoRegistry._api_key_mappings["test_provider"] == "TEST_API_KEY"
 
-            # Verify a credential was created
+            # Verify a credential was created through the provider
             all_creds = AutoRegistry.get_all_credentials()
             test_cred = next(
                 (c for c in all_creds if c.id == "test_provider-default"), None
