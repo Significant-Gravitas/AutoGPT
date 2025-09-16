@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 
-export function useScheduleDetails(graphId: string, scheduleId: string) {
+export function useSelectedScheduleView(graphId: string, scheduleId: string) {
   const query = useGetV1ListExecutionSchedulesForAGraph(graphId, {
     query: {
       enabled: !!graphId,

@@ -51,9 +51,9 @@ export function TimeAt({
   }
 
   return (
-    <div className="flex items-end gap-2">
+    <div className="flex items-end gap-1">
       <div className="relative">
-        <label className="mb-1 block text-xs font-medium text-zinc-700">
+        <label className="mb-0 block text-sm font-medium text-zinc-700">
           At
         </label>
         <div className="flex items-center gap-2">

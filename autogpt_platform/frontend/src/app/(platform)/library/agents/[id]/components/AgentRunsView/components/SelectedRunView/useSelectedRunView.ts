@@ -4,7 +4,7 @@ import { useGetV1GetExecutionDetails } from "@/app/api/__generated__/endpoints/g
 import type { GetV1GetExecutionDetails200 } from "@/app/api/__generated__/models/getV1GetExecutionDetails200";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 
-export function useRunDetails(graphId: string, runId: string) {
+export function useSelectedRunView(graphId: string, runId: string) {
   const query = useGetV1GetExecutionDetails(graphId, runId, {
     query: {
       refetchInterval: (q) => {

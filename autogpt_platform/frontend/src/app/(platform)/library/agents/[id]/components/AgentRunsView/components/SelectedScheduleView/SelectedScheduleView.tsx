@@ -10,7 +10,7 @@ import {
   TabsLineList,
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
-import { useScheduleDetails } from "./useScheduleDetails";
+import { useSelectedScheduleView } from "./useSelectedScheduleView";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
 import { RunDetailHeader } from "../RunDetailHeader/RunDetailHeader";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
@@ -20,18 +20,18 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AgentInputsReadOnly } from "../AgentInputsReadOnly/AgentInputsReadOnly";
 import { ScheduleActions } from "./components/ScheduleActions";
 
-interface ScheduleDetailsProps {
+interface Props {
   agent: LibraryAgent;
   scheduleId: string;
   onClearSelectedRun?: () => void;
 }
 
-export function ScheduleDetails({
+export function SelectedScheduleView({
   agent,
   scheduleId,
   onClearSelectedRun,
-}: ScheduleDetailsProps) {
-  const { schedule, isLoading, error } = useScheduleDetails(
+}: Props) {
+  const { schedule, isLoading, error } = useSelectedScheduleView(
     agent.graph_id,
     scheduleId,
   );
@@ -119,6 +119,7 @@ export function ScheduleDetails({
               <AgentInputsReadOnly
                 agent={agent}
                 inputs={schedule?.input_data}
+                credentialInputs={schedule?.input_credentials}
               />
             </div>
           </RunDetailCard>
