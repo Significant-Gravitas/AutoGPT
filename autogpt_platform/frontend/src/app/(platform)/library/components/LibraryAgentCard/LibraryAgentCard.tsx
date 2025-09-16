@@ -75,7 +75,7 @@ export default function LibraryAgentCard({
     // Update or remove from favorites query based on new state
     queryClient.setQueriesData(
       { queryKey: ["/api/library/agents/favorites"] },
-      (oldData: any) => {
+      (oldData: InfiniteData<getV2ListFavoriteLibraryAgentsResponse, number | undefined> | undefined) => {
         if (!oldData?.pages) return oldData;
 
         if (newIsFavorite) {
