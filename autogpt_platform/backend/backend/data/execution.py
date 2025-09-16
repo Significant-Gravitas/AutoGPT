@@ -1266,15 +1266,34 @@ async def get_graph_execution_by_share_token(
     outputs: CompletedBlockOutput = defaultdict(list)
     if execution.NodeExecutions:
         for node_exec in execution.NodeExecutions:
-            if node_exec.Node and node_exec.Node.AgentBlock:
+            if node_exec.Node and node_exec.Node.agentBlockId:
                 # Get the block definition to check its type
-                block = get_block(node_exec.Node.AgentBlock.id)
+                block = get_block(node_exec.Node.agentBlockId)
+
                 if block and block.block_type == BlockType.OUTPUT:
-                    if node_exec.Output:
-                        for output in node_exec.Output:
-                            outputs[output.name].append(
-                                type_utils.convert(output.data, type[Any])
-                            )
+                    # For OUTPUT blocks, the data is stored in executionData or Input
+                    # The executionData contains the structured input with 'name' and 'value' fields
+                    if hasattr(node_exec, "executionData") and node_exec.executionData:
+                        exec_data = type_utils.convert(
+                            node_exec.executionData, dict[str, Any]
+                        )
+                        if "name" in exec_data:
+                            name = exec_data["name"]
+                            value = exec_data.get("value")
+                            outputs[name].append(value)
+                    elif node_exec.Input:
+                        # Build input_data from Input relation
+                        input_data = {}
+                        for data in node_exec.Input:
+                            if data.name and data.data is not None:
+                                input_data[data.name] = type_utils.convert(
+                                    data.data, JsonValue
+                                )
+
+                        if "name" in input_data:
+                            name = input_data["name"]
+                            value = input_data.get("value")
+                            outputs[name].append(value)
 
     return SharedExecutionResponse(
         id=execution.id,
