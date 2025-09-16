@@ -70,21 +70,19 @@ export function ShareButton({
       },
       {
         onSuccess: (response) => {
-          if (response.data) {
-            if (response.status !== 200) {
-              toast({
-                title: "Error",
-                description: "Failed to enable sharing. Please try again.",
-                variant: "destructive",
-              });
-              return;
-            }
+          if (response.status === 200) {
             setShareToken(response.data.share_token);
             setIsShared(true);
             toast({
               title: "Sharing enabled",
               description:
                 "Your agent run is now publicly accessible via the share link.",
+            });
+          } else {
+            toast({
+              title: "Error",
+              description: "Failed to enable sharing. Please try again.",
+              variant: "destructive",
             });
           }
         },

@@ -248,12 +248,8 @@ class GraphExecutionMeta(BaseDbModel):
                 if stats
                 else None
             ),
-            is_shared=(
-                _graph_exec.isShared if hasattr(_graph_exec, "isShared") else False
-            ),
-            share_token=(
-                _graph_exec.shareToken if hasattr(_graph_exec, "shareToken") else None
-            ),
+            is_shared=_graph_exec.isShared,
+            share_token=_graph_exec.shareToken,
         )
 
 
