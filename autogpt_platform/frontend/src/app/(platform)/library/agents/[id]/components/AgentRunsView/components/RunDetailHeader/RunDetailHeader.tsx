@@ -15,6 +15,7 @@ import { useRunDetailHeader } from "./useRunDetailHeader";
 import { AgentActionsDropdown } from "../AgentActionsDropdown";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { ShareButton } from "@/components/ShareButton";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 type Props = {
   agent: LibraryAgent;
@@ -31,6 +32,8 @@ export function RunDetailHeader({
   onSelectRun,
   onClearSelectedRun,
 }: Props) {
+  const shareExecutionResultsEnabled = useGetFlag(Flag.SHARE_EXECUTION_RESULTS);
+
   const {
     canStop,
     isStopping,
@@ -69,12 +72,14 @@ export function RunDetailHeader({
                 >
                   <PlayIcon size={16} /> Run again
                 </Button>
-                <ShareButton
-                  graphId={agent.graph_id}
-                  executionId={run.id}
-                  isShared={run.is_shared}
-                  shareToken={run.share_token}
-                />
+                {shareExecutionResultsEnabled && (
+                  <ShareButton
+                    graphId={agent.graph_id}
+                    executionId={run.id}
+                    isShared={run.is_shared}
+                    shareToken={run.share_token}
+                  />
+                )}
                 {!isRunning ? (
                   <Button
                     variant="secondary"
