@@ -73,9 +73,8 @@ export function ModalScheduleSection({
           }
         />
       </div>
-      <div className="mt-2 w-fit">
-        <TimezoneNotice />
-      </div>
+
+      <TimezoneNotice />
     </div>
   );
 }

@@ -7,7 +7,7 @@ import {
   TabsLineList,
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
-import { useRunDetails } from "./useRunDetails";
+import { useSelectedRunView } from "./useSelectedRunView";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { RunDetailHeader } from "../RunDetailHeader/RunDetailHeader";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
@@ -16,20 +16,20 @@ import { AgentInputsReadOnly } from "../AgentInputsReadOnly/AgentInputsReadOnly"
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
 import { RunOutputs } from "./components/RunOutputs";
 
-interface RunDetailsProps {
+interface Props {
   agent: LibraryAgent;
   runId: string;
   onSelectRun?: (id: string) => void;
   onClearSelectedRun?: () => void;
 }
 
-export function RunDetails({
+export function SelectedRunView({
   agent,
   runId,
   onSelectRun,
   onClearSelectedRun,
-}: RunDetailsProps) {
-  const { run, isLoading, responseError, httpError } = useRunDetails(
+}: Props) {
+  const { run, isLoading, responseError, httpError } = useSelectedRunView(
     agent.graph_id,
     runId,
   );
@@ -85,7 +85,11 @@ export function RunDetails({
 
         <TabsLineContent value="input">
           <RunDetailCard>
-            <AgentInputsReadOnly agent={agent} inputs={(run as any)?.inputs} />
+            <AgentInputsReadOnly
+              agent={agent}
+              inputs={(run as any)?.inputs}
+              credentialInputs={(run as any)?.credential_inputs}
+            />
           </RunDetailCard>
         </TabsLineContent>
       </TabsLine>
