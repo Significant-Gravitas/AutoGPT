@@ -11,6 +11,7 @@
       "updated_at": "2023-01-01T00:00:00",
       "name": "Test Agent 1",
       "description": "Test Description 1",
+      "instructions": null,
       "input_schema": {
         "type": "object",
         "properties": {}
@@ -41,6 +42,7 @@
       "updated_at": "2023-01-01T00:00:00",
       "name": "Test Agent 2",
       "description": "Test Description 2",
+      "instructions": null,
       "input_schema": {
         "type": "object",
         "properties": {}
