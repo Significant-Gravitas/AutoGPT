@@ -53,7 +53,11 @@ export default function LibraryAgentCard({
     // Update the agent in all library agent queries
     queryClient.setQueriesData(
       { queryKey: ["/api/library/agents"] },
-      (oldData: InfiniteData<getV2ListLibraryAgentsResponse, number | undefined> | undefined) => {
+      (
+        oldData:
+          | InfiniteData<getV2ListLibraryAgentsResponse, number | undefined>
+          | undefined,
+      ) => {
         if (!oldData?.pages) return oldData;
 
         return {
@@ -80,7 +84,14 @@ export default function LibraryAgentCard({
     // Update or remove from favorites query based on new state
     queryClient.setQueriesData(
       { queryKey: ["/api/library/agents/favorites"] },
-      (oldData: InfiniteData<getV2ListFavoriteLibraryAgentsResponse, number | undefined> | undefined) => {
+      (
+        oldData:
+          | InfiniteData<
+              getV2ListFavoriteLibraryAgentsResponse,
+              number | undefined
+            >
+          | undefined,
+      ) => {
         if (!oldData?.pages) return oldData;
 
         if (newIsFavorite) {
