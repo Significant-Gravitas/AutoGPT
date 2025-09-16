@@ -18,7 +18,10 @@ export function useFavoriteAgents() {
     {
       query: {
         getNextPageParam: (lastPage) => {
-          const pagination = (lastPage.data as LibraryAgentResponse).pagination;
+          // Only paginate on successful responses
+          if (!lastPage || lastPage.status !== 200) return undefined;
+
+          const pagination = lastPage.data.pagination;
           const isMore =
             pagination.current_page * pagination.page_size <
             pagination.total_items;
@@ -31,13 +34,18 @@ export function useFavoriteAgents() {
 
   const allAgents =
     agents?.pages?.flatMap((page) => {
-      const response = page.data as LibraryAgentResponse;
-      return response.agents;
+      // Only process successful responses
+      if (!page || page.status !== 200) return [];
+      const response = page.data;
+      return response?.agents || [];
     }) ?? [];
 
-  const agentCount = agents?.pages?.[0]
-    ? (agents.pages[0].data as LibraryAgentResponse).pagination.total_items
-    : 0;
+  const agentCount = (() => {
+    const firstPage = agents?.pages?.[0];
+    // Only count from successful responses
+    if (!firstPage || firstPage.status !== 200) return 0;
+    return firstPage.data?.pagination?.total_items || 0;
+  })();
 
   return {
     allAgents,

@@ -37,7 +37,7 @@ export default function LibraryAgentCard({
   const [isUpdating, setIsUpdating] = useState(false);
   const { toast } = useToast();
   const api = new BackendAPI();
-  const queryClient = useQueryClient();
+  const queryClient = getQueryClient();
 
   // Sync local state with prop when it changes (e.g., after query invalidation)
   useEffect(() => {

@@ -6,12 +6,19 @@ import LibraryAgentCard from "../LibraryAgentCard/LibraryAgentCard";
 import { useGetFlag, Flag } from "@/services/feature-flags/use-get-flag";
 import { Heart } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
+import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 
 export default function FavoritesSection() {
   const isAgentFavoritingEnabled = useGetFlag(Flag.AGENT_FAVORITING);
-  const { allAgents: favoriteAgents, agentLoading: isLoading } =
-    useFavoriteAgents();
+  const {
+    allAgents: favoriteAgents,
+    agentLoading: isLoading,
+    agentCount,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+  } = useFavoriteAgents();
 
   // Only show this section if the feature flag is enabled
   if (!isAgentFavoritingEnabled) {
@@ -32,8 +39,7 @@ export default function FavoritesSection() {
         </span>
         {!isLoading && (
           <span className="font-sans text-[14px] font-normal leading-6">
-            {favoriteAgents.length}{" "}
-            {favoriteAgents.length === 1 ? "agent" : "agents"}
+            {agentCount} {agentCount === 1 ? "agent" : "agents"}
           </span>
         )}
       </div>
@@ -46,16 +52,22 @@ export default function FavoritesSection() {
             ))}
           </div>
         ) : (
-          <div
-            className={cn(
-              "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4",
-              favoriteAgents.length > 4 && "overflow-x-auto",
-            )}
+          <InfiniteScroll
+            isFetchingNextPage={isFetchingNextPage}
+            fetchNextPage={fetchNextPage}
+            hasNextPage={hasNextPage}
+            loader={
+              <div className="flex h-8 w-full items-center justify-center">
+                <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-t-2 border-neutral-800" />
+              </div>
+            }
           >
-            {favoriteAgents.map((agent) => (
-              <LibraryAgentCard key={agent.id} agent={agent} />
-            ))}
-          </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {favoriteAgents.map((agent: LibraryAgent) => (
+                <LibraryAgentCard key={agent.id} agent={agent} />
+              ))}
+            </div>
+          </InfiniteScroll>
         )}
       </div>
 
