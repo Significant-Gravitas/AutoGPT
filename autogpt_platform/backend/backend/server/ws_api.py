@@ -11,6 +11,10 @@ from starlette.middleware.cors import CORSMiddleware
 
 from backend.data.execution import AsyncRedisExecutionEventBus
 from backend.data.user import DEFAULT_USER_ID
+from backend.monitoring.instrumentation import (
+    instrument_fastapi,
+    update_websocket_connections,
+)
 from backend.server.conn_manager import ConnectionManager
 from backend.server.model import (
     WSMessage,
@@ -37,6 +41,15 @@ async def lifespan(app: FastAPI):
 docs_url = "/docs" if settings.config.app_env == AppEnvironment.LOCAL else None
 app = FastAPI(lifespan=lifespan, docs_url=docs_url)
 _connection_manager = None
+
+# Add Prometheus instrumentation
+instrument_fastapi(
+    app,
+    service_name="websocket-server",
+    expose_endpoint=True,
+    endpoint="/metrics",
+    include_in_schema=settings.config.app_env == AppEnvironment.LOCAL,
+)
 
 
 def get_connection_manager():
@@ -216,6 +229,10 @@ async def websocket_router(
     if not user_id:
         return
     await manager.connect_socket(websocket)
+
+    # Track WebSocket connection
+    update_websocket_connections(user_id, 1)
+
     try:
         while True:
             data = await websocket.receive_text()
@@ -286,6 +303,8 @@ async def websocket_router(
     except WebSocketDisconnect:
         manager.disconnect_socket(websocket)
         logger.debug("WebSocket client disconnected")
+    finally:
+        update_websocket_connections(user_id, -1)
 
 
 @app.get("/")

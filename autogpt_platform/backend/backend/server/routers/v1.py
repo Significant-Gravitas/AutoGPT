@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import logging
+import time
 from collections import defaultdict
 from datetime import datetime
 from typing import Annotated, Any, Sequence
@@ -63,6 +64,11 @@ from backend.integrations.webhooks.graph_lifecycle_hooks import (
     on_graph_activate,
     on_graph_deactivate,
 )
+from backend.monitoring.instrumentation import (
+    record_block_execution,
+    record_graph_execution,
+    record_graph_operation,
+)
 from backend.server.model import (
     CreateAPIKeyRequest,
     CreateAPIKeyResponse,
@@ -95,6 +101,7 @@ def _create_file_size_error(size_bytes: int, max_size_mb: int) -> HTTPException:
 
 settings = Settings()
 logger = logging.getLogger(__name__)
+
 
 _user_credit_model = get_user_credit_model()
 
@@ -279,10 +286,26 @@ async def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlock
     if not obj:
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
 
-    output = defaultdict(list)
-    async for name, data in obj.execute(data):
-        output[name].append(data)
-    return output
+    start_time = time.time()
+    try:
+        output = defaultdict(list)
+        async for name, data in obj.execute(data):
+            output[name].append(data)
+
+        # Record successful block execution with duration
+        duration = time.time() - start_time
+        block_type = obj.__class__.__name__
+        record_block_execution(
+            block_type=block_type, status="success", duration=duration
+        )
+
+        return output
+    except Exception:
+        # Record failed block execution
+        duration = time.time() - start_time
+        block_type = obj.__class__.__name__
+        record_block_execution(block_type=block_type, status="error", duration=duration)
+        raise
 
 
 @v1_router.post(
@@ -778,7 +801,7 @@ async def execute_graph(
         )
 
     try:
-        return await execution_utils.add_graph_execution(
+        result = await execution_utils.add_graph_execution(
             graph_id=graph_id,
             user_id=user_id,
             inputs=inputs,
@@ -786,7 +809,16 @@ async def execute_graph(
             graph_version=graph_version,
             graph_credentials_inputs=credentials_inputs,
         )
+        # Record successful graph execution
+        record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
+        record_graph_operation(operation="execute", status="success")
+        return result
     except GraphValidationError as e:
+        # Record failed graph execution
+        record_graph_execution(
+            graph_id=graph_id, status="validation_error", user_id=user_id
+        )
+        record_graph_operation(operation="execute", status="validation_error")
         # Return structured validation errors that the frontend can parse
         raise HTTPException(
             status_code=400,
@@ -797,6 +829,11 @@ async def execute_graph(
                 "node_errors": e.node_errors,
             },
         )
+    except Exception:
+        # Record any other failures
+        record_graph_execution(graph_id=graph_id, status="error", user_id=user_id)
+        record_graph_operation(operation="execute", status="error")
+        raise
 
 
 @v1_router.post(
