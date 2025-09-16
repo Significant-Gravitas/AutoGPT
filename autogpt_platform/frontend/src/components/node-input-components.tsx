@@ -930,7 +930,13 @@ const NodeArrayInput: FC<{
 
   // Check if we should render as a table - when the parent has a 'headers' field
   // and this is the 'value' field of a table input block
-  const isTableInput = selfKey === "value" && parentContext?.headers && Array.isArray(parentContext.headers) && isItemObject;
+  // Also check for the is_table_input flag for more explicit detection
+  const isTableInput = (selfKey === "value" && 
+                        parentContext?.headers && 
+                        Array.isArray(parentContext.headers) && 
+                        parentContext.headers.length > 0 &&
+                        isItemObject) || 
+                       parentContext?.is_table_input === true;
   
   if (isTableInput) {
     // Render as table

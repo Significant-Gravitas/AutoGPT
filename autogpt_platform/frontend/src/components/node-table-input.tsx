@@ -1,4 +1,4 @@
-import React, { FC, useState, useCallback } from "react";
+import React, { FC, useCallback, useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Cross2Icon, PlusIcon } from "@radix-ui/react-icons";
@@ -11,7 +11,7 @@ import {
 } from "@/lib/autogpt-server-api/types";
 
 interface TableRow {
-  [key: string]: string;
+  [key: string]: any;
 }
 
 interface NodeTableInputProps {
@@ -44,6 +44,11 @@ export const NodeTableInput: FC<NodeTableInputProps> = ({
   displayName,
 }) => {
   const [tableData, setTableData] = useState<TableRow[]>(rows);
+  
+  // Sync with parent state when rows change
+  useEffect(() => {
+    setTableData(rows);
+  }, [rows]);
 
   const isConnected = (key: string) => connections[key]?.length > 0;
 
@@ -55,7 +60,7 @@ export const NodeTableInput: FC<NodeTableInputProps> = ({
     [selfKey, handleInputChange]
   );
 
-  const updateCell = (rowIndex: number, header: string, value: string) => {
+  const updateCell = (rowIndex: number, header: string, value: any) => {
     const newData = [...tableData];
     if (!newData[rowIndex]) {
       newData[rowIndex] = {};
@@ -65,6 +70,9 @@ export const NodeTableInput: FC<NodeTableInputProps> = ({
   };
 
   const addRow = () => {
+    if (!headers || headers.length === 0) {
+      return;
+    }
     const newRow: TableRow = {};
     headers.forEach(header => {
       newRow[header] = "";
@@ -114,7 +122,7 @@ export const NodeTableInput: FC<NodeTableInputProps> = ({
                     >
                       <Input
                         type="text"
-                        value={row[header] || ""}
+                        value={String(row[header] || "")}
                         onChange={(e) =>
                           updateCell(rowIndex, header, e.target.value)
                         }

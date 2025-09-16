@@ -1,4 +1,4 @@
-from typing import Any, List, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
 from backend.data.model import SchemaField
@@ -22,7 +22,7 @@ class TableInputBlock(Block):
             description="List of column headers for the table.",
             default_factory=lambda: ["Column 1", "Column 2", "Column 3"]
         )
-        value: List[Dict[str, str]] = SchemaField(
+        value: List[Dict[str, Any]] = SchemaField(
             description="The table data as a list of dictionaries.",
             default_factory=list,
             advanced=False
@@ -51,7 +51,7 @@ class TableInputBlock(Block):
         )
 
     class Output(BlockSchema):
-        result: List[Dict[str, str]] = SchemaField(
+        result: List[Dict[str, Any]] = SchemaField(
             description="The table data as a list of dictionaries with headers as keys."
         )
 
@@ -92,10 +92,22 @@ class TableInputBlock(Block):
         Each dictionary represents a row with headers as keys and 
         corresponding cell values as values.
         """
+        # Validate headers
+        if not input_data.headers:
+            yield "error", "Headers cannot be empty"
+            return
+        
+        # Check for duplicate headers
+        if len(input_data.headers) != len(set(input_data.headers)):
+            yield "error", "Duplicate headers are not allowed"
+            return
+        
         if input_data.value:
             # Ensure all rows have all headers with at least empty strings
             normalized_data = []
             for row in input_data.value:
+                if not isinstance(row, dict):
+                    continue
                 normalized_row = {}
                 for header in input_data.headers:
                     normalized_row[header] = row.get(header, "")
