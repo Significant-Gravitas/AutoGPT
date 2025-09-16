@@ -107,7 +107,7 @@ async def generate_activity_status_for_execution(
     # Check if we have OpenAI API key
     try:
         settings = Settings()
-        if not settings.secrets.openai_api_key:
+        if not settings.secrets.openai_internal_api_key:
             logger.debug(
                 "OpenAI API key not configured, skipping activity status generation"
             )
@@ -187,7 +187,7 @@ async def generate_activity_status_for_execution(
         credentials = APIKeyCredentials(
             id="openai",
             provider="openai",
-            api_key=SecretStr(settings.secrets.openai_api_key),
+            api_key=SecretStr(settings.secrets.openai_internal_api_key),
             title="System OpenAI",
         )
 

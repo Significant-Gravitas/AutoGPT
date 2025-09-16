@@ -1,15 +1,12 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React from "react";
 import {
   TabsLine,
   TabsLineList,
   TabsLineTrigger,
   TabsLineContent,
 } from "@/components/molecules/TabsLine/TabsLine";
-import { Button } from "@/components/atoms/Button/Button";
-import { PlusIcon } from "@phosphor-icons/react/dist/ssr";
-import { RunAgentModal } from "../RunAgentModal/RunAgentModal";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useRunsSidebar } from "./useRunsSidebar";
 import { RunListItem } from "./components/RunListItem";
@@ -26,6 +23,7 @@ interface RunsSidebarProps {
   onCountsChange?: (info: {
     runsCount: number;
     schedulesCount: number;
+    loading?: boolean;
   }) => void;
 }
 
@@ -47,11 +45,11 @@ export function RunsSidebar({
     isFetchingMoreRuns,
     tabValue,
     setTabValue,
-  } = useRunsSidebar({ graphId: agent.graph_id, onSelectRun });
-
-  useEffect(() => {
-    if (onCountsChange) onCountsChange({ runsCount, schedulesCount });
-  }, [runsCount, schedulesCount, onCountsChange]);
+  } = useRunsSidebar({
+    graphId: agent.graph_id,
+    onSelectRun,
+    onCountsChange,
+  });
 
   if (error) {
     return <ErrorCard responseError={error} />;
@@ -59,7 +57,7 @@ export function RunsSidebar({
 
   if (loading) {
     return (
-      <div className="ml-6 w-80 space-y-4">
+      <div className="ml-6 w-[20vw] space-y-4">
         <Skeleton className="h-12 w-full" />
         <Skeleton className="h-32 w-full" />
         <Skeleton className="h-24 w-full" />
@@ -68,77 +66,64 @@ export function RunsSidebar({
   }
 
   return (
-    <div className="min-w-0 bg-gray-50 p-4 pl-5">
-      <RunAgentModal
-        triggerSlot={
-          <Button variant="primary" size="large" className="w-full">
-            <PlusIcon size={20} /> New Run
-          </Button>
+    <TabsLine
+      value={tabValue}
+      onValueChange={(v) => {
+        const value = v as "runs" | "scheduled";
+        setTabValue(value);
+        if (value === "runs") {
+          if (runs && runs.length) onSelectRun(runs[0].id);
+        } else {
+          if (schedules && schedules.length)
+            onSelectRun(`schedule:${schedules[0].id}`);
         }
-        agent={agent}
-        agentId={agent.id.toString()}
-      />
+      }}
+      className="min-w-0 overflow-hidden"
+    >
+      <TabsLineList>
+        <TabsLineTrigger value="runs">
+          Runs <span className="ml-3 inline-block">{runsCount}</span>
+        </TabsLineTrigger>
+        <TabsLineTrigger value="scheduled">
+          Scheduled <span className="ml-3 inline-block">{schedulesCount}</span>
+        </TabsLineTrigger>
+      </TabsLineList>
 
-      <TabsLine
-        value={tabValue}
-        onValueChange={(v) => {
-          const value = v as "runs" | "scheduled";
-          setTabValue(value);
-          if (value === "runs") {
-            if (runs && runs.length) onSelectRun(runs[0].id);
-          } else {
-            if (schedules && schedules.length)
-              onSelectRun(`schedule:${schedules[0].id}`);
-          }
-        }}
-        className="mt-6 min-w-0 overflow-hidden"
-      >
-        <TabsLineList>
-          <TabsLineTrigger value="runs">
-            Runs <span className="ml-3 inline-block">{runsCount}</span>
-          </TabsLineTrigger>
-          <TabsLineTrigger value="scheduled">
-            Scheduled{" "}
-            <span className="ml-3 inline-block">{schedulesCount}</span>
-          </TabsLineTrigger>
-        </TabsLineList>
-
-        <>
-          <TabsLineContent value="runs">
-            <InfiniteList
-              items={runs}
-              hasMore={!!hasMoreRuns}
-              isFetchingMore={isFetchingMoreRuns}
-              onEndReached={fetchMoreRuns}
-              className="flex flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 lg:flex-col lg:gap-1 lg:overflow-x-hidden"
-              itemWrapperClassName="w-auto lg:w-full"
-              renderItem={(run) => (
-                <div className="mb-3 w-[15rem] lg:w-full">
-                  <RunListItem
-                    run={run}
-                    title={agent.name}
-                    selected={selectedRunId === run.id}
-                    onClick={() => onSelectRun && onSelectRun(run.id)}
-                  />
-                </div>
-              )}
-            />
-          </TabsLineContent>
-          <TabsLineContent value="scheduled">
-            <div className="flex flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 lg:flex-col lg:gap-1 lg:overflow-x-hidden">
-              {schedules.map((s: GraphExecutionJobInfo) => (
-                <div className="mb-3 w-[15rem] lg:w-full" key={s.id}>
-                  <ScheduleListItem
-                    schedule={s}
-                    selected={selectedRunId === `schedule:${s.id}`}
-                    onClick={() => onSelectRun(`schedule:${s.id}`)}
-                  />
-                </div>
-              ))}
-            </div>
-          </TabsLineContent>
-        </>
-      </TabsLine>
-    </div>
+      <>
+        <TabsLineContent value="runs">
+          <InfiniteList
+            items={runs}
+            hasMore={!!hasMoreRuns}
+            isFetchingMore={isFetchingMoreRuns}
+            onEndReached={fetchMoreRuns}
+            className="flex flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 lg:flex-col lg:gap-3 lg:overflow-x-hidden"
+            itemWrapperClassName="w-auto lg:w-full"
+            renderItem={(run) => (
+              <div className="w-[15rem] lg:w-full">
+                <RunListItem
+                  run={run}
+                  title={agent.name}
+                  selected={selectedRunId === run.id}
+                  onClick={() => onSelectRun && onSelectRun(run.id)}
+                />
+              </div>
+            )}
+          />
+        </TabsLineContent>
+        <TabsLineContent value="scheduled">
+          <div className="flex flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 lg:flex-col lg:gap-3 lg:overflow-x-hidden">
+            {schedules.map((s: GraphExecutionJobInfo) => (
+              <div className="w-[15rem] lg:w-full" key={s.id}>
+                <ScheduleListItem
+                  schedule={s}
+                  selected={selectedRunId === `schedule:${s.id}`}
+                  onClick={() => onSelectRun(`schedule:${s.id}`)}
+                />
+              </div>
+            ))}
+          </div>
+        </TabsLineContent>
+      </>
+    </TabsLine>
   );
 }

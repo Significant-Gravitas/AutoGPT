@@ -348,6 +348,7 @@ export type GraphTriggerInfo = {
 
 /* Mirror of backend/data/graph.py:Graph */
 export type Graph = GraphMeta & {
+  created_at: Date;
   nodes: Node[];
   links: Link[];
   sub_graphs: Omit<Graph, "sub_graphs">[]; // Flattened sub-graphs
@@ -357,6 +358,7 @@ export type GraphUpdateable = Omit<
   Graph,
   | "user_id"
   | "version"
+  | "created_at"
   | "is_active"
   | "nodes"
   | "links"
@@ -431,6 +433,7 @@ export type LibraryAgent = {
   credentials_input_schema: CredentialsInputSchema;
   new_output: boolean;
   can_access_graph: boolean;
+  is_favorite: boolean;
   is_latest_version: boolean;
   recommended_schedule_cron: string | null;
 } & (
@@ -460,6 +463,7 @@ export type LibraryAgentResponse = {
 
 export type LibraryAgentPreset = {
   id: LibraryAgentPresetID;
+  created_at: Date;
   updated_at: Date;
   graph_id: GraphID;
   graph_version: number;
@@ -488,7 +492,7 @@ export type LibraryAgentPresetResponse = {
 
 export type LibraryAgentPresetCreatable = Omit<
   LibraryAgentPreset,
-  "id" | "updated_at" | "is_active"
+  "id" | "created_at" | "updated_at" | "is_active"
 > & {
   is_active?: boolean;
 };
@@ -797,6 +801,7 @@ export type Schedule = {
   input_data: Record<string, any>;
   input_credentials: Record<string, CredentialsMetaInput>;
   next_run_time: Date;
+  timezone: string;
 };
 
 export type ScheduleID = Brand<string, "ScheduleID">;

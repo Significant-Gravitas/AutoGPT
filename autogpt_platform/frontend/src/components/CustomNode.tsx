@@ -4,8 +4,8 @@ import React, {
   useCallback,
   useRef,
   useContext,
-  useMemo,
 } from "react";
+import Link from "next/link";
 import { NodeProps, useReactFlow, Node as XYNode, Edge } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import "./customnode.css";
@@ -16,12 +16,10 @@ import {
   BlockIOSubSchema,
   BlockIOStringSubSchema,
   Category,
-  Node,
   NodeExecutionResult,
   BlockUIType,
   BlockCost,
 } from "@/lib/autogpt-server-api";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   beautifyString,
   cn,
@@ -40,13 +38,14 @@ import {
   NodeTextBoxInput,
 } from "./node-input-components";
 import { getPrimaryCategoryColor } from "@/lib/utils";
-import { FlowContext } from "./Flow";
+import { BuilderContext } from "./Flow";
 import { Badge } from "./ui/badge";
 import NodeOutputs from "./NodeOutputs";
 import SchemaTooltip from "./SchemaTooltip";
 import { IconCoin } from "./ui/icons";
 import * as Separator from "@radix-ui/react-separator";
 import * as ContextMenu from "@radix-ui/react-context-menu";
+import { Alert, AlertDescription } from "./ui/alert";
 import {
   DotsVerticalIcon,
   TrashIcon,
@@ -54,7 +53,7 @@ import {
   ExitIcon,
   Pencil1Icon,
 } from "@radix-ui/react-icons";
-import { Key } from "@phosphor-icons/react";
+import { InfoIcon, Key } from "@phosphor-icons/react";
 import useCredits from "@/hooks/useCredits";
 import { getV1GetAyrshareSsoUrl } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { toast } from "@/components/molecules/Toast/use-toast";
@@ -85,7 +84,6 @@ export type CustomNodeData = {
   outputSchema: BlockIORootSchema;
   hardcodedValues: { [key: string]: any };
   connections: ConnectionData;
-  webhook?: Node["webhook"];
   isOutputOpen: boolean;
   status?: NodeExecutionResult["status"];
   /** executionResults contains outputs across multiple executions
@@ -126,27 +124,26 @@ export const CustomNode = React.memo(
       Edge
     >();
     const isInitialSetup = useRef(true);
-    const flowContext = useContext(FlowContext);
-    const api = useBackendAPI();
+    const builderContext = useContext(BuilderContext);
     const { formatCredits } = useCredits();
     const [isLoading, setIsLoading] = useState(false);
 
-    let nodeFlowId = "";
+    let subGraphID = "";
 
     if (data.uiType === BlockUIType.AGENT) {
       // Display the graph's schema instead AgentExecutorBlock's schema.
       data.inputSchema = data.hardcodedValues?.input_schema || {};
       data.outputSchema = data.hardcodedValues?.output_schema || {};
-      nodeFlowId = data.hardcodedValues?.graph_id || nodeFlowId;
+      subGraphID = data.hardcodedValues?.graph_id || subGraphID;
     }
 
-    if (!flowContext) {
+    if (!builderContext) {
       throw new Error(
-        "FlowContext consumer must be inside FlowEditor component",
+        "BuilderContext consumer must be inside FlowEditor component",
       );
     }
 
-    const { setIsAnyModalOpen, getNextNodeId } = flowContext;
+    const { libraryAgent, setIsAnyModalOpen, getNextNodeId } = builderContext;
 
     useEffect(() => {
       if (data.executionResults || data.status) {
@@ -366,7 +363,6 @@ export const CustomNode = React.memo(
           return (
             <div key={noteKey}>
               <NodeTextBoxInput
-                className=""
                 selfKey={noteKey}
                 schema={noteSchema as BlockIOStringSubSchema}
                 value={getValue(noteKey, data.hardcodedValues)}
@@ -402,7 +398,11 @@ export const CustomNode = React.memo(
             return (
               !isHidden &&
               (isRequired || isAdvancedOpen || isConnected || !isAdvanced) && (
-                <div key={propKey} data-id={`input-handle-${propKey}`}>
+                <div
+                  key={propKey}
+                  data-id={`input-handle-${propKey}`}
+                  className="mb-4"
+                >
                   {isConnectable &&
                   !(
                     "oneOf" in propSchema &&
@@ -729,60 +729,6 @@ export const CustomNode = React.memo(
         isCostFilterMatch(cost.cost_filter, inputValues),
       );
 
-    const [webhookStatus, setWebhookStatus] = useState<
-      "works" | "exists" | "broken" | "none" | "pending" | null
-    >(null);
-
-    useEffect(() => {
-      if (
-        ![BlockUIType.WEBHOOK, BlockUIType.WEBHOOK_MANUAL].includes(data.uiType)
-      )
-        return;
-      if (!data.webhook) {
-        setWebhookStatus("none");
-        return;
-      }
-
-      setWebhookStatus("pending");
-      api
-        .pingWebhook(data.webhook.id)
-        .then((pinged) => setWebhookStatus(pinged ? "works" : "exists"))
-        .catch((error: Error) =>
-          error.message.includes("ping timed out")
-            ? setWebhookStatus("broken")
-            : setWebhookStatus("none"),
-        );
-    }, [data.uiType, data.webhook, api, setWebhookStatus]);
-
-    const webhookStatusDot = useMemo(
-      () =>
-        webhookStatus && (
-          <div
-            className={cn(
-              "size-4 rounded-full border-2",
-              {
-                pending: "animate-pulse border-gray-300 bg-gray-400",
-                works: "border-green-300 bg-green-400",
-                exists: "border-green-200 bg-green-300",
-                broken: "border-red-400 bg-red-500",
-                none: "border-gray-300 bg-gray-400",
-              }[webhookStatus],
-            )}
-            title={
-              {
-                pending: "Checking connection status...",
-                works: "Connected",
-                exists:
-                  "Connected (but we could not verify the real-time status)",
-                broken: "The connected webhook is not working",
-                none: "Not connected. Fill out all the required block inputs and save the agent to connect.",
-              }[webhookStatus]
-            }
-          />
-        ),
-      [webhookStatus],
-    );
-
     const LineSeparator = () => (
       <div className="bg-white pt-6 dark:bg-gray-800">
         <Separator.Root className="h-[1px] w-full bg-gray-300 dark:bg-gray-600"></Separator.Root>
@@ -798,9 +744,9 @@ export const CustomNode = React.memo(
           <CopyIcon className="mr-2 h-5 w-5 dark:text-gray-100" />
           <span className="dark:text-gray-100">Copy</span>
         </ContextMenu.Item>
-        {nodeFlowId && (
+        {subGraphID && (
           <ContextMenu.Item
-            onSelect={() => window.open(`/build?flowID=${nodeFlowId}`)}
+            onSelect={() => window.open(`/build?flowID=${subGraphID}`)}
             className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
           >
             <ExitIcon className="mr-2 h-5 w-5 dark:text-gray-100" />
@@ -917,7 +863,6 @@ export const CustomNode = React.memo(
 
               <div className="w-auto grow" />
 
-              {webhookStatusDot}
               <button
                 aria-label="Options"
                 className="cursor-pointer rounded-full border-none bg-transparent p-1 hover:bg-gray-100"
@@ -958,35 +903,8 @@ export const CustomNode = React.memo(
         <div className="mx-5 my-6 rounded-b-xl">
           {/* Input Handles */}
           {data.uiType !== BlockUIType.NOTE ? (
-            <div data-id="input-handles">
+            <div data-id="input-handles" className="mb-4">
               <div>
-                {data.uiType === BlockUIType.WEBHOOK_MANUAL &&
-                  (data.webhook ? (
-                    <div className="nodrag mr-5 flex flex-col gap-1">
-                      Webhook URL:
-                      <div className="flex gap-2 rounded-md bg-gray-50 p-2">
-                        <code className="select-all text-sm">
-                          {data.webhook.url}
-                        </code>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="size-7 flex-none"
-                          onClick={() =>
-                            data.webhook &&
-                            navigator.clipboard.writeText(data.webhook.url)
-                          }
-                          title="Copy webhook URL"
-                        >
-                          <CopyIcon className="size-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="italic text-gray-500">
-                      (A Webhook URL will be generated when you save the agent)
-                    </p>
-                  ))}
                 {data.uiType === BlockUIType.AYRSHARE ? (
                   <>
                     {generateAyrshareSSOHandles()}
@@ -994,6 +912,33 @@ export const CustomNode = React.memo(
                       data.inputSchema,
                       BlockUIType.STANDARD,
                     )}
+                  </>
+                ) : [BlockUIType.WEBHOOK, BlockUIType.WEBHOOK_MANUAL].includes(
+                    data.uiType,
+                  ) ? (
+                  <>
+                    <Alert className="mb-3 select-none">
+                      <AlertDescription className="flex items-center">
+                        <InfoIcon className="mr-2 size-6" />
+                        <span>
+                          You can set up and manage this trigger in your{" "}
+                          <Link
+                            href={
+                              libraryAgent
+                                ? `/library/agents/${libraryAgent.id}`
+                                : "/library"
+                            }
+                            className="underline"
+                          >
+                            Agent Library
+                          </Link>
+                          {!data.backend_id && " (after saving the graph)"}.
+                        </span>
+                      </AlertDescription>
+                    </Alert>
+                    <div className="pointer-events-none opacity-50">
+                      {generateInputHandles(data.inputSchema, data.uiType)}
+                    </div>
                   </>
                 ) : (
                   data.inputSchema &&

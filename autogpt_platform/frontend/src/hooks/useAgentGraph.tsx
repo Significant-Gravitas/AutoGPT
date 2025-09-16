@@ -14,6 +14,7 @@ import {
   GraphExecutionID,
   GraphID,
   GraphMeta,
+  LibraryAgent,
   LinkCreatable,
   NodeCreatable,
   NodeExecutionResult,
@@ -48,6 +49,7 @@ export default function useAgentGraph(
   const [savedAgent, setSavedAgent] = useState<Graph | null>(null);
   const [agentDescription, setAgentDescription] = useState<string>("");
   const [agentName, setAgentName] = useState<string>("");
+  const [libraryAgent, setLibraryAgent] = useState<LibraryAgent | null>(null);
   const [agentRecommendedScheduleCron, setAgentRecommendedScheduleCron] =
     useState<string>("");
   const [allBlocks, setAllBlocks] = useState<Block[]>([]);
@@ -197,7 +199,6 @@ export default function useAgentGraph(
             inputSchema: block.inputSchema,
             outputSchema: block.outputSchema,
             hardcodedValues: node.input_default,
-            webhook: node.webhook,
             uiType: block.uiType,
             metadata: node.metadata,
             connections: graph.links
@@ -435,6 +436,20 @@ export default function useAgentGraph(
     });
   }, [flowID, flowVersion, availableBlocks, api]);
 
+  // Load library agent
+  useEffect(() => {
+    if (!flowID) return;
+    api
+      .getLibraryAgentByGraphID(flowID, flowVersion)
+      .then((libraryAgent) => setLibraryAgent(libraryAgent))
+      .catch((error) => {
+        console.warn(
+          `Failed to fetch LibraryAgent for graph #${flowID} v${flowVersion}`,
+          error,
+        );
+      });
+  }, [api, flowID, flowVersion]);
+
   // Check if local graph state is in sync with backend
   const nodesSyncedWithSavedAgent = useMemo(() => {
     if (!savedAgent || xyNodes.length === 0) return false;
@@ -641,7 +656,7 @@ export default function useAgentGraph(
     let newSavedAgent: Graph;
     if (savedAgent && graphsEquivalent(savedAgent, payload)) {
       console.warn("No need to save: Graph is the same as version on server");
-      newSavedAgent = savedAgent;
+      return savedAgent;
     } else {
       console.debug(
         "Saving new Graph version; old vs new:",
@@ -940,6 +955,7 @@ export default function useAgentGraph(
     agentRecommendedScheduleCron,
     setAgentRecommendedScheduleCron,
     savedAgent,
+    libraryAgent,
     availableBlocks,
     availableFlows,
     getOutputType,
