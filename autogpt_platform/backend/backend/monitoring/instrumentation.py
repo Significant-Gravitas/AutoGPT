@@ -128,10 +128,16 @@ def instrument_fastapi(
     """
 
     # Set service info
+    try:
+        from importlib.metadata import version
+        service_version = version("autogpt-platform-backend")
+    except Exception:
+        service_version = "unknown"
+
     SERVICE_INFO.info(
         {
             "service": service_name,
-            "version": "0.6.22",  # You might want to get this from package version
+            "version": service_version,
         }
     )
 
