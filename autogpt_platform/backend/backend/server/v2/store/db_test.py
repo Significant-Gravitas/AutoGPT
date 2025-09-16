@@ -139,6 +139,7 @@ async def test_get_store_agent_details(mocker):
         return_value=mock_profile
     )
 
+    # Mock StoreListing prisma call
     mock_store_listing_db = mocker.patch("prisma.models.StoreListing.prisma")
     mock_store_listing_db.return_value.find_first = mocker.AsyncMock(
         return_value=mock_store_listing
@@ -166,66 +167,6 @@ async def test_get_store_agent_details(mocker):
     )
     assert calls[1] == mocker.call(where={"storeListingVersionId": "active-version-id"})
 
-    mock_store_listing_db.return_value.find_first.assert_called_once()
-    # Mock data
-    mock_agent = prisma.models.StoreAgent(
-        listing_id="test-id",
-        storeListingVersionId="version123",
-        slug="test-agent",
-        agent_name="Test Agent",
-        agent_video="video.mp4",
-        agent_image=["image.jpg"],
-        featured=False,
-        creator_username="creator",
-        creator_avatar="avatar.jpg",
-        sub_heading="Test heading",
-        description="Test description",
-        categories=["test"],
-        runs=10,
-        rating=4.5,
-        versions=["1.0"],
-        updated_at=datetime.now(),
-        is_available=False,
-    )
-
-    # Create a mock StoreListing result
-    mock_store_listing = mocker.MagicMock()
-    mock_store_listing.activeVersionId = "active-version-id"
-    mock_store_listing.hasApprovedVersion = True
-    mock_store_listing.ActiveVersion = mocker.MagicMock()
-    mock_store_listing.ActiveVersion.recommendedScheduleCron = None
-
-    # Mock StoreAgent prisma call
-    mock_store_agent = mocker.patch("prisma.models.StoreAgent.prisma")
-    mock_store_agent.return_value.find_first = mocker.AsyncMock(return_value=mock_agent)
-
-    # Mock Profile prisma call
-    mock_profile = mocker.MagicMock()
-    mock_profile.userId = "user-id-123"
-    mock_profile_db = mocker.patch("prisma.models.Profile.prisma")
-    mock_profile_db.return_value.find_first = mocker.AsyncMock(
-        return_value=mock_profile
-    )
-
-    # Mock StoreListing prisma call - this is what was missing
-    mock_store_listing_db = mocker.patch("prisma.models.StoreListing.prisma")
-    mock_store_listing_db.return_value.find_first = mocker.AsyncMock(
-        return_value=mock_store_listing
-    )
-
-    # Call function
-    result = await db.get_store_agent_details("creator", "test-agent")
-
-    # Verify results
-    assert result.slug == "test-agent"
-    assert result.agent_name == "Test Agent"
-    assert result.active_version_id == "active-version-id"
-    assert result.has_approved_version is True
-
-    # Verify mocks called correctly
-    mock_store_agent.return_value.find_first.assert_called_once_with(
-        where={"creator_username": "creator", "slug": "test-agent"}
-    )
     mock_store_listing_db.return_value.find_first.assert_called_once()
 
 
