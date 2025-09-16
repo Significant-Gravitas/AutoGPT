@@ -130,6 +130,8 @@ class GraphExecutionMeta(BaseDbModel):
     status: ExecutionStatus
     started_at: datetime
     ended_at: datetime
+    is_shared: bool = False
+    share_token: Optional[str] = None
 
     class Stats(BaseModel):
         model_config = ConfigDict(
@@ -246,6 +248,8 @@ class GraphExecutionMeta(BaseDbModel):
                 if stats
                 else None
             ),
+            is_shared=_graph_exec.isShared if hasattr(_graph_exec, 'isShared') else False,
+            share_token=_graph_exec.shareToken if hasattr(_graph_exec, 'shareToken') else None,
         )
 
 

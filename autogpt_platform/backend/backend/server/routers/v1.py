@@ -2,8 +2,9 @@ import asyncio
 import base64
 import logging
 import time
+import uuid
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated, Any, Sequence
 
 import pydantic
@@ -958,6 +959,17 @@ async def delete_graph_execution(
     )
 
 
+class ShareRequest(pydantic.BaseModel):
+    """Optional request body for share endpoint."""
+    pass  # Empty body is fine
+
+
+class ShareResponse(pydantic.BaseModel):
+    """Response from share endpoints."""
+    share_url: str
+    share_token: str
+
+
 @v1_router.post(
     "/graphs/{graph_id}/executions/{graph_exec_id}/share",
     dependencies=[Security(requires_user)],
@@ -966,11 +978,9 @@ async def enable_execution_sharing(
     graph_id: Annotated[str, Path],
     graph_exec_id: Annotated[str, Path],
     user_id: Annotated[str, Security(get_user_id)],
-) -> dict[str, str]:
+    _body: ShareRequest = Body(default=ShareRequest()),
+) -> ShareResponse:
     """Enable sharing for a graph execution."""
-    import uuid
-    from datetime import datetime, timezone
-
     # Verify the execution belongs to the user
     execution = await execution_db.get_graph_execution(
         user_id=user_id, execution_id=graph_exec_id
@@ -994,7 +1004,7 @@ async def enable_execution_sharing(
     frontend_url = Settings().secrets.frontend_base_url or "http://localhost:3000"
     share_url = f"{frontend_url}/share/{share_token}"
 
-    return {"share_url": share_url, "share_token": share_token}
+    return ShareResponse(share_url=share_url, share_token=share_token)
 
 
 @v1_router.delete(
@@ -1027,7 +1037,7 @@ async def disable_execution_sharing(
 
 @v1_router.get("/public/shared/{share_token}")
 async def get_shared_execution(
-    share_token: str,
+    share_token: Annotated[str, Path(regex=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")],
 ) -> execution_db.SharedExecutionResponse:
     """Get a shared graph execution by share token (no auth required)."""
     execution = await execution_db.get_graph_execution_by_share_token(share_token)

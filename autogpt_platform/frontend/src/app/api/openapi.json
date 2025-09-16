@@ -1989,16 +1989,22 @@
             "schema": { "type": "string", "title": "Graph Exec Id" }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShareRequest",
+                "default": {}
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": { "type": "string" },
-                  "title": "Response Postv1Enableexecutionsharing"
-                }
+                "schema": { "$ref": "#/components/schemas/ShareResponse" }
               }
             }
           },
@@ -2062,7 +2068,11 @@
             "name": "share_token",
             "in": "path",
             "required": true,
-            "schema": { "type": "string", "title": "Share Token" }
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "title": "Share Token"
+            }
           }
         ],
         "responses": {
@@ -5433,6 +5443,15 @@
             "format": "date-time",
             "title": "Ended At"
           },
+          "is_shared": {
+            "type": "boolean",
+            "title": "Is Shared",
+            "default": false
+          },
+          "share_token": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Share Token"
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -5557,6 +5576,15 @@
             "format": "date-time",
             "title": "Ended At"
           },
+          "is_shared": {
+            "type": "boolean",
+            "title": "Is Shared",
+            "default": false
+          },
+          "share_token": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Share Token"
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -5631,6 +5659,15 @@
             "type": "string",
             "format": "date-time",
             "title": "Ended At"
+          },
+          "is_shared": {
+            "type": "boolean",
+            "title": "Is Shared",
+            "default": false
+          },
+          "share_token": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Share Token"
           },
           "stats": {
             "anyOf": [
@@ -7272,6 +7309,22 @@
         "type": "object",
         "required": ["active_graph_version"],
         "title": "SetGraphActiveVersion"
+      },
+      "ShareRequest": {
+        "properties": {},
+        "type": "object",
+        "title": "ShareRequest",
+        "description": "Optional request body for share endpoint."
+      },
+      "ShareResponse": {
+        "properties": {
+          "share_url": { "type": "string", "title": "Share Url" },
+          "share_token": { "type": "string", "title": "Share Token" }
+        },
+        "type": "object",
+        "required": ["share_url", "share_token"],
+        "title": "ShareResponse",
+        "description": "Response from share endpoints."
       },
       "SharedExecutionResponse": {
         "properties": {
