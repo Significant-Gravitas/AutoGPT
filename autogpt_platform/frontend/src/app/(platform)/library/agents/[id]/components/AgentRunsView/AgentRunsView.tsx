@@ -49,6 +49,12 @@ export function AgentRunsView() {
           : "grid h-screen grid-cols-1 gap-0 pt-3 md:gap-4"
       }
     >
+      {/* DEBUG: Always visible debug info */}
+      <div className="fixed left-0 top-0 z-50 bg-red-500 p-2 text-xs text-white">
+        Debug: showSidebarLayout={showSidebarLayout.toString()}, hasAnyItems=
+        {hasAnyItems.toString()}
+      </div>
+
       <div className={showSidebarLayout ? "p-4 pl-5" : "hidden p-4 pl-5"}>
         <div className="mb-4">
           <RunAgentModal
@@ -67,15 +73,18 @@ export function AgentRunsView() {
         </div>
 
         {/* Setup Instructions */}
-        <div className="mb-6 rounded-lg border border-gray-200 bg-gray-50 p-4">
-          <h3 className="mb-2 text-sm font-semibold text-gray-900">
-            Setup Instructions
+        <div className="mb-6 rounded-lg border border-red-500 bg-red-100 p-4">
+          <h3 className="mb-2 text-sm font-semibold text-red-900">
+            Setup Instructions DEBUG
           </h3>
-          <p className="whitespace-pre-wrap text-sm text-gray-700">
+          <p className="whitespace-pre-wrap text-sm text-red-700">
             {agent.instructions || "No instructions provided for this agent."}
           </p>
-          <div className="mt-2 text-xs text-gray-500">
+          <div className="mt-2 text-xs text-red-500">
             Debug: instructions = {JSON.stringify(agent.instructions)}
+          </div>
+          <div className="mt-1 text-xs text-red-500">
+            Agent name: {agent.name}
           </div>
         </div>
 
