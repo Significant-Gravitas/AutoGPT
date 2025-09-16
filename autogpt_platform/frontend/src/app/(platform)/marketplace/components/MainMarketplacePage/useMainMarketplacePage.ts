@@ -5,6 +5,13 @@ import {
 import { StoreAgentsResponse } from "@/app/api/__generated__/models/storeAgentsResponse";
 import { CreatorsResponse } from "@/app/api/__generated__/models/creatorsResponse";
 
+const queryConfig = {
+  staleTime: 60 * 1000, // 60 seconds - match server cache
+  gcTime: 5 * 60 * 1000, // 5 minutes
+  refetchOnWindowFocus: false, // Avoid unnecessary refetches
+  refetchOnMount: false, // Use cached data from server
+};
+
 export const useMainMarketplacePage = () => {
   // Data is prefetched on server and hydrated, these queries will use cached data
   const {
@@ -15,10 +22,7 @@ export const useMainMarketplacePage = () => {
     { featured: true },
     {
       query: {
-        staleTime: 60 * 1000, // 60 seconds - match server cache
-        gcTime: 5 * 60 * 1000, // 5 minutes
-        refetchOnWindowFocus: false, // Avoid unnecessary refetches
-        refetchOnMount: false, // Use cached data from server
+        ...queryConfig,
         select: (x) => {
           return x.data as StoreAgentsResponse;
         },
@@ -37,10 +41,7 @@ export const useMainMarketplacePage = () => {
     },
     {
       query: {
-        staleTime: 60 * 1000, // 60 seconds - match server cache
-        gcTime: 5 * 60 * 1000, // 5 minutes
-        refetchOnWindowFocus: false, // Avoid unnecessary refetches
-        refetchOnMount: false, // Use cached data from server
+        ...queryConfig,
         select: (x) => {
           return x.data as StoreAgentsResponse;
         },
@@ -56,10 +57,7 @@ export const useMainMarketplacePage = () => {
     { featured: true, sorted_by: "num_agents" },
     {
       query: {
-        staleTime: 60 * 1000, // 60 seconds - match server cache
-        gcTime: 5 * 60 * 1000, // 5 minutes
-        refetchOnWindowFocus: false, // Avoid unnecessary refetches
-        refetchOnMount: false, // Use cached data from server
+        ...queryConfig,
         select: (x) => {
           return x.data as CreatorsResponse;
         },
