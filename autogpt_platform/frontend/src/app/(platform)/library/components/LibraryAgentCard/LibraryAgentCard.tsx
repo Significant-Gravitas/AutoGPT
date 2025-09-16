@@ -44,39 +44,159 @@ export default function LibraryAgentCard({
     setIsFavorite(is_favorite);
   }, [is_favorite]);
 
+  const updateQueryData = (newIsFavorite: boolean) => {
+    // Update the agent in all library agent queries
+    queryClient.setQueriesData(
+      { queryKey: ["/api/library/agents"] },
+      (oldData: any) => {
+        if (!oldData?.pages) return oldData;
+
+        return {
+          ...oldData,
+          pages: oldData.pages.map((page: any) => {
+            if (page.status !== 200) return page;
+
+            return {
+              ...page,
+              data: {
+                ...page.data,
+                agents: page.data.agents.map((agent: LibraryAgent) =>
+                  agent.id === id
+                    ? { ...agent, is_favorite: newIsFavorite }
+                    : agent,
+                ),
+              },
+            };
+          }),
+        };
+      },
+    );
+
+    // Update or remove from favorites query based on new state
+    queryClient.setQueriesData(
+      { queryKey: ["/api/library/agents/favorites"] },
+      (oldData: any) => {
+        if (!oldData?.pages) return oldData;
+
+        if (newIsFavorite) {
+          // Add to favorites if not already there
+          const exists = oldData.pages.some(
+            (page: any) =>
+              page.status === 200 &&
+              page.data.agents.some((agent: LibraryAgent) => agent.id === id),
+          );
+
+          if (!exists) {
+            const firstPage = oldData.pages[0];
+            if (firstPage?.status === 200) {
+              const updatedAgent = {
+                id,
+                name,
+                description,
+                graph_id,
+                can_access_graph,
+                creator_image_url,
+                image_url,
+                is_favorite: true,
+              };
+
+              return {
+                ...oldData,
+                pages: [
+                  {
+                    ...firstPage,
+                    data: {
+                      ...firstPage.data,
+                      agents: [updatedAgent, ...firstPage.data.agents],
+                      pagination: {
+                        ...firstPage.data.pagination,
+                        total_items: firstPage.data.pagination.total_items + 1,
+                      },
+                    },
+                  },
+                  ...oldData.pages.slice(1).map((page: any) =>
+                    page.status === 200
+                      ? {
+                          ...page,
+                          data: {
+                            ...page.data,
+                            pagination: {
+                              ...page.data.pagination,
+                              total_items: page.data.pagination.total_items + 1,
+                            },
+                          },
+                        }
+                      : page,
+                  ),
+                ],
+              };
+            }
+          }
+        } else {
+          // Remove from favorites
+          let removedCount = 0;
+          return {
+            ...oldData,
+            pages: oldData.pages.map((page: any) => {
+              if (page.status !== 200) return page;
+
+              const filteredAgents = page.data.agents.filter(
+                (agent: LibraryAgent) => agent.id !== id,
+              );
+
+              if (filteredAgents.length < page.data.agents.length) {
+                removedCount = 1;
+              }
+
+              return {
+                ...page,
+                data: {
+                  ...page.data,
+                  agents: filteredAgents,
+                  pagination: {
+                    ...page.data.pagination,
+                    total_items:
+                      page.data.pagination.total_items - removedCount,
+                  },
+                },
+              };
+            }),
+          };
+        }
+
+        return oldData;
+      },
+    );
+  };
+
   const handleToggleFavorite = async (e: React.MouseEvent) => {
     e.preventDefault(); // Prevent navigation when clicking the heart
     e.stopPropagation();
 
     if (isUpdating || !isAgentFavoritingEnabled) return;
 
+    const newIsFavorite = !isFavorite;
+
+    // Optimistic update
+    setIsFavorite(newIsFavorite);
+    updateQueryData(newIsFavorite);
+
     setIsUpdating(true);
     try {
       await api.updateLibraryAgent(id as LibraryAgentID, {
-        is_favorite: !isFavorite,
+        is_favorite: newIsFavorite,
       });
-      setIsFavorite(!isFavorite);
-
-      // Invalidate both queries to refresh both sections
-      // Use predicate to match all library agent queries regardless of params
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ["/api/library/agents/favorites"],
-        }),
-        queryClient.invalidateQueries({
-          predicate: (query) => {
-            const key = query.queryKey;
-            return Array.isArray(key) && key[0] === "/api/library/agents";
-          },
-        }),
-      ]);
 
       toast({
-        title: isFavorite ? "Removed from favorites" : "Added to favorites",
-        description: `${name} has been ${isFavorite ? "removed from" : "added to"} your favorites.`,
+        title: newIsFavorite ? "Added to favorites" : "Removed from favorites",
+        description: `${name} has been ${newIsFavorite ? "added to" : "removed from"} your favorites.`,
       });
     } catch (error) {
+      // Revert on error
       console.error("Failed to update favorite status:", error);
+      setIsFavorite(!newIsFavorite);
+      updateQueryData(!newIsFavorite);
+
       toast({
         title: "Error",
         description: "Failed to update favorite status. Please try again.",
