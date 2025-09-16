@@ -141,9 +141,10 @@ export default function UserIntegrationsPage() {
         )
         .flatMap((provider) =>
           provider.savedCredentials
-            .filter((cred) =>
-              !hiddenCredentials.includes(cred.id) &&
-              !cred.id.endsWith('-default')  // Hide SDK-registered default credentials
+            .filter(
+              (cred) =>
+                !hiddenCredentials.includes(cred.id) &&
+                !cred.id.endsWith("-default"), // Hide SDK-registered default credentials
             )
             .map((credentials) => ({
               ...credentials,

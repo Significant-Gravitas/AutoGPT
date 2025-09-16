@@ -234,6 +234,8 @@ class AutoRegistry:
                         return original_creds
 
                     store_class.get_all_creds = patched_get_all_creds
-                    logger.info("Successfully patched IntegrationCredentialsStore.get_all_creds")
+                    logger.info(
+                        "Successfully patched IntegrationCredentialsStore.get_all_creds"
+                    )
         except Exception as e:
             logging.warning(f"Failed to patch credentials store: {e}")
