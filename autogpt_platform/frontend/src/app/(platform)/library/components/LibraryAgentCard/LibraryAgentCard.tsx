@@ -53,7 +53,7 @@ export default function LibraryAgentCard({
 
         return {
           ...oldData,
-          pages: oldData.pages.map((page: any) => {
+          pages: oldData.pages.map((page) => {
             if (page.status !== 200) return page;
 
             return {
