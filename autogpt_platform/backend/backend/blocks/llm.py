@@ -921,12 +921,12 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
 
             sys_prompt = trim_prompt(
                 f"""
-                |Reply strictly only in the following JSON format:
+                |Reply with pure JSON strictly following this JSON format:
                 |{{
                 |  {format_prompt}
                 |}}
                 |
-                |Ensure the response is valid JSON. Do not include any additional text outside of the JSON.
+                |Ensure the response is valid JSON. DO NOT include any additional text (e.g. markdown code block fences) outside of the JSON.
                 |If you cannot provide all the keys, provide an empty string for the values you cannot answer.
                 """
             )
@@ -968,13 +968,14 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                         output_token_count=llm_response.completion_tokens,
                     )
                 )
-                prompt.append({"role": "assistant", "content": response_text})
                 logger.debug(f"LLM attempt-{retry_count} response: {response_text}")
 
                 if input_data.expected_format:
                     try:
                         response_obj = json.loads(response_text)
                     except JSONDecodeError as json_error:
+                        prompt.append({"role": "assistant", "content": response_text})
+
                         indented_json_error = str(json_error).replace("\n", "\n|")
                         error_feedback_message = trim_prompt(
                             f"""
@@ -1019,6 +1020,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                         yield "prompt", self.prompt
                         return
 
+                    prompt.append({"role": "assistant", "content": response_text})
                     error_feedback_message = trim_prompt(
                         f"""
                         |Your response did not match the expected format:
