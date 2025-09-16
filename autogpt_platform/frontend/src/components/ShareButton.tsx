@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import {
   Dialog,
@@ -28,20 +28,31 @@ interface ShareButtonProps {
   graphId: string;
   executionId: string;
   isShared?: boolean;
-  shareUrl?: string;
+  shareToken?: string | null;
 }
 
 export function ShareButton({
   graphId,
   executionId,
   isShared: initialIsShared = false,
-  shareUrl: initialShareUrl,
+  shareToken: initialShareToken,
 }: ShareButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isShared, setIsShared] = useState(initialIsShared);
-  const [shareUrl, setShareUrl] = useState(initialShareUrl || "");
+  const [shareToken, setShareToken] = useState(initialShareToken || null);
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
+
+  // Sync state when props change (e.g., after re-fetching run data)
+  useEffect(() => {
+    setIsShared(initialIsShared);
+    setShareToken(initialShareToken || null);
+  }, [initialIsShared, initialShareToken]);
+
+  // Generate the share URL from the token
+  const baseUrl =
+    process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || window.location.origin;
+  const shareUrl = shareToken ? `${baseUrl}/share/${shareToken}` : "";
 
   const { mutate: enableSharing, isPending: isEnabling } =
     usePostV1EnableExecutionSharing();
@@ -68,7 +79,7 @@ export function ShareButton({
               });
               return;
             }
-            setShareUrl(response.data.share_url);
+            setShareToken(response.data.share_token);
             setIsShared(true);
             toast({
               title: "Sharing enabled",
@@ -97,7 +108,7 @@ export function ShareButton({
       {
         onSuccess: () => {
           setIsShared(false);
-          setShareUrl("");
+          setShareToken(null);
           toast({
             title: "Sharing disabled",
             description: "The share link is no longer accessible.",
@@ -135,9 +146,16 @@ export function ShareButton({
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant="secondary" size="small">
+        <Button
+          variant={isShared ? "primary" : "secondary"}
+          size="small"
+          className={isShared ? "relative" : ""}
+        >
           <ShareFatIcon size={16} />
-          Share
+          {isShared ? "Shared" : "Share"}
+          {isShared && (
+            <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-green-500" />
+          )}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">

@@ -69,7 +69,12 @@ export function RunDetailHeader({
                 >
                   <PlayIcon size={16} /> Run again
                 </Button>
-                <ShareButton graphId={agent.graph_id} executionId={run.id} />
+                <ShareButton
+                  graphId={agent.graph_id}
+                  executionId={run.id}
+                  isShared={run.is_shared}
+                  shareToken={run.share_token}
+                />
                 {!isRunning ? (
                   <Button
                     variant="secondary"
