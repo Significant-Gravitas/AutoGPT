@@ -479,6 +479,9 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     )
 
     openai_api_key: str = Field(default="", description="OpenAI API key")
+    openai_internal_api_key: str = Field(
+        default="", description="OpenAI Internal API key"
+    )
     aiml_api_key: str = Field(default="", description="'AI/ML API' key")
     anthropic_api_key: str = Field(default="", description="Anthropic API key")
     groq_api_key: str = Field(default="", description="Groq API key")
