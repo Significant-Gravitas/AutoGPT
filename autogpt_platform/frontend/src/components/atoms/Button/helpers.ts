@@ -17,12 +17,12 @@ export const extendedButtonVariants = cva(
           "bg-transparent border-zinc-700 text-black hover:bg-zinc-100 hover:border-zinc-700 rounded-full disabled:border-zinc-200 disabled:text-zinc-200 disabled:opacity-1",
         ghost:
           "bg-transparent border-transparent text-black hover:bg-zinc-50 hover:border-zinc-50 rounded-full disabled:text-zinc-200 disabled:opacity-1",
-        icon: "bg-white text-black border border-zinc-600 hover:bg-zinc-100 rounded-[96px] disabled:opacity-1 min-w-0",
+        icon: "bg-white text-black border border-zinc-600 hover:bg-zinc-100 rounded-[96px] disabled:opacity-1 !min-w-0",
       },
       size: {
         small: "px-3 py-2 text-sm gap-1.5 h-[2.25rem]",
         large: "px-4 py-3 text-sm gap-2 h-[3.25rem]",
-        icon: "p-3 min-w-0",
+        icon: "p-3 !min-w-0",
       },
     },
     defaultVariants: {

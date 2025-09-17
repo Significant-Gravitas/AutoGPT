@@ -3,7 +3,6 @@
 import React from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   ShareFatIcon,
@@ -12,6 +11,8 @@ import {
   WarningIcon,
 } from "@phosphor-icons/react";
 import { useShareRunButton } from "./useShareRunButton";
+import { Input } from "@/components/atoms/Input/Input";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   graphId: string;
@@ -42,7 +43,10 @@ export function ShareRunButton({
   });
 
   return (
-    <Dialog title="Share Agent Run">
+    <Dialog
+      title="Share Agent Run"
+      styling={{ maxWidth: "36rem", minWidth: "auto" }}
+    >
       <Dialog.Trigger>
         <Button
           variant={isShared ? "primary" : "secondary"}
@@ -51,50 +55,59 @@ export function ShareRunButton({
         >
           <ShareFatIcon size={16} />
           {isShared ? "Shared" : "Share"}
-          {isShared && (
-            <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-green-500" />
-          )}
         </Button>
       </Dialog.Trigger>
 
       <Dialog.Content>
-        <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">
+        <div className="flex flex-col gap-4">
+          <Text variant="large">
             {isShared
               ? "Your agent run is currently shared. Anyone with the link can view the output."
               : "Generate a public link to share this agent run output with others."}
-          </p>
+          </Text>
 
           {!isShared ? (
             <>
-              <Alert>
-                <WarningIcon className="h-4 w-4" />
-                <AlertDescription>
-                  When you enable sharing, the output of this agent run will be
-                  publicly accessible to anyone with the link. The page will
-                  include a noindex directive to discourage search engine
-                  crawling, but this cannot be guaranteed.
-                </AlertDescription>
-              </Alert>
+              <div className="!mb-4">
+                <Alert>
+                  <WarningIcon className="h-4 w-4" />
+                  <Text variant="body">
+                    When you enable sharing, the output of this agent run will
+                    be publicly accessible to anyone with the link. The page
+                    will include a noindex directive to discourage search engine
+                    crawling, but this cannot be guaranteed.
+                  </Text>
+                </Alert>
+              </div>
               <Button
                 onClick={handleShare}
                 loading={loading}
-                className="w-full"
+                className="mt-6 w-full"
               >
                 Enable Sharing
               </Button>
             </>
           ) : (
             <>
-              <div className="flex items-center space-x-2">
-                <Input value={shareUrl} readOnly className="flex-1" />
-                <button
+              <div className="flex w-full items-center gap-4">
+                <Input
+                  type="text"
+                  value={shareUrl}
+                  readOnly
+                  label="Share URL"
+                  id="share-url"
+                  size="small"
+                  className="!m-0"
+                  wrapperClassName="flex-1"
+                />
+                <Button
+                  variant="secondary"
                   onClick={handleCopy}
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-input bg-background text-sm font-medium ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
-                  type="button"
+                  size="small"
+                  className="mt-0.5 !min-w-0"
                 >
                   {copied ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
-                </button>
+                </Button>
               </div>
               <Alert>
                 <WarningIcon className="h-4 w-4" />
@@ -108,7 +121,7 @@ export function ShareRunButton({
                 onClick={handleStopSharing}
                 loading={loading}
                 variant="destructive"
-                className="w-full"
+                className="mt-6 w-full"
               >
                 Stop Sharing
               </Button>
