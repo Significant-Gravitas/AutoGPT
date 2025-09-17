@@ -6,15 +6,13 @@ import React, {
 } from "react";
 import { Node } from "@xyflow/react";
 import { CustomNodeData } from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
-import { RunnerInputDialog } from "@/components/runner-ui/RunnerInputUI";
 import {
   BlockUIType,
   CredentialsMetaInput,
   GraphMeta,
 } from "@/lib/autogpt-server-api/types";
-import RunnerOutputUI, {
-  OutputNodeInfo,
-} from "@/components/runner-ui/RunnerOutputUI";
+import RunnerOutputUI, { OutputNodeInfo } from "./RunnerOutputUI";
+import { RunnerInputDialog } from "./RunnerInputUI";
 
 interface RunnerUIWrapperProps {
   graph: GraphMeta;

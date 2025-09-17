@@ -3,7 +3,7 @@ import { ReactNode } from "react";
 import OnboardingBackButton from "./OnboardingBackButton";
 import { cn } from "@/lib/utils";
 import OnboardingProgress from "./OnboardingProgress";
-import { useOnboarding } from "./onboarding-provider";
+import { useOnboarding } from "../../../../providers/onboarding/onboarding-provider";
 
 export function OnboardingStep({
   dotted,

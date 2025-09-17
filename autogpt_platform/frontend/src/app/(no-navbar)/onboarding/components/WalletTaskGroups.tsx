@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, Check } from "lucide-react";
 import { OnboardingStep } from "@/lib/autogpt-server-api";
-import { useOnboarding } from "./onboarding-provider";
+import { useOnboarding } from "../../../../providers/onboarding/onboarding-provider";
 import { cn } from "@/lib/utils";
 import * as party from "party-js";
 

@@ -8,9 +8,9 @@ import {
 } from "@/components/ui/popover";
 import { X } from "lucide-react";
 import { PopoverClose } from "@radix-ui/react-popover";
-import { TaskGroups } from "../onboarding/WalletTaskGroups";
+import { TaskGroups } from "@/app/(no-navbar)/onboarding/components/WalletTaskGroups";
 import { ScrollArea } from "../ui/scroll-area";
-import { useOnboarding } from "../onboarding/onboarding-provider";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import * as party from "party-js";

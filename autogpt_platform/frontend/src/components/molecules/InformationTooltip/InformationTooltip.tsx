@@ -3,7 +3,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { Info } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
@@ -11,25 +11,22 @@ type Props = {
   description?: string;
 };
 
-export function SchemaTooltip({ description }: Props) {
+export function InformationTooltip({ description }: Props) {
   if (!description) return null;
 
   return (
     <TooltipProvider delayDuration={400}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Info
-            className="rounded-full p-1 hover:bg-gray-300 dark:hover:bg-gray-700"
-            size={24}
-          />
+          <Info className="rounded-full p-1 hover:bg-slate-50" size={24} />
         </TooltipTrigger>
-        <TooltipContent className="tooltip-content max-w-xs bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100">
+        <TooltipContent>
           <ReactMarkdown
             components={{
               a: ({ node: _, ...props }) => (
                 <a
                   target="_blank"
-                  className="text-blue-400 underline dark:text-blue-300"
+                  className="text-blue-400 underline"
                   {...props}
                 />
               ),

@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { beautifyString, getTypeBgColor, getTypeTextColor } from "@/lib/utils";
 import { FC, memo, useCallback } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { SchemaTooltip } from "@/components/contextual/SchemaTooltip/SchemaTooltip";
+import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 
 type HandleProps = {
   keyName: string;
@@ -99,7 +99,7 @@ const NodeHandle: FC<HandleProps> = ({
             {label}
           </div>
         </Handle>
-        <SchemaTooltip description={schema.description} />
+        <InformationTooltip description={schema.description} />
       </div>
     );
   } else {

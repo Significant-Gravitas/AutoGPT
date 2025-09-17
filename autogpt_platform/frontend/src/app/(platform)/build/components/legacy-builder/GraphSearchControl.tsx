@@ -12,7 +12,7 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { useGraphMenu } from "../NewBlockMenu/GraphMenu/useGraphMenu";
 
 interface GraphSearchControlProps {

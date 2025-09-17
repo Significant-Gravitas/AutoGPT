@@ -1,13 +1,13 @@
 import { WebhookTriggerBanner } from "../WebhookTriggerBanner/WebhookTriggerBanner";
 import { Input } from "@/components/atoms/Input/Input";
-import SchemaTooltip from "@/components/contextual/SchemaTooltip/SchemaTooltip";
 import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
 import { useRunAgentModalContext } from "../../context";
 import { RunAgentInputs } from "../../../RunAgentInputs/RunAgentInputs";
 import { InfoIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
-import { toDisplayName } from "@/services/agent-credentials/helper";
+import { toDisplayName } from "@/providers/agent-credentials/helper";
 import { getCredentialTypeDisplayName } from "./helpers";
+import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 
 export function ModalRunSection() {
   const {
@@ -35,7 +35,7 @@ export function ModalRunSection() {
           <div className="flex flex-col space-y-2">
             <label className="flex items-center gap-1 text-sm font-medium">
               Trigger Name
-              <SchemaTooltip description="Name of the trigger you are setting up" />
+              <InformationTooltip description="Name of the trigger you are setting up" />
             </label>
             <Input
               id="trigger_name"
@@ -50,7 +50,7 @@ export function ModalRunSection() {
           <div className="flex flex-col space-y-2">
             <label className="flex items-center gap-1 text-sm font-medium">
               Trigger Description
-              <SchemaTooltip description="Description of the trigger you are setting up" />
+              <InformationTooltip description="Description of the trigger you are setting up" />
             </label>
             <Input
               id="trigger_description"
@@ -104,7 +104,7 @@ export function ModalRunSection() {
         <div key={key} className="flex w-full flex-col gap-0 space-y-2">
           <label className="flex items-center gap-1 text-sm font-medium">
             {inputSubSchema.title || key}
-            <SchemaTooltip description={inputSubSchema.description} />
+            <InformationTooltip description={inputSubSchema.description} />
           </label>
 
           <RunAgentInputs

@@ -26,7 +26,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
 
 import { AgentRunStatus, agentRunStatusMap } from "./agent-run-status-chip";

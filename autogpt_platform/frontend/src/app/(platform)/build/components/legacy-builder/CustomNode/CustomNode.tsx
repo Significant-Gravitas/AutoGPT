@@ -54,14 +54,13 @@ import useCredits from "@/hooks/useCredits";
 import { getV1GetAyrshareSsoUrl } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { Input } from "@/components/ui/input";
-import { Switch } from "../../../../../../components/atoms/Switch/Switch";
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { SchemaTooltip } from "@/components/contextual/SchemaTooltip/SchemaTooltip";
+} from "@/components/atoms/Tooltip/BaseTooltip";
+import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
+import { Switch } from "@/components/atoms/Switch/Switch";
 
 export type ConnectionData = Array<{
   edge_id: string;
@@ -421,7 +420,9 @@ export const CustomNode = React.memo(
                         <span className="text-m green mb-0 text-gray-900 dark:text-gray-100">
                           {propSchema.title || beautifyString(propKey)}
                         </span>
-                        <SchemaTooltip description={propSchema.description} />
+                        <InformationTooltip
+                          description={propSchema.description}
+                        />
                       </div>
                     )
                   )}
@@ -822,29 +823,26 @@ export const CustomNode = React.memo(
                     )}
                   />
                 ) : (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <h3 className="font-roboto cursor-default text-lg">
-                          <TextRenderer
-                            value={displayTitle}
-                            truncateLengthLimit={80}
-                          />
-                        </h3>
-                      </TooltipTrigger>
-                      {customTitle && (
-                        <TooltipContent>
-                          <p>
-                            Type:{" "}
-                            {beautifyString(
-                              data.blockType?.replace(/Block$/, "") ||
-                                data.title,
-                            )}
-                          </p>
-                        </TooltipContent>
-                      )}
-                    </Tooltip>
-                  </TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <h3 className="font-roboto cursor-default text-lg">
+                        <TextRenderer
+                          value={displayTitle}
+                          truncateLengthLimit={80}
+                        />
+                      </h3>
+                    </TooltipTrigger>
+                    {customTitle && (
+                      <TooltipContent>
+                        <p>
+                          Type:{" "}
+                          {beautifyString(
+                            data.blockType?.replace(/Block$/, "") || data.title,
+                          )}
+                        </p>
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
                 )}
                 {isTitleHovered && !isEditingTitle && (
                   <button

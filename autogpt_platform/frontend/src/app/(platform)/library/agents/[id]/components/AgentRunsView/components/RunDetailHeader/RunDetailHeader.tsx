@@ -15,7 +15,7 @@ import { useRunDetailHeader } from "./useRunDetailHeader";
 import { AgentActionsDropdown } from "../AgentActionsDropdown";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { ShareRunButton } from "../ShareRunButton/ShareButton";
+import { ShareRunButton } from "../ShareRunButton/ShareRunButton";
 
 type Props = {
   agent: LibraryAgent;

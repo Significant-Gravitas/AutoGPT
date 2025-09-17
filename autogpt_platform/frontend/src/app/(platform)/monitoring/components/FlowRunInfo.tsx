@@ -7,10 +7,10 @@ import { IconSquare } from "@/components/ui/icons";
 import { ExitIcon, Pencil2Icon } from "@radix-ui/react-icons";
 import moment from "moment/moment";
 import { FlowRunStatusBadge } from "@/app/(platform)/monitoring/components/FlowRunStatusBadge";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import RunnerOutputUI, {
   OutputNodeInfo,
-} from "../../../../components/runner-ui/RunnerOutputUI";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+} from "../../build/components/legacy-builder/RunnerOutputUI";
 
 export const FlowRunInfo: React.FC<
   React.HTMLAttributes<HTMLDivElement> & {
