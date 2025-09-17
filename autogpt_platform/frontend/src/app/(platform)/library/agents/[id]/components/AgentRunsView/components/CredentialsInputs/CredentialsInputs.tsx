@@ -1,4 +1,4 @@
-import SchemaTooltip from "@/components/SchemaTooltip";
+import SchemaTooltip from "@/components/contextual/SchemaTooltip/SchemaTooltip";
 import { Button } from "@/components/atoms/Button/Button";
 import { IconKey, IconKeyPlus, IconUserPlus } from "@/components/ui/icons";
 import {

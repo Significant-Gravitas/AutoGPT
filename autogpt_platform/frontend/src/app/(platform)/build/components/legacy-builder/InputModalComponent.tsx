@@ -1,9 +1,9 @@
 import React, { FC, useEffect, useState } from "react";
-import { Button } from "./ui/button";
-import { Textarea } from "./ui/textarea";
+import { Button } from "../../../../../components/ui/button";
+import { Textarea } from "../../../../../components/ui/textarea";
 import { Maximize2, Minimize2, Clipboard } from "lucide-react";
 import { createPortal } from "react-dom";
-import { toast } from "./molecules/Toast/use-toast";
+import { toast } from "../../../../../components/molecules/Toast/use-toast";
 
 interface ModalProps {
   isOpen: boolean;

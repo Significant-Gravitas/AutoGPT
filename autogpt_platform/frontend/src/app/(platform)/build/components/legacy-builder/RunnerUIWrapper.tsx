@@ -5,7 +5,7 @@ import React, {
   useMemo,
 } from "react";
 import { Node } from "@xyflow/react";
-import { CustomNodeData } from "@/components/CustomNode";
+import { CustomNodeData } from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
 import { RunnerInputDialog } from "@/components/runner-ui/RunnerInputUI";
 import {
   BlockUIType,

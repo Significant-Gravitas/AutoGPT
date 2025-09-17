@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { beautifyString, getTypeBgColor, getTypeTextColor } from "@/lib/utils";
 import { FC, memo, useCallback } from "react";
 import { Handle, Position } from "@xyflow/react";
-import SchemaTooltip from "./SchemaTooltip";
+import { SchemaTooltip } from "@/components/contextual/SchemaTooltip/SchemaTooltip";
 
 type HandleProps = {
   keyName: string;

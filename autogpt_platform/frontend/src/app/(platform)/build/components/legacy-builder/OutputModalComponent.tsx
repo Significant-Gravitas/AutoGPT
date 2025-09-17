@@ -1,5 +1,5 @@
 import React, { FC } from "react";
-import { Button } from "./ui/button";
+import { Button } from "../../../../../components/ui/button";
 import { NodeExecutionResult } from "@/lib/autogpt-server-api/types";
 import DataTable from "./DataTable";
 import { Separator } from "@/components/ui/separator";

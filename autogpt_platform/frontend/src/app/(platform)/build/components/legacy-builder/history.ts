@@ -1,5 +1,5 @@
-import { CustomNodeData } from "./CustomNode";
-import { CustomEdgeData } from "./CustomEdge";
+import { CustomNodeData } from "./CustomNode/CustomNode";
+import { CustomEdgeData } from "./CustomEdge/CustomEdge";
 import { Edge } from "@xyflow/react";
 
 type ActionType =

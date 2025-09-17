@@ -5,7 +5,7 @@ import { LogOut } from "lucide-react";
 import { ClockIcon } from "@phosphor-icons/react";
 import { IconPlay, IconSquare } from "@/components/ui/icons";
 
-interface PrimaryActionBarProps {
+interface Props {
   onClickAgentOutputs?: () => void;
   onClickRunAgent?: () => void;
   onClickStopRun: () => void;
@@ -15,7 +15,7 @@ interface PrimaryActionBarProps {
   className?: string;
 }
 
-const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
+export const BuildActionBar: React.FC<Props> = ({
   onClickAgentOutputs,
   onClickRunAgent,
   onClickStopRun,
@@ -94,5 +94,3 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
     </div>
   );
 };
-
-export default PrimaryActionBar;

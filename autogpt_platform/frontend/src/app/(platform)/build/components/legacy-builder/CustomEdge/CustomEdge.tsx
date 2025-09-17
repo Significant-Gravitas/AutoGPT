@@ -16,9 +16,9 @@ import {
 } from "@xyflow/react";
 import "./customedge.css";
 import { X } from "lucide-react";
-import { useBezierPath } from "@/hooks/useBezierPath";
-import { BuilderContext } from "./Flow";
+import { BuilderContext } from "../Flow/Flow";
 import { NodeExecutionResult } from "@/lib/autogpt-server-api";
+import { useCustomEdge } from "./useCustomEdge";
 
 export type CustomEdgeData = {
   edgeColor: string;
@@ -53,7 +53,7 @@ export function CustomEdge({
     destroyed: number;
   }>({ beads: [], created: 0, destroyed: 0 });
   const beadsRef = useRef(beads);
-  const { svgPath, length, getPointForT, getTForDistance } = useBezierPath(
+  const { svgPath, length, getPointForT, getTForDistance } = useCustomEdge(
     sourceX - 5,
     sourceY - 5,
     targetX + 3,

@@ -8,7 +8,10 @@ import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 import { beautifyString, cn } from "@/lib/utils";
 import { Node, useNodeId, useNodesData } from "@xyflow/react";
-import { ConnectionData, CustomNodeData } from "@/components/CustomNode";
+import {
+  ConnectionData,
+  CustomNodeData,
+} from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
 import { Cross2Icon, Pencil2Icon, PlusIcon } from "@radix-ui/react-icons";
 import {
   BlockIOArraySubSchema,
@@ -33,14 +36,14 @@ import React, {
   useState,
   useRef,
 } from "react";
-import { Button } from "./ui/button";
+import { Button } from "../../../../../components/ui/button";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "./ui/select";
+} from "../../../../../components/ui/select";
 import {
   MultiSelector,
   MultiSelectorContent,
@@ -48,11 +51,11 @@ import {
   MultiSelectorItem,
   MultiSelectorList,
   MultiSelectorTrigger,
-} from "./ui/multiselect";
-import { LocalValuedInput } from "./ui/input";
+} from "../../../../../components/ui/multiselect";
+import { LocalValuedInput } from "../../../../../components/ui/input";
 import NodeHandle from "./NodeHandle";
 import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
-import { Switch } from "./atoms/Switch/Switch";
+import { Switch } from "../../../../../components/atoms/Switch/Switch";
 
 type NodeObjectInputTreeProps = {
   nodeId: string;

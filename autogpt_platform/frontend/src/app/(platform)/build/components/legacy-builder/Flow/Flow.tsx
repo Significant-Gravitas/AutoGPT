@@ -26,7 +26,7 @@ import {
   applyNodeChanges,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { CustomNode } from "./CustomNode";
+import { CustomNode } from "../CustomNode/CustomNode";
 import "./flow.css";
 import {
   BlockUIType,
@@ -41,28 +41,29 @@ import {
   findNewlyAddedBlockCoordinates,
   beautifyString,
 } from "@/lib/utils";
-import { history } from "./history";
-import { CustomEdge } from "./CustomEdge";
-import ConnectionLine from "./ConnectionLine";
-import { Control, ControlPanel } from "@/components/edit/control/ControlPanel";
-import { SaveControl } from "@/components/edit/control/SaveControl";
-import { BlocksControl } from "@/components/edit/control/BlocksControl";
-import { GraphSearchControl } from "@/components/edit/control/GraphSearchControl";
+import { history } from "../history";
+import { CustomEdge } from "../CustomEdge/CustomEdge";
+import ConnectionLine from "../ConnectionLine";
+import {
+  Control,
+  ControlPanel,
+} from "@/app/(platform)/build/components/legacy-builder/ControlPanel";
+import { SaveControl } from "@/app/(platform)/build/components/legacy-builder/SaveControl";
+import { BlocksControl } from "@/app/(platform)/build/components/legacy-builder/BlocksControl";
+import { GraphSearchControl } from "@/app/(platform)/build/components/legacy-builder/GraphSearchControl";
 import { IconUndo2, IconRedo2 } from "@/components/ui/icons";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { startTutorial } from "./tutorial";
+import { startTutorial } from "../tutorial";
 import useAgentGraph from "@/hooks/useAgentGraph";
 import { v4 as uuidv4 } from "uuid";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import RunnerUIWrapper, {
-  RunnerUIWrapperRef,
-} from "@/components/RunnerUIWrapper";
-import PrimaryActionBar from "@/components/PrimaryActionButton";
-import OttoChatWidget from "@/components/OttoChatWidget";
+import RunnerUIWrapper, { RunnerUIWrapperRef } from "../RunnerUIWrapper";
+import OttoChatWidget from "@/app/(platform)/build/components/legacy-builder/OttoChatWidget";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { useCopyPaste } from "../hooks/useCopyPaste";
+import { useCopyPaste } from "../../../../../../hooks/useCopyPaste";
 import NewControlPanel from "@/app/(platform)/build/components/NewBlockMenu/NewControlPanel/NewControlPanel";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { BuildActionBar } from "../BuildActionBar";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -899,7 +900,7 @@ const FlowEditor: React.FC<{
           )}
 
           {!graphHasWebhookNodes ? (
-            <PrimaryActionBar
+            <BuildActionBar
               className="absolute bottom-0 left-1/2 z-20 -translate-x-1/2"
               onClickAgentOutputs={runnerUIRef.current?.openRunnerOutput}
               onClickRunAgent={handleRunButton}

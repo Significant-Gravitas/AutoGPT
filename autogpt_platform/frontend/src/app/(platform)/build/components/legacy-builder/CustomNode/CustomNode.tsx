@@ -9,8 +9,8 @@ import Link from "next/link";
 import { NodeProps, useReactFlow, Node as XYNode, Edge } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import "./customnode.css";
-import InputModalComponent from "./InputModalComponent";
-import OutputModalComponent from "./OutputModalComponent";
+import InputModalComponent from "../InputModalComponent";
+import OutputModalComponent from "../OutputModalComponent";
 import {
   BlockIORootSchema,
   BlockIOSubSchema,
@@ -31,21 +31,17 @@ import {
 } from "@/lib/utils";
 import { Button } from "@/components/atoms/Button/Button";
 import { TextRenderer } from "@/components/ui/render";
-import { history } from "./history";
-import NodeHandle from "./NodeHandle";
-import {
-  NodeGenericInputField,
-  NodeTextBoxInput,
-} from "./node-input-components";
+import { history } from "../history";
+import NodeHandle from "../NodeHandle";
+import { NodeGenericInputField, NodeTextBoxInput } from "../NodeInputs";
 import { getPrimaryCategoryColor } from "@/lib/utils";
-import { BuilderContext } from "./Flow";
-import { Badge } from "./ui/badge";
-import NodeOutputs from "./NodeOutputs";
-import SchemaTooltip from "./SchemaTooltip";
-import { IconCoin } from "./ui/icons";
+import { BuilderContext } from "../Flow/Flow";
+import { Badge } from "../../../../../../components/ui/badge";
+import NodeOutputs from "../NodeOutputs";
+import { IconCoin } from "../../../../../../components/ui/icons";
 import * as Separator from "@radix-ui/react-separator";
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import { Alert, AlertDescription } from "./ui/alert";
+import { Alert, AlertDescription } from "../../../../../../components/ui/alert";
 import {
   DotsVerticalIcon,
   TrashIcon,
@@ -58,13 +54,14 @@ import useCredits from "@/hooks/useCredits";
 import { getV1GetAyrshareSsoUrl } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { Input } from "@/components/ui/input";
-import { Switch } from "./atoms/Switch/Switch";
+import { Switch } from "../../../../../../components/atoms/Switch/Switch";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { SchemaTooltip } from "@/components/contextual/SchemaTooltip/SchemaTooltip";
 
 export type ConnectionData = Array<{
   edge_id: string;

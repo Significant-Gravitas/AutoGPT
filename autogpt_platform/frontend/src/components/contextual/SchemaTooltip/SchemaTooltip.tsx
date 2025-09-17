@@ -7,7 +7,11 @@ import {
 import { Info } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
-const SchemaTooltip: React.FC<{ description?: string }> = ({ description }) => {
+type Props = {
+  description?: string;
+};
+
+export function SchemaTooltip({ description }: Props) {
   if (!description) return null;
 
   return (
@@ -37,6 +41,4 @@ const SchemaTooltip: React.FC<{ description?: string }> = ({ description }) => {
       </Tooltip>
     </TooltipProvider>
   );
-};
-
-export default SchemaTooltip;
+}

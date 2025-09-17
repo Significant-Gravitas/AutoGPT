@@ -12,7 +12,7 @@ export type BezierPath = {
   targetPosition: XYPosition;
 };
 
-export function useBezierPath(
+export function useCustomEdge(
   sourceX: number,
   sourceY: number,
   targetX: number,

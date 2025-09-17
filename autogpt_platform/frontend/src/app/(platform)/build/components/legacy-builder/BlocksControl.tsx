@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TextRenderer } from "@/components/ui/render";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { CustomNode } from "@/components/CustomNode";
+import { CustomNode } from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
 import { beautifyString } from "@/lib/utils";
 import {
   Popover,

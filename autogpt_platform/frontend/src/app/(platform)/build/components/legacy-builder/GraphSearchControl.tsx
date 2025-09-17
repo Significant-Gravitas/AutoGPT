@@ -6,14 +6,14 @@ import {
 } from "@/components/ui/popover";
 import { Button } from "@/components/atoms/Button/Button";
 import { MagnifyingGlassIcon } from "@radix-ui/react-icons";
-import { CustomNode } from "@/components/CustomNode";
-import { GraphSearchContent } from "../../../app/(platform)/build/components/NewBlockMenu/GraphMenuContent/GraphContent";
+import { CustomNode } from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
+import { GraphSearchContent } from "../NewBlockMenu/GraphMenuContent/GraphContent";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useGraphMenu } from "../../../app/(platform)/build/components/NewBlockMenu/GraphMenu/useGraphMenu";
+import { useGraphMenu } from "../NewBlockMenu/GraphMenu/useGraphMenu";
 
 interface GraphSearchControlProps {
   nodes: CustomNode[];

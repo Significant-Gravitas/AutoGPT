@@ -8,7 +8,7 @@ import {
 } from "@/components/onboarding/OnboardingStep";
 import { OnboardingText } from "@/components/onboarding/OnboardingText";
 import StarRating from "@/components/onboarding/StarRating";
-import SchemaTooltip from "@/components/SchemaTooltip";
+import SchemaTooltip from "@/components/contextual/SchemaTooltip/SchemaTooltip";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { GraphMeta, StoreAgentDetails } from "@/lib/autogpt-server-api";

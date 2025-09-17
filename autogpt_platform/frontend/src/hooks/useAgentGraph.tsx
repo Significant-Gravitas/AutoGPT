@@ -1,5 +1,5 @@
-import { CustomEdge } from "@/components/CustomEdge";
-import { CustomNode } from "@/components/CustomNode";
+import { CustomEdge } from "@/app/(platform)/build/components/legacy-builder/CustomEdge/CustomEdge";
+import { CustomNode } from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import {
