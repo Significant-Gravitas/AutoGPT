@@ -2,16 +2,38 @@
 
 Welcome to the AutoGPT Platform - a powerful system for creating and running AI agents to solve business problems. This platform enables you to harness the power of artificial intelligence to automate tasks, analyze data, and generate insights for your organization.
 
-## Getting Started
+## Deployment Options
+
+### Quick Deploy with Published Containers (Recommended)
+
+The fastest way to get started is using our pre-built containers:
+
+```bash
+# Download and run with published images
+curl -fsSL https://raw.githubusercontent.com/Significant-Gravitas/AutoGPT/master/autogpt_platform/deploy.sh -o deploy.sh
+chmod +x deploy.sh
+./deploy.sh deploy
+```
+
+Access the platform at http://localhost:3000 after deployment completes.
+
+### Platform-Specific Deployments
+
+- **Unraid**: [Deployment Guide](../docs/content/platform/deployment/unraid.md)
+- **Home Assistant**: [Add-on Guide](../docs/content/platform/deployment/home-assistant.md)  
+- **Kubernetes**: [K8s Deployment](../docs/content/platform/deployment/kubernetes.md)
+- **General Containers**: [Container Guide](../docs/content/platform/container-deployment.md)
+
+## Development Setup
 
 ### Prerequisites
 
 - Docker
 - Docker Compose V2 (comes with Docker Desktop, or can be installed separately)
 
-### Running the System
+### Running from Source
 
-To run the AutoGPT Platform, follow these steps:
+To run the AutoGPT Platform from source for development:
 
 1. Clone this repository to your local machine and navigate to the `autogpt_platform` directory within the repository:
 
@@ -157,3 +179,28 @@ If you need to update the API client after making changes to the backend API:
    ```
 
 This will fetch the latest OpenAPI specification and regenerate the TypeScript client code.
+
+## Container Deployment
+
+For production deployments and specific platforms, see our container deployment guides:
+
+- **[Container Deployment Overview](CONTAINERS.md)** - Complete guide to using published containers
+- **[Deployment Script](deploy.sh)** - Automated deployment and management tool
+- **[Published Images](docker-compose.published.yml)** - Docker Compose for published containers
+
+### Published Container Images
+
+- **Backend**: `ghcr.io/significant-gravitas/autogpt-platform-backend:latest`
+- **Frontend**: `ghcr.io/significant-gravitas/autogpt-platform-frontend:latest`
+
+### Quick Production Deployment
+
+```bash
+# Deploy with published containers
+./deploy.sh deploy
+
+# Or use the published compose file directly
+docker compose -f docker-compose.published.yml up -d
+```
+
+For detailed deployment instructions, troubleshooting, and platform-specific guides, see the [Container Documentation](CONTAINERS.md).

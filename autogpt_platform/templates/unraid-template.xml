@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>AutoGPT-Platform</Name>
+  <Repository>ghcr.io/significant-gravitas/autogpt-platform-frontend:latest</Repository>
+  <Registry>https://ghcr.io/significant-gravitas/autogpt-platform-frontend</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Significant-Gravitas/AutoGPT/issues</Support>
+  <Project>https://github.com/Significant-Gravitas/AutoGPT</Project>
+  <Overview>AutoGPT Platform is a powerful system for creating, deploying, and managing continuous AI agents that automate complex workflows. This template sets up the complete platform including frontend, backend services, database, and message queue.&#xD;
+&#xD;
+This is a complete stack deployment that includes:&#xD;
+- Frontend web interface&#xD;
+- Backend API services&#xD;
+- PostgreSQL database with pgvector&#xD;
+- Redis for caching&#xD;
+- RabbitMQ for task queuing&#xD;
+- Supabase for authentication&#xD;
+&#xD;
+IMPORTANT: This template creates multiple containers. Make sure you have sufficient resources (minimum 8GB RAM, 4 CPU cores) and available disk space (minimum 20GB).</Overview>
+  <Category>Productivity: Tools: Other:</Category>
+  <WebUI>http://[IP]:[PORT:3000]</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/Significant-Gravitas/AutoGPT/master/autogpt_platform/templates/unraid-template.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/Significant-Gravitas/AutoGPT/master/assets/autogpt_logo.png</Icon>
+  <ExtraParams>--network=autogpt</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled>1704067200</DateInstalled>
+  <DonateText>AutoGPT is an open-source project. Consider supporting development.</DonateText>
+  <DonateLink>https://github.com/sponsors/Significant-Gravitas</DonateLink>
+  <Requires>This template requires the AutoGPT Platform stack to be deployed. Please follow the setup instructions at: https://docs.agpt.co/platform/deployment/unraid/</Requires>
+  <Config Name="WebUI Port" Target="3000" Default="3000" Mode="tcp" Description="Port for the AutoGPT Platform web interface" Type="Port" Display="always" Required="true" Mask="false">3000</Config>
+  <Config Name="Backend API URL" Target="AGPT_SERVER_URL" Default="http://[IP]:8006/api" Mode="" Description="URL for the backend API server. Replace [IP] with your Unraid server IP." Type="Variable" Display="always" Required="true" Mask="false">http://[IP]:8006/api</Config>
+  <Config Name="Supabase URL" Target="SUPABASE_URL" Default="http://[IP]:8000" Mode="" Description="URL for Supabase authentication. Replace [IP] with your Unraid server IP." Type="Variable" Display="always" Required="true" Mask="false">http://[IP]:8000</Config>
+  <Config Name="WebSocket URL" Target="AGPT_WS_SERVER_URL" Default="ws://[IP]:8001/ws" Mode="" Description="WebSocket URL for real-time communication. Replace [IP] with your Unraid server IP." Type="Variable" Display="always" Required="true" Mask="false">ws://[IP]:8001/ws</Config>
+  <Config Name="Config Directory" Target="/app/config" Default="/mnt/user/appdata/autogpt-platform/frontend" Mode="rw" Description="Directory for frontend configuration files" Type="Path" Display="advanced" Required="true" Mask="false">/mnt/user/appdata/autogpt-platform/frontend</Config>
+  <Config Name="Log Level" Target="LOG_LEVEL" Default="INFO" Mode="" Description="Logging level (DEBUG, INFO, WARNING, ERROR)" Type="Variable" Display="advanced" Required="false" Mask="false">INFO</Config>
+  <Config Name="Node Environment" Target="NODE_ENV" Default="production" Mode="" Description="Node.js environment mode" Type="Variable" Display="advanced" Required="false" Mask="false">production</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User ID for file permissions" Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group ID for file permissions" Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+</Container>

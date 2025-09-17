@@ -1,0 +1,137 @@
+{
+  "name": "AutoGPT Platform",
+  "version": "1.0.0",
+  "slug": "autogpt-platform",
+  "description": "AutoGPT Platform for creating and managing AI agents with Home Assistant integration",
+  "url": "https://github.com/Significant-Gravitas/AutoGPT",
+  "codenotary": "notary@home-assistant.io",
+  "arch": [
+    "aarch64",
+    "amd64",
+    "armhf",
+    "armv7",
+    "i386"
+  ],
+  "startup": "services",
+  "init": false,
+  "privileged": [
+    "SYS_ADMIN"
+  ],
+  "hassio_api": true,
+  "hassio_role": "default",
+  "homeassistant_api": true,
+  "host_network": false,
+  "host_pid": false,
+  "host_ipc": false,
+  "auto_uart": false,
+  "devices": [],
+  "udev": false,
+  "tmpfs": false,
+  "environment": {
+    "LOG_LEVEL": "info"
+  },
+  "map": [
+    "config:rw",
+    "ssl:ro",
+    "addons_config:rw"
+  ],
+  "ports": {
+    "3000/tcp": 3000,
+    "8000/tcp": 8000
+  },
+  "ports_description": {
+    "3000/tcp": "AutoGPT Platform Frontend",
+    "8000/tcp": "AutoGPT Platform Backend API"
+  },
+  "webui": "http://[HOST]:[PORT:3000]",
+  "ingress": true,
+  "ingress_port": 3000,
+  "ingress_entry": "/",
+  "panel_icon": "mdi:robot",
+  "panel_title": "AutoGPT Platform",
+  "panel_admin": true,
+  "audio": false,
+  "video": false,
+  "gpio": false,
+  "usb": false,
+  "uart": false,
+  "kernel_modules": false,
+  "devicetree": false,
+  "docker_api": false,
+  "full_access": false,
+  "apparmor": true,
+  "auth_api": true,
+  "snapshot_exclude": [
+    "tmp/**",
+    "logs/**"
+  ],
+  "options": {
+    "database": {
+      "host": "localhost",
+      "port": 5432,
+      "username": "autogpt",
+      "password": "!secret autogpt_db_password",
+      "database": "autogpt"
+    },
+    "redis": {
+      "host": "localhost",
+      "port": 6379,
+      "password": "!secret autogpt_redis_password"
+    },
+    "auth": {
+      "jwt_secret": "!secret autogpt_jwt_secret",
+      "admin_email": "admin@example.com"
+    },
+    "homeassistant": {
+      "enabled": true,
+      "token": "!secret ha_long_lived_token",
+      "api_url": "http://supervisor/core/api"
+    },
+    "logging": {
+      "level": "INFO",
+      "file_logging": true
+    }
+  },
+  "schema": {
+    "database": {
+      "host": "str",
+      "port": "int(1,65535)",
+      "username": "str",
+      "password": "password",
+      "database": "str"
+    },
+    "redis": {
+      "host": "str",
+      "port": "int(1,65535)",
+      "password": "password?"
+    },
+    "auth": {
+      "jwt_secret": "password",
+      "admin_email": "email"
+    },
+    "homeassistant": {
+      "enabled": "bool",
+      "token": "password?",
+      "api_url": "url?"
+    },
+    "logging": {
+      "level": "list(DEBUG|INFO|WARNING|ERROR)?",
+      "file_logging": "bool?"
+    },
+    "advanced": {
+      "backend_workers": "int(1,10)?",
+      "max_agents": "int(1,100)?",
+      "resource_limits": {
+        "cpu": "float(0.1,4.0)?",
+        "memory": "str?"
+      }
+    }
+  },
+  "image": "ghcr.io/significant-gravitas/autogpt-platform-{arch}",
+  "services": [
+    "mqtt:want"
+  ],
+  "discovery": [
+    "autogpt_platform"
+  ]
+}
