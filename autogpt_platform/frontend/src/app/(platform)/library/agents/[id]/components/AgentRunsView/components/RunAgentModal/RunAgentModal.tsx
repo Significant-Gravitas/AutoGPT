@@ -16,6 +16,8 @@ import { ScheduleAgentModal } from "../ScheduleAgentModal/ScheduleAgentModal";
 import { AlarmIcon } from "@phosphor-icons/react";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
+import { ClockIcon } from "lucide-react";
+import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 
 interface Props {
   triggerSlot: React.ReactNode;
@@ -127,31 +129,6 @@ export function RunAgentModal({
             <div className="flex-shrink-0">
               <ModalHeader agent={agent} />
               <AgentCostSection flowId={agent.graph_id} />
-
-              {/* Setup Instructions */}
-              {agent.instructions && (
-                <div className="mx-6 mb-4 mt-6 flex items-start gap-2 rounded-md border border-violet-200 bg-violet-50 p-3">
-                  <svg
-                    className="mt-0.5 h-4 w-4 flex-shrink-0 text-violet-600"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  <div className="text-sm text-violet-800">
-                    <strong>Setup Instructions:</strong>{" "}
-                    <span className="whitespace-pre-wrap">
-                      {agent.instructions}
-                    </span>
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Scrollable content */}
