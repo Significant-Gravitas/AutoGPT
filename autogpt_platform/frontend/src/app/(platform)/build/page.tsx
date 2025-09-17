@@ -21,7 +21,7 @@ function BuilderContent() {
   const graphVersion = _graphVersion ? parseInt(_graphVersion) : undefined;
   return (
     <FlowEditor
-      className="flow-container"
+      className="flex h-full w-full"
       flowID={(query.get("flowID") as GraphID | null) ?? undefined}
       flowVersion={graphVersion}
     />
