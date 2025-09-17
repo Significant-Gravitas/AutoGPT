@@ -37,7 +37,7 @@ jobs:
 
     services:
       redis:
-        image: bitnami/redis:6.2
+        image: redis:latest
         env:
           REDIS_PASSWORD: testpassword
         ports:
