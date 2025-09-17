@@ -16,8 +16,6 @@ import { ScheduleAgentModal } from "../ScheduleAgentModal/ScheduleAgentModal";
 import { AlarmIcon } from "@phosphor-icons/react";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
-import { ClockIcon } from "lucide-react";
-import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 
 interface Props {
   triggerSlot: React.ReactNode;
