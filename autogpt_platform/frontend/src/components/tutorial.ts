@@ -1,6 +1,6 @@
 import Shepherd from "shepherd.js";
 import "shepherd.js/dist/css/shepherd.css";
-import { sendGAEvent } from "@/components/analytics/google-analytics";
+import { sendGAEvent } from "@/services/analytics/google-analytics";
 import { Key, storage } from "@/services/storage/local-storage";
 
 export const startTutorial = (

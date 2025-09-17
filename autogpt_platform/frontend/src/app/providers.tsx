@@ -1,7 +1,7 @@
 "use client";
 
 import { LaunchDarklyProvider } from "@/services/feature-flags/feature-flag-provider";
-import CredentialsProvider from "@/components/integrations/credentials-provider";
+import CredentialsProvider from "@/services/agent-credentials/credentials-provider";
 import OnboardingProvider from "@/components/onboarding/onboarding-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BackendAPIProvider } from "@/lib/autogpt-server-api/context";

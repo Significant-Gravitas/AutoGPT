@@ -17,8 +17,8 @@ import {
   type StoreSubmission,
   SubmissionStatus,
 } from "@/lib/autogpt-server-api/types";
-import { ApproveRejectButtons } from "./approve-reject-buttons";
-import { DownloadAgentAdminButton } from "./download-agent-button";
+import { ApproveRejectButtons } from "./ApproveRejectButton";
+import { DownloadAgentAdminButton } from "./DownloadAgentButton";
 
 // Moved the getStatusBadge function into the client component
 const getStatusBadge = (status: SubmissionStatus) => {

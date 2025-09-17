@@ -6,8 +6,10 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { IconSquare } from "@/components/ui/icons";
 import { ExitIcon, Pencil2Icon } from "@radix-ui/react-icons";
 import moment from "moment/moment";
-import { FlowRunStatusBadge } from "@/components/monitor/FlowRunStatusBadge";
-import RunnerOutputUI, { OutputNodeInfo } from "../runner-ui/RunnerOutputUI";
+import { FlowRunStatusBadge } from "@/app/(platform)/monitoring/components/FlowRunStatusBadge";
+import RunnerOutputUI, {
+  OutputNodeInfo,
+} from "../../../../components/runner-ui/RunnerOutputUI";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 export const FlowRunInfo: React.FC<

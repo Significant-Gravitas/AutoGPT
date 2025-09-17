@@ -35,9 +35,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { TextRenderer } from "../ui/render";
-import { Input } from "../ui/input";
-import { Label } from "../ui/label";
+import { TextRenderer } from "../../../../components/ui/render";
+import { Input } from "../../../../components/ui/input";
+import { Label } from "../../../../components/ui/label";
 
 interface SchedulesTableProps {
   schedules: GraphExecutionJobInfo[];

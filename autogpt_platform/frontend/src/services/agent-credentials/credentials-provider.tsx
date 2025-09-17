@@ -11,7 +11,7 @@ import {
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
-import { toDisplayName } from "@/components/integrations/helper";
+import { toDisplayName } from "@/services/agent-credentials/helper";
 
 type APIKeyCredentialsCreatable = Omit<
   APIKeyCredentials,

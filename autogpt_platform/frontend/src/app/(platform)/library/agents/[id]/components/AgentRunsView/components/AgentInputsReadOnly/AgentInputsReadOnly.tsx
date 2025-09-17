@@ -3,7 +3,7 @@
 import React from "react";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
-import { toDisplayName } from "@/components/integrations/helper";
+import { toDisplayName } from "@/services/agent-credentials/helper";
 import {
   getAgentCredentialsFields,
   getAgentInputFields,
