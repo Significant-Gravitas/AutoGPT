@@ -190,7 +190,12 @@ export const startTutorial = (
       element: '[data-id="blocks-control-popover-content"]',
       on: "right",
     },
-    buttons: [],
+    buttons: [
+      {
+        text: "Back",
+        action: tour.back,
+      },
+    ],
     beforeShowPromise: () =>
       waitForElement('[data-id="blocks-control-popover-content"]').then(() => {
         disableOtherBlocks(
@@ -202,7 +207,11 @@ export const startTutorial = (
       event: "click",
     },
     when: {
-      show: () => setPinBlocksPopover(true),
+      show: () => {
+        setPinBlocksPopover(true);
+        // Additional safeguard - ensure the popover stays pinned for this step
+        setTimeout(() => setPinBlocksPopover(true), 50);
+      },
       hide: enableAllBlocks,
     },
   });
