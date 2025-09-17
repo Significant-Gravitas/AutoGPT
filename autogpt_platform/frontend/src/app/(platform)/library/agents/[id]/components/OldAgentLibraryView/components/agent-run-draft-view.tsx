@@ -16,7 +16,8 @@ import ActionButtonGroup from "@/components/agptui/action-button-group";
 import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { IconCross, IconPlay, IconSave } from "@/components/ui/icons";
-import { CalendarClockIcon, Trash2Icon, ClockIcon } from "lucide-react";
+import { CalendarClockIcon, Trash2Icon } from "lucide-react";
+import { ClockIcon, InfoIcon } from "@phosphor-icons/react";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { ScheduleTaskDialog } from "@/components/cron-scheduler-dialog";
 import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
@@ -590,19 +591,7 @@ export function AgentRunDraftView({
             {/* Setup Instructions */}
             {graph.instructions && (
               <div className="flex items-start gap-2 rounded-md border border-violet-200 bg-violet-50 p-3">
-                <svg
-                  className="mt-0.5 h-4 w-4 flex-shrink-0 text-violet-600"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
+                <InfoIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-violet-600" />
                 <div className="text-sm text-violet-800">
                   <strong>Setup Instructions:</strong>{" "}
                   <span className="whitespace-pre-wrap">
