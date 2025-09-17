@@ -10,10 +10,10 @@ import {
   StoreSubmission,
   SubmissionStatus,
 } from "@/lib/autogpt-server-api/types";
-import { PaginationControls } from "../../ui/pagination-controls";
+import { PaginationControls } from "../../../../../components/ui/pagination-controls";
 import { getAdminListingsWithVersions } from "@/app/(platform)/admin/marketplace/actions";
-import { ExpandableRow } from "./expandable-row";
-import { SearchAndFilterAdminMarketplace } from "./search-filter-form";
+import { ExpandableRow } from "./ExpandleRow";
+import { SearchAndFilterAdminMarketplace } from "./SearchFilterForm";
 
 // Helper function to get the latest version by version number
 const getLatestVersionByNumber = (

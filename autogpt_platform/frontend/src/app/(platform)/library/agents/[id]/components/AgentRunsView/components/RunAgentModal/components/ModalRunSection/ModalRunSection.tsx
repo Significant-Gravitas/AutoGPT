@@ -6,7 +6,7 @@ import { useRunAgentModalContext } from "../../context";
 import { RunAgentInputs } from "../../../RunAgentInputs/RunAgentInputs";
 import { InfoIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
-import { toDisplayName } from "@/components/integrations/helper";
+import { toDisplayName } from "@/services/agent-credentials/helper";
 import { getCredentialTypeDisplayName } from "./helpers";
 
 export function ModalRunSection() {

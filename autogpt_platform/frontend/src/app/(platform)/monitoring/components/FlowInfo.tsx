@@ -24,7 +24,6 @@ import {
 } from "@radix-ui/react-icons";
 import Link from "next/link";
 import { exportAsJSONFile } from "@/lib/utils";
-import { FlowRunsStats } from "@/components/monitor/index";
 import {
   Dialog,
   DialogContent,
@@ -36,6 +35,7 @@ import {
 import useAgentGraph from "@/hooks/useAgentGraph";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { RunnerInputDialog } from "@/components/runner-ui/RunnerInputUI";
+import { FlowRunsStatus } from "./FlowRunsStatus";
 
 export const FlowInfo: React.FC<
   React.HTMLAttributes<HTMLDivElement> & {
@@ -184,7 +184,7 @@ export const FlowInfo: React.FC<
         </div>
       </CardHeader>
       <CardContent>
-        <FlowRunsStats
+        <FlowRunsStatus
           flows={[flow]}
           executions={executions.filter(
             (execution) =>

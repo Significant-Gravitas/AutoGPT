@@ -8,7 +8,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { FlowRunsTimeline } from "@/components/monitor/FlowRunsTimeline";
+import { FlowRunsTimeline } from "@/app/(platform)/monitoring/components/FlowRunsTimeline";
 
 export const FlowRunsStatus: React.FC<{
   flows: LibraryAgent[];

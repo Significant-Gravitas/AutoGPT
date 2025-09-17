@@ -14,7 +14,7 @@ import moment from "moment/moment";
 import { Card } from "@/components/ui/card";
 import { cn, hashString } from "@/lib/utils";
 import React from "react";
-import { FlowRunStatusBadge } from "@/components/monitor/FlowRunStatusBadge";
+import { FlowRunStatusBadge } from "@/app/(platform)/monitoring/components/FlowRunStatusBadge";
 
 export const FlowRunsTimeline = ({
   flows,
