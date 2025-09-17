@@ -1,0 +1,514 @@
+# AutoGPT Platform - Published Container Deployment
+# This compose file uses pre-built containers from GitHub Container Registry
+# Use this for production deployments or when you don't want to build from source
+
+networks:
+  app-network:
+    name: app-network
+  shared-network:
+    name: shared-network
+
+volumes:
+  supabase-config:
+  clamav-data:
+  postgres-data:
+  redis-data:
+  rabbitmq-data:
+
+x-agpt-services:
+  &agpt-services
+  networks:
+    - app-network
+    - shared-network
+
+x-supabase-services:
+  &supabase-services
+  networks:
+    - app-network
+    - shared-network
+
+services:
+  # Database migration service
+  migrate:
+    <<: *agpt-services
+    image: ghcr.io/significant-gravitas/autogpt-platform-backend:latest
+    command: ["sh", "-c", "poetry run prisma migrate deploy"]
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - backend/.env.default
+      - path: backend/.env
+        required: false
+    environment:
+      PYRO_HOST: "0.0.0.0"
+      DB_HOST: db
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq
+      SUPABASE_URL: http://kong:8000
+      DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+      DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+    restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "poetry run prisma migrate status | grep -q 'No pending migrations' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+  # Redis cache service
+  redis:
+    <<: *agpt-services
+    image: redis:latest
+    command: redis-server --requirepass password
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # RabbitMQ message broker
+  rabbitmq:
+    <<: *agpt-services
+    image: rabbitmq:management
+    container_name: rabbitmq
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: autogpt
+      RABBITMQ_DEFAULT_PASS: autogpt_password
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # Backend API server
+  rest_server:
+    <<: *agpt-services
+    image: ghcr.io/significant-gravitas/autogpt-platform-backend:latest
+    command: ["python", "-m", "backend.rest"]
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    env_file:
+      - backend/.env.default
+      - path: backend/.env
+        required: false
+    environment:
+      PYRO_HOST: "0.0.0.0"
+      AGENTSERVER_HOST: rest_server
+      SCHEDULER_HOST: scheduler_server
+      DATABASEMANAGER_HOST: database_manager
+      EXECUTIONMANAGER_HOST: executor
+      NOTIFICATIONMANAGER_HOST: notification_server
+      CLAMAV_SERVICE_HOST: clamav
+      DB_HOST: db
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq
+      SUPABASE_URL: http://kong:8000
+      DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+      DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+    ports:
+      - "8006:8006"
+
+  # Backend executor service
+  executor:
+    <<: *agpt-services
+    image: ghcr.io/significant-gravitas/autogpt-platform-backend:latest
+    command: ["python", "-m", "backend.exec"]
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      database_manager:
+        condition: service_started
+    env_file:
+      - backend/.env.default
+      - path: backend/.env
+        required: false
+    environment:
+      PYRO_HOST: "0.0.0.0"
+      AGENTSERVER_HOST: rest_server
+      SCHEDULER_HOST: scheduler_server
+      DATABASEMANAGER_HOST: database_manager
+      EXECUTIONMANAGER_HOST: executor
+      NOTIFICATIONMANAGER_HOST: notification_server
+      CLAMAV_SERVICE_HOST: clamav
+      DB_HOST: db
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq
+      SUPABASE_URL: http://kong:8000
+      DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+      DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+    ports:
+      - "8002:8002"
+
+  # Backend WebSocket server
+  websocket_server:
+    <<: *agpt-services
+    image: ghcr.io/significant-gravitas/autogpt-platform-backend:latest
+    command: ["python", "-m", "backend.ws"]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      database_manager:
+        condition: service_started
+    env_file:
+      - backend/.env.default
+      - path: backend/.env
+        required: false
+    environment:
+      PYRO_HOST: "0.0.0.0"
+      AGENTSERVER_HOST: rest_server
+      SCHEDULER_HOST: scheduler_server
+      DATABASEMANAGER_HOST: database_manager
+      EXECUTIONMANAGER_HOST: executor
+      NOTIFICATIONMANAGER_HOST: notification_server
+      CLAMAV_SERVICE_HOST: clamav
+      DB_HOST: db
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq
+      SUPABASE_URL: http://kong:8000
+      DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+      DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+    ports:
+      - "8001:8001"
+
+  # Backend database manager
+  database_manager:
+    <<: *agpt-services
+    image: ghcr.io/significant-gravitas/autogpt-platform-backend:latest
+    command: ["python", "-m", "backend.db"]
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    env_file:
+      - backend/.env.default
+      - path: backend/.env
+        required: false
+    environment:
+      PYRO_HOST: "0.0.0.0"
+      AGENTSERVER_HOST: rest_server
+      SCHEDULER_HOST: scheduler_server
+      DATABASEMANAGER_HOST: database_manager
+      EXECUTIONMANAGER_HOST: executor
+      NOTIFICATIONMANAGER_HOST: notification_server
+      CLAMAV_SERVICE_HOST: clamav
+      DB_HOST: db
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq
+      SUPABASE_URL: http://kong:8000
+      DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+      DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+    ports:
+      - "8005:8005"
+
+  # Backend scheduler service
+  scheduler_server:
+    <<: *agpt-services
+    image: ghcr.io/significant-gravitas/autogpt-platform-backend:latest
+    command: ["python", "-m", "backend.scheduler"]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      database_manager:
+        condition: service_started
+    env_file:
+      - backend/.env.default
+      - path: backend/.env
+        required: false
+    environment:
+      PYRO_HOST: "0.0.0.0"
+      AGENTSERVER_HOST: rest_server
+      SCHEDULER_HOST: scheduler_server
+      DATABASEMANAGER_HOST: database_manager
+      EXECUTIONMANAGER_HOST: executor
+      NOTIFICATIONMANAGER_HOST: notification_server
+      CLAMAV_SERVICE_HOST: clamav
+      DB_HOST: db
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq
+      SUPABASE_URL: http://kong:8000
+      DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+      DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+    ports:
+      - "8003:8003"
+
+  # Backend notification service
+  notification_server:
+    <<: *agpt-services
+    image: ghcr.io/significant-gravitas/autogpt-platform-backend:latest
+    command: ["python", "-m", "backend.notification"]
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      database_manager:
+        condition: service_started
+    env_file:
+      - backend/.env.default
+      - path: backend/.env
+        required: false
+    environment:
+      PYRO_HOST: "0.0.0.0"
+      AGENTSERVER_HOST: rest_server
+      SCHEDULER_HOST: scheduler_server
+      DATABASEMANAGER_HOST: database_manager
+      EXECUTIONMANAGER_HOST: executor
+      NOTIFICATIONMANAGER_HOST: notification_server
+      CLAMAV_SERVICE_HOST: clamav
+      DB_HOST: db
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq
+      SUPABASE_URL: http://kong:8000
+      DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+      DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+    ports:
+      - "8007:8007"
+
+  # ClamAV antivirus service
+  clamav:
+    <<: *agpt-services
+    image: clamav/clamav-debian:latest
+    ports:
+      - "3310:3310"
+    volumes:
+      - clamav-data:/var/lib/clamav
+    environment:
+      - CLAMAV_NO_FRESHCLAMD=false
+      - CLAMD_CONF_StreamMaxLength=50M
+      - CLAMD_CONF_MaxFileSize=100M
+      - CLAMD_CONF_MaxScanSize=100M
+      - CLAMD_CONF_MaxThreads=12
+      - CLAMD_CONF_ReadTimeout=300
+    healthcheck:
+      test: ["CMD-SHELL", "clamdscan --version || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend application
+  frontend:
+    <<: *agpt-services
+    image: ghcr.io/significant-gravitas/autogpt-platform-frontend:latest
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "3000:3000"
+    env_file:
+      - path: ./frontend/.env.default
+      - path: ./frontend/.env
+        required: false
+    environment:
+      # Server-side environment variables (Docker service names)
+      AUTH_CALLBACK_URL: http://rest_server:8006/auth/callback
+      SUPABASE_URL: http://kong:8000
+      AGPT_SERVER_URL: http://rest_server:8006/api
+      AGPT_WS_SERVER_URL: ws://websocket_server:8001/ws
+
+  # Supabase services (minimal: auth + db + kong)
+  kong:
+    <<: *supabase-services
+    image: supabase/kong:v0.1.0
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /etc/kong/kong.yml
+      KONG_DNS_ORDER: LAST,A,CNAME
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth
+      KONG_NGINX_PROXY_PROXY_BUFFER_SIZE: 160k
+      KONG_NGINX_PROXY_PROXY_BUFFERS: 64 160k
+    ports:
+      - "8000:8000/tcp"
+    volumes:
+      - ./db/docker/volumes/api/kong.yml:/etc/kong/kong.yml:ro
+
+  auth:
+    <<: *supabase-services
+    image: supabase/gotrue:v2.151.0
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9999/health"]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    restart: unless-stopped
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgresql://supabase_auth_admin:root@db:5432/postgres?search_path=auth
+      GOTRUE_SITE_URL: http://localhost:3000
+      GOTRUE_URI_ALLOW_LIST: "*"
+      GOTRUE_DISABLE_SIGNUP: false
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: true
+      GOTRUE_MAILER_AUTOCONFIRM: true
+      GOTRUE_SMTP_ADMIN_EMAIL: admin@email.com
+      GOTRUE_SMTP_HOST: supabase-mail
+      GOTRUE_SMTP_PORT: 2500
+      GOTRUE_SMTP_USER: fake_mail_user
+      GOTRUE_SMTP_PASS: fake_mail_password
+      GOTRUE_SMTP_SENDER_NAME: fake_sender
+      GOTRUE_MAILER_URLPATHS_INVITE: http://localhost:3000/auth/callback
+      GOTRUE_MAILER_URLPATHS_CONFIRMATION: http://localhost:3000/auth/callback
+      GOTRUE_MAILER_URLPATHS_RECOVERY: http://localhost:3000/auth/callback
+      GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: http://localhost:3000/auth/callback
+
+  db:
+    <<: *supabase-services
+    image: supabase/postgres:15.1.0.147
+    healthcheck:
+      test: pg_isready -U postgres -h localhost
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    command:
+      - postgres
+      - -c
+      - config_file=/etc/postgresql/postgresql.conf
+      - -c
+      - log_min_messages=fatal
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_HOST: /var/run/postgresql
+      PGPORT: 5432
+      POSTGRES_PORT: 5432
+      PGPASSWORD: your-super-secret-and-long-postgres-password
+      POSTGRES_PASSWORD: your-super-secret-and-long-postgres-password
+      PGDATABASE: postgres
+      POSTGRES_DB: postgres
+      PGUSER: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_INITDB_ARGS: --lc-collate=C --lc-ctype=C
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./db/docker/volumes/db/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:Z
+      - ./db/docker/volumes/db/webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:Z
+      - ./db/docker/volumes/db/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:Z
+
+  # Development-only services (studio for database management)
+  meta:
+    <<: *supabase-services
+    profiles:
+      - local
+    image: supabase/studio:20240101-5cc8dea
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/api/profile', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      STUDIO_PG_META_URL: http://localhost:8080
+      POSTGRES_PASSWORD: your-super-secret-and-long-postgres-password
+      DEFAULT_ORGANIZATION_NAME: Default Organization
+      DEFAULT_PROJECT_NAME: Default Project
+      SUPABASE_URL: http://kong:8000
+      SUPABASE_PUBLIC_URL: http://localhost:8000
+      SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+      SUPABASE_SERVICE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
+
+  studio:
+    <<: *supabase-services
+    profiles:
+      - local
+    image: supabase/studio:20240101-5cc8dea
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/profile', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    depends_on:
+      meta:
+        condition: service_healthy
+    restart: unless-stopped
+    ports:
+      - "8910:3000/tcp"
+    environment:
+      STUDIO_PG_META_URL: http://meta:8080
+      POSTGRES_PASSWORD: your-super-secret-and-long-postgres-password
+      DEFAULT_ORGANIZATION_NAME: Default Organization
+      DEFAULT_PROJECT_NAME: Default Project
+      SUPABASE_URL: http://kong:8000
+      SUPABASE_PUBLIC_URL: http://localhost:8000
+      SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+      SUPABASE_SERVICE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
+
+  # Helper services for development
+  deps:
+    <<: *supabase-services
+    profiles:
+      - local
+    image: busybox
+    command: /bin/true
+    depends_on:
+      - kong
+      - auth
+      - db
+      - studio
+      - redis
+      - rabbitmq
+      - clamav
+      - migrate
+
+  deps_backend:
+    <<: *agpt-services
+    profiles:
+      - local
+    image: busybox
+    command: /bin/true
+    depends_on:
+      - deps
+      - rest_server
+      - executor
+      - websocket_server
+      - database_manager
