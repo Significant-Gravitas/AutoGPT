@@ -161,6 +161,7 @@ class BaseGraph(BaseDbModel):
     is_active: bool = True
     name: str
     description: str
+    instructions: str | None = None
     recommended_schedule_cron: str | None = None
     nodes: list[Node] = []
     links: list[Link] = []
@@ -705,6 +706,7 @@ class GraphModel(Graph):
             is_active=graph.isActive,
             name=graph.name or "",
             description=graph.description or "",
+            instructions=graph.instructions,
             recommended_schedule_cron=graph.recommendedScheduleCron,
             nodes=[NodeModel.from_db(node, for_export) for node in graph.Nodes or []],
             links=list(

@@ -110,6 +110,7 @@ model AgentGraph {
 
   name        String?
   description String?
+  instructions String?
   recommendedScheduleCron String?
 
   isActive Boolean @default(true)
@@ -757,6 +758,7 @@ model StoreListingVersion {
   videoUrl    String?
   imageUrls   String[]
   description String
+  instructions String?
   categories  String[]
 
   isFeatured Boolean @default(false)

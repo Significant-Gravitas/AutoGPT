@@ -65,6 +65,7 @@ export function AgentRunsView() {
             }
           />
         </div>
+
         <RunsSidebar
           agent={agent}
           selectedRunId={selectedRun}

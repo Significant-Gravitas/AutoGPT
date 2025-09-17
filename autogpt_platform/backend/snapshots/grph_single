@@ -15,6 +15,7 @@
     "required": [],
     "type": "object"
   },
+  "instructions": null,
   "is_active": true,
   "links": [],
   "name": "Test Graph",

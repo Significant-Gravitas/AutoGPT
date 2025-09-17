@@ -4,6 +4,7 @@ import SchemaTooltip from "@/components/SchemaTooltip";
 import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
 import { useRunAgentModalContext } from "../../context";
 import { RunAgentInputs } from "../../../RunAgentInputs/RunAgentInputs";
+import { InfoIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
 import { toDisplayName } from "@/components/integrations/helper";
 import { getCredentialTypeDisplayName } from "./helpers";
@@ -60,6 +61,21 @@ export function ModalRunSection() {
               placeholder="Enter trigger description"
               onChange={(e) => setPresetDescription(e.target.value)}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Instructions */}
+      {agent.instructions && (
+        <div className="mb-4 flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 p-3">
+          <InfoIcon className="mt-0.5 h-4 w-4 text-blue-600" />
+          <div>
+            <h4 className="text-sm font-medium text-blue-900">
+              How to use this agent
+            </h4>
+            <p className="mt-1 whitespace-pre-wrap text-sm text-blue-800">
+              {agent.instructions}
+            </p>
           </div>
         </div>
       )}

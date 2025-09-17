@@ -11,6 +11,7 @@
   "creator_avatar": "avatar1.jpg",
   "sub_heading": "Test agent subheading",
   "description": "Test agent description",
+  "instructions": null,
   "categories": [
     "category1",
     "category2"
