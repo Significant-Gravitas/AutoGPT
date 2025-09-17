@@ -7,10 +7,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import { PaginationControls } from "../../ui/pagination-controls";
-import { SearchAndFilterAdminSpending } from "./search-filter-form";
+import { PaginationControls } from "../../../../../components/ui/pagination-controls";
+import { SearchAndFilterAdminSpending } from "./SearchAndFilterAdminSpending";
 import { getUsersTransactionHistory } from "@/app/(platform)/admin/spending/actions";
-import { AdminAddMoneyButton } from "./add-money-button";
+import { AdminAddMoneyButton } from "./AddMoneyButton";
 import { CreditTransactionType } from "@/lib/autogpt-server-api";
 
 export async function AdminUserGrantHistory({

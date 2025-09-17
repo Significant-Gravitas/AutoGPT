@@ -10,8 +10,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import moment from "moment/moment";
-import { FlowRunStatusBadge } from "@/components/monitor/FlowRunStatusBadge";
-import { TextRenderer } from "../ui/render";
+import { FlowRunStatusBadge } from "@/app/(platform)/monitoring/components/FlowRunStatusBadge";
+import { TextRenderer } from "../../../../components/ui/render";
 
 export const FlowRunsList: React.FC<{
   flows: LibraryAgent[];
