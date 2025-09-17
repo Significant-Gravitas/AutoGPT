@@ -371,10 +371,16 @@ model AgentGraphExecution {
 
   stats Json?
 
+  // Sharing fields
+  isShared    Boolean   @default(false)
+  shareToken  String?   @unique
+  sharedAt    DateTime?
+
   @@index([agentGraphId, agentGraphVersion])
   @@index([userId])
   @@index([createdAt])
   @@index([agentPresetId])
+  @@index([shareToken])
 }
 
 // This model describes the execution of an AgentNode.

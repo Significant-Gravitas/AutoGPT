@@ -10,6 +10,7 @@ export enum Flag {
   NEW_AGENT_RUNS = "new-agent-runs",
   GRAPH_SEARCH = "graph-search",
   ENABLE_ENHANCED_OUTPUT_HANDLING = "enable-enhanced-output-handling",
+  SHARE_EXECUTION_RESULTS = "share-execution-results",
   AGENT_FAVORITING = "agent-favoriting",
 }
 
@@ -20,6 +21,7 @@ export type FlagValues = {
   [Flag.NEW_AGENT_RUNS]: boolean;
   [Flag.GRAPH_SEARCH]: boolean;
   [Flag.ENABLE_ENHANCED_OUTPUT_HANDLING]: boolean;
+  [Flag.SHARE_EXECUTION_RESULTS]: boolean;
   [Flag.AGENT_FAVORITING]: boolean;
 };
 
@@ -32,6 +34,7 @@ const mockFlags = {
   [Flag.NEW_AGENT_RUNS]: false,
   [Flag.GRAPH_SEARCH]: true,
   [Flag.ENABLE_ENHANCED_OUTPUT_HANDLING]: false,
+  [Flag.SHARE_EXECUTION_RESULTS]: false,
   [Flag.AGENT_FAVORITING]: false,
 };
 
