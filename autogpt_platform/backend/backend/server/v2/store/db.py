@@ -183,6 +183,29 @@ async def get_store_agent_details(
             store_listing.hasApprovedVersion if store_listing else False
         )
 
+        if active_version_id:
+            agent_by_active = await prisma.models.StoreAgent.prisma().find_first(
+                where={"storeListingVersionId": active_version_id}
+            )
+            if agent_by_active:
+                agent = agent_by_active
+        elif store_listing:
+            latest_approved = (
+                await prisma.models.StoreListingVersion.prisma().find_first(
+                    where={
+                        "storeListingId": store_listing.id,
+                        "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+                    },
+                    order=[{"version": "desc"}],
+                )
+            )
+            if latest_approved:
+                agent_latest = await prisma.models.StoreAgent.prisma().find_first(
+                    where={"storeListingVersionId": latest_approved.id}
+                )
+                if agent_latest:
+                    agent = agent_latest
+
         if store_listing and store_listing.ActiveVersion:
             recommended_schedule_cron = (
                 store_listing.ActiveVersion.recommendedScheduleCron
@@ -1153,7 +1176,20 @@ async def get_my_agents(
     try:
         search_filter: prisma.types.LibraryAgentWhereInput = {
             "userId": user_id,
-            "AgentGraph": {"is": {"StoreListings": {"none": {"isDeleted": False}}}},
+            "AgentGraph": {
+                "is": {
+                    "StoreListings": {
+                        "none": {
+                            "isDeleted": False,
+                            "Versions": {
+                                "some": {
+                                    "isAvailable": True,
+                                }
+                            },
+                        }
+                    }
+                }
+            },
             "isArchived": False,
             "isDeleted": False,
         }
