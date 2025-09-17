@@ -4056,6 +4056,70 @@
         }
       }
     },
+    "/api/library/agents/favorites": {
+      "get": {
+        "tags": ["v2", "library", "private"],
+        "summary": "List Favorite Library Agents",
+        "description": "Get all favorite agents in the user's library.\n\nArgs:\n    user_id: ID of the authenticated user.\n    page: Page number to retrieve.\n    page_size: Number of agents per page.\n\nReturns:\n    A LibraryAgentResponse containing favorite agents and pagination metadata.\n\nRaises:\n    HTTPException: If a server/database error occurs.",
+        "operationId": "getV2List favorite library agents",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Page number to retrieve (must be >= 1)",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "Page number to retrieve (must be >= 1)"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Number of agents per page (must be >= 1)",
+              "default": 15,
+              "title": "Page Size"
+            },
+            "description": "Number of agents per page (must be >= 1)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryAgentResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": { "application/json": {} }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
     "/api/library/agents/{library_agent_id}": {
       "get": {
         "tags": ["v2", "library", "private"],
@@ -4649,6 +4713,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
@@ -4689,6 +4757,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
@@ -5228,6 +5300,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
@@ -5364,7 +5440,13 @@
           },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
-          "next_run_time": { "type": "string", "title": "Next Run Time" }
+          "next_run_time": { "type": "string", "title": "Next Run Time" },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "description": "Timezone used for scheduling",
+            "default": "UTC"
+          }
         },
         "type": "object",
         "required": [
@@ -5568,6 +5650,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
@@ -5642,6 +5728,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
@@ -5673,6 +5763,11 @@
             "default": []
           },
           "user_id": { "type": "string", "title": "User Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
           "input_schema": {
             "additionalProperties": true,
             "type": "object",
@@ -5709,6 +5804,7 @@
           "name",
           "description",
           "user_id",
+          "created_at",
           "input_schema",
           "output_schema",
           "has_external_trigger",
@@ -5836,6 +5932,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "input_schema": {
             "additionalProperties": true,
             "type": "object",
@@ -5874,6 +5974,7 @@
             "type": "boolean",
             "title": "Is Latest Version"
           },
+          "is_favorite": { "type": "boolean", "title": "Is Favorite" },
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
@@ -5897,7 +5998,8 @@
           "has_external_trigger",
           "new_output",
           "can_access_graph",
-          "is_latest_version"
+          "is_latest_version",
+          "is_favorite"
         ],
         "title": "LibraryAgent",
         "description": "Represents an agent in the library, including metadata for display and\nuser interaction within the system."
@@ -5931,6 +6033,11 @@
           },
           "id": { "type": "string", "title": "Id" },
           "user_id": { "type": "string", "title": "User Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
           "updated_at": {
             "type": "string",
             "format": "date-time",
@@ -5953,6 +6060,7 @@
           "description",
           "id",
           "user_id",
+          "created_at",
           "updated_at",
           "webhook"
         ],
@@ -7046,6 +7154,11 @@
             },
             "type": "object",
             "title": "Credentials"
+          },
+          "timezone": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Timezone",
+            "description": "User's timezone for scheduling (e.g., 'America/New_York'). If not provided, will use user's saved timezone or UTC."
           }
         },
         "type": "object",
@@ -7246,6 +7359,10 @@
           "creator_avatar": { "type": "string", "title": "Creator Avatar" },
           "sub_heading": { "type": "string", "title": "Sub Heading" },
           "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "categories": {
             "items": { "type": "string" },
             "type": "array",
@@ -7398,6 +7515,10 @@
           "sub_heading": { "type": "string", "title": "Sub Heading" },
           "slug": { "type": "string", "title": "Slug" },
           "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "image_urls": {
             "items": { "type": "string" },
             "type": "array",
@@ -7488,6 +7609,10 @@
             "title": "Description",
             "default": ""
           },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "categories": {
             "items": { "type": "string" },
             "type": "array",
@@ -7528,6 +7653,10 @@
             "type": "string",
             "title": "Description",
             "default": ""
+          },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
           },
           "categories": {
             "items": { "type": "string" },

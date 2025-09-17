@@ -11,6 +11,7 @@ export enum Flag {
   GRAPH_SEARCH = "graph-search",
   ENABLE_ENHANCED_OUTPUT_HANDLING = "enable-enhanced-output-handling",
   NEW_FLOW_EDITOR = "new-flow-editor",
+  BUILDER_VIEW_SWITCH = "builder-view-switch",
 }
 
 export type FlagValues = {
@@ -21,6 +22,7 @@ export type FlagValues = {
   [Flag.GRAPH_SEARCH]: boolean;
   [Flag.ENABLE_ENHANCED_OUTPUT_HANDLING]: boolean;
   [Flag.NEW_FLOW_EDITOR]: boolean;
+  [Flag.BUILDER_VIEW_SWITCH]: boolean;
 };
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -33,6 +35,7 @@ const mockFlags = {
   [Flag.GRAPH_SEARCH]: true,
   [Flag.ENABLE_ENHANCED_OUTPUT_HANDLING]: false,
   [Flag.NEW_FLOW_EDITOR]: true,
+  [Flag.BUILDER_VIEW_SWITCH]: true,
 };
 
 export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] | null {

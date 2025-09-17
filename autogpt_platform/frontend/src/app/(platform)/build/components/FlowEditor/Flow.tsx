@@ -6,8 +6,8 @@ import { useShallow } from "zustand/react/shallow";
 import { useMemo } from "react";
 import { CustomNode } from "./nodes/CustomNode";
 import { useCustomEdge } from "./edges/useCustomEdge";
-import { RightSidebar } from "../RIghtSidebar";
 import CustomEdge from "./edges/CustomEdge";
+import { RightSidebar } from "../RIghtSidebar";
 
 export const Flow = () => {
   // All these 3 are working perfectly
@@ -19,21 +19,23 @@ export const Flow = () => {
   const { edges, onConnect, onEdgesChange } = useCustomEdge();
 
   return (
-    <div className="realtw-full h-full dark:bg-slate-900">
-      <ReactFlow
-        nodes={nodes}
-        onNodesChange={onNodesChange}
-        nodeTypes={nodeTypes}
-        edges={edges}
-        onConnect={onConnect}
-        onEdgesChange={onEdgesChange}
-        edgeTypes={{ custom: CustomEdge }}
-      >
-        <Background />
-        <Controls />
-        <NewControlPanel />
-        <RightSidebar />
-      </ReactFlow>
+    <div className="flex h-full w-full dark:bg-slate-900">
+      {/* Builder area - flexible width */}
+      <div className="relative flex-1">
+        <ReactFlow
+          nodes={nodes}
+          onNodesChange={onNodesChange}
+          nodeTypes={nodeTypes}
+          edges={edges}
+          onConnect={onConnect}
+          onEdgesChange={onEdgesChange}
+          edgeTypes={{ custom: CustomEdge }}
+        >
+          <Background />
+          <Controls />
+          <NewControlPanel />
+        </ReactFlow>
+      </div>
     </div>
   );
 };
