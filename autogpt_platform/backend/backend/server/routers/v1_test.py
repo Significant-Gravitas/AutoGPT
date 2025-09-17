@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from io import BytesIO
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -265,6 +266,7 @@ def test_get_graphs(
         name="Test Graph",
         description="A test graph",
         user_id=test_user_id,
+        created_at=datetime(2025, 9, 4, 13, 37),
     )
 
     mocker.patch(
@@ -299,6 +301,7 @@ def test_get_graph(
         name="Test Graph",
         description="A test graph",
         user_id=test_user_id,
+        created_at=datetime(2025, 9, 4, 13, 37),
     )
 
     mocker.patch(
@@ -348,6 +351,7 @@ def test_delete_graph(
         name="Test Graph",
         description="A test graph",
         user_id=test_user_id,
+        created_at=datetime(2025, 9, 4, 13, 37),
     )
 
     mocker.patch(

@@ -1,6 +1,7 @@
 import logging
 import uuid
 from collections import defaultdict
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal, Optional, cast
 
 from prisma.enums import SubmissionStatus
@@ -382,6 +383,8 @@ class GraphModel(Graph):
     user_id: str
     nodes: list[NodeModel] = []  # type: ignore
 
+    created_at: datetime
+
     @property
     def starting_nodes(self) -> list[NodeModel]:
         outbound_nodes = {link.sink_id for link in self.links}
@@ -393,6 +396,10 @@ class GraphModel(Graph):
             for node in self.nodes
             if node.id not in outbound_nodes or node.id in input_nodes
         ]
+
+    @property
+    def webhook_input_node(self) -> NodeModel | None:  # type: ignore
+        return cast(NodeModel, super().webhook_input_node)
 
     def meta(self) -> "GraphMeta":
         """
@@ -695,6 +702,7 @@ class GraphModel(Graph):
             version=graph.version,
             forked_from_id=graph.forkedFromId,
             forked_from_version=graph.forkedFromVersion,
+            created_at=graph.createdAt,
             is_active=graph.isActive,
             name=graph.name or "",
             description=graph.description or "",
@@ -1146,6 +1154,7 @@ def make_graph_model(creatable_graph: Graph, user_id: str) -> GraphModel:
     return GraphModel(
         **creatable_graph.model_dump(exclude={"nodes"}),
         user_id=user_id,
+        created_at=datetime.now(tz=timezone.utc),
         nodes=[
             NodeModel(
                 **creatable_node.model_dump(),

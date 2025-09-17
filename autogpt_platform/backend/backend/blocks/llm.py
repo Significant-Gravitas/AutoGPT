@@ -896,6 +896,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         prompt = [json.to_dict(p) for p in input_data.conversation_history]
 
         def trim_prompt(s: str) -> str:
+            """Removes indentation up to and including `|` from a multi-line prompt."""
             lines = s.strip().split("\n")
             return "\n".join([line.strip().lstrip("|") for line in lines])
 
@@ -909,24 +910,25 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
 
         if input_data.expected_format:
             expected_format = [
-                f'"{k}": "{v}"' for k, v in input_data.expected_format.items()
+                f"{json.dumps(k)}: {json.dumps(v)}"
+                for k, v in input_data.expected_format.items()
             ]
             if input_data.list_result:
                 format_prompt = (
                     f'"results": [\n  {{\n  {", ".join(expected_format)}\n  }}\n]'
                 )
             else:
-                format_prompt = "\n  ".join(expected_format)
+                format_prompt = ",\n|  ".join(expected_format)
 
             sys_prompt = trim_prompt(
                 f"""
-                  |Reply strictly only in the following JSON format:
-                  |{{
-                  |  {format_prompt}
-                  |}}
-                  |
-                  |Ensure the response is valid JSON. Do not include any additional text outside of the JSON.
-                  |If you cannot provide all the keys, provide an empty string for the values you cannot answer.
+                |Reply with pure JSON strictly following this JSON format:
+                |{{
+                |  {format_prompt}
+                |}}
+                |
+                |Ensure the response is valid JSON. DO NOT include any additional text (e.g. markdown code block fences) outside of the JSON.
+                |If you cannot provide all the keys, provide an empty string for the values you cannot answer.
                 """
             )
             prompt.append({"role": "system", "content": sys_prompt})
@@ -946,7 +948,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 return f"JSON decode error: {e}"
 
         logger.debug(f"LLM request: {prompt}")
-        retry_prompt = ""
+        error_feedback_message = ""
         llm_model = input_data.model
 
         for retry_count in range(input_data.retry):
@@ -970,8 +972,25 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 logger.debug(f"LLM attempt-{retry_count} response: {response_text}")
 
                 if input_data.expected_format:
+                    try:
+                        response_obj = json.loads(response_text)
+                    except JSONDecodeError as json_error:
+                        prompt.append({"role": "assistant", "content": response_text})
 
-                    response_obj = json.loads(response_text)
+                        indented_json_error = str(json_error).replace("\n", "\n|")
+                        error_feedback_message = trim_prompt(
+                            f"""
+                            |Your previous response could not be parsed as valid JSON:
+                            |
+                            |{indented_json_error}
+                            |
+                            |Please provide a valid JSON response that matches the expected format.
+                        """
+                        )
+                        prompt.append(
+                            {"role": "user", "content": error_feedback_message}
+                        )
+                        continue
 
                     if input_data.list_result and isinstance(response_obj, dict):
                         if "results" in response_obj:
@@ -979,7 +998,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                         elif len(response_obj) == 1:
                             response_obj = list(response_obj.values())
 
-                    response_error = "\n".join(
+                    validation_errors = "\n".join(
                         [
                             validation_error
                             for response_item in (
@@ -991,7 +1010,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                         ]
                     )
 
-                    if not response_error:
+                    if not validation_errors:
                         self.merge_stats(
                             NodeExecutionStats(
                                 llm_call_count=retry_count + 1,
@@ -1001,6 +1020,16 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                         yield "response", response_obj
                         yield "prompt", self.prompt
                         return
+
+                    prompt.append({"role": "assistant", "content": response_text})
+                    error_feedback_message = trim_prompt(
+                        f"""
+                        |Your response did not match the expected format:
+                        |
+                        |{validation_errors}
+                    """
+                    )
+                    prompt.append({"role": "user", "content": error_feedback_message})
                 else:
                     self.merge_stats(
                         NodeExecutionStats(
@@ -1011,21 +1040,6 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     yield "response", {"response": response_text}
                     yield "prompt", self.prompt
                     return
-
-                retry_prompt = trim_prompt(
-                    f"""
-                  |This is your previous error response:
-                  |--
-                  |{response_text}
-                  |--
-                  |
-                  |And this is the error:
-                  |--
-                  |{response_error}
-                  |--
-                """
-                )
-                prompt.append({"role": "user", "content": retry_prompt})
             except Exception as e:
                 logger.exception(f"Error calling LLM: {e}")
                 if (
@@ -1038,9 +1052,12 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     logger.debug(
                         f"Reducing max_tokens to {input_data.max_tokens} for next attempt"
                     )
-                retry_prompt = f"Error calling LLM: {e}"
+                    # Don't add retry prompt for token limit errors,
+                    # just retry with lower maximum output tokens
 
-        raise RuntimeError(retry_prompt)
+                error_feedback_message = f"Error calling LLM: {e}"
+
+        raise RuntimeError(error_feedback_message)
 
 
 class AITextGeneratorBlock(AIBlockBase):
