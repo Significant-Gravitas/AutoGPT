@@ -126,7 +126,11 @@ const Monitor = () => {
           />
         )) || (
           <Card className={`p-6 ${column3}`}>
-            <FlowRunsList flows={flows} executions={executions} />
+            <FlowRunsList
+              flows={flows}
+              executions={executions}
+              onSelectRun={() => {}}
+            />
           </Card>
         )}
       <div className="col-span-full xl:col-span-6">
