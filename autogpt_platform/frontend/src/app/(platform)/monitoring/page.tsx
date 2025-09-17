@@ -15,6 +15,7 @@ import AgentFlowList from "./components/AgentFlowList";
 import FlowRunsList from "./components/FlowRunsList";
 import FlowRunInfo from "./components/FlowRunInfo";
 import FlowInfo from "./components/FlowInfo";
+import FlowRunsStatus from "./components/FlowRunsStatus";
 
 const Monitor = () => {
   const [flows, setFlows] = useState<LibraryAgent[]>([]);
@@ -126,11 +127,7 @@ const Monitor = () => {
           />
         )) || (
           <Card className={`p-6 ${column3}`}>
-            <FlowRunsList
-              flows={flows}
-              executions={executions}
-              onSelectRun={() => {}}
-            />
+            <FlowRunsStatus flows={flows} executions={executions} />
           </Card>
         )}
       <div className="col-span-full xl:col-span-6">
