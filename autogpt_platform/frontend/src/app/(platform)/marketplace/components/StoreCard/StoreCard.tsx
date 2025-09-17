@@ -1,5 +1,9 @@
 import Image from "next/image";
 import { StarRatingIcons } from "@/components/ui/icons";
+import {
+  useTrackEvent,
+  EventKeys,
+} from "@/services/feature-flags/use-track-event";
 import Avatar, {
   AvatarFallback,
   AvatarImage,
@@ -15,6 +19,7 @@ interface StoreCardProps {
   avatarSrc: string;
   hideAvatar?: boolean;
   creatorName?: string;
+  agentId?: string;
 }
 
 export const StoreCard: React.FC<StoreCardProps> = ({
@@ -27,8 +32,20 @@ export const StoreCard: React.FC<StoreCardProps> = ({
   avatarSrc,
   hideAvatar = false,
   creatorName,
+  agentId,
 }) => {
+  const { track } = useTrackEvent();
+
   const handleClick = () => {
+    track(EventKeys.STORE_AGENT_VIEWED, {
+      agentId,
+      agentName,
+      creatorName,
+      runs,
+      rating,
+      source: "store-card",
+      timestamp: new Date().toISOString(),
+    });
     onClick();
   };
 
