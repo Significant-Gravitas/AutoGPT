@@ -298,6 +298,7 @@ export type GraphMeta = {
   is_active: boolean;
   name: string;
   description: string;
+  instructions?: string | null;
   recommended_schedule_cron: string | null;
   forked_from_id?: GraphID | null;
   forked_from_version?: number | null;
@@ -428,6 +429,7 @@ export type LibraryAgent = {
   updated_at: Date;
   name: string;
   description: string;
+  instructions?: string | null;
   input_schema: GraphIOSchema;
   output_schema: GraphIOSchema;
   credentials_input_schema: CredentialsInputSchema;
@@ -746,6 +748,7 @@ export type StoreSubmission = {
   name: string;
   sub_heading: string;
   description: string;
+  instructions?: string;
   image_urls: string[];
   date_submitted: string;
   status: SubmissionStatus;
@@ -777,6 +780,7 @@ export type StoreSubmissionRequest = {
   video_url?: string;
   image_urls: string[];
   description: string;
+  instructions?: string | null;
   categories: string[];
   changes_summary?: string;
   recommended_schedule_cron?: string | null;
