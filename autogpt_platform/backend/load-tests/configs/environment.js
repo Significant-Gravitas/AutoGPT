@@ -131,7 +131,7 @@ export const GRAFANA_CONFIG = {
   // Tags for organizing test results
   TEST_TAGS: {
     team: 'platform',
-    service: 'autogpt-platform', 
+    service: 'autogpt-platform',
     environment: __ENV.K6_ENVIRONMENT || 'dev',
     version: __ENV.GIT_COMMIT || 'unknown'
   }
