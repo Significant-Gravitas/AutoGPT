@@ -5,11 +5,11 @@ import { BlockMenu } from "../BlockMenu/BlockMenu";
 import { useNewControlPanel } from "./useNewControlPanel";
 import { NewSaveControl } from "../SaveControl/NewSaveControl";
 import { GraphExecutionID } from "@/lib/autogpt-server-api";
-import { history } from "@/components/history";
+import { history } from "@/app/(platform)/build/components/legacy-builder/history";
 import { ControlPanelButton } from "../ControlPanelButton";
 import { ArrowUUpLeftIcon, ArrowUUpRightIcon } from "@phosphor-icons/react";
 import { GraphSearchMenu } from "../GraphMenu/GraphMenu";
-import { CustomNode } from "@/components/CustomNode";
+import { CustomNode } from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 export type Control = {

@@ -1,6 +1,5 @@
-import { CustomEdge } from "@/components/CustomEdge";
-import { CustomNode } from "@/components/CustomNode";
-import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import { CustomEdge } from "@/app/(platform)/build/components/legacy-builder/CustomEdge/CustomEdge";
+import { CustomNode } from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import {
   ApiError,
@@ -32,6 +31,7 @@ import { default as NextLink } from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 
 export default function useAgentGraph(
   flowID?: GraphID,

@@ -4,7 +4,7 @@ import { getValue } from "@/lib/utils";
 import {
   CredentialsProviderData,
   CredentialsProvidersContext,
-} from "@/services/agent-credentials/credentials-provider";
+} from "@/providers/agent-credentials/credentials-provider";
 import {
   BlockIOCredentialsSubSchema,
   CredentialsProviderName,

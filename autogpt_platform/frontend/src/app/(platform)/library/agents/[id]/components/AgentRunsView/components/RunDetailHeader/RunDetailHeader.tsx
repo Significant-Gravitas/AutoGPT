@@ -14,8 +14,8 @@ import { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
 import { useRunDetailHeader } from "./useRunDetailHeader";
 import { AgentActionsDropdown } from "../AgentActionsDropdown";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { ShareButton } from "@/components/ShareButton";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { ShareRunButton } from "../ShareRunButton/ShareRunButton";
 
 type Props = {
   agent: LibraryAgent;
@@ -73,7 +73,7 @@ export function RunDetailHeader({
                   <PlayIcon size={16} /> Run again
                 </Button>
                 {shareExecutionResultsEnabled && (
-                  <ShareButton
+                  <ShareRunButton
                     graphId={agent.graph_id}
                     executionId={run.id}
                     isShared={run.is_shared}

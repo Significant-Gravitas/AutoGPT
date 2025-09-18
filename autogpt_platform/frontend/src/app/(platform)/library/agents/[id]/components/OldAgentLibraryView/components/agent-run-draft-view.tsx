@@ -19,12 +19,11 @@ import { IconCross, IconPlay, IconSave } from "@/components/ui/icons";
 import { CalendarClockIcon, Trash2Icon } from "lucide-react";
 import { ClockIcon, InfoIcon } from "@phosphor-icons/react";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
-import { ScheduleTaskDialog } from "@/components/cron-scheduler-dialog";
+import { ScheduleTaskDialog } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/components/cron-scheduler-dialog";
 import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
 import { RunAgentInputs } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/RunAgentInputs/RunAgentInputs";
-import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 import { cn, isEmpty } from "@/lib/utils";
-import SchemaTooltip from "@/components/SchemaTooltip";
+import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import { CopyIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +33,7 @@ import {
 } from "@/components/molecules/Toast/use-toast";
 
 import { AgentStatus, AgentStatusChip } from "./agent-status-chip";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 
 export function AgentRunDraftView({
   graph,
@@ -607,7 +607,7 @@ export function AgentRunDraftView({
                 <div className="flex flex-col space-y-2">
                   <label className="flex items-center gap-1 text-sm font-medium">
                     {graph.has_external_trigger ? "Trigger" : "Preset"} Name
-                    <SchemaTooltip
+                    <InformationTooltip
                       description={`Name of the ${graph.has_external_trigger ? "trigger" : "preset"} you are setting up`}
                     />
                   </label>
@@ -624,7 +624,7 @@ export function AgentRunDraftView({
                   <label className="flex items-center gap-1 text-sm font-medium">
                     {graph.has_external_trigger ? "Trigger" : "Preset"}{" "}
                     Description
-                    <SchemaTooltip
+                    <InformationTooltip
                       description={`Description of the ${graph.has_external_trigger ? "trigger" : "preset"} you are setting up`}
                     />
                   </label>
@@ -679,7 +679,9 @@ export function AgentRunDraftView({
               <div key={key} className="flex flex-col space-y-2">
                 <label className="flex items-center gap-1 text-sm font-medium">
                   {inputSubSchema.title || key}
-                  <SchemaTooltip description={inputSubSchema.description} />
+                  <InformationTooltip
+                    description={inputSubSchema.description}
+                  />
                 </label>
 
                 <RunAgentInputs

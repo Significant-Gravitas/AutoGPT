@@ -7,7 +7,7 @@ import { IconKey, IconUser } from "@/components/ui/icons";
 import { Trash2Icon } from "lucide-react";
 import { KeyIcon } from "@phosphor-icons/react/dist/ssr";
 import { providerIcons } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
-import { CredentialsProvidersContext } from "@/services/agent-credentials/credentials-provider";
+import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import {
   Table,
   TableBody,
