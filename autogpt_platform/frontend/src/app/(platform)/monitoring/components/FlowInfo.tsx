@@ -34,8 +34,8 @@ import {
 } from "@/components/ui/dialog";
 import useAgentGraph from "@/hooks/useAgentGraph";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { RunnerInputDialog } from "@/components/runner-ui/RunnerInputUI";
 import { FlowRunsStatus } from "./FlowRunsStatus";
+import { RunnerInputDialog } from "../../build/components/legacy-builder/RunnerInputUI";
 
 export const FlowInfo: React.FC<
   React.HTMLAttributes<HTMLDivElement> & {

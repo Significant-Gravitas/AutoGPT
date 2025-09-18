@@ -17,7 +17,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ChevronDownIcon, EnterIcon } from "@radix-ui/react-icons";
-import { AgentImportForm } from "@/components/agent-import-form";
 import {
   Table,
   TableBody,
@@ -28,6 +27,7 @@ import {
 } from "@/components/ui/table";
 import moment from "moment/moment";
 import { DialogTitle } from "@/components/ui/dialog";
+import { AgentImportForm } from "./AgentImportForm";
 
 export const AgentFlowList = ({
   flows,

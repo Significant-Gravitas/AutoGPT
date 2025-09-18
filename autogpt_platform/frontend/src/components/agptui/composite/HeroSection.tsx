@@ -4,7 +4,7 @@ import * as React from "react";
 import { SearchBar } from "@/components/agptui/SearchBar";
 import { FilterChips } from "@/components/agptui/FilterChips";
 import { useRouter } from "next/navigation";
-import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 
 export const HeroSection: React.FC = () => {
   const router = useRouter();

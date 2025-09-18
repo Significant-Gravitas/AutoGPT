@@ -1,18 +1,18 @@
 "use client";
-import OnboardingButton from "@/components/onboarding/OnboardingButton";
+import OnboardingButton from "../components/OnboardingButton";
 import {
   OnboardingFooter,
   OnboardingHeader,
   OnboardingStep,
-} from "@/components/onboarding/OnboardingStep";
-import { OnboardingText } from "@/components/onboarding/OnboardingText";
-import OnboardingAgentCard from "@/components/onboarding/OnboardingAgentCard";
+} from "../components/OnboardingStep";
+import { OnboardingText } from "../components/OnboardingText";
+import OnboardingAgentCard from "../components/OnboardingAgentCard";
 import { useEffect, useState } from "react";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { StoreAgentDetails } from "@/lib/autogpt-server-api";
 import { finishOnboarding } from "../6-congrats/actions";
 import { isEmptyOrWhitespace } from "@/lib/utils";
-import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import { useOnboarding } from "../../../../providers/onboarding/onboarding-provider";
 
 export default function Page() {
   const { state, updateState } = useOnboarding(4, "INTEGRATIONS");

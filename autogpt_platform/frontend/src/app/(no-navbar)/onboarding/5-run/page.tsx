@@ -1,14 +1,10 @@
 "use client";
 import SmartImage from "@/components/agptui/SmartImage";
-import { useOnboarding } from "@/components/onboarding/onboarding-provider";
-import OnboardingButton from "@/components/onboarding/OnboardingButton";
-import {
-  OnboardingHeader,
-  OnboardingStep,
-} from "@/components/onboarding/OnboardingStep";
-import { OnboardingText } from "@/components/onboarding/OnboardingText";
-import StarRating from "@/components/onboarding/StarRating";
-import SchemaTooltip from "@/components/SchemaTooltip";
+import { useOnboarding } from "../../../../providers/onboarding/onboarding-provider";
+import OnboardingButton from "../components/OnboardingButton";
+import { OnboardingHeader, OnboardingStep } from "../components/OnboardingStep";
+import { OnboardingText } from "../components/OnboardingText";
+import StarRating from "../components/StarRating";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { GraphMeta, StoreAgentDetails } from "@/lib/autogpt-server-api";
@@ -18,6 +14,7 @@ import { Play } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { RunAgentInputs } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/RunAgentInputs/RunAgentInputs";
+import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 
 export default function Page() {
   const { state, updateState, setStep } = useOnboarding(
@@ -229,7 +226,7 @@ export default function Page() {
                       <div key={key} className="flex flex-col space-y-2">
                         <label className="flex items-center gap-1 text-sm font-medium">
                           {inputSubSchema.title || key}
-                          <SchemaTooltip
+                          <InformationTooltip
                             description={inputSubSchema.description}
                           />
                         </label>
