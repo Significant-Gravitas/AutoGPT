@@ -168,7 +168,7 @@ class TestAutoRegistry:
                 (c for c in all_creds if c.id == "test_provider-default"), None
             )
             assert test_cred is not None
-            assert test_cred.provider == "test_provider"
+            assert test_cred.provider == provider.name
             assert test_cred.api_key.get_secret_value() == "test-api-key-value"  # type: ignore
 
         finally:
