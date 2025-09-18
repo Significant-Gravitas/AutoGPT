@@ -34,6 +34,7 @@ load-tests/
 ├── block-id-discovery-test.js                   # Block ID discovery utility
 ├── graph-creation-validation-test.js            # Graph creation validation
 ├── reduced-load-debugging-test.js               # Reduced load for debugging
+├── graph-execution-load-test.js                # Dedicated graph execution testing
 ├── run-tests.sh                                 # Main test execution script
 └── README.md                                    # This file
 ```
@@ -69,6 +70,54 @@ load-tests/
 
 # Run all tests with Grafana Cloud integration
 ./run-tests.sh all --cloud
+
+# Use environment variables for configuration
+VUS=20 DURATION=5m ./run-tests.sh load
+
+# Test specific functionality
+k6 run graph-execution-load-test.js
+k6 run core-api-validation-test.js
+```
+
+### ⚡ Environment Variable Configuration
+
+All tests support easy configuration via environment variables:
+
+```bash
+# Basic load configuration
+VUS=10                    # Number of virtual users
+DURATION=2m               # Test duration
+RAMP_UP=30s              # Ramp-up time
+RAMP_DOWN=30s            # Ramp-down time
+
+# Stress test configuration
+STRESS_VUS=50            # Stress test VUs
+STRESS_DURATION=5m       # Stress test duration
+
+# Spike test configuration
+SPIKE_VUS=100            # Spike test VUs
+SPIKE_DURATION=30s       # Spike test duration
+
+# Performance thresholds
+THRESHOLD_P95=2000       # 95th percentile threshold (ms)
+THRESHOLD_P99=5000       # 99th percentile threshold (ms)
+THRESHOLD_ERROR_RATE=0.05 # Maximum error rate (5%)
+THRESHOLD_RPS=10         # Minimum requests per second
+
+# Environment targeting
+K6_ENVIRONMENT=DEV       # DEV, STAGING, PROD
+```
+
+**Examples:**
+```bash
+# High-load stress test
+STRESS_VUS=100 STRESS_DURATION=10m ./run-tests.sh stress
+
+# Quick validation with custom thresholds
+VUS=5 DURATION=30s THRESHOLD_P95=1000 k6 run core-api-validation-test.js
+
+# Graph execution focused testing
+VUS=3 DURATION=2m k6 run graph-execution-load-test.js
 ```
 
 ## 🔧 Configuration
@@ -194,6 +243,23 @@ k6 run block-id-discovery-test.js
 
 ```bash
 k6 run graph-creation-validation-test.js
+```
+
+#### Graph Execution Load Test (`graph-execution-load-test.js`) ⭐
+- **Purpose**: Comprehensive graph creation and execution testing
+- **Configuration**: Fully configurable via environment variables
+- **Tests**: Graph creation, execution, monitoring, complex workflows
+- **Features**: Simple and complex graph types, execution monitoring, error handling
+
+```bash
+# Basic graph execution testing
+k6 run graph-execution-load-test.js
+
+# High-load graph execution testing
+VUS=10 DURATION=5m k6 run graph-execution-load-test.js
+
+# Quick graph execution validation
+VUS=2 DURATION=30s k6 run graph-execution-load-test.js
 ```
 
 #### Reduced Load Debugging (`reduced-load-debugging-test.js`)

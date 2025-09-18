@@ -54,40 +54,75 @@ export const AUTH_CONFIG = {
   SERVICE_ROLE_KEY: __ENV.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkZmp0ZXh0a3VpbHd1aHpkanBmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczMDI1MTcwMiwiZXhwIjoyMDQ1ODI3NzAyfQ.JHadCgyuMVejDxl66DIe4ZlB1ra7IGDLEkABhSJm540'
 };
 
-// Performance test configurations
+// Performance test configurations - Environment variable overrides supported
 export const PERFORMANCE_CONFIG = {
-  // Default load test parameters
-  DEFAULT_VUS: 10,
-  DEFAULT_DURATION: '2m',
-  DEFAULT_RAMP_UP: '30s',
-  DEFAULT_RAMP_DOWN: '30s',
+  // Default load test parameters (override with env vars: VUS, DURATION, RAMP_UP, RAMP_DOWN)
+  DEFAULT_VUS: parseInt(__ENV.VUS) || 10,
+  DEFAULT_DURATION: __ENV.DURATION || '2m',
+  DEFAULT_RAMP_UP: __ENV.RAMP_UP || '30s',
+  DEFAULT_RAMP_DOWN: __ENV.RAMP_DOWN || '30s',
   
-  // Stress test parameters  
-  STRESS_VUS: 50,
-  STRESS_DURATION: '5m',
-  STRESS_RAMP_UP: '1m',
-  STRESS_RAMP_DOWN: '1m',
+  // Stress test parameters (override with env vars: STRESS_VUS, STRESS_DURATION, etc.)
+  STRESS_VUS: parseInt(__ENV.STRESS_VUS) || 50,
+  STRESS_DURATION: __ENV.STRESS_DURATION || '5m',
+  STRESS_RAMP_UP: __ENV.STRESS_RAMP_UP || '1m',
+  STRESS_RAMP_DOWN: __ENV.STRESS_RAMP_DOWN || '1m',
   
-  // Spike test parameters
-  SPIKE_VUS: 100,
-  SPIKE_DURATION: '30s',
-  SPIKE_RAMP_UP: '10s',
-  SPIKE_RAMP_DOWN: '10s',
+  // Spike test parameters (override with env vars: SPIKE_VUS, SPIKE_DURATION, etc.)
+  SPIKE_VUS: parseInt(__ENV.SPIKE_VUS) || 100,
+  SPIKE_DURATION: __ENV.SPIKE_DURATION || '30s',
+  SPIKE_RAMP_UP: __ENV.SPIKE_RAMP_UP || '10s',
+  SPIKE_RAMP_DOWN: __ENV.SPIKE_RAMP_DOWN || '10s',
   
-  // Volume test parameters
-  VOLUME_VUS: 20,
-  VOLUME_DURATION: '10m',
-  VOLUME_RAMP_UP: '2m',
-  VOLUME_RAMP_DOWN: '2m',
+  // Volume test parameters (override with env vars: VOLUME_VUS, VOLUME_DURATION, etc.)
+  VOLUME_VUS: parseInt(__ENV.VOLUME_VUS) || 20,
+  VOLUME_DURATION: __ENV.VOLUME_DURATION || '10m',
+  VOLUME_RAMP_UP: __ENV.VOLUME_RAMP_UP || '2m',
+  VOLUME_RAMP_DOWN: __ENV.VOLUME_RAMP_DOWN || '2m',
   
-  // SLA thresholds
+  // SLA thresholds (adjustable via env vars: THRESHOLD_P95, THRESHOLD_P99, etc.)
   THRESHOLDS: {
-    http_req_duration: ['p(95)<2000', 'p(99)<5000'], // 95% under 2s, 99% under 5s
-    http_req_failed: ['rate<0.05'], // Error rate under 5%
-    http_reqs: ['rate>10'], // Minimum 10 requests per second
-    checks: ['rate>0.95'], // 95% of checks should pass
+    http_req_duration: [
+      `p(95)<${__ENV.THRESHOLD_P95 || '2000'}`, 
+      `p(99)<${__ENV.THRESHOLD_P99 || '5000'}`
+    ],
+    http_req_failed: [`rate<${__ENV.THRESHOLD_ERROR_RATE || '0.05'}`], 
+    http_reqs: [`rate>${__ENV.THRESHOLD_RPS || '10'}`], 
+    checks: [`rate>${__ENV.THRESHOLD_CHECK_RATE || '0.95'}`], 
   }
 };
+
+// Helper function to get load test configuration based on test type
+export function getLoadTestConfig(testType = 'default') {
+  const configs = {
+    default: {
+      vus: PERFORMANCE_CONFIG.DEFAULT_VUS,
+      duration: PERFORMANCE_CONFIG.DEFAULT_DURATION,
+      rampUp: PERFORMANCE_CONFIG.DEFAULT_RAMP_UP,
+      rampDown: PERFORMANCE_CONFIG.DEFAULT_RAMP_DOWN,
+    },
+    stress: {
+      vus: PERFORMANCE_CONFIG.STRESS_VUS,
+      duration: PERFORMANCE_CONFIG.STRESS_DURATION,
+      rampUp: PERFORMANCE_CONFIG.STRESS_RAMP_UP,
+      rampDown: PERFORMANCE_CONFIG.STRESS_RAMP_DOWN,
+    },
+    spike: {
+      vus: PERFORMANCE_CONFIG.SPIKE_VUS,
+      duration: PERFORMANCE_CONFIG.SPIKE_DURATION,
+      rampUp: PERFORMANCE_CONFIG.SPIKE_RAMP_UP,
+      rampDown: PERFORMANCE_CONFIG.SPIKE_RAMP_DOWN,
+    },
+    volume: {
+      vus: PERFORMANCE_CONFIG.VOLUME_VUS,
+      duration: PERFORMANCE_CONFIG.VOLUME_DURATION,
+      rampUp: PERFORMANCE_CONFIG.VOLUME_RAMP_UP,
+      rampDown: PERFORMANCE_CONFIG.VOLUME_RAMP_DOWN,
+    }
+  };
+  
+  return configs[testType] || configs.default;
+}
 
 // Grafana Cloud K6 configuration
 export const GRAFANA_CONFIG = {
