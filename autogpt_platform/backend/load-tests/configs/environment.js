@@ -5,6 +5,7 @@ export const ENV_CONFIG = {
     BUILDER_BASE_URL: 'https://dev-builder.agpt.co', 
     WS_BASE_URL: 'wss://dev-ws-server.agpt.co',
     SUPABASE_URL: 'https://adfjtextkuilwuhzdjpf.supabase.co',
+    SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkZmp0ZXh0a3VpbHd1aHpkanBmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzAyNTE3MDIsImV4cCI6MjA0NTgyNzcwMn0.fxbU47lCpUCnN0-E-8K0ckO1tkI4_L5Q7YoKJZFrlgU',
   },
   STAGING: {
     API_BASE_URL: 'https://staging-api.agpt.co',

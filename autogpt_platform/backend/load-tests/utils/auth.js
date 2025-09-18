@@ -20,7 +20,7 @@ export function authenticateUser(userCredentials) {
   const params = {
     headers: {
       'Content-Type': 'application/json',
-      'apikey': AUTH_CONFIG.SERVICE_ROLE_KEY,
+      'apikey': config.SUPABASE_ANON_KEY,
     },
   };
   
@@ -62,53 +62,9 @@ export function getAuthHeaders(accessToken) {
 }
 
 /**
- * Create a new test user (for setup scripts)
- */
-export function createTestUser(email, password) {
-  const signupUrl = `${config.SUPABASE_URL}/auth/v1/signup`;
-  
-  const signupPayload = {
-    email: email,
-    password: password,
-  };
-  
-  const params = {
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': AUTH_CONFIG.SERVICE_ROLE_KEY,
-    },
-  };
-  
-  const response = http.post(signupUrl, JSON.stringify(signupPayload), params);
-  
-  check(response, {
-    'User creation successful': (r) => r.status === 200 || r.status === 201,
-  });
-  
-  return response;
-}
-
-/**
  * Get random test user credentials
  */
 export function getRandomTestUser() {
   const users = AUTH_CONFIG.TEST_USERS;
   return users[Math.floor(Math.random() * users.length)];
-}
-
-/**
- * Verify JWT token is valid by calling a protected endpoint
- */
-export function verifyToken(accessToken) {
-  const verifyUrl = `${config.API_BASE_URL}/api/v1/auth/user`;
-  
-  const params = {
-    headers: getAuthHeaders(accessToken),
-  };
-  
-  const response = http.post(verifyUrl, '{}', params);
-  
-  return check(response, {
-    'Token verification successful': (r) => r.status === 200,
-  });
 }
