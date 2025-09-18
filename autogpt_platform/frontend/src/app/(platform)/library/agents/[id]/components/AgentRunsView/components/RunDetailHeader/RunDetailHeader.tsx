@@ -1,5 +1,5 @@
 import React from "react";
-import { RunStatusBadge } from "../RunDetails/components/RunStatusBadge";
+import { RunStatusBadge } from "../SelectedRunView/components/RunStatusBadge";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import {
@@ -14,6 +14,8 @@ import { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
 import { useRunDetailHeader } from "./useRunDetailHeader";
 import { AgentActionsDropdown } from "../AgentActionsDropdown";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { ShareButton } from "@/components/ShareButton";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 type Props = {
   agent: LibraryAgent;
@@ -30,10 +32,13 @@ export function RunDetailHeader({
   onSelectRun,
   onClearSelectedRun,
 }: Props) {
+  const shareExecutionResultsEnabled = useGetFlag(Flag.SHARE_EXECUTION_RESULTS);
+
   const {
     canStop,
     isStopping,
     isDeleting,
+    isRunning,
     isRunningAgain,
     openInBuilderHref,
     showDeleteDialog,
@@ -67,13 +72,23 @@ export function RunDetailHeader({
                 >
                   <PlayIcon size={16} /> Run again
                 </Button>
-                <Button
-                  variant="secondary"
-                  size="small"
-                  onClick={() => handleShowDeleteDialog(true)}
-                >
-                  <TrashIcon size={16} /> Delete
-                </Button>
+                {shareExecutionResultsEnabled && (
+                  <ShareButton
+                    graphId={agent.graph_id}
+                    executionId={run.id}
+                    isShared={run.is_shared}
+                    shareToken={run.share_token}
+                  />
+                )}
+                {!isRunning ? (
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    onClick={() => handleShowDeleteDialog(true)}
+                  >
+                    <TrashIcon size={16} /> Delete run
+                  </Button>
+                ) : null}
                 {openInBuilderHref ? (
                   <Button
                     variant="secondary"
@@ -82,7 +97,7 @@ export function RunDetailHeader({
                     href={openInBuilderHref}
                     target="_blank"
                   >
-                    <ArrowSquareOutIcon size={16} /> Open in builder
+                    <ArrowSquareOutIcon size={16} /> Edit run
                   </Button>
                 ) : null}
                 {canStop ? (
@@ -92,7 +107,7 @@ export function RunDetailHeader({
                     onClick={handleStopRun}
                     disabled={isStopping}
                   >
-                    <StopIcon size={14} /> Stop run
+                    <StopIcon size={14} /> Stop agent
                   </Button>
                 ) : null}
                 <AgentActionsDropdown agent={agent} />

@@ -16,7 +16,8 @@ import ActionButtonGroup from "@/components/agptui/action-button-group";
 import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { IconCross, IconPlay, IconSave } from "@/components/ui/icons";
-import { CalendarClockIcon, Trash2Icon, ClockIcon } from "lucide-react";
+import { CalendarClockIcon, Trash2Icon } from "lucide-react";
+import { ClockIcon, InfoIcon } from "@phosphor-icons/react";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { ScheduleTaskDialog } from "@/components/cron-scheduler-dialog";
 import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
@@ -584,6 +585,19 @@ export function AgentRunDraftView({
                     recommendedScheduleCron,
                   ).toLowerCase()}
                 </p>
+              </div>
+            )}
+
+            {/* Setup Instructions */}
+            {graph.instructions && (
+              <div className="flex items-start gap-2 rounded-md border border-violet-200 bg-violet-50 p-3">
+                <InfoIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-violet-600" />
+                <div className="text-sm text-violet-800">
+                  <strong>Setup Instructions:</strong>{" "}
+                  <span className="whitespace-pre-wrap">
+                    {graph.instructions}
+                  </span>
+                </div>
               </div>
             )}
 

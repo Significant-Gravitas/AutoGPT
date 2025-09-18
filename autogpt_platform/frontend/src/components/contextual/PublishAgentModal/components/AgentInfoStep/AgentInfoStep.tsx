@@ -165,6 +165,21 @@ export function AgentInfoStep({
 
           <FormField
             control={form.control}
+            name="instructions"
+            render={({ field }) => (
+              <Input
+                id={field.name}
+                label="Instructions"
+                type="textarea"
+                placeholder="Explain to users how to run this agent and what to expect"
+                error={form.formState.errors.instructions?.message}
+                {...field}
+              />
+            )}
+          />
+
+          <FormField
+            control={form.control}
             name="recommendedScheduleCron"
             render={({ field }) => (
               <div className="flex flex-col space-y-2">

@@ -144,6 +144,92 @@ async def list_library_agents(
         raise store_exceptions.DatabaseError("Failed to fetch library agents") from e
 
 
+async def list_favorite_library_agents(
+    user_id: str,
+    page: int = 1,
+    page_size: int = 50,
+) -> library_model.LibraryAgentResponse:
+    """
+    Retrieves a paginated list of favorite LibraryAgent records for a given user.
+
+    Args:
+        user_id: The ID of the user whose favorite LibraryAgents we want to retrieve.
+        page: Current page (1-indexed).
+        page_size: Number of items per page.
+
+    Returns:
+        A LibraryAgentResponse containing the list of favorite agents and pagination details.
+
+    Raises:
+        DatabaseError: If there is an issue fetching from Prisma.
+    """
+    logger.debug(
+        f"Fetching favorite library agents for user_id={user_id}, "
+        f"page={page}, page_size={page_size}"
+    )
+
+    if page < 1 or page_size < 1:
+        logger.warning(f"Invalid pagination: page={page}, page_size={page_size}")
+        raise store_exceptions.DatabaseError("Invalid pagination input")
+
+    where_clause: prisma.types.LibraryAgentWhereInput = {
+        "userId": user_id,
+        "isDeleted": False,
+        "isArchived": False,
+        "isFavorite": True,  # Only fetch favorites
+    }
+
+    # Sort favorites by updated date descending
+    order_by: prisma.types.LibraryAgentOrderByInput = {"updatedAt": "desc"}
+
+    try:
+        library_agents = await prisma.models.LibraryAgent.prisma().find_many(
+            where=where_clause,
+            include=library_agent_include(user_id),
+            order=order_by,
+            skip=(page - 1) * page_size,
+            take=page_size,
+        )
+        agent_count = await prisma.models.LibraryAgent.prisma().count(
+            where=where_clause
+        )
+
+        logger.debug(
+            f"Retrieved {len(library_agents)} favorite library agents for user #{user_id}"
+        )
+
+        # Only pass valid agents to the response
+        valid_library_agents: list[library_model.LibraryAgent] = []
+
+        for agent in library_agents:
+            try:
+                library_agent = library_model.LibraryAgent.from_db(agent)
+                valid_library_agents.append(library_agent)
+            except Exception as e:
+                # Skip this agent if there was an error
+                logger.error(
+                    f"Error parsing LibraryAgent #{agent.id} from DB item: {e}"
+                )
+                continue
+
+        # Return the response with only valid agents
+        return library_model.LibraryAgentResponse(
+            agents=valid_library_agents,
+            pagination=Pagination(
+                total_items=agent_count,
+                total_pages=(agent_count + page_size - 1) // page_size,
+                current_page=page,
+                page_size=page_size,
+            ),
+        )
+
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error fetching favorite library agents: {e}")
+        raise store_exceptions.DatabaseError(
+            "Failed to fetch favorite library agents"
+        ) from e
+
+
 async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent:
     """
     Get a specific agent from the user's library.
@@ -709,10 +795,7 @@ async def create_preset(
                         )
                         for name, data in {
                             **preset.inputs,
-                            **{
-                                key: creds_meta.model_dump(exclude_none=True)
-                                for key, creds_meta in preset.credentials.items()
-                            },
+                            **preset.credentials,
                         }.items()
                     ]
                 },

@@ -9,15 +9,13 @@ import {
 } from "@/app/api/__generated__/endpoints/schedules/schedules";
 
 import { Card } from "@/components/ui/card";
-import {
-  AgentFlowList,
-  FlowInfo,
-  FlowRunInfo,
-  FlowRunsList,
-  FlowRunsStats,
-} from "@/components/monitor";
-import { SchedulesTable } from "@/components/monitor/scheduleTable";
+import { SchedulesTable } from "@/app/(platform)/monitoring/components/SchedulesTable";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import AgentFlowList from "./components/AgentFlowList";
+import FlowRunsList from "./components/FlowRunsList";
+import FlowRunInfo from "./components/FlowRunInfo";
+import FlowInfo from "./components/FlowInfo";
+import FlowRunsStatus from "./components/FlowRunsStatus";
 
 const Monitor = () => {
   const [flows, setFlows] = useState<LibraryAgent[]>([]);
@@ -129,7 +127,7 @@ const Monitor = () => {
           />
         )) || (
           <Card className={`p-6 ${column3}`}>
-            <FlowRunsStats flows={flows} executions={executions} />
+            <FlowRunsStatus flows={flows} executions={executions} />
           </Card>
         )}
       <div className="col-span-full xl:col-span-6">

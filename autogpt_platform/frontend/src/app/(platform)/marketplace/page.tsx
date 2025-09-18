@@ -1,4 +1,5 @@
 import { Metadata } from "next";
+import { Suspense } from "react";
 import {
   prefetchGetV2ListStoreAgentsQuery,
   prefetchGetV2ListStoreCreatorsQuery,
@@ -6,8 +7,7 @@ import {
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { MainMarkeplacePage } from "./components/MainMarketplacePage/MainMarketplacePage";
-
-export const dynamic = "force-dynamic";
+import { MainMarketplacePageLoading } from "./components/MainMarketplacePageLoading";
 
 // FIX: Correct metadata
 export const metadata: Metadata = {
@@ -56,22 +56,45 @@ export const metadata: Metadata = {
 export default async function MarketplacePage(): Promise<React.ReactElement> {
   const queryClient = getQueryClient();
 
+  // Prefetch all data on server with proper caching
   await Promise.all([
-    prefetchGetV2ListStoreAgentsQuery(queryClient, {
-      featured: true,
-    }),
-    prefetchGetV2ListStoreAgentsQuery(queryClient, {
-      sorted_by: "runs",
-    }),
-    prefetchGetV2ListStoreCreatorsQuery(queryClient, {
-      featured: true,
-      sorted_by: "num_agents",
-    }),
+    prefetchGetV2ListStoreAgentsQuery(
+      queryClient,
+      { featured: true },
+      {
+        query: {
+          staleTime: 60 * 1000, // 60 seconds
+          gcTime: 5 * 60 * 1000, // 5 minutes (formerly cacheTime)
+        },
+      },
+    ),
+    prefetchGetV2ListStoreAgentsQuery(
+      queryClient,
+      { sorted_by: "runs", page_size: 1000 },
+      {
+        query: {
+          staleTime: 60 * 1000, // 60 seconds
+          gcTime: 5 * 60 * 1000, // 5 minutes
+        },
+      },
+    ),
+    prefetchGetV2ListStoreCreatorsQuery(
+      queryClient,
+      { featured: true, sorted_by: "num_agents" },
+      {
+        query: {
+          staleTime: 60 * 1000, // 60 seconds
+          gcTime: 5 * 60 * 1000, // 5 minutes
+        },
+      },
+    ),
   ]);
 
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
-      <MainMarkeplacePage />
+      <Suspense fallback={<MainMarketplacePageLoading />}>
+        <MainMarkeplacePage />
+      </Suspense>
     </HydrationBoundary>
   );
 }
