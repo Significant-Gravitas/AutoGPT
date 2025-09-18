@@ -11,10 +11,15 @@ import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 import ActionButtonGroup from "@/components/__legacy__/action-button-group";
 import type { ButtonAction } from "@/components/__legacy__/types";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { IconCross } from "@/components/ui/icons";
-import { Input } from "@/components/ui/input";
-import LoadingBox from "@/components/ui/loading";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/__legacy__/ui/card";
+import { IconCross } from "@/components/__legacy__/ui/icons";
+import { Input } from "@/components/__legacy__/ui/input";
+import LoadingBox from "@/components/__legacy__/ui/loading";
 import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { formatScheduleTime } from "@/lib/timezone-utils";

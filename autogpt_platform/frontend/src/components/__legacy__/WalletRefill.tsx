@@ -1,4 +1,9 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/__legacy__/ui/tabs";
 import { cn } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -10,8 +15,8 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/ui/form";
-import { Input } from "../ui/input";
+} from "@/components/__legacy__/ui/form";
+import { Input } from "./ui/input";
 import Link from "next/link";
 import { useToast, useToastOnFail } from "../molecules/Toast/use-toast";
 import useCredits from "@/hooks/useCredits";

@@ -5,11 +5,11 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover";
+} from "@/components/__legacy__/ui/popover";
 import { X } from "lucide-react";
 import { PopoverClose } from "@radix-ui/react-popover";
 import { TaskGroups } from "@/app/(no-navbar)/onboarding/components/WalletTaskGroups";
-import { ScrollArea } from "../ui/scroll-area";
+import { ScrollArea } from "./ui/scroll-area";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";

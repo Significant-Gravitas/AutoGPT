@@ -1,5 +1,5 @@
 "use client";
-import { IconAutoGPTLogo, IconType } from "@/components/ui/icons";
+import { IconAutoGPTLogo, IconType } from "@/components/__legacy__/ui/icons";
 import Wallet from "../../../__legacy__/Wallet";
 import { AccountMenu } from "./AccountMenu/AccountMenu";
 import { LoginButton } from "./LoginButton";

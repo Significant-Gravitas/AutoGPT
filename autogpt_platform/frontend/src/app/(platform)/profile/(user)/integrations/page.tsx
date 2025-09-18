@@ -3,7 +3,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { useRouter } from "next/navigation";
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { IconKey, IconUser } from "@/components/ui/icons";
+import { IconKey, IconUser } from "@/components/__legacy__/ui/icons";
 import { Trash2Icon } from "lucide-react";
 import { KeyIcon } from "@phosphor-icons/react/dist/ssr";
 import { providerIcons } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
@@ -15,11 +15,11 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@/components/__legacy__/ui/table";
 import { CredentialsProviderName } from "@/lib/autogpt-server-api";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import LoadingBox from "@/components/ui/loading";
+import LoadingBox from "@/components/__legacy__/ui/loading";
 
 export default function UserIntegrationsPage() {
   const { supabase, user, isUserLoading } = useSupabase();

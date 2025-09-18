@@ -1,9 +1,13 @@
 import * as React from "react";
 import Link from "next/link";
 import { Button } from "./Button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+} from "@/components/__legacy__/ui/sheet";
 import { Menu } from "lucide-react";
-import { IconDashboardLayout } from "../ui/icons";
+import { IconDashboardLayout } from "./ui/icons";
 
 export interface SidebarLink {
   text: string;

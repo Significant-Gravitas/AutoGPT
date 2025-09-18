@@ -19,15 +19,15 @@ import {
   TableBody,
   TableCell,
   Table,
-} from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
+} from "@/components/__legacy__/ui/table";
+import { Button } from "@/components/__legacy__/ui/button";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
+} from "@/components/__legacy__/ui/dropdown-menu";
+import { Input } from "@/components/__legacy__/ui/input";
 import { cloneElement, Fragment, useState } from "react";
 
 export interface GlobalActions<TData> {

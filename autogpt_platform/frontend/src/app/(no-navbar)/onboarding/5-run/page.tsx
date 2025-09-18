@@ -5,7 +5,12 @@ import OnboardingButton from "../components/OnboardingButton";
 import { OnboardingHeader, OnboardingStep } from "../components/OnboardingStep";
 import { OnboardingText } from "../components/OnboardingText";
 import StarRating from "../components/StarRating";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/__legacy__/ui/card";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { GraphMeta, StoreAgentDetails } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";

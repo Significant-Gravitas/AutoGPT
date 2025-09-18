@@ -6,7 +6,7 @@ import {
   Carousel,
   CarouselContent,
   CarouselItem,
-} from "@/components/ui/carousel";
+} from "@/components/__legacy__/ui/carousel";
 import { useRouter } from "next/navigation";
 
 export interface Agent {

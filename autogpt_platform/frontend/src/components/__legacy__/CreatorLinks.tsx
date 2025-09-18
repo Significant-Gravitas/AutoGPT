@@ -1,5 +1,5 @@
 import * as React from "react";
-import { getIconForSocial } from "@/components/ui/icons";
+import { getIconForSocial } from "@/components/__legacy__/ui/icons";
 
 interface CreatorLinksProps {
   links: string[];

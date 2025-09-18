@@ -6,7 +6,7 @@ import {
   Collapsible as BaseCollapsible,
   CollapsibleTrigger as BaseCollapsibleTrigger,
   CollapsibleContent as BaseCollapsibleContent,
-} from "@/components/ui/collapsible";
+} from "@/components/__legacy__/ui/collapsible";
 import { CaretDownIcon } from "@phosphor-icons/react";
 
 interface Props {

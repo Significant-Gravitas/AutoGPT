@@ -6,7 +6,7 @@ import {
   IconProfile,
   IconSliders,
   IconCoin,
-} from "@/components/ui/icons";
+} from "@/components/__legacy__/ui/icons";
 import { KeyIcon } from "lucide-react";
 
 export default function Layout({ children }: { children: React.ReactNode }) {

@@ -1,7 +1,7 @@
 "use client";
 
-import { StarRatingIcons } from "@/components/ui/icons";
-import { Separator } from "@/components/ui/separator";
+import { StarRatingIcons } from "@/components/__legacy__/ui/icons";
+import { Separator } from "@/components/__legacy__/ui/separator";
 import BackendAPI, { LibraryAgent } from "@/lib/autogpt-server-api";
 import { useRouter } from "next/navigation";
 import Link from "next/link";

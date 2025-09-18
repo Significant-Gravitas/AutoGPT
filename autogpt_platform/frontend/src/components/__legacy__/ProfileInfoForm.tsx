@@ -4,8 +4,8 @@ import { useState } from "react";
 
 import Image from "next/image";
 
-import { IconPersonFill } from "@/components/ui/icons";
-import { Separator } from "@/components/ui/separator";
+import { IconPersonFill } from "@/components/__legacy__/ui/icons";
+import { Separator } from "@/components/__legacy__/ui/separator";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { ProfileDetails } from "@/lib/autogpt-server-api/types";
 import { Button } from "./Button";

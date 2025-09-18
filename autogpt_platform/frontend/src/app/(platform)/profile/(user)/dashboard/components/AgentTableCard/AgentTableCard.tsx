@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { IconStarFilled, IconMore } from "@/components/ui/icons";
+import { IconStarFilled, IconMore } from "@/components/__legacy__/ui/icons";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { Status } from "@/components/__legacy__/Status";

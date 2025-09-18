@@ -6,7 +6,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@/components/__legacy__/ui/dropdown-menu";
 import { ChevronDownIcon } from "@radix-ui/react-icons";
 
 const sortOptions: SortOption[] = [

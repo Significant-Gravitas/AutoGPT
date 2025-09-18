@@ -3,7 +3,12 @@
 import React from "react";
 import { useParams } from "next/navigation";
 import { RunOutputs } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/SelectedRunView/components/RunOutputs";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/__legacy__/ui/card";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { InfoIcon } from "lucide-react";
 import { useGetV1GetSharedExecution } from "@/app/api/__generated__/endpoints/default/default";

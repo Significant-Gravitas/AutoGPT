@@ -7,7 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
+} from "@/components/__legacy__/ui/dialog";
 import { z } from "zod";
 import { FileUploader } from "react-drag-drop-files";
 import {
@@ -17,9 +17,9 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+} from "@/components/__legacy__/ui/form";
+import { Input } from "@/components/__legacy__/ui/input";
+import { Textarea } from "@/components/__legacy__/ui/textarea";
 import { useLibraryUploadAgentDialog } from "./useLibraryUploadAgentDialog";
 
 const fileTypes = ["JSON"];

@@ -9,7 +9,7 @@ import {
   CarouselPrevious,
   CarouselNext,
   CarouselIndicator,
-} from "@/components/ui/carousel";
+} from "@/components/__legacy__/ui/carousel";
 import { useCallback, useState } from "react";
 import { StoreAgent } from "@/lib/autogpt-server-api";
 import Link from "next/link";

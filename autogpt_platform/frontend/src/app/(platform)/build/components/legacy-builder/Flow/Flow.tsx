@@ -51,7 +51,7 @@ import {
 import { SaveControl } from "@/app/(platform)/build/components/legacy-builder/SaveControl";
 import { BlocksControl } from "@/app/(platform)/build/components/legacy-builder/BlocksControl";
 import { GraphSearchControl } from "@/app/(platform)/build/components/legacy-builder/GraphSearchControl";
-import { IconUndo2, IconRedo2 } from "@/components/ui/icons";
+import { IconUndo2, IconRedo2 } from "@/components/__legacy__/ui/icons";
 import {
   Alert,
   AlertDescription,

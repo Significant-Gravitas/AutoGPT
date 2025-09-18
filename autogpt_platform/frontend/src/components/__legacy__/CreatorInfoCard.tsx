@@ -1,5 +1,5 @@
 import * as React from "react";
-import { StarRatingIcons } from "@/components/ui/icons";
+import { StarRatingIcons } from "@/components/__legacy__/ui/icons";
 import Avatar, { AvatarFallback, AvatarImage } from "../atoms/Avatar/Avatar";
 
 interface CreatorInfoCardProps {

@@ -6,7 +6,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/__legacy__/ui/dialog";
 
 export default function DeleteConfirmDialog({
   entityType,

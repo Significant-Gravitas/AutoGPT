@@ -10,7 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@/components/__legacy__/ui/dropdown-menu";
 import NotificationCard, {
   NotificationCardData,
 } from "../LibraryNotificationCard/LibraryNotificationCard";

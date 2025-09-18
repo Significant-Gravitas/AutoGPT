@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/__legacy__/ui/badge";
 
 interface FilterChipsProps {
   badges: string[];

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Cross1Icon } from "@radix-ui/react-icons";
-import { IconStar, IconStarFilled } from "@/components/ui/icons";
+import { IconStar, IconStarFilled } from "@/components/__legacy__/ui/icons";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 interface RatingCardProps {

@@ -1,6 +1,11 @@
 import React from "react";
 import { GraphExecutionMeta, LibraryAgent } from "@/lib/autogpt-server-api";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/__legacy__/ui/card";
 import {
   Table,
   TableBody,
@@ -8,10 +13,10 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@/components/__legacy__/ui/table";
 import moment from "moment/moment";
 import { FlowRunStatusBadge } from "@/app/(platform)/monitoring/components/FlowRunStatusBadge";
-import { TextRenderer } from "../../../../components/ui/render";
+import { TextRenderer } from "../../../../components/__legacy__/ui/render";
 
 export const FlowRunsList: React.FC<{
   flows: LibraryAgent[];
