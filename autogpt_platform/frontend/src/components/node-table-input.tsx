@@ -39,7 +39,7 @@ export const NodeTableInput: FC<NodeTableInputProps> = ({
   errors,
   connections,
   handleInputChange,
-  handleInputClick,
+  handleInputClick: _handleInputClick,
   className,
   displayName,
 }) => {

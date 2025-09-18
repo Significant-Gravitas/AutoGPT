@@ -934,7 +934,7 @@ const NodeArrayInput: FC<{
   handleInputClick,
   className,
   displayName,
-  parentContext,
+  parentContext: _parentContext,
 }) => {
   entries ??= schema.default;
   if (!entries || !Array.isArray(entries)) entries = [];
