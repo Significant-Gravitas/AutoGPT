@@ -42,6 +42,7 @@ from backend.data.credit import (
     get_user_credit_model,
     set_auto_top_up,
 )
+from backend.data.execution import UserContext
 from backend.data.model import CredentialsMetaInput
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.onboarding import (
@@ -282,15 +283,24 @@ def get_graph_blocks() -> Sequence[dict[Any, Any]]:
     tags=["blocks"],
     dependencies=[Security(requires_user)],
 )
-async def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlockOutput:
+async def execute_graph_block(
+    block_id: str, data: BlockInput, user_id: Annotated[str, Security(get_user_id)]
+) -> CompletedBlockOutput:
     obj = get_block(block_id)
     if not obj:
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
 
+    # Get user context for block execution
+    user = await get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    user_context = UserContext(timezone=user.timezone)
+
     start_time = time.time()
     try:
         output = defaultdict(list)
-        async for name, data in obj.execute(data):
+        async for name, data in obj.execute(data, user_context=user_context):
             output[name].append(data)
 
         # Record successful block execution with duration
