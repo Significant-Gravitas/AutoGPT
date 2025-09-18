@@ -57,11 +57,17 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
         update["completedSteps"] = list(set(data.completedSteps))
         for step in (
             OnboardingStep.AGENT_NEW_RUN,
-            OnboardingStep.RUN_AGENTS,
+            OnboardingStep.MARKETPLACE_VISIT,
             OnboardingStep.MARKETPLACE_ADD_AGENT,
             OnboardingStep.MARKETPLACE_RUN_AGENT,
             OnboardingStep.BUILDER_SAVE_AGENT,
-            OnboardingStep.BUILDER_RUN_AGENT,
+            OnboardingStep.RE_RUN_AGENT,
+            OnboardingStep.SCHEDULE_AGENT,
+            OnboardingStep.RUN_AGENTS,
+            OnboardingStep.RUN_3_DAYS,
+            OnboardingStep.TRIGGER_WEBHOOK,
+            OnboardingStep.RUN_14_DAYS,
+            OnboardingStep.RUN_AGENTS_100,
         ):
             if step in data.completedSteps:
                 await reward_user(user_id, step)
@@ -101,16 +107,28 @@ async def reward_user(user_id: str, step: OnboardingStep):
         # This is seen as a reward for the GET_RESULTS step in the wallet
         case OnboardingStep.AGENT_NEW_RUN:
             reward = 300
-        case OnboardingStep.RUN_AGENTS:
-            reward = 300
+        case OnboardingStep.MARKETPLACE_VISIT:
+            reward = 100
         case OnboardingStep.MARKETPLACE_ADD_AGENT:
             reward = 100
         case OnboardingStep.MARKETPLACE_RUN_AGENT:
             reward = 100
         case OnboardingStep.BUILDER_SAVE_AGENT:
             reward = 100
-        case OnboardingStep.BUILDER_RUN_AGENT:
+        case OnboardingStep.RE_RUN_AGENT:
             reward = 100
+        case OnboardingStep.SCHEDULE_AGENT:
+            reward = 100
+        case OnboardingStep.RUN_AGENTS:
+            reward = 300
+        case OnboardingStep.RUN_3_DAYS:
+            reward = 100
+        case OnboardingStep.TRIGGER_WEBHOOK:
+            reward = 100
+        case OnboardingStep.RUN_14_DAYS:
+            reward = 300
+        case OnboardingStep.RUN_AGENTS_100:
+            reward = 300
 
     if reward == 0:
         return
