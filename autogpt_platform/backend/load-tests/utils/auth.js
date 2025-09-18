@@ -1,11 +1,18 @@
 import http from 'k6/http';
-import { check, fail } from 'k6';
+import { check, fail, sleep } from 'k6';
 import { getEnvironmentConfig, AUTH_CONFIG } from '../configs/environment.js';
 
 const config = getEnvironmentConfig();
 
 // VU-specific token cache to avoid re-authentication
 const vuTokenCache = new Map();
+
+// Batch authentication coordination for high VU counts
+let currentBatch = 0;
+let batchAuthInProgress = false;
+const BATCH_SIZE = 30; // Respect Supabase rate limit
+const authQueue = [];
+let authQueueProcessing = false;
 
 /**
  * Authenticate user and return JWT token
@@ -75,8 +82,8 @@ export function getRandomTestUser() {
 }
 
 /**
- * Smart authentication that caches tokens per VU to avoid rate limiting
- * Authenticates once per VU and reuses the token across iterations
+ * Smart authentication with batch processing for high VU counts
+ * Processes authentication in batches of 30 to respect rate limits
  */
 export function getAuthenticatedUser() {
   const vuId = __VU; // k6 VU identifier
@@ -88,20 +95,46 @@ export function getAuthenticatedUser() {
     return cachedAuth;
   }
   
-  // Try to authenticate with available test users
+  // Use batch authentication for high VU counts
+  return batchAuthenticate(vuId);
+}
+
+/**
+ * Batch authentication processor that handles VUs in groups of 30
+ * This respects Supabase's rate limit while allowing higher concurrency
+ */
+function batchAuthenticate(vuId) {
   const users = AUTH_CONFIG.TEST_USERS;
-  let authResult = null;
   
+  // Determine which batch this VU belongs to
+  const batchNumber = Math.floor((vuId - 1) / BATCH_SIZE);
+  const positionInBatch = ((vuId - 1) % BATCH_SIZE);
+  
+  console.log(`🔐 VU ${vuId} assigned to batch ${batchNumber}, position ${positionInBatch}`);
+  
+  // Calculate delay to stagger batches (wait for previous batch to complete)
+  const batchDelay = batchNumber * 3; // 3 seconds between batches
+  const withinBatchDelay = positionInBatch * 0.1; // 100ms stagger within batch
+  const totalDelay = batchDelay + withinBatchDelay;
+  
+  if (totalDelay > 0) {
+    console.log(`⏱️ VU ${vuId} waiting ${totalDelay}s (batch delay: ${batchDelay}s + position delay: ${withinBatchDelay}s)`);
+    sleep(totalDelay);
+  }
+  
+  // Try to authenticate with available users
   for (let i = 0; i < users.length; i++) {
     const testUser = users[i];
+    const userKey = testUser.email;
+    
     console.log(`🔐 VU ${vuId} attempting authentication with ${testUser.email}...`);
     
-    authResult = authenticateUser(testUser);
+    const authResult = authenticateUser(testUser);
     
     if (authResult) {
       // Cache the successful authentication for this VU
       vuTokenCache.set(vuId, authResult);
-      console.log(`✅ VU ${vuId} authenticated successfully with ${testUser.email}`);
+      console.log(`✅ VU ${vuId} authenticated successfully with ${testUser.email} in batch ${batchNumber}`);
       return authResult;
     }
     
@@ -109,7 +142,7 @@ export function getAuthenticatedUser() {
   }
   
   // If all users failed, throw error
-  throw new Error(`VU ${vuId} failed to authenticate with any test user`);
+  throw new Error(`VU ${vuId} failed to authenticate with any test user in batch ${batchNumber}`);
 }
 
 /**
