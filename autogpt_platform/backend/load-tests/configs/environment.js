@@ -5,13 +5,14 @@ export const ENV_CONFIG = {
     BUILDER_BASE_URL: 'https://dev-builder.agpt.co', 
     WS_BASE_URL: 'wss://dev-ws-server.agpt.co',
     SUPABASE_URL: 'https://adfjtextkuilwuhzdjpf.supabase.co',
-    SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkZmp0ZXh0a3VpbHd1aHpkanBmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzAyNTE3MDIsImV4cCI6MjA0NTgyNzcwMn0.fxbU47lCpUCnN0-E-8K0ckO1tkI4_L5Q7YoKJZFrlgU',
+    SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE',
   },
-  STAGING: {
-    API_BASE_URL: 'https://staging-api.agpt.co',
-    BUILDER_BASE_URL: 'https://staging-builder.agpt.co',
-    WS_BASE_URL: 'wss://staging-ws-server.agpt.co',
-    SUPABASE_URL: 'https://staging-supabase.agpt.co',
+  LOCAL: {
+    API_BASE_URL: 'http://localhost:8006',
+    BUILDER_BASE_URL: 'http://localhost:3000', 
+    WS_BASE_URL: 'ws://localhost:8001',
+    SUPABASE_URL: 'http://localhost:8000',
+    SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE',
   },
   PROD: {
     API_BASE_URL: 'https://api.agpt.co',
