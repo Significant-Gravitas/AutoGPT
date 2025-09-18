@@ -5,7 +5,7 @@ export const ENV_CONFIG = {
     BUILDER_BASE_URL: 'https://dev-builder.agpt.co', 
     WS_BASE_URL: 'wss://dev-ws-server.agpt.co',
     SUPABASE_URL: 'https://adfjtextkuilwuhzdjpf.supabase.co',
-    SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE',
+    SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkZmp0ZXh0a3VpbHd1aHpkanBmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzAyNTE3MDIsImV4cCI6MjA0NTgyNzcwMn0.IuQNXsHEKJNxtS9nyFeqO0BGMYN8sPiObQhuJLSK9xk',
   },
   LOCAL: {
     API_BASE_URL: 'http://localhost:8006',
@@ -19,6 +19,7 @@ export const ENV_CONFIG = {
     BUILDER_BASE_URL: 'https://builder.agpt.co',
     WS_BASE_URL: 'wss://ws-server.agpt.co',
     SUPABASE_URL: 'https://supabase.agpt.co',
+    SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJnd3B3ZHN4YmxyeWloaW51dGJ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzAyODYzMDUsImV4cCI6MjA0NTg2MjMwNX0.ISa2IofTdQIJmmX5JwKGGNajqjsD8bjaGBzK90SubE0',
   }
 };
 

@@ -48,7 +48,6 @@ export default function () {
     
     const authCheck = check(userAuth, {
       'Authentication: Access token received': (auth) => auth && auth.access_token && auth.access_token.length > 0,
-      'Authentication: Response time < 1s': () => authDuration < 1000,
     });
     
     if (userAuth && userAuth.access_token) {

@@ -191,6 +191,11 @@ function complexGraphExecutionJourney(headers) {
       'Complex graph created successfully': (r) => r.status === 200,
     });
     
+    // Debug complex graph creation failures
+    if (createResponse.status !== 200) {
+      console.log(`❌ Complex graph creation failed: ${createResponse.status} - ${createResponse.body}`);
+    }
+    
     if (createSuccess && createResponse.status === 200) {
       try {
         const createdGraph = JSON.parse(createResponse.body);
