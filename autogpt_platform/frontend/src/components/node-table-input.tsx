@@ -3,8 +3,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Cross2Icon, PlusIcon } from "@radix-ui/react-icons";
 import { cn } from "@/lib/utils";
-import NodeHandle from "./NodeHandle";
-import { ConnectionData } from "@/components/CustomNode";
+import NodeHandle from "@/app/(platform)/build/components/legacy-builder/NodeHandle";
 import {
   BlockIOTableSubSchema,
   TableRow,
@@ -18,7 +17,13 @@ interface NodeTableInputProps {
   headers: string[];
   rows?: TableRow[];
   errors: { [key: string]: string | undefined };
-  connections: ConnectionData;
+  connections: {
+    edge_id: string;
+    source: string;
+    sourceHandle: string;
+    target: string;
+    targetHandle: string;
+  }[];
   handleInputChange: (key: string, value: TableRow[]) => void;
   handleInputClick: (key: string) => void;
   className?: string;

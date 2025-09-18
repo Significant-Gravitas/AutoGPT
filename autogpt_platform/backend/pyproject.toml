@@ -45,6 +45,7 @@ postmarker = "^1.0"
 praw = "~7.8.1"
 prisma = "^0.15.0"
 prometheus-client = "^0.22.1"
+prometheus-fastapi-instrumentator = "^7.0.0"
 psutil = "^7.0.0"
 psycopg2-binary = "^2.9.10"
 pydantic = { extras = ["email"], version = "^2.11.7" }

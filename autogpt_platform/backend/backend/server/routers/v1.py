@@ -1,8 +1,10 @@
 import asyncio
 import base64
 import logging
+import time
+import uuid
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated, Any, Sequence
 
 import pydantic
@@ -63,6 +65,11 @@ from backend.integrations.webhooks.graph_lifecycle_hooks import (
     on_graph_activate,
     on_graph_deactivate,
 )
+from backend.monitoring.instrumentation import (
+    record_block_execution,
+    record_graph_execution,
+    record_graph_operation,
+)
 from backend.server.model import (
     CreateAPIKeyRequest,
     CreateAPIKeyResponse,
@@ -95,6 +102,7 @@ def _create_file_size_error(size_bytes: int, max_size_mb: int) -> HTTPException:
 
 settings = Settings()
 logger = logging.getLogger(__name__)
+
 
 _user_credit_model = get_user_credit_model()
 
@@ -279,10 +287,26 @@ async def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlock
     if not obj:
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
 
-    output = defaultdict(list)
-    async for name, data in obj.execute(data):
-        output[name].append(data)
-    return output
+    start_time = time.time()
+    try:
+        output = defaultdict(list)
+        async for name, data in obj.execute(data):
+            output[name].append(data)
+
+        # Record successful block execution with duration
+        duration = time.time() - start_time
+        block_type = obj.__class__.__name__
+        record_block_execution(
+            block_type=block_type, status="success", duration=duration
+        )
+
+        return output
+    except Exception:
+        # Record failed block execution
+        duration = time.time() - start_time
+        block_type = obj.__class__.__name__
+        record_block_execution(block_type=block_type, status="error", duration=duration)
+        raise
 
 
 @v1_router.post(
@@ -778,7 +802,7 @@ async def execute_graph(
         )
 
     try:
-        return await execution_utils.add_graph_execution(
+        result = await execution_utils.add_graph_execution(
             graph_id=graph_id,
             user_id=user_id,
             inputs=inputs,
@@ -786,7 +810,16 @@ async def execute_graph(
             graph_version=graph_version,
             graph_credentials_inputs=credentials_inputs,
         )
+        # Record successful graph execution
+        record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
+        record_graph_operation(operation="execute", status="success")
+        return result
     except GraphValidationError as e:
+        # Record failed graph execution
+        record_graph_execution(
+            graph_id=graph_id, status="validation_error", user_id=user_id
+        )
+        record_graph_operation(operation="execute", status="validation_error")
         # Return structured validation errors that the frontend can parse
         raise HTTPException(
             status_code=400,
@@ -797,6 +830,11 @@ async def execute_graph(
                 "node_errors": e.node_errors,
             },
         )
+    except Exception:
+        # Record any other failures
+        record_graph_execution(graph_id=graph_id, status="error", user_id=user_id)
+        record_graph_operation(operation="execute", status="error")
+        raise
 
 
 @v1_router.post(
@@ -919,6 +957,99 @@ async def delete_graph_execution(
     await execution_db.delete_graph_execution(
         graph_exec_id=graph_exec_id, user_id=user_id
     )
+
+
+class ShareRequest(pydantic.BaseModel):
+    """Optional request body for share endpoint."""
+
+    pass  # Empty body is fine
+
+
+class ShareResponse(pydantic.BaseModel):
+    """Response from share endpoints."""
+
+    share_url: str
+    share_token: str
+
+
+@v1_router.post(
+    "/graphs/{graph_id}/executions/{graph_exec_id}/share",
+    dependencies=[Security(requires_user)],
+)
+async def enable_execution_sharing(
+    graph_id: Annotated[str, Path],
+    graph_exec_id: Annotated[str, Path],
+    user_id: Annotated[str, Security(get_user_id)],
+    _body: ShareRequest = Body(default=ShareRequest()),
+) -> ShareResponse:
+    """Enable sharing for a graph execution."""
+    # Verify the execution belongs to the user
+    execution = await execution_db.get_graph_execution(
+        user_id=user_id, execution_id=graph_exec_id
+    )
+    if not execution:
+        raise HTTPException(status_code=404, detail="Execution not found")
+
+    # Generate a unique share token
+    share_token = str(uuid.uuid4())
+
+    # Update the execution with share info
+    await execution_db.update_graph_execution_share_status(
+        execution_id=graph_exec_id,
+        user_id=user_id,
+        is_shared=True,
+        share_token=share_token,
+        shared_at=datetime.now(timezone.utc),
+    )
+
+    # Return the share URL
+    frontend_url = Settings().config.frontend_base_url or "http://localhost:3000"
+    share_url = f"{frontend_url}/share/{share_token}"
+
+    return ShareResponse(share_url=share_url, share_token=share_token)
+
+
+@v1_router.delete(
+    "/graphs/{graph_id}/executions/{graph_exec_id}/share",
+    status_code=HTTP_204_NO_CONTENT,
+    dependencies=[Security(requires_user)],
+)
+async def disable_execution_sharing(
+    graph_id: Annotated[str, Path],
+    graph_exec_id: Annotated[str, Path],
+    user_id: Annotated[str, Security(get_user_id)],
+) -> None:
+    """Disable sharing for a graph execution."""
+    # Verify the execution belongs to the user
+    execution = await execution_db.get_graph_execution(
+        user_id=user_id, execution_id=graph_exec_id
+    )
+    if not execution:
+        raise HTTPException(status_code=404, detail="Execution not found")
+
+    # Remove share info
+    await execution_db.update_graph_execution_share_status(
+        execution_id=graph_exec_id,
+        user_id=user_id,
+        is_shared=False,
+        share_token=None,
+        shared_at=None,
+    )
+
+
+@v1_router.get("/public/shared/{share_token}")
+async def get_shared_execution(
+    share_token: Annotated[
+        str,
+        Path(regex=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+    ],
+) -> execution_db.SharedExecutionResponse:
+    """Get a shared graph execution by share token (no auth required)."""
+    execution = await execution_db.get_graph_execution_by_share_token(share_token)
+    if not execution:
+        raise HTTPException(status_code=404, detail="Shared execution not found")
+
+    return execution
 
 
 ########################################################

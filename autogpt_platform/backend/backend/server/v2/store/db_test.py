@@ -86,6 +86,27 @@ async def test_get_store_agent_details(mocker):
         is_available=False,
     )
 
+    # Mock active version agent (what we want to return for active version)
+    mock_active_agent = prisma.models.StoreAgent(
+        listing_id="test-id",
+        storeListingVersionId="active-version-id",
+        slug="test-agent",
+        agent_name="Test Agent Active",
+        agent_video="active_video.mp4",
+        agent_image=["active_image.jpg"],
+        featured=False,
+        creator_username="creator",
+        creator_avatar="avatar.jpg",
+        sub_heading="Test heading active",
+        description="Test description active",
+        categories=["test"],
+        runs=15,
+        rating=4.8,
+        versions=["1.0", "2.0"],
+        updated_at=datetime.now(),
+        is_available=True,
+    )
+
     # Create a mock StoreListing result
     mock_store_listing = mocker.MagicMock()
     mock_store_listing.activeVersionId = "active-version-id"
@@ -93,9 +114,22 @@ async def test_get_store_agent_details(mocker):
     mock_store_listing.ActiveVersion = mocker.MagicMock()
     mock_store_listing.ActiveVersion.recommendedScheduleCron = None
 
-    # Mock StoreAgent prisma call
+    # Mock StoreAgent prisma call - need to handle multiple calls
     mock_store_agent = mocker.patch("prisma.models.StoreAgent.prisma")
-    mock_store_agent.return_value.find_first = mocker.AsyncMock(return_value=mock_agent)
+
+    # Set up side_effect to return different results for different calls
+    def mock_find_first_side_effect(*args, **kwargs):
+        where_clause = kwargs.get("where", {})
+        if "storeListingVersionId" in where_clause:
+            # Second call for active version
+            return mock_active_agent
+        else:
+            # First call for initial lookup
+            return mock_agent
+
+    mock_store_agent.return_value.find_first = mocker.AsyncMock(
+        side_effect=mock_find_first_side_effect
+    )
 
     # Mock Profile prisma call
     mock_profile = mocker.MagicMock()
@@ -105,7 +139,7 @@ async def test_get_store_agent_details(mocker):
         return_value=mock_profile
     )
 
-    # Mock StoreListing prisma call - this is what was missing
+    # Mock StoreListing prisma call
     mock_store_listing_db = mocker.patch("prisma.models.StoreListing.prisma")
     mock_store_listing_db.return_value.find_first = mocker.AsyncMock(
         return_value=mock_store_listing
@@ -114,16 +148,25 @@ async def test_get_store_agent_details(mocker):
     # Call function
     result = await db.get_store_agent_details("creator", "test-agent")
 
-    # Verify results
+    # Verify results - should use active version data
     assert result.slug == "test-agent"
-    assert result.agent_name == "Test Agent"
+    assert result.agent_name == "Test Agent Active"  # From active version
     assert result.active_version_id == "active-version-id"
     assert result.has_approved_version is True
+    assert (
+        result.store_listing_version_id == "active-version-id"
+    )  # Should be active version ID
 
-    # Verify mocks called correctly
-    mock_store_agent.return_value.find_first.assert_called_once_with(
+    # Verify mocks called correctly - now expecting 2 calls
+    assert mock_store_agent.return_value.find_first.call_count == 2
+
+    # Check the specific calls
+    calls = mock_store_agent.return_value.find_first.call_args_list
+    assert calls[0] == mocker.call(
         where={"creator_username": "creator", "slug": "test-agent"}
     )
+    assert calls[1] == mocker.call(where={"storeListingVersionId": "active-version-id"})
+
     mock_store_listing_db.return_value.find_first.assert_called_once()
 
 

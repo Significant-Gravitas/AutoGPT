@@ -27,7 +27,6 @@ import { exportAsJSONFile } from "@/lib/utils";
 
 import DeleteConfirmDialog from "@/components/agptui/delete-confirm-dialog";
 import type { ButtonAction } from "@/components/agptui/types";
-import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -48,6 +47,7 @@ import { CreatePresetDialog } from "./components/create-preset-dialog";
 import { useAgentRunsInfinite } from "./use-agent-runs";
 import { AgentRunsSelectorList } from "./components/agent-runs-selector-list";
 import { AgentScheduleDetailsView } from "./components/agent-schedule-details-view";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 
 export function OldAgentLibraryView() {
   const { id: agentID }: { id: LibraryAgentID } = useParams();

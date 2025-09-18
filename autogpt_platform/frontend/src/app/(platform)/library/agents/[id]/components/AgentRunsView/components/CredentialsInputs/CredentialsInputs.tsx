@@ -1,4 +1,3 @@
-import SchemaTooltip from "@/components/SchemaTooltip";
 import { Button } from "@/components/atoms/Button/Button";
 import { IconKey, IconKeyPlus, IconUserPlus } from "@/components/ui/icons";
 import {
@@ -32,6 +31,7 @@ import { APIKeyCredentialsModal } from "../APIKeyCredentialsModal/APIKeyCredenti
 import { HostScopedCredentialsModal } from "../HotScopedCredentialsModal/HotScopedCredentialsModal";
 import { OAuthFlowWaitingModal } from "../OAuthWaitingModal/OAuthWaitingModal";
 import { PasswordCredentialsModal } from "../PasswordCredentialsModal/PasswordCredentialsModal";
+import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 
 const fallbackIcon = FaKey;
 
@@ -328,7 +328,7 @@ export const CredentialsInput: FC<{
       <span className="text-m green text-gray-900">
         {providerName} Credentials
       </span>
-      <SchemaTooltip description={schema.description} />
+      <InformationTooltip description={schema.description} />
     </div>
   );
 

@@ -103,7 +103,7 @@ export function AgentActionsDropdown({ agent }: Props) {
             onClick={handleExport}
             className="flex items-center gap-2"
           >
-            <FileArrowDownIcon size={16} /> Export agent to file
+            <FileArrowDownIcon size={16} /> Export agent
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => setShowDeleteDialog(true)}

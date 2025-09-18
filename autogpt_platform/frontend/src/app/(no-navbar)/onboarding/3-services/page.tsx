@@ -1,15 +1,15 @@
 "use client";
-import OnboardingButton from "@/components/onboarding/OnboardingButton";
+import OnboardingButton from "../components/OnboardingButton";
 import {
   OnboardingStep,
   OnboardingHeader,
   OnboardingFooter,
-} from "@/components/onboarding/OnboardingStep";
-import { OnboardingText } from "@/components/onboarding/OnboardingText";
-import { OnboardingGrid } from "@/components/onboarding/OnboardingGrid";
+} from "../components/OnboardingStep";
+import { OnboardingText } from "../components/OnboardingText";
+import { OnboardingGrid } from "../components/OnboardingGrid";
 import { useCallback } from "react";
-import OnboardingInput from "@/components/onboarding/OnboardingInput";
-import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import OnboardingInput from "../components/OnboardingInput";
+import { useOnboarding } from "../../../../providers/onboarding/onboarding-provider";
 
 const services = [
   {

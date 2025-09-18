@@ -7,7 +7,7 @@ import { IconKey, IconUser } from "@/components/ui/icons";
 import { Trash2Icon } from "lucide-react";
 import { KeyIcon } from "@phosphor-icons/react/dist/ssr";
 import { providerIcons } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
-import { CredentialsProvidersContext } from "@/components/integrations/credentials-provider";
+import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import {
   Table,
   TableBody,
@@ -141,7 +141,11 @@ export default function UserIntegrationsPage() {
         )
         .flatMap((provider) =>
           provider.savedCredentials
-            .filter((cred) => !hiddenCredentials.includes(cred.id))
+            .filter(
+              (cred) =>
+                !hiddenCredentials.includes(cred.id) &&
+                !cred.id.endsWith("-default"), // Hide SDK-registered default credentials
+            )
             .map((credentials) => ({
               ...credentials,
               provider: provider.provider,

@@ -1,3 +1,5 @@
+"use client";
+
 import { useGetV2ListLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
 import { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgentResponse";
 import { useLibraryPageContext } from "../state-provider";
