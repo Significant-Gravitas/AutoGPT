@@ -146,7 +146,7 @@ export function generateComplexTestGraph(name = null) {
         {
           source_id: "time_node",
           sink_id: "output_node", 
-          source_name: "result",
+          source_name: "time",
           sink_name: "value"
         }
       ]
