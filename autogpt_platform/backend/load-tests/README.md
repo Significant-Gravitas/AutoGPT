@@ -16,20 +16,26 @@ This testing suite provides:
 ```
 load-tests/
 ├── configs/
-│   ├── environment.js          # Environment configuration
-│   └── grafana-cloud.js        # Grafana Cloud setup
+│   ├── environment.js                           # Environment configuration
+│   └── grafana-cloud.js                         # Grafana Cloud setup
 ├── scenarios/
-│   ├── load-test.js            # Standard load testing
-│   ├── api-stress-test.js      # API stress testing
-│   └── websocket-stress-test.js # WebSocket testing
+│   ├── comprehensive-platform-load-test.js      # Standard load testing
+│   ├── high-concurrency-api-stress-test.js      # API stress testing
+│   └── real-time-websocket-stress-test.js       # WebSocket testing
 ├── utils/
-│   ├── auth.js                 # Authentication utilities
-│   └── test-data.js            # Test data generators
+│   ├── auth.js                                  # Authentication utilities
+│   └── test-data.js                             # Test data generators
 ├── data/
-│   └── test-users.json         # Test user configuration
-├── results/                    # Test results (local mode)
-├── run-tests.sh               # Main test execution script
-└── README.md                  # This file
+│   └── test-users.json                          # Test user configuration
+├── results/                                     # Test results (local mode)
+├── core-api-validation-test.js                  # Quick API validation (100% success)
+├── comprehensive-error-diagnostic-test.js       # Detailed error analysis
+├── core-api-success-validation-test.js          # Core API success verification
+├── block-id-discovery-test.js                   # Block ID discovery utility
+├── graph-creation-validation-test.js            # Graph creation validation
+├── reduced-load-debugging-test.js               # Reduced load for debugging
+├── run-tests.sh                                 # Main test execution script
+└── README.md                                    # This file
 ```
 
 ## 🚀 Quick Start
@@ -102,36 +108,106 @@ For advanced monitoring and dashboards:
    ./run-tests.sh load --cloud
    ```
 
-## 📊 Test Scenarios
+## 📊 Test Types & Scenarios
 
-### 1. Load Test (`load`)
-- **Purpose**: Simulate normal user load
-- **Default**: 10 VUs for 2 minutes
-- **Tests**: User authentication, graph operations, block execution
+### 🚀 Quick Validation Tests
+
+#### Core API Validation (`core-api-validation-test.js`)
+- **Purpose**: Fast validation that all APIs are working (recommended first test)
+- **Duration**: ~10 seconds
+- **Coverage**: Authentication, Profile, Credits, Graphs, Executions, Schedules, Onboarding
+- **Expected Result**: 100% success rate
 
 ```bash
+k6 run core-api-validation-test.js
+```
+
+#### Error Diagnostic (`comprehensive-error-diagnostic-test.js`)
+- **Purpose**: Detailed analysis of any failing requests
+- **Duration**: ~20 seconds  
+- **Output**: Detailed error logs and response analysis
+- **Use Case**: Debugging when tests fail
+
+```bash
+k6 run comprehensive-error-diagnostic-test.js
+```
+
+#### API Success Verification (`core-api-success-validation-test.js`)
+- **Purpose**: Focused test to verify API success rates under moderate load
+- **Duration**: 30 seconds with 5 VUs
+- **Expected Result**: 100% success rate for core APIs
+
+```bash
+k6 run core-api-success-validation-test.js
+```
+
+### 🏋️ Load Testing Scenarios
+
+#### 1. Comprehensive Platform Load Test (`comprehensive-platform-load-test.js`)
+- **Purpose**: Full platform load testing with realistic user journeys
+- **Default**: 10 VUs for 2 minutes
+- **Tests**: Authentication, graph CRUD, block execution, system operations
+
+```bash
+k6 run scenarios/comprehensive-platform-load-test.js
+# Or via script:
 ./run-tests.sh load -v 20 -d 5m
 ```
 
-### 2. Stress Test (`stress`) 
-- **Purpose**: Find system breaking points
+#### 2. High Concurrency API Stress Test (`high-concurrency-api-stress-test.js`)
+- **Purpose**: Find system breaking points with high API load
 - **Default**: 50 VUs for 5 minutes
-- **Tests**: All API endpoints under high load
+- **Tests**: All API endpoints under maximum concurrent load
 
 ```bash
+k6 run scenarios/high-concurrency-api-stress-test.js
+# Or via script:
 ./run-tests.sh stress
 ```
 
-### 3. WebSocket Test (`websocket`)
-- **Purpose**: Test real-time connections
+#### 3. Real-time WebSocket Stress Test (`real-time-websocket-stress-test.js`)
+- **Purpose**: Test WebSocket connections under load
 - **Default**: 20 concurrent connections for 3 minutes
-- **Tests**: WebSocket messaging, connection stability
+- **Tests**: WebSocket messaging, connection stability, real-time features
 
 ```bash
+k6 run scenarios/real-time-websocket-stress-test.js
+# Or via script:
 ./run-tests.sh websocket
 ```
 
-### 4. Spike Test (`spike`)
+### 🔧 Debugging & Utility Tests
+
+#### Block ID Discovery (`block-id-discovery-test.js`)
+- **Purpose**: Discover available blocks and their UUIDs
+- **Use Case**: Finding correct block IDs for test data
+- **Output**: Lists all available blocks with IDs and names
+
+```bash
+k6 run block-id-discovery-test.js
+```
+
+#### Graph Creation Validation (`graph-creation-validation-test.js`)
+- **Purpose**: Test graph creation with correct block references
+- **Use Case**: Validate graph creation logic
+- **Tests**: Graph creation, validation, error handling
+
+```bash
+k6 run graph-creation-validation-test.js
+```
+
+#### Reduced Load Debugging (`reduced-load-debugging-test.js`)
+- **Purpose**: Run main load test with reduced parameters for debugging
+- **Configuration**: 2 VUs for 15 seconds (vs normal 10 VUs for 2 minutes)
+- **Use Case**: Debug load test issues without full load
+
+```bash
+k6 run reduced-load-debugging-test.js
+```
+
+### 📈 Advanced Testing Scenarios
+
+#### 4. Spike Test (`spike`)
 - **Purpose**: Test auto-scaling capabilities
 - **Pattern**: Rapid ramp-up to 100 VUs, maintain, rapid ramp-down
 - **Tests**: System responsiveness to traffic spikes
@@ -140,10 +216,11 @@ For advanced monitoring and dashboards:
 ./run-tests.sh spike
 ```
 
-### 5. Complete Suite (`all`)
-- **Purpose**: Comprehensive testing
+#### 5. Complete Test Suite (`all`)
+- **Purpose**: Comprehensive testing across all scenarios
 - **Runs**: All test scenarios sequentially
 - **Duration**: ~20 minutes total
+- **Includes**: Load, stress, WebSocket, and spike tests
 
 ```bash
 ./run-tests.sh all --cloud
@@ -278,7 +355,13 @@ Run tests with increased verbosity:
 K6_LOG_LEVEL=debug ./run-tests.sh load
 
 # Run single iteration for debugging
-k6 run --vus 1 --iterations 1 scenarios/load-test.js
+k6 run --vus 1 --iterations 1 scenarios/comprehensive-platform-load-test.js
+
+# Quick API validation (recommended first test)
+k6 run core-api-validation-test.js
+
+# Detailed error diagnostics
+k6 run comprehensive-error-diagnostic-test.js
 ```
 
 ## 🛡️ Security & Best Practices

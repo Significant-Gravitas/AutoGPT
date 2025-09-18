@@ -1,5 +1,5 @@
 // Quick version of the main load test to identify failures
-import { options as mainOptions, default as mainScenario } from './scenarios/load-test.js';
+import { options as mainOptions, default as mainScenario } from './scenarios/comprehensive-platform-load-test.js';
 
 // Reduced load configuration for debugging
 export const options = {

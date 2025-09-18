@@ -114,7 +114,7 @@ run_load_test() {
         --vus "$VUS" \
         --duration "$DURATION" \
         $cloud_args \
-        "${SCRIPT_DIR}/scenarios/load-test.js"
+        "${SCRIPT_DIR}/scenarios/comprehensive-platform-load-test.js"
     
     if [ "$CLOUD_MODE" = false ] && [ -f "$output_file" ]; then
         print_success "Load test completed. Results saved to: $output_file"
@@ -152,7 +152,7 @@ run_stress_test() {
     
     K6_ENVIRONMENT="$ENVIRONMENT" k6 run \
         $cloud_args \
-        "${SCRIPT_DIR}/scenarios/api-stress-test.js"
+        "${SCRIPT_DIR}/scenarios/high-concurrency-api-stress-test.js"
     
     if [ "$CLOUD_MODE" = false ] && [ -f "$output_file" ]; then
         print_success "Stress test completed. Results saved to: $output_file"
@@ -175,7 +175,7 @@ run_websocket_test() {
     
     K6_ENVIRONMENT="$ENVIRONMENT" k6 run \
         $cloud_args \
-        "${SCRIPT_DIR}/scenarios/websocket-stress-test.js"
+        "${SCRIPT_DIR}/scenarios/real-time-websocket-stress-test.js"
     
     if [ "$CLOUD_MODE" = false ] && [ -f "$output_file" ]; then
         print_success "WebSocket test completed. Results saved to: $output_file"
@@ -202,7 +202,7 @@ run_spike_test() {
         --stage 30s:100 \
         --stage 10s:0 \
         $cloud_args \
-        "${SCRIPT_DIR}/scenarios/load-test.js"
+        "${SCRIPT_DIR}/scenarios/comprehensive-platform-load-test.js"
     
     if [ "$CLOUD_MODE" = false ] && [ -f "$output_file" ]; then
         print_success "Spike test completed. Results saved to: $output_file"
