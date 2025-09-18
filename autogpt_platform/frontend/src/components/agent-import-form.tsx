@@ -21,6 +21,10 @@ import {
   GraphCreatable,
   sanitizeImportedGraph,
 } from "@/lib/autogpt-server-api";
+import {
+  useTrackEvent,
+  EventKeys,
+} from "@/services/feature-flags/use-track-event";
 
 // Add this custom schema for File type
 const fileSchema = z.custom<File>((val) => val instanceof File, {
@@ -39,6 +43,7 @@ export const AgentImportForm: React.FC<
 > = ({ className, ...props }) => {
   const [agentObject, setAgentObject] = useState<GraphCreatable | null>(null);
   const api = useBackendAPI();
+  const { track } = useTrackEvent();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -64,6 +69,15 @@ export const AgentImportForm: React.FC<
     api
       .createGraph(payload)
       .then((response) => {
+        // Track agent imported from store/file
+        track(EventKeys.AGENT_IMPORTED_FROM_STORE, {
+          agentId: response.id,
+          agentName: values.agentName,
+          importedAsTemplate: values.importAsTemplate,
+          source: "file",
+          timestamp: new Date().toISOString(),
+        });
+
         const qID = "flowID";
         window.location.href = `/build?${qID}=${response.id}`;
       })

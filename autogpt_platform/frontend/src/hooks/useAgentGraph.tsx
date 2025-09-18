@@ -32,6 +32,10 @@ import { default as NextLink } from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import {
+  useTrackEvent,
+  EventKeys,
+} from "@/services/feature-flags/use-track-event";
 
 export default function useAgentGraph(
   flowID?: GraphID,
@@ -68,6 +72,7 @@ export default function useAgentGraph(
   const [xyEdges, setXYEdges] = useState<CustomEdge[]>([]);
   const { state, completeStep, incrementRuns } = useOnboarding();
   const betaBlocks = useGetFlag(Flag.BETA_BLOCKS);
+  const { track } = useTrackEvent();
 
   // Filter blocks based on beta flags
   const availableBlocks = useMemo(() => {
@@ -523,6 +528,15 @@ export default function useAgentGraph(
               "The execution failed due to an internal error. You can re-run the agent to retry.";
             setGraphExecutionError(errorMessage);
 
+            // Track failed agent run
+            track(EventKeys.AGENT_RUN_FAILED, {
+              executionId: graphExec.id,
+              agentId: graphExec.graph_id,
+              agentVersion: graphExec.graph_version,
+              error: errorMessage,
+              timestamp: new Date().toISOString(),
+            });
+
             if (
               graphExec.stats?.error
                 ?.toLowerCase()
@@ -563,6 +577,41 @@ export default function useAgentGraph(
             graphExec.status === "TERMINATED" ||
             graphExec.status === "FAILED"
           ) {
+            // Track completed agent run (only for successfully completed runs)
+            if (graphExec.status === "COMPLETED") {
+              const startTime = graphExec.stats?.started_at
+                ? new Date(graphExec.stats.started_at)
+                : null;
+              const endTime = graphExec.stats?.ended_at
+                ? new Date(graphExec.stats.ended_at)
+                : new Date();
+              const executionTime =
+                startTime && endTime
+                  ? endTime.getTime() - startTime.getTime()
+                  : undefined;
+
+              track(EventKeys.AGENT_RUN_COMPLETED, {
+                executionId: graphExec.id,
+                agentId: graphExec.graph_id,
+                agentVersion: graphExec.graph_version,
+                timestamp: new Date().toISOString(),
+              });
+
+              // Track execution time metric if available
+              if (executionTime) {
+                track(
+                  EventKeys.AGENT_EXECUTION_TIME,
+                  {
+                    executionId: graphExec.id,
+                    agentId: graphExec.graph_id,
+                    agentVersion: graphExec.graph_version,
+                    timestamp: new Date().toISOString(),
+                  },
+                  executionTime,
+                );
+              }
+            }
+
             cancelGraphExecListener();
             setIsRunning(false);
             setIsStopping(false);
@@ -574,7 +623,7 @@ export default function useAgentGraph(
     };
 
     fetchExecutions();
-  }, [flowID, flowExecutionID, incrementRuns]);
+  }, [flowID, flowExecutionID, incrementRuns, track]);
 
   const prepareNodeInputData = useCallback(
     (node: CustomNode) => {
@@ -664,7 +713,8 @@ export default function useAgentGraph(
         payload,
       );
 
-      newSavedAgent = savedAgent
+      const isUpdate = !!savedAgent;
+      newSavedAgent = isUpdate
         ? await api.updateGraph(savedAgent.id, {
             ...payload,
             id: savedAgent.id,
@@ -672,6 +722,15 @@ export default function useAgentGraph(
         : await api.createGraph(payload);
 
       console.debug("Response from the API:", newSavedAgent);
+
+      // Track agent creation or update
+      track(isUpdate ? EventKeys.AGENT_UPDATED : EventKeys.AGENT_CREATED, {
+        agentId: newSavedAgent.id,
+        agentName: newSavedAgent.name,
+        agentVersion: newSavedAgent.version,
+        nodeCount: newSavedAgent.nodes.length,
+        timestamp: new Date().toISOString(),
+      });
     }
 
     // Update the URL
@@ -738,6 +797,7 @@ export default function useAgentGraph(
     pathname,
     router,
     searchParams,
+    track,
   ]);
 
   const saveAgent = useCallback(async () => {

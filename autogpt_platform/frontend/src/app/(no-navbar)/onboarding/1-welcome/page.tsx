@@ -3,9 +3,22 @@ import { OnboardingText } from "@/components/onboarding/OnboardingText";
 import OnboardingButton from "@/components/onboarding/OnboardingButton";
 import Image from "next/image";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import { useEffect } from "react";
+import {
+  useTrackEvent,
+  EventKeys,
+} from "@/services/feature-flags/use-track-event";
 
 export default function Page() {
   useOnboarding(1);
+  const { track } = useTrackEvent();
+
+  useEffect(() => {
+    // Track onboarding started
+    track(EventKeys.ONBOARDING_STARTED, {
+      timestamp: new Date().toISOString(),
+    });
+  }, [track]);
 
   return (
     <>

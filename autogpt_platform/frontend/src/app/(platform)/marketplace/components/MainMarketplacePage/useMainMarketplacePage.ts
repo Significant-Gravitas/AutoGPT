@@ -4,8 +4,21 @@ import {
 } from "@/app/api/__generated__/endpoints/store/store";
 import { StoreAgentsResponse } from "@/app/api/__generated__/models/storeAgentsResponse";
 import { CreatorsResponse } from "@/app/api/__generated__/models/creatorsResponse";
+import { useEffect } from "react";
+import {
+  useTrackEvent,
+  EventKeys,
+} from "@/services/feature-flags/use-track-event";
 
 export const useMainMarketplacePage = () => {
+  const { track } = useTrackEvent();
+
+  // Track marketplace access on mount
+  useEffect(() => {
+    track(EventKeys.STORE_ACCESSED, {
+      timestamp: new Date().toISOString(),
+    });
+  }, [track]);
   // Below queries are already fetched on server and hydrated properly in cache, hence these requests are fast
   const {
     data: featuredAgents,

@@ -22,6 +22,10 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useRouter } from "next/navigation";
 import { useDeleteV2DeleteLibraryAgent } from "@/app/api/__generated__/endpoints/library/library";
 import { Text } from "@/components/atoms/Text/Text";
+import {
+  useTrackEvent,
+  EventKeys,
+} from "@/services/feature-flags/use-track-event";
 
 interface Props {
   agent: LibraryAgent;
@@ -33,6 +37,7 @@ export function AgentActionsDropdown({ agent }: Props) {
   const router = useRouter();
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const { track } = useTrackEvent();
 
   async function handleDelete() {
     if (!agent.id) return;
@@ -41,6 +46,16 @@ export function AgentActionsDropdown({ agent }: Props) {
 
     try {
       await deleteAgent({ libraryAgentId: agent.id });
+
+      // Track agent deletion
+      track(EventKeys.AGENT_DELETED, {
+        agentId: agent.id,
+        agentName: agent.name,
+        agentGraphId: agent.graph_id,
+        agentVersion: agent.graph_version,
+        timestamp: new Date().toISOString(),
+      });
+
       toast({ title: "Agent deleted" });
       setShowDeleteDialog(false);
       router.push("/library");
