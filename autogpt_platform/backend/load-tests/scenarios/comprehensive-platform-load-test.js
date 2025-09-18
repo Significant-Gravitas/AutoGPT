@@ -26,12 +26,14 @@ export const options = {
     { duration: PERFORMANCE_CONFIG.DEFAULT_DURATION, target: PERFORMANCE_CONFIG.DEFAULT_VUS },
     { duration: PERFORMANCE_CONFIG.DEFAULT_RAMP_DOWN, target: 0 },
   ],
-  thresholds: PERFORMANCE_CONFIG.THRESHOLDS,
-  ext: {
-    loadimpact: {
-      projectID: __ENV.K6_CLOUD_PROJECT_ID,
-      name: 'AutoGPT Platform Load Test',
-    },
+  thresholds: {
+    checks: ['rate>0.85'],
+    http_req_duration: ['p(95)<10000', 'p(99)<20000'],
+    http_req_failed: ['rate<0.15'],
+  },
+  cloud: {
+    projectID: __ENV.K6_CLOUD_PROJECT_ID,
+    name: 'AutoGPT Platform - Full Platform Integration Test',
   },
 };
 

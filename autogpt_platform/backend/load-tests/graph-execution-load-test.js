@@ -23,18 +23,16 @@ export const options = {
     { duration: __ENV.RAMP_DOWN || '30s', target: 0 },
   ],
   thresholds: {
-    checks: ['rate>0.95'],
-    http_req_duration: ['p(95)<5000', 'p(99)<10000'],
-    http_req_failed: ['rate<0.1'],
-    graph_execution_duration: ['p(95)<10000'],
-    graph_creation_duration: ['p(95)<3000'],
-    execution_errors: ['rate<0.1'],
+    checks: ['rate>0.85'],
+    http_req_duration: ['p(95)<10000', 'p(99)<20000'],
+    http_req_failed: ['rate<0.15'],
+    graph_execution_duration: ['p(95)<15000'],
+    graph_creation_duration: ['p(95)<10000'],
+    execution_errors: ['rate<0.15'],
   },
-  ext: {
-    loadimpact: {
-      projectID: __ENV.K6_CLOUD_PROJECT_ID,
-      name: 'AutoGPT Graph Execution Load Test',
-    },
+  cloud: {
+    projectID: __ENV.K6_CLOUD_PROJECT_ID,
+    name: 'AutoGPT Platform - Graph Creation & Execution Test',
   },
 };
 

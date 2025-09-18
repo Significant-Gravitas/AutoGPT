@@ -8,6 +8,15 @@ const config = getEnvironmentConfig();
 
 export const options = {
   stages: [{ duration: '10s', target: 1 }],
+  thresholds: {
+    checks: ['rate>0.85'],
+    http_req_duration: ['p(95)<10000'],
+    http_req_failed: ['rate<0.15'],
+  },
+  cloud: {
+    projectID: __ENV.K6_CLOUD_PROJECT_ID,
+    name: 'AutoGPT Platform - Core API Validation Test',
+  },
 };
 
 export default function () {
