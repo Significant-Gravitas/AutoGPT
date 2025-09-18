@@ -16,7 +16,7 @@ import backend.server.v2.store.media as store_media
 from backend.data.block import BlockInput
 from backend.data.db import transaction
 from backend.data.execution import get_graph_execution
-from backend.data.includes import library_agent_include
+from backend.data.includes import AGENT_PRESET_INCLUDE, library_agent_include
 from backend.data.model import CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import on_graph_activate
@@ -142,6 +142,92 @@ async def list_library_agents(
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error fetching library agents: {e}")
         raise store_exceptions.DatabaseError("Failed to fetch library agents") from e
+
+
+async def list_favorite_library_agents(
+    user_id: str,
+    page: int = 1,
+    page_size: int = 50,
+) -> library_model.LibraryAgentResponse:
+    """
+    Retrieves a paginated list of favorite LibraryAgent records for a given user.
+
+    Args:
+        user_id: The ID of the user whose favorite LibraryAgents we want to retrieve.
+        page: Current page (1-indexed).
+        page_size: Number of items per page.
+
+    Returns:
+        A LibraryAgentResponse containing the list of favorite agents and pagination details.
+
+    Raises:
+        DatabaseError: If there is an issue fetching from Prisma.
+    """
+    logger.debug(
+        f"Fetching favorite library agents for user_id={user_id}, "
+        f"page={page}, page_size={page_size}"
+    )
+
+    if page < 1 or page_size < 1:
+        logger.warning(f"Invalid pagination: page={page}, page_size={page_size}")
+        raise store_exceptions.DatabaseError("Invalid pagination input")
+
+    where_clause: prisma.types.LibraryAgentWhereInput = {
+        "userId": user_id,
+        "isDeleted": False,
+        "isArchived": False,
+        "isFavorite": True,  # Only fetch favorites
+    }
+
+    # Sort favorites by updated date descending
+    order_by: prisma.types.LibraryAgentOrderByInput = {"updatedAt": "desc"}
+
+    try:
+        library_agents = await prisma.models.LibraryAgent.prisma().find_many(
+            where=where_clause,
+            include=library_agent_include(user_id),
+            order=order_by,
+            skip=(page - 1) * page_size,
+            take=page_size,
+        )
+        agent_count = await prisma.models.LibraryAgent.prisma().count(
+            where=where_clause
+        )
+
+        logger.debug(
+            f"Retrieved {len(library_agents)} favorite library agents for user #{user_id}"
+        )
+
+        # Only pass valid agents to the response
+        valid_library_agents: list[library_model.LibraryAgent] = []
+
+        for agent in library_agents:
+            try:
+                library_agent = library_model.LibraryAgent.from_db(agent)
+                valid_library_agents.append(library_agent)
+            except Exception as e:
+                # Skip this agent if there was an error
+                logger.error(
+                    f"Error parsing LibraryAgent #{agent.id} from DB item: {e}"
+                )
+                continue
+
+        # Return the response with only valid agents
+        return library_model.LibraryAgentResponse(
+            agents=valid_library_agents,
+            pagination=Pagination(
+                total_items=agent_count,
+                total_pages=(agent_count + page_size - 1) // page_size,
+                current_page=page,
+                page_size=page_size,
+            ),
+        )
+
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error fetching favorite library agents: {e}")
+        raise store_exceptions.DatabaseError(
+            "Failed to fetch favorite library agents"
+        ) from e
 
 
 async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent:
@@ -617,7 +703,7 @@ async def list_presets(
             where=query_filter,
             skip=(page - 1) * page_size,
             take=page_size,
-            include={"InputPresets": True},
+            include=AGENT_PRESET_INCLUDE,
         )
         total_items = await prisma.models.AgentPreset.prisma().count(where=query_filter)
         total_pages = (total_items + page_size - 1) // page_size
@@ -662,7 +748,7 @@ async def get_preset(
     try:
         preset = await prisma.models.AgentPreset.prisma().find_unique(
             where={"id": preset_id},
-            include={"InputPresets": True},
+            include=AGENT_PRESET_INCLUDE,
         )
         if not preset or preset.userId != user_id or preset.isDeleted:
             return None
@@ -709,15 +795,12 @@ async def create_preset(
                         )
                         for name, data in {
                             **preset.inputs,
-                            **{
-                                key: creds_meta.model_dump(exclude_none=True)
-                                for key, creds_meta in preset.credentials.items()
-                            },
+                            **preset.credentials,
                         }.items()
                     ]
                 },
             ),
-            include={"InputPresets": True},
+            include=AGENT_PRESET_INCLUDE,
         )
         return library_model.LibraryAgentPreset.from_db(new_preset)
     except prisma.errors.PrismaError as e:
@@ -747,6 +830,25 @@ async def create_preset_from_graph_execution(
     if not graph_execution:
         raise NotFoundError(f"Graph execution #{graph_exec_id} not found")
 
+    # Sanity check: credential inputs must be available if required for this preset
+    if graph_execution.credential_inputs is None:
+        graph = await graph_db.get_graph(
+            graph_id=graph_execution.graph_id,
+            version=graph_execution.graph_version,
+            user_id=graph_execution.user_id,
+            include_subgraphs=True,
+        )
+        if not graph:
+            raise NotFoundError(
+                f"Graph #{graph_execution.graph_id} not found or accessible"
+            )
+        elif len(graph.aggregate_credentials_inputs()) > 0:
+            raise ValueError(
+                f"Graph execution #{graph_exec_id} can't be turned into a preset "
+                "because it was run before this feature existed "
+                "and so the input credentials were not saved."
+            )
+
     logger.debug(
         f"Creating preset for user #{user_id} from graph execution #{graph_exec_id}",
     )
@@ -754,7 +856,7 @@ async def create_preset_from_graph_execution(
         user_id=user_id,
         preset=library_model.LibraryAgentPresetCreatable(
             inputs=graph_execution.inputs,
-            credentials={},  # FIXME
+            credentials=graph_execution.credential_inputs or {},
             graph_id=graph_execution.graph_id,
             graph_version=graph_execution.graph_version,
             name=create_request.name,
@@ -834,7 +936,7 @@ async def update_preset(
             updated = await prisma.models.AgentPreset.prisma(tx).update(
                 where={"id": preset_id},
                 data=update_data,
-                include={"InputPresets": True},
+                include=AGENT_PRESET_INCLUDE,
             )
         if not updated:
             raise RuntimeError(f"AgentPreset #{preset_id} vanished while updating")
@@ -849,7 +951,7 @@ async def set_preset_webhook(
 ) -> library_model.LibraryAgentPreset:
     current = await prisma.models.AgentPreset.prisma().find_unique(
         where={"id": preset_id},
-        include={"InputPresets": True},
+        include=AGENT_PRESET_INCLUDE,
     )
     if not current or current.userId != user_id:
         raise NotFoundError(f"Preset #{preset_id} not found")
@@ -861,7 +963,7 @@ async def set_preset_webhook(
             if webhook_id
             else {"Webhook": {"disconnect": True}}
         ),
-        include={"InputPresets": True},
+        include=AGENT_PRESET_INCLUDE,
     )
     if not updated:
         raise RuntimeError(f"AgentPreset #{preset_id} vanished while updating")

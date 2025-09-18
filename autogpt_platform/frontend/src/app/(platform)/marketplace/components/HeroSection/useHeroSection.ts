@@ -1,4 +1,4 @@
-import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 

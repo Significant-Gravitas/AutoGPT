@@ -33,6 +33,10 @@ model User {
   notifyOnDailySummary         Boolean @default(true)
   notifyOnWeeklySummary        Boolean @default(true)
   notifyOnMonthlySummary       Boolean @default(true)
+  notifyOnAgentApproved        Boolean @default(true)
+  notifyOnAgentRejected        Boolean @default(true)
+
+  timezone String @default("not-set")
 
   // Relations
 
@@ -106,6 +110,8 @@ model AgentGraph {
 
   name        String?
   description String?
+  instructions String?
+  recommendedScheduleCron String?
 
   isActive Boolean @default(true)
 
@@ -187,6 +193,8 @@ enum NotificationType {
   MONTHLY_SUMMARY
   REFUND_REQUEST
   REFUND_PROCESSED
+  AGENT_APPROVED
+  AGENT_REJECTED
 }
 
 model NotificationEvent {
@@ -348,20 +356,31 @@ model AgentGraphExecution {
   agentGraphVersion Int        @default(1)
   AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
 
+  agentPresetId String?
+  AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
+
+  inputs           Json?
+  credentialInputs Json?
+  nodesInputMasks  Json?
+
   NodeExecutions AgentNodeExecution[]
 
   // Link to User model -- Executed by this user
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  stats         Json?
-  agentPresetId String?
-  AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
+  stats Json?
+
+  // Sharing fields
+  isShared    Boolean   @default(false)
+  shareToken  String?   @unique
+  sharedAt    DateTime?
 
   @@index([agentGraphId, agentGraphVersion])
   @@index([userId])
   @@index([createdAt])
   @@index([agentPresetId])
+  @@index([shareToken])
 }
 
 // This model describes the execution of an AgentNode.
@@ -516,7 +535,7 @@ model CreditTransaction {
   createdAt      DateTime @default(now())
 
   userId String
-  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  User   User?   @relation(fields: [userId], references: [id], onDelete: NoAction)
 
   amount Int
   type   CreditTransactionType
@@ -619,14 +638,15 @@ view StoreAgent {
   agent_image String[]
 
   featured         Boolean  @default(false)
-  creator_username String
-  creator_avatar   String
+  creator_username String?
+  creator_avatar   String?
   sub_heading      String
   description      String
   categories       String[]
   runs             Int
   rating           Float
   versions         String[]
+  is_available     Boolean  @default(true)
 
   // Materialized views used (refreshed every 15 minutes via pg_cron):
   // - mv_agent_run_counts - Pre-aggregated agent execution counts by agentGraphId
@@ -744,6 +764,7 @@ model StoreListingVersion {
   videoUrl    String?
   imageUrls   String[]
   description String
+  instructions String?
   categories  String[]
 
   isFeatured Boolean @default(false)
@@ -772,6 +793,8 @@ model StoreListingVersion {
   internalComments String? // Private notes for admin use only
   reviewComments   String? // Comments visible to creator
   reviewedAt       DateTime?
+
+  recommendedScheduleCron String? // cron expression like "0 9 * * *"
 
   // Reviews for this specific version
   Reviews StoreListingReview[]
@@ -816,11 +839,13 @@ enum APIKeyPermission {
 }
 
 model APIKey {
-  id          String             @id @default(uuid())
-  name        String
-  prefix      String // First 8 chars for identification
-  postfix     String
-  key         String             @unique // Hashed key
+  id   String  @id @default(uuid())
+  name String
+  head String // First few chars for identification
+  tail String
+  hash String  @unique
+  salt String? // null for legacy unsalted keys
+
   status      APIKeyStatus       @default(ACTIVE)
   permissions APIKeyPermission[]
 
@@ -834,7 +859,7 @@ model APIKey {
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([prefix, name])
+  @@index([head, name])
   @@index([userId, status])
 }
 

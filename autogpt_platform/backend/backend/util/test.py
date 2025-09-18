@@ -4,11 +4,14 @@ import time
 import uuid
 from typing import Sequence, cast
 
+from autogpt_libs.auth import get_user_id
+
 from backend.data import db
 from backend.data.block import Block, BlockSchema, initialize_blocks
 from backend.data.execution import (
     ExecutionStatus,
     NodeExecutionResult,
+    UserContext,
     get_graph_execution,
 )
 from backend.data.model import _BaseCredentials
@@ -16,7 +19,6 @@ from backend.data.user import create_default_user
 from backend.executor import DatabaseManager, ExecutionManager, Scheduler
 from backend.notifications.notifications import NotificationManager
 from backend.server.rest_api import AgentServer
-from backend.server.utils import get_user_id
 
 log = logging.getLogger(__name__)
 
@@ -138,6 +140,7 @@ async def execute_block_test(block: Block):
         "graph_exec_id": str(uuid.uuid4()),
         "node_exec_id": str(uuid.uuid4()),
         "user_id": str(uuid.uuid4()),
+        "user_context": UserContext(timezone="UTC"),  # Default for tests
     }
     input_model = cast(type[BlockSchema], block.input_schema)
     credentials_input_fields = input_model.get_credentials_fields()

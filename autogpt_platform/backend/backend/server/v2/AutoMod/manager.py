@@ -83,7 +83,7 @@ class AutoModManager:
             f"Moderating inputs for graph execution {graph_exec.graph_exec_id}"
         )
         try:
-            moderation_passed = await self._moderate_content(
+            moderation_passed, content_id = await self._moderate_content(
                 content,
                 {
                     "user_id": graph_exec.user_id,
@@ -99,7 +99,7 @@ class AutoModManager:
                 )
                 # Update node statuses for frontend display before raising error
                 await self._update_failed_nodes_for_moderation(
-                    db_client, graph_exec.graph_exec_id, "input"
+                    db_client, graph_exec.graph_exec_id, "input", content_id
                 )
 
                 return ModerationError(
@@ -107,6 +107,7 @@ class AutoModManager:
                     user_id=graph_exec.user_id,
                     graph_exec_id=graph_exec.graph_exec_id,
                     moderation_type="input",
+                    content_id=content_id,
                 )
 
             return None
@@ -167,7 +168,7 @@ class AutoModManager:
         # Run moderation
         logger.warning(f"Moderating outputs for graph execution {graph_exec_id}")
         try:
-            moderation_passed = await self._moderate_content(
+            moderation_passed, content_id = await self._moderate_content(
                 content,
                 {
                     "user_id": user_id,
@@ -181,7 +182,7 @@ class AutoModManager:
                 logger.warning(f"Moderation failed for graph execution {graph_exec_id}")
                 # Update node statuses for frontend display before raising error
                 await self._update_failed_nodes_for_moderation(
-                    db_client, graph_exec_id, "output"
+                    db_client, graph_exec_id, "output", content_id
                 )
 
                 return ModerationError(
@@ -189,6 +190,7 @@ class AutoModManager:
                     user_id=user_id,
                     graph_exec_id=graph_exec_id,
                     moderation_type="output",
+                    content_id=content_id,
                 )
 
             return None
@@ -212,6 +214,7 @@ class AutoModManager:
         db_client: "DatabaseManagerAsyncClient",
         graph_exec_id: str,
         moderation_type: Literal["input", "output"],
+        content_id: str | None = None,
     ):
         """Update node execution statuses for frontend display when moderation fails"""
         # Import here to avoid circular imports
@@ -236,6 +239,11 @@ class AutoModManager:
         if not executions_to_update:
             return
 
+        # Create error message with content_id if available
+        error_message = "Failed due to content moderation"
+        if content_id:
+            error_message += f" (Moderation ID: {content_id})"
+
         # Prepare database update tasks
         exec_updates = []
         for exec_entry in executions_to_update:
@@ -245,11 +253,11 @@ class AutoModManager:
 
             if exec_entry.input_data:
                 for name in exec_entry.input_data.keys():
-                    cleared_inputs[name] = ["Failed due to content moderation"]
+                    cleared_inputs[name] = [error_message]
 
             if exec_entry.output_data:
                 for name in exec_entry.output_data.keys():
-                    cleared_outputs[name] = ["Failed due to content moderation"]
+                    cleared_outputs[name] = [error_message]
 
             # Add update task to list
             exec_updates.append(
@@ -257,7 +265,7 @@ class AutoModManager:
                     exec_entry.node_exec_id,
                     status=ExecutionStatus.FAILED,
                     stats={
-                        "error": "Failed due to content moderation",
+                        "error": error_message,
                         "cleared_inputs": cleared_inputs,
                         "cleared_outputs": cleared_outputs,
                     },
@@ -275,12 +283,15 @@ class AutoModManager:
             ]
         )
 
-    async def _moderate_content(self, content: str, metadata: dict[str, Any]) -> bool:
+    async def _moderate_content(
+        self, content: str, metadata: dict[str, Any]
+    ) -> tuple[bool, str | None]:
         """Moderate content using AutoMod API
 
         Returns:
-            True: Content approved or timeout occurred
-            False: Content rejected by moderation
+            Tuple of (approval_status, content_id)
+            - approval_status: True if approved or timeout occurred, False if rejected
+            - content_id: Reference ID from moderation API, or None if not available
 
         Raises:
             asyncio.TimeoutError: When moderation times out (should be bypassed)
@@ -298,12 +309,12 @@ class AutoModManager:
                 logger.debug(
                     f"Content approved for {metadata.get('graph_exec_id', 'unknown')}"
                 )
-                return True
+                return True, response.content_id
             else:
                 reasons = [r.reason for r in response.moderation_results if r.reason]
                 error_msg = f"Content rejected by AutoMod: {'; '.join(reasons)}"
                 logger.warning(f"Content rejected: {error_msg}")
-                return False
+                return False, response.content_id
 
         except asyncio.TimeoutError:
             # Re-raise timeout to be handled by calling methods
@@ -313,7 +324,7 @@ class AutoModManager:
             raise
         except Exception as e:
             logger.error(f"AutoMod moderation error: {e}")
-            return self.config.fail_open
+            return self.config.fail_open, None
 
     async def _make_request(self, request_data: AutoModRequest) -> AutoModResponse:
         """Make HTTP request to AutoMod API using the standard request utility"""

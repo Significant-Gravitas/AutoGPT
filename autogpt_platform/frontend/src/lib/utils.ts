@@ -3,7 +3,7 @@ import { isEmpty as _isEmpty } from "lodash";
 import { twMerge } from "tailwind-merge";
 
 import { Category } from "@/lib/autogpt-server-api/types";
-import { NodeDimension } from "@/components/Flow";
+import { NodeDimension } from "@/app/(platform)/build/components/legacy-builder/Flow/Flow";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -395,7 +395,9 @@ export function isEmpty(value: any): boolean {
   return (
     value === undefined ||
     value === "" ||
-    (typeof value === "object" && _isEmpty(value))
+    (typeof value === "object" &&
+      (value instanceof Date ? isNaN(value.getTime()) : _isEmpty(value))) ||
+    (typeof value === "number" && isNaN(value))
   );
 }
 

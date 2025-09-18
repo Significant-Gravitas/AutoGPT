@@ -2,7 +2,7 @@ import logging
 from typing import Optional
 
 import autogpt_libs.auth as autogpt_auth_lib
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, HTTPException, Query, Security, status
 from fastapi.responses import Response
 
 import backend.server.v2.library.db as library_db
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(
     prefix="/agents",
     tags=["library", "private"],
-    dependencies=[Depends(autogpt_auth_lib.auth_middleware)],
+    dependencies=[Security(autogpt_auth_lib.requires_user)],
 )
 
 
@@ -27,7 +27,7 @@ router = APIRouter(
     },
 )
 async def list_library_agents(
-    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
     search_term: Optional[str] = Query(
         None, description="Search term to filter agents"
     ),
@@ -79,10 +79,58 @@ async def list_library_agents(
         ) from e
 
 
+@router.get(
+    "/favorites",
+    summary="List Favorite Library Agents",
+    responses={
+        500: {"description": "Server error", "content": {"application/json": {}}},
+    },
+)
+async def list_favorite_library_agents(
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+    page: int = Query(
+        1,
+        ge=1,
+        description="Page number to retrieve (must be >= 1)",
+    ),
+    page_size: int = Query(
+        15,
+        ge=1,
+        description="Number of agents per page (must be >= 1)",
+    ),
+) -> library_model.LibraryAgentResponse:
+    """
+    Get all favorite agents in the user's library.
+
+    Args:
+        user_id: ID of the authenticated user.
+        page: Page number to retrieve.
+        page_size: Number of agents per page.
+
+    Returns:
+        A LibraryAgentResponse containing favorite agents and pagination metadata.
+
+    Raises:
+        HTTPException: If a server/database error occurs.
+    """
+    try:
+        return await library_db.list_favorite_library_agents(
+            user_id=user_id,
+            page=page,
+            page_size=page_size,
+        )
+    except Exception as e:
+        logger.error(f"Could not list favorite library agents for user #{user_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        ) from e
+
+
 @router.get("/{library_agent_id}", summary="Get Library Agent")
 async def get_library_agent(
     library_agent_id: str,
-    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> library_model.LibraryAgent:
     return await library_db.get_library_agent(id=library_agent_id, user_id=user_id)
 
@@ -91,7 +139,7 @@ async def get_library_agent(
 async def get_library_agent_by_graph_id(
     graph_id: str,
     version: Optional[int] = Query(default=None),
-    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> library_model.LibraryAgent:
     library_agent = await library_db.get_library_agent_by_graph_id(
         user_id, graph_id, version
@@ -111,7 +159,7 @@ async def get_library_agent_by_graph_id(
 )
 async def get_library_agent_by_store_listing_version_id(
     store_listing_version_id: str,
-    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> library_model.LibraryAgent | None:
     """
     Get Library Agent from Store Listing Version ID.
@@ -145,7 +193,7 @@ async def get_library_agent_by_store_listing_version_id(
 )
 async def add_marketplace_agent_to_library(
     store_listing_version_id: str = Body(embed=True),
-    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> library_model.LibraryAgent:
     """
     Add an agent from the marketplace to the user's library.
@@ -201,7 +249,7 @@ async def add_marketplace_agent_to_library(
 async def update_library_agent(
     library_agent_id: str,
     payload: library_model.LibraryAgentUpdateRequest,
-    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> library_model.LibraryAgent:
     """
     Update the library agent with the given fields.
@@ -252,7 +300,7 @@ async def update_library_agent(
 )
 async def delete_library_agent(
     library_agent_id: str,
-    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> Response:
     """
     Soft-delete the specified library agent.
@@ -283,7 +331,7 @@ async def delete_library_agent(
 @router.post("/{library_agent_id}/fork", summary="Fork Library Agent")
 async def fork_library_agent(
     library_agent_id: str,
-    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> library_model.LibraryAgent:
     return await library_db.fork_library_agent(
         library_agent_id=library_agent_id,

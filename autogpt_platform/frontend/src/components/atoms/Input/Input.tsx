@@ -22,7 +22,9 @@ export interface TextFieldProps extends Omit<InputProps, "size"> {
     | "amount"
     | "tel"
     | "url"
-    | "textarea";
+    | "textarea"
+    | "date"
+    | "datetime-local";
   // Textarea-specific props
   rows?: number;
 }
@@ -63,7 +65,7 @@ export function Input({
 
   const baseStyles = cn(
     // Base styles
-    "rounded-3xl border border-zinc-200 bg-white px-4 shadow-none",
+    "rounded-3xl border border-zinc-200 bg-white px-4 shadow-none w-full",
     "font-normal text-black",
     "placeholder:font-normal placeholder:text-zinc-400",
     // Focus and hover states
@@ -81,7 +83,7 @@ export function Input({
           className={cn(
             baseStyles,
             errorStyles,
-            "-mb-1 h-auto min-h-[2.875rem] w-full",
+            "-mb-1 h-auto min-h-[2.875rem]",
             // Size variants for textarea
             size === "small" && [
               "min-h-[2.25rem]", // 36px minimum
@@ -134,7 +136,7 @@ export function Input({
   };
 
   const input = (
-    <div className={cn("relative", wrapperClassName)}>
+    <div className={cn("relative w-full", wrapperClassName)}>
       {renderInput()}
       {isPasswordType && (
         <button
@@ -152,7 +154,7 @@ export function Input({
   );
 
   const inputWithError = (
-    <div className={cn("relative mb-6", wrapperClassName)}>
+    <div className={cn("relative mb-6 w-full", wrapperClassName)}>
       {input}
       <Text
         variant="small-medium"
@@ -176,7 +178,11 @@ export function Input({
         <Text variant="body-medium" as="span" className="text-black">
           {label}
         </Text>
-        {hint}
+        {hint ? (
+          <Text variant="small" as="span" className="!text-zinc-400">
+            {hint}
+          </Text>
+        ) : null}
       </div>
       {inputWithError}
     </label>

@@ -31,6 +31,7 @@ import type {
   GraphExecution,
   GraphExecutionID,
   GraphExecutionMeta,
+  GraphExecutionsResponse,
   GraphID,
   GraphMeta,
   GraphUpdateable,
@@ -272,7 +273,7 @@ export default class BackendAPI {
     version: number,
     inputs: { [key: string]: any } = {},
     credentials_inputs: { [key: string]: CredentialsMetaInput } = {},
-  ): Promise<{ graph_exec_id: GraphExecutionID }> {
+  ): Promise<GraphExecutionMeta> {
     return this._request("POST", `/graphs/${id}/execute/${version}`, {
       inputs,
       credentials_inputs,
@@ -285,7 +286,7 @@ export default class BackendAPI {
     );
   }
 
-  getGraphExecutions(graphID: GraphID): Promise<GraphExecutionMeta[]> {
+  getGraphExecutions(graphID: GraphID): Promise<GraphExecutionsResponse> {
     return this._get(`/graphs/${graphID}/executions`).then((results) =>
       results.map(parseGraphExecutionTimestamps),
     );
@@ -661,6 +662,13 @@ export default class BackendAPI {
     return this._get("/library/agents", params);
   }
 
+  listFavoriteLibraryAgents(params?: {
+    page?: number;
+    page_size?: number;
+  }): Promise<LibraryAgentResponse> {
+    return this._get("/library/agents/favorites", params);
+  }
+
   getLibraryAgent(id: LibraryAgentID): Promise<LibraryAgent> {
     return this._get(`/library/agents/${id}`);
   }
@@ -771,10 +779,12 @@ export default class BackendAPI {
 
   executeLibraryAgentPreset(
     presetID: LibraryAgentPresetID,
-    inputs?: { [key: string]: any },
-  ): Promise<{ id: GraphExecutionID }> {
+    inputs?: Record<string, any>,
+    credential_inputs?: Record<string, CredentialsMetaInput>,
+  ): Promise<GraphExecutionMeta> {
     return this._request("POST", `/library/presets/${presetID}/execute`, {
       inputs,
+      credential_inputs,
     });
   }
 

@@ -1,7 +1,7 @@
-import AgentFlowListSkeleton from "@/components/monitor/skeletons/AgentFlowListSkeleton";
+import AgentFlowListSkeleton from "@/app/(platform)/monitoring/components/skeletons/AgentFlowListSkeleton";
 import React from "react";
-import FlowRunsListSkeleton from "@/components/monitor/skeletons/FlowRunsListSkeleton";
-import FlowRunsStatusSkeleton from "@/components/monitor/skeletons/FlowRunsStatusSkeleton";
+import FlowRunsListSkeleton from "@/app/(platform)/monitoring/components/skeletons/FlowRunsListSkeleton";
+import FlowRunsStatusSkeleton from "@/app/(platform)/monitoring/components/skeletons/FlowRunsStatusSkeleton";
 
 export default function MonitorLoadingSkeleton() {
   return (

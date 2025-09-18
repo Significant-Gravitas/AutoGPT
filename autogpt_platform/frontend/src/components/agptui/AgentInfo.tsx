@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 
-import { useOnboarding } from "../onboarding/onboarding-provider";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { User } from "@supabase/supabase-js";
 import { cn } from "@/lib/utils";
 import { FC, useCallback, useMemo, useState } from "react";

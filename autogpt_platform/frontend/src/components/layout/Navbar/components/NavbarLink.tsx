@@ -26,9 +26,9 @@ export function NavbarLink({ name, href }: Props) {
     <Link href={href} data-testid={`navbar-link-${name.toLowerCase()}`}>
       <div
         className={cn(
-          "flex items-center justify-start gap-1 p-2",
+          "flex items-center justify-start gap-1 p-1 md:p-2",
           isActive &&
-            "rounded-small bg-neutral-800 py-2 pl-2 pr-3 transition-all duration-300 dark:bg-neutral-200",
+            "rounded-small bg-neutral-800 py-1 pl-1 pr-1.5 transition-all duration-300 dark:bg-neutral-200 md:py-2 md:pl-2 md:pr-3",
         )}
       >
         {href === "/marketplace" && (

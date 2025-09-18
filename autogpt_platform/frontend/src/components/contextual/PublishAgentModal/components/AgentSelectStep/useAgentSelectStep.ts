@@ -8,6 +8,7 @@ export interface Agent {
   lastEdited: string;
   imageSrc: string;
   description: string;
+  recommendedScheduleCron: string | null;
 }
 
 interface UseAgentSelectStepProps {
@@ -15,7 +16,12 @@ interface UseAgentSelectStepProps {
   onNext: (
     agentId: string,
     agentVersion: number,
-    agentData: { name: string; description: string; imageSrc: string },
+    agentData: {
+      name: string;
+      description: string;
+      imageSrc: string;
+      recommendedScheduleCron: string | null;
+    },
   ) => void;
 }
 
@@ -34,15 +40,18 @@ export function useAgentSelectStep({
 
   const agents: Agent[] =
     (myAgents?.status === 200 &&
-      myAgents?.data?.agents
-        ?.map((agent: any) => ({
-          name: agent.agent_name,
-          id: agent.agent_id,
-          version: agent.agent_version,
-          lastEdited: agent.last_edited,
-          imageSrc: agent.agent_image || "https://picsum.photos/300/200",
-          description: agent.description || "",
-        }))
+      myAgents.data.agents
+        .map(
+          (agent): Agent => ({
+            name: agent.agent_name,
+            id: agent.agent_id,
+            version: agent.agent_version,
+            lastEdited: agent.last_edited.toLocaleDateString(),
+            imageSrc: agent.agent_image || "https://picsum.photos/300/200",
+            description: agent.description || "",
+            recommendedScheduleCron: agent.recommended_schedule_cron ?? null,
+          }),
+        )
         .sort(
           (a: Agent, b: Agent) =>
             new Date(b.lastEdited).getTime() - new Date(a.lastEdited).getTime(),
@@ -69,6 +78,7 @@ export function useAgentSelectStep({
           name: selectedAgent.name,
           description: selectedAgent.description,
           imageSrc: selectedAgent.imageSrc,
+          recommendedScheduleCron: selectedAgent.recommendedScheduleCron,
         });
       }
     }

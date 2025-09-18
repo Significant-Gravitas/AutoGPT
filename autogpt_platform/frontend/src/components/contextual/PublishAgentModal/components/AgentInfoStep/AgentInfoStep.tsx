@@ -6,6 +6,9 @@ import { StepHeader } from "../StepHeader";
 import { Input } from "@/components/atoms/Input/Input";
 import { Select } from "@/components/atoms/Select/Select";
 import { Form, FormField } from "@/components/ui/form";
+import { CronExpressionDialog } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/components/cron-scheduler-dialog";
+import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+import { CalendarClockIcon } from "lucide-react";
 import { Props, useAgentInfoStep } from "./useAgentInfoStep";
 import { ThumbnailImages } from "./components/ThumbnailImages";
 
@@ -31,6 +34,13 @@ export function AgentInfoStep({
     selectedAgentVersion,
     initialData,
   });
+
+  const [cronScheduleDialogOpen, setCronScheduleDialogOpen] =
+    React.useState(false);
+
+  const handleScheduleChange = (cronExpression: string) => {
+    form.setValue("recommendedScheduleCron", cronExpression);
+  };
 
   const categoryOptions = [
     { value: "productivity", label: "Productivity" },
@@ -153,6 +163,47 @@ export function AgentInfoStep({
             )}
           />
 
+          <FormField
+            control={form.control}
+            name="instructions"
+            render={({ field }) => (
+              <Input
+                id={field.name}
+                label="Instructions"
+                type="textarea"
+                placeholder="Explain to users how to run this agent and what to expect"
+                error={form.formState.errors.instructions?.message}
+                {...field}
+              />
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="recommendedScheduleCron"
+            render={({ field }) => (
+              <div className="flex flex-col space-y-2">
+                <label className="text-sm font-medium">
+                  Recommended Schedule
+                </label>
+                <p className="text-xs text-gray-600">
+                  Suggest when users should run this agent for best results
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setCronScheduleDialogOpen(true)}
+                  className="w-full justify-start text-sm"
+                >
+                  <CalendarClockIcon className="mr-2 h-4 w-4" />
+                  {field.value
+                    ? humanizeCronExpression(field.value)
+                    : "Set schedule"}
+                </Button>
+              </div>
+            )}
+          />
+
           <div className="flex justify-between gap-4 pt-6">
             <Button
               type="button"
@@ -175,6 +226,14 @@ export function AgentInfoStep({
           </div>
         </form>
       </Form>
+
+      <CronExpressionDialog
+        open={cronScheduleDialogOpen}
+        setOpen={setCronScheduleDialogOpen}
+        onSubmit={handleScheduleChange}
+        defaultCronExpression={form.getValues("recommendedScheduleCron") || ""}
+        title="Recommended Schedule"
+      />
     </div>
   );
 }

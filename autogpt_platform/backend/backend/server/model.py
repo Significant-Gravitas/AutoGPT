@@ -3,8 +3,9 @@ from typing import Any, Optional
 
 import pydantic
 
-from backend.data.api_key import APIKeyPermission, APIKeyWithoutHash
+from backend.data.api_key import APIKeyInfo, APIKeyPermission
 from backend.data.graph import Graph
+from backend.util.timezone_name import TimeZoneName
 
 
 class WSMethod(enum.Enum):
@@ -33,10 +34,6 @@ class WSSubscribeGraphExecutionsRequest(pydantic.BaseModel):
     graph_id: str
 
 
-class ExecuteGraphResponse(pydantic.BaseModel):
-    graph_exec_id: str
-
-
 class CreateGraph(pydantic.BaseModel):
     graph: Graph
 
@@ -48,7 +45,7 @@ class CreateAPIKeyRequest(pydantic.BaseModel):
 
 
 class CreateAPIKeyResponse(pydantic.BaseModel):
-    api_key: APIKeyWithoutHash
+    api_key: APIKeyInfo
     plain_text_key: str
 
 
@@ -70,3 +67,12 @@ class UploadFileResponse(pydantic.BaseModel):
     size: int
     content_type: str
     expires_in_hours: int
+
+
+class TimezoneResponse(pydantic.BaseModel):
+    # Allow "not-set" as a special value, or any valid IANA timezone
+    timezone: TimeZoneName | str
+
+
+class UpdateTimezoneRequest(pydantic.BaseModel):
+    timezone: TimeZoneName

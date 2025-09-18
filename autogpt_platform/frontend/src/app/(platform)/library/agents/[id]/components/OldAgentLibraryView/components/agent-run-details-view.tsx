@@ -1,5 +1,4 @@
 "use client";
-import { isEmpty } from "lodash";
 import moment from "moment";
 import React, { useCallback, useMemo } from "react";
 
@@ -27,14 +26,12 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
 
-import {
-  AgentRunStatus,
-  agentRunStatusMap,
-} from "@/components/agents/agent-run-status-chip";
+import { AgentRunStatus, agentRunStatusMap } from "./agent-run-status-chip";
 import useCredits from "@/hooks/useCredits";
+import { AgentRunOutputView } from "./agent-run-output-view";
 
 export function AgentRunDetailsView({
   agent,
@@ -42,14 +39,16 @@ export function AgentRunDetailsView({
   run,
   agentActions,
   onRun,
-  deleteRun,
+  doDeleteRun,
+  doCreatePresetFromRun,
 }: {
   agent: LibraryAgent;
   graph: Graph;
   run: GraphExecution | GraphExecutionMeta;
   agentActions: ButtonAction[];
   onRun: (runID: GraphExecutionID) => void;
-  deleteRun: () => void;
+  doDeleteRun: () => void;
+  doCreatePresetFromRun: () => void;
 }): React.ReactNode {
   const api = useBackendAPI();
   const { formatCredits } = useCredits();
@@ -95,7 +94,7 @@ export function AgentRunDetailsView({
         }
       >
     | undefined = useMemo(() => {
-    if (!("inputs" in run)) return undefined;
+    if (!run.inputs) return undefined;
     // TODO: show (link to) preset - https://github.com/Significant-Gravitas/AutoGPT/issues/9168
 
     // Add type info from agent input schema
@@ -111,21 +110,36 @@ export function AgentRunDetailsView({
     );
   }, [graph, run]);
 
-  const runAgain = useCallback(
-    () =>
-      agentRunInputs &&
-      api
-        .executeGraph(
-          graph.id,
-          graph.version,
-          Object.fromEntries(
-            Object.entries(agentRunInputs).map(([k, v]) => [k, v.value]),
-          ),
+  const runAgain = useCallback(() => {
+    if (
+      !run.inputs ||
+      !(graph.credentials_input_schema?.required ?? []).every(
+        (k) => k in (run.credential_inputs ?? {}),
+      )
+    )
+      return;
+
+    if (run.preset_id) {
+      return api
+        .executeLibraryAgentPreset(
+          run.preset_id,
+          run.inputs!,
+          run.credential_inputs!,
         )
-        .then(({ graph_exec_id }) => onRun(graph_exec_id))
-        .catch(toastOnFail("execute agent")),
-    [api, graph, agentRunInputs, onRun, toastOnFail],
-  );
+        .then(({ id }) => onRun(id))
+        .catch(toastOnFail("execute agent preset"));
+    }
+
+    return api
+      .executeGraph(
+        graph.id,
+        graph.version,
+        run.inputs!,
+        run.credential_inputs!,
+      )
+      .then(({ id }) => onRun(id))
+      .catch(toastOnFail("execute agent"));
+  }, [api, graph, run, onRun, toastOnFail]);
 
   const stopRun = useCallback(
     () => api.stopGraphExecution(graph.id, run.id),
@@ -180,7 +194,9 @@ export function AgentRunDetailsView({
         : []),
       ...(["success", "failed", "stopped"].includes(runStatus) &&
       !graph.has_external_trigger &&
-      isEmpty(graph.credentials_input_schema.required) // TODO: enable re-run with credentials - https://linear.app/autogpt/issue/SECRT-1243
+      (graph.credentials_input_schema?.required ?? []).every(
+        (k) => k in (run.credential_inputs ?? {}),
+      )
         ? [
             {
               label: (
@@ -202,15 +218,17 @@ export function AgentRunDetailsView({
             },
           ]
         : []),
-      { label: "Delete run", variant: "secondary", callback: deleteRun },
+      { label: "Create preset from run", callback: doCreatePresetFromRun },
+      { label: "Delete run", variant: "secondary", callback: doDeleteRun },
     ],
     [
       runStatus,
       runAgain,
       stopRun,
-      deleteRun,
+      doDeleteRun,
+      doCreatePresetFromRun,
       graph.has_external_trigger,
-      graph.credentials_input_schema.required,
+      graph.credentials_input_schema?.required,
       agent.can_access_graph,
       run.graph_id,
       run.graph_version,
@@ -279,35 +297,7 @@ export function AgentRunDetailsView({
         )}
 
         {agentRunOutputs !== null && (
-          <Card className="agpt-box">
-            <CardHeader>
-              <CardTitle className="font-poppins text-lg">Output</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              {agentRunOutputs !== undefined ? (
-                Object.entries(agentRunOutputs).map(
-                  ([key, { title, values }]) => (
-                    <div key={key} className="flex flex-col gap-1.5">
-                      <label className="text-sm font-medium">
-                        {title || key}
-                      </label>
-                      {values.map((value, i) => (
-                        <p
-                          className="resize-none overflow-x-auto whitespace-pre-wrap break-words border-none text-sm text-neutral-700 disabled:cursor-not-allowed"
-                          key={i}
-                        >
-                          {value}
-                        </p>
-                      ))}
-                      {/* TODO: pretty type-dependent rendering */}
-                    </div>
-                  ),
-                )
-              ) : (
-                <LoadingBox spinnerSize={12} className="h-24" />
-              )}
-            </CardContent>
-          </Card>
+          <AgentRunOutputView agentRunOutputs={agentRunOutputs} />
         )}
 
         <Card className="agpt-box">

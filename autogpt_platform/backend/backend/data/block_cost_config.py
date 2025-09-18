@@ -29,8 +29,7 @@ from backend.blocks.replicate.replicate_block import ReplicateModelBlock
 from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
 from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.blocks.text_to_speech_block import UnrealTextToSpeechBlock
-from backend.data.block import Block
-from backend.data.cost import BlockCost, BlockCostType
+from backend.data.block import Block, BlockCost, BlockCostType
 from backend.integrations.credentials_store import (
     aiml_api_credentials,
     anthropic_credentials,
@@ -307,7 +306,18 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                     "type": ideogram_credentials.type,
                 }
             },
-        )
+        ),
+        BlockCost(
+            cost_amount=18,
+            cost_filter={
+                "ideogram_model_name": "V_3",
+                "credentials": {
+                    "id": ideogram_credentials.id,
+                    "provider": ideogram_credentials.provider,
+                    "type": ideogram_credentials.type,
+                },
+            },
+        ),
     ],
     AIShortformVideoCreatorBlock: [
         BlockCost(

@@ -1,6 +1,5 @@
-import { CustomEdge } from "@/components/CustomEdge";
-import { CustomNode } from "@/components/CustomNode";
-import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import { CustomEdge } from "@/app/(platform)/build/components/legacy-builder/CustomEdge/CustomEdge";
+import { CustomNode } from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import {
   ApiError,
@@ -14,10 +13,12 @@ import {
   GraphExecutionID,
   GraphID,
   GraphMeta,
+  LibraryAgent,
   LinkCreatable,
   NodeCreatable,
   NodeExecutionResult,
   SpecialBlockID,
+  Node,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
@@ -30,6 +31,7 @@ import { default as NextLink } from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 
 export default function useAgentGraph(
   flowID?: GraphID,
@@ -47,6 +49,9 @@ export default function useAgentGraph(
   const [savedAgent, setSavedAgent] = useState<Graph | null>(null);
   const [agentDescription, setAgentDescription] = useState<string>("");
   const [agentName, setAgentName] = useState<string>("");
+  const [libraryAgent, setLibraryAgent] = useState<LibraryAgent | null>(null);
+  const [agentRecommendedScheduleCron, setAgentRecommendedScheduleCron] =
+    useState<string>("");
   const [allBlocks, setAllBlocks] = useState<Block[]>([]);
   const [availableFlows, setAvailableFlows] = useState<GraphMeta[]>([]);
   const [updateQueue, setUpdateQueue] = useState<NodeExecutionResult[]>([]);
@@ -154,55 +159,16 @@ export default function useAgentGraph(
     setSavedAgent(graph);
     setAgentName(graph.name);
     setAgentDescription(graph.description);
+    setAgentRecommendedScheduleCron(graph.recommended_schedule_cron || "");
 
     setXYNodes((prevNodes) => {
-      const _newNodes = graph.nodes.map((node) => {
-        const block = availableBlocks.find(
-          (block) => block.id === node.block_id,
-        )!;
-        if (!block) return null;
-        const prevNode = prevNodes.find((n) => n.id === node.id);
-        const flow =
-          block.uiType == BlockUIType.AGENT
-            ? availableFlows.find(
-                (flow) => flow.id === node.input_default.graph_id,
-              )
-            : null;
-        const newNode: CustomNode = {
-          id: node.id,
-          type: "custom",
-          position: {
-            x: node?.metadata?.position?.x || 0,
-            y: node?.metadata?.position?.y || 0,
-          },
-          data: {
-            isOutputOpen: false,
-            ...prevNode?.data,
-            block_id: block.id,
-            blockType: flow?.name || block.name,
-            blockCosts: block.costs,
-            categories: block.categories,
-            description: block.description,
-            title: `${block.name} ${node.id}`,
-            inputSchema: block.inputSchema,
-            outputSchema: block.outputSchema,
-            hardcodedValues: node.input_default,
-            webhook: node.webhook,
-            uiType: block.uiType,
-            connections: graph.links
-              .filter((l) => [l.source_id, l.sink_id].includes(node.id))
-              .map((link) => ({
-                edge_id: formatEdgeID(link),
-                source: link.source_id,
-                sourceHandle: link.source_name,
-                target: link.sink_id,
-                targetHandle: link.sink_name,
-              })),
-            backend_id: node.id,
-          },
-        };
-        return newNode;
-      });
+      const _newNodes = graph.nodes.map((node) =>
+        _backendNodeToXYNode(
+          node,
+          graph,
+          prevNodes.find((n) => n.id === node.id),
+        ),
+      );
       const newNodes = _newNodes.filter((n) => n !== null);
       setXYEdges(() =>
         graph.links.map((link) => {
@@ -238,6 +204,63 @@ export default function useAgentGraph(
     });
   }
 
+  function _backendNodeToXYNode(
+    node: Node,
+    graph: Graph,
+    prevNode?: CustomNode,
+  ): CustomNode | null {
+    const block = availableBlocks.find((block) => block.id === node.block_id)!;
+    if (!block) return null;
+
+    const { position, ...metadata } = node.metadata;
+    const subGraphName =
+      (block.uiType == BlockUIType.AGENT && _getSubGraphName(node)) || null;
+
+    return {
+      id: node.id,
+      type: "custom",
+      position: {
+        x: position?.x || 0,
+        y: position?.y || 0,
+      },
+      data: {
+        isOutputOpen: false,
+        ...prevNode?.data,
+        block_id: block.id,
+        blockType: subGraphName || block.name,
+        blockCosts: block.costs,
+        categories: block.categories,
+        description: block.description,
+        title: `${block.name} ${node.id}`,
+        inputSchema: block.inputSchema,
+        outputSchema: block.outputSchema,
+        hardcodedValues: node.input_default,
+        uiType: block.uiType,
+        metadata: metadata,
+        connections: graph.links
+          .filter((l) => [l.source_id, l.sink_id].includes(node.id))
+          .map((link) => ({
+            edge_id: formatEdgeID(link),
+            source: link.source_id,
+            sourceHandle: link.source_name,
+            target: link.sink_id,
+            targetHandle: link.sink_name,
+          })),
+        backend_id: node.id,
+      },
+    };
+  }
+
+  const _getSubGraphName = (node: Node) => {
+    if (node.input_default.agent_name) {
+      return node.input_default.agent_name;
+    }
+    return (
+      availableFlows.find((flow) => flow.id === node.input_default.graph_id)
+        ?.name || null
+    );
+  };
+
   const getFrontendId = useCallback(
     (backendId: string, nodes: CustomNode[]) => {
       const node = nodes.find((node) => node.data.backend_id === backendId);
@@ -257,15 +280,16 @@ export default function useAgentGraph(
   const getToolFuncName = useCallback(
     (nodeID: string) => {
       const sinkNode = xyNodes.find((node) => node.id === nodeID);
-      const sinkNodeName = sinkNode
-        ? sinkNode.data.block_id === SpecialBlockID.AGENT
-          ? sinkNode.data.hardcodedValues?.graph_id
-            ? availableFlows.find(
-                (flow) => flow.id === sinkNode.data.hardcodedValues.graph_id,
-              )?.name || "agentexecutorblock"
-            : "agentexecutorblock"
-          : sinkNode.data.title.split(" ")[0]
-        : "";
+      if (!sinkNode) return "";
+
+      const sinkNodeName =
+        sinkNode.data.block_id === SpecialBlockID.AGENT
+          ? sinkNode.data.hardcodedValues?.agent_name ||
+            availableFlows.find(
+              (flow) => flow.id === sinkNode.data.hardcodedValues.graph_id,
+            )?.name ||
+            "agentexecutorblock"
+          : sinkNode.data.title.split(" ")[0];
 
       return sinkNodeName;
     },
@@ -422,6 +446,20 @@ export default function useAgentGraph(
       _loadGraph(graph);
     });
   }, [flowID, flowVersion, availableBlocks, api]);
+
+  // Load library agent
+  useEffect(() => {
+    if (!flowID) return;
+    api
+      .getLibraryAgentByGraphID(flowID, flowVersion)
+      .then((libraryAgent) => setLibraryAgent(libraryAgent))
+      .catch((error) => {
+        console.warn(
+          `Failed to fetch LibraryAgent for graph #${flowID} v${flowVersion}`,
+          error,
+        );
+      });
+  }, [api, flowID, flowVersion]);
 
   // Check if local graph state is in sync with backend
   const nodesSyncedWithSavedAgent = useMemo(() => {
@@ -588,12 +626,16 @@ export default function useAgentGraph(
     return {
       name: agentName || `New Agent ${new Date().toISOString()}`,
       description: agentDescription || "",
+      recommended_schedule_cron: agentRecommendedScheduleCron || null,
       nodes: xyNodes.map(
         (node): NodeCreatable => ({
           id: node.id,
           block_id: node.data.block_id,
           input_default: prepareNodeInputData(node),
-          metadata: { position: node.position },
+          metadata: {
+            ...(node.data.metadata ?? {}),
+            position: node.position,
+          },
         }),
       ),
       links: links,
@@ -603,13 +645,14 @@ export default function useAgentGraph(
     xyEdges,
     agentName,
     agentDescription,
+    agentRecommendedScheduleCron,
     prepareNodeInputData,
     getToolFuncName,
   ]);
 
   const _saveAgent = useCallback(async () => {
     // FIXME: frontend IDs should be resolved better (e.g. returned from the server)
-    // currently this relays on block_id and position
+    // currently this relies on block_id and position
     const blockIDToNodeIDMap = Object.fromEntries(
       xyNodes.map((node) => [
         `${node.data.block_id}_${node.position.x}_${node.position.y}`,
@@ -624,7 +667,7 @@ export default function useAgentGraph(
     let newSavedAgent: Graph;
     if (savedAgent && graphsEquivalent(savedAgent, payload)) {
       console.warn("No need to save: Graph is the same as version on server");
-      newSavedAgent = savedAgent;
+      return savedAgent;
     } else {
       console.debug(
         "Saving new Graph version; old vs new:",
@@ -659,10 +702,11 @@ export default function useAgentGraph(
           const frontendNodeID = blockIDToNodeIDMap[key];
           const frontendNode = prev.find((node) => node.id === frontendNodeID);
 
+          const { position, ...metadata } = backendNode.metadata;
           return frontendNode
-            ? {
+            ? ({
                 ...frontendNode,
-                position: backendNode.metadata.position,
+                position,
                 data: {
                   ...frontendNode.data,
                   hardcodedValues: removeEmptyStringsAndNulls(
@@ -670,11 +714,11 @@ export default function useAgentGraph(
                   ),
                   status: undefined,
                   backend_id: backendNode.id,
-                  webhook: backendNode.webhook,
                   executionResults: [],
+                  metadata,
                 },
-              }
-            : null;
+              } satisfies CustomNode)
+            : _backendNodeToXYNode(backendNode, newSavedAgent); // fallback
         })
         .filter((node) => node !== null);
     });
@@ -769,13 +813,13 @@ export default function useAgentGraph(
           credentialsInputs,
         );
 
-        setActiveExecutionID(graphExecution.graph_exec_id);
+        setActiveExecutionID(graphExecution.id);
 
         // Update URL params
         const path = new URLSearchParams(searchParams);
         path.set("flowID", savedAgent.id);
         path.set("flowVersion", savedAgent.version.toString());
-        path.set("flowExecutionID", graphExecution.graph_exec_id);
+        path.set("flowExecutionID", graphExecution.id);
         router.push(`${pathname}?${path.toString()}`);
 
         if (state?.completedSteps.includes("BUILDER_SAVE_AGENT")) {
@@ -872,6 +916,16 @@ export default function useAgentGraph(
     ) => {
       if (!savedAgent || isScheduling) return;
 
+      // Validate cron expression
+      if (!cronExpression || cronExpression.trim() === "") {
+        toast({
+          variant: "destructive",
+          title: "Invalid schedule",
+          description: "Please enter a valid cron expression",
+        });
+        return;
+      }
+
       setIsScheduling(true);
       try {
         await api.createGraphExecutionSchedule({
@@ -891,7 +945,7 @@ export default function useAgentGraph(
           router.push("/monitoring");
         }
       } catch (error) {
-        console.error(error);
+        console.error("Error scheduling agent:", error);
         toast({
           variant: "destructive",
           title: "Error scheduling agent",
@@ -909,7 +963,10 @@ export default function useAgentGraph(
     setAgentName,
     agentDescription,
     setAgentDescription,
+    agentRecommendedScheduleCron,
+    setAgentRecommendedScheduleCron,
     savedAgent,
+    libraryAgent,
     availableBlocks,
     availableFlows,
     getOutputType,

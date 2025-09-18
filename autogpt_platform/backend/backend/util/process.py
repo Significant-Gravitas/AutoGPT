@@ -48,10 +48,9 @@ class AppProcess(ABC):
         """
         pass
 
-    @classmethod
     @property
-    def service_name(cls) -> str:
-        return cls.__name__
+    def service_name(self) -> str:
+        return self.__class__.__name__
 
     @abstractmethod
     def cleanup(self):
@@ -77,6 +76,14 @@ class AppProcess(ABC):
             logger.warning(
                 f"[{self.service_name}] Termination request: {type(e).__name__}; {e} executing cleanup."
             )
+            # Send error to Sentry before cleanup
+            if not isinstance(e, (KeyboardInterrupt, SystemExit)):
+                try:
+                    from backend.util.metrics import sentry_capture_error
+
+                    sentry_capture_error(e)
+                except Exception:
+                    pass  # Silently ignore if Sentry isn't available
         finally:
             self.cleanup()
             logger.info(f"[{self.service_name}] Terminated.")

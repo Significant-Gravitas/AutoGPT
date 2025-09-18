@@ -49,16 +49,19 @@ export function makeCronExpression(params: CronExpressionParams): string {
   if (frequency === "daily") return `${params.minute} ${params.hour} * * *`;
   if (frequency === "weekly") {
     const { minute, hour, days } = params;
+    if (days.length === 0) return ""; // Return empty string for invalid weekly schedule
     const weekDaysExpr = days.sort((a, b) => a - b).join(",");
     return `${minute} ${hour} * * ${weekDaysExpr}`;
   }
   if (frequency === "monthly") {
     const { minute, hour, days } = params;
+    if (days.length === 0) return ""; // Return empty string for invalid monthly schedule
     const monthDaysExpr = days.sort((a, b) => a - b).join(",");
     return `${minute} ${hour} ${monthDaysExpr} * *`;
   }
   if (frequency === "yearly") {
     const { minute, hour, months } = params;
+    if (months.length === 0) return ""; // Return empty string for invalid yearly schedule
     const monthList = months.sort((a, b) => a - b).join(",");
     return `${minute} ${hour} 1 ${monthList} *`;
   }
@@ -212,6 +215,8 @@ export function humanizeCronExpression(cronExpression: string): string {
 }
 
 function formatTime(hour: string, minute: string): string {
+  // Cron expressions are now stored in the schedule's timezone (not UTC)
+  // So we just format the time as-is without conversion
   const formattedHour = padZero(hour);
   const formattedMinute = padZero(minute);
   return `${formattedHour}:${formattedMinute}`;

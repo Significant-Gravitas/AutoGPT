@@ -15,6 +15,7 @@
       "required": [],
       "type": "object"
     },
+    "instructions": null,
     "is_active": true,
     "name": "Test Graph",
     "output_schema": {
@@ -22,7 +23,9 @@
       "required": [],
       "type": "object"
     },
+    "recommended_schedule_cron": null,
     "sub_graphs": [],
+    "trigger_setup_info": null,
     "user_id": "test-user-id",
     "version": 1
   }
