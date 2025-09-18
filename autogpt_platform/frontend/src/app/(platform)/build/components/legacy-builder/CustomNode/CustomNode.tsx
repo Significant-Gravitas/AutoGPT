@@ -41,7 +41,10 @@ import NodeOutputs from "../NodeOutputs";
 import { IconCoin } from "../../../../../../components/ui/icons";
 import * as Separator from "@radix-ui/react-separator";
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import { Alert, AlertDescription } from "../../../../../../components/ui/alert";
+import {
+  Alert,
+  AlertDescription,
+} from "../../../../../../components/molecules/Alert/Alert";
 import {
   DotsVerticalIcon,
   TrashIcon,

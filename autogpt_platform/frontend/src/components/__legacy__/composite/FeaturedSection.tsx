@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { FeaturedAgentCard } from "@/components/agptui/FeaturedAgentCard";
+import { FeaturedAgentCard } from "@/components/__legacy__/FeaturedAgentCard";
 import {
   Carousel,
   CarouselContent,

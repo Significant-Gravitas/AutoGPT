@@ -1,4 +1,4 @@
-import { Button } from "@/components/agptui/Button";
+import { Button } from "@/components/__legacy__/Button";
 import {
   Dialog,
   DialogContent,

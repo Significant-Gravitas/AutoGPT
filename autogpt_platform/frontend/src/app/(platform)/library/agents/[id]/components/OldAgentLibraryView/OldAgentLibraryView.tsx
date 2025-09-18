@@ -25,8 +25,8 @@ import {
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { exportAsJSONFile } from "@/lib/utils";
 
-import DeleteConfirmDialog from "@/components/agptui/delete-confirm-dialog";
-import type { ButtonAction } from "@/components/agptui/types";
+import DeleteConfirmDialog from "@/components/__legacy__/delete-confirm-dialog";
+import type { ButtonAction } from "@/components/__legacy__/types";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

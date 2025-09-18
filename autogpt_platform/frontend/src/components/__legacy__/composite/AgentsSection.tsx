@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { StoreCard } from "@/components/agptui/StoreCard";
+import { StoreCard } from "@/components/__legacy__/StoreCard";
 import {
   Carousel,
   CarouselContent,

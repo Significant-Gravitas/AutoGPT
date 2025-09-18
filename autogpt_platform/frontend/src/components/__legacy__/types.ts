@@ -1,4 +1,4 @@
-import type { ButtonProps } from "@/components/agptui/Button";
+import type { ButtonProps } from "@/components/__legacy__/Button";
 import type { LinkProps } from "next/link";
 import React from "react";
 

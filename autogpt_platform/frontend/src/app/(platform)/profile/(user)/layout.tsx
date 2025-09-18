@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Sidebar } from "@/components/agptui/Sidebar";
+import { Sidebar } from "@/components/__legacy__/Sidebar";
 import {
   IconDashboardLayout,
   IconIntegrations,

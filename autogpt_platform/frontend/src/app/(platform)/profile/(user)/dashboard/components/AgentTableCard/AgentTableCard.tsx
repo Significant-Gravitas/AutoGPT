@@ -4,7 +4,7 @@ import Image from "next/image";
 import { IconStarFilled, IconMore } from "@/components/ui/icons";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
-import { Status } from "@/components/agptui/Status";
+import { Status } from "@/components/__legacy__/Status";
 
 export interface AgentTableCardProps {
   agent_id: string;

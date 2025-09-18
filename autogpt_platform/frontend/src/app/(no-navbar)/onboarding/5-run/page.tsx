@@ -1,5 +1,5 @@
 "use client";
-import SmartImage from "@/components/agptui/SmartImage";
+import SmartImage from "@/components/__legacy__/SmartImage";
 import { useOnboarding } from "../../../../providers/onboarding/onboarding-provider";
 import OnboardingButton from "../components/OnboardingButton";
 import { OnboardingHeader, OnboardingStep } from "../components/OnboardingStep";

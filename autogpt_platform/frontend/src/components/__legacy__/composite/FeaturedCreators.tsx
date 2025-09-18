@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { CreatorCard } from "@/components/agptui/CreatorCard";
+import { CreatorCard } from "@/components/__legacy__/CreatorCard";
 import { useRouter } from "next/navigation";
 
 export interface FeaturedCreator {

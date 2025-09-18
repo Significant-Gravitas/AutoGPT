@@ -1,8 +1,8 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 
-import type { ButtonAction } from "@/components/agptui/types";
-import { Button, buttonVariants } from "@/components/agptui/Button";
+import type { ButtonAction } from "@/components/__legacy__/types";
+import { Button, buttonVariants } from "@/components/__legacy__/Button";
 import Link from "next/link";
 
 export default function ActionButtonGroup({

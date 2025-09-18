@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from "react";
 
 import { motion, useAnimationControls } from "framer-motion";
 import { BellIcon, X } from "lucide-react";
-import { Button } from "@/components/agptui/Button";
+import { Button } from "@/components/__legacy__/Button";
 import {
   DropdownMenu,
   DropdownMenuContent,
