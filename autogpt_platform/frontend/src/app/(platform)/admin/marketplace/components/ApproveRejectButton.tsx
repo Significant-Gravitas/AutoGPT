@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/__legacy__/ui/button";
 import { CheckCircle, XCircle } from "lucide-react";
 import {
   Dialog,
@@ -10,9 +10,9 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+} from "@/components/__legacy__/ui/dialog";
+import { Label } from "@/components/__legacy__/ui/label";
+import { Textarea } from "@/components/__legacy__/ui/textarea";
 import type { StoreSubmission } from "@/lib/autogpt-server-api/types";
 import { useRouter } from "next/navigation";
 import {

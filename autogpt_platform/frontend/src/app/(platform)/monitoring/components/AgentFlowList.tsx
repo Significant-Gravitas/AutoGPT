@@ -1,21 +1,26 @@
 import { GraphExecutionMeta, LibraryAgent } from "@/lib/autogpt-server-api";
 import React from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { TextRenderer } from "@/components/ui/render";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/__legacy__/ui/card";
+import { Button } from "@/components/__legacy__/ui/button";
+import { TextRenderer } from "@/components/__legacy__/ui/render";
 import Link from "next/link";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTrigger,
-} from "@/components/ui/dialog";
+} from "@/components/__legacy__/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@/components/__legacy__/ui/dropdown-menu";
 import { ChevronDownIcon, EnterIcon } from "@radix-ui/react-icons";
 import {
   Table,
@@ -24,9 +29,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@/components/__legacy__/ui/table";
 import moment from "moment/moment";
-import { DialogTitle } from "@/components/ui/dialog";
+import { DialogTitle } from "@/components/__legacy__/ui/dialog";
 import { AgentImportForm } from "./AgentImportForm";
 
 export const AgentFlowList = ({

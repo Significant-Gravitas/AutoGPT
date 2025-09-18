@@ -5,7 +5,7 @@ import Image from "next/image";
 import { Text } from "../../../../atoms/Text/Text";
 import { Button } from "../../../../atoms/Button/Button";
 import { StepHeader } from "../StepHeader";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { useAgentSelectStep } from "./useAgentSelectStep";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
