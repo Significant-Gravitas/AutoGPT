@@ -554,6 +554,7 @@ export function OldAgentLibraryView() {
             onCreateSchedule={onCreateSchedule}
             onCreatePreset={onCreatePreset}
             agentActions={agentActions}
+            runCount={agentRuns.length}
           />
         ) : selectedView.type == "preset" ? (
           /* Edit & update presets */
@@ -567,6 +568,7 @@ export function OldAgentLibraryView() {
             onUpdatePreset={onUpdatePreset}
             doDeletePreset={setConfirmingDeleteAgentPreset}
             agentActions={agentActions}
+            runCount={agentRuns.length}
           />
         ) : selectedView.type == "schedule" ? (
           selectedSchedule &&
