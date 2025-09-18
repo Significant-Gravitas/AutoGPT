@@ -300,7 +300,12 @@ async def execute_graph_block(
     start_time = time.time()
     try:
         output = defaultdict(list)
-        async for name, data in obj.execute(data, user_context=user_context):
+        async for name, data in obj.execute(
+            data,
+            user_context=user_context,
+            user_id=user_id,
+            # Note: graph_exec_id and graph_id are not available for direct block execution
+        ):
             output[name].append(data)
 
         # Record successful block execution with duration
