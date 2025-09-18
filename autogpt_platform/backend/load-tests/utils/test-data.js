@@ -17,7 +17,7 @@ export function generateTestGraph(name = null) {
       nodes: [
         {
           id: "input_node",
-          block_id: "AgentInputBlock",
+          block_id: "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b", // AgentInputBlock ID
           input_default: {},
           input_nodes: [],
           output_nodes: ["output_node"],
@@ -27,7 +27,7 @@ export function generateTestGraph(name = null) {
         },
         {
           id: "output_node", 
-          block_id: "AgentOutputBlock",
+          block_id: "363ae599-353e-4804-937e-b2ee3cef3da4", // AgentOutputBlock ID
           input_default: {},
           input_nodes: ["input_node"],
           output_nodes: [],
@@ -124,8 +124,11 @@ export function generateNotificationPreferences() {
 export function generateBlockExecutionData(blockId) {
   const commonInputs = {
     GetCurrentTimeBlock: {
-      timezone: "UTC",
-      format: "ISO"
+      trigger: "test",
+      format_type: {
+        discriminator: "iso8601",
+        timezone: "UTC"
+      }
     },
     HttpRequestBlock: {
       url: "https://httpbin.org/get",
