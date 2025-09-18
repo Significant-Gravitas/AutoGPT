@@ -3,9 +3,14 @@
 import React, { useMemo } from "react";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/__legacy__/ui/card";
 
-import LoadingBox from "@/components/ui/loading";
+import LoadingBox from "@/components/__legacy__/ui/loading";
 import {
   globalRegistry,
   OutputItem,

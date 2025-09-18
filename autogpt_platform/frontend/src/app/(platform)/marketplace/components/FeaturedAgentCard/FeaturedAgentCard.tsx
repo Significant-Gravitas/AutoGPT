@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { StarRatingIcons } from "@/components/ui/icons";
+import { StarRatingIcons } from "@/components/__legacy__/ui/icons";
 import {
   Card,
   CardContent,
@@ -7,7 +7,7 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from "@/components/__legacy__/ui/card";
 import { useState } from "react";
 import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
 

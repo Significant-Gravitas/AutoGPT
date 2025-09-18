@@ -1,13 +1,13 @@
 import React, { useState } from "react";
 import { GraphExecutionMeta, LibraryAgent } from "@/lib/autogpt-server-api";
-import { CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { CardTitle } from "@/components/__legacy__/ui/card";
+import { Button } from "@/components/__legacy__/ui/button";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
+} from "@/components/__legacy__/ui/popover";
+import { Calendar } from "@/components/__legacy__/ui/calendar";
 import { FlowRunsTimeline } from "@/app/(platform)/monitoring/components/FlowRunsTimeline";
 
 export const FlowRunsStatus: React.FC<{

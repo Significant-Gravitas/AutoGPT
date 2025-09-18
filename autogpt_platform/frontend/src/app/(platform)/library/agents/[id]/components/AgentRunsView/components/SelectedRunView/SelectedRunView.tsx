@@ -11,7 +11,7 @@ import { useSelectedRunView } from "./useSelectedRunView";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { RunDetailHeader } from "../RunDetailHeader/RunDetailHeader";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { AgentInputsReadOnly } from "../AgentInputsReadOnly/AgentInputsReadOnly";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
 import { RunOutputs } from "./components/RunOutputs";

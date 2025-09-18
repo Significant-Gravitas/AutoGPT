@@ -1,6 +1,6 @@
 // BLOCK MENU TODO: We need to add a better hover state to it; currently it's not in the design either.
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/__legacy__/ui/button";
 import { cn } from "@/lib/utils";
 import React, { ButtonHTMLAttributes } from "react";
 

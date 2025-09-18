@@ -2,7 +2,7 @@ import React from "react";
 import { MenuItem } from "../MenuItem";
 import { DefaultStateType, useBlockMenuContext } from "../block-menu-provider";
 import { useBlockMenuSidebar } from "./useBlockMenuSidebar";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
 export const BlockMenuSidebar = () => {

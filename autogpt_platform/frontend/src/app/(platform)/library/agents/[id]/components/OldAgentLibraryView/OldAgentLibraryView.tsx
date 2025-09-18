@@ -25,9 +25,9 @@ import {
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { exportAsJSONFile } from "@/lib/utils";
 
-import DeleteConfirmDialog from "@/components/agptui/delete-confirm-dialog";
-import type { ButtonAction } from "@/components/agptui/types";
-import { Button } from "@/components/ui/button";
+import DeleteConfirmDialog from "@/components/__legacy__/delete-confirm-dialog";
+import type { ButtonAction } from "@/components/__legacy__/types";
+import { Button } from "@/components/__legacy__/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -35,8 +35,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import LoadingBox, { LoadingSpinner } from "@/components/ui/loading";
+} from "@/components/__legacy__/ui/dialog";
+import LoadingBox, { LoadingSpinner } from "@/components/__legacy__/ui/loading";
 import {
   useToast,
   useToastOnFail,

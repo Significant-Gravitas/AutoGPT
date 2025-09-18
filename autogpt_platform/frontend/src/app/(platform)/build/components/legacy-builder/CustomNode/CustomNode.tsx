@@ -30,18 +30,21 @@ import {
   setNestedProperty,
 } from "@/lib/utils";
 import { Button } from "@/components/atoms/Button/Button";
-import { TextRenderer } from "@/components/ui/render";
+import { TextRenderer } from "@/components/__legacy__/ui/render";
 import { history } from "../history";
 import NodeHandle from "../NodeHandle";
 import { NodeGenericInputField, NodeTextBoxInput } from "../NodeInputs";
 import { getPrimaryCategoryColor } from "@/lib/utils";
 import { BuilderContext } from "../Flow/Flow";
-import { Badge } from "../../../../../../components/ui/badge";
+import { Badge } from "../../../../../../components/__legacy__/ui/badge";
 import NodeOutputs from "../NodeOutputs";
-import { IconCoin } from "../../../../../../components/ui/icons";
+import { IconCoin } from "../../../../../../components/__legacy__/ui/icons";
 import * as Separator from "@radix-ui/react-separator";
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import { Alert, AlertDescription } from "../../../../../../components/ui/alert";
+import {
+  Alert,
+  AlertDescription,
+} from "../../../../../../components/molecules/Alert/Alert";
 import {
   DotsVerticalIcon,
   TrashIcon,
@@ -53,7 +56,7 @@ import { InfoIcon, Key } from "@phosphor-icons/react";
 import useCredits from "@/hooks/useCredits";
 import { getV1GetAyrshareSsoUrl } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { Input } from "@/components/ui/input";
+import { Input } from "@/components/__legacy__/ui/input";
 import {
   Tooltip,
   TooltipContent,
