@@ -3,6 +3,7 @@ import http from 'k6/http';
 import { check } from 'k6';
 import { getEnvironmentConfig } from './configs/environment.js';
 import { authenticateUser, getAuthHeaders, getRandomTestUser } from './utils/auth.js';
+import { generateTestGraph, generateExecutionInputs } from './utils/test-data.js';
 
 const config = getEnvironmentConfig();
 
@@ -60,6 +61,34 @@ export default function () {
     console.log(`\n=== Testing Onboarding ===`);
     testEndpoint('GET', `${config.API_BASE_URL}/api/onboarding`, null, headers);
     
+    // Test graph creation and execution (comprehensive)
+    console.log(`\n=== Testing Graph Creation ===`);
+    const graphData = generateTestGraph();
+    const createGraphResponse = testEndpoint('POST', `${config.API_BASE_URL}/api/graphs`, 
+      JSON.stringify(graphData), headers);
+    
+    // If graph creation succeeds, test graph execution
+    if (createGraphResponse && createGraphResponse.status === 200) {
+      try {
+        const createdGraph = JSON.parse(createGraphResponse.body);
+        console.log(`✅ Graph created successfully: ${createdGraph.id}`);
+        
+        console.log(`\n=== Testing Graph Execution ===`);
+        const executionInputs = generateExecutionInputs();
+        testEndpoint('POST', `${config.API_BASE_URL}/api/graphs/${createdGraph.id}/execute/${createdGraph.version}`,
+          JSON.stringify({
+            inputs: executionInputs,
+            credentials_inputs: {}
+          }), headers);
+          
+        console.log(`\n=== Testing Graph Details ===`);
+        testEndpoint('GET', `${config.API_BASE_URL}/api/graphs/${createdGraph.id}`, null, headers);
+        
+      } catch (e) {
+        console.log(`❌ Failed to parse created graph response: ${e.message}`);
+      }
+    }
+    
   } catch (error) {
     console.error(`💥 Test failed: ${error.message}`);
   }
@@ -110,4 +139,6 @@ function testEndpoint(method, url, body, headers) {
     }
   }
   console.log(`---`);
+  
+  return response;
 }

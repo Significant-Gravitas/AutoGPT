@@ -17,6 +17,7 @@ export function generateTestGraph(name = null) {
       nodes: [
         {
           id: "input_node",
+          name: "Agent Input",
           block_id: "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b", // AgentInputBlock ID
           input_default: {},
           input_nodes: [],
@@ -26,7 +27,8 @@ export function generateTestGraph(name = null) {
           }
         },
         {
-          id: "output_node", 
+          id: "output_node",
+          name: "Agent Output", 
           block_id: "363ae599-353e-4804-937e-b2ee3cef3da4", // AgentOutputBlock ID
           input_default: {},
           input_nodes: ["input_node"],
