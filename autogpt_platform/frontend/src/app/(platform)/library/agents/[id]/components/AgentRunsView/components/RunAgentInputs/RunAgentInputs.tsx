@@ -10,11 +10,14 @@ import {
   BlockIOSubSchema,
   DataType,
   determineDataType,
+  TableRow,
 } from "@/lib/autogpt-server-api/types";
 import { TimePicker } from "@/components/molecules/TimePicker/TimePicker";
 import { FileInput } from "@/components/atoms/FileInput/FileInput";
 import { useRunAgentInputs } from "./useRunAgentInputs";
 import { Switch } from "@/components/atoms/Switch/Switch";
+import { Button } from "@/components/ui/button";
+import { Plus, X } from "@phosphor-icons/react";
 
 /**
  * A generic prop structure for the TypeBasedInput.
@@ -43,7 +46,14 @@ export function RunAgentInputs({
 }: Props & React.HTMLAttributes<HTMLElement>) {
   const { handleUploadFile, uploadProgress } = useRunAgentInputs();
 
-  const dataType = determineDataType(schema);
+  let dataType = determineDataType(schema);
+
+  // Override dataType if format is "table"
+  // This is needed because determineDataType doesn't always see the format field
+  if ("format" in schema && (schema as any).format === "table") {
+    dataType = DataType.TABLE;
+  }
+
   const baseId = String(schema.title ?? "input")
     .replace(/\s+/g, "-")
     .toLowerCase();
@@ -207,6 +217,101 @@ export function RunAgentInputs({
           className="nodrag"
           aria-label={schema.title}
         />
+      );
+      break;
+    }
+
+    case DataType.TABLE: {
+      // Render a simple table UI for the run modal
+      const tableSchema = schema as any; // BlockIOTableSubSchema
+      const headers = tableSchema.items?.properties
+        ? Object.keys(tableSchema.items.properties)
+        : ["Column 1", "Column 2", "Column 3"];
+
+      const tableData: TableRow[] = Array.isArray(value) ? value : [];
+
+      const updateRow = (index: number, header: string, newValue: string) => {
+        const newData = [...tableData];
+        if (!newData[index]) {
+          newData[index] = {};
+        }
+        newData[index][header] = newValue;
+        onChange(newData);
+      };
+
+      const addRow = () => {
+        const newRow: TableRow = {};
+        headers.forEach((header) => {
+          newRow[header] = "";
+        });
+        onChange([...tableData, newRow]);
+      };
+
+      const removeRow = (index: number) => {
+        const newData = tableData.filter((_, i) => i !== index);
+        onChange(newData);
+      };
+
+      innerInputElement = (
+        <div className="w-full space-y-2">
+          <div className="overflow-hidden rounded-md border">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 dark:bg-gray-800">
+                  {headers.map((header) => (
+                    <th
+                      key={header}
+                      className="px-3 py-2 text-left font-medium"
+                    >
+                      {header}
+                    </th>
+                  ))}
+                  <th className="w-10 px-3 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {tableData.map((row, rowIndex) => (
+                  <tr key={rowIndex} className="border-t dark:border-gray-700">
+                    {headers.map((header) => (
+                      <td key={header} className="px-3 py-1">
+                        <input
+                          type="text"
+                          value={String(row[header] || "")}
+                          onChange={(e) =>
+                            updateRow(rowIndex, header, e.target.value)
+                          }
+                          className="w-full rounded border px-2 py-1 dark:border-gray-700 dark:bg-gray-900"
+                          placeholder={`Enter ${header}`}
+                        />
+                      </td>
+                    ))}
+                    <td className="px-3 py-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeRow(rowIndex)}
+                        className="h-8 w-8 p-0"
+                      >
+                        <X className="h-4 w-4" weight="bold" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={addRow}
+            className="w-full"
+          >
+            <Plus className="mr-2 h-4 w-4" weight="bold" />
+            Add Row
+          </Button>
+        </div>
       );
       break;
     }

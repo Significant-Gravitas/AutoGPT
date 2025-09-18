@@ -6,25 +6,20 @@ import { cn } from "@/lib/utils";
 import NodeHandle from "./NodeHandle";
 import { ConnectionData } from "@/components/CustomNode";
 import {
-  BlockIOObjectSubSchema,
-  BlockIOArraySubSchema,
+  BlockIOTableSubSchema,
+  TableRow,
+  TableCellValue,
 } from "@/lib/autogpt-server-api/types";
-
-interface TableRow {
-  [key: string]: any;
-}
 
 interface NodeTableInputProps {
   nodeId: string;
   selfKey: string;
-  schema: BlockIOArraySubSchema & {
-    items?: BlockIOObjectSubSchema;
-  };
+  schema: BlockIOTableSubSchema;
   headers: string[];
   rows?: TableRow[];
   errors: { [key: string]: string | undefined };
   connections: ConnectionData;
-  handleInputChange: (key: string, value: any) => void;
+  handleInputChange: (key: string, value: TableRow[]) => void;
   handleInputClick: (key: string) => void;
   className?: string;
   displayName?: string;
@@ -44,23 +39,28 @@ export const NodeTableInput: FC<NodeTableInputProps> = ({
   displayName,
 }) => {
   const [tableData, setTableData] = useState<TableRow[]>(rows);
-  
+
   // Sync with parent state when rows change
   useEffect(() => {
     setTableData(rows);
   }, [rows]);
 
-  const isConnected = (key: string) => connections[key]?.length > 0;
+  const isConnected = (key: string) =>
+    connections.some((c) => c.targetHandle === key && c.target === nodeId);
 
   const updateTableData = useCallback(
     (newData: TableRow[]) => {
       setTableData(newData);
       handleInputChange(selfKey, newData);
     },
-    [selfKey, handleInputChange]
+    [selfKey, handleInputChange],
   );
 
-  const updateCell = (rowIndex: number, header: string, value: any) => {
+  const updateCell = (
+    rowIndex: number,
+    header: string,
+    value: TableCellValue,
+  ) => {
     const newData = [...tableData];
     if (!newData[rowIndex]) {
       newData[rowIndex] = {};
@@ -74,7 +74,7 @@ export const NodeTableInput: FC<NodeTableInputProps> = ({
       return;
     }
     const newRow: TableRow = {};
-    headers.forEach(header => {
+    headers.forEach((header) => {
       newRow[header] = "";
     });
     updateTableData([...tableData, newRow]);
@@ -95,7 +95,7 @@ export const NodeTableInput: FC<NodeTableInputProps> = ({
         isRequired={false}
         side="left"
       />
-      
+
       {!isConnected(selfKey) && (
         <div className="nodrag overflow-x-auto">
           <table className="w-full border-collapse">
@@ -145,7 +145,7 @@ export const NodeTableInput: FC<NodeTableInputProps> = ({
               ))}
             </tbody>
           </table>
-          
+
           <Button
             className="mt-2 bg-gray-200 font-normal text-black hover:text-white dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
             onClick={addRow}
@@ -155,7 +155,7 @@ export const NodeTableInput: FC<NodeTableInputProps> = ({
           </Button>
         </div>
       )}
-      
+
       {errors[selfKey] && (
         <span className="text-sm text-red-500">{errors[selfKey]}</span>
       )}

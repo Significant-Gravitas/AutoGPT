@@ -58,6 +58,7 @@ export type BlockIOSimpleTypeSubSchema =
   | BlockIOCredentialsSubSchema
   | BlockIOKVSubSchema
   | BlockIOArraySubSchema
+  | BlockIOTableSubSchema
   | BlockIOStringSubSchema
   | BlockIONumberSubSchema
   | BlockIOBooleanSubSchema
@@ -78,6 +79,7 @@ export enum DataType {
   OBJECT = "object",
   KEY_VALUE = "key-value",
   ARRAY = "array",
+  TABLE = "table",
 }
 
 export type BlockIOSubSchemaMeta = {
@@ -111,6 +113,20 @@ export type BlockIOArraySubSchema = BlockIOSubSchemaMeta & {
   items?: BlockIOSimpleTypeSubSchema;
   const?: Array<string>;
   default?: Array<string>;
+  secret?: boolean;
+};
+
+// Table cell values are typically primitives
+export type TableCellValue = string | number | boolean | null;
+
+export type TableRow = Record<string, TableCellValue>;
+
+export type BlockIOTableSubSchema = BlockIOSubSchemaMeta & {
+  type: "array";
+  format: "table";
+  items: BlockIOObjectSubSchema;
+  const?: TableRow[];
+  default?: TableRow[];
   secret?: boolean;
 };
 
@@ -1053,6 +1069,10 @@ function _handleSingleTypeSchema(subSchema: BlockIOSubSchema): DataType {
     return DataType.NUMBER;
   }
   if (subSchema.type === "array") {
+    // Check for table format first
+    if ("format" in subSchema && subSchema.format === "table") {
+      return DataType.TABLE;
+    }
     /** Commented code below since we haven't yet support rendering of a multi-select with array { items: enum } type */
     // if ("items" in subSchema && subSchema.items && "enum" in subSchema.items) {
     //   return DataType.MULTI_SELECT; // array + enum => multi-select

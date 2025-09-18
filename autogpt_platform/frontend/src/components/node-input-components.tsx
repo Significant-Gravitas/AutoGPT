@@ -22,6 +22,7 @@ import {
   BlockIOSimpleTypeSubSchema,
   BlockIOStringSubSchema,
   BlockIOSubSchema,
+  BlockIOTableSubSchema,
   DataType,
   determineDataType,
 } from "@/lib/autogpt-server-api/types";
@@ -465,6 +466,28 @@ export const NodeGenericInputField: FC<{
           className={className}
           displayName={displayName}
           handleInputChange={handleInputChange}
+        />
+      );
+
+    case DataType.TABLE:
+      const tableSchema = propSchema as BlockIOTableSubSchema;
+      // Extract headers from the schema's items properties
+      const headers = tableSchema.items?.properties
+        ? Object.keys(tableSchema.items.properties)
+        : ["Column 1", "Column 2", "Column 3"];
+      return (
+        <NodeTableInput
+          nodeId={nodeId}
+          selfKey={propKey}
+          schema={tableSchema}
+          headers={headers}
+          rows={currentValue}
+          errors={errors}
+          connections={connections}
+          handleInputChange={handleInputChange}
+          handleInputClick={handleInputClick}
+          className={className}
+          displayName={displayName}
         />
       );
 
@@ -927,35 +950,6 @@ const NodeArrayInput: FC<{
   const isItemObject = "items" in schema && "properties" in schema.items!;
   const error =
     typeof errors[selfKey] === "string" ? errors[selfKey] : undefined;
-
-  // Check if we should render as a table - when the parent has a 'headers' field
-  // and this is the 'value' field of a table input block
-  // Also check for the is_table_input flag for more explicit detection
-  const isTableInput = (selfKey === "value" && 
-                        parentContext?.headers && 
-                        Array.isArray(parentContext.headers) && 
-                        parentContext.headers.length > 0 &&
-                        isItemObject) || 
-                       parentContext?.is_table_input === true;
-  
-  if (isTableInput) {
-    // Render as table
-    return (
-      <NodeTableInput
-        nodeId={nodeId}
-        selfKey={selfKey}
-        schema={schema}
-        headers={parentContext.headers}
-        rows={entries as any[]}
-        errors={errors}
-        connections={connections}
-        handleInputChange={handleInputChange}
-        handleInputClick={handleInputClick}
-        className={className}
-        displayName={displayName}
-      />
-    );
-  }
   return (
     <div className={cn(className, "flex flex-col")}>
       {entries.map((entry: any, index: number) => {
