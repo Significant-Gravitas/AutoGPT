@@ -2,7 +2,7 @@
 import http from 'k6/http';
 import { check } from 'k6';
 import { getEnvironmentConfig } from './configs/environment.js';
-import { authenticateUser, getAuthHeaders, getRandomTestUser } from './utils/auth.js';
+import { getAuthenticatedUser, getAuthHeaders } from './utils/auth.js';
 
 const config = getEnvironmentConfig();
 
@@ -24,14 +24,9 @@ export const options = {
 };
 
 export default function () {
-  const testUser = getRandomTestUser();
-  
   try {
-    // Step 1: Authenticate
-    console.log(`🔐 Authenticating ${testUser.email}...`);
-    const userAuth = authenticateUser(testUser);
-    console.log(`✅ Auth successful: ${userAuth.access_token.substring(0, 50)}...`);
-    
+    // Step 1: Get authenticated user (cached per VU)
+    const userAuth = getAuthenticatedUser();
     const headers = getAuthHeaders(userAuth.access_token);
     console.log(`📋 Headers: ${JSON.stringify(headers)}`);
     

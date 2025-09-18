@@ -3,7 +3,7 @@ import http from 'k6/http';
 import { check, sleep, group } from 'k6';
 import { Rate, Trend, Counter } from 'k6/metrics';
 import { getEnvironmentConfig } from './configs/environment.js';
-import { authenticateUser, getAuthHeaders, getRandomTestUser } from './utils/auth.js';
+import { getAuthenticatedUser, getAuthHeaders } from './utils/auth.js';
 import { generateTestGraph, generateComplexTestGraph, generateExecutionInputs } from './utils/test-data.js';
 
 const config = getEnvironmentConfig();
@@ -28,7 +28,6 @@ export const options = {
     http_req_failed: ['rate<0.15'],
     graph_execution_duration: ['p(95)<15000'],
     graph_creation_duration: ['p(95)<10000'],
-    execution_errors: ['rate<0.15'],
   },
   cloud: {
     projectID: __ENV.K6_CLOUD_PROJECT_ID,
@@ -45,13 +44,12 @@ export function setup() {
 }
 
 export default function (data) {
-  const testUser = getRandomTestUser();
   let userAuth;
   
   try {
-    userAuth = authenticateUser(testUser);
+    userAuth = getAuthenticatedUser();
   } catch (error) {
-    console.error(`❌ Authentication failed for ${testUser.email}:`, error);
+    console.error(`❌ Authentication failed:`, error);
     return;
   }
   

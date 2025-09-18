@@ -4,6 +4,9 @@ import { getEnvironmentConfig, AUTH_CONFIG } from '../configs/environment.js';
 
 const config = getEnvironmentConfig();
 
+// VU-specific token cache to avoid re-authentication
+const vuTokenCache = new Map();
+
 /**
  * Authenticate user and return JWT token
  * Uses Supabase auth endpoints to get access token
@@ -22,52 +25,27 @@ export function authenticateUser(userCredentials) {
       'Content-Type': 'application/json',
       'apikey': config.SUPABASE_ANON_KEY,
     },
-    timeout: '30s', // Add timeout to prevent hanging
+    timeout: '30s',
   };
   
-  // Retry logic for network reliability
-  let response;
-  let authSuccess = false;
-  let lastError = '';
+  // Single authentication attempt - no retries to avoid amplifying rate limits
+  const response = http.post(authUrl, JSON.stringify(loginPayload), params);
   
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      response = http.post(authUrl, JSON.stringify(loginPayload), params);
-      
-      authSuccess = check(response, {
-        'Authentication successful': (r) => r.status === 200,
-        'Auth response has access token': (r) => {
-          try {
-            const body = JSON.parse(r.body);
-            return body.access_token !== undefined;
-          } catch (e) {
-            return false;
-          }
-        },
-      });
-      
-      if (authSuccess) {
-        break; // Success, exit retry loop
+  const authSuccess = check(response, {
+    'Authentication successful': (r) => r.status === 200,
+    'Auth response has access token': (r) => {
+      try {
+        const body = JSON.parse(r.body);
+        return body.access_token !== undefined;
+      } catch (e) {
+        return false;
       }
-      
-      lastError = `${response.status} ${response.body}`;
-      console.log(`Authentication attempt ${attempt} failed for ${userCredentials.email}: ${lastError}`);
-      
-    } catch (error) {
-      lastError = error.message;
-      console.log(`Authentication attempt ${attempt} error for ${userCredentials.email}: ${lastError}`);
-    }
-    
-    if (attempt < 3) {
-      console.log(`Retrying authentication in 1 second...`);
-      // Small delay before retry
-      http.get('https://httpbin.org/delay/1');
-    }
-  }
+    },
+  });
   
   if (!authSuccess) {
-    console.log(`Authentication failed for ${userCredentials.email} after 3 attempts: ${lastError}`);
-    fail('Authentication failed');
+    console.log(`❌ Auth failed for ${userCredentials.email}: ${response.status} - ${response.body.substring(0, 200)}`);
+    return null; // Return null instead of failing the test
   }
   
   const authData = JSON.parse(response.body);
@@ -94,4 +72,50 @@ export function getAuthHeaders(accessToken) {
 export function getRandomTestUser() {
   const users = AUTH_CONFIG.TEST_USERS;
   return users[Math.floor(Math.random() * users.length)];
+}
+
+/**
+ * Smart authentication that caches tokens per VU to avoid rate limiting
+ * Authenticates once per VU and reuses the token across iterations
+ */
+export function getAuthenticatedUser() {
+  const vuId = __VU; // k6 VU identifier
+  
+  // Check if we already have a valid token for this VU
+  if (vuTokenCache.has(vuId)) {
+    const cachedAuth = vuTokenCache.get(vuId);
+    console.log(`🔄 Using cached token for VU ${vuId} (user: ${cachedAuth.user.email})`);
+    return cachedAuth;
+  }
+  
+  // Try to authenticate with available test users
+  const users = AUTH_CONFIG.TEST_USERS;
+  let authResult = null;
+  
+  for (let i = 0; i < users.length; i++) {
+    const testUser = users[i];
+    console.log(`🔐 VU ${vuId} attempting authentication with ${testUser.email}...`);
+    
+    authResult = authenticateUser(testUser);
+    
+    if (authResult) {
+      // Cache the successful authentication for this VU
+      vuTokenCache.set(vuId, authResult);
+      console.log(`✅ VU ${vuId} authenticated successfully with ${testUser.email}`);
+      return authResult;
+    }
+    
+    console.log(`❌ VU ${vuId} authentication failed with ${testUser.email}, trying next user...`);
+  }
+  
+  // If all users failed, throw error
+  throw new Error(`VU ${vuId} failed to authenticate with any test user`);
+}
+
+/**
+ * Clear authentication cache (useful for testing or cleanup)
+ */
+export function clearAuthCache() {
+  vuTokenCache.clear();
+  console.log('🧹 Authentication cache cleared');
 }
