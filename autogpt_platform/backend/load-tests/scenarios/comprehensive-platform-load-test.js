@@ -22,9 +22,9 @@ const authErrors = new Rate('auth_errors');
 // Test configuration for normal load testing
 export const options = {
   stages: [
-    { duration: PERFORMANCE_CONFIG.DEFAULT_RAMP_UP, target: PERFORMANCE_CONFIG.DEFAULT_VUS },
-    { duration: PERFORMANCE_CONFIG.DEFAULT_DURATION, target: PERFORMANCE_CONFIG.DEFAULT_VUS },
-    { duration: PERFORMANCE_CONFIG.DEFAULT_RAMP_DOWN, target: 0 },
+    { duration: __ENV.RAMP_UP || '30s', target: parseInt(__ENV.VUS) || PERFORMANCE_CONFIG.DEFAULT_VUS },
+    { duration: __ENV.DURATION || '2m', target: parseInt(__ENV.VUS) || PERFORMANCE_CONFIG.DEFAULT_VUS },
+    { duration: __ENV.RAMP_DOWN || '30s', target: 0 },
   ],
   thresholds: {
     checks: ['rate>0.85'],

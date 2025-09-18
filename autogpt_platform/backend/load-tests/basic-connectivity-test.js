@@ -13,7 +13,11 @@ import { authenticateUser, getRandomTestUser } from './utils/auth.js';
 const config = getEnvironmentConfig();
 
 export const options = {
-  stages: [{ duration: '10s', target: 1 }],
+  stages: [
+    { duration: __ENV.RAMP_UP || '30s', target: parseInt(__ENV.VUS) || 1 },
+    { duration: __ENV.DURATION || '10s', target: parseInt(__ENV.VUS) || 1 },
+    { duration: __ENV.RAMP_DOWN || '30s', target: 0 },
+  ],
   thresholds: {
     checks: ['rate>0.85'],
     http_req_duration: ['p(95)<10000'],
