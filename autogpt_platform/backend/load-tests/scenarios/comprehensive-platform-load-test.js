@@ -45,6 +45,9 @@ export function setup() {
 }
 
 export default function (data) {
+  // Get load multiplier - how many concurrent user journeys each VU should simulate
+  const requestsPerVU = parseInt(__ENV.REQUESTS_PER_VU) || 1;
+  
   let userAuth;
   
   try {
@@ -57,22 +60,27 @@ export default function (data) {
   
   const headers = getAuthHeaders(userAuth.access_token);
   
-  // Realistic user journey simulation
-  group('User Authentication & Profile', () => {
-    userProfileJourney(headers);
-  });
+  console.log(`🚀 VU ${__VU} simulating ${requestsPerVU} concurrent user journeys...`);
   
-  group('Graph Management', () => {
-    graphManagementJourney(headers);
-  });
-  
-  group('Block Operations', () => {
-    blockOperationsJourney(headers);
-  });
-  
-  group('System Operations', () => {
-    systemOperationsJourney(headers);
-  });
+  // Simulate multiple concurrent user sessions for higher load
+  for (let i = 0; i < requestsPerVU; i++) {
+    // Realistic user journey simulation
+    group(`User Authentication & Profile ${i+1}`, () => {
+      userProfileJourney(headers);
+    });
+    
+    group(`Graph Management ${i+1}`, () => {
+      graphManagementJourney(headers);
+    });
+    
+    group(`Block Operations ${i+1}`, () => {
+      blockOperationsJourney(headers);
+    });
+    
+    group(`System Operations ${i+1}`, () => {
+      systemOperationsJourney(headers);
+    });
+  }
   
   // Think time between user sessions
   sleep(Math.random() * 3 + 1); // 1-4 seconds

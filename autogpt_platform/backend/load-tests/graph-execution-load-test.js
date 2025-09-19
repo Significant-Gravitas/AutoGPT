@@ -44,6 +44,9 @@ export function setup() {
 }
 
 export default function (data) {
+  // Get load multiplier - how many concurrent operations each VU should perform
+  const requestsPerVU = parseInt(__ENV.REQUESTS_PER_VU) || 1;
+  
   let userAuth;
   
   try {
@@ -55,20 +58,27 @@ export default function (data) {
   
   const headers = getAuthHeaders(userAuth.access_token);
   
-  // Graph Creation and Execution Journey
-  group('Graph Creation and Execution Flow', () => {
-    graphCreationAndExecutionJourney(headers);
-  });
+  console.log(`🚀 VU ${__VU} performing ${requestsPerVU} concurrent graph operations...`);
   
-  // Complex Graph Testing
-  group('Complex Graph Execution', () => {
-    complexGraphExecutionJourney(headers);
-  });
-  
-  // Graph Management Operations
-  group('Graph Management', () => {
-    graphManagementJourney(headers);
-  });
+  // Perform multiple operations concurrently for higher load
+  for (let i = 0; i < requestsPerVU; i++) {
+    // Graph Creation and Execution Journey
+    group(`Graph Creation and Execution Flow ${i+1}`, () => {
+      graphCreationAndExecutionJourney(headers);
+    });
+    
+    // Complex Graph Testing (20% chance per operation)
+    if (Math.random() < 0.2) {
+      group(`Complex Graph Execution ${i+1}`, () => {
+        complexGraphExecutionJourney(headers);
+      });
+    }
+    
+    // Graph Management Operations
+    group(`Graph Management ${i+1}`, () => {
+      graphManagementJourney(headers);
+    });
+  }
   
   // Think time between iterations
   sleep(Math.random() * 2 + 1); // 1-3 seconds

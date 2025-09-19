@@ -33,23 +33,11 @@ export const options = {
 let vuAuth = null;
 
 export default function () {
+  // Get load multiplier - how many concurrent requests each VU should make
+  const requestsPerVU = parseInt(__ENV.REQUESTS_PER_VU) || 1;
+  
   try {
-    // Test 1: Verify Supabase authentication endpoint is reachable
-    console.log(`🔗 Testing Supabase connectivity: ${config.SUPABASE_URL}`);
-    const pingResponse = http.get(`${config.SUPABASE_URL}/rest/v1/`);
-    
-    const connectivityCheck = check(pingResponse, {
-      'Supabase connectivity: Status is not 500': (r) => r.status !== 500,
-      'Supabase connectivity: Response time < 5s': (r) => r.timings.duration < 5000,
-    });
-    
-    if (pingResponse.status !== 500) {
-      console.log(`✅ Supabase reachable (status: ${pingResponse.status})`);
-    } else {
-      console.log(`❌ Supabase connectivity issue (status: ${pingResponse.status})`);
-    }
-    
-    // Test 2: Get authenticated user (authenticate only once per VU)
+    // Test 1: Get authenticated user (authenticate only once per VU)
     if (!vuAuth) {
       console.log(`🔐 VU ${__VU} authenticating for the first time...`);
       vuAuth = getAuthenticatedUser();
@@ -58,15 +46,61 @@ export default function () {
     }
     const headers = getAuthHeaders(vuAuth.access_token);
     
-    const authCheck = check(vuAuth, {
-      'Authentication: Access token received': (auth) => auth && auth.access_token && auth.access_token.length > 0,
-    });
-    
     if (vuAuth && vuAuth.access_token) {
-      console.log(`✅ Authentication successful`);
-      console.log(`🎫 Token length: ${vuAuth.access_token.length} chars`);
+      console.log(`🚀 VU ${__VU} making ${requestsPerVU} concurrent requests...`);
       
-      // Test 3: Verify token structure (basic JWT validation)
+      // Create array of request functions to run concurrently
+      const requests = [];
+      
+      for (let i = 0; i < requestsPerVU; i++) {
+        requests.push({
+          method: 'GET',
+          url: `${config.SUPABASE_URL}/rest/v1/`,
+          params: { headers: { 'apikey': config.SUPABASE_ANON_KEY } }
+        });
+        
+        requests.push({
+          method: 'GET', 
+          url: `${config.API_BASE_URL}/health`,
+          params: { headers }
+        });
+      }
+      
+      // Execute all requests concurrently
+      const responses = http.batch(requests);
+      
+      // Validate results
+      let supabaseSuccesses = 0;
+      let backendSuccesses = 0;
+      
+      for (let i = 0; i < responses.length; i++) {
+        const response = responses[i];
+        
+        if (i % 2 === 0) {
+          // Supabase request
+          const connectivityCheck = check(response, {
+            'Supabase connectivity: Status is not 500': (r) => r.status !== 500,
+            'Supabase connectivity: Response time < 5s': (r) => r.timings.duration < 5000,
+          });
+          if (connectivityCheck) supabaseSuccesses++;
+        } else {
+          // Backend request  
+          const backendCheck = check(response, {
+            'Backend server: Responds (any status)': (r) => r.status > 0,
+            'Backend server: Response time < 5s': (r) => r.timings.duration < 5000,
+          });
+          if (backendCheck) backendSuccesses++;
+        }
+      }
+      
+      console.log(`✅ VU ${__VU} completed: ${supabaseSuccesses}/${requestsPerVU} Supabase, ${backendSuccesses}/${requestsPerVU} backend requests successful`);
+      
+      // Basic auth validation (once per iteration)
+      const authCheck = check(vuAuth, {
+        'Authentication: Access token received': (auth) => auth && auth.access_token && auth.access_token.length > 0,
+      });
+      
+      // JWT structure validation (once per iteration)  
       const tokenParts = vuAuth.access_token.split('.');
       const tokenStructureCheck = check(tokenParts, {
         'JWT token: Has 3 parts (header.payload.signature)': (parts) => parts.length === 3,
@@ -74,23 +108,6 @@ export default function () {
         'JWT token: Payload is base64': (parts) => parts[1] && parts[1].length > 50,
         'JWT token: Signature exists': (parts) => parts[2] && parts[2].length > 10,
       });
-      
-      if (tokenParts.length === 3) {
-        console.log(`✅ JWT token structure valid`);
-      } else {
-        console.log(`❌ JWT token structure invalid (${tokenParts.length} parts)`);
-      }
-      
-      // Test 4: Basic backend server connectivity (health check)
-      console.log(`🌐 Testing backend server connectivity: ${config.API_BASE_URL}/health`);
-      const backendResponse = http.get(`${config.API_BASE_URL}/health`);
-      
-      const backendCheck = check(backendResponse, {
-        'Backend server: Responds (any status)': (r) => r.status > 0,
-        'Backend server: Response time < 5s': (r) => r.timings.duration < 5000,
-      });
-      
-      console.log(`📊 Backend server status: ${backendResponse.status}`);
       
     } else {
       console.log(`❌ Authentication failed`);
