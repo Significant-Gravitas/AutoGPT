@@ -153,7 +153,7 @@ class TestAutoRegistry:
 
         try:
             # Use ProviderBuilder which calls register_api_key and creates the credential
-            provider = (
+            (
                 ProviderBuilder("test_provider")
                 .with_api_key("TEST_API_KEY", "Test API Key")
                 .build()
