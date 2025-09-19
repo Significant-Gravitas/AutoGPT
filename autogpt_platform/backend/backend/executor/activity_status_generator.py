@@ -4,7 +4,12 @@ Module for generating AI-based activity status for graph executions.
 
 import json
 import logging
-from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
+
+try:
+    from typing import NotRequired
+except ImportError:
+    from typing_extensions import NotRequired
 
 from pydantic import SecretStr
 

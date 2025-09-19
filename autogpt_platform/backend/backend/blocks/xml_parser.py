@@ -26,6 +26,14 @@ class XMLParserBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        # Security fix: Add size limits to prevent XML bomb attacks
+        MAX_XML_SIZE = 10 * 1024 * 1024  # 10MB limit for XML input
+
+        if len(input_data.input_xml) > MAX_XML_SIZE:
+            raise ValueError(
+                f"XML too large: {len(input_data.input_xml)} bytes > {MAX_XML_SIZE} bytes"
+            )
+
         try:
             tokens = tokenize(input_data.input_xml)
             parser = Parser(tokens)
