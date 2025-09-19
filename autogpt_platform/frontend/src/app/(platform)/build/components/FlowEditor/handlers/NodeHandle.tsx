@@ -10,6 +10,7 @@ const NodeHandle = ({
   isConnected: boolean;
   side: "left" | "right";
 }) => {
+  console.log("id", id);
   return (
     <Handle
       type={side === "left" ? "target" : "source"}
@@ -17,11 +18,13 @@ const NodeHandle = ({
       id={id}
       className={side === "left" ? "-ml-4 mr-2" : "-mr-2 ml-2"}
     >
-      <CircleIcon
-        size={16}
-        weight={isConnected ? "fill" : "duotone"}
-        className={"text-gray-400 opacity-100"}
-      />
+      <div className="pointer-events-none">
+        <CircleIcon
+          size={16}
+          weight={isConnected ? "fill" : "duotone"}
+          className={"text-gray-400 opacity-100"}
+        />
+      </div>
     </Handle>
   );
 };

@@ -32,6 +32,7 @@ export const useCustomEdge = () => {
 
   const onConnect = useCallback(
     (conn: RFConnection) => {
+      console.log("onConnect", conn);
       if (
         !conn.source ||
         !conn.target ||

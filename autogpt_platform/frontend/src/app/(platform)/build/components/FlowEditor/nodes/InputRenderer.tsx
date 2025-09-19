@@ -13,28 +13,31 @@ import {
   MultiSelectorTrigger,
 } from "@/components/ui/multiselect";
 import { Input as SadcnInput } from "@/components/ui/input";
+import { ObjectEditor } from "../components/ObjectEditor/ObjectEditor";
 
-// These are all the types that we support in the input renderer
 export enum InputType {
-  STRING = "string",
-  NUMBER = "number",
-  BOOLEAN = "boolean",
+  SINGLE_LINE_TEXT = "single-line-text",
+  TEXT_AREA = "text-area",
+  PASSWORD = "password",
+  FILE = "file",
   DATE = "date",
   TIME = "time",
   DATE_TIME = "datetime",
-  FILE = "file",
+  NUMBER = "number",
+  INTEGER = "integer",
+  SWITCH = "switch",
+  ARRAY_EDITOR = "array-editor",
   SELECT = "select",
   MULTI_SELECT = "multi-select",
-  CREDENTIALS = "credentials",
-  OBJECT = "object",
-  ARRAY = "array",
+  OBJECT_EDITOR = "object-editor",
+  ENUM = "enum",
 }
 
 export type InputRendererProps = {
-  type: InputType;
+  type?: InputType;
   value: any;
   id: string;
-  placeholder: string;
+  placeholder?: string;
   required?: boolean;
   onChange: (value: any) => void;
   disabled?: boolean;
@@ -42,13 +45,15 @@ export type InputRendererProps = {
   autofocus?: boolean;
   options?: SelectOption[];
   multiple?: boolean;
+  fieldKey?: string;
+  nodeId?: string;
 };
 
 export const InputRenderer = (props: InputRendererProps) => {
   const {
+    id,
     type,
     value,
-    id,
     placeholder,
     required,
     onChange,
@@ -57,15 +62,37 @@ export const InputRenderer = (props: InputRendererProps) => {
     autofocus,
     options,
     multiple,
+    fieldKey,
+    nodeId,
   } = props;
 
+  console.log("fieldKey", fieldKey);
+  console.log("nodeId", nodeId);
+
+  if (!type) return null;
+
   switch (type) {
-    case InputType.STRING:
+    case InputType.SINGLE_LINE_TEXT:
+      return (
+        <Input
+          id={id}
+          hideLabel={true}
+          label={""}
+          size="small"
+          wrapperClassName="mb-0"
+          value={value ?? ""}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder || ""}
+          required={required}
+        />
+      );
+    case InputType.TEXT_AREA:
       return (
         <Input
           hideLabel={true}
           label={""}
           size="small"
+          type="textarea"
           wrapperClassName="mb-0"
           id={id}
           value={value ?? ""}
@@ -78,19 +105,44 @@ export const InputRenderer = (props: InputRendererProps) => {
       return (
         <Input
           id={id}
+          type="number"
           hideLabel={true}
           label={""}
           size="small"
           wrapperClassName="mb-0"
           value={value ?? ""}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => {
+            const v = e.target.value;
+            onChange(v === "" ? undefined : Number(v));
+          }}
           placeholder={placeholder || ""}
           required={required}
         />
       );
-    case InputType.BOOLEAN:
+    case InputType.INTEGER:
+      // Need to write better logic for integer input
+      return (
+        <Input
+          id={id}
+          type="amount"
+          decimalCount={0}
+          hideLabel={true}
+          label={""}
+          size="small"
+          wrapperClassName="mb-0"
+          value={value ?? ""}
+          onChange={(e) => {
+            const v = e.target.value;
+            onChange(v === "" ? undefined : Number(v));
+          }}
+          placeholder={placeholder || ""}
+          required={required}
+        />
+      );
+    case InputType.SWITCH:
       return (
         <Switch
+          id={id}
           checked={Boolean(value)}
           onCheckedChange={(checked) => onChange(checked)}
           disabled={disabled || readonly}
@@ -134,8 +186,8 @@ export const InputRenderer = (props: InputRendererProps) => {
           wrapperClassName="!mb-0 "
         />
       );
-    case InputType.SELECT:
-      return multiple ? (
+    case InputType.MULTI_SELECT:
+      return (
         <MultiSelector
           values={Array.isArray(value) ? value : []}
           onValuesChange={onChange}
@@ -154,7 +206,34 @@ export const InputRenderer = (props: InputRendererProps) => {
             </MultiSelectorList>
           </MultiSelectorContent>
         </MultiSelector>
-      ) : (
+      );
+    case InputType.FILE:
+      return (
+        <SadcnInput
+          id={id}
+          type="file"
+          multiple={multiple}
+          disabled={disabled || readonly}
+          onChange={onChange}
+          className="rounded-full"
+        />
+      );
+    case InputType.PASSWORD:
+      return (
+        <Input
+          hideLabel={true}
+          label={""}
+          id={id}
+          type="password"
+          value={value ?? ""}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder || ""}
+          required={required}
+          wrapperClassName="!mb-0 nodrag"
+        />
+      );
+    case InputType.SELECT:
+      return (
         <Select
           label=""
           id={id}
@@ -171,16 +250,13 @@ export const InputRenderer = (props: InputRendererProps) => {
           wrapperClassName="!mb-0 "
         />
       );
-    case InputType.FILE:
-      // We need to work with the upload file function
+    case InputType.OBJECT_EDITOR:
       return (
-        <SadcnInput
-          id={id}
-          type="file"
-          multiple={multiple}
-          disabled={disabled || readonly}
+        <ObjectEditor
+          nodeId={nodeId ?? ""}
+          fieldKey={fieldKey ?? ""}
+          value={value}
           onChange={onChange}
-          className="rounded-full"
         />
       );
   }

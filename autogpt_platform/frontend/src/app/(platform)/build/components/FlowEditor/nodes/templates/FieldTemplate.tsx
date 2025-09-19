@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useContext } from "react";
 import { FieldTemplateProps } from "@rjsf/utils";
 import { InfoIcon } from "@phosphor-icons/react";
 import {
@@ -10,9 +10,10 @@ import {
 import { Text } from "@/components/atoms/Text/Text";
 
 import NodeHandle from "../../handlers/NodeHandle";
-import { fromRjsfId } from "../../handlers/helpers";
 import { useEdgeStore } from "../../../store/edgeStore";
 import { useNodeStore } from "../../../store/nodeStore";
+import { generateHandleId, HandleIdType } from "../../handlers/helpers";
+import { HandleContext } from "../../handlers/HandleContext";
 
 const FieldTemplate: React.FC<FieldTemplateProps> = ({
   id,
@@ -30,8 +31,21 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
     (state) => state.nodeAdvancedStates[nodeId] ?? false,
   );
 
-  const fieldKey = fromRjsfId(id);
-  const isConnected = isInputConnected(nodeId, fieldKey);
+  const {
+    isArrayItem,
+    fieldKey: arrayFieldKey,
+    isConnected: isArrayItemConnected,
+  } = useContext(HandleContext);
+
+  let fieldKey = generateHandleId(id);
+  let isConnected = isInputConnected(nodeId, fieldKey);
+  if (isArrayItem) {
+    fieldKey = arrayFieldKey;
+    isConnected = isArrayItemConnected;
+  }
+  const isAnyOf = Array.isArray((schema as any)?.anyOf);
+  const isOneOf = Array.isArray((schema as any)?.oneOf);
+  const suppressHandle = isAnyOf || isOneOf;
 
   if (!showAdvanced && schema.advanced === true) {
     return null;
@@ -41,7 +55,9 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
     <div className="mt-4 w-[400px] space-y-1">
       {label && schema.type && (
         <label htmlFor={id} className="flex items-center gap-1">
-          <NodeHandle id={fieldKey} isConnected={isConnected} side="left" />
+          {!suppressHandle && (
+            <NodeHandle id={fieldKey} isConnected={isConnected} side="left" />
+          )}
           <Text variant="body" className="line-clamp-1">
             {label}
           </Text>
@@ -67,7 +83,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
           )}
         </label>
       )}
-      {!isConnected && <div className="pl-2">{children}</div>}{" "}
+      {(isAnyOf || !isConnected) && <div className="pl-2">{children}</div>}{" "}
     </div>
   );
 };

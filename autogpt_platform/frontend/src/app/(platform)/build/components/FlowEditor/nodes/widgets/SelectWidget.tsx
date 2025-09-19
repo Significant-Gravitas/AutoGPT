@@ -1,13 +1,14 @@
 import { WidgetProps } from "@rjsf/utils";
-import { InputRenderer, InputType } from "../InputRenderer";
+import { InputRenderer } from "../InputRenderer";
+import { mapJsonSchemaTypeToInputType } from "../helpers";
 
 export const SelectWidget = (props: WidgetProps) => {
   const { options, value, onChange, disabled, readonly, multiple } = props;
   const enumOptions = options.enumOptions || [];
-
+  const type = mapJsonSchemaTypeToInputType(props.schema);
   return (
     <InputRenderer
-      type={InputType.SELECT}
+      type={type}
       value={value}
       id={props.id}
       placeholder={props.placeholder || ""}

@@ -36,6 +36,9 @@ export const Flow = () => {
           <NewControlPanel />
         </ReactFlow>
       </div>
+      <div className="w-[30%]">
+        <RightSidebar />
+      </div>
     </div>
   );
 };
