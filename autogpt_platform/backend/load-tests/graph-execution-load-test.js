@@ -65,24 +65,93 @@ export default function (data) {
   
   console.log(`🚀 VU ${__VU} performing ${requestsPerVU} concurrent graph operations...`);
   
-  // Perform multiple operations concurrently for higher load
+  // Create requests for concurrent execution
+  const graphRequests = [];
+  
   for (let i = 0; i < requestsPerVU; i++) {
-    // Graph Creation and Execution Journey
-    group(`Graph Creation and Execution Flow ${i+1}`, () => {
-      graphCreationAndExecutionJourney(headers);
+    // Generate graph data
+    const graphData = generateTestGraph();
+    
+    // Add graph creation request
+    graphRequests.push({
+      method: 'POST',
+      url: `${config.API_BASE_URL}/api/graphs`,
+      body: JSON.stringify(graphData),
+      params: { headers }
+    });
+  }
+  
+  // Execute all graph creations concurrently
+  console.log(`📊 Creating ${requestsPerVU} graphs concurrently...`);
+  const responses = http.batch(graphRequests);
+  
+  // Process results
+  let successCount = 0;
+  const createdGraphs = [];
+  
+  for (let i = 0; i < responses.length; i++) {
+    const response = responses[i];
+    
+    const success = check(response, {
+      [`Graph ${i+1} created successfully`]: (r) => r.status === 200,
     });
     
-    // Complex Graph Testing (20% chance per operation)
-    if (Math.random() < 0.2) {
-      group(`Complex Graph Execution ${i+1}`, () => {
-        complexGraphExecutionJourney(headers);
+    if (success && response.status === 200) {
+      successCount++;
+      try {
+        const graph = JSON.parse(response.body);
+        createdGraphs.push(graph);
+        graphCreations.add(1);
+      } catch (e) {
+        console.error(`Error parsing graph ${i+1} response:`, e);
+      }
+    } else {
+      console.log(`❌ Graph ${i+1} creation failed: ${response.status}`);
+    }
+  }
+  
+  console.log(`✅ VU ${__VU} created ${successCount}/${requestsPerVU} graphs concurrently`);
+  
+  // Execute a subset of created graphs (to avoid overloading execution)
+  const graphsToExecute = createdGraphs.slice(0, Math.min(5, createdGraphs.length));
+  
+  if (graphsToExecute.length > 0) {
+    console.log(`⚡ Executing ${graphsToExecute.length} graphs...`);
+    
+    const executionRequests = [];
+    
+    for (const graph of graphsToExecute) {
+      const executionInputs = generateExecutionInputs();
+      
+      executionRequests.push({
+        method: 'POST',
+        url: `${config.API_BASE_URL}/api/graphs/${graph.id}/execute/${graph.version}`,
+        body: JSON.stringify({
+          inputs: executionInputs,
+          credentials_inputs: {}
+        }),
+        params: { headers }
       });
     }
     
-    // Graph Management Operations
-    group(`Graph Management ${i+1}`, () => {
-      graphManagementJourney(headers);
-    });
+    // Execute graphs concurrently
+    const executionResponses = http.batch(executionRequests);
+    
+    let executionSuccessCount = 0;
+    for (let i = 0; i < executionResponses.length; i++) {
+      const response = executionResponses[i];
+      
+      const success = check(response, {
+        [`Graph ${i+1} execution initiated`]: (r) => r.status === 200 || r.status === 402,
+      });
+      
+      if (success) {
+        executionSuccessCount++;
+        graphExecutions.add(1);
+      }
+    }
+    
+    console.log(`✅ VU ${__VU} executed ${executionSuccessCount}/${graphsToExecute.length} graphs`);
   }
   
   // Think time between iterations
