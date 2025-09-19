@@ -80,7 +80,7 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.user.migrate_and_encrypt_user_integrations()
     await backend.data.graph.fix_llm_provider_credentials()
     await backend.data.graph.migrate_llm_models(LlmModel.GPT4O)
-    await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
+    # await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
 
     with launch_darkly_context():
         yield
