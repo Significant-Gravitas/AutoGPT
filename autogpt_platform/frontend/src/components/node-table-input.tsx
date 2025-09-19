@@ -1,7 +1,6 @@
 import React, { FC, useCallback, useEffect, useState } from "react";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-import { Cross2Icon, PlusIcon } from "@radix-ui/react-icons";
+
+import { PlusIcon, XIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import NodeHandle from "@/app/(platform)/build/components/legacy-builder/NodeHandle";
 import {
@@ -9,6 +8,8 @@ import {
   TableRow,
   TableCellValue,
 } from "@/lib/autogpt-server-api/types";
+import { Input } from "./atoms/Input/Input";
+import { Button } from "./atoms/Button/Button";
 
 interface NodeTableInputProps {
   nodeId: string;
@@ -126,6 +127,8 @@ export const NodeTableInput: FC<NodeTableInputProps> = ({
                       className="border border-gray-300 p-1 dark:border-gray-600"
                     >
                       <Input
+                        id={`${selfKey}-${rowIndex}-${header}`}
+                        label={header}
                         type="text"
                         value={String(row[header] || "")}
                         onChange={(e) =>
@@ -139,11 +142,11 @@ export const NodeTableInput: FC<NodeTableInputProps> = ({
                   <td className="p-1">
                     <Button
                       variant="ghost"
-                      size="sm"
+                      size="small"
                       onClick={() => removeRow(rowIndex)}
                       className="h-8 w-8 p-0"
                     >
-                      <Cross2Icon />
+                      <XIcon />
                     </Button>
                   </td>
                 </tr>
@@ -154,7 +157,7 @@ export const NodeTableInput: FC<NodeTableInputProps> = ({
           <Button
             className="mt-2 bg-gray-200 font-normal text-black hover:text-white dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
             onClick={addRow}
-            size="sm"
+            size="small"
           >
             <PlusIcon className="mr-2" /> Add Row
           </Button>

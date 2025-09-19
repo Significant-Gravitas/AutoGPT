@@ -16,8 +16,8 @@ import { TimePicker } from "@/components/molecules/TimePicker/TimePicker";
 import { FileInput } from "@/components/atoms/FileInput/FileInput";
 import { useRunAgentInputs } from "./useRunAgentInputs";
 import { Switch } from "@/components/atoms/Switch/Switch";
-import { Button } from "@/components/ui/button";
-import { Plus, X } from "@phosphor-icons/react";
+import { PlusIcon, XIcon } from "@phosphor-icons/react";
+import { Button } from "@/components/atoms/Button/Button";
 
 /**
  * A generic prop structure for the TypeBasedInput.
@@ -289,11 +289,11 @@ export function RunAgentInputs({
                       <Button
                         type="button"
                         variant="ghost"
-                        size="sm"
+                        size="small"
                         onClick={() => removeRow(rowIndex)}
                         className="h-8 w-8 p-0"
                       >
-                        <X className="h-4 w-4" weight="bold" />
+                        <XIcon className="h-4 w-4" weight="bold" />
                       </Button>
                     </td>
                   </tr>
@@ -304,11 +304,11 @@ export function RunAgentInputs({
           <Button
             type="button"
             variant="outline"
-            size="sm"
+            size="small"
             onClick={addRow}
             className="w-full"
           >
-            <Plus className="mr-2 h-4 w-4" weight="bold" />
+            <PlusIcon className="mr-2 h-4 w-4" weight="bold" />
             Add Row
           </Button>
         </div>
