@@ -1,0 +1,26 @@
+{
+  "otto_suggestions": [
+    "What blocks do I need to get started?",
+    "Help me create a list",
+    "Help me feed my data to Google Maps"
+  ],
+  "recent_searches": [
+    "image generation",
+    "deepfake",
+    "competitor analysis"
+  ],
+  "providers": [
+    "twitter",
+    "github",
+    "notion",
+    "google",
+    "discord",
+    "google_maps"
+  ],
+  "top_blocks": [
+    {
+      "id": "block1",
+      "name": "Block 1"
+    }
+  ]
+}
