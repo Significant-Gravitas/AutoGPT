@@ -52,9 +52,6 @@ export const AUTH_CONFIG = {
   
   // JWT token for API access (will be set during test execution)
   JWT_TOKEN: null,
-  
-  // Service role key for admin operations (actual dev instance key)
-  SERVICE_ROLE_KEY: __ENV.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkZmp0ZXh0a3VpbHd1aHpkanBmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczMDI1MTcwMiwiZXhwIjoyMDQ1ODI3NzAyfQ.JHadCgyuMVejDxl66DIe4ZlB1ra7IGDLEkABhSJm540'
 };
 
 // Performance test configurations - Environment variable overrides supported
