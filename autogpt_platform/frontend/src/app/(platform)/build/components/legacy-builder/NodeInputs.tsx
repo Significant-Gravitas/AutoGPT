@@ -25,6 +25,7 @@ import {
   BlockIOSimpleTypeSubSchema,
   BlockIOStringSubSchema,
   BlockIOSubSchema,
+  BlockIOTableSubSchema,
   DataType,
   determineDataType,
 } from "@/lib/autogpt-server-api/types";
@@ -56,6 +57,7 @@ import { LocalValuedInput } from "../../../../../components/__legacy__/ui/input"
 import NodeHandle from "./NodeHandle";
 import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
 import { Switch } from "../../../../../components/atoms/Switch/Switch";
+import { NodeTableInput } from "../../../../../components/node-table-input";
 
 type NodeObjectInputTreeProps = {
   nodeId: string;
@@ -106,6 +108,7 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
               handleInputChange={handleInputChange}
               handleInputClick={handleInputClick}
               displayName={propSchema.title || beautifyString(propKey)}
+              parentContext={object}
             />
           </div>
         );
@@ -315,6 +318,7 @@ export const NodeGenericInputField: FC<{
   handleInputClick: NodeObjectInputTreeProps["handleInputClick"];
   className?: string;
   displayName?: string;
+  parentContext?: { [key: string]: any };
 }> = ({
   nodeId,
   propKey,
@@ -326,6 +330,7 @@ export const NodeGenericInputField: FC<{
   handleInputClick,
   className,
   displayName,
+  parentContext,
 }) => {
   className = cn(className);
   displayName ||= propSchema.title || beautifyString(propKey);
@@ -467,6 +472,28 @@ export const NodeGenericInputField: FC<{
         />
       );
 
+    case DataType.TABLE:
+      const tableSchema = propSchema as BlockIOTableSubSchema;
+      // Extract headers from the schema's items properties
+      const headers = tableSchema.items?.properties
+        ? Object.keys(tableSchema.items.properties)
+        : ["Column 1", "Column 2", "Column 3"];
+      return (
+        <NodeTableInput
+          nodeId={nodeId}
+          selfKey={propKey}
+          schema={tableSchema}
+          headers={headers}
+          rows={currentValue}
+          errors={errors}
+          connections={connections}
+          handleInputChange={handleInputChange}
+          handleInputClick={handleInputClick}
+          className={className}
+          displayName={displayName}
+        />
+      );
+
     case DataType.ARRAY:
       return (
         <NodeArrayInput
@@ -480,6 +507,7 @@ export const NodeGenericInputField: FC<{
           connections={connections}
           handleInputChange={handleInputChange}
           handleInputClick={handleInputClick}
+          parentContext={parentContext}
         />
       );
 
@@ -894,6 +922,7 @@ const NodeArrayInput: FC<{
   handleInputClick: NodeObjectInputTreeProps["handleInputClick"];
   className?: string;
   displayName?: string;
+  parentContext?: { [key: string]: any };
 }> = ({
   nodeId,
   selfKey,
@@ -905,6 +934,7 @@ const NodeArrayInput: FC<{
   handleInputClick,
   className,
   displayName,
+  parentContext: _parentContext,
 }) => {
   entries ??= schema.default;
   if (!entries || !Array.isArray(entries)) entries = [];
