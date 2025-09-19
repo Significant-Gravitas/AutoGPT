@@ -1,5 +1,5 @@
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/__legacy__/ui/button";
+import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { beautifyString, cn } from "@/lib/utils";
 import React, { ButtonHTMLAttributes } from "react";
 import { highlightText } from "./helpers";

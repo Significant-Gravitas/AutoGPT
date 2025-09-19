@@ -14,7 +14,7 @@ import { ScheduleListItem } from "./components/ScheduleListItem";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { InfiniteList } from "@/components/molecules/InfiniteList/InfiniteList";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 
 interface RunsSidebarProps {
   agent: LibraryAgent;

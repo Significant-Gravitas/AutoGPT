@@ -5,7 +5,7 @@ import React from "react";
 import "./globals.css";
 
 import { Providers } from "@/app/providers";
-import TallyPopupSimple from "@/components/TallyPopup";
+import TallyPopupSimple from "@/components/molecules/TallyPoup/TallyPopup";
 import { GoogleAnalytics } from "@/services/analytics/google-analytics";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";

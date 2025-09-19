@@ -8,8 +8,8 @@ import {
   TableHeader,
   TableHead,
   TableBody,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+} from "@/components/__legacy__/ui/table";
+import { Badge } from "@/components/__legacy__/ui/badge";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import {

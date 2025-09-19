@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Input } from "@/components/atoms/Input/Input";
 import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { Form, FormField } from "@/components/ui/form";
+import { Form, FormField } from "@/components/__legacy__/ui/form";
 import useCredentials from "@/hooks/useCredentials";
 import {
   BlockIOCredentialsSubSchema,

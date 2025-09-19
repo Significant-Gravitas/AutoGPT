@@ -4,7 +4,12 @@ import {
   GraphExecutionMeta,
   LibraryAgent,
 } from "@/lib/autogpt-server-api";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/__legacy__/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,8 +18,8 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Button, buttonVariants } from "@/components/ui/button";
+} from "@/components/__legacy__/ui/dropdown-menu";
+import { Button, buttonVariants } from "@/components/__legacy__/ui/button";
 import {
   ClockIcon,
   ExitIcon,
@@ -31,11 +36,11 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from "@/components/ui/dialog";
+} from "@/components/__legacy__/ui/dialog";
 import useAgentGraph from "@/hooks/useAgentGraph";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { RunnerInputDialog } from "@/components/runner-ui/RunnerInputUI";
 import { FlowRunsStatus } from "./FlowRunsStatus";
+import { RunnerInputDialog } from "../../build/components/legacy-builder/RunnerInputUI";
 
 export const FlowInfo: React.FC<
   React.HTMLAttributes<HTMLDivElement> & {

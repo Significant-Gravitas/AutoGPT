@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Image from "next/image";
-import { IconCross, IconPlus } from "../../../../../ui/icons";
+import { IconCross, IconPlus } from "../../../../../__legacy__/ui/icons";
 import { Button } from "@/components/atoms/Button/Button";
 import { MagicWand } from "@phosphor-icons/react";
 import { useThumbnailImages } from "./useThumbnailImages";
