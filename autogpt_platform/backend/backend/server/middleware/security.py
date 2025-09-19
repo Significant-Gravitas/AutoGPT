@@ -4,6 +4,9 @@ from typing import Set
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -73,7 +76,22 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return False
 
     async def dispatch(self, request: Request, call_next):
-        response: Response = await call_next(request)
+        try:
+            response: Response = await call_next(request)
+        except* Exception as eg:
+            # Flatten ExceptionGroup from Starlette/AnyIO so our exception handlers can process a single exception
+            try:
+                exceptions = eg.exceptions  # type: ignore[attr-defined]
+            except Exception:
+                exceptions = [eg]  # fallback
+            for exc in exceptions:
+                logger.exception("Unhandled exception during request processing", exc_info=exc)
+            # Re-raise the first underlying exception so FastAPI's exception handlers can catch it
+            raise exceptions[0]
+        except Exception as e:
+            # Ensure any unexpected exception is raised as a single exception (not a group)
+            logger.exception("Unhandled exception during request processing", exc_info=e)
+            raise
 
         # Add general security headers
         response.headers["X-Content-Type-Options"] = "nosniff"
