@@ -27,7 +27,7 @@ from backend.util.prompt import compress_prompt, estimate_token_count
 from backend.util.text import TextFormatter
 
 logger = TruncatedLogger(logging.getLogger(__name__), "[LLM-Block]")
-fmt = TextFormatter()
+fmt = TextFormatter(autoescape=False)
 
 LLMProviderName = Literal[
     ProviderName.AIML_API,
