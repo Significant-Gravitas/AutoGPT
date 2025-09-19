@@ -3,7 +3,7 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { BehaveAs, getBehaveAs } from "@/lib/utils";
 import { LoginProvider, signupFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
@@ -17,6 +17,7 @@ export function useSignupPage() {
   const [captchaKey, setCaptchaKey] = useState(0);
   const { toast } = useToast();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
@@ -46,8 +47,22 @@ export function useSignupPage() {
   });
 
   useEffect(() => {
-    if (user) router.push("/");
-  }, [user]);
+    if (user) {
+      // Check for return URL from query params
+      const returnUrl = searchParams.get("returnUrl");
+      if (returnUrl) {
+        router.push(decodeURIComponent(returnUrl));
+      } else {
+        // Check for pending chat session
+        const pendingSession = localStorage.getItem("pending_chat_session");
+        if (pendingSession) {
+          router.push("/marketplace/discover");
+        } else {
+          router.push("/");
+        }
+      }
+    }
+  }, [user, searchParams, router]);
 
   async function handleProviderSignup(provider: LoginProvider) {
     setIsGoogleLoading(true);
@@ -62,7 +77,11 @@ export function useSignupPage() {
       return;
     }
 
-    const error = await providerLogin(provider);
+    const returnUrl = searchParams.get("returnUrl") || undefined;
+    const error = await providerLogin(
+      provider,
+      returnUrl ? decodeURIComponent(returnUrl) : undefined,
+    );
     if (error) {
       setIsGoogleLoading(false);
       resetCaptcha();
@@ -100,7 +119,12 @@ export function useSignupPage() {
       return;
     }
 
-    const error = await signup(data, turnstile.token as string);
+    const returnUrl = searchParams.get("returnUrl") || undefined;
+    const error = await signup(
+      data,
+      turnstile.token as string,
+      returnUrl ? decodeURIComponent(returnUrl) : undefined,
+    );
     setIsLoading(false);
     if (error) {
       if (error === "user_already_exists") {

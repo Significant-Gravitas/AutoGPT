@@ -154,15 +154,26 @@ async def get_agents(
         )
 
     try:
-        agents = await backend.server.v2.store.db.get_store_agents(
-            featured=featured,
-            creators=[creator] if creator else None,
-            sorted_by=sorted_by,
-            search_query=search_query,
-            category=category,
-            page=page,
-            page_size=page_size,
-        )
+        # Use vector similarity search if we have a search query, otherwise use traditional search
+        if search_query and search_query.strip():
+            agents = await backend.server.v2.store.db.search_agents(
+                search_query=search_query,
+                featured=featured,
+                creators=[creator] if creator else None,
+                category=category,
+                page=page,
+                page_size=page_size,
+            )
+        else:
+            agents = await backend.server.v2.store.db.get_store_agents(
+                featured=featured,
+                creators=[creator] if creator else None,
+                sorted_by=sorted_by,
+                search_query=search_query,
+                category=category,
+                page=page,
+                page_size=page_size,
+            )
         return agents
     except Exception as e:
         logger.exception("Failed to retrieve store agents: %s", e)
