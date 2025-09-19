@@ -1,6 +1,6 @@
 import React, { FC, useEffect, useState } from "react";
-import { Button } from "../../../../../components/ui/button";
-import { Textarea } from "../../../../../components/ui/textarea";
+import { Button } from "../../../../../components/__legacy__/ui/button";
+import { Textarea } from "../../../../../components/__legacy__/ui/textarea";
 import { Maximize2, Minimize2, Clipboard } from "lucide-react";
 import { createPortal } from "react-dom";
 import { toast } from "../../../../../components/molecules/Toast/use-toast";

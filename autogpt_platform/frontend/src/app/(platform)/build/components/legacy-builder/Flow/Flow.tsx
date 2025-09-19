@@ -51,8 +51,12 @@ import {
 import { SaveControl } from "@/app/(platform)/build/components/legacy-builder/SaveControl";
 import { BlocksControl } from "@/app/(platform)/build/components/legacy-builder/BlocksControl";
 import { GraphSearchControl } from "@/app/(platform)/build/components/legacy-builder/GraphSearchControl";
-import { IconUndo2, IconRedo2 } from "@/components/ui/icons";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { IconUndo2, IconRedo2 } from "@/components/__legacy__/ui/icons";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/molecules/Alert/Alert";
 import { startTutorial } from "../tutorial";
 import useAgentGraph from "@/hooks/useAgentGraph";
 import { v4 as uuidv4 } from "uuid";

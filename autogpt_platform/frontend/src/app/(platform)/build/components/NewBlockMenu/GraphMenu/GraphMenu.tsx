@@ -3,7 +3,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover";
+} from "@/components/__legacy__/ui/popover";
 import { MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { GraphSearchContent } from "../GraphMenuContent/GraphContent";
 import { ControlPanelButton } from "../ControlPanelButton";

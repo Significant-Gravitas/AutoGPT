@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { Input } from "@/components/__legacy__/ui/input";
+import { Button } from "@/components/__legacy__/ui/button";
 import { Search } from "lucide-react";
 import { CreditTransactionType } from "@/lib/autogpt-server-api";
 import {
@@ -12,7 +12,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@/components/__legacy__/ui/select";
 
 export function SearchAndFilterAdminSpending({
   initialSearch,
