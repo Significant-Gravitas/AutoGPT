@@ -80,6 +80,11 @@ class NotionReadDatabaseBlock(Block):
                     [{"Name": "Test Entry", "Status": "Active", "_id": "test-123"}],
                 ),
                 ("entry_ids", ["test-123"]),
+                (
+                    "entry",
+                    {"Name": "Test Entry", "Status": "Active", "_id": "test-123"},
+                ),
+                ("entry_id", "test-123"),
                 ("count", 1),
                 ("database_title", "Test Database"),
             ],

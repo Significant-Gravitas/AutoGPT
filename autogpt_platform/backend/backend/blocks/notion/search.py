@@ -88,6 +88,15 @@ class NotionSearchBlock(Block):
                     ],
                 ),
                 ("result_ids", ["123"]),
+                (
+                    "result",
+                    NotionSearchResult(
+                        id="123",
+                        type="page",
+                        title="Project Plan",
+                        url="https://notion.so/Project-Plan-123",
+                    ),
+                ),
                 ("count", 1),
             ],
             test_credentials=TEST_CREDENTIALS,
