@@ -1,4 +1,4 @@
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import type { Meta, StoryObj } from "@storybook/nextjs";
 
 const meta: Meta<typeof Skeleton> = {

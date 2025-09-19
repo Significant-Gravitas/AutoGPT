@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -13,8 +15,8 @@ class RateLimitSettings(BaseSettings):
         default="6379", description="Redis port", validation_alias="REDIS_PORT"
     )
 
-    redis_password: str = Field(
-        default="password",
+    redis_password: Optional[str] = Field(
+        default=None,
         description="Redis password",
         validation_alias="REDIS_PASSWORD",
     )

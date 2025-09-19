@@ -298,6 +298,7 @@ export type GraphMeta = {
   is_active: boolean;
   name: string;
   description: string;
+  instructions?: string | null;
   recommended_schedule_cron: string | null;
   forked_from_id?: GraphID | null;
   forked_from_version?: number | null;
@@ -348,6 +349,7 @@ export type GraphTriggerInfo = {
 
 /* Mirror of backend/data/graph.py:Graph */
 export type Graph = GraphMeta & {
+  created_at: Date;
   nodes: Node[];
   links: Link[];
   sub_graphs: Omit<Graph, "sub_graphs">[]; // Flattened sub-graphs
@@ -357,6 +359,7 @@ export type GraphUpdateable = Omit<
   Graph,
   | "user_id"
   | "version"
+  | "created_at"
   | "is_active"
   | "nodes"
   | "links"
@@ -426,11 +429,13 @@ export type LibraryAgent = {
   updated_at: Date;
   name: string;
   description: string;
+  instructions?: string | null;
   input_schema: GraphIOSchema;
   output_schema: GraphIOSchema;
   credentials_input_schema: CredentialsInputSchema;
   new_output: boolean;
   can_access_graph: boolean;
+  is_favorite: boolean;
   is_latest_version: boolean;
   recommended_schedule_cron: string | null;
 } & (
@@ -460,6 +465,7 @@ export type LibraryAgentResponse = {
 
 export type LibraryAgentPreset = {
   id: LibraryAgentPresetID;
+  created_at: Date;
   updated_at: Date;
   graph_id: GraphID;
   graph_version: number;
@@ -488,7 +494,7 @@ export type LibraryAgentPresetResponse = {
 
 export type LibraryAgentPresetCreatable = Omit<
   LibraryAgentPreset,
-  "id" | "updated_at" | "is_active"
+  "id" | "created_at" | "updated_at" | "is_active"
 > & {
   is_active?: boolean;
 };
@@ -742,6 +748,7 @@ export type StoreSubmission = {
   name: string;
   sub_heading: string;
   description: string;
+  instructions?: string;
   image_urls: string[];
   date_submitted: string;
   status: SubmissionStatus;
@@ -773,6 +780,7 @@ export type StoreSubmissionRequest = {
   video_url?: string;
   image_urls: string[];
   description: string;
+  instructions?: string | null;
   categories: string[];
   changes_summary?: string;
   recommended_schedule_cron?: string | null;

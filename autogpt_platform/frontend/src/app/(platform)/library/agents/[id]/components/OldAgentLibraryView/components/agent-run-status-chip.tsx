@@ -1,6 +1,6 @@
 import React from "react";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/__legacy__/ui/badge";
 
 import { GraphExecutionMeta } from "@/lib/autogpt-server-api/types";
 

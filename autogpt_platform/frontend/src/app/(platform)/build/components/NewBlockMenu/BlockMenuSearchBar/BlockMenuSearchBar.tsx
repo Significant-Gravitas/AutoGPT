@@ -1,8 +1,8 @@
 import { cn } from "@/lib/utils";
 import React from "react";
-import { Input } from "@/components/ui/input";
+import { Input } from "@/components/__legacy__/ui/input";
 import { useBlockMenuSearchBar } from "./useBlockMenuSearchBar";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/__legacy__/ui/button";
 import { MagnifyingGlassIcon, XIcon } from "@phosphor-icons/react";
 
 interface BlockMenuSearchBarProps {

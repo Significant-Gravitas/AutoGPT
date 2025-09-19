@@ -41,6 +41,13 @@ export const publishAgentSchema = z.object({
     .min(1, "Description is required")
     .max(1000, "Description must be less than 1000 characters"),
   recommendedScheduleCron: z.string().optional(),
+  instructions: z
+    .string()
+    .optional()
+    .refine(
+      (val) => !val || val.length <= 2000,
+      "Instructions must be less than 2000 characters",
+    ),
 });
 
 export type PublishAgentFormData = z.infer<typeof publishAgentSchema>;
@@ -56,4 +63,5 @@ export interface PublishAgentInfoInitialData {
   description: string;
   additionalImages?: string[];
   recommendedScheduleCron?: string;
+  instructions?: string;
 }
