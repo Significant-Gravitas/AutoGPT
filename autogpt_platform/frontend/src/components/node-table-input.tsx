@@ -12,12 +12,19 @@ import { Input } from "./atoms/Input/Input";
 import { Button } from "./atoms/Button/Button";
 
 interface NodeTableInputProps {
+  /** Unique identifier for the node in the builder graph */
   nodeId: string;
+  /** Key identifier for this specific input field within the node */
   selfKey: string;
+  /** Schema definition for the table structure */
   schema: BlockIOTableSubSchema;
+  /** Column headers for the table */
   headers: string[];
+  /** Initial row data for the table */
   rows?: TableRow[];
+  /** Validation errors mapped by field key */
   errors: { [key: string]: string | undefined };
+  /** Graph connections between nodes in the builder */
   connections: {
     edge_id: string;
     source: string;
@@ -25,12 +32,43 @@ interface NodeTableInputProps {
     target: string;
     targetHandle: string;
   }[];
+  /** Callback when table data changes */
   handleInputChange: (key: string, value: TableRow[]) => void;
+  /** Callback when input field is clicked (for builder selection) */
   handleInputClick: (key: string) => void;
+  /** Additional CSS classes */
   className?: string;
+  /** Display name for the input field */
   displayName?: string;
 }
 
+/**
+ * Table input component for the workflow builder interface.
+ *
+ * This component is specifically designed for use in the agent builder where users
+ * design workflows with connected nodes. It includes graph connection capabilities
+ * via NodeHandle and is tightly integrated with the builder's state management.
+ *
+ * @warning Do NOT use this component in runtime/execution contexts (like RunAgentInputs).
+ * For runtime table inputs, use a simpler implementation without builder-specific features.
+ *
+ * @example
+ * ```tsx
+ * <NodeTableInput
+ *   nodeId="node-123"
+ *   selfKey="table_data"
+ *   schema={tableSchema}
+ *   headers={["Name", "Value"]}
+ *   rows={existingData}
+ *   connections={graphConnections}
+ *   handleInputChange={handleChange}
+ *   handleInputClick={handleClick}
+ *   errors={{}}
+ * />
+ * ```
+ *
+ * @see Used exclusively in: `/app/(platform)/build/components/legacy-builder/NodeInputs.tsx`
+ */
 export const NodeTableInput: FC<NodeTableInputProps> = ({
   nodeId,
   selfKey,
