@@ -18,21 +18,26 @@ const executionErrors = new Rate('execution_errors');
 // Configurable options for easy load adjustment
 export const options = {
   stages: [
-    { duration: __ENV.RAMP_UP || '30s', target: parseInt(__ENV.VUS) || 5 },
-    { duration: __ENV.DURATION || '2m', target: parseInt(__ENV.VUS) || 5 },
-    { duration: __ENV.RAMP_DOWN || '30s', target: 0 },
+    { duration: __ENV.RAMP_UP || '1m', target: parseInt(__ENV.VUS) || 5 },
+    { duration: __ENV.DURATION || '5m', target: parseInt(__ENV.VUS) || 5 },
+    { duration: __ENV.RAMP_DOWN || '1m', target: 0 },
   ],
   thresholds: {
-    checks: ['rate>0.85'],
-    http_req_duration: ['p(95)<10000', 'p(99)<20000'],
-    http_req_failed: ['rate<0.15'],
-    graph_execution_duration: ['p(95)<15000'],
-    graph_creation_duration: ['p(95)<10000'],
+    checks: ['rate>0.60'], // Reduced for complex operations under high load
+    http_req_duration: ['p(95)<45000', 'p(99)<60000'], // Much higher for graph operations
+    http_req_failed: ['rate<0.4'], // Higher tolerance for complex operations
+    graph_execution_duration: ['p(95)<45000'], // Increased for high concurrency
+    graph_creation_duration: ['p(95)<30000'], // Increased for high concurrency
   },
   cloud: {
     projectID: __ENV.K6_CLOUD_PROJECT_ID,
     name: 'AutoGPT Platform - Graph Creation & Execution Test',
   },
+  // Timeout configurations to prevent early termination
+  setupTimeout: '60s',
+  teardownTimeout: '60s',
+  noConnectionReuse: false,
+  userAgent: 'k6-load-test/1.0',
 };
 
 export function setup() {

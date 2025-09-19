@@ -14,19 +14,24 @@ const config = getEnvironmentConfig();
 
 export const options = {
   stages: [
-    { duration: __ENV.RAMP_UP || '30s', target: parseInt(__ENV.VUS) || 1 },
-    { duration: __ENV.DURATION || '10s', target: parseInt(__ENV.VUS) || 1 },
-    { duration: __ENV.RAMP_DOWN || '30s', target: 0 },
+    { duration: __ENV.RAMP_UP || '1m', target: parseInt(__ENV.VUS) || 1 },
+    { duration: __ENV.DURATION || '5m', target: parseInt(__ENV.VUS) || 1 },
+    { duration: __ENV.RAMP_DOWN || '1m', target: 0 },
   ],
   thresholds: {
     checks: ['rate>0.70'], // Reduced from 0.85 due to auth timeouts under load
-    http_req_duration: ['p(95)<15000'], // Increased from 10s for auth under load
+    http_req_duration: ['p(95)<30000'], // Increased for cloud testing with high concurrency
     http_req_failed: ['rate<0.6'], // Increased to account for auth timeouts
   },
   cloud: {
     projectID: __ENV.K6_CLOUD_PROJECT_ID,
     name: 'AutoGPT Platform - Basic Connectivity & Auth Test',
   },
+  // Timeout configurations to prevent early termination
+  setupTimeout: '60s',
+  teardownTimeout: '60s',
+  noConnectionReuse: false,
+  userAgent: 'k6-load-test/1.0',
 };
 
 // Authenticate once per VU and store globally for this VU

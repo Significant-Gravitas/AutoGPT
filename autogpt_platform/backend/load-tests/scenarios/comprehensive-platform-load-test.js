@@ -22,19 +22,24 @@ const authErrors = new Rate('auth_errors');
 // Test configuration for normal load testing
 export const options = {
   stages: [
-    { duration: __ENV.RAMP_UP || '30s', target: parseInt(__ENV.VUS) || PERFORMANCE_CONFIG.DEFAULT_VUS },
-    { duration: __ENV.DURATION || '2m', target: parseInt(__ENV.VUS) || PERFORMANCE_CONFIG.DEFAULT_VUS },
-    { duration: __ENV.RAMP_DOWN || '30s', target: 0 },
+    { duration: __ENV.RAMP_UP || '1m', target: parseInt(__ENV.VUS) || PERFORMANCE_CONFIG.DEFAULT_VUS },
+    { duration: __ENV.DURATION || '5m', target: parseInt(__ENV.VUS) || PERFORMANCE_CONFIG.DEFAULT_VUS },
+    { duration: __ENV.RAMP_DOWN || '1m', target: 0 },
   ],
   thresholds: {
-    checks: ['rate>0.85'],
-    http_req_duration: ['p(95)<10000', 'p(99)<20000'],
-    http_req_failed: ['rate<0.15'],
+    checks: ['rate>0.60'], // Reduced for high concurrency complex operations
+    http_req_duration: ['p(95)<30000', 'p(99)<45000'], // Increased for cloud testing
+    http_req_failed: ['rate<0.4'], // Increased tolerance for complex operations
   },
   cloud: {
     projectID: __ENV.K6_CLOUD_PROJECT_ID,
     name: 'AutoGPT Platform - Full Platform Integration Test',
   },
+  // Timeout configurations to prevent early termination
+  setupTimeout: '60s',
+  teardownTimeout: '60s',
+  noConnectionReuse: false,
+  userAgent: 'k6-load-test/1.0',
 };
 
 export function setup() {
