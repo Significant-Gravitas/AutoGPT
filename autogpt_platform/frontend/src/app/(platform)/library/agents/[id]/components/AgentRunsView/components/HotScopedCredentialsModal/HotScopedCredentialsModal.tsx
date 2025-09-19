@@ -43,7 +43,7 @@ export function HostScopedCredentialsModal({
   const formSchema = z.object({
     host: z.string().min(1, "Host is required"),
     title: z.string().optional(),
-    headers: z.record(z.string()).optional(),
+    headers: z.record(z.string(), z.string()).optional(),
   });
 
   const form = useForm<z.infer<typeof formSchema>>({
