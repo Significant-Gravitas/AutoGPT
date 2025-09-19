@@ -1,4 +1,4 @@
-import { Separator } from "@/components/ui/separator";
+import { Separator } from "@/components/__legacy__/ui/separator";
 import { cn } from "@/lib/utils";
 import React, { useMemo } from "react";
 import { BlockMenu } from "../BlockMenu/BlockMenu";

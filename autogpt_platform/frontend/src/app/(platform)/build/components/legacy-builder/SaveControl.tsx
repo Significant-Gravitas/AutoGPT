@@ -3,13 +3,13 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+} from "@/components/__legacy__/ui/popover";
+import { Card, CardContent, CardFooter } from "@/components/__legacy__/ui/card";
+import { Input } from "@/components/__legacy__/ui/input";
+import { Button } from "@/components/__legacy__/ui/button";
 import { GraphMeta } from "@/lib/autogpt-server-api";
-import { Label } from "@/components/ui/label";
-import { IconSave } from "@/components/ui/icons";
+import { Label } from "@/components/__legacy__/ui/label";
+import { IconSave } from "@/components/__legacy__/ui/icons";
 import {
   Tooltip,
   TooltipContent,

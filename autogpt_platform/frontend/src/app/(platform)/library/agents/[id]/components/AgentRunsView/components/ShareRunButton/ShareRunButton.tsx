@@ -3,7 +3,7 @@
 import React from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import {
   ShareFatIcon,
   CopyIcon,

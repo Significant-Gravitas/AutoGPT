@@ -1,7 +1,7 @@
 "use client";
 
-import { StarRatingIcons } from "@/components/ui/icons";
-import { Separator } from "@/components/ui/separator";
+import { StarRatingIcons } from "@/components/__legacy__/ui/icons";
+import { Separator } from "@/components/__legacy__/ui/separator";
 import Link from "next/link";
 import { User } from "@supabase/supabase-js";
 import { cn } from "@/lib/utils";

@@ -1,4 +1,4 @@
-import { getIconForSocial } from "@/components/ui/icons";
+import { getIconForSocial } from "@/components/__legacy__/ui/icons";
 import { Fragment } from "react";
 
 interface CreatorLinksProps {

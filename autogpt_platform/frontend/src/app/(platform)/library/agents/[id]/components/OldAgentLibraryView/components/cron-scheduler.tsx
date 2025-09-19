@@ -5,10 +5,10 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+} from "@/components/__legacy__/ui/select";
+import { Label } from "@/components/__legacy__/ui/label";
+import { Input } from "@/components/__legacy__/ui/input";
+import { Button } from "@/components/__legacy__/ui/button";
 import { CronFrequency, makeCronExpression } from "@/lib/cron-expression-utils";
 
 const weekDays = [

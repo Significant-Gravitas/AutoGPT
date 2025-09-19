@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import SmartImage from "@/components/agptui/SmartImage";
+import SmartImage from "@/components/__legacy__/SmartImage";
 
 type OnboardingGridElementProps = {
   name: string;

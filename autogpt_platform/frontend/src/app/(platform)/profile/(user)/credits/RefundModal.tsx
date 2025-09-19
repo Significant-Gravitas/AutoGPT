@@ -8,16 +8,16 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+} from "@/components/__legacy__/ui/dialog";
+import { Button } from "@/components/__legacy__/ui/button";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+} from "@/components/__legacy__/ui/select";
+import { Textarea } from "@/components/__legacy__/ui/textarea";
 
 interface RefundModalProps {
   isOpen: boolean;
