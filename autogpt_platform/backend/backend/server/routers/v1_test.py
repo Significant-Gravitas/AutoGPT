@@ -147,6 +147,15 @@ def test_execute_graph_block(
         return_value=mock_block,
     )
 
+    # Mock user for user_context
+    mock_user = Mock()
+    mock_user.timezone = "UTC"
+
+    mocker.patch(
+        "backend.server.routers.v1.get_user_by_id",
+        return_value=mock_user,
+    )
+
     request_data = {
         "input_name": "test_input",
         "input_value": "test_value",
