@@ -2,6 +2,7 @@ import json
 from typing import Any, Type, TypeGuard, TypeVar, overload
 
 import jsonschema
+import regex
 from fastapi.encoders import jsonable_encoder
 from prisma import Json
 from pydantic import BaseModel
@@ -112,3 +113,103 @@ def SafeJson(data: Any) -> Json:
     # Round-trip through JSON to ensure proper serialization with fallback for non-serializable values
     json_string = dumps(data, default=lambda v: None)
     return Json(json.loads(json_string))
+
+
+# ================ PARSING ================ #
+
+
+JSON_REGEX = regex.compile(
+    r"""
+    (?P<value>
+        (?P<object> \{\s*
+            (?:
+                (?P<member>(?&string) \s*:\s* (?&value))
+                ( \s*,\s* (?&member) )*
+            )?
+        \s*\})
+        | (?P<array> \[\s*
+            (
+                (?&value)
+                ( \s*,\s* (?&value) )*
+            )?
+        \s*\])
+        | (?P<string>   " [^"\\]* (?: \\. | [^"\\]* )* ")
+        | (?P<number>   (?P<integer> -? (?: 0 | [1-9][0-9]* ))
+                        (?: \. [0-9]* )?
+                        (?: [eE] [-+]? [0-9]+ )?
+        )
+        | true
+        | false
+        | null
+    )
+    """,
+    flags=regex.VERBOSE | regex.UNICODE,
+)
+
+JSON_OBJECT_REGEX = regex.compile(
+    r"""
+    (?P<object> \{\s*
+        (?:
+            (?P<member>(?&string) \s*:\s*
+                (?P<value>
+                    (?&object)
+                    | (?P<array>    \[\s* ((?&value) (\s*,\s* (?&value))*)? \s*\])
+                    | (?P<string>   " [^"\\]* (?: \\. | [^"\\]* )* ")
+                    | (?P<number>   (?P<integer> -? (?: 0 | [1-9][0-9]* ))
+                                    (?: \. [0-9]* )?
+                                    (?: [eE] [-+]? [0-9]+ )?
+                    )
+                    | true
+                    | false
+                    | null
+                )
+            )
+            ( \s*,\s* (?&member) )*
+        )?
+    \s*\})
+    """,
+    flags=regex.VERBOSE | regex.UNICODE,
+)
+
+
+JSON_ARRAY_REGEX = regex.compile(
+    r"""
+    (?P<array> \[\s*
+        (
+            (?P<value>
+                (?P<object> \{\s*
+                    (?:
+                        (?P<member>(?&string) \s*:\s* (?&value))
+                        ( \s*,\s* (?&member) )*
+                    )?
+                \s*\})
+                | (?&array)
+                | (?P<string>   " [^"\\]* (?: \\. | [^"\\]* )* ")
+                | (?P<number>   (?P<integer> -? (?: 0 | [1-9][0-9]* ))
+                                (?: \. [0-9]* )?
+                                (?: [eE] [-+]? [0-9]+ )?
+                )
+                | true
+                | false
+                | null
+            )
+            ( \s*,\s* (?&value) )*
+        )?
+    \s*\])
+    """,
+    flags=regex.VERBOSE | regex.UNICODE,
+)
+
+
+def find_objects_in_text(text: str) -> list[str]:
+    """Find all JSON objects in a text string."""
+    json_matches = JSON_OBJECT_REGEX.findall(text)
+
+    return [match[0] for match in json_matches]
+
+
+def find_arrays_in_text(text: str) -> list[str]:
+    """Find all JSON arrays in a text string."""
+    json_matches = JSON_ARRAY_REGEX.findall(text)
+
+    return [match[0] for match in json_matches]

@@ -908,27 +908,23 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         if input_data.sys_prompt:
             prompt.append({"role": "system", "content": input_data.sys_prompt})
 
+        expected_json_type = "object" if not input_data.list_result else "array"
         if input_data.expected_format:
-            expected_format = [
-                f"{json.dumps(k)}: {json.dumps(v)}"
-                for k, v in input_data.expected_format.items()
-            ]
-            if input_data.list_result:
-                format_prompt = (
-                    f'"results": [\n  {{\n  {", ".join(expected_format)}\n  }}\n]'
-                )
-            else:
-                format_prompt = ",\n|  ".join(expected_format)
+            expected_format = json.dumps(input_data.expected_format, indent=2)
+
+            if expected_json_type == "array":
+                indented_obj_format = expected_format.replace("\n", "\n  ")
+                expected_format = f"[\n  {indented_obj_format},\n  ...\n]"
+
+            # Preserve indentation in prompt
+            expected_format = expected_format.replace("\n", "\n|")
 
             sys_prompt = trim_prompt(
                 f"""
-                |Reply with pure JSON strictly following this JSON format:
-                |{{
-                |  {format_prompt}
-                |}}
+                |You MUST respond with a valid JSON {expected_json_type} strictly following this format:
+                |{expected_format}
                 |
-                |Ensure the response is valid JSON. DO NOT include any additional text (e.g. markdown code block fences) outside of the JSON.
-                |If you cannot provide all the keys, provide an empty string for the values you cannot answer.
+                |If you cannot provide all the keys, you MUST provide an empty string for the values you cannot answer.
                 """
             )
             prompt.append({"role": "system", "content": sys_prompt})
@@ -973,30 +969,35 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
 
                 if input_data.expected_format:
                     try:
-                        response_obj = json.loads(response_text)
-                    except JSONDecodeError as json_error:
+                        json_strings = (
+                            json.find_objects_in_text(response_text)
+                            if expected_json_type == "object"
+                            else json.find_arrays_in_text(response_text)
+                        )
+                        if not json_strings:
+                            raise ValueError(
+                                f"No JSON {expected_json_type} found in the response."
+                            )
+
+                        # Try to parse last JSON object/array in the response
+                        response_obj = json.loads(json_strings.pop())
+                    except (ValueError, JSONDecodeError) as parse_error:
                         prompt.append({"role": "assistant", "content": response_text})
 
-                        indented_json_error = str(json_error).replace("\n", "\n|")
+                        indented_parse_error = str(parse_error).replace("\n", "\n|")
                         error_feedback_message = trim_prompt(
                             f"""
-                            |Your previous response could not be parsed as valid JSON:
+                            |Your previous response did not contain a parseable JSON {expected_json_type}:
                             |
-                            |{indented_json_error}
+                            |{indented_parse_error}
                             |
-                            |Please provide a valid JSON response that matches the expected format.
+                            |Please provide a valid JSON {expected_json_type} in your response that matches the expected format.
                         """
                         )
                         prompt.append(
                             {"role": "user", "content": error_feedback_message}
                         )
                         continue
-
-                    if input_data.list_result and isinstance(response_obj, dict):
-                        if "results" in response_obj:
-                            response_obj = response_obj.get("results", [])
-                        elif len(response_obj) == 1:
-                            response_obj = list(response_obj.values())
 
                     validation_errors = "\n".join(
                         [
