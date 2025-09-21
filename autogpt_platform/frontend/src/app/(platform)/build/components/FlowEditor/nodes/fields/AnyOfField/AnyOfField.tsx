@@ -115,11 +115,10 @@ export const AnyOfField = ({
 
   if (isNullableType && nonNull) {
     return (
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col">
         <div className="flex items-center justify-between gap-2">
           <div className="-ml-2 flex items-center gap-1">
             <NodeHandle id={fieldKey} isConnected={isConnected} side="left" />
-
             <Text variant="body">
               {name.charAt(0).toUpperCase() + name.slice(1)}
             </Text>
@@ -129,6 +128,7 @@ export const AnyOfField = ({
           </div>
           {!isConnected && (
             <Switch
+              className="z-10"
               checked={isEnabled}
               onCheckedChange={handleNullableToggle}
             />
@@ -141,7 +141,7 @@ export const AnyOfField = ({
 
   return (
     <div className="flex flex-col">
-      <div className="-mb-2 -ml-2 flex items-center gap-1">
+      <div className="-mb-3 -ml-2 flex items-center gap-1">
         <NodeHandle id={fieldKey} isConnected={isConnected} side="left" />
         <Text variant="body">
           {name.charAt(0).toUpperCase() + name.slice(1)}
