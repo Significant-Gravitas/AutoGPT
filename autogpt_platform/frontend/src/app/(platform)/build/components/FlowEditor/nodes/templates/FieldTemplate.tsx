@@ -48,7 +48,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
   const isOneOf = Array.isArray((schema as any)?.oneOf);
   const suppressHandle = isAnyOf || isOneOf;
 
-  if (!showAdvanced && schema.advanced === true) {
+  if (!showAdvanced && schema.advanced === true && !isConnected) {
     return null;
   }
 
