@@ -4,8 +4,7 @@ import { FieldProps, RJSFSchema } from "@rjsf/utils";
 import { Text } from "@/components/atoms/Text/Text";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { Select } from "@/components/atoms/Select/Select";
-import { InputType } from "../../InputRenderer";
-import { mapJsonSchemaTypeToInputType } from "../../helpers";
+import { InputType, mapJsonSchemaTypeToInputType } from "../../helpers";
 import {
   Tooltip,
   TooltipContent,

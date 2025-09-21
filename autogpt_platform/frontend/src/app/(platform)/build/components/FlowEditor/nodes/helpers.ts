@@ -1,5 +1,22 @@
 import { RJSFSchema } from "@rjsf/utils";
-import { InputType } from "./InputRenderer";
+
+export enum InputType {
+  SINGLE_LINE_TEXT = "single-line-text",
+  TEXT_AREA = "text-area",
+  PASSWORD = "password",
+  FILE = "file",
+  DATE = "date",
+  TIME = "time",
+  DATE_TIME = "datetime",
+  NUMBER = "number",
+  INTEGER = "integer",
+  SWITCH = "switch",
+  ARRAY_EDITOR = "array-editor",
+  SELECT = "select",
+  MULTI_SELECT = "multi-select",
+  OBJECT_EDITOR = "object-editor",
+  ENUM = "enum",
+}
 
 // This helper function maps a JSONSchema type to an InputType
 export function mapJsonSchemaTypeToInputType(

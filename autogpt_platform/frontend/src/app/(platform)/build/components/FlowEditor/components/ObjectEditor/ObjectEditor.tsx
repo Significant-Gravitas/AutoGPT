@@ -10,6 +10,7 @@ import { useEdgeStore } from "../../../store/edgeStore";
 import { generateHandleId, HandleIdType } from "../../handlers/helpers";
 
 export interface ObjectEditorProps {
+  id: string;
   value?: Record<string, any>;
   onChange?: (value: Record<string, any>) => void;
   placeholder?: string;
@@ -22,6 +23,7 @@ export interface ObjectEditorProps {
 export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
   (
     {
+      id,
       value = {},
       onChange,
       placeholder = "Enter value",
@@ -71,7 +73,11 @@ export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
     const { isInputConnected } = useEdgeStore();
 
     return (
-      <div ref={ref} className={`flex flex-col gap-2 ${className || ""}`}>
+      <div
+        ref={ref}
+        className={`flex flex-col gap-2 ${className || ""}`}
+        id={id}
+      >
         {Object.entries(value).map(([key, propertyValue], idx) => {
           const dynamicHandleId = generateHandleId(
             fieldKey,

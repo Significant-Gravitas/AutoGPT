@@ -1,9 +1,8 @@
 import React from "react";
 import { FieldProps } from "@rjsf/utils";
 import { getDefaultRegistry } from "@rjsf/core";
-import { InputRenderer, InputType } from "../InputRenderer";
 import { generateHandleId } from "../../handlers/helpers";
-import { mapJsonSchemaTypeToInputType } from "../helpers";
+import { ObjectEditor } from "../../components/ObjectEditor/ObjectEditor";
 
 export const ObjectField = (props: FieldProps) => {
   const {
@@ -28,12 +27,10 @@ export const ObjectField = (props: FieldProps) => {
 
   const fieldKey = generateHandleId(idSchema.$id ?? "");
   const { nodeId } = formContext;
-  const type = mapJsonSchemaTypeToInputType(schema);
 
   return (
-    <InputRenderer
+    <ObjectEditor
       id={`${name}-input`}
-      type={type}
       nodeId={nodeId}
       fieldKey={fieldKey}
       value={formData}

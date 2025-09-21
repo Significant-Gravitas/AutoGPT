@@ -1,20 +1,22 @@
 import { WidgetProps } from "@rjsf/utils";
-import { InputRenderer, InputType } from "../InputRenderer";
+import { DateTimeInput } from "@/components/atoms/DateTimeInput/DateTimeInput";
 
 export const DateTimeInputWidget = (props: WidgetProps) => {
-  const { value, onChange, disabled, readonly, placeholder, autofocus } = props;
+  const { value, onChange, disabled, readonly, placeholder, autofocus, id } =
+    props;
 
   return (
-    <InputRenderer
+    <DateTimeInput
+      size="small"
+      id={id}
+      hideLabel={true}
+      label={""}
       value={value}
       onChange={onChange}
-      type={InputType.DATE_TIME}
-      id={props.id}
-      placeholder={placeholder || ""}
-      required={props.required}
+      placeholder={placeholder}
       disabled={disabled}
       readonly={readonly}
-      autofocus={autofocus}
+      autoFocus={autofocus}
     />
   );
 };

@@ -1,22 +1,15 @@
 import { WidgetProps } from "@rjsf/utils";
-import { InputRenderer, InputType } from "../InputRenderer";
-import { mapJsonSchemaTypeToInputType } from "../helpers";
+import { Switch } from "@/components/atoms/Switch/Switch";
 
 export function SwitchWidget(props: WidgetProps) {
-  const { value = false, onChange, disabled, readonly, autofocus } = props;
-
-  const type = mapJsonSchemaTypeToInputType(props.schema);
+  const { value = false, onChange, disabled, readonly, autofocus, id } = props;
   return (
-    <InputRenderer
-      type={type}
-      onChange={onChange}
-      value={value}
-      id={props.id}
-      placeholder={props.placeholder || ""}
-      required={props.required}
-      disabled={disabled}
-      readonly={readonly}
-      autofocus={autofocus}
+    <Switch
+      id={id}
+      checked={Boolean(value)}
+      onCheckedChange={(checked) => onChange(checked)}
+      disabled={disabled || readonly}
+      autoFocus={autofocus}
     />
   );
 }

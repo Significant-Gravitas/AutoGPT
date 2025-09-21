@@ -1,10 +1,10 @@
 import { WidgetProps } from "@rjsf/utils";
-import { InputRenderer, InputType } from "../InputRenderer";
+import { Input } from "@/components/ui/input";
 
 export const FileWidget = (props: WidgetProps) => {
-  const { onChange, multiple = false, disabled, readonly } = props;
+  const { onChange, multiple = false, disabled, readonly, id } = props;
 
-  // TODO: Need a lot of work here
+  // TODO: It's temporary solution for file input, will complete it follow up prs
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files || files.length === 0) {
@@ -21,17 +21,13 @@ export const FileWidget = (props: WidgetProps) => {
   };
 
   return (
-    <InputRenderer
-      type={InputType.FILE}
-      id={props.id}
-      value={props.value}
-      onChange={handleChange}
-      disabled={props.disabled}
-      readonly={props.readonly}
-      placeholder={props.placeholder || ""}
-      required={props.required}
-      autofocus={props.autofocus}
+    <Input
+      id={id}
+      type="file"
       multiple={multiple}
+      disabled={disabled || readonly}
+      onChange={handleChange}
+      className="rounded-full"
     />
   );
 };

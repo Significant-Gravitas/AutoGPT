@@ -1,18 +1,20 @@
 import { WidgetProps } from "@rjsf/utils";
-import { InputRenderer, InputType } from "../InputRenderer";
+import { TimeInput } from "@/components/atoms/TimeInput/TimeInput";
 
 export const TimeInputWidget = (props: WidgetProps) => {
-  const { value, onChange, disabled, readonly, placeholder, autofocus } = props;
+  const { value, onChange, disabled, readonly, placeholder, id } = props;
   return (
-    <InputRenderer
-      type={InputType.TIME}
-      id={props.id}
+    <TimeInput
       value={value}
       onChange={onChange}
-      disabled={disabled}
-      readonly={readonly}
-      placeholder={placeholder || ""}
-      autofocus={autofocus}
+      className="w-full"
+      label={""}
+      id={id}
+      hideLabel={true}
+      size="small"
+      wrapperClassName="!mb-0 "
+      disabled={disabled || readonly}
+      placeholder={placeholder}
     />
   );
 };

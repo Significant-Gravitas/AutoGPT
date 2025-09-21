@@ -1,21 +1,23 @@
 import * as React from "react";
 import { WidgetProps } from "@rjsf/utils";
-import { InputRenderer, InputType } from "../InputRenderer";
+import { DateInput } from "@/components/atoms/DateInput/DateInput";
 
 export const DateInputWidget = (props: WidgetProps) => {
-  const { value, onChange, disabled, readonly, placeholder, autofocus } = props;
+  const { value, onChange, disabled, readonly, placeholder, autofocus, id } =
+    props;
 
   return (
-    <InputRenderer
-      type={InputType.DATE}
+    <DateInput
+      size="small"
+      id={id}
+      hideLabel={true}
+      label={""}
       value={value}
-      id={props.id}
-      placeholder={placeholder || ""}
-      required={props.required}
       onChange={onChange}
+      placeholder={placeholder}
       disabled={disabled}
       readonly={readonly}
-      autofocus={autofocus}
+      autoFocus={autofocus}
     />
   );
 };
