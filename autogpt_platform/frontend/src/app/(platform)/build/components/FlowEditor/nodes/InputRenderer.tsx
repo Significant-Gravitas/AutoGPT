@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/multiselect";
 import { Input as SadcnInput } from "@/components/ui/input";
 import { ObjectEditor } from "../components/ObjectEditor/ObjectEditor";
+import { ArrayEditor } from "../components/ArrayEditor/ArrayEditor";
+import { ArrayFieldTemplateItemType, RJSFSchema } from "@rjsf/utils";
 
 export enum InputType {
   SINGLE_LINE_TEXT = "single-line-text",
@@ -47,6 +49,11 @@ export type InputRendererProps = {
   multiple?: boolean;
   fieldKey?: string;
   nodeId?: string;
+
+  // Array Editor Specific
+  items?: ArrayFieldTemplateItemType<any, RJSFSchema, any>[];
+  canAdd?: boolean | undefined;
+  onAddClick?: () => void;
 };
 
 export const InputRenderer = (props: InputRendererProps) => {
@@ -64,10 +71,10 @@ export const InputRenderer = (props: InputRendererProps) => {
     multiple,
     fieldKey,
     nodeId,
+    items,
+    canAdd,
+    onAddClick,
   } = props;
-
-  console.log("fieldKey", fieldKey);
-  console.log("nodeId", nodeId);
 
   if (!type) return null;
 
@@ -257,6 +264,20 @@ export const InputRenderer = (props: InputRendererProps) => {
           fieldKey={fieldKey ?? ""}
           value={value}
           onChange={onChange}
+        />
+      );
+
+    case InputType.ARRAY_EDITOR:
+      console.log("input type array editor", items);
+      return (
+        <ArrayEditor
+          nodeId={nodeId ?? ""}
+          id={fieldKey ?? ""}
+          items={items}
+          canAdd={canAdd}
+          onAddClick={onAddClick}
+          disabled={disabled}
+          readonly={readonly}
         />
       );
   }

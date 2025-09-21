@@ -13,7 +13,7 @@ import NodeHandle from "../../handlers/NodeHandle";
 import { useEdgeStore } from "../../../store/edgeStore";
 import { useNodeStore } from "../../../store/nodeStore";
 import { generateHandleId, HandleIdType } from "../../handlers/helpers";
-import { HandleContext } from "../../handlers/HandleContext";
+import { ArrayEditorContext } from "../../components/ArrayEditor/ArrayEditorContext";
 
 const FieldTemplate: React.FC<FieldTemplateProps> = ({
   id,
@@ -23,6 +23,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
   children,
   schema,
   formContext,
+  uiSchema,
 }) => {
   const { isInputConnected } = useEdgeStore();
   const { nodeId } = formContext;
@@ -35,7 +36,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
     isArrayItem,
     fieldKey: arrayFieldKey,
     isConnected: isArrayItemConnected,
-  } = useContext(HandleContext);
+  } = useContext(ArrayEditorContext);
 
   let fieldKey = generateHandleId(id);
   let isConnected = isInputConnected(nodeId, fieldKey);
@@ -51,19 +52,27 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
     return null;
   }
 
+  const fromAnyOf =
+    Boolean((uiSchema as any)?.["ui:options"]?.fromAnyOf) ||
+    Boolean((formContext as any)?.fromAnyOf);
+
   return (
     <div className="mt-4 w-[400px] space-y-1">
       {label && schema.type && (
         <label htmlFor={id} className="flex items-center gap-1">
-          {!suppressHandle && (
+          {!suppressHandle && !fromAnyOf && (
             <NodeHandle id={fieldKey} isConnected={isConnected} side="left" />
           )}
-          <Text variant="body" className="line-clamp-1">
-            {label}
-          </Text>
-          <Text variant="small" className="!text-green-500">
-            ({schema.type})
-          </Text>
+          {!fromAnyOf && (
+            <Text variant="body" className="line-clamp-1">
+              {label}
+            </Text>
+          )}
+          {!fromAnyOf && (
+            <Text variant="small" className="!text-green-500">
+              ({schema.type})
+            </Text>
+          )}
           {required && <span style={{ color: "red" }}>*</span>}
           {description?.props?.description && (
             <TooltipProvider>

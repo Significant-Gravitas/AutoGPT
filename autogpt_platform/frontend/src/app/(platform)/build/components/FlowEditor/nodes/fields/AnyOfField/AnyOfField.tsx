@@ -4,8 +4,8 @@ import { FieldProps, RJSFSchema } from "@rjsf/utils";
 import { Text } from "@/components/atoms/Text/Text";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { Select } from "@/components/atoms/Select/Select";
-import { InputRenderer, InputType } from "../../InputRenderer";
-import { mapJsonSchemaTypeToInputType, extractOptions } from "../../helpers";
+import { InputType } from "../../InputRenderer";
+import { mapJsonSchemaTypeToInputType } from "../../helpers";
 import {
   Tooltip,
   TooltipContent,
@@ -17,6 +17,7 @@ import { useAnyOfField } from "./useAnyOfField";
 import NodeHandle from "../../../handlers/NodeHandle";
 import { useEdgeStore } from "../../../../store/edgeStore";
 import { generateHandleId } from "../../../handlers/helpers";
+import merge from "lodash/merge";
 
 type TypeOption = {
   type: string;
@@ -25,6 +26,7 @@ type TypeOption = {
   format?: string;
   enum?: any[];
   secret?: boolean;
+  schema: RJSFSchema;
 };
 
 export const AnyOfField = ({
@@ -34,10 +36,16 @@ export const AnyOfField = ({
   name,
   idSchema,
   formContext,
+  registry,
+  uiSchema,
+  disabled,
+  onBlur,
+  onFocus,
 }: FieldProps) => {
   const fieldKey = generateHandleId(idSchema.$id ?? "");
+  const updatedFormContexrt = { ...formContext, fromAnyOf: true };
 
-  const { nodeId } = formContext;
+  const { nodeId } = updatedFormContexrt;
   const { isInputConnected } = useEdgeStore();
   const isConnected = isInputConnected(nodeId, fieldKey);
   const {
@@ -53,39 +61,56 @@ export const AnyOfField = ({
   } = useAnyOfField(schema, formData, onChange);
 
   const renderInput = (typeOption: TypeOption) => {
-    const mockSchema = {
+    const optionSchema = (typeOption.schema || {
       type: typeOption.type,
       format: typeOption.format,
       secret: typeOption.secret,
       enum: typeOption.enum,
-    };
+    }) as RJSFSchema;
+    const inputType = mapJsonSchemaTypeToInputType(optionSchema);
 
-    const inputType = mapJsonSchemaTypeToInputType(mockSchema as RJSFSchema);
+    const uiSchemaFromAnyOf = merge({}, uiSchema, {
+      "ui:options": { fromAnyOf: true },
+    });
 
-    if (inputType === InputType.OBJECT_EDITOR) {
-      const nestedFieldKey = generateHandleId(idSchema.$id ?? "");
+    if (inputType === InputType.ARRAY_EDITOR) {
+      const SchemaField = registry.fields.SchemaField;
       return (
-        <InputRenderer
-          id={`${name}-input`}
-          type={inputType}
-          required={false}
-          nodeId={nodeId}
-          fieldKey={nestedFieldKey}
-          value={formData}
-          onChange={handleValueChange}
-        />
+        <div className="-ml-2">
+          <SchemaField
+            schema={optionSchema}
+            formData={formData}
+            idSchema={idSchema}
+            uiSchema={uiSchemaFromAnyOf}
+            onChange={handleValueChange}
+            onBlur={onBlur}
+            onFocus={onFocus}
+            name={name}
+            registry={registry}
+            disabled={disabled}
+            formContext={updatedFormContexrt}
+          />
+        </div>
       );
     }
 
+    const SchemaField = registry.fields.SchemaField;
     return (
-      <InputRenderer
-        type={inputType}
-        id={`${name}-input`}
-        value={formData ?? (inputType === InputType.NUMBER ? "" : "")}
-        placeholder={`Enter ${name}`}
-        required={false}
-        onChange={handleValueChange}
-      />
+      <div className="-ml-2">
+        <SchemaField
+          schema={optionSchema}
+          formData={formData}
+          idSchema={idSchema}
+          uiSchema={uiSchemaFromAnyOf}
+          onChange={handleValueChange}
+          onBlur={onBlur}
+          onFocus={onFocus}
+          name={name}
+          registry={registry}
+          disabled={disabled}
+          formContext={updatedFormContexrt}
+        />
+      </div>
     );
   };
 
@@ -116,8 +141,8 @@ export const AnyOfField = ({
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="-ml-2 flex items-center gap-1">
+    <div className="flex flex-col">
+      <div className="-mb-2 -ml-2 flex items-center gap-1">
         <NodeHandle id={fieldKey} isConnected={isConnected} side="left" />
         <Text variant="body">
           {name.charAt(0).toUpperCase() + name.slice(1)}

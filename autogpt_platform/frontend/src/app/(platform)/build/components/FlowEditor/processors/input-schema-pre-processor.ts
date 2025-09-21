@@ -31,7 +31,7 @@ export function preprocessInputSchema(schema: RJSFSchema): RJSFSchema {
             { type: "number" },
             { type: "integer" },
             { type: "boolean" },
-            { type: "array" },
+            { type: "array", items: { type: "string" } },
             { type: "object" },
             { type: "null" },
           ];

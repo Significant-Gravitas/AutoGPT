@@ -35,6 +35,7 @@ export const useAnyOfField = (
         format: opt.format,
         enum: opt.enum,
         secret: opt.secret,
+        schema: opt,
       })) || [],
     [schema.anyOf],
   );

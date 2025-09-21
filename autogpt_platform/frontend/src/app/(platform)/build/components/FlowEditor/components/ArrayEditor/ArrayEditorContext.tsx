@@ -1,6 +1,6 @@
 import { createContext } from "react";
 
-export const HandleContext = createContext<{
+export const ArrayEditorContext = createContext<{
   isArrayItem: boolean;
   fieldKey: string;
   isConnected: boolean;
