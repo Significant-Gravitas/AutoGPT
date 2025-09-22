@@ -1,8 +1,8 @@
 import { create } from "zustand";
 import { NodeChange, applyNodeChanges } from "@xyflow/react";
-import { CustomNode } from "../FlowEditor/nodes/CustomNode";
+import { CustomNode } from "../components/FlowEditor/nodes/CustomNode";
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
-import { convertBlockInfoIntoCustomNodeData } from "../helper";
+import { convertBlockInfoIntoCustomNodeData } from "../components/helper";
 
 type NodeStore = {
   nodes: CustomNode[];

@@ -5,7 +5,7 @@ import React from "react";
 import { widgets } from "./widgets";
 import { fields } from "./fields";
 import { templates } from "./templates";
-import { uiSchema } from "./schema";
+import { uiSchema } from "./uiSchema";
 import { useNodeStore } from "../../../stores/nodeStore";
 
 export const FormCreator = React.memo(

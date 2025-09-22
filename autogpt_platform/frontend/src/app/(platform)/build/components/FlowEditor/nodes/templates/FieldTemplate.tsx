@@ -12,7 +12,8 @@ import { Text } from "@/components/atoms/Text/Text";
 import NodeHandle from "../../handlers/NodeHandle";
 import { useEdgeStore } from "../../../stores/edgeStore";
 import { useNodeStore } from "../../../../stores/nodeStore";
-import { generateHandleId, getTypeDisplayInfo } from "../../handlers/helpers";
+import { generateHandleId } from "../../handlers/helpers";
+import { getTypeDisplayInfo } from "../helpers";
 import { ArrayEditorContext } from "../../components/ArrayEditor/ArrayEditorContext";
 
 const FieldTemplate: React.FC<FieldTemplateProps> = ({

@@ -15,10 +15,8 @@ import { InfoIcon } from "@phosphor-icons/react";
 import { useAnyOfField } from "./useAnyOfField";
 import NodeHandle from "../../../handlers/NodeHandle";
 import { useEdgeStore } from "../../../../stores/edgeStore";
-import {
-  generateHandleId,
-  getTypeDisplayInfo,
-} from "../../../handlers/helpers";
+import { generateHandleId } from "../../../handlers/helpers";
+import { getTypeDisplayInfo } from "../../helpers";
 import merge from "lodash/merge";
 
 type TypeOption = {
@@ -71,10 +69,14 @@ export const AnyOfField = ({
     }) as RJSFSchema;
     const inputType = mapJsonSchemaTypeToInputType(optionSchema);
 
+    // Help us to tell the field under the anyOf field that you are a part of anyOf field.
+    // We can't use formContext in this case that's why we are using this.
+    // We could use context api here, but i think it's better to keep it simple.
     const uiSchemaFromAnyOf = merge({}, uiSchema, {
       "ui:options": { fromAnyOf: true },
     });
 
+    // We are using SchemaField to render the field recursively.
     if (inputType === InputType.ARRAY_EDITOR) {
       const SchemaField = registry.fields.SchemaField;
       return (
@@ -116,6 +118,7 @@ export const AnyOfField = ({
     );
   };
 
+  // I am doing this, because we need different UI for optional types.
   if (isNullableType && nonNull) {
     const { displayType, colorClass } = getTypeDisplayInfo(nonNull);
 

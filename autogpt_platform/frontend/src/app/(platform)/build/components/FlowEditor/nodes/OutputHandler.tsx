@@ -12,7 +12,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useEdgeStore } from "../../stores/edgeStore";
-import { getTypeDisplayInfo } from "../handlers/helpers";
+import { getTypeDisplayInfo } from "./helpers";
 
 export const OutputHandler = ({
   outputSchema,

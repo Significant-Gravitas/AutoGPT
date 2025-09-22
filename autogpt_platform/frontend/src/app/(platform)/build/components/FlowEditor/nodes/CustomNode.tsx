@@ -27,7 +27,6 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
       (state) => state.nodeAdvancedStates[id] || false,
     );
     const setShowAdvanced = useNodeStore((state) => state.setShowAdvanced);
-    const toggleAdvanced = useNodeStore((state) => state.toggleAdvanced);
 
     return (
       <div className="rounded-xl border border-slate-200/60 bg-gradient-to-br from-white to-slate-50/30 shadow-lg shadow-slate-900/5 backdrop-blur-sm">
