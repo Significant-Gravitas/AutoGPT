@@ -21,6 +21,7 @@ import random
 from datetime import datetime
 
 import prisma.enums
+from autogpt_libs.api_key.keysmith import APIKeySmith
 from faker import Faker
 from prisma import Json, Prisma
 from prisma.types import (
@@ -30,7 +31,6 @@ from prisma.types import (
     AgentNodeLinkCreateInput,
     AnalyticsDetailsCreateInput,
     AnalyticsMetricsCreateInput,
-    APIKeyCreateInput,
     CreditTransactionCreateInput,
     IntegrationWebhookCreateInput,
     ProfileCreateInput,
@@ -544,20 +544,22 @@ async def main():
     # Insert APIKeys
     print(f"Inserting {NUM_USERS} api keys")
     for user in users:
+        api_key = APIKeySmith().generate_key()
         await db.apikey.create(
-            data=APIKeyCreateInput(
-                name=faker.word(),
-                prefix=str(faker.uuid4())[:8],
-                postfix=str(faker.uuid4())[-8:],
-                key=str(faker.sha256()),
-                status=prisma.enums.APIKeyStatus.ACTIVE,
-                permissions=[
+            data={
+                "name": faker.word(),
+                "head": api_key.head,
+                "tail": api_key.tail,
+                "hash": api_key.hash,
+                "salt": api_key.salt,
+                "status": prisma.enums.APIKeyStatus.ACTIVE,
+                "permissions": [
                     prisma.enums.APIKeyPermission.EXECUTE_GRAPH,
                     prisma.enums.APIKeyPermission.READ_GRAPH,
                 ],
-                description=faker.text(),
-                userId=user.id,
-            )
+                "description": faker.text(),
+                "userId": user.id,
+            }
         )
 
     # Refresh materialized views

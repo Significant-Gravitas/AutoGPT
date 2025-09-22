@@ -1,6 +1,6 @@
 "use client";
-import { IconAutoGPTLogo, IconType } from "@/components/ui/icons";
-import Wallet from "../../../agptui/Wallet";
+import { IconAutoGPTLogo, IconType } from "@/components/__legacy__/ui/icons";
+import Wallet from "../../../__legacy__/Wallet";
 import { AccountMenu } from "./AccountMenu/AccountMenu";
 import { LoginButton } from "./LoginButton";
 import { MobileNavBar } from "./MobileNavbar/MobileNavBar";
@@ -27,9 +27,9 @@ export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
 
   return (
     <>
-      <nav className="sticky top-0 z-40 hidden h-16 items-center border border-white/50 bg-[#f3f4f6]/20 p-3 backdrop-blur-[26px] md:inline-flex">
+      <nav className="sticky top-0 z-40 inline-flex h-16 items-center border border-white/50 bg-[#f3f4f6]/20 p-3 backdrop-blur-[26px]">
         {/* Left section */}
-        <div className="flex flex-1 items-center gap-5">
+        <div className="hidden flex-1 items-center gap-3 md:flex md:gap-5">
           {isLoggedIn
             ? loggedInLinks.map((link) => (
                 <NavbarLink key={link.name} name={link.name} href={link.href} />
@@ -40,12 +40,12 @@ export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
         </div>
 
         {/* Centered logo */}
-        <div className="absolute left-1/2 top-1/2 h-10 w-[88.87px] -translate-x-1/2 -translate-y-1/2">
+        <div className="absolute left-16 top-1/2 h-auto w-[5.5rem] -translate-x-1/2 -translate-y-1/2 md:left-1/2">
           <IconAutoGPTLogo className="h-full w-full" />
         </div>
 
         {/* Right section */}
-        <div className="flex flex-1 items-center justify-end gap-4">
+        <div className="hidden flex-1 items-center justify-end gap-4 md:flex">
           {isLoggedIn ? (
             <div className="flex items-center gap-4">
               <AgentActivityDropdown />
@@ -66,7 +66,8 @@ export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
       {/* Mobile Navbar - Adjust positioning */}
       <>
         {isLoggedIn ? (
-          <div className="fixed right-4 top-4 z-50">
+          <div className="fixed -right-4 top-2 z-50 flex items-center gap-0 md:hidden">
+            <Wallet />
             <MobileNavBar
               userName={profile?.username}
               menuItemGroups={[

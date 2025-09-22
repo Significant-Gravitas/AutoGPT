@@ -12,26 +12,37 @@ import {
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
-import ActionButtonGroup from "@/components/agptui/action-button-group";
-import type { ButtonAction } from "@/components/agptui/types";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { IconCross, IconPlay, IconSave } from "@/components/ui/icons";
+import ActionButtonGroup from "@/components/__legacy__/action-button-group";
+import type { ButtonAction } from "@/components/__legacy__/types";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/__legacy__/ui/card";
+import {
+  IconCross,
+  IconPlay,
+  IconSave,
+} from "@/components/__legacy__/ui/icons";
 import { CalendarClockIcon, Trash2Icon } from "lucide-react";
-import { CronSchedulerDialog } from "@/components/cron-scheduler-dialog";
+import { ClockIcon, InfoIcon } from "@phosphor-icons/react";
+import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+import { ScheduleTaskDialog } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/components/cron-scheduler-dialog";
 import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
 import { RunAgentInputs } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/RunAgentInputs/RunAgentInputs";
-import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 import { cn, isEmpty } from "@/lib/utils";
-import SchemaTooltip from "@/components/SchemaTooltip";
+import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import { CopyIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/atoms/Button/Button";
-import { Input } from "@/components/ui/input";
+import { Input } from "@/components/__legacy__/ui/input";
 import {
   useToast,
   useToastOnFail,
 } from "@/components/molecules/Toast/use-toast";
 
 import { AgentStatus, AgentStatusChip } from "./agent-status-chip";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 
 export function AgentRunDraftView({
   graph,
@@ -46,9 +57,11 @@ export function AgentRunDraftView({
   agentActions,
   runCount,
   className,
+  recommendedScheduleCron,
 }: {
   graph: GraphMeta;
   agentActions?: ButtonAction[];
+  recommendedScheduleCron?: string | null;
   doRun?: (
     inputs: Record<string, any>,
     credentialsInputs: Record<string, CredentialsMetaInput>,
@@ -388,20 +401,21 @@ export function AgentRunDraftView({
             {
               label: (
                 <>
-                  <IconPlay className="mr-2 size-4" /> Run
+                  <CalendarClockIcon className="mr-2 size-4" /> Schedule run
                 </>
               ),
               variant: "accent",
-              callback: doRun,
-              extraProps: { "data-testid": "agent-run-button" },
+              callback: openScheduleDialog,
+              extraProps: { "data-testid": "agent-schedule-button" },
             },
             {
               label: (
                 <>
-                  <CalendarClockIcon className="mr-2 size-4" /> Schedule
+                  <IconPlay className="mr-2 size-4" /> Manual run
                 </>
               ),
-              callback: openScheduleDialog,
+              callback: doRun,
+              extraProps: { "data-testid": "agent-run-button" },
             },
             // {
             //   label: (
@@ -578,13 +592,39 @@ export function AgentRunDraftView({
             <CardTitle className="font-poppins text-lg">Input</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
+            {/* Schedule recommendation tip */}
+            {recommendedScheduleCron && !graph.has_external_trigger && (
+              <div className="flex items-center gap-2 rounded-md border border-violet-200 bg-violet-50 p-3">
+                <ClockIcon className="h-4 w-4 text-violet-600" />
+                <p className="text-sm text-violet-800">
+                  <strong>Tip:</strong> For best results, run this agent{" "}
+                  {humanizeCronExpression(
+                    recommendedScheduleCron,
+                  ).toLowerCase()}
+                </p>
+              </div>
+            )}
+
+            {/* Setup Instructions */}
+            {graph.instructions && (
+              <div className="flex items-start gap-2 rounded-md border border-violet-200 bg-violet-50 p-3">
+                <InfoIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-violet-600" />
+                <div className="text-sm text-violet-800">
+                  <strong>Setup Instructions:</strong>{" "}
+                  <span className="whitespace-pre-wrap">
+                    {graph.instructions}
+                  </span>
+                </div>
+              </div>
+            )}
+
             {(agentPreset || graph.has_external_trigger) && (
               <>
                 {/* Preset name and description */}
                 <div className="flex flex-col space-y-2">
                   <label className="flex items-center gap-1 text-sm font-medium">
                     {graph.has_external_trigger ? "Trigger" : "Preset"} Name
-                    <SchemaTooltip
+                    <InformationTooltip
                       description={`Name of the ${graph.has_external_trigger ? "trigger" : "preset"} you are setting up`}
                     />
                   </label>
@@ -601,7 +641,7 @@ export function AgentRunDraftView({
                   <label className="flex items-center gap-1 text-sm font-medium">
                     {graph.has_external_trigger ? "Trigger" : "Preset"}{" "}
                     Description
-                    <SchemaTooltip
+                    <InformationTooltip
                       description={`Description of the ${graph.has_external_trigger ? "trigger" : "preset"} you are setting up`}
                     />
                   </label>
@@ -656,7 +696,9 @@ export function AgentRunDraftView({
               <div key={key} className="flex flex-col space-y-2">
                 <label className="flex items-center gap-1 text-sm font-medium">
                   {inputSubSchema.title || key}
-                  <SchemaTooltip description={inputSubSchema.description} />
+                  <InformationTooltip
+                    description={inputSubSchema.description}
+                  />
                 </label>
 
                 <RunAgentInputs
@@ -685,11 +727,12 @@ export function AgentRunDraftView({
             title={`${graph.has_external_trigger ? "Trigger" : agentPreset ? "Preset" : "Run"} actions`}
             actions={runActions}
           />
-          <CronSchedulerDialog
+          <ScheduleTaskDialog
             open={cronScheduleDialogOpen}
             setOpen={setCronScheduleDialogOpen}
-            afterCronCreation={doSetupSchedule}
+            onSubmit={doSetupSchedule}
             defaultScheduleName={graph.name}
+            defaultCronExpression={recommendedScheduleCron || undefined}
           />
 
           {agentActions && agentActions.length > 0 && (

@@ -11,26 +11,32 @@ import {
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
-import ActionButtonGroup from "@/components/agptui/action-button-group";
-import type { ButtonAction } from "@/components/agptui/types";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import ActionButtonGroup from "@/components/__legacy__/action-button-group";
+import type { ButtonAction } from "@/components/__legacy__/types";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/__legacy__/ui/card";
 import {
   IconRefresh,
   IconSquare,
   IconCircleAlert,
-} from "@/components/ui/icons";
-import { Input } from "@/components/ui/input";
-import LoadingBox from "@/components/ui/loading";
+} from "@/components/__legacy__/ui/icons";
+import { Input } from "@/components/__legacy__/ui/input";
+import LoadingBox from "@/components/__legacy__/ui/loading";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
 
 import { AgentRunStatus, agentRunStatusMap } from "./agent-run-status-chip";
 import useCredits from "@/hooks/useCredits";
+import { AgentRunOutputView } from "./agent-run-output-view";
 
 export function AgentRunDetailsView({
   agent,
@@ -112,7 +118,7 @@ export function AgentRunDetailsView({
   const runAgain = useCallback(() => {
     if (
       !run.inputs ||
-      !(graph.credentials_input_schema.required ?? []).every(
+      !(graph.credentials_input_schema?.required ?? []).every(
         (k) => k in (run.credential_inputs ?? {}),
       )
     )
@@ -193,7 +199,7 @@ export function AgentRunDetailsView({
         : []),
       ...(["success", "failed", "stopped"].includes(runStatus) &&
       !graph.has_external_trigger &&
-      (graph.credentials_input_schema.required ?? []).every(
+      (graph.credentials_input_schema?.required ?? []).every(
         (k) => k in (run.credential_inputs ?? {}),
       )
         ? [
@@ -227,7 +233,7 @@ export function AgentRunDetailsView({
       doDeleteRun,
       doCreatePresetFromRun,
       graph.has_external_trigger,
-      graph.credentials_input_schema.required,
+      graph.credentials_input_schema?.required,
       agent.can_access_graph,
       run.graph_id,
       run.graph_version,
@@ -296,35 +302,7 @@ export function AgentRunDetailsView({
         )}
 
         {agentRunOutputs !== null && (
-          <Card className="agpt-box">
-            <CardHeader>
-              <CardTitle className="font-poppins text-lg">Output</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              {agentRunOutputs !== undefined ? (
-                Object.entries(agentRunOutputs).map(
-                  ([key, { title, values }]) => (
-                    <div key={key} className="flex flex-col gap-1.5">
-                      <label className="text-sm font-medium">
-                        {title || key}
-                      </label>
-                      {values.map((value, i) => (
-                        <p
-                          className="resize-none overflow-x-auto whitespace-pre-wrap break-words border-none text-sm text-neutral-700 disabled:cursor-not-allowed"
-                          key={i}
-                        >
-                          {value}
-                        </p>
-                      ))}
-                      {/* TODO: pretty type-dependent rendering */}
-                    </div>
-                  ),
-                )
-              ) : (
-                <LoadingBox spinnerSize={12} className="h-24" />
-              )}
-            </CardContent>
-          </Card>
+          <AgentRunOutputView agentRunOutputs={agentRunOutputs} />
         )}
 
         <Card className="agpt-box">

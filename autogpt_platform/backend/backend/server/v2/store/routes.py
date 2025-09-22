@@ -532,9 +532,11 @@ async def create_submission(
             video_url=submission_request.video_url,
             image_urls=submission_request.image_urls,
             description=submission_request.description,
+            instructions=submission_request.instructions,
             sub_heading=submission_request.sub_heading,
             categories=submission_request.categories,
             changes_summary=submission_request.changes_summary or "Initial Submission",
+            recommended_schedule_cron=submission_request.recommended_schedule_cron,
         )
     except Exception:
         logger.exception("Exception occurred whilst creating store submission")
@@ -577,9 +579,11 @@ async def edit_submission(
         video_url=submission_request.video_url,
         image_urls=submission_request.image_urls,
         description=submission_request.description,
+        instructions=submission_request.instructions,
         sub_heading=submission_request.sub_heading,
         categories=submission_request.categories,
         changes_summary=submission_request.changes_summary,
+        recommended_schedule_cron=submission_request.recommended_schedule_cron,
     )
 
 

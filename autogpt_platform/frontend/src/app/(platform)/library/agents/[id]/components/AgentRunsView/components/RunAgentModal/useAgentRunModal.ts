@@ -1,14 +1,22 @@
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useState, useCallback, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { isEmpty } from "@/lib/utils";
-import { usePostV1ExecuteGraphAgent } from "@/app/api/__generated__/endpoints/graphs/graphs";
-import { usePostV1CreateExecutionSchedule as useCreateSchedule } from "@/app/api/__generated__/endpoints/schedules/schedules";
+import {
+  usePostV1ExecuteGraphAgent,
+  getGetV1ListGraphExecutionsInfiniteQueryOptions,
+} from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
+  usePostV1CreateExecutionSchedule as useCreateSchedule,
+  getGetV1ListExecutionSchedulesForAGraphQueryKey,
+} from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { usePostV2SetupTrigger } from "@/app/api/__generated__/endpoints/presets/presets";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
-import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 
 export type RunVariant =
   | "manual"
@@ -27,6 +35,7 @@ export function useAgentRunModal(
   callbacks?: UseAgentRunModalCallbacks,
 ) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
   const [showScheduleView, setShowScheduleView] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
@@ -37,8 +46,17 @@ export function useAgentRunModal(
   const [presetDescription, setPresetDescription] = useState<string>("");
   const defaultScheduleName = useMemo(() => `Run ${agent.name}`, [agent.name]);
   const [scheduleName, setScheduleName] = useState(defaultScheduleName);
-  const [cronExpression, setCronExpression] = useState("0 9 * * 1");
+  const [cronExpression, setCronExpression] = useState(
+    agent.recommended_schedule_cron || "0 9 * * 1",
+  );
   const { completeStep: completeOnboardingStep } = useOnboarding();
+
+  // Get user timezone for scheduling
+  const { data: userTimezone } = useGetV1GetUserTimezone({
+    query: {
+      select: (res) => (res.status === 200 ? res.data.timezone : undefined),
+    },
+  });
 
   // Determine the default run type based on agent capabilities
   const defaultRunType: RunVariant = agent.has_external_trigger
@@ -53,7 +71,13 @@ export function useAgentRunModal(
           toast({
             title: "Agent execution started",
           });
-          callbacks?.onRun?.(response.data);
+          callbacks?.onRun?.(response.data as unknown as GraphExecutionMeta);
+          // Invalidate runs list for this graph
+          queryClient.invalidateQueries({
+            queryKey: getGetV1ListGraphExecutionsInfiniteQueryOptions(
+              agent.graph_id,
+            ).queryKey,
+          });
           setIsOpen(false);
         }
       },
@@ -75,6 +99,12 @@ export function useAgentRunModal(
             title: "Schedule created",
           });
           callbacks?.onCreateSchedule?.(response.data);
+          // Invalidate schedules list for this graph
+          queryClient.invalidateQueries({
+            queryKey: getGetV1ListExecutionSchedulesForAGraphQueryKey(
+              agent.graph_id,
+            ),
+          });
           setIsOpen(false);
         }
       },
@@ -287,6 +317,8 @@ export function useAgentRunModal(
         inputs: inputValues,
         graph_version: agent.graph_version,
         credentials: inputCredentials,
+        timezone:
+          userTimezone && userTimezone !== "not-set" ? userTimezone : undefined,
       },
     });
 
@@ -301,12 +333,15 @@ export function useAgentRunModal(
     notifyMissingRequirements,
     createScheduleMutation,
     toast,
+    userTimezone,
   ]);
 
   function handleShowSchedule() {
     // Initialize with sensible defaults when entering schedule view
     setScheduleName((prev) => prev || defaultScheduleName);
-    setCronExpression((prev) => prev || "0 9 * * 1");
+    setCronExpression(
+      (prev) => prev || agent.recommended_schedule_cron || "0 9 * * 1",
+    );
     setShowScheduleView(true);
   }
 
@@ -314,7 +349,7 @@ export function useAgentRunModal(
     setShowScheduleView(false);
     // Reset schedule fields on exit
     setScheduleName(defaultScheduleName);
-    setCronExpression("0 9 * * 1");
+    setCronExpression(agent.recommended_schedule_cron || "0 9 * * 1");
   }
 
   function handleSetScheduleName(name: string) {

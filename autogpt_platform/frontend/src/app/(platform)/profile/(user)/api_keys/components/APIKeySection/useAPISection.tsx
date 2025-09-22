@@ -4,7 +4,6 @@ import {
   useDeleteV1RevokeApiKey,
   useGetV1ListUserApiKeys,
 } from "@/app/api/__generated__/endpoints/api-keys/api-keys";
-import { APIKeyWithoutHash } from "@/app/api/__generated__/models/aPIKeyWithoutHash";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 
@@ -15,9 +14,9 @@ export const useAPISection = () => {
   const { data: apiKeys, isLoading } = useGetV1ListUserApiKeys({
     query: {
       select: (res) => {
-        return (res.data as APIKeyWithoutHash[]).filter(
-          (key) => key.status === "ACTIVE",
-        );
+        if (res.status !== 200) return undefined;
+
+        return res.data.filter((key) => key.status === "ACTIVE");
       },
     },
   });
