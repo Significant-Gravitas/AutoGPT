@@ -1,3 +1,7 @@
+import {
+  BlockIOSubSchema,
+  BlockIOCredentialsSubSchema,
+} from "@/lib/autogpt-server-api/types";
 import { WebhookTriggerBanner } from "../WebhookTriggerBanner/WebhookTriggerBanner";
 import { Input } from "@/components/atoms/Input/Input";
 import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
@@ -25,12 +29,18 @@ export function ModalRunSection() {
     agentCredentialsInputFields,
   } = useRunAgentModalContext();
 
+  function getSchemaDefault(schema: BlockIOSubSchema): unknown {
+    return (schema as any)?.default;
+  }
+
   return (
     <div className="mb-10 mt-4">
-      {defaultRunType === "automatic-trigger" && <WebhookTriggerBanner />}
+      {(defaultRunType === "automatic-trigger" ||
+        defaultRunType === "manual-trigger") && <WebhookTriggerBanner />}
 
       {/* Preset/Trigger fields */}
-      {defaultRunType === "automatic-trigger" && (
+      {(defaultRunType === "automatic-trigger" ||
+        defaultRunType === "manual-trigger") && (
         <div className="flex flex-col gap-4">
           <div className="flex flex-col space-y-2">
             <label className="flex items-center gap-1 text-sm font-medium">
@@ -82,40 +92,46 @@ export function ModalRunSection() {
 
       {/* Credentials inputs */}
       {Object.entries(agentCredentialsInputFields || {}).map(
-        ([key, inputSubSchema]) => (
-          <CredentialsInput
-            key={key}
-            schema={{ ...inputSubSchema, discriminator: undefined } as any}
-            selectedCredentials={
-              (inputCredentials && inputCredentials[key]) ??
-              inputSubSchema.default
-            }
-            onSelectCredentials={(value) =>
-              setInputCredentialsValue(key, value)
-            }
-            siblingInputs={inputValues}
-            hideIfSingleCredentialAvailable={!agent.has_external_trigger}
-          />
-        ),
+        ([key, inputSubSchema]) => {
+          const credSchema = inputSubSchema as BlockIOCredentialsSubSchema;
+          return (
+            <CredentialsInput
+              key={key}
+              schema={{ ...credSchema, discriminator: undefined }}
+              selectedCredentials={
+                (inputCredentials && inputCredentials[key]) ??
+                credSchema.default
+              }
+              onSelectCredentials={(value) =>
+                setInputCredentialsValue(key, value)
+              }
+              siblingInputs={inputValues}
+              hideIfSingleCredentialAvailable={!agent.has_external_trigger}
+            />
+          );
+        },
       )}
 
       {/* Regular inputs */}
-      {Object.entries(agentInputFields || {}).map(([key, inputSubSchema]) => (
-        <div key={key} className="flex w-full flex-col gap-0 space-y-2">
-          <label className="flex items-center gap-1 text-sm font-medium">
-            {inputSubSchema.title || key}
-            <InformationTooltip description={inputSubSchema.description} />
-          </label>
+      {Object.entries(agentInputFields || {}).map(([key, inputSubSchema]) => {
+        const fieldSchema = inputSubSchema as BlockIOSubSchema;
+        return (
+          <div key={key} className="flex w-full flex-col gap-0 space-y-2">
+            <label className="flex items-center gap-1 text-sm font-medium">
+              {fieldSchema.title || key}
+              <InformationTooltip description={fieldSchema.description} />
+            </label>
 
-          <RunAgentInputs
-            schema={inputSubSchema}
-            value={inputValues[key] ?? inputSubSchema.default}
-            placeholder={inputSubSchema.description}
-            onChange={(value) => setInputValue(key, value)}
-            data-testid={`agent-input-${key}`}
-          />
-        </div>
-      ))}
+            <RunAgentInputs
+              schema={fieldSchema}
+              value={inputValues[key] ?? getSchemaDefault(fieldSchema)}
+              placeholder={fieldSchema.description}
+              onChange={(value) => setInputValue(key, value)}
+              data-testid={`agent-input-${key}`}
+            />
+          </div>
+        );
+      })}
 
       {/* Selected Credentials Preview */}
       {Object.keys(inputCredentials).length > 0 && (
