@@ -83,6 +83,9 @@ enum OnboardingStep {
   TRIGGER_WEBHOOK
   RUN_14_DAYS
   RUN_AGENTS_100
+  // No longer used but kept, so column doesn't break
+  BUILDER_OPEN
+  BUILDER_RUN_AGENT
 }
 
 model UserOnboarding {
