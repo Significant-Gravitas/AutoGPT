@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { RJSFSchema } from "@rjsf/utils";
 
-const getDefaultValueForType = (type?: string, format?: string): any => {
+const getDefaultValueForType = (type?: string): any => {
   if (!type) return "";
 
   switch (type) {
@@ -73,7 +73,7 @@ export const useAnyOfField = (
 
   const handleNullableToggle = (checked: boolean) => {
     if (checked) {
-      onChange(getDefaultValueForType(nonNull?.type, nonNull?.format));
+      onChange(getDefaultValueForType(nonNull?.type));
     } else {
       onChange(null);
     }

@@ -65,3 +65,5 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
     );
   },
 );
+
+CustomNode.displayName = "CustomNode";

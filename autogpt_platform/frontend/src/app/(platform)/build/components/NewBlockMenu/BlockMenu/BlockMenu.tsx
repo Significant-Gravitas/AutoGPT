@@ -23,7 +23,7 @@ export const BlockMenu: React.FC<BlockMenuProps> = ({
   blockMenuSelected,
   setBlockMenuSelected,
 }) => {
-  const { open, onOpen } = useBlockMenu({
+  const { open: _open, onOpen } = useBlockMenu({
     // pinBlocksPopover,
     setBlockMenuSelected,
   });

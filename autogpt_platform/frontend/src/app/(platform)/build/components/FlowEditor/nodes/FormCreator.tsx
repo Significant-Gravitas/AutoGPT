@@ -29,3 +29,5 @@ export const FormCreator = React.memo(
     );
   },
 );
+
+FormCreator.displayName = "FormCreator";

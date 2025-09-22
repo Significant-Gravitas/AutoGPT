@@ -4,12 +4,12 @@ import { Input } from "@/components/atoms/Input/Input";
 
 // We need to add all the logic for the credential fields here
 export const CredentialsField = (props: FieldProps) => {
-  const { formData = {}, onChange, required, schema } = props;
+  const { formData = {}, onChange, required: _required, schema } = props;
 
-  const credentialProvider = schema.credentials_provider;
-  const credentialType = schema.credentials_types;
-  const description = schema.description;
-  const title = schema.title;
+  const _credentialProvider = schema.credentials_provider;
+  const _credentialType = schema.credentials_types;
+  const _description = schema.description;
+  const _title = schema.title;
 
   // Helper to update one property
   const setField = (key: string, value: any) =>

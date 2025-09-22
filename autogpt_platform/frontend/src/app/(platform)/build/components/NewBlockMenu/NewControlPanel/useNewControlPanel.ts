@@ -1,5 +1,4 @@
-import useAgentGraph from "@/hooks/useAgentGraph";
-import { GraphExecutionID, GraphID } from "@/lib/autogpt-server-api";
+import { GraphID } from "@/lib/autogpt-server-api";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 
@@ -10,16 +9,18 @@ export interface NewControlPanelProps {
 
 export const useNewControlPanel = ({
   // flowExecutionID,
-  visualizeBeads,
+  visualizeBeads: _visualizeBeads,
 }: NewControlPanelProps) => {
   const [blockMenuSelected, setBlockMenuSelected] = useState<
     "save" | "block" | "search" | ""
   >("");
   const query = useSearchParams();
   const _graphVersion = query.get("flowVersion");
-  const graphVersion = _graphVersion ? parseInt(_graphVersion) : undefined;
+  const _graphVersionParsed = _graphVersion
+    ? parseInt(_graphVersion)
+    : undefined;
 
-  const flowID = (query.get("flowID") as GraphID | null) ?? undefined;
+  const _flowID = (query.get("flowID") as GraphID | null) ?? undefined;
   // const {
   //   agentDescription,
   //   setAgentDescription,

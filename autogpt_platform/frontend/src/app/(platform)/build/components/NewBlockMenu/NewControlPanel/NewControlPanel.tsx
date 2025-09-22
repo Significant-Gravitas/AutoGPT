@@ -8,7 +8,7 @@ import { GraphExecutionID } from "@/lib/autogpt-server-api";
 // import { ControlPanelButton } from "../ControlPanelButton";
 import { ArrowUUpLeftIcon, ArrowUUpRightIcon } from "@phosphor-icons/react";
 // import { GraphSearchMenu } from "../GraphMenu/GraphMenu";
-import { CustomNode } from "@/components/CustomNode";
+import { CustomNode } from "../../FlowEditor/nodes/CustomNode";
 import { history } from "@/app/(platform)/build/components/legacy-builder/history";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
@@ -29,15 +29,15 @@ export type NewControlPanelProps = {
   onNodeHover?: (nodeId: string) => void;
 };
 export const NewControlPanel = ({
-  flowExecutionID,
-  visualizeBeads,
-  pinSavePopover,
-  pinBlocksPopover,
-  nodes,
-  onNodeSelect,
-  onNodeHover,
+  flowExecutionID: _flowExecutionID,
+  visualizeBeads: _visualizeBeads,
+  pinSavePopover: _pinSavePopover,
+  pinBlocksPopover: _pinBlocksPopover,
+  nodes: _nodes,
+  onNodeSelect: _onNodeSelect,
+  onNodeHover: _onNodeHover,
 }: NewControlPanelProps) => {
-  const isGraphSearchEnabled = useGetFlag(Flag.GRAPH_SEARCH);
+  const _isGraphSearchEnabled = useGetFlag(Flag.GRAPH_SEARCH);
 
   const {
     blockMenuSelected,
@@ -53,7 +53,7 @@ export const NewControlPanel = ({
     // isStopping,
   } = useNewControlPanel({});
 
-  const controls: Control[] = useMemo(
+  const _controls: Control[] = useMemo(
     () => [
       {
         label: "Undo",
