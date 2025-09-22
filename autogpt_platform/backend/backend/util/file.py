@@ -1,4 +1,6 @@
+import asyncio
 import base64
+import logging
 import mimetypes
 import re
 import shutil
@@ -12,6 +14,7 @@ from backend.util.request import Requests
 from backend.util.type import MediaFileType
 from backend.util.virus_scanner import scan_content_safe
 
+logger = logging.getLogger(__name__)
 TEMP_DIR = Path(tempfile.gettempdir()).resolve()
 
 
@@ -62,6 +65,15 @@ async def store_media_file(
                            If False, return the *relative* path inside the exec_id folder.
     :return:               The requested result: data URI or relative path of the media.
     """
+    # Log entry with context
+    logger.info(
+        f"store_media_file called - exec_id: {graph_exec_id}, "
+        f"user_id: {user_id}, file_type: {file[:50] if file else 'None'}..., "
+        f"return_content: {return_content}, "
+        f"current_task: {asyncio.current_task()}, "
+        f"in_task: {asyncio.current_task() is not None}"
+    )
+
     # Build base path
     base_path = Path(get_exec_file_path(graph_exec_id, ""))
     base_path.mkdir(parents=True, exist_ok=True)
@@ -109,7 +121,20 @@ async def store_media_file(
         target_path = _ensure_inside_base(base_path / filename, base_path)
 
         # Virus scan the cloud content before writing locally
-        await scan_content_safe(cloud_content, filename=filename)
+        logger.debug(
+            f"About to scan cloud file - filename: {filename}, "
+            f"content_size: {len(cloud_content)}, exec_id: {graph_exec_id}"
+        )
+        try:
+            await scan_content_safe(cloud_content, filename=filename)
+            logger.debug(f"Cloud file scan completed successfully - {filename}")
+        except Exception as e:
+            logger.error(
+                f"Cloud file scan failed - filename: {filename}, "
+                f"error: {str(e)}, exec_id: {graph_exec_id}, "
+                f"task_context: {asyncio.current_task()}"
+            )
+            raise
         target_path.write_bytes(cloud_content)
 
     # Process file
@@ -130,7 +155,20 @@ async def store_media_file(
         content = base64.b64decode(b64_content)
 
         # Virus scan the base64 content before writing
-        await scan_content_safe(content, filename=filename)
+        logger.debug(
+            f"About to scan base64 file - filename: {filename}, "
+            f"content_size: {len(content)}, exec_id: {graph_exec_id}"
+        )
+        try:
+            await scan_content_safe(content, filename=filename)
+            logger.debug(f"Base64 file scan completed successfully - {filename}")
+        except Exception as e:
+            logger.error(
+                f"Base64 file scan failed - filename: {filename}, "
+                f"error: {str(e)}, exec_id: {graph_exec_id}, "
+                f"task_context: {asyncio.current_task()}"
+            )
+            raise
         target_path.write_bytes(content)
 
     elif file.startswith(("http://", "https://")):
@@ -143,7 +181,20 @@ async def store_media_file(
         resp = await Requests().get(file)
 
         # Virus scan the downloaded content before writing
-        await scan_content_safe(resp.content, filename=filename)
+        logger.debug(
+            f"About to scan downloaded file - filename: {filename}, "
+            f"url: {file}, content_size: {len(resp.content)}, exec_id: {graph_exec_id}"
+        )
+        try:
+            await scan_content_safe(resp.content, filename=filename)
+            logger.debug(f"Downloaded file scan completed successfully - {filename}")
+        except Exception as e:
+            logger.error(
+                f"Downloaded file scan failed - filename: {filename}, "
+                f"url: {file}, error: {str(e)}, exec_id: {graph_exec_id}, "
+                f"task_context: {asyncio.current_task()}"
+            )
+            raise
         target_path.write_bytes(resp.content)
 
     else:
@@ -153,10 +204,16 @@ async def store_media_file(
             raise ValueError(f"Local file does not exist: {target_path}")
 
     # Return result
-    if return_content:
-        return MediaFileType(_file_to_data_uri(target_path))
-    else:
-        return MediaFileType(_strip_base_prefix(target_path, base_path))
+    result = (
+        MediaFileType(_file_to_data_uri(target_path))
+        if return_content
+        else MediaFileType(_strip_base_prefix(target_path, base_path))
+    )
+    logger.info(
+        f"store_media_file completed - exec_id: {graph_exec_id}, "
+        f"result_type: {'data_uri' if return_content else 'path'}"
+    )
+    return result
 
 
 def get_mime_type(file: str) -> str:
