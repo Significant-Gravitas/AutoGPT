@@ -49,44 +49,45 @@ export const OutputHandler = ({
       </Button>
 
       {/* Output Properties */}
-      {isOutputVisible && (
+      {
         <div className="flex flex-col items-end gap-2">
-          {Object.entries(properties).map(([key, property]: [string, any]) => (
-            <div key={key} className="relative flex items-center gap-2">
-              <Text
-                variant="body"
-                className="flex items-center gap-2 font-medium text-slate-700"
-              >
-                {property?.description && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span
-                          style={{ marginLeft: 6, cursor: "pointer" }}
-                          aria-label="info"
-                          tabIndex={0}
-                        >
-                          <InfoIcon />
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>{property?.description}</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
-                {property?.title || key}{" "}
-                <Text variant="small" as="span" className="!text-green-500">
-                  ({property?.type || "unknown"})
+          {Object.entries(properties).map(([key, property]: [string, any]) => {
+            const isConnected = isOutputConnected(nodeId, key);
+            const shouldShow = isConnected || isOutputVisible;
+
+            return shouldShow ? (
+              <div key={key} className="relative flex items-center gap-2">
+                <Text
+                  variant="body"
+                  className="flex items-center gap-2 font-medium text-slate-700"
+                >
+                  {property?.description && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span
+                            style={{ marginLeft: 6, cursor: "pointer" }}
+                            aria-label="info"
+                            tabIndex={0}
+                          >
+                            <InfoIcon />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>{property?.description}</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                  {property?.title || key}{" "}
+                  <Text variant="small" as="span" className="!text-green-500">
+                    ({property?.type || "unknown"})
+                  </Text>
                 </Text>
-              </Text>
-              <NodeHandle
-                id={key}
-                isConnected={isOutputConnected(nodeId, key)}
-                side="right"
-              />
-            </div>
-          ))}
+                <NodeHandle id={key} isConnected={isConnected} side="right" />
+              </div>
+            ) : null;
+          })}
         </div>
-      )}
+      }
     </div>
   );
 };
