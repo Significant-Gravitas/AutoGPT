@@ -206,9 +206,7 @@ async def migrate_legacy_triggered_graphs():
 
             n_migrated_webhooks += 1
         except Exception as e:
-            logger.error(
-                f"Failed to migrate graph #{graph.id} trigger to preset: {e}"
-            )
+            logger.error(f"Failed to migrate graph #{graph.id} trigger to preset: {e}")
             continue
 
     logger.info(f"Migrated {n_migrated_webhooks} node triggers to triggered presets")
