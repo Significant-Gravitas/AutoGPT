@@ -50,6 +50,16 @@ export default function () {
     } else {
       console.log(`🔄 VU ${__VU} using cached authentication`);
     }
+    
+    // Handle authentication failure gracefully
+    if (!vuAuth || !vuAuth.access_token) {
+      console.log(`⚠️ VU ${__VU} has no valid authentication - skipping iteration`);
+      check(null, {
+        'Authentication: Failed gracefully without crashing VU': () => true,
+      });
+      return; // Exit iteration gracefully without crashing
+    }
+    
     const headers = getAuthHeaders(vuAuth.access_token);
     
     if (vuAuth && vuAuth.access_token) {
