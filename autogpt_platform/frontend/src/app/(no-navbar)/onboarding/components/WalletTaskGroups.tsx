@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { ChevronDown, Check, BadgeQuestionMark } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as party from "party-js";
@@ -10,10 +10,7 @@ interface Props {
   setGroups: React.Dispatch<React.SetStateAction<TaskGroup[]>>;
 }
 
-export function TaskGroups({
-  groups,
-  setGroups,
-}: Props) {
+export function TaskGroups({ groups, setGroups }: Props) {
   const { state, updateState } = useOnboarding();
   const refs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -140,7 +137,8 @@ export function TaskGroups({
                 {group.name}
               </div>
               <div className="mt-1 text-xs font-normal leading-tight text-zinc-500">
-                {group.details}<br />
+                {group.details}
+                <br />
                 {getCompletedCount(group.tasks)} of {group.tasks.length}{" "}
                 completed
               </div>

@@ -65,8 +65,7 @@ export default function Wallet() {
           id: "MARKETPLACE_RUN_AGENT",
           name: "Open the Library page and run an agent",
           amount: 1,
-          details:
-            "Go to the Library, open an agent you want, and run it",
+          details: "Go to the Library, open an agent you want, and run it",
           video: "/onboarding/marketplace-run.mp4",
         },
         {
@@ -106,7 +105,8 @@ export default function Wallet() {
           id: "RUN_3_DAYS",
           name: "Run agents 3 days in a row",
           amount: 1,
-          details: "Run any agents from the Library or Builder for 3 days in a row",
+          details:
+            "Run any agents from the Library or Builder for 3 days in a row",
         },
       ],
     },
@@ -126,7 +126,8 @@ export default function Wallet() {
           id: "RUN_14_DAYS",
           name: "Run agents 14 days in a row",
           amount: 3,
-          details: "Run any agents from the Library or Builder for 10 days in a row",
+          details:
+            "Run any agents from the Library or Builder for 10 days in a row",
         },
         {
           id: "RUN_AGENTS_100",
@@ -158,7 +159,10 @@ export default function Wallet() {
   // Get total completed count for all groups
   const completedCount = useMemo(() => {
     return groups.reduce(
-      (acc, group) => acc + group.tasks.filter((task) => state?.completedSteps?.includes(task.id)).length,
+      (acc, group) =>
+        acc +
+        group.tasks.filter((task) => state?.completedSteps?.includes(task.id))
+          .length,
       0,
     );
   }, [groups, state?.completedSteps]);
@@ -240,10 +244,7 @@ export default function Wallet() {
   }, [credits, prevCredits]);
 
   return (
-    <Popover
-      open={walletOpen}
-      onOpenChange={setWalletOpen}
-    >
+    <Popover open={walletOpen} onOpenChange={setWalletOpen}>
       <PopoverTrigger asChild>
         <div className="relative inline-block">
           <button
@@ -260,9 +261,7 @@ export default function Wallet() {
             {completedCount < totalCount && (
               <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"></span>
             )}
-            <div
-              className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-white px-4 py-2 shadow-md group-hover:block"
-            >
+            <div className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-white px-4 py-2 shadow-md group-hover:block">
               <Text variant="body-medium">
                 {completedCount} of {totalCount} rewards claimed
               </Text>
@@ -309,10 +308,7 @@ export default function Wallet() {
           <p className="mx-1 my-1 font-sans text-xs font-normal text-zinc-500">
             Complete the following tasks to earn more credits!
           </p>
-          <TaskGroups
-            groups={groups}
-            setGroups={setGroups}
-          />
+          <TaskGroups groups={groups} setGroups={setGroups} />
         </ScrollArea>
       </PopoverContent>
     </Popover>

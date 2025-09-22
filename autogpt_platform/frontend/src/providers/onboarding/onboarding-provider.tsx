@@ -25,15 +25,15 @@ import {
 
 const OnboardingContext = createContext<
   | {
-    state: UserOnboarding | null;
-    updateState: (
-      state: Omit<Partial<UserOnboarding>, "rewardedFor">,
-    ) => void;
-    step: number;
-    setStep: (step: number) => void;
-    completeStep: (step: OnboardingStep) => void;
-    incrementRuns: () => void;
-  }
+      state: UserOnboarding | null;
+      updateState: (
+        state: Omit<Partial<UserOnboarding>, "rewardedFor">,
+      ) => void;
+      step: number;
+      setStep: (step: number) => void;
+      completeStep: (step: OnboardingStep) => void;
+      incrementRuns: () => void;
+    }
   | undefined
 >(undefined);
 
@@ -172,23 +172,26 @@ export default function OnboardingProvider({
   function isToday(date: Date): boolean {
     const today = new Date();
 
-    return date.getDate() === today.getDate()
-      && date.getMonth() === today.getMonth()
-      && date.getFullYear() === today.getFullYear();
+    return (
+      date.getDate() === today.getDate() &&
+      date.getMonth() === today.getMonth() &&
+      date.getFullYear() === today.getFullYear()
+    );
   }
 
   function isYesterday(date: Date): boolean {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
 
-    return date.getDate() === yesterday.getDate()
-      && date.getMonth() === yesterday.getMonth()
-      && date.getFullYear() === yesterday.getFullYear();
+    return (
+      date.getDate() === yesterday.getDate() &&
+      date.getMonth() === yesterday.getMonth() &&
+      date.getFullYear() === yesterday.getFullYear()
+    );
   }
 
   const incrementRuns = useCallback(() => {
-    if (!state || !state.completedSteps)
-      return;
+    if (!state || !state.completedSteps) return;
 
     const tenRuns = state.agentRuns + 1 >= 10;
     const hundredRuns = state.agentRuns + 1 >= 100;
@@ -196,20 +199,29 @@ export default function OnboardingProvider({
     // If the last run was yesterday, increment days
     // Otherwise, if the last run was *not* today reset it (already checked that it wasn't yesterday at this point)
     // Otherwise, don't do anything (the last run was today)
-    const consecutive = state.lastRunAt === null || isYesterday(state.lastRunAt) ?
-      { lastRunAt: new Date(), consecutiveRunDays: state.consecutiveRunDays + 1 } :
-      !isToday(state.lastRunAt) ?
-        { lastRunAt: new Date(), consecutiveRunDays: 0 } : {};
+    const consecutive =
+      state.lastRunAt === null || isYesterday(state.lastRunAt)
+        ? {
+            lastRunAt: new Date(),
+            consecutiveRunDays: state.consecutiveRunDays + 1,
+          }
+        : !isToday(state.lastRunAt)
+          ? { lastRunAt: new Date(), consecutiveRunDays: 0 }
+          : {};
 
     setNpsDialogOpen(tenRuns);
     updateState({
       agentRuns: state.agentRuns + 1,
       completedSteps: [
         ...state.completedSteps,
-        ...(tenRuns ? ["RUN_AGENTS"] as OnboardingStep[] : []),
-        ...(hundredRuns ? ["RUN_AGENTS_100"] as OnboardingStep[] : []),
-        ...(state.consecutiveRunDays + 1 === 3 ? ["RUN_3_DAYS"] as OnboardingStep[] : []),
-        ...(state.consecutiveRunDays + 1 === 14 ? ["RUN_14_DAYS"] as OnboardingStep[] : []),
+        ...(tenRuns ? (["RUN_AGENTS"] as OnboardingStep[]) : []),
+        ...(hundredRuns ? (["RUN_AGENTS_100"] as OnboardingStep[]) : []),
+        ...(state.consecutiveRunDays + 1 === 3
+          ? (["RUN_3_DAYS"] as OnboardingStep[])
+          : []),
+        ...(state.consecutiveRunDays + 1 === 14
+          ? (["RUN_14_DAYS"] as OnboardingStep[])
+          : []),
       ],
       ...consecutive,
     });
