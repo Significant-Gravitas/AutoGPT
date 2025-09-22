@@ -1,3 +1,4 @@
+from datetime import datetime
 import re
 from typing import Any, Optional
 
@@ -39,6 +40,8 @@ class UserOnboardingUpdate(pydantic.BaseModel):
     agentInput: Optional[dict[str, Any]] = None
     onboardingAgentExecutionId: Optional[str] = None
     agentRuns: Optional[int] = None
+    lastRunAt: Optional[datetime] = None
+    consecutiveRunDays: Optional[int] = None
 
 
 async def get_user_onboarding(user_id: str):
@@ -89,6 +92,10 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
         update["onboardingAgentExecutionId"] = data.onboardingAgentExecutionId
     if data.agentRuns is not None:
         update["agentRuns"] = data.agentRuns
+    if data.lastRunAt is not None:
+        update["lastRunAt"] = data.lastRunAt
+    if data.consecutiveRunDays is not None:
+        update["consecutiveRunDays"] = data.consecutiveRunDays
 
     return await UserOnboarding.prisma().upsert(
         where={"userId": user_id},
@@ -148,6 +155,22 @@ async def reward_user(user_id: str, step: OnboardingStep):
             "rewardedFor": onboarding.rewardedFor,
         },
     )
+
+
+async def complete_webhook_trigger_step(user_id: str):
+    """
+    Completes the TRIGGER_WEBHOOK onboarding step for the user if not already completed.
+    """
+
+    onboarding = await get_user_onboarding(user_id)
+    if OnboardingStep.TRIGGER_WEBHOOK not in onboarding.completedSteps:
+        await update_user_onboarding(
+            user_id,
+            UserOnboardingUpdate(
+                completedSteps=onboarding.completedSteps
+                + [OnboardingStep.TRIGGER_WEBHOOK]
+            ),
+        )
 
 
 def clean_and_split(text: str) -> list[str]:

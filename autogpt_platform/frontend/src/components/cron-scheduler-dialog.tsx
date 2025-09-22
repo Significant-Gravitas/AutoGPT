@@ -7,6 +7,7 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 import { getTimezoneDisplayName } from "@/lib/timezone-utils";
 import { InfoIcon } from "lucide-react";
+import { useOnboarding } from "./onboarding/onboarding-provider";
 
 type CronSchedulerDialogProps = {
   open: boolean;
@@ -24,6 +25,7 @@ export function CronSchedulerDialog({
   const { toast } = useToast();
   const [cronExpression, setCronExpression] = useState<string>("");
   const [scheduleName, setScheduleName] = useState<string>(defaultScheduleName);
+  const { completeStep: completeOnboardingStep } = useOnboarding();
 
   // Get user's timezone
   const { data: userTimezone } = useGetV1GetUserTimezone({
@@ -62,6 +64,7 @@ export function CronSchedulerDialog({
 
     afterCronCreation(cronExpression, scheduleName);
     setOpen(false);
+    completeOnboardingStep("SCHEDULE_AGENT")
   };
 
   return (

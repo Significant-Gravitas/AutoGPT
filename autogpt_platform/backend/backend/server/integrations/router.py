@@ -3,6 +3,8 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Annotated, Awaitable, List, Literal
 
+from backend.data.onboarding import complete_webhook_trigger_step
+
 from autogpt_libs.auth import get_user_id
 from fastapi import (
     APIRouter,
@@ -367,6 +369,8 @@ async def webhook_ingress_generic(
         return
 
     executions: list[Awaitable] = []
+    await complete_webhook_trigger_step(user_id)
+
     for node in webhook.triggered_nodes:
         logger.debug(f"Webhook-attached node: {node}")
         if not node.is_triggered_by_event_type(event_type):

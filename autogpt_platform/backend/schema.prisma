@@ -101,6 +101,8 @@ model UserOnboarding {
   agentInput                    Json?
   onboardingAgentExecutionId    String?
   agentRuns                     Int              @default(0)
+  lastRunAt                     DateTime?
+  consecutiveRunDays            Int              @default(0)
 
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)

@@ -938,6 +938,8 @@ export interface UserOnboarding {
   selectedStoreListingVersionId: string | null;
   agentInput: Record<string, string | number> | null;
   onboardingAgentExecutionId: GraphExecutionID | null;
+  lastRunAt: Date | null;
+  consecutiveRunDays: number;
   agentRuns: number;
 }
 

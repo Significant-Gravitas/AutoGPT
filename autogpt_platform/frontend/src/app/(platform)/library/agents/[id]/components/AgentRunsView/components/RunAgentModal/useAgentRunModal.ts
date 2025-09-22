@@ -8,6 +8,7 @@ import { usePostV2SetupTrigger } from "@/app/api/__generated__/endpoints/presets
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
+import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 
 export type RunVariant =
   | "manual"
@@ -37,6 +38,7 @@ export function useAgentRunModal(
   const defaultScheduleName = useMemo(() => `Run ${agent.name}`, [agent.name]);
   const [scheduleName, setScheduleName] = useState(defaultScheduleName);
   const [cronExpression, setCronExpression] = useState("0 9 * * 1");
+  const { completeStep: completeOnboardingStep } = useOnboarding();
 
   // Determine the default run type based on agent capabilities
   const defaultRunType: RunVariant = agent.has_external_trigger
@@ -287,6 +289,8 @@ export function useAgentRunModal(
         credentials: inputCredentials,
       },
     });
+
+    completeOnboardingStep("SCHEDULE_AGENT");
   }, [
     allRequiredInputsAreSet,
     scheduleName,
