@@ -205,13 +205,11 @@ class AgentOutputBlock(Block):
 
 class AgentShortTextInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
-        value: ShortTextType = SchemaField(
+        value: Optional[ShortTextType] = SchemaField(
             description="Short text input.",
             default=None,
             advanced=False,
             title="Default Value",
-            placeholder="Enter your short text",
-            secret=True,
         )
 
     class Output(AgentInputBlock.Output):
@@ -247,12 +245,11 @@ class AgentShortTextInputBlock(AgentInputBlock):
 
 class AgentLongTextInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
-        value: LongTextType = SchemaField(
+        value: Optional[LongTextType] = SchemaField(
             description="Long text input (potentially multi-line).",
             default=None,
             advanced=False,
             title="Default Value",
-            placeholder="Enter your long text",
         )
 
     class Output(AgentInputBlock.Output):
