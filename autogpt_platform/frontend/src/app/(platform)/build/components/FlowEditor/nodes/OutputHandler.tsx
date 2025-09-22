@@ -12,6 +12,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useEdgeStore } from "../../store/edgeStore";
+import { getTypeDisplayInfo } from "../handlers/helpers";
 
 export const OutputHandler = ({
   outputSchema,
@@ -49,6 +50,7 @@ export const OutputHandler = ({
           {Object.entries(properties).map(([key, property]: [string, any]) => {
             const isConnected = isOutputConnected(nodeId, key);
             const shouldShow = isConnected || isOutputVisible;
+            const { displayType, colorClass } = getTypeDisplayInfo(property);
 
             return shouldShow ? (
               <div key={key} className="relative flex items-center gap-2">
@@ -73,8 +75,8 @@ export const OutputHandler = ({
                     </TooltipProvider>
                   )}
                   {property?.title || key}{" "}
-                  <Text variant="small" as="span" className="!text-green-500">
-                    ({property?.type || "unknown"})
+                  <Text variant="small" as="span" className={colorClass}>
+                    ({displayType})
                   </Text>
                 </Text>
                 <NodeHandle id={key} isConnected={isConnected} side="right" />

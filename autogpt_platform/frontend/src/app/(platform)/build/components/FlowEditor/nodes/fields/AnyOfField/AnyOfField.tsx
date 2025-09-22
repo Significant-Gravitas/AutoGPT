@@ -15,7 +15,10 @@ import { InfoIcon } from "@phosphor-icons/react";
 import { useAnyOfField } from "./useAnyOfField";
 import NodeHandle from "../../../handlers/NodeHandle";
 import { useEdgeStore } from "../../../../store/edgeStore";
-import { generateHandleId } from "../../../handlers/helpers";
+import {
+  generateHandleId,
+  getTypeDisplayInfo,
+} from "../../../handlers/helpers";
 import merge from "lodash/merge";
 
 type TypeOption = {
@@ -114,6 +117,8 @@ export const AnyOfField = ({
   };
 
   if (isNullableType && nonNull) {
+    const { displayType, colorClass } = getTypeDisplayInfo(nonNull);
+
     return (
       <div className="flex flex-col">
         <div className="flex items-center justify-between gap-2">
@@ -122,8 +127,8 @@ export const AnyOfField = ({
             <Text variant="body">
               {name.charAt(0).toUpperCase() + name.slice(1)}
             </Text>
-            <Text variant="small" className="!text-green-500">
-              ({nonNull.type} | null)
+            <Text variant="small" className={colorClass}>
+              ({displayType} | null)
             </Text>
           </div>
           {!isConnected && (
@@ -153,12 +158,16 @@ export const AnyOfField = ({
             hideLabel={true}
             value={selectedType}
             onValueChange={handleTypeChange}
-            options={typeOptions.map((o) => ({ value: o.type, label: o.type }))}
+            options={typeOptions.map((o) => {
+              const { displayType } = getTypeDisplayInfo(o);
+              return { value: o.type, label: displayType };
+            })}
             size="small"
             wrapperClassName="!mb-0 "
             className="h-6 w-fit gap-1 pl-3 pr-2"
           />
         )}
+
         {schema.description && (
           <TooltipProvider>
             <Tooltip>

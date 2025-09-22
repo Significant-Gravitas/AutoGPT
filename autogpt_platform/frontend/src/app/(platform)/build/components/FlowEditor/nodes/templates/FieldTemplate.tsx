@@ -12,7 +12,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import NodeHandle from "../../handlers/NodeHandle";
 import { useEdgeStore } from "../../../store/edgeStore";
 import { useNodeStore } from "../../../store/nodeStore";
-import { generateHandleId, HandleIdType } from "../../handlers/helpers";
+import { generateHandleId, getTypeDisplayInfo } from "../../handlers/helpers";
 import { ArrayEditorContext } from "../../components/ArrayEditor/ArrayEditorContext";
 
 const FieldTemplate: React.FC<FieldTemplateProps> = ({
@@ -56,6 +56,8 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
     Boolean((uiSchema as any)?.["ui:options"]?.fromAnyOf) ||
     Boolean((formContext as any)?.fromAnyOf);
 
+  const { displayType, colorClass } = getTypeDisplayInfo(schema);
+
   return (
     <div className="mt-4 w-[400px] space-y-1">
       {label && schema.type && (
@@ -69,8 +71,8 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
             </Text>
           )}
           {!fromAnyOf && (
-            <Text variant="small" className="!text-green-500">
-              ({schema.type})
+            <Text variant="small" className={colorClass}>
+              ({displayType})
             </Text>
           )}
           {required && <span style={{ color: "red" }}>*</span>}
