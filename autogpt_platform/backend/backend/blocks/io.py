@@ -422,6 +422,7 @@ class AgentFileInputBlock(AgentInputBlock):
 
     class Output(AgentInputBlock.Output):
         result: str = SchemaField(description="File reference/path result.")
+        error: str = SchemaField(description="Error message if file processing fails.", default="")
 
     def __init__(self):
         super().__init__(
@@ -439,6 +440,7 @@ class AgentFileInputBlock(AgentInputBlock):
             ],
             test_output=[
                 ("result", str),
+                ("error", str),
             ],
         )
 
@@ -453,12 +455,20 @@ class AgentFileInputBlock(AgentInputBlock):
         if not input_data.value:
             return
 
-        yield "result", await store_media_file(
-            graph_exec_id=graph_exec_id,
-            file=input_data.value,
-            user_id=user_id,
-            return_content=input_data.base_64,
-        )
+        try:
+            result = await store_media_file(
+                graph_exec_id=graph_exec_id,
+                file=input_data.value,
+                user_id=user_id,
+                return_content=input_data.base_64,
+            )
+            yield "result", result
+        except Exception as e:
+            # Log the error and yield an error output instead of failing silently
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"AgentFileInputBlock failed to process file: {str(e)}")
+            yield "error", f"Failed to process file: {str(e)}"
 
 
 class AgentDropdownInputBlock(AgentInputBlock):

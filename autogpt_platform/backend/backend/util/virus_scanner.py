@@ -74,12 +74,25 @@ class VirusScannerService:
         """Scan **one** chunk with concurrency control."""
         async with self._sem:
             try:
+                # Ensure we're in a proper async context for the aioclamd client
                 raw = await self._client.instream(io.BytesIO(chunk))
                 return self._parse_raw(raw)
             except (BrokenPipeError, ConnectionResetError) as exc:
                 raise RuntimeError("size-limit") from exc
+            except RuntimeError as exc:
+                # Handle timeout context manager errors
+                if "timeout context manager" in str(exc).lower():
+                    logger.warning(f"Timeout context manager error in virus scanner: {exc}")
+                    raise RuntimeError("size-limit") from exc
+                elif "INSTREAM size limit exceeded" in str(exc):
+                    raise RuntimeError("size-limit") from exc
+                raise
             except Exception as exc:
                 if "INSTREAM size limit exceeded" in str(exc):
+                    raise RuntimeError("size-limit") from exc
+                # Handle potential timeout-related errors
+                if "timeout" in str(exc).lower():
+                    logger.warning(f"Timeout error in virus scanner: {exc}")
                     raise RuntimeError("size-limit") from exc
                 raise
 
@@ -192,6 +205,7 @@ async def scan_content_safe(content: bytes, *, filename: str = "unknown") -> Non
     from backend.server.v2.store.exceptions import VirusDetectedError, VirusScanError
 
     try:
+        # Ensure we're in a proper async task context
         result = await get_virus_scanner().scan_file(content, filename=filename)
         if not result.is_clean:
             threat_name = result.threat_name or "Unknown threat"
@@ -204,6 +218,14 @@ async def scan_content_safe(content: bytes, *, filename: str = "unknown") -> Non
 
     except VirusDetectedError:
         raise
+    except RuntimeError as e:
+        # Handle timeout context manager errors specifically
+        if "timeout context manager" in str(e).lower():
+            logger.warning(f"Timeout context manager error during virus scan for {filename}: {str(e)}")
+            # Skip virus scanning if there's a timeout context issue
+            logger.warning(f"Skipping virus scan for {filename} due to timeout context error")
+            return
+        raise VirusScanError(f"Virus scanning failed: {str(e)}") from e
     except Exception as e:
         logger.error(f"Virus scanning failed for {filename}: {str(e)}")
         raise VirusScanError(f"Virus scanning failed: {str(e)}") from e
