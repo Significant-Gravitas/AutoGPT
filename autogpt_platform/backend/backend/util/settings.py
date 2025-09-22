@@ -68,8 +68,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The default timeout in seconds, for Pyro client connections.",
     )
     pyro_client_comm_retry: int = Field(
-        default=5,
+        default=8,
         description="The default number of retries for Pyro client connections.",
+    )
+    pyro_client_max_wait: float = Field(
+        default=15.0,
+        description="The maximum wait time in seconds for Pyro client retries.",
     )
     rpc_client_call_timeout: int = Field(
         default=300,
