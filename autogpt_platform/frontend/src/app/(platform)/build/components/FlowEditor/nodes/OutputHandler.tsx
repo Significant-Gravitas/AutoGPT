@@ -21,11 +21,7 @@ export const OutputHandler = ({
   nodeId: string;
 }) => {
   const { isOutputConnected } = useEdgeStore();
-
-  // Extract properties from the schema
   const properties = outputSchema?.properties || {};
-
-  // State to control visibility of output properties
   const [isOutputVisible, setIsOutputVisible] = useState(false);
 
   return (
@@ -48,7 +44,6 @@ export const OutputHandler = ({
         </Text>
       </Button>
 
-      {/* Output Properties */}
       {
         <div className="flex flex-col items-end gap-2">
           {Object.entries(properties).map(([key, property]: [string, any]) => {
