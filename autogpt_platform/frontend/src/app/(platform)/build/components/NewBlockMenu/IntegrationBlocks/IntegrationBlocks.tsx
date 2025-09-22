@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useIntegrationBlocks } from "./useIntegrationBlocks";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
-import { useNodeStore } from "../../store/nodeStore";
+import { useNodeStore } from "../../../stores/nodeStore";
 
 export const IntegrationBlocks = () => {
   const { integration, setIntegration } = useBlockMenuContext();

@@ -6,7 +6,7 @@ import { widgets } from "./widgets";
 import { fields } from "./fields";
 import { templates } from "./templates";
 import { uiSchema } from "./schema";
-import { useNodeStore } from "../../store/nodeStore";
+import { useNodeStore } from "../../../stores/nodeStore";
 
 export const FormCreator = React.memo(
   ({ jsonSchema, nodeId }: { jsonSchema: RJSFSchema; nodeId: string }) => {

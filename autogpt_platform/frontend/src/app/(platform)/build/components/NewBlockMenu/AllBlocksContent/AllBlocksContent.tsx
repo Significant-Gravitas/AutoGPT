@@ -6,7 +6,7 @@ import { beautifyString } from "@/lib/utils";
 import { useAllBlockContent } from "./useAllBlockContent";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { blockMenuContainerStyle } from "../style";
-import { useNodeStore } from "../../store/nodeStore";
+import { useNodeStore } from "../../stores/nodeStore";
 
 export const AllBlocksContent = () => {
   const {

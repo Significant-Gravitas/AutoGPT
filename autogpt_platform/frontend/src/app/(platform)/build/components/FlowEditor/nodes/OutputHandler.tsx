@@ -11,7 +11,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useEdgeStore } from "../../store/edgeStore";
+import { useEdgeStore } from "../../stores/edgeStore";
 import { getTypeDisplayInfo } from "../handlers/helpers";
 
 export const OutputHandler = ({

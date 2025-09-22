@@ -3,7 +3,7 @@ import { generateHandleId, HandleIdType } from "../../handlers/helpers";
 import { ArrayEditorContext } from "./ArrayEditorContext";
 import { Button } from "@/components/atoms/Button/Button";
 import { PlusIcon, XIcon } from "@phosphor-icons/react";
-import { useEdgeStore } from "../../../store/edgeStore";
+import { useEdgeStore } from "../../../stores/edgeStore";
 
 export interface ArrayEditorProps {
   items?: ArrayFieldTemplateItemType<any, RJSFSchema, any>[];

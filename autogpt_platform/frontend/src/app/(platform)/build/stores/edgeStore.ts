@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { convertConnectionsToBackendLinks } from "../FlowEditor/edges/helpers";
+import { convertConnectionsToBackendLinks } from "../components/FlowEditor/edges/helpers";
 
 export type Connection = {
   edge_id: string;

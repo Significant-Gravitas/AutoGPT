@@ -10,8 +10,8 @@ import {
 import { Text } from "@/components/atoms/Text/Text";
 
 import NodeHandle from "../../handlers/NodeHandle";
-import { useEdgeStore } from "../../../store/edgeStore";
-import { useNodeStore } from "../../../store/nodeStore";
+import { useEdgeStore } from "../../../stores/edgeStore";
+import { useNodeStore } from "../../../../stores/nodeStore";
 import { generateHandleId, getTypeDisplayInfo } from "../../handlers/helpers";
 import { ArrayEditorContext } from "../../components/ArrayEditor/ArrayEditorContext";
 

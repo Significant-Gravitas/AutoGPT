@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 
 import { Link } from "@/app/api/__generated__/models/link";
-import { useEdgeStore } from "./store/edgeStore";
-import { useNodeStore } from "./store/nodeStore";
+import { useEdgeStore } from "./stores/edgeStore";
+import { useNodeStore } from "./stores/nodeStore";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
 

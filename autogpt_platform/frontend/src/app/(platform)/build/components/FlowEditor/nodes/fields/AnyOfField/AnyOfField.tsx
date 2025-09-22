@@ -14,7 +14,7 @@ import {
 import { InfoIcon } from "@phosphor-icons/react";
 import { useAnyOfField } from "./useAnyOfField";
 import NodeHandle from "../../../handlers/NodeHandle";
-import { useEdgeStore } from "../../../../store/edgeStore";
+import { useEdgeStore } from "../../../../stores/edgeStore";
 import {
   generateHandleId,
   getTypeDisplayInfo,

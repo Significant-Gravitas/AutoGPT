@@ -1,5 +1,5 @@
 import { ReactFlow, Background, Controls } from "@xyflow/react";
-import { useNodeStore } from "../store/nodeStore";
+import { useNodeStore } from "../../stores/nodeStore";
 
 import NewControlPanel from "../NewBlockMenu/NewControlPanel/NewControlPanel";
 import { useShallow } from "zustand/react/shallow";

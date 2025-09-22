@@ -7,7 +7,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { preprocessInputSchema } from "../processors/input-schema-pre-processor";
 import { OutputHandler } from "./OutputHandler";
-import { useNodeStore } from "../../store/nodeStore";
+import { useNodeStore } from "../../../stores/nodeStore";
 
 export type CustomNodeData = {
   hardcodedValues: {

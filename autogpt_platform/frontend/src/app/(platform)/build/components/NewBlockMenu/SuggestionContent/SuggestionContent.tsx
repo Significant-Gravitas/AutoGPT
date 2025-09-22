@@ -5,7 +5,7 @@ import { DefaultStateType, useBlockMenuContext } from "../block-menu-provider";
 import { useSuggestionContent } from "./useSuggestionContent";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { blockMenuContainerStyle } from "../style";
-import { useNodeStore } from "../../store/nodeStore";
+import { useNodeStore } from "../../../stores/nodeStore";
 
 export const SuggestionContent = () => {
   const { setIntegration, setDefaultState } = useBlockMenuContext();
