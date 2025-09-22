@@ -1,12 +1,12 @@
 "use client";
 
 import { use, useCallback, useEffect, useState } from "react";
-import { AgentsSection } from "@/components/agptui/composite/AgentsSection";
-import { SearchBar } from "@/components/agptui/SearchBar";
-import { FeaturedCreators } from "@/components/agptui/composite/FeaturedCreators";
-import { Separator } from "@/components/ui/separator";
-import { SearchFilterChips } from "@/components/agptui/SearchFilterChips";
-import { SortDropdown } from "@/components/agptui/SortDropdown";
+import { AgentsSection } from "@/components/__legacy__/composite/AgentsSection";
+import { SearchBar } from "@/components/__legacy__/SearchBar";
+import { FeaturedCreators } from "@/components/__legacy__/composite/FeaturedCreators";
+import { Separator } from "@/components/__legacy__/ui/separator";
+import { SearchFilterChips } from "@/components/__legacy__/SearchFilterChips";
+import { SortDropdown } from "@/components/__legacy__/SortDropdown";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { Creator, StoreAgent } from "@/lib/autogpt-server-api";
 

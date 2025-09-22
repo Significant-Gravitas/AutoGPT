@@ -3,7 +3,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover";
+} from "@/components/__legacy__/ui/popover";
 import { BlockMenuContent } from "../BlockMenuContent/BlockMenuContent";
 import { ControlPanelButton } from "../ControlPanelButton";
 import { useBlockMenu } from "./useBlockMenu";

@@ -1,13 +1,12 @@
 "use client";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Popover,
   PopoverContent,
   PopoverPortal,
   PopoverTrigger,
-} from "@/components/ui/popover";
-import { Separator } from "@/components/ui/separator";
+} from "@/components/__legacy__/ui/popover";
+import { Separator } from "@/components/__legacy__/ui/separator";
 import { AnimatePresence, motion } from "framer-motion";
 import { usePathname } from "next/navigation";
 import * as React from "react";
@@ -15,6 +14,10 @@ import { MenuItemGroup } from "../../helpers";
 import { MobileNavbarMenuItem } from "./components/MobileNavbarMenuItem";
 import { Button } from "@/components/atoms/Button/Button";
 import { CaretUpIcon, ListIcon } from "@phosphor-icons/react";
+import Avatar, {
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/atoms/Avatar/Avatar";
 
 interface MobileNavBarProps {
   userName?: string;

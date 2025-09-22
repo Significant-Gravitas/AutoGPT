@@ -9,7 +9,7 @@ export function RunDetailCard({ children, className }: Props) {
   return (
     <div
       className={cn(
-        "min-h-20 rounded-xlarge border border-slate-50/70 bg-white p-6",
+        "min-h-20 rounded-large border border-white bg-white p-6",
         className,
       )}
     >

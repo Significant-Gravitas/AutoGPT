@@ -1,6 +1,6 @@
 "use client";
-import { IconAutoGPTLogo, IconType } from "@/components/ui/icons";
-import Wallet from "../../../agptui/Wallet";
+import { IconAutoGPTLogo, IconType } from "@/components/__legacy__/ui/icons";
+import Wallet from "../../../__legacy__/Wallet";
 import { AccountMenu } from "./AccountMenu/AccountMenu";
 import { LoginButton } from "./LoginButton";
 import { MobileNavBar } from "./MobileNavbar/MobileNavBar";

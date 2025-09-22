@@ -1,7 +1,7 @@
-import { Sidebar } from "@/components/agptui/Sidebar";
+import { Sidebar } from "@/components/__legacy__/Sidebar";
 import { Users, DollarSign } from "lucide-react";
 
-import { IconSliders } from "@/components/ui/icons";
+import { IconSliders } from "@/components/__legacy__/ui/icons";
 
 const sidebarLinkGroups = [
   {

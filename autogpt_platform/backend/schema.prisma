@@ -110,6 +110,7 @@ model AgentGraph {
 
   name        String?
   description String?
+  instructions String?
   recommendedScheduleCron String?
 
   isActive Boolean @default(true)
@@ -370,10 +371,16 @@ model AgentGraphExecution {
 
   stats Json?
 
+  // Sharing fields
+  isShared    Boolean   @default(false)
+  shareToken  String?   @unique
+  sharedAt    DateTime?
+
   @@index([agentGraphId, agentGraphVersion])
   @@index([userId])
   @@index([createdAt])
   @@index([agentPresetId])
+  @@index([shareToken])
 }
 
 // This model describes the execution of an AgentNode.
@@ -528,7 +535,7 @@ model CreditTransaction {
   createdAt      DateTime @default(now())
 
   userId String
-  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  User   User?   @relation(fields: [userId], references: [id], onDelete: NoAction)
 
   amount Int
   type   CreditTransactionType
@@ -757,6 +764,7 @@ model StoreListingVersion {
   videoUrl    String?
   imageUrls   String[]
   description String
+  instructions String?
   categories  String[]
 
   isFeatured Boolean @default(false)

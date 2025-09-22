@@ -1,4 +1,4 @@
-import { InputProps } from "@/components/ui/input";
+import { InputProps } from "@/components/__legacy__/ui/input";
 import {
   filterNumberInput,
   filterPhoneInput,
