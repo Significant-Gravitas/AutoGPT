@@ -5,19 +5,20 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { Select } from "@/components/atoms/Select/Select";
 import { InputType, mapJsonSchemaTypeToInputType } from "../../helpers";
+
+import { InfoIcon } from "@phosphor-icons/react";
+import { useAnyOfField } from "./useAnyOfField";
+import NodeHandle from "../../../handlers/NodeHandle";
+import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
+import { generateHandleId } from "../../../handlers/helpers";
+import { getTypeDisplayInfo } from "../../helpers";
+import merge from "lodash/merge";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { InfoIcon } from "@phosphor-icons/react";
-import { useAnyOfField } from "./useAnyOfField";
-import NodeHandle from "../../../handlers/NodeHandle";
-import { useEdgeStore } from "../../../../stores/edgeStore";
-import { generateHandleId } from "../../../handlers/helpers";
-import { getTypeDisplayInfo } from "../../helpers";
-import merge from "lodash/merge";
+} from "@/components/atoms/Tooltip/BaseTooltip";
 
 type TypeOption = {
   type: string;

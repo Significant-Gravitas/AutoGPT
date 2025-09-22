@@ -6,12 +6,12 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { Text } from "@/components/atoms/Text/Text";
 
 import NodeHandle from "../../handlers/NodeHandle";
-import { useEdgeStore } from "../../../stores/edgeStore";
-import { useNodeStore } from "../../../../stores/nodeStore";
+import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
+import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { generateHandleId } from "../../handlers/helpers";
 import { getTypeDisplayInfo } from "../helpers";
 import { ArrayEditorContext } from "../../components/ArrayEditor/ArrayEditorContext";

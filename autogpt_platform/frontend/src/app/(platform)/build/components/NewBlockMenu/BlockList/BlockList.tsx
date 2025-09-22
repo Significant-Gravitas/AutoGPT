@@ -1,7 +1,7 @@
 import React from "react";
 import { Block } from "../Block";
 import { blockMenuContainerStyle } from "../style";
-import { useNodeStore } from "../../stores/nodeStore";
+import { useNodeStore } from "../../../stores/nodeStore";
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 
 interface BlocksListProps {

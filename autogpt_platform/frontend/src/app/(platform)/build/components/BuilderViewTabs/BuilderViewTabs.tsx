@@ -1,6 +1,6 @@
 "use client";
 
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/__legacy__/ui/tabs";
 
 export type BuilderView = "old" | "new";
 
@@ -13,7 +13,10 @@ export function BuilderViewTabs({
 }) {
   return (
     <div className="pointer-events-auto fixed right-4 top-20 z-50">
-      <Tabs value={value} onValueChange={(v) => onChange(v as BuilderView)}>
+      <Tabs
+        value={value}
+        onValueChange={(v: string) => onChange(v as BuilderView)}
+      >
         <TabsList className="w-fit bg-zinc-900">
           <TabsTrigger value="old" className="text-gray-100">
             Old

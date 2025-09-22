@@ -6,7 +6,7 @@ import {
   getBezierPath,
 } from "@xyflow/react";
 
-import { useEdgeStore } from "../../stores/edgeStore";
+import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { XIcon } from "@phosphor-icons/react";
 
 const CustomEdge = ({

@@ -10,8 +10,8 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { useEdgeStore } from "../../stores/edgeStore";
+} from "@/components/atoms/Tooltip/BaseTooltip";
+import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { getTypeDisplayInfo } from "./helpers";
 
 export const OutputHandler = ({

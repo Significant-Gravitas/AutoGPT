@@ -1,5 +1,5 @@
 import { WidgetProps } from "@rjsf/utils";
-import { Input } from "@/components/ui/input";
+import { Input } from "@/components/__legacy__/ui/input";
 
 export const FileWidget = (props: WidgetProps) => {
   const { onChange, multiple = false, disabled, readonly, id } = props;

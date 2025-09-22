@@ -8,7 +8,7 @@ import {
   MultiSelectorItem,
   MultiSelectorList,
   MultiSelectorTrigger,
-} from "@/components/ui/multiselect";
+} from "@/components/__legacy__/ui/multiselect";
 
 export const SelectWidget = (props: WidgetProps) => {
   const { options, value, onChange, disabled, readonly, id } = props;

@@ -6,7 +6,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import NodeHandle from "../../handlers/NodeHandle";
-import { useEdgeStore } from "../../../stores/edgeStore";
+import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { generateHandleId, HandleIdType } from "../../handlers/helpers";
 
 export interface ObjectEditorProps {

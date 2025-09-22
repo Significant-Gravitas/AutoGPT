@@ -4,7 +4,7 @@ import {
   MarkerType,
   EdgeChange,
 } from "@xyflow/react";
-import { useEdgeStore } from "../../stores/edgeStore";
+import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { useCallback, useMemo } from "react";
 
 export const useCustomEdge = () => {

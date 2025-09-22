@@ -2,14 +2,14 @@
 
 import * as React from "react";
 import { Calendar as CalendarIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/__legacy__/ui/button";
 import { cn } from "@/lib/utils";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
+} from "@/components/__legacy__/ui/popover";
+import { Calendar } from "@/components/__legacy__/ui/calendar";
 
 function toLocalISODateString(d: Date) {
   const year = d.getFullYear();
