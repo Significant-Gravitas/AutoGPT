@@ -18,7 +18,6 @@ export const options = {
     { duration: __ENV.DURATION || '5m', target: parseInt(__ENV.VUS) || 1 },
     { duration: __ENV.RAMP_DOWN || '1m', target: 0 },
   ],
-  maxDuration: '15m', // Explicit maximum duration for cloud execution
   thresholds: {
     checks: ['rate>0.70'], // Reduced from 0.85 due to auth timeouts under load
     http_req_duration: ['p(95)<30000'], // Increased for cloud testing with high concurrency
