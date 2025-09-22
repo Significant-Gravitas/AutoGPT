@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Tuple
 
+import aiohttp
 from gcloud.aio import storage as async_gcs_storage
 from google.cloud import storage as gcs_storage
 
@@ -38,12 +39,26 @@ class CloudStorageHandler:
         self.config = config
         self._async_gcs_client = None
         self._sync_gcs_client = None  # Only for signed URLs
+        self._session = None
 
-    def _get_async_gcs_client(self):
-        """Lazy initialization of async GCS client."""
+    async def _get_async_gcs_client(self):
+        """Lazy initialization of async GCS client with proper session management."""
         if self._async_gcs_client is None:
-            # Use Application Default Credentials (ADC)
-            self._async_gcs_client = async_gcs_storage.Storage()
+            # Create a session if we don't have one
+            if self._session is None:
+                # Create session with proper timeout configuration
+                timeout = aiohttp.ClientTimeout(total=300)
+                self._session = aiohttp.ClientSession(timeout=timeout)
+
+            # Use Application Default Credentials (ADC) with explicit session
+            self._async_gcs_client = async_gcs_storage.Storage(session=self._session)
+
+            # Log the initialization for debugging
+            current_task = asyncio.current_task()
+            logger.debug(
+                f"Initialized GCS client - current_task: {current_task}, "
+                f"in_task: {current_task is not None}"
+            )
         return self._async_gcs_client
 
     async def close(self):
@@ -51,6 +66,9 @@ class CloudStorageHandler:
         if self._async_gcs_client is not None:
             await self._async_gcs_client.close()
             self._async_gcs_client = None
+        if self._session is not None:
+            await self._session.close()
+            self._session = None
 
     async def __aenter__(self):
         """Async context manager entry."""
@@ -141,7 +159,7 @@ class CloudStorageHandler:
         if user_id and graph_exec_id:
             raise ValueError("Provide either user_id OR graph_exec_id, not both")
 
-        async_client = self._get_async_gcs_client()
+        async_client = await self._get_async_gcs_client()
 
         # Generate unique path with appropriate scope
         unique_id = str(uuid.uuid4())
@@ -203,6 +221,14 @@ class CloudStorageHandler:
         self, path: str, user_id: str | None = None, graph_exec_id: str | None = None
     ) -> bytes:
         """Retrieve file from Google Cloud Storage with authorization."""
+        # Log context for debugging
+        current_task = asyncio.current_task()
+        logger.debug(
+            f"_retrieve_file_gcs called - path: {path}, "
+            f"current_task: {current_task}, "
+            f"in_task: {current_task is not None}"
+        )
+
         # Parse bucket and blob name from path
         parts = path.split("/", 1)
         if len(parts) != 2:
@@ -213,13 +239,31 @@ class CloudStorageHandler:
         # Authorization check
         self._validate_file_access(blob_name, user_id, graph_exec_id)
 
-        async_client = self._get_async_gcs_client()
+        async_client = await self._get_async_gcs_client()
 
         try:
+            logger.debug(
+                f"About to download from GCS - bucket: {bucket_name}, blob: {blob_name}"
+            )
             # Download content using pure async client
             content = await async_client.download(bucket_name, blob_name)
+            logger.debug(f"GCS download successful - size: {len(content)} bytes")
             return content
         except Exception as e:
+            # Log the specific error for debugging
+            logger.error(
+                f"GCS download failed - error: {str(e)}, "
+                f"error_type: {type(e).__name__}, "
+                f"bucket: {bucket_name}, blob: {blob_name}"
+            )
+            # Special handling for timeout error
+            if "Timeout context manager" in str(e):
+                logger.critical(
+                    f"TIMEOUT ERROR in GCS download! "
+                    f"current_task: {current_task}, "
+                    f"path: gcs://{path}"
+                )
+
             # Convert gcloud-aio exceptions to standard ones
             if "404" in str(e) or "Not Found" in str(e):
                 raise FileNotFoundError(f"File not found: gcs://{path}")
@@ -391,7 +435,7 @@ class CloudStorageHandler:
         if not self.config.gcs_bucket_name:
             raise ValueError("GCS_BUCKET_NAME not configured")
 
-        async_client = self._get_async_gcs_client()
+        async_client = await self._get_async_gcs_client()
         current_time = datetime.now(timezone.utc)
 
         try:
@@ -476,7 +520,7 @@ class CloudStorageHandler:
 
         bucket_name, blob_name = parts
 
-        async_client = self._get_async_gcs_client()
+        async_client = await self._get_async_gcs_client()
 
         try:
             # Get object metadata using pure async client
