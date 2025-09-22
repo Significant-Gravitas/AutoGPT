@@ -264,6 +264,35 @@ export function TaskGroups({
           </div>
         </div>
       ))}
+      {/* Hidden Tasks group */}
+      <div className="mt-3 overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100">
+        {/* Group Header */}
+        <div className="flex items-center justify-between p-3">
+          {/* Name and details */}
+          <div className="flex-1">
+            <div className="text-sm font-medium text-zinc-900">
+              Hidden Tasks
+            </div>
+            <div className="mt-1 text-xs font-normal leading-tight text-zinc-500">
+              Check back later — new tasks are on the way
+            </div>
+          </div>
+        </div>
+        {/* Tasks */}
+        <div>
+          <div className="mx-3 border-t border-zinc-300 px-1 pb-1 pt-3">
+            <div className="mb-2 flex items-center justify-between">
+              {/* Question mark and rectangle */}
+              <div className="flex items-center gap-2">
+                <div className="flex h-4 w-4 items-center justify-center">
+                  <BadgeQuestionMark />
+                </div>
+                <div className="h-4 w-32 rounded bg-zinc-200" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
