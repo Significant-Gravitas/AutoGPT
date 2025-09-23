@@ -873,28 +873,55 @@ async def download_agent_file(
 
 
 @router.get(
-    "/cache/info",
-    summary="Get cache information",
-    tags=["store", "admin"],
-    dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
+    "/metrics/cache",
+    summary="Get cache metrics in Prometheus format",
+    tags=["store", "metrics"],
+    response_class=fastapi.responses.PlainTextResponse,
 )
-async def get_cache_info():
+async def get_cache_metrics():
     """
-    Get information about all cached functions in the store API.
+    Get cache metrics in Prometheus text format.
+
+    Returns Prometheus-compatible metrics for monitoring cache performance.
+    Metrics include size, maxsize, TTL, and hit rate for each cache.
 
     Returns:
-        dict: Information about each cached function including size, maxsize, and TTL
+        str: Prometheus-formatted metrics text
     """
-    cache_info = {
-        "user_profile_cache": _get_cached_user_profile.cache_info(),
-        "store_agents_cache": _get_cached_store_agents.cache_info(),
-        "agent_details_cache": _get_cached_agent_details.cache_info(),
-        "agent_graph_cache": _get_cached_agent_graph.cache_info(),
-        "agent_by_version_cache": _get_cached_store_agent_by_version.cache_info(),
-        "store_creators_cache": _get_cached_store_creators.cache_info(),
-        "creator_details_cache": _get_cached_creator_details.cache_info(),
-        "my_agents_cache": _get_cached_my_agents.cache_info(),
-        "submissions_cache": _get_cached_submissions.cache_info(),
-    }
-    return cache_info
+    metrics = []
 
+    # Helper to add metrics for a cache
+    def add_cache_metrics(cache_name: str, cache_func):
+        info = cache_func.cache_info()
+        # Cache size metric (dynamic - changes as items are cached/expired)
+        metrics.append(f'store_cache_entries{{cache="{cache_name}"}} {info["size"]}')
+        # Cache utilization percentage (dynamic - useful for monitoring)
+        utilization = (
+            (info["size"] / info["maxsize"] * 100) if info["maxsize"] > 0 else 0
+        )
+        metrics.append(
+            f'store_cache_utilization_percent{{cache="{cache_name}"}} {utilization:.2f}'
+        )
+
+    # Add metrics for each cache
+    add_cache_metrics("user_profile", _get_cached_user_profile)
+    add_cache_metrics("store_agents", _get_cached_store_agents)
+    add_cache_metrics("agent_details", _get_cached_agent_details)
+    add_cache_metrics("agent_graph", _get_cached_agent_graph)
+    add_cache_metrics("agent_by_version", _get_cached_store_agent_by_version)
+    add_cache_metrics("store_creators", _get_cached_store_creators)
+    add_cache_metrics("creator_details", _get_cached_creator_details)
+    add_cache_metrics("my_agents", _get_cached_my_agents)
+    add_cache_metrics("submissions", _get_cached_submissions)
+
+    # Add metadata/help text at the beginning
+    prometheus_output = [
+        "# HELP store_cache_entries Number of entries currently in cache",
+        "# TYPE store_cache_entries gauge",
+        "# HELP store_cache_utilization_percent Cache utilization as percentage (0-100)",
+        "# TYPE store_cache_utilization_percent gauge",
+        "",  # Empty line before metrics
+    ]
+    prometheus_output.extend(metrics)
+
+    return "\n".join(prometheus_output)

@@ -346,7 +346,6 @@ class TestCacheDeletion:
             assert deleted is False  # Different parameters, not in cache
 
 
-
 if __name__ == "__main__":
     # Run the tests
     pytest.main([__file__, "-v"])
