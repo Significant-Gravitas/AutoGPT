@@ -72,6 +72,10 @@ class CachedFunction(Protocol[P, R_co]):
         """Get cache statistics."""
         return {}
 
+    def cache_delete(self, *args: P.args, **kwargs: P.kwargs) -> bool:
+        """Delete a specific cache entry by its arguments. Returns True if entry existed."""
+        return False
+
     def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R_co:
         """Call the cached function."""
         return None  # type: ignore
@@ -241,8 +245,17 @@ def cached(
                 "ttl_seconds": ttl_seconds,
             }
 
+        def cache_delete(*args, **kwargs) -> bool:
+            """Delete a specific cache entry. Returns True if entry existed."""
+            key = _make_hashable_key(args, kwargs)
+            if key in cache_storage:
+                del cache_storage[key]
+                return True
+            return False
+
         setattr(wrapper, "cache_clear", cache_clear)
         setattr(wrapper, "cache_info", cache_info)
+        setattr(wrapper, "cache_delete", cache_delete)
 
         return cast(CachedFunction, wrapper)
 

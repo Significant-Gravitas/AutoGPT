@@ -81,10 +81,17 @@ async def get_user_by_email(email: str) -> Optional[User]:
 
 async def update_user_email(user_id: str, email: str):
     try:
+        # Get old email first for cache invalidation
+        old_user = await prisma.user.find_unique(where={"id": user_id})
+        old_email = old_user.email if old_user else None
+
         await prisma.user.update(where={"id": user_id}, data={"email": email})
-        # Invalidate relevant caches after user data changes
-        get_user_by_id.cache_clear()
-        get_user_by_email.cache_clear()
+
+        # Selectively invalidate only the specific user entries
+        get_user_by_id.cache_delete(user_id)
+        if old_email:
+            get_user_by_email.cache_delete(old_email)
+        get_user_by_email.cache_delete(email)
     except Exception as e:
         raise DatabaseError(
             f"Failed to update user email for user {user_id}: {e}"
@@ -124,6 +131,8 @@ async def update_user_integrations(user_id: str, data: UserIntegrations):
         where={"id": user_id},
         data={"integrations": encrypted_data},
     )
+    # Invalidate cache for this user
+    get_user_by_id.cache_delete(user_id)
 
 
 async def migrate_and_encrypt_user_integrations():
@@ -295,6 +304,10 @@ async def update_user_notification_preference(
         )
         if not user:
             raise ValueError(f"User not found with ID: {user_id}")
+
+        # Invalidate cache for this user since notification preferences are part of user data
+        get_user_by_id.cache_delete(user_id)
+
         preferences: dict[NotificationType, bool] = {
             NotificationType.AGENT_RUN: user.notifyOnAgentRun or True,
             NotificationType.ZERO_BALANCE: user.notifyOnZeroBalance or True,
@@ -333,6 +346,8 @@ async def set_user_email_verification(user_id: str, verified: bool) -> None:
             where={"id": user_id},
             data={"emailVerified": verified},
         )
+        # Invalidate cache for this user
+        get_user_by_id.cache_delete(user_id)
     except Exception as e:
         raise DatabaseError(
             f"Failed to set email verification status for user {user_id}: {e}"
@@ -417,6 +432,10 @@ async def update_user_timezone(user_id: str, timezone: str) -> User:
         )
         if not user:
             raise ValueError(f"User not found with ID: {user_id}")
+
+        # Invalidate cache for this user
+        get_user_by_id.cache_delete(user_id)
+
         return User.from_db(user)
     except Exception as e:
         raise DatabaseError(f"Failed to update timezone for user {user_id}: {e}") from e
