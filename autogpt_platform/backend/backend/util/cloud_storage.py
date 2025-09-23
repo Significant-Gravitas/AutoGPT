@@ -42,32 +42,59 @@ class CloudStorageHandler:
         self._session = None
 
     async def _get_async_gcs_client(self):
-        """Lazy initialization of async GCS client with proper session management."""
-        if self._async_gcs_client is None:
-            # Create a session if we don't have one
-            if self._session is None:
-                # Create session with proper timeout configuration
-                timeout = aiohttp.ClientTimeout(total=300)
-                self._session = aiohttp.ClientSession(timeout=timeout)
+        """Get or create async GCS client, ensuring it's created in proper async context."""
+        # Check if we already have a client
+        if self._async_gcs_client is not None:
+            return self._async_gcs_client
 
-            # Use Application Default Credentials (ADC) with explicit session
-            self._async_gcs_client = async_gcs_storage.Storage(session=self._session)
-
-            # Log the initialization for debugging
-            current_task = asyncio.current_task()
-            logger.debug(
-                f"Initialized GCS client - current_task: {current_task}, "
-                f"in_task: {current_task is not None}"
+        current_task = asyncio.current_task()
+        if not current_task:
+            # If we're not in a task, create a temporary client
+            logger.warning(
+                "Creating GCS client outside of task context - using temporary client"
             )
+            timeout = aiohttp.ClientTimeout(total=300)
+            session = aiohttp.ClientSession(
+                timeout=timeout,
+                connector=aiohttp.TCPConnector(limit=100, force_close=False),
+            )
+            return async_gcs_storage.Storage(session=session)
+
+        logger.debug(
+            f"Initializing GCS client - current_task: {current_task}, "
+            f"in_task: {current_task is not None}"
+        )
+
+        # Create a reusable session with proper configuration
+        # Key fix: Don't set timeout on session, let gcloud-aio handle it
+        self._session = aiohttp.ClientSession(
+            connector=aiohttp.TCPConnector(
+                limit=100,  # Connection pool limit
+                force_close=False,  # Reuse connections
+                enable_cleanup_closed=True,
+            )
+        )
+
+        # Create the GCS client with our session
+        # The key is NOT setting timeout on the session but letting the library handle it
+        self._async_gcs_client = async_gcs_storage.Storage(session=self._session)
+
         return self._async_gcs_client
 
     async def close(self):
         """Close all client connections properly."""
         if self._async_gcs_client is not None:
-            await self._async_gcs_client.close()
+            try:
+                await self._async_gcs_client.close()
+            except Exception as e:
+                logger.debug(f"Error closing GCS client: {e}")
             self._async_gcs_client = None
+
         if self._session is not None:
-            await self._session.close()
+            try:
+                await self._session.close()
+            except Exception as e:
+                logger.debug(f"Error closing session: {e}")
             self._session = None
 
     async def __aenter__(self):
@@ -76,6 +103,11 @@ class CloudStorageHandler:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit."""
+        _ = (
+            exc_type,
+            exc_val,
+            exc_tb,
+        )  # Unused but required for context manager protocol
         await self.close()
 
     def _get_sync_gcs_client(self):
@@ -223,7 +255,7 @@ class CloudStorageHandler:
         """Retrieve file from Google Cloud Storage with authorization."""
         # Log context for debugging
         current_task = asyncio.current_task()
-        logger.debug(
+        logger.info(
             f"_retrieve_file_gcs called - path: {path}, "
             f"current_task: {current_task}, "
             f"in_task: {current_task is not None}"
@@ -239,23 +271,53 @@ class CloudStorageHandler:
         # Authorization check
         self._validate_file_access(blob_name, user_id, graph_exec_id)
 
-        async_client = await self._get_async_gcs_client()
+        # Use a fresh client for each download to avoid session issues
+        # This is less efficient but more reliable with the executor's event loop
+        logger.info("Creating fresh GCS client for download")
 
+        # Create a new session specifically for this download
+        session = aiohttp.ClientSession(
+            connector=aiohttp.TCPConnector(limit=10, force_close=True)
+        )
+
+        async_client = None
         try:
-            logger.debug(
+            # Create a new GCS client with the fresh session
+            async_client = async_gcs_storage.Storage(session=session)
+
+            logger.info(
                 f"About to download from GCS - bucket: {bucket_name}, blob: {blob_name}"
             )
-            # Download content using pure async client
+
+            # Download content using the fresh client
             content = await async_client.download(bucket_name, blob_name)
-            logger.debug(f"GCS download successful - size: {len(content)} bytes")
+            logger.info(f"GCS download successful - size: {len(content)} bytes")
+
+            # Clean up
+            await async_client.close()
+            await session.close()
+
             return content
+
         except Exception as e:
+            # Always try to clean up
+            if async_client is not None:
+                try:
+                    await async_client.close()
+                except Exception as cleanup_error:
+                    logger.info(f"Error closing GCS client: {cleanup_error}")
+            try:
+                await session.close()
+            except Exception as cleanup_error:
+                logger.info(f"Error closing session: {cleanup_error}")
+
             # Log the specific error for debugging
             logger.error(
                 f"GCS download failed - error: {str(e)}, "
                 f"error_type: {type(e).__name__}, "
                 f"bucket: {bucket_name}, blob: {blob_name}"
             )
+
             # Special handling for timeout error
             if "Timeout context manager" in str(e):
                 logger.critical(
