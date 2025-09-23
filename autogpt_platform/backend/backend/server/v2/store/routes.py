@@ -237,7 +237,9 @@ async def get_agent(username: str, agent_name: str):
         username = urllib.parse.unquote(username).lower()
         # URL decode the agent name since it comes from the URL path
         agent_name = urllib.parse.unquote(agent_name).lower()
-        agent = await _get_cached_agent_details(username=username, agent_name=agent_name)
+        agent = await _get_cached_agent_details(
+            username=username, agent_name=agent_name
+        )
         return agent
     except Exception:
         logger.exception("Exception occurred whilst getting store agent details")
@@ -599,7 +601,9 @@ async def get_submissions(
             status_code=422, detail="Page size must be greater than 0"
         )
     try:
-        listings = await _get_cached_submissions(user_id, page=page, page_size=page_size)
+        listings = await _get_cached_submissions(
+            user_id, page=page, page_size=page_size
+        )
         return listings
     except Exception:
         logger.exception("Exception occurred whilst getting store submissions")
@@ -970,7 +974,7 @@ async def clear_specific_cache(cache_name: str):
     if cache_name not in cache_map:
         raise fastapi.HTTPException(
             status_code=404,
-            detail=f"Cache '{cache_name}' not found. Valid caches: {list(cache_map.keys())}"
+            detail=f"Cache '{cache_name}' not found. Valid caches: {list(cache_map.keys())}",
         )
 
     cache_map[cache_name].cache_clear()
