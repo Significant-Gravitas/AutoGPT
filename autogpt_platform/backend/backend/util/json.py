@@ -1,4 +1,7 @@
 import json
+import logging
+import signal
+from contextlib import contextmanager
 from typing import Any, Type, TypeGuard, TypeVar, overload
 
 import jsonschema
@@ -8,6 +11,8 @@ from prisma import Json
 from pydantic import BaseModel
 
 from .type import type_match
+
+logger = logging.getLogger(__name__)
 
 
 def to_dict(data) -> dict:
@@ -201,15 +206,39 @@ JSON_ARRAY_REGEX = regex.compile(
 )
 
 
-def find_objects_in_text(text: str) -> list[str]:
-    """Find all JSON objects in a text string."""
-    json_matches = JSON_OBJECT_REGEX.findall(text)
+def find_objects_in_text(text: str, timeout_seconds: int = 5) -> list[str]:
+    """Find all JSON objects in a text string with timeout protection."""
+    try:
+        with _regex_timeout(timeout_seconds):
+            json_matches = JSON_OBJECT_REGEX.findall(text)
+            return [match[0] for match in json_matches]
+    except TimeoutError:
+        logger.warning("Regex for finding JSON objects timed out")
+        return []
 
-    return [match[0] for match in json_matches]
+
+def find_arrays_in_text(text: str, timeout_seconds: int = 5) -> list[str]:
+    """Find all JSON arrays in a text string with timeout protection."""
+    try:
+        with _regex_timeout(timeout_seconds):
+            json_matches = JSON_ARRAY_REGEX.findall(text)
+            return [match[0] for match in json_matches]
+    except TimeoutError:
+        logger.warning("Regex for finding JSON arrays timed out")
+        return []
 
 
-def find_arrays_in_text(text: str) -> list[str]:
-    """Find all JSON arrays in a text string."""
-    json_matches = JSON_ARRAY_REGEX.findall(text)
+@contextmanager
+def _regex_timeout(seconds: int = 5):
+    """Context manager to timeout regex operations that might hang."""
 
-    return [match[0] for match in json_matches]
+    def timeout_handler(signum, frame):
+        raise TimeoutError(f"Regex operation timed out after {seconds} seconds")
+
+    old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_handler)

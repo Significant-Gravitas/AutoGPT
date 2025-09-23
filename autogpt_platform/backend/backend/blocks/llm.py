@@ -771,16 +771,6 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             description="Expected format of the response. If provided, the response will be validated against this format. "
             "The keys should be the expected fields in the response, and the values should be the description of the field.",
         )
-        force_json_output: bool = SchemaField(
-            title="Restrict LLM to pure JSON output",
-            default=False,
-            description=(
-                "Whether to force the LLM to produce a JSON-only response. "
-                "This can increase a model's reliability of outputting valid JSON. "
-                "However, it may also reduce the quality of the response, because it "
-                "prohibits the LLM from reasoning before providing its JSON response."
-            ),
-        )
         list_result: bool = SchemaField(
             title="List Result",
             default=False,
@@ -791,6 +781,16 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             default=LlmModel.GPT4O,
             description="The language model to use for answering the prompt.",
             advanced=False,
+        )
+        force_json_output: bool = SchemaField(
+            title="Restrict LLM to pure JSON output",
+            default=False,
+            description=(
+                "Whether to force the LLM to produce a JSON-only response. "
+                "This can increase a model's reliability of outputting valid JSON. "
+                "However, it may also reduce the quality of the response, because it "
+                "prohibits the LLM from reasoning before providing its JSON response."
+            ),
         )
         credentials: AICredentials = AICredentialsField()
         sys_prompt: str = SchemaField(
