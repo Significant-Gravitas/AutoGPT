@@ -53,18 +53,22 @@ export default function () {
     const requests = [];
     
     for (let i = 0; i < requestsPerVU; i++) {
-      // Add profile API request
-      requests.push({
-        method: 'POST',
-        url: `${config.API_BASE_URL}/api/auth/user`,
-        body: '{}',
-        params: { headers }
-      });
-      
-      // Add credits API request  
+      // Add core API requests that represent realistic user workflows
       requests.push({
         method: 'GET',
         url: `${config.API_BASE_URL}/api/credits`,
+        params: { headers }
+      });
+      
+      requests.push({
+        method: 'GET', 
+        url: `${config.API_BASE_URL}/api/graphs`,
+        params: { headers }
+      });
+      
+      requests.push({
+        method: 'GET',
+        url: `${config.API_BASE_URL}/api/blocks`, 
         params: { headers }
       });
     }
@@ -73,27 +77,15 @@ export default function () {
     const responses = http.batch(requests);
     
     // Validate results
-    let profileSuccesses = 0;
     let creditsSuccesses = 0;
+    let graphsSuccesses = 0; 
+    let blocksSuccesses = 0;
     
     for (let i = 0; i < responses.length; i++) {
       const response = responses[i];
+      const apiType = i % 3; // 0=credits, 1=graphs, 2=blocks
       
-      if (i % 2 === 0) {
-        // Profile API request
-        const profileCheck = check(response, {
-          'Profile API: Status is 200': (r) => r.status === 200,
-          'Profile API: Response has user data': (r) => {
-            try {
-              const data = JSON.parse(r.body);
-              return data && data.id;
-            } catch (e) {
-              return false;
-            }
-          },
-        });
-        if (profileCheck) profileSuccesses++;
-      } else {
+      if (apiType === 0) {
         // Credits API request
         const creditsCheck = check(response, {
           'Credits API: Status is 200': (r) => r.status === 200,
@@ -107,10 +99,38 @@ export default function () {
           },
         });
         if (creditsCheck) creditsSuccesses++;
+      } else if (apiType === 1) {
+        // Graphs API request
+        const graphsCheck = check(response, {
+          'Graphs API: Status is 200': (r) => r.status === 200,
+          'Graphs API: Response is array': (r) => {
+            try {
+              const data = JSON.parse(r.body);
+              return Array.isArray(data);
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+        if (graphsCheck) graphsSuccesses++;
+      } else {
+        // Blocks API request
+        const blocksCheck = check(response, {
+          'Blocks API: Status is 200': (r) => r.status === 200,
+          'Blocks API: Response has blocks': (r) => {
+            try {
+              const data = JSON.parse(r.body);
+              return data && (Array.isArray(data) || typeof data === 'object');
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+        if (blocksCheck) blocksSuccesses++;
       }
     }
     
-    console.log(`✅ VU ${__VU} completed: ${profileSuccesses}/${requestsPerVU} profile, ${creditsSuccesses}/${requestsPerVU} credits requests successful`);
+    console.log(`✅ VU ${__VU} completed: ${creditsSuccesses}/${requestsPerVU} credits, ${graphsSuccesses}/${requestsPerVU} graphs, ${blocksSuccesses}/${requestsPerVU} blocks successful`);
     
   } catch (error) {
     console.error(`💥 Test failed: ${error.message}`);
