@@ -350,11 +350,6 @@ async def create_review(
             comments=review.comments,
         )
 
-        # Clear the cache for this specific agent since its rating has changed
-        _get_cached_agent_details.cache_delete(username=username, agent_name=agent_name)
-        # Also clear the general agents list cache (we could be more selective here)
-        _get_cached_store_agents.cache_clear()
-
         return created_review
     except Exception:
         logger.exception("Exception occurred whilst creating store review")
@@ -903,79 +898,3 @@ async def get_cache_info():
     }
     return cache_info
 
-
-@router.post(
-    "/cache/clear",
-    summary="Clear all caches",
-    tags=["store", "admin"],
-    dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
-)
-async def clear_all_caches():
-    """
-    Clear all caches in the store API.
-    This is useful for forcing fresh data to be loaded.
-
-    Returns:
-        dict: Status message confirming caches were cleared
-    """
-    _get_cached_user_profile.cache_clear()
-    _get_cached_store_agents.cache_clear()
-    _get_cached_agent_details.cache_clear()
-    _get_cached_agent_graph.cache_clear()
-    _get_cached_store_agent_by_version.cache_clear()
-    _get_cached_store_creators.cache_clear()
-    _get_cached_creator_details.cache_clear()
-    _get_cached_my_agents.cache_clear()
-    _get_cached_submissions.cache_clear()
-
-    return {"status": "All caches cleared successfully"}
-
-
-@router.post(
-    "/cache/clear/{cache_name}",
-    summary="Clear specific cache",
-    tags=["store", "admin"],
-    dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
-)
-async def clear_specific_cache(cache_name: str):
-    """
-    Clear a specific cache by name.
-
-    Args:
-        cache_name: Name of the cache to clear. Options are:
-            - user_profile
-            - store_agents
-            - agent_details
-            - agent_graph
-            - agent_by_version
-            - store_creators
-            - creator_details
-            - my_agents
-            - submissions
-
-    Returns:
-        dict: Status message confirming the cache was cleared
-
-    Raises:
-        HTTPException: If the cache name is invalid
-    """
-    cache_map = {
-        "user_profile": _get_cached_user_profile,
-        "store_agents": _get_cached_store_agents,
-        "agent_details": _get_cached_agent_details,
-        "agent_graph": _get_cached_agent_graph,
-        "agent_by_version": _get_cached_store_agent_by_version,
-        "store_creators": _get_cached_store_creators,
-        "creator_details": _get_cached_creator_details,
-        "my_agents": _get_cached_my_agents,
-        "submissions": _get_cached_submissions,
-    }
-
-    if cache_name not in cache_map:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=f"Cache '{cache_name}' not found. Valid caches: {list(cache_map.keys())}",
-        )
-
-    cache_map[cache_name].cache_clear()
-    return {"status": f"Cache '{cache_name}' cleared successfully"}
