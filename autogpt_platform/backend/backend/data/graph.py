@@ -798,7 +798,7 @@ async def list_graphs(
         where=where_clause,
         distinct=["id"],
         order={"version": "desc"},
-        include=AGENT_GRAPH_INCLUDE,
+        # Don't include nodes for list endpoint - GraphMeta excludes them anyway
     )
 
     graph_models: list[GraphMeta] = []

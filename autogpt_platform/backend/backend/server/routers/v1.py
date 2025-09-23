@@ -902,8 +902,16 @@ async def _stop_graph_run(
 )
 async def list_graphs_executions(
     user_id: Annotated[str, Security(get_user_id)],
-) -> list[execution_db.GraphExecutionMeta]:
-    return await execution_db.get_graph_executions(user_id=user_id)
+    page: int = Query(default=1, ge=1, description="Page number"),
+    page_size: int = Query(
+        default=50, ge=1, le=100, description="Number of executions per page"
+    ),
+) -> execution_db.GraphExecutionsPaginated:
+    return await execution_db.get_graph_executions_paginated(
+        user_id=user_id,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @v1_router.get(
