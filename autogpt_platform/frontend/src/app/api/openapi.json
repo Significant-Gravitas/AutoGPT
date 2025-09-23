@@ -6764,12 +6764,18 @@
           "AGENT_INPUT",
           "CONGRATS",
           "GET_RESULTS",
-          "RUN_AGENTS",
           "MARKETPLACE_VISIT",
           "MARKETPLACE_ADD_AGENT",
           "MARKETPLACE_RUN_AGENT",
-          "BUILDER_OPEN",
           "BUILDER_SAVE_AGENT",
+          "RE_RUN_AGENT",
+          "SCHEDULE_AGENT",
+          "RUN_AGENTS",
+          "RUN_3_DAYS",
+          "TRIGGER_WEBHOOK",
+          "RUN_14_DAYS",
+          "RUN_AGENTS_100",
+          "BUILDER_OPEN",
           "BUILDER_RUN_AGENT"
         ],
         "title": "OnboardingStep"
@@ -9320,9 +9326,9 @@
             ],
             "title": "Completedsteps"
           },
-          "notificationDot": {
+          "walletShown": {
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
-            "title": "Notificationdot"
+            "title": "Walletshown"
           },
           "notified": {
             "anyOf": [
@@ -9367,6 +9373,17 @@
           "agentRuns": {
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Agentruns"
+          },
+          "lastRunAt": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Lastrunat"
+          },
+          "consecutiveRunDays": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Consecutiverundays"
           }
         },
         "type": "object",
