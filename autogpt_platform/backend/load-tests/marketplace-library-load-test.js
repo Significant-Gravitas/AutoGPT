@@ -3,7 +3,7 @@ import http from 'k6/http';
 import { Counter } from 'k6/metrics';
 
 import { getEnvironmentConfig } from './configs/environment.js';
-import { authenticateUser, getCachedAuth } from './utils/auth.js';
+import { getAuthenticatedUser } from './utils/auth.js';
 
 const config = getEnvironmentConfig();
 const BASE_URL = config.API_BASE_URL;
@@ -52,7 +52,7 @@ export default function () {
   console.log(`📚 VU ${__VU} starting authenticated library journey...`);
   
   // Authenticate user
-  const userAuth = getCachedAuth(__VU) || authenticateUser();
+  const userAuth = getAuthenticatedUser();
   if (!userAuth || !userAuth.access_token) {
     console.log(`❌ VU ${__VU} authentication failed, skipping iteration`);
     authenticationAttempts.add(1);
@@ -78,7 +78,7 @@ function authenticatedLibraryJourney(userAuth) {
   
   // Step 1: Get user's library agents
   console.log(`📖 VU ${__VU} fetching user library agents...`);
-  const libraryAgentsResponse = http.get(`${BASE_URL}/api/v2/library/agents?page=1&page_size=20`, { headers });
+  const libraryAgentsResponse = http.get(`${BASE_URL}/api/library/agents?page=1&page_size=20`, { headers });
   
   libraryRequests.add(1);
   const librarySuccess = check(libraryAgentsResponse, {
@@ -103,7 +103,7 @@ function authenticatedLibraryJourney(userAuth) {
 
   // Step 2: Get favorite agents
   console.log(`⭐ VU ${__VU} fetching favorite library agents...`);
-  const favoriteAgentsResponse = http.get(`${BASE_URL}/api/v2/library/agents/favorites?page=1&page_size=10`, { headers });
+  const favoriteAgentsResponse = http.get(`${BASE_URL}/api/library/agents/favorites?page=1&page_size=10`, { headers });
   
   libraryRequests.add(1);
   const favoritesSuccess = check(favoriteAgentsResponse, {
@@ -130,7 +130,7 @@ function authenticatedLibraryJourney(userAuth) {
   console.log(`🛍️ VU ${__VU} browsing marketplace to add agent...`);
   
   // First get available store agents to find one to add
-  const storeAgentsResponse = http.get(`${BASE_URL}/api/v2/store/agents?page=1&page_size=5`);
+  const storeAgentsResponse = http.get(`${BASE_URL}/api/store/agents?page=1&page_size=5`);
   
   libraryRequests.add(1);
   const storeAgentsSuccess = check(storeAgentsResponse, {
@@ -160,7 +160,7 @@ function authenticatedLibraryJourney(userAuth) {
             store_listing_version_id: randomStoreAgent.store_listing_version_id,
           };
           
-          const addAgentResponse = http.post(`${BASE_URL}/api/v2/library/agents`, JSON.stringify(addAgentPayload), { headers });
+          const addAgentResponse = http.post(`${BASE_URL}/api/library/agents`, JSON.stringify(addAgentPayload), { headers });
           
           libraryRequests.add(1);
           const addAgentSuccess = check(addAgentResponse, {
@@ -191,7 +191,7 @@ function authenticatedLibraryJourney(userAuth) {
                 };
                 
                 const updateAgentResponse = http.patch(
-                  `${BASE_URL}/api/v2/library/agents/${addedAgentJson.id}`,
+                  `${BASE_URL}/api/library/agents/${addedAgentJson.id}`,
                   JSON.stringify(updatePayload),
                   { headers }
                 );
@@ -219,7 +219,7 @@ function authenticatedLibraryJourney(userAuth) {
                 
                 // Step 5: Get specific library agent details
                 console.log(`📄 VU ${__VU} fetching agent details...`);
-                const agentDetailsResponse = http.get(`${BASE_URL}/api/v2/library/agents/${addedAgentJson.id}`, { headers });
+                const agentDetailsResponse = http.get(`${BASE_URL}/api/library/agents/${addedAgentJson.id}`, { headers });
                 
                 libraryRequests.add(1);
                 const detailsSuccess = check(agentDetailsResponse, {
@@ -244,7 +244,7 @@ function authenticatedLibraryJourney(userAuth) {
                 
                 // Step 6: Fork the library agent (simulate user customization)
                 console.log(`🍴 VU ${__VU} forking agent for customization...`);
-                const forkAgentResponse = http.post(`${BASE_URL}/api/v2/library/agents/${addedAgentJson.id}/fork`, '', { headers });
+                const forkAgentResponse = http.post(`${BASE_URL}/api/library/agents/${addedAgentJson.id}/fork`, '', { headers });
                 
                 libraryRequests.add(1);
                 const forkSuccess = check(forkAgentResponse, {
@@ -292,7 +292,7 @@ function authenticatedLibraryJourney(userAuth) {
   
   console.log(`🔍 VU ${__VU} searching library for "${randomSearchTerm}"...`);
   const searchLibraryResponse = http.get(
-    `${BASE_URL}/api/v2/library/agents?search_term=${encodeURIComponent(randomSearchTerm)}&page=1&page_size=10`,
+    `${BASE_URL}/api/library/agents?search_term=${encodeURIComponent(randomSearchTerm)}&page=1&page_size=10`,
     { headers }
   );
   
@@ -326,7 +326,7 @@ function authenticatedLibraryJourney(userAuth) {
         
         if (randomLibraryAgent?.graph_id) {
           console.log(`🔗 VU ${__VU} fetching agent by graph ID "${randomLibraryAgent.graph_id}"...`);
-          const agentByGraphResponse = http.get(`${BASE_URL}/api/v2/library/agents/by-graph/${randomLibraryAgent.graph_id}`, { headers });
+          const agentByGraphResponse = http.get(`${BASE_URL}/api/library/agents/by-graph/${randomLibraryAgent.graph_id}`, { headers });
           
           libraryRequests.add(1);
           const agentByGraphSuccess = check(agentByGraphResponse, {

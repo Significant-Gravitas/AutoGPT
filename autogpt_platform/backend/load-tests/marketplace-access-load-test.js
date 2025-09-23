@@ -56,7 +56,7 @@ function marketplaceBrowsingJourney() {
   
   // Step 1: Browse marketplace homepage - get featured agents
   console.log(`🏪 VU ${__VU} browsing marketplace homepage...`);
-  const featuredAgentsResponse = http.get(`${BASE_URL}/api/v2/store/agents?featured=true&page=1&page_size=10`);
+  const featuredAgentsResponse = http.get(`${BASE_URL}/api/store/agents?featured=true&page=1&page_size=10`);
   
   marketplaceRequests.add(1);
   const featuredSuccess = check(featuredAgentsResponse, {
@@ -80,7 +80,7 @@ function marketplaceBrowsingJourney() {
 
   // Step 2: Browse all agents with pagination
   console.log(`📋 VU ${__VU} browsing all agents...`);
-  const allAgentsResponse = http.get(`${BASE_URL}/api/v2/store/agents?page=1&page_size=20`);
+  const allAgentsResponse = http.get(`${BASE_URL}/api/store/agents?page=1&page_size=20`);
   
   marketplaceRequests.add(1);
   const allAgentsSuccess = check(allAgentsResponse, {
@@ -107,7 +107,7 @@ function marketplaceBrowsingJourney() {
   const randomQuery = searchQueries[Math.floor(Math.random() * searchQueries.length)];
   
   console.log(`🔍 VU ${__VU} searching for "${randomQuery}" agents...`);
-  const searchResponse = http.get(`${BASE_URL}/api/v2/store/agents?search_query=${encodeURIComponent(randomQuery)}&page=1&page_size=10`);
+  const searchResponse = http.get(`${BASE_URL}/api/store/agents?search_query=${encodeURIComponent(randomQuery)}&page=1&page_size=10`);
   
   marketplaceRequests.add(1);
   const searchSuccess = check(searchResponse, {
@@ -134,7 +134,7 @@ function marketplaceBrowsingJourney() {
   const randomCategory = categories[Math.floor(Math.random() * categories.length)];
   
   console.log(`📂 VU ${__VU} browsing "${randomCategory}" category...`);
-  const categoryResponse = http.get(`${BASE_URL}/api/v2/store/agents?category=${randomCategory}&page=1&page_size=15`);
+  const categoryResponse = http.get(`${BASE_URL}/api/store/agents?category=${randomCategory}&page=1&page_size=15`);
   
   marketplaceRequests.add(1);
   const categorySuccess = check(categoryResponse, {
@@ -165,7 +165,7 @@ function marketplaceBrowsingJourney() {
         
         if (randomAgent?.creator_username && randomAgent?.slug) {
           console.log(`📄 VU ${__VU} viewing agent details for "${randomAgent.slug}"...`);
-          const agentDetailsResponse = http.get(`${BASE_URL}/api/v2/store/agents/${encodeURIComponent(randomAgent.creator_username)}/${encodeURIComponent(randomAgent.slug)}`);
+          const agentDetailsResponse = http.get(`${BASE_URL}/api/store/agents/${encodeURIComponent(randomAgent.creator_username)}/${encodeURIComponent(randomAgent.slug)}`);
           
           marketplaceRequests.add(1);
           const agentDetailsSuccess = check(agentDetailsResponse, {
@@ -196,7 +196,7 @@ function marketplaceBrowsingJourney() {
 
   // Step 6: Browse creators
   console.log(`👥 VU ${__VU} browsing creators...`);
-  const creatorsResponse = http.get(`${BASE_URL}/api/v2/store/creators?page=1&page_size=20`);
+  const creatorsResponse = http.get(`${BASE_URL}/api/store/creators?page=1&page_size=20`);
   
   marketplaceRequests.add(1);
   const creatorsSuccess = check(creatorsResponse, {
@@ -220,7 +220,7 @@ function marketplaceBrowsingJourney() {
 
   // Step 7: Get featured creators
   console.log(`⭐ VU ${__VU} browsing featured creators...`);
-  const featuredCreatorsResponse = http.get(`${BASE_URL}/api/v2/store/creators?featured=true&page=1&page_size=10`);
+  const featuredCreatorsResponse = http.get(`${BASE_URL}/api/store/creators?featured=true&page=1&page_size=10`);
   
   marketplaceRequests.add(1);
   const featuredCreatorsSuccess = check(featuredCreatorsResponse, {
@@ -251,7 +251,7 @@ function marketplaceBrowsingJourney() {
         
         if (randomCreator?.username) {
           console.log(`👤 VU ${__VU} viewing creator details for "${randomCreator.username}"...`);
-          const creatorDetailsResponse = http.get(`${BASE_URL}/api/v2/store/creator/${encodeURIComponent(randomCreator.username)}`);
+          const creatorDetailsResponse = http.get(`${BASE_URL}/api/store/creator/${encodeURIComponent(randomCreator.username)}`);
           
           marketplaceRequests.add(1);
           const creatorDetailsSuccess = check(creatorDetailsResponse, {
