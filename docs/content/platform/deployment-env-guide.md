@@ -119,8 +119,8 @@ DB_CONNECTION_LIMIT=12  # Adjust based on expected load
 DB_CONNECT_TIMEOUT=60  # Increase if remote database
 DB_POOL_TIMEOUT=300  # Adjust for network latency
 
-# Redis configuration (if using authentication)
-# REDIS_PASSWORD=  # Uncomment and set if Redis requires auth
+# Redis configuration
+# REDIS_PASSWORD=  # Optional - only set if your Redis instance requires authentication
 ```
 
 ### 5. Port Configuration
@@ -197,7 +197,7 @@ If using Docker in production, ensure services can communicate:
 - [ ] **URLs**: Update all `localhost` references to your actual domain
 - [ ] **Security**: Generate new secure keys for all SECRET/KEY variables
 - [ ] **Database**: Update database host, credentials, and connection settings
-- [ ] **Redis**: Update Redis host and add password if required
+- [ ] **Redis**: Update Redis host (password is optional)
 - [ ] **OAuth**: Update all callback URLs for OAuth providers
 - [ ] **Email**: Configure production SMTP settings
 - [ ] **SSL/TLS**: Use `https://` and `wss://` protocols in production
@@ -255,6 +255,8 @@ psql "postgresql://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
 
 # Test Redis connection
 redis-cli -h ${REDIS_HOST} -p ${REDIS_PORT} ping
+# If using password authentication:
+# redis-cli -h ${REDIS_HOST} -p ${REDIS_PORT} -a ${REDIS_PASSWORD} ping
 
 # Verify Supabase connection
 curl ${SUPABASE_URL}/rest/v1/
