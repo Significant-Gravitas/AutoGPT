@@ -5,6 +5,7 @@ import threading
 import time
 from functools import wraps
 from typing import (
+    Any,
     Callable,
     ParamSpec,
     Protocol,
@@ -18,6 +19,45 @@ R = TypeVar("R")
 R_co = TypeVar("R_co", covariant=True)
 
 logger = logging.getLogger(__name__)
+
+
+def _make_hashable_key(
+    args: tuple[Any, ...], kwargs: dict[str, Any]
+) -> tuple[Any, ...]:
+    """
+    Convert args and kwargs into a hashable cache key.
+
+    Handles unhashable types like dict, list, set by converting them to
+    their sorted string representations.
+    """
+
+    def make_hashable(obj: Any) -> Any:
+        """Recursively convert an object to a hashable representation."""
+        if isinstance(obj, dict):
+            # Sort dict items to ensure consistent ordering
+            return (
+                "__dict__",
+                tuple(sorted((k, make_hashable(v)) for k, v in obj.items())),
+            )
+        elif isinstance(obj, (list, tuple)):
+            return ("__list__", tuple(make_hashable(item) for item in obj))
+        elif isinstance(obj, set):
+            return ("__set__", tuple(sorted(make_hashable(item) for item in obj)))
+        elif hasattr(obj, "__dict__"):
+            # Handle objects with __dict__ attribute
+            return ("__obj__", obj.__class__.__name__, make_hashable(obj.__dict__))
+        else:
+            # For basic hashable types (str, int, bool, None, etc.)
+            try:
+                hash(obj)
+                return obj
+            except TypeError:
+                # Fallback: convert to string representation
+                return ("__str__", str(obj))
+
+    hashable_args = tuple(make_hashable(arg) for arg in args)
+    hashable_kwargs = tuple(sorted((k, make_hashable(v)) for k, v in kwargs.items()))
+    return (hashable_args, hashable_kwargs)
 
 
 @runtime_checkable
@@ -80,7 +120,7 @@ def cached(
 
             @wraps(target_func)
             async def async_wrapper(*args: P.args, **kwargs: P.kwargs):
-                key = (args, tuple(sorted(kwargs.items())))
+                key = _make_hashable_key(args, kwargs)
                 current_time = time.time()
 
                 # Fast path: check cache without lock
@@ -138,7 +178,7 @@ def cached(
 
             @wraps(target_func)
             def sync_wrapper(*args: P.args, **kwargs: P.kwargs):
-                key = (args, tuple(sorted(kwargs.items())))
+                key = _make_hashable_key(args, kwargs)
                 current_time = time.time()
 
                 # Fast path: check cache without lock
@@ -245,7 +285,7 @@ def thread_cached(func):
             cache = getattr(thread_local, "cache", None)
             if cache is None:
                 cache = thread_local.cache = {}
-            key = (args, tuple(sorted(kwargs.items())))
+            key = _make_hashable_key(args, kwargs)
             if key not in cache:
                 cache[key] = await func(*args, **kwargs)
             return cache[key]
@@ -260,7 +300,7 @@ def thread_cached(func):
             cache = getattr(thread_local, "cache", None)
             if cache is None:
                 cache = thread_local.cache = {}
-            key = (args, tuple(sorted(kwargs.items())))
+            key = _make_hashable_key(args, kwargs)
             if key not in cache:
                 cache[key] = func(*args, **kwargs)
             return cache[key]
