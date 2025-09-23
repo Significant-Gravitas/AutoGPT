@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import functools
 import logging
 import time
 import uuid
@@ -38,7 +39,6 @@ from backend.data.credit import (
     RefundRequest,
     TransactionHistory,
     get_auto_top_up,
-    get_block_costs,
     get_user_credit_model,
     set_auto_top_up,
 )
@@ -263,6 +263,24 @@ async def is_onboarding_enabled():
 ########################################################
 
 
+@functools.cache
+def _get_cached_blocks() -> Sequence[dict[Any, Any]]:
+    """Cache the expensive block loading and serialization operation."""
+    from backend.data.credit import get_block_cost
+
+    block_classes = get_blocks()
+    result = []
+
+    for block_class in block_classes.values():
+        block_instance = block_class()
+        if not block_instance.disabled:
+            # Get costs for this specific block class without creating another instance
+            costs = get_block_cost(block_instance)
+            result.append({**block_instance.to_dict(), "costs": costs})
+
+    return result
+
+
 @v1_router.get(
     path="/blocks",
     summary="List available blocks",
@@ -270,11 +288,7 @@ async def is_onboarding_enabled():
     dependencies=[Security(requires_user)],
 )
 def get_graph_blocks() -> Sequence[dict[Any, Any]]:
-    blocks = [block() for block in get_blocks().values()]
-    costs = get_block_costs()
-    return [
-        {**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks if not b.disabled
-    ]
+    return _get_cached_blocks()
 
 
 @v1_router.post(
