@@ -110,8 +110,8 @@ def test_get_graph_blocks(
 
     # Mock block costs
     mocker.patch(
-        "backend.server.routers.v1.get_block_costs",
-        return_value={"test-block": [{"cost": 10, "type": "credit"}]},
+        "backend.data.credit.get_block_cost",
+        return_value=[{"cost": 10, "type": "credit"}],
     )
 
     response = client.get("/blocks")
@@ -145,6 +145,15 @@ def test_execute_graph_block(
     mocker.patch(
         "backend.server.routers.v1.get_block",
         return_value=mock_block,
+    )
+
+    # Mock user for user_context
+    mock_user = Mock()
+    mock_user.timezone = "UTC"
+
+    mocker.patch(
+        "backend.server.routers.v1.get_user_by_id",
+        return_value=mock_user,
     )
 
     request_data = {
@@ -270,8 +279,8 @@ def test_get_graphs(
     )
 
     mocker.patch(
-        "backend.server.routers.v1.graph_db.list_graphs",
-        return_value=[mock_graph],
+        "backend.data.graph.list_graphs_paginated",
+        return_value=Mock(graphs=[mock_graph]),
     )
 
     response = client.get("/graphs")
