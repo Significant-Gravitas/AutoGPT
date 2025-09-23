@@ -614,12 +614,10 @@ class DeleteGraphResponse(TypedDict):
 async def list_graphs(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> Sequence[graph_db.GraphMeta]:
-    # Use pagination internally with 500 limit for performance,
-    # but return same structure for backward compatibility
     paginated_result = await graph_db.list_graphs_paginated(
         user_id=user_id,
         page=1,
-        page_size=500,
+        page_size=250,
         filter_by="active",
     )
     return paginated_result.graphs
@@ -910,16 +908,13 @@ async def _stop_graph_run(
 )
 async def list_graphs_executions(
     user_id: Annotated[str, Security(get_user_id)],
-    page: int = Query(default=1, ge=1, description="Page number"),
-    page_size: int = Query(
-        default=50, ge=1, le=100, description="Number of executions per page"
-    ),
-) -> execution_db.GraphExecutionsPaginated:
-    return await execution_db.get_graph_executions_paginated(
+) -> list[execution_db.GraphExecutionMeta]:
+    paginated_result = await execution_db.get_graph_executions_paginated(
         user_id=user_id,
-        page=page,
-        page_size=page_size,
+        page=1,
+        page_size=250,
     )
+    return paginated_result.executions
 
 
 @v1_router.get(

@@ -782,47 +782,6 @@ async def set_node_webhook(node_id: str, webhook_id: str | None) -> NodeModel:
     return NodeModel.from_db(node)
 
 
-async def list_graphs(
-    user_id: str,
-    filter_by: Literal["active"] | None = "active",
-) -> list[GraphMeta]:
-    """
-    Retrieves graph metadata objects.
-    Default behaviour is to get all currently active graphs.
-
-    Args:
-        filter_by: An optional filter to either select graphs.
-        user_id: The ID of the user that owns the graph.
-
-    Returns:
-        list[GraphMeta]: A list of objects representing the retrieved graphs.
-    """
-    where_clause: AgentGraphWhereInput = {"userId": user_id}
-
-    if filter_by == "active":
-        where_clause["isActive"] = True
-
-    graphs = await AgentGraph.prisma().find_many(
-        where=where_clause,
-        distinct=["id"],
-        order={"version": "desc"},
-        # Don't include nodes for list endpoint - GraphMeta excludes them anyway
-    )
-
-    graph_models: list[GraphMeta] = []
-    for graph in graphs:
-        try:
-            graph_meta = GraphModel.from_db(graph).meta()
-            # Trigger serialization to validate that the graph is well formed
-            graph_meta.model_dump()
-            graph_models.append(graph_meta)
-        except Exception as e:
-            logger.error(f"Error processing graph {graph.id}: {e}")
-            continue
-
-    return graph_models
-
-
 async def list_graphs_paginated(
     user_id: str,
     page: int = 1,
