@@ -7,7 +7,7 @@ from typing import Optional, cast
 from urllib.parse import quote_plus
 
 from autogpt_libs.auth.models import DEFAULT_USER_ID
-from autogpt_libs.utils.cache import async_ttl_cache
+from autogpt_libs.utils.cache import cached
 from fastapi import HTTPException
 from prisma.enums import NotificationType
 from prisma.models import User as PrismaUser
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 settings = Settings()
 
 # Cache decorator alias for consistent user lookup caching
-cache_user_lookup = async_ttl_cache(maxsize=1000, ttl_seconds=300)
+cache_user_lookup = cached(maxsize=1000, ttl_seconds=300)
 
 
 @cache_user_lookup

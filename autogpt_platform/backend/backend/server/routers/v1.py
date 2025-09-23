@@ -11,7 +11,7 @@ import pydantic
 import stripe
 from autogpt_libs.auth import get_user_id, requires_user
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
-from autogpt_libs.utils.cache import sync_cache
+from autogpt_libs.utils.cache import cached
 from fastapi import (
     APIRouter,
     Body,
@@ -263,7 +263,7 @@ async def is_onboarding_enabled():
 ########################################################
 
 
-@sync_cache
+@cached()
 def _get_cached_blocks() -> Sequence[dict[Any, Any]]:
     """
     Get cached blocks with thundering herd protection.

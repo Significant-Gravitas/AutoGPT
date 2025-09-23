@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from autogpt_libs.utils.cache import sync_cache
+from autogpt_libs.utils.cache import cached
 
 if TYPE_CHECKING:
     from ..providers import ProviderName
@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 
 
 # --8<-- [start:load_webhook_managers]
-@sync_cache
+@cached()
 def load_webhook_managers() -> dict["ProviderName", type["BaseWebhooksManager"]]:
     webhook_managers = {}
 
