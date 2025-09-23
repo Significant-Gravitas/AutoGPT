@@ -1,4 +1,3 @@
-import functools
 import inspect
 import logging
 import os
@@ -21,6 +20,7 @@ from typing import (
 
 import jsonref
 import jsonschema
+from autogpt_libs.utils.cache import sync_cache
 from prisma.models import AgentBlock
 from prisma.types import AgentBlockCreateInput
 from pydantic import BaseModel
@@ -722,7 +722,7 @@ def get_block(block_id: str) -> Block[BlockSchema, BlockSchema] | None:
     return cls() if cls else None
 
 
-@functools.cache
+@sync_cache
 def get_webhook_block_ids() -> Sequence[str]:
     return [
         id
@@ -731,7 +731,7 @@ def get_webhook_block_ids() -> Sequence[str]:
     ]
 
 
-@functools.cache
+@sync_cache
 def get_io_block_ids() -> Sequence[str]:
     return [
         id

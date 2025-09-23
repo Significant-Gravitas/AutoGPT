@@ -1,6 +1,5 @@
 import asyncio
 import base64
-import functools
 import logging
 import time
 import uuid
@@ -12,6 +11,7 @@ import pydantic
 import stripe
 from autogpt_libs.auth import get_user_id, requires_user
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from autogpt_libs.utils.cache import sync_cache
 from fastapi import (
     APIRouter,
     Body,
@@ -263,9 +263,14 @@ async def is_onboarding_enabled():
 ########################################################
 
 
-@functools.cache
+@sync_cache
 def _get_cached_blocks() -> Sequence[dict[Any, Any]]:
-    """Cache the expensive block loading and serialization operation."""
+    """
+    Get cached blocks with thundering herd protection.
+
+    Uses sync_cache decorator to prevent multiple concurrent requests
+    from all executing the expensive block loading operation.
+    """
     from backend.data.credit import get_block_cost
 
     block_classes = get_blocks()
