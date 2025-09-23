@@ -29,6 +29,7 @@ from backend.data.model import (
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
 from backend.util.json import SafeJson
+from backend.util.models import Pagination
 
 from .block import Block, BlockInput, BlockSchema, BlockType, get_block, get_blocks
 from .db import BaseDbModel, query_raw_with_schema, transaction
@@ -746,6 +747,13 @@ class GraphMeta(Graph):
         return GraphMeta(**graph.model_dump())
 
 
+class GraphsPaginated(BaseModel):
+    """Response schema for paginated graphs."""
+
+    graphs: list[GraphMeta]
+    pagination: Pagination
+
+
 # --------------------- CRUD functions --------------------- #
 
 
@@ -813,6 +821,66 @@ async def list_graphs(
             continue
 
     return graph_models
+
+
+async def list_graphs_paginated(
+    user_id: str,
+    page: int = 1,
+    page_size: int = 25,
+    filter_by: Literal["active"] | None = "active",
+) -> GraphsPaginated:
+    """
+    Retrieves paginated graph metadata objects.
+
+    Args:
+        user_id: The ID of the user that owns the graphs.
+        page: Page number (1-based).
+        page_size: Number of graphs per page.
+        filter_by: An optional filter to either select graphs.
+
+    Returns:
+        GraphsPaginated: Paginated list of graph metadata.
+    """
+    where_clause: AgentGraphWhereInput = {"userId": user_id}
+
+    if filter_by == "active":
+        where_clause["isActive"] = True
+
+    # Get total count
+    total_count = await AgentGraph.prisma().count(where=where_clause)
+    total_pages = (total_count + page_size - 1) // page_size
+
+    # Get paginated results
+    offset = (page - 1) * page_size
+    graphs = await AgentGraph.prisma().find_many(
+        where=where_clause,
+        distinct=["id"],
+        order={"version": "desc"},
+        skip=offset,
+        take=page_size,
+        # Don't include nodes for list endpoint - GraphMeta excludes them anyway
+    )
+
+    graph_models: list[GraphMeta] = []
+    for graph in graphs:
+        try:
+            graph_meta = GraphModel.from_db(graph).meta()
+            # Trigger serialization to validate that the graph is well formed
+            graph_meta.model_dump()
+            graph_models.append(graph_meta)
+        except Exception as e:
+            logger.error(f"Error processing graph {graph.id}: {e}")
+            continue
+
+    return GraphsPaginated(
+        graphs=graph_models,
+        pagination=Pagination(
+            total_items=total_count,
+            total_pages=total_pages,
+            current_page=page,
+            page_size=page_size,
+        ),
+    )
 
 
 async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph | None:

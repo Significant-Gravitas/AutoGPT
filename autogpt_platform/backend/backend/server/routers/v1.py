@@ -613,8 +613,17 @@ class DeleteGraphResponse(TypedDict):
 )
 async def list_graphs(
     user_id: Annotated[str, Security(get_user_id)],
-) -> Sequence[graph_db.GraphMeta]:
-    return await graph_db.list_graphs(filter_by="active", user_id=user_id)
+    page: int = Query(default=1, ge=1, description="Page number"),
+    page_size: int = Query(
+        default=25, ge=1, le=100, description="Number of graphs per page"
+    ),
+) -> graph_db.GraphsPaginated:
+    return await graph_db.list_graphs_paginated(
+        user_id=user_id,
+        page=page,
+        page_size=page_size,
+        filter_by="active",
+    )
 
 
 @v1_router.get(
