@@ -292,7 +292,7 @@ def _get_cached_blocks() -> Sequence[dict[Any, Any]]:
     tags=["blocks"],
     dependencies=[Security(requires_user)],
 )
-def get_graph_blocks() -> Sequence[dict[Any, Any]]:
+async def get_graph_blocks() -> Sequence[dict[Any, Any]]:
     return _get_cached_blocks()
 
 
