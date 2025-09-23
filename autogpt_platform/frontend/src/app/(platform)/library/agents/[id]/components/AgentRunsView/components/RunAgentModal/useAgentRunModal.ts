@@ -16,6 +16,7 @@ import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutio
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
+import { CredentialsMetaInput } from "@/app/api/__generated__/models/credentialsMetaInput";
 
 export type RunVariant =
   | "manual"
@@ -37,10 +38,10 @@ export function useAgentRunModal(
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
   const [showScheduleView, setShowScheduleView] = useState(false);
-  const [inputValues, setInputValues] = useState<Record<string, any>>({});
-  const [inputCredentials, setInputCredentials] = useState<Record<string, any>>(
-    {},
-  );
+  const [inputValues, setInputValues] = useState<Record<string, unknown>>({});
+  const [inputCredentials, setInputCredentials] = useState<
+    Record<string, CredentialsMetaInput>
+  >({});
   const [presetName, setPresetName] = useState<string>("");
   const [presetDescription, setPresetDescription] = useState<string>("");
   const defaultScheduleName = useMemo(() => `Run ${agent.name}`, [agent.name]);
@@ -58,7 +59,11 @@ export function useAgentRunModal(
 
   // Determine the default run type based on agent capabilities
   const defaultRunType: RunVariant = agent.has_external_trigger
-    ? "automatic-trigger"
+    ? // If the trigger requires provider credentials (auto-setup), it's automatic; otherwise manual
+      agent.trigger_setup_info &&
+      agent.trigger_setup_info?.credentials_input_name
+      ? "automatic-trigger"
+      : "manual-trigger"
     : "manual";
 
   // API mutations
@@ -79,10 +84,13 @@ export function useAgentRunModal(
           setIsOpen(false);
         }
       },
-      onError: (error: any) => {
+      onError: (error: unknown) => {
         toast({
           title: "❌ Failed to execute agent",
-          description: error.message || "An unexpected error occurred.",
+          description:
+            error instanceof Error
+              ? error.message
+              : "An unexpected error occurred.",
           variant: "destructive",
         });
       },
@@ -106,10 +114,13 @@ export function useAgentRunModal(
           setIsOpen(false);
         }
       },
-      onError: (error: any) => {
+      onError: (error: unknown) => {
         toast({
           title: "❌ Failed to create schedule",
-          description: error.message || "An unexpected error occurred.",
+          description:
+            error instanceof Error
+              ? error.message
+              : "An unexpected error occurred.",
           variant: "destructive",
         });
       },
@@ -118,7 +129,7 @@ export function useAgentRunModal(
 
   const setupTriggerMutation = usePostV2SetupTrigger({
     mutation: {
-      onSuccess: (response: any) => {
+      onSuccess: (response) => {
         if (response.status === 200) {
           toast({
             title: "Trigger setup complete",
@@ -127,10 +138,13 @@ export function useAgentRunModal(
           setIsOpen(false);
         }
       },
-      onError: (error: any) => {
+      onError: (error: unknown) => {
         toast({
           title: "❌ Failed to setup trigger",
-          description: error.message || "An unexpected error occurred.",
+          description:
+            error instanceof Error
+              ? error.message
+              : "An unexpected error occurred.",
           variant: "destructive",
         });
       },
@@ -150,7 +164,7 @@ export function useAgentRunModal(
       !("properties" in agentInputSchema) ||
       !agentInputSchema.properties
     ) {
-      return {};
+      return {} as Record<string, any>;
     }
     const properties = agentInputSchema.properties as Record<string, any>;
     return Object.fromEntries(
@@ -245,7 +259,10 @@ export function useAgentRunModal(
       return;
     }
 
-    if (defaultRunType === "automatic-trigger") {
+    if (
+      defaultRunType === "automatic-trigger" ||
+      defaultRunType === "manual-trigger"
+    ) {
       // Setup trigger
       if (!scheduleName.trim()) {
         toast({

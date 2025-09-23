@@ -2,19 +2,27 @@ import { CredentialsMetaInput } from "@/app/api/__generated__/models/credentials
 import { isEmpty } from "@/lib/utils";
 
 export function validateInputs(
-  inputSchema: any,
-  values: Record<string, any>,
+  inputSchema: unknown,
+  values: Record<string, unknown>,
 ): Record<string, string> {
   const errors: Record<string, string> = {};
 
-  if (!inputSchema?.properties) return errors;
+  if (
+    !(
+      inputSchema &&
+      typeof inputSchema === "object" &&
+      (inputSchema as any).properties
+    )
+  )
+    return errors;
 
-  const requiredFields = inputSchema.required || [];
+  const requiredFields = ((inputSchema as any).required || []) as string[];
 
   for (const fieldName of requiredFields) {
-    const fieldSchema = inputSchema.properties[fieldName];
-    if (!fieldSchema?.hidden && isEmpty(values[fieldName])) {
-      errors[fieldName] = `${fieldSchema?.title || fieldName} is required`;
+    const fieldSchema = (inputSchema as any).properties[fieldName];
+    if (!fieldSchema?.hidden && isEmpty((values as any)[fieldName])) {
+      errors[fieldName] =
+        `${(fieldSchema as any)?.title || fieldName} is required`;
     }
   }
 
@@ -22,14 +30,21 @@ export function validateInputs(
 }
 
 export function validateCredentials(
-  credentialsSchema: any,
+  credentialsSchema: unknown,
   values: Record<string, CredentialsMetaInput>,
 ): Record<string, string> {
   const errors: Record<string, string> = {};
 
-  if (!credentialsSchema?.properties) return errors;
+  if (
+    !(
+      credentialsSchema &&
+      typeof credentialsSchema === "object" &&
+      (credentialsSchema as any).properties
+    )
+  )
+    return errors;
 
-  const credentialFields = Object.keys(credentialsSchema.properties);
+  const credentialFields = Object.keys((credentialsSchema as any).properties);
 
   for (const fieldName of credentialFields) {
     if (!values[fieldName]) {

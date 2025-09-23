@@ -1,4 +1,5 @@
-"use client";
+import { CredentialsMetaInput } from "@/app/api/__generated__/models/credentialsMetaInput";
+("use client");
 
 import React, { createContext, useContext } from "react";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
@@ -13,13 +14,16 @@ export interface RunAgentModalContextValue {
   presetDescription: string;
   setPresetDescription: (value: string) => void;
   // Inputs
-  inputValues: Record<string, any>;
-  setInputValue: (key: string, value: any) => void;
-  agentInputFields: Record<string, any>;
+  inputValues: Record<string, unknown>;
+  setInputValue: (key: string, value: unknown) => void;
+  agentInputFields: Record<string, unknown>;
   // Credentials
-  inputCredentials: Record<string, any>;
-  setInputCredentialsValue: (key: string, value: any | undefined) => void;
-  agentCredentialsInputFields: Record<string, any>;
+  inputCredentials: Record<string, CredentialsMetaInput>;
+  setInputCredentialsValue: (
+    key: string,
+    value: CredentialsMetaInput | undefined,
+  ) => void;
+  agentCredentialsInputFields: Record<string, unknown>;
 }
 
 const RunAgentModalContext = createContext<RunAgentModalContextValue | null>(

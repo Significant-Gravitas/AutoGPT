@@ -16,6 +16,7 @@ import { ScheduleAgentModal } from "../ScheduleAgentModal/ScheduleAgentModal";
 import { AlarmIcon } from "@phosphor-icons/react";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
+import { CredentialsMetaInput } from "@/app/api/__generated__/models/credentialsMetaInput";
 
 interface Props {
   triggerSlot: React.ReactNode;
@@ -77,16 +78,19 @@ export function RunAgentModal({
     Object.keys(agentInputFields || {}).length > 0 ||
     Object.keys(agentCredentialsInputFields || {}).length > 0;
 
-  function handleInputChange(key: string, value: string) {
+  function handleInputChange(key: string, value: unknown) {
     setInputValues((prev) => ({
       ...prev,
       [key]: value,
     }));
   }
 
-  function handleCredentialsChange(key: string, value: any | undefined) {
+  function handleCredentialsChange(
+    key: string,
+    value: CredentialsMetaInput | undefined,
+  ) {
     setInputCredentials((prev) => {
-      const next = { ...prev } as Record<string, any>;
+      const next = { ...prev } as Record<string, CredentialsMetaInput>;
       if (value === undefined) {
         delete next[key];
         return next;
@@ -180,7 +184,12 @@ export function RunAgentModal({
                 variant="secondary"
                 onClick={handleOpenScheduleModal}
                 disabled={
-                  isExecuting || isSettingUpTrigger || !allRequiredInputsAreSet
+                  isExecuting ||
+                  isSettingUpTrigger ||
+                  !allRequiredInputsAreSet ||
+                  // Scheduling not compatible with triggers
+                  defaultRunType === "automatic-trigger" ||
+                  defaultRunType === "manual-trigger"
                 }
               >
                 <AlarmIcon size={16} />
