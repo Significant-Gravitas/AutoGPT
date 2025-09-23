@@ -30,7 +30,6 @@ class TestLLMStatsTracking:
                 credentials=llm.TEST_CREDENTIALS,
                 llm_model=llm.LlmModel.GPT4O,
                 prompt=[{"role": "user", "content": "Hello"}],
-                json_format=False,
                 max_tokens=100,
             )
 
