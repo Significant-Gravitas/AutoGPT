@@ -6,6 +6,7 @@ import urllib.parse
 import autogpt_libs.auth
 import fastapi
 import fastapi.responses
+from autogpt_libs.utils.cache import cached
 
 import backend.data.graph
 import backend.server.v2.store.db
@@ -25,6 +26,13 @@ router = fastapi.APIRouter()
 ##############################################
 
 
+# Cache user profiles for 5 minutes per user
+@cached(maxsize=1000, ttl_seconds=300)
+async def _get_cached_user_profile(user_id: str):
+    """Cached helper to get user profile."""
+    return await backend.server.v2.store.db.get_user_profile(user_id)
+
+
 @router.get(
     "/profile",
     summary="Get user profile",
@@ -37,9 +45,10 @@ async def get_profile(
 ):
     """
     Get the profile details for the authenticated user.
+    Cached for 5 minutes per user.
     """
     try:
-        profile = await backend.server.v2.store.db.get_user_profile(user_id)
+        profile = await _get_cached_user_profile(user_id)
         if profile is None:
             return fastapi.responses.JSONResponse(
                 status_code=404,
@@ -85,6 +94,8 @@ async def update_or_create_profile(
         updated_profile = await backend.server.v2.store.db.update_profile(
             user_id=user_id, profile=profile
         )
+        # Clear the cache for this user after profile update
+        _get_cached_user_profile.cache_delete(user_id)
         return updated_profile
     except Exception as e:
         logger.exception("Failed to update profile for user %s: %s", user_id, e)
@@ -100,6 +111,30 @@ async def update_or_create_profile(
 ##############################################
 ############### Agent Endpoints ##############
 ##############################################
+
+
+# Cache store agents list for 2 minutes
+# Different cache entries for different query combinations
+@cached(maxsize=500, ttl_seconds=120)
+async def _get_cached_store_agents(
+    featured: bool,
+    creator: str | None,
+    sorted_by: str | None,
+    search_query: str | None,
+    category: str | None,
+    page: int,
+    page_size: int,
+):
+    """Cached helper to get store agents."""
+    return await backend.server.v2.store.db.get_store_agents(
+        featured=featured,
+        creators=[creator] if creator else None,
+        sorted_by=sorted_by,
+        search_query=search_query,
+        category=category,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.get(
@@ -119,6 +154,7 @@ async def get_agents(
 ):
     """
     Get a paginated list of agents from the store with optional filtering and sorting.
+    Results are cached for 2 minutes.
 
     Args:
         featured (bool, optional): Filter to only show featured agents. Defaults to False.
@@ -154,9 +190,9 @@ async def get_agents(
         )
 
     try:
-        agents = await backend.server.v2.store.db.get_store_agents(
+        agents = await _get_cached_store_agents(
             featured=featured,
-            creators=[creator] if creator else None,
+            creator=creator,
             sorted_by=sorted_by,
             search_query=search_query,
             category=category,
@@ -175,6 +211,15 @@ async def get_agents(
         )
 
 
+# Cache individual agent details for 5 minutes
+@cached(maxsize=200, ttl_seconds=300)
+async def _get_cached_agent_details(username: str, agent_name: str):
+    """Cached helper to get agent details."""
+    return await backend.server.v2.store.db.get_store_agent_details(
+        username=username, agent_name=agent_name
+    )
+
+
 @router.get(
     "/agents/{username}/{agent_name}",
     summary="Get specific agent",
@@ -183,7 +228,8 @@ async def get_agents(
 )
 async def get_agent(username: str, agent_name: str):
     """
-    This is only used on the AgentDetails Page
+    This is only used on the AgentDetails Page.
+    Results are cached for 5 minutes.
 
     It returns the store listing agents details.
     """
@@ -191,9 +237,7 @@ async def get_agent(username: str, agent_name: str):
         username = urllib.parse.unquote(username).lower()
         # URL decode the agent name since it comes from the URL path
         agent_name = urllib.parse.unquote(agent_name).lower()
-        agent = await backend.server.v2.store.db.get_store_agent_details(
-            username=username, agent_name=agent_name
-        )
+        agent = await _get_cached_agent_details(username=username, agent_name=agent_name)
         return agent
     except Exception:
         logger.exception("Exception occurred whilst getting store agent details")
@@ -205,6 +249,15 @@ async def get_agent(username: str, agent_name: str):
         )
 
 
+# Cache agent graphs for 10 minutes
+@cached(maxsize=200, ttl_seconds=600)
+async def _get_cached_agent_graph(store_listing_version_id: str):
+    """Cached helper to get agent graph."""
+    return await backend.server.v2.store.db.get_available_graph(
+        store_listing_version_id
+    )
+
+
 @router.get(
     "/graph/{store_listing_version_id}",
     summary="Get agent graph",
@@ -214,11 +267,10 @@ async def get_agent(username: str, agent_name: str):
 async def get_graph_meta_by_store_listing_version_id(store_listing_version_id: str):
     """
     Get Agent Graph from Store Listing Version ID.
+    Results are cached for 10 minutes.
     """
     try:
-        graph = await backend.server.v2.store.db.get_available_graph(
-            store_listing_version_id
-        )
+        graph = await _get_cached_agent_graph(store_listing_version_id)
         return graph
     except Exception:
         logger.exception("Exception occurred whilst getting agent graph")
@@ -226,6 +278,15 @@ async def get_graph_meta_by_store_listing_version_id(store_listing_version_id: s
             status_code=500,
             content={"detail": "An error occurred while retrieving the agent graph"},
         )
+
+
+# Cache agent by version for 10 minutes
+@cached(maxsize=200, ttl_seconds=600)
+async def _get_cached_store_agent_by_version(store_listing_version_id: str):
+    """Cached helper to get store agent by version ID."""
+    return await backend.server.v2.store.db.get_store_agent_by_version_id(
+        store_listing_version_id
+    )
 
 
 @router.get(
@@ -238,11 +299,10 @@ async def get_graph_meta_by_store_listing_version_id(store_listing_version_id: s
 async def get_store_agent(store_listing_version_id: str):
     """
     Get Store Agent Details from Store Listing Version ID.
+    Results are cached for 10 minutes.
     """
     try:
-        agent = await backend.server.v2.store.db.get_store_agent_by_version_id(
-            store_listing_version_id
-        )
+        agent = await _get_cached_store_agent_by_version(store_listing_version_id)
         return agent
     except Exception:
         logger.exception("Exception occurred whilst getting store agent")
@@ -279,7 +339,7 @@ async def create_review(
     """
     try:
         username = urllib.parse.unquote(username).lower()
-        agent_name = urllib.parse.unquote(agent_name)
+        agent_name = urllib.parse.unquote(agent_name).lower()
         # Create the review
         created_review = await backend.server.v2.store.db.create_store_review(
             user_id=user_id,
@@ -287,6 +347,11 @@ async def create_review(
             score=review.score,
             comments=review.comments,
         )
+
+        # Clear the cache for this specific agent since its rating has changed
+        _get_cached_agent_details.cache_delete(username=username, agent_name=agent_name)
+        # Also clear the general agents list cache (we could be more selective here)
+        _get_cached_store_agents.cache_clear()
 
         return created_review
     except Exception:
@@ -300,6 +365,25 @@ async def create_review(
 ##############################################
 ############# Creator Endpoints #############
 ##############################################
+
+
+# Cache creators list for 5 minutes
+@cached(maxsize=200, ttl_seconds=300)
+async def _get_cached_store_creators(
+    featured: bool,
+    search_query: str | None,
+    sorted_by: str | None,
+    page: int,
+    page_size: int,
+):
+    """Cached helper to get store creators."""
+    return await backend.server.v2.store.db.get_store_creators(
+        featured=featured,
+        search_query=search_query,
+        sorted_by=sorted_by,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.get(
@@ -320,6 +404,8 @@ async def get_creators(
     - Home Page Featured Creators
     - Search Results Page
 
+    Results are cached for 5 minutes.
+
     ---
 
     To support this functionality we need:
@@ -338,7 +424,7 @@ async def get_creators(
         )
 
     try:
-        creators = await backend.server.v2.store.db.get_store_creators(
+        creators = await _get_cached_store_creators(
             featured=featured,
             search_query=search_query,
             sorted_by=sorted_by,
@@ -354,6 +440,15 @@ async def get_creators(
         )
 
 
+# Cache individual creator details for 5 minutes
+@cached(maxsize=100, ttl_seconds=300)
+async def _get_cached_creator_details(username: str):
+    """Cached helper to get creator details."""
+    return await backend.server.v2.store.db.get_store_creator_details(
+        username=username.lower()
+    )
+
+
 @router.get(
     "/creator/{username}",
     summary="Get creator details",
@@ -364,14 +459,13 @@ async def get_creator(
     username: str,
 ):
     """
-    Get the details of a creator
+    Get the details of a creator.
+    Results are cached for 5 minutes.
     - Creator Details Page
     """
     try:
         username = urllib.parse.unquote(username).lower()
-        creator = await backend.server.v2.store.db.get_store_creator_details(
-            username=username.lower()
-        )
+        creator = await _get_cached_creator_details(username=username)
         return creator
     except Exception:
         logger.exception("Exception occurred whilst getting creator details")
@@ -386,6 +480,15 @@ async def get_creator(
 ############################################
 ############# Store Submissions ###############
 ############################################
+# Cache user's own agents for 1 minute (shorter TTL as this changes more frequently)
+@cached(maxsize=500, ttl_seconds=60)
+async def _get_cached_my_agents(user_id: str, page: int, page_size: int):
+    """Cached helper to get user's agents."""
+    return await backend.server.v2.store.db.get_my_agents(
+        user_id, page=page, page_size=page_size
+    )
+
+
 @router.get(
     "/myagents",
     summary="Get my agents",
@@ -398,10 +501,12 @@ async def get_my_agents(
     page: typing.Annotated[int, fastapi.Query(ge=1)] = 1,
     page_size: typing.Annotated[int, fastapi.Query(ge=1)] = 20,
 ):
+    """
+    Get user's own agents.
+    Results are cached for 1 minute per user.
+    """
     try:
-        agents = await backend.server.v2.store.db.get_my_agents(
-            user_id, page=page, page_size=page_size
-        )
+        agents = await _get_cached_my_agents(user_id, page=page, page_size=page_size)
         return agents
     except Exception:
         logger.exception("Exception occurred whilst getting my agents")
@@ -446,6 +551,17 @@ async def delete_submission(
         )
 
 
+# Cache user's submissions for 1 minute (shorter TTL as this changes frequently)
+@cached(maxsize=500, ttl_seconds=60)
+async def _get_cached_submissions(user_id: str, page: int, page_size: int):
+    """Cached helper to get user's submissions."""
+    return await backend.server.v2.store.db.get_store_submissions(
+        user_id=user_id,
+        page=page,
+        page_size=page_size,
+    )
+
+
 @router.get(
     "/submissions",
     summary="List my submissions",
@@ -460,6 +576,7 @@ async def get_submissions(
 ):
     """
     Get a paginated list of store submissions for the authenticated user.
+    Results are cached for 1 minute per user.
 
     Args:
         user_id (str): ID of the authenticated user
@@ -482,11 +599,7 @@ async def get_submissions(
             status_code=422, detail="Page size must be greater than 0"
         )
     try:
-        listings = await backend.server.v2.store.db.get_store_submissions(
-            user_id=user_id,
-            page=page,
-            page_size=page_size,
-        )
+        listings = await _get_cached_submissions(user_id, page=page, page_size=page_size)
         return listings
     except Exception:
         logger.exception("Exception occurred whilst getting store submissions")
@@ -523,7 +636,7 @@ async def create_submission(
         HTTPException: If there is an error creating the submission
     """
     try:
-        return await backend.server.v2.store.db.create_store_submission(
+        result = await backend.server.v2.store.db.create_store_submission(
             user_id=user_id,
             agent_id=submission_request.agent_id,
             agent_version=submission_request.agent_version,
@@ -538,6 +651,15 @@ async def create_submission(
             changes_summary=submission_request.changes_summary or "Initial Submission",
             recommended_schedule_cron=submission_request.recommended_schedule_cron,
         )
+
+        # Clear relevant caches when a new submission is created
+        _get_cached_store_agents.cache_clear()
+        # Clear user's own agents cache for this user
+        _get_cached_my_agents.cache_clear()
+        # Clear user's submissions cache
+        _get_cached_submissions.cache_clear()
+
+        return result
     except Exception:
         logger.exception("Exception occurred whilst creating store submission")
         return fastapi.responses.JSONResponse(
@@ -572,7 +694,7 @@ async def edit_submission(
     Raises:
         HTTPException: If there is an error editing the submission
     """
-    return await backend.server.v2.store.db.edit_store_submission(
+    result = await backend.server.v2.store.db.edit_store_submission(
         user_id=user_id,
         store_listing_version_id=store_listing_version_id,
         name=submission_request.name,
@@ -585,6 +707,13 @@ async def edit_submission(
         changes_summary=submission_request.changes_summary,
         recommended_schedule_cron=submission_request.recommended_schedule_cron,
     )
+
+    # Clear caches related to this submission
+    _get_cached_submissions.cache_clear()
+    _get_cached_store_agent_by_version.cache_delete(store_listing_version_id)
+    _get_cached_agent_graph.cache_delete(store_listing_version_id)
+
+    return result
 
 
 @router.post(
@@ -737,3 +866,112 @@ async def download_agent_file(
         return fastapi.responses.FileResponse(
             tmp_file.name, filename=file_name, media_type="application/json"
         )
+
+
+##############################################
+############### Cache Management #############
+##############################################
+
+
+@router.get(
+    "/cache/info",
+    summary="Get cache information",
+    tags=["store", "admin"],
+    dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
+)
+async def get_cache_info():
+    """
+    Get information about all cached functions in the store API.
+
+    Returns:
+        dict: Information about each cached function including size, maxsize, and TTL
+    """
+    cache_info = {
+        "user_profile_cache": _get_cached_user_profile.cache_info(),
+        "store_agents_cache": _get_cached_store_agents.cache_info(),
+        "agent_details_cache": _get_cached_agent_details.cache_info(),
+        "agent_graph_cache": _get_cached_agent_graph.cache_info(),
+        "agent_by_version_cache": _get_cached_store_agent_by_version.cache_info(),
+        "store_creators_cache": _get_cached_store_creators.cache_info(),
+        "creator_details_cache": _get_cached_creator_details.cache_info(),
+        "my_agents_cache": _get_cached_my_agents.cache_info(),
+        "submissions_cache": _get_cached_submissions.cache_info(),
+    }
+    return cache_info
+
+
+@router.post(
+    "/cache/clear",
+    summary="Clear all caches",
+    tags=["store", "admin"],
+    dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
+)
+async def clear_all_caches():
+    """
+    Clear all caches in the store API.
+    This is useful for forcing fresh data to be loaded.
+
+    Returns:
+        dict: Status message confirming caches were cleared
+    """
+    _get_cached_user_profile.cache_clear()
+    _get_cached_store_agents.cache_clear()
+    _get_cached_agent_details.cache_clear()
+    _get_cached_agent_graph.cache_clear()
+    _get_cached_store_agent_by_version.cache_clear()
+    _get_cached_store_creators.cache_clear()
+    _get_cached_creator_details.cache_clear()
+    _get_cached_my_agents.cache_clear()
+    _get_cached_submissions.cache_clear()
+
+    return {"status": "All caches cleared successfully"}
+
+
+@router.post(
+    "/cache/clear/{cache_name}",
+    summary="Clear specific cache",
+    tags=["store", "admin"],
+    dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
+)
+async def clear_specific_cache(cache_name: str):
+    """
+    Clear a specific cache by name.
+
+    Args:
+        cache_name: Name of the cache to clear. Options are:
+            - user_profile
+            - store_agents
+            - agent_details
+            - agent_graph
+            - agent_by_version
+            - store_creators
+            - creator_details
+            - my_agents
+            - submissions
+
+    Returns:
+        dict: Status message confirming the cache was cleared
+
+    Raises:
+        HTTPException: If the cache name is invalid
+    """
+    cache_map = {
+        "user_profile": _get_cached_user_profile,
+        "store_agents": _get_cached_store_agents,
+        "agent_details": _get_cached_agent_details,
+        "agent_graph": _get_cached_agent_graph,
+        "agent_by_version": _get_cached_store_agent_by_version,
+        "store_creators": _get_cached_store_creators,
+        "creator_details": _get_cached_creator_details,
+        "my_agents": _get_cached_my_agents,
+        "submissions": _get_cached_submissions,
+    }
+
+    if cache_name not in cache_map:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f"Cache '{cache_name}' not found. Valid caches: {list(cache_map.keys())}"
+        )
+
+    cache_map[cache_name].cache_clear()
+    return {"status": f"Cache '{cache_name}' cleared successfully"}
