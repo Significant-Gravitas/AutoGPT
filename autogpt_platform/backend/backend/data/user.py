@@ -7,6 +7,7 @@ from typing import Optional, cast
 from urllib.parse import quote_plus
 
 from autogpt_libs.auth.models import DEFAULT_USER_ID
+from autogpt_libs.utils.cache import async_ttl_cache
 from fastapi import HTTPException
 from prisma.enums import NotificationType
 from prisma.models import User as PrismaUser
@@ -23,7 +24,11 @@ from backend.util.settings import Settings
 logger = logging.getLogger(__name__)
 settings = Settings()
 
+# Cache decorator alias for consistent user lookup caching
+cache_user_lookup = async_ttl_cache(maxsize=1000, ttl_seconds=300)
 
+
+@cache_user_lookup
 async def get_or_create_user(user_data: dict) -> User:
     try:
         user_id = user_data.get("sub")
@@ -49,6 +54,7 @@ async def get_or_create_user(user_data: dict) -> User:
         raise DatabaseError(f"Failed to get or create user {user_data}: {e}") from e
 
 
+@cache_user_lookup
 async def get_user_by_id(user_id: str) -> User:
     user = await prisma.user.find_unique(where={"id": user_id})
     if not user:
@@ -64,6 +70,7 @@ async def get_user_email_by_id(user_id: str) -> Optional[str]:
         raise DatabaseError(f"Failed to get user email for user {user_id}: {e}") from e
 
 
+@cache_user_lookup
 async def get_user_by_email(email: str) -> Optional[User]:
     try:
         user = await prisma.user.find_unique(where={"email": email})
@@ -75,6 +82,9 @@ async def get_user_by_email(email: str) -> Optional[User]:
 async def update_user_email(user_id: str, email: str):
     try:
         await prisma.user.update(where={"id": user_id}, data={"email": email})
+        # Invalidate relevant caches after user data changes
+        get_user_by_id.cache_clear()
+        get_user_by_email.cache_clear()
     except Exception as e:
         raise DatabaseError(
             f"Failed to update user email for user {user_id}: {e}"

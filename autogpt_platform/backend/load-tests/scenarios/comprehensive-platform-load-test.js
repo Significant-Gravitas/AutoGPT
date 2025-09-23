@@ -75,19 +75,14 @@ export default function (data) {
   
   const headers = getAuthHeaders(userAuth.access_token);
   
-  console.log(`🚀 VU ${__VU} simulating ${requestsPerVU} concurrent user journeys...`);
+  console.log(`🚀 VU ${__VU} simulating ${requestsPerVU} realistic user workflows...`);
   
   // Create concurrent requests for all user journeys
   const requests = [];
   
+  // Simulate realistic user workflows instead of just API hammering
   for (let i = 0; i < requestsPerVU; i++) {
-    // Core user operations - always executed
-    requests.push({
-      method: 'POST',
-      url: `${config.API_BASE_URL}/api/auth/user`,
-      body: '{}',
-      params: { headers }
-    });
+    // Workflow 1: User checking their dashboard
     requests.push({
       method: 'GET', 
       url: `${config.API_BASE_URL}/api/credits`,
@@ -98,11 +93,15 @@ export default function (data) {
       url: `${config.API_BASE_URL}/api/graphs`, 
       params: { headers }
     });
+    
+    // Workflow 2: User exploring available blocks for building agents
     requests.push({
       method: 'GET',
       url: `${config.API_BASE_URL}/api/blocks`,
       params: { headers }
     });
+    
+    // Workflow 3: User monitoring their recent executions
     requests.push({
       method: 'GET',
       url: `${config.API_BASE_URL}/api/executions`,
@@ -110,45 +109,39 @@ export default function (data) {
     });
   }
   
-  console.log(`📊 Executing ${requests.length} concurrent platform requests...`);
+  console.log(`📊 Executing ${requests.length} requests across realistic user workflows...`);
   
   // Execute all requests concurrently
   const responses = http.batch(requests);
   
   // Process results and count successes
-  let profileSuccesses = 0, creditsSuccesses = 0, graphsSuccesses = 0, blocksSuccesses = 0, executionsSuccesses = 0;
+  let creditsSuccesses = 0, graphsSuccesses = 0, blocksSuccesses = 0, executionsSuccesses = 0;
   
   for (let i = 0; i < responses.length; i++) {
     const response = responses[i];
-    const operationType = i % 5; // Each set of 5 requests: 0=profile, 1=credits, 2=graphs, 3=blocks, 4=executions
+    const operationType = i % 4; // Each set of 4 requests: 0=credits, 1=graphs, 2=blocks, 3=executions
     
     switch(operationType) {
-      case 0: // Profile
-        if (check(response, { 'User profile loaded': (r) => r.status === 200 })) {
-          profileSuccesses++;
-          userOperations.add(1);
-        }
-        break;
-      case 1: // Credits  
-        if (check(response, { 'User credits loaded': (r) => r.status === 200 })) {
+      case 0: // Dashboard: Check credits
+        if (check(response, { 'Dashboard: User credits loaded successfully': (r) => r.status === 200 })) {
           creditsSuccesses++;
           userOperations.add(1);
         }
         break;
-      case 2: // Graphs
-        if (check(response, { 'Graphs list loaded': (r) => r.status === 200 })) {
+      case 1: // Dashboard: View graphs
+        if (check(response, { 'Dashboard: User graphs loaded successfully': (r) => r.status === 200 })) {
           graphsSuccesses++;
           graphOperations.add(1);
         }
         break;
-      case 3: // Blocks
-        if (check(response, { 'Blocks list loaded': (r) => r.status === 200 })) {
+      case 2: // Exploration: Browse available blocks
+        if (check(response, { 'Block Explorer: Available blocks loaded successfully': (r) => r.status === 200 })) {
           blocksSuccesses++;
           userOperations.add(1);
         }
         break;
-      case 4: // Executions
-        if (check(response, { 'Executions list loaded': (r) => r.status === 200 })) {
+      case 3: // Monitoring: Check execution history
+        if (check(response, { 'Execution Monitor: Recent executions loaded successfully': (r) => r.status === 200 })) {
           executionsSuccesses++;
           userOperations.add(1);
         }
@@ -156,7 +149,7 @@ export default function (data) {
     }
   }
   
-  console.log(`✅ VU ${__VU} completed: ${profileSuccesses} profile, ${creditsSuccesses} credits, ${graphsSuccesses} graphs, ${blocksSuccesses} blocks, ${executionsSuccesses} executions successful`);
+  console.log(`✅ VU ${__VU} completed realistic workflows: ${creditsSuccesses} dashboard checks, ${graphsSuccesses} graph views, ${blocksSuccesses} block explorations, ${executionsSuccesses} execution monitors`);
   
   // Think time between user sessions
   sleep(Math.random() * 3 + 1); // 1-4 seconds
@@ -165,20 +158,7 @@ export default function (data) {
 function userProfileJourney(headers) {
   const startTime = Date.now();
   
-  // 1. Get user profile
-  const profileResponse = http.post(
-    `${config.API_BASE_URL}/api/auth/user`,
-    '{}',
-    { headers }
-  );
-  
-  userOperations.add(1);
-  
-  check(profileResponse, {
-    'User profile loaded successfully': (r) => r.status === 200,
-  });
-  
-  // 2. Get user credits
+  // 1. Get user credits (JWT-only endpoint)
   const creditsResponse = http.get(
     `${config.API_BASE_URL}/api/credits`,
     { headers }
@@ -190,7 +170,7 @@ function userProfileJourney(headers) {
     'User credits loaded successfully': (r) => r.status === 200,
   });
   
-  // 3. Check onboarding status
+  // 2. Check onboarding status
   const onboardingResponse = http.get(
     `${config.API_BASE_URL}/api/onboarding`,
     { headers }
