@@ -2903,7 +2903,7 @@
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Get my agents",
-        "description": "Get user's own agents.\nResults are cached for 1 hour per user.",
+        "description": "Get user's own agents.\nResults are cached for 5 minutes per user.",
         "operationId": "getV2Get my agents",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
