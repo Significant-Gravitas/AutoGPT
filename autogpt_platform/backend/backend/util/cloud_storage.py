@@ -60,11 +60,6 @@ class CloudStorageHandler:
             )
             return async_gcs_storage.Storage(session=session)
 
-        logger.debug(
-            f"Initializing GCS client - current_task: {current_task}, "
-            f"in_task: {current_task is not None}"
-        )
-
         # Create a reusable session with proper configuration
         # Key fix: Don't set timeout on session, let gcloud-aio handle it
         self._session = aiohttp.ClientSession(
@@ -87,7 +82,7 @@ class CloudStorageHandler:
             try:
                 await self._async_gcs_client.close()
             except Exception as e:
-                logger.debug(f"Error closing GCS client: {e}")
+                logger.warning(f"Error closing GCS client: {e}")
             self._async_gcs_client = None
 
         if self._session is not None:
@@ -103,11 +98,6 @@ class CloudStorageHandler:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit."""
-        _ = (
-            exc_type,
-            exc_val,
-            exc_tb,
-        )  # Unused but required for context manager protocol
         await self.close()
 
     def _get_sync_gcs_client(self):
@@ -256,7 +246,7 @@ class CloudStorageHandler:
         # Log context for debugging
         current_task = asyncio.current_task()
         logger.info(
-            f"_retrieve_file_gcs called - path: {path}, "
+            f"_retrieve_file_gcs called - "
             f"current_task: {current_task}, "
             f"in_task: {current_task is not None}"
         )
@@ -315,7 +305,7 @@ class CloudStorageHandler:
             logger.error(
                 f"GCS download failed - error: {str(e)}, "
                 f"error_type: {type(e).__name__}, "
-                f"bucket: {bucket_name}, blob: {blob_name}"
+                f"bucket: {bucket_name}, blob: redacted for privacy"
             )
 
             # Special handling for timeout error
@@ -323,7 +313,7 @@ class CloudStorageHandler:
                 logger.critical(
                     f"TIMEOUT ERROR in GCS download! "
                     f"current_task: {current_task}, "
-                    f"path: gcs://{path}"
+                    f"bucket: {bucket_name}, blob: redacted for privacy"
                 )
 
             # Convert gcloud-aio exceptions to standard ones
