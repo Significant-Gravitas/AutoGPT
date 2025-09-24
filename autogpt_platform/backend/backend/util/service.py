@@ -43,6 +43,7 @@ api_host = config.pyro_host
 api_comm_retry = config.pyro_client_comm_retry
 api_comm_timeout = config.pyro_client_comm_timeout
 api_call_timeout = config.rpc_client_call_timeout
+api_comm_max_wait = config.pyro_client_max_wait
 
 
 def _validate_no_prisma_objects(obj: Any, path: str = "result") -> None:
@@ -352,7 +353,7 @@ def get_service_client(
         # Use preconfigured retry decorator for service communication
         return create_retry_decorator(
             max_attempts=api_comm_retry,
-            max_wait=5.0,
+            max_wait=api_comm_max_wait,
             context="Service communication",
             exclude_exceptions=(
                 # Don't retry these specific exceptions that won't be fixed by retrying
