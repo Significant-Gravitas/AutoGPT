@@ -1,4 +1,5 @@
 import ast
+import contextlib
 import logging
 import secrets
 from abc import ABC
@@ -861,17 +862,18 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 "llm_call": lambda *args, **kwargs: LLMResponse(
                     raw_response="",
                     prompt=[""],
-                    response=json.dumps(
-                        {
-                            "key1": "key1Value",
-                            "key2": "key2Value",
-                        }
+                    response=(
+                        '<json_output id="test123456">{\n'
+                        '  "key1": "key1Value",\n'
+                        '  "key2": "key2Value"\n'
+                        "}</json_output>"
                     ),
                     tool_calls=None,
                     prompt_tokens=0,
                     completion_tokens=0,
                     reasoning=None,
-                )
+                ),
+                "get_collision_proof_output_tag_id": lambda *args: "test123456",
             },
         )
 
@@ -922,7 +924,8 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             prompt.append({"role": "system", "content": input_data.sys_prompt})
 
         # Use a one-time unique tag to prevent collisions with user/LLM content
-        output_tag_start = f'<json_output id="{secrets.token_hex(8)}">'
+        output_tag_id = self.get_collision_proof_output_tag_id()
+        output_tag_start = f'<json_output id="{output_tag_id}">'
         output_type = "object" if not input_data.list_result else "array"
         if input_data.expected_format:
             expected_format = json.dumps(input_data.expected_format, indent=2)
@@ -992,17 +995,24 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
 
                 if input_data.expected_format:
                     try:
-                        if output_tag_start not in response_text:
-                            raise ValueError(
-                                "Response does not contain the expected "
-                                f"{output_tag_start}...</json_output> block."
+                        response_obj = None
+                        if input_data.force_json_output:
+                            # Handle pure JSON responses
+                            with contextlib.suppress(JSONDecodeError):
+                                response_obj = json.loads(response_text)
+
+                        if response_obj is None:
+                            if output_tag_start not in response_text:
+                                raise ValueError(
+                                    "Response does not contain the expected "
+                                    f"{output_tag_start}...</json_output> block."
+                                )
+                            json_output = (
+                                response_text.split(output_tag_start, 1)[1]
+                                .rsplit("</json_output>", 1)[0]
+                                .strip()
                             )
-                        json_output = (
-                            response_text.split(output_tag_start, 1)[1]
-                            .rsplit("</json_output>", 1)[0]
-                            .strip()
-                        )
-                        response_obj = json.loads(json_output)
+                            response_obj = json.loads(json_output)
                     except (ValueError, JSONDecodeError) as parse_error:
                         prompt.append({"role": "assistant", "content": response_text})
 
@@ -1081,6 +1091,9 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 error_feedback_message = f"Error calling LLM: {e}"
 
         raise RuntimeError(error_feedback_message)
+
+    def get_collision_proof_output_tag_id(self) -> str:
+        return secrets.token_hex(8)
 
 
 class AITextGeneratorBlock(AIBlockBase):
