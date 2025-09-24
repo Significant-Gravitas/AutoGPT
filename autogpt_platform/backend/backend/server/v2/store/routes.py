@@ -542,9 +542,12 @@ async def delete_submission(
 
         # Clear submissions cache for this specific user after deletion
         if result:
-            # We don't know the exact page/page_size combinations cached,
-            # but most common are the defaults (page=1, page_size=20)
-            _get_cached_submissions.cache_delete(user_id, 1, 20)
+            # Clear user's own agents cache - we don't know all page/size combinations
+            for page in range(1, 20):
+                # but clear the common defaults
+                _get_cached_my_agents.cache_delete(user_id, page=page, page_size=20)
+                # Clear user's submissions cache for common defaults
+                _get_cached_submissions.cache_delete(user_id, page=page, page_size=20)
 
         return result
     except Exception:
@@ -658,8 +661,6 @@ async def create_submission(
             recommended_schedule_cron=submission_request.recommended_schedule_cron,
         )
 
-        # Clear relevant caches when a new submission is created
-        _get_cached_store_agents.cache_clear()
         # Clear user's own agents cache - we don't know all page/size combinations
         for page in range(1, 20):
             # but clear the common defaults
@@ -716,8 +717,6 @@ async def edit_submission(
         recommended_schedule_cron=submission_request.recommended_schedule_cron,
     )
 
-    # Clear relevant caches when a new submission is created
-    _get_cached_store_agents.cache_clear()
     # Clear user's own agents cache - we don't know all page/size combinations
     for page in range(1, 20):
         # but clear the common defaults
