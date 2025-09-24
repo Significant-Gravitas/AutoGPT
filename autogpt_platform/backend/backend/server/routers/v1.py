@@ -672,6 +672,9 @@ async def get_graph(
             version=version,
             user_id=user_id,
         )
+        # If graph not found, clear cache entry as permissions may have changed
+        if not graph:
+            cache.get_cached_graph.cache_delete(graph_id, version, user_id)
     else:
         graph = await graph_db.get_graph(
             graph_id,
