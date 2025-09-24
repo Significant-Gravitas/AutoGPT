@@ -12,10 +12,19 @@ import {
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
-import ActionButtonGroup from "@/components/agptui/action-button-group";
-import type { ButtonAction } from "@/components/agptui/types";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { IconCross, IconPlay, IconSave } from "@/components/ui/icons";
+import ActionButtonGroup from "@/components/__legacy__/action-button-group";
+import type { ButtonAction } from "@/components/__legacy__/types";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/__legacy__/ui/card";
+import {
+  IconCross,
+  IconPlay,
+  IconSave,
+} from "@/components/__legacy__/ui/icons";
 import { CalendarClockIcon, Trash2Icon } from "lucide-react";
 import { ClockIcon, InfoIcon } from "@phosphor-icons/react";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
@@ -26,7 +35,7 @@ import { cn, isEmpty } from "@/lib/utils";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import { CopyIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/atoms/Button/Button";
-import { Input } from "@/components/ui/input";
+import { Input } from "@/components/__legacy__/ui/input";
 import {
   useToast,
   useToastOnFail,

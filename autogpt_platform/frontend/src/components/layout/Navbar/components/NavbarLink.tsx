@@ -1,6 +1,6 @@
 "use client";
 
-import { IconLaptop } from "@/components/ui/icons";
+import { IconLaptop } from "@/components/__legacy__/ui/icons";
 import { cn } from "@/lib/utils";
 import {
   CubeIcon,

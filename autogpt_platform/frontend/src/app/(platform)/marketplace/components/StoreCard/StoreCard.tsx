@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { StarRatingIcons } from "@/components/ui/icons";
+import { StarRatingIcons } from "@/components/__legacy__/ui/icons";
 import Avatar, {
   AvatarFallback,
   AvatarImage,

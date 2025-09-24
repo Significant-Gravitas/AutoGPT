@@ -1,5 +1,5 @@
 import React from "react";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/__legacy__/ui/badge";
 import { cn } from "@/lib/utils";
 import { GraphExecutionMeta } from "@/lib/autogpt-server-api";
 

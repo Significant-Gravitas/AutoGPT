@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Button } from "../../ui/button";
+import { Button } from "../../__legacy__/ui/button";
 import { QuestionMarkCircledIcon } from "@radix-ui/react-icons";
 import { useRouter, usePathname } from "next/navigation";
 

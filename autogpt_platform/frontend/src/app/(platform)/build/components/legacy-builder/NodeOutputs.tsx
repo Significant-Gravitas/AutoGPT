@@ -1,8 +1,8 @@
 import React, { useState } from "react";
-import { ContentRenderer } from "../../../../../components/ui/render";
+import { ContentRenderer } from "../../../../../components/__legacy__/ui/render";
 import { beautifyString } from "@/lib/utils";
 import { Maximize2 } from "lucide-react";
-import { Button } from "../../../../../components/ui/button";
+import { Button } from "../../../../../components/__legacy__/ui/button";
 import * as Separator from "@radix-ui/react-separator";
 import ExpandableOutputDialog from "./ExpandableOutputDialog";
 

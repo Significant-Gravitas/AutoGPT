@@ -1,9 +1,9 @@
 import React from "react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/__legacy__/ui/button";
 import { LogOut } from "lucide-react";
 import { ClockIcon } from "@phosphor-icons/react";
-import { IconPlay, IconSquare } from "@/components/ui/icons";
+import { IconPlay, IconSquare } from "@/components/__legacy__/ui/icons";
 
 interface Props {
   onClickAgentOutputs?: () => void;

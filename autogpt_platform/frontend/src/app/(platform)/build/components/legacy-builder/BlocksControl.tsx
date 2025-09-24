@@ -1,20 +1,20 @@
 import React, { useCallback, useMemo, useState, useDeferredValue } from "react";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { TextRenderer } from "@/components/ui/render";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Card, CardContent, CardHeader } from "@/components/__legacy__/ui/card";
+import { Label } from "@/components/__legacy__/ui/label";
+import { Button } from "@/components/__legacy__/ui/button";
+import { Input } from "@/components/__legacy__/ui/input";
+import { TextRenderer } from "@/components/__legacy__/ui/render";
+import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import { CustomNode } from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
 import { beautifyString } from "@/lib/utils";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover";
+} from "@/components/__legacy__/ui/popover";
 import { Block, BlockUIType, SpecialBlockID } from "@/lib/autogpt-server-api";
 import { MagnifyingGlassIcon, PlusIcon } from "@radix-ui/react-icons";
-import { IconToyBrick } from "@/components/ui/icons";
+import { IconToyBrick } from "@/components/__legacy__/ui/icons";
 import { getPrimaryCategoryColor } from "@/lib/utils";
 import {
   Tooltip,

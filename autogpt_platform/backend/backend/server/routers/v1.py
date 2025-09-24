@@ -11,6 +11,7 @@ import pydantic
 import stripe
 from autogpt_libs.auth import get_user_id, requires_user
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from autogpt_libs.utils.cache import cached
 from fastapi import (
     APIRouter,
     Body,
@@ -38,10 +39,10 @@ from backend.data.credit import (
     RefundRequest,
     TransactionHistory,
     get_auto_top_up,
-    get_block_costs,
     get_user_credit_model,
     set_auto_top_up,
 )
+from backend.data.execution import UserContext
 from backend.data.model import CredentialsMetaInput
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.onboarding import (
@@ -262,18 +263,37 @@ async def is_onboarding_enabled():
 ########################################################
 
 
+@cached()
+def _get_cached_blocks() -> Sequence[dict[Any, Any]]:
+    """
+    Get cached blocks with thundering herd protection.
+
+    Uses sync_cache decorator to prevent multiple concurrent requests
+    from all executing the expensive block loading operation.
+    """
+    from backend.data.credit import get_block_cost
+
+    block_classes = get_blocks()
+    result = []
+
+    for block_class in block_classes.values():
+        block_instance = block_class()
+        if not block_instance.disabled:
+            # Get costs for this specific block class without creating another instance
+            costs = get_block_cost(block_instance)
+            result.append({**block_instance.to_dict(), "costs": costs})
+
+    return result
+
+
 @v1_router.get(
     path="/blocks",
     summary="List available blocks",
     tags=["blocks"],
     dependencies=[Security(requires_user)],
 )
-def get_graph_blocks() -> Sequence[dict[Any, Any]]:
-    blocks = [block() for block in get_blocks().values()]
-    costs = get_block_costs()
-    return [
-        {**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks if not b.disabled
-    ]
+async def get_graph_blocks() -> Sequence[dict[Any, Any]]:
+    return _get_cached_blocks()
 
 
 @v1_router.post(
@@ -282,15 +302,29 @@ def get_graph_blocks() -> Sequence[dict[Any, Any]]:
     tags=["blocks"],
     dependencies=[Security(requires_user)],
 )
-async def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlockOutput:
+async def execute_graph_block(
+    block_id: str, data: BlockInput, user_id: Annotated[str, Security(get_user_id)]
+) -> CompletedBlockOutput:
     obj = get_block(block_id)
     if not obj:
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
 
+    # Get user context for block execution
+    user = await get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    user_context = UserContext(timezone=user.timezone)
+
     start_time = time.time()
     try:
         output = defaultdict(list)
-        async for name, data in obj.execute(data):
+        async for name, data in obj.execute(
+            data,
+            user_context=user_context,
+            user_id=user_id,
+            # Note: graph_exec_id and graph_id are not available for direct block execution
+        ):
             output[name].append(data)
 
         # Record successful block execution with duration
@@ -599,7 +633,13 @@ class DeleteGraphResponse(TypedDict):
 async def list_graphs(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> Sequence[graph_db.GraphMeta]:
-    return await graph_db.list_graphs(filter_by="active", user_id=user_id)
+    paginated_result = await graph_db.list_graphs_paginated(
+        user_id=user_id,
+        page=1,
+        page_size=250,
+        filter_by="active",
+    )
+    return paginated_result.graphs
 
 
 @v1_router.get(
@@ -888,7 +928,12 @@ async def _stop_graph_run(
 async def list_graphs_executions(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[execution_db.GraphExecutionMeta]:
-    return await execution_db.get_graph_executions(user_id=user_id)
+    paginated_result = await execution_db.get_graph_executions_paginated(
+        user_id=user_id,
+        page=1,
+        page_size=250,
+    )
+    return paginated_result.executions
 
 
 @v1_router.get(
