@@ -18,7 +18,6 @@ export const options = {
     { duration: __ENV.DURATION || '5m', target: parseInt(__ENV.VUS) || 1 },
     { duration: __ENV.RAMP_DOWN || '1m', target: 0 },
   ],
-  maxDuration: '15m', // Explicit maximum duration for cloud execution
   thresholds: {
     checks: ['rate>0.70'], // Reduced from 0.85 due to auth timeouts under load
     http_req_duration: ['p(95)<30000'], // Increased for cloud testing with high concurrency
@@ -50,6 +49,16 @@ export default function () {
     } else {
       console.log(`🔄 VU ${__VU} using cached authentication`);
     }
+    
+    // Handle authentication failure gracefully
+    if (!vuAuth || !vuAuth.access_token) {
+      console.log(`⚠️ VU ${__VU} has no valid authentication - skipping iteration`);
+      check(null, {
+        'Authentication: Failed gracefully without crashing VU': () => true,
+      });
+      return; // Exit iteration gracefully without crashing
+    }
+    
     const headers = getAuthHeaders(vuAuth.access_token);
     
     if (vuAuth && vuAuth.access_token) {

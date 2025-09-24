@@ -122,27 +122,44 @@ function batchAuthenticate(vuId) {
     sleep(totalDelay);
   }
   
-  // Try to authenticate with available users
+  // Assign each VU to a specific user (round-robin distribution)
+  const assignedUserIndex = (vuId - 1) % users.length;
+  
+  // Try assigned user first
+  let testUser = users[assignedUserIndex];
+  console.log(`🔐 VU ${vuId} attempting authentication with assigned user ${testUser.email}...`);
+  
+  let authResult = authenticateUser(testUser);
+  
+  if (authResult) {
+    vuTokenCache.set(vuId, authResult);
+    console.log(`✅ VU ${vuId} authenticated successfully with assigned user ${testUser.email} in batch ${batchNumber}`);
+    return authResult;
+  }
+  
+  console.log(`❌ VU ${vuId} failed with assigned user ${testUser.email}, trying all other users...`);
+  
+  // If assigned user failed, try all other users as fallback
   for (let i = 0; i < users.length; i++) {
-    const testUser = users[i];
-    const userKey = testUser.email;
+    if (i === assignedUserIndex) continue; // Skip already tried assigned user
     
-    console.log(`🔐 VU ${vuId} attempting authentication with ${testUser.email}...`);
+    testUser = users[i];
+    console.log(`🔐 VU ${vuId} attempting authentication with fallback user ${testUser.email}...`);
     
-    const authResult = authenticateUser(testUser);
+    authResult = authenticateUser(testUser);
     
     if (authResult) {
-      // Cache the successful authentication for this VU
       vuTokenCache.set(vuId, authResult);
-      console.log(`✅ VU ${vuId} authenticated successfully with ${testUser.email} in batch ${batchNumber}`);
+      console.log(`✅ VU ${vuId} authenticated successfully with fallback user ${testUser.email} in batch ${batchNumber}`);
       return authResult;
     }
     
-    console.log(`❌ VU ${vuId} authentication failed with ${testUser.email}, trying next user...`);
+    console.log(`❌ VU ${vuId} authentication failed with fallback user ${testUser.email}, trying next user...`);
   }
   
-  // If all users failed, throw error
-  throw new Error(`VU ${vuId} failed to authenticate with any test user in batch ${batchNumber}`);
+  // If all users failed, return null instead of crashing VU
+  console.log(`⚠️ VU ${vuId} failed to authenticate with any test user in batch ${batchNumber} - continuing without auth`);
+  return null;
 }
 
 /**

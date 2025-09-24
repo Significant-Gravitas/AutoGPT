@@ -23,6 +23,9 @@ K6_ENVIRONMENT=DEV VUS=5 DURATION=5m REQUESTS_PER_VU=20 k6 run graph-execution-l
 
 # 4. Full platform testing (50 concurrent user journeys)
 K6_ENVIRONMENT=DEV VUS=5 DURATION=5m REQUESTS_PER_VU=10 k6 run scenarios/comprehensive-platform-load-test.js --out cloud
+
+# 5. Single endpoint testing (up to 500 concurrent requests per VU)
+K6_ENVIRONMENT=DEV VUS=1 DURATION=30s ENDPOINT=credits CONCURRENT_REQUESTS=100 k6 run single-endpoint-test.js --out cloud
 ```
 
 **Success Indicators:**
@@ -55,6 +58,8 @@ load-tests/
 │   └── test-users.json                          # Test user configuration
 ├── core-api-load-test.js                        # Core API validation and load testing
 ├── graph-execution-load-test.js                 # Graph creation and execution testing
+├── single-endpoint-test.js                      # Individual endpoint testing with high concurrency
+├── interactive-test.js                          # Interactive CLI for guided test execution
 ├── run-tests.sh                                 # Test execution script
 └── README.md                                    # This file
 ```
@@ -115,7 +120,9 @@ All tests support easy configuration via environment variables:
 ```bash
 # Optimized load configuration (rate-limit aware)
 VUS=5                     # Number of virtual users (keep ≤5 for rate limits)
-REQUESTS_PER_VU=100      # Concurrent requests per VU (NEW: load multiplier)
+REQUESTS_PER_VU=100      # Concurrent requests per VU (load multiplier)
+CONCURRENT_REQUESTS=100  # Concurrent requests per VU for single endpoint test (1-500)
+ENDPOINT=credits         # Target endpoint for single endpoint test (credits, graphs, blocks, executions)
 DURATION=5m               # Test duration (extended for proper testing)
 RAMP_UP=1m               # Ramp-up time
 RAMP_DOWN=1m             # Ramp-down time
@@ -193,6 +200,42 @@ k6 run scenarios/comprehensive-platform-load-test.js
 
 # Stress testing
 VUS=30 DURATION=10m k6 run scenarios/comprehensive-platform-load-test.js
+```
+
+### 🎯 NEW: Single Endpoint Load Test (`single-endpoint-test.js`)
+- **Purpose**: Test individual API endpoints with high concurrency support
+- **Features**: Up to 500 concurrent requests per VU, endpoint selection, burst load testing
+- **Endpoints**: `credits`, `graphs`, `blocks`, `executions`
+- **Use Case**: Debug specific endpoint performance, test RPS limits, burst load validation
+
+**Single endpoint testing:**
+```bash
+# Test /api/credits with 100 concurrent requests
+K6_ENVIRONMENT=DEV VUS=1 DURATION=30s ENDPOINT=credits CONCURRENT_REQUESTS=100 k6 run single-endpoint-test.js
+
+# Test /api/graphs with 5 concurrent requests per VU
+K6_ENVIRONMENT=DEV VUS=3 DURATION=1m ENDPOINT=graphs CONCURRENT_REQUESTS=5 k6 run single-endpoint-test.js
+
+# Stress test /api/blocks with 500 RPS
+K6_ENVIRONMENT=DEV VUS=1 DURATION=30s ENDPOINT=blocks CONCURRENT_REQUESTS=500 k6 run single-endpoint-test.js
+```
+
+### 🖥️ NEW: Interactive Load Testing CLI (`interactive-test.js`)
+- **Purpose**: Guided test selection and configuration through interactive prompts
+- **Features**: Test type selection, environment targeting, parameter configuration, cloud integration
+- **Use Case**: Easy load testing for users unfamiliar with command-line parameters
+
+**Interactive testing:**
+```bash
+# Launch interactive CLI
+node interactive-test.js
+
+# Follow prompts to select:
+# - Test type (Basic, Core API, Single Endpoint, Comprehensive)
+# - Environment (Local, Dev, Production)  
+# - Execution mode (Local or k6 Cloud)
+# - Parameters (VUs, duration, concurrent requests)
+# - Endpoint (for single endpoint tests)
 ```
 
 ## 🔧 Configuration
