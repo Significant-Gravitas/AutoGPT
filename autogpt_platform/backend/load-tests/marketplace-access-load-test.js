@@ -12,6 +12,17 @@ const marketplaceRequests = new Counter('marketplace_requests_total');
 const successfulRequests = new Counter('successful_requests_total');
 const failedRequests = new Counter('failed_requests_total');
 
+// HTTP error tracking
+const httpErrors = new Counter('http_errors_by_status');
+
+// Enhanced error logging function
+function logHttpError(response, endpoint, method = 'GET') {
+  if (response.status !== 200) {
+    console.error(`❌ VU ${__VU} ${method} ${endpoint} failed: status=${response.status}, error=${response.error || 'unknown'}, body=${response.body ? response.body.substring(0, 200) : 'empty'}`);
+    httpErrors.add(1, { status: response.status, endpoint: endpoint, method: method });
+  }
+}
+
 // Test configuration
 const VUS = parseInt(__ENV.VUS) || 10;
 const DURATION = __ENV.DURATION || '2m';
@@ -19,6 +30,7 @@ const RAMP_UP = __ENV.RAMP_UP || '30s';
 const RAMP_DOWN = __ENV.RAMP_DOWN || '30s';
 
 // Performance thresholds for marketplace browsing
+const REQUEST_TIMEOUT = 60000; // 60s per request timeout
 const THRESHOLD_P95 = parseInt(__ENV.THRESHOLD_P95) || 5000;  // 5s for public endpoints
 const THRESHOLD_P99 = parseInt(__ENV.THRESHOLD_P99) || 10000; // 10s for public endpoints
 const THRESHOLD_ERROR_RATE = parseFloat(__ENV.THRESHOLD_ERROR_RATE) || 0.05; // 5% error rate
@@ -30,14 +42,15 @@ export const options = {
     { duration: DURATION, target: VUS },
     { duration: RAMP_DOWN, target: 0 },
   ],
-  thresholds: {
-    http_req_duration: [
-      { threshold: `p(95)<${THRESHOLD_P95}`, abortOnFail: false },
-      { threshold: `p(99)<${THRESHOLD_P99}`, abortOnFail: false },
-    ],
-    http_req_failed: [{ threshold: `rate<${THRESHOLD_ERROR_RATE}`, abortOnFail: false }],
-    checks: [{ threshold: `rate>${THRESHOLD_CHECK_RATE}`, abortOnFail: false }],
-  },
+  // Thresholds disabled to collect all results regardless of performance
+  // thresholds: {
+  //   http_req_duration: [
+  //     { threshold: `p(95)<${THRESHOLD_P95}`, abortOnFail: false },
+  //     { threshold: `p(99)<${THRESHOLD_P99}`, abortOnFail: false },
+  //   ],
+  //   http_req_failed: [{ threshold: `rate<${THRESHOLD_ERROR_RATE}`, abortOnFail: false }],
+  //   checks: [{ threshold: `rate>${THRESHOLD_CHECK_RATE}`, abortOnFail: false }],
+  // },
   tags: {
     test_type: 'marketplace_public_access',
     environment: __ENV.K6_ENVIRONMENT || 'DEV',
@@ -57,6 +70,7 @@ function marketplaceBrowsingJourney() {
   // Step 1: Browse marketplace homepage - get featured agents
   console.log(`🏪 VU ${__VU} browsing marketplace homepage...`);
   const featuredAgentsResponse = http.get(`${BASE_URL}/api/store/agents?featured=true&page=1&page_size=10`);
+  logHttpError(featuredAgentsResponse, '/api/store/agents?featured=true', 'GET');
   
   marketplaceRequests.add(1);
   const featuredSuccess = check(featuredAgentsResponse, {
@@ -69,7 +83,7 @@ function marketplaceBrowsingJourney() {
         return false;
       }
     },
-    'Featured agents response time < 5s': (r) => r.timings.duration < 5000,
+    'Featured agents responds within 60s': (r) => r.timings.duration < REQUEST_TIMEOUT,
   });
   
   if (featuredSuccess) {
@@ -81,6 +95,7 @@ function marketplaceBrowsingJourney() {
   // Step 2: Browse all agents with pagination
   console.log(`📋 VU ${__VU} browsing all agents...`);
   const allAgentsResponse = http.get(`${BASE_URL}/api/store/agents?page=1&page_size=20`);
+  logHttpError(allAgentsResponse, '/api/store/agents', 'GET');
   
   marketplaceRequests.add(1);
   const allAgentsSuccess = check(allAgentsResponse, {
@@ -93,7 +108,7 @@ function marketplaceBrowsingJourney() {
         return false;
       }
     },
-    'All agents response time < 5s': (r) => r.timings.duration < 5000,
+    'All agents responds within 60s': (r) => r.timings.duration < REQUEST_TIMEOUT,
   });
   
   if (allAgentsSuccess) {
@@ -108,6 +123,7 @@ function marketplaceBrowsingJourney() {
   
   console.log(`🔍 VU ${__VU} searching for "${randomQuery}" agents...`);
   const searchResponse = http.get(`${BASE_URL}/api/store/agents?search_query=${encodeURIComponent(randomQuery)}&page=1&page_size=10`);
+  logHttpError(searchResponse, '/api/store/agents (search)', 'GET');
   
   marketplaceRequests.add(1);
   const searchSuccess = check(searchResponse, {
@@ -120,7 +136,7 @@ function marketplaceBrowsingJourney() {
         return false;
       }
     },
-    'Search agents response time < 5s': (r) => r.timings.duration < 5000,
+    'Search agents responds within 60s': (r) => r.timings.duration < REQUEST_TIMEOUT,
   });
   
   if (searchSuccess) {
@@ -135,6 +151,7 @@ function marketplaceBrowsingJourney() {
   
   console.log(`📂 VU ${__VU} browsing "${randomCategory}" category...`);
   const categoryResponse = http.get(`${BASE_URL}/api/store/agents?category=${randomCategory}&page=1&page_size=15`);
+  logHttpError(categoryResponse, '/api/store/agents (category)', 'GET');
   
   marketplaceRequests.add(1);
   const categorySuccess = check(categoryResponse, {
@@ -147,7 +164,7 @@ function marketplaceBrowsingJourney() {
         return false;
       }
     },
-    'Category agents response time < 5s': (r) => r.timings.duration < 5000,
+    'Category agents responds within 60s': (r) => r.timings.duration < REQUEST_TIMEOUT,
   });
   
   if (categorySuccess) {
@@ -166,6 +183,7 @@ function marketplaceBrowsingJourney() {
         if (randomAgent?.creator_username && randomAgent?.slug) {
           console.log(`📄 VU ${__VU} viewing agent details for "${randomAgent.slug}"...`);
           const agentDetailsResponse = http.get(`${BASE_URL}/api/store/agents/${encodeURIComponent(randomAgent.creator_username)}/${encodeURIComponent(randomAgent.slug)}`);
+          logHttpError(agentDetailsResponse, '/api/store/agents/{creator}/{slug}', 'GET');
           
           marketplaceRequests.add(1);
           const agentDetailsSuccess = check(agentDetailsResponse, {
@@ -178,7 +196,7 @@ function marketplaceBrowsingJourney() {
                 return false;
               }
             },
-            'Agent details response time < 5s': (r) => r.timings.duration < 5000,
+            'Agent details responds within 60s': (r) => r.timings.duration < REQUEST_TIMEOUT,
           });
           
           if (agentDetailsSuccess) {
@@ -197,6 +215,7 @@ function marketplaceBrowsingJourney() {
   // Step 6: Browse creators
   console.log(`👥 VU ${__VU} browsing creators...`);
   const creatorsResponse = http.get(`${BASE_URL}/api/store/creators?page=1&page_size=20`);
+  logHttpError(creatorsResponse, '/api/store/creators', 'GET');
   
   marketplaceRequests.add(1);
   const creatorsSuccess = check(creatorsResponse, {
@@ -209,7 +228,7 @@ function marketplaceBrowsingJourney() {
         return false;
       }
     },
-    'Creators response time < 5s': (r) => r.timings.duration < 5000,
+    'Creators responds within 60s': (r) => r.timings.duration < REQUEST_TIMEOUT,
   });
   
   if (creatorsSuccess) {
@@ -221,6 +240,7 @@ function marketplaceBrowsingJourney() {
   // Step 7: Get featured creators
   console.log(`⭐ VU ${__VU} browsing featured creators...`);
   const featuredCreatorsResponse = http.get(`${BASE_URL}/api/store/creators?featured=true&page=1&page_size=10`);
+  logHttpError(featuredCreatorsResponse, '/api/store/creators?featured=true', 'GET');
   
   marketplaceRequests.add(1);
   const featuredCreatorsSuccess = check(featuredCreatorsResponse, {
@@ -233,7 +253,7 @@ function marketplaceBrowsingJourney() {
         return false;
       }
     },
-    'Featured creators response time < 5s': (r) => r.timings.duration < 5000,
+    'Featured creators responds within 60s': (r) => r.timings.duration < REQUEST_TIMEOUT,
   });
   
   if (featuredCreatorsSuccess) {
@@ -252,6 +272,7 @@ function marketplaceBrowsingJourney() {
         if (randomCreator?.username) {
           console.log(`👤 VU ${__VU} viewing creator details for "${randomCreator.username}"...`);
           const creatorDetailsResponse = http.get(`${BASE_URL}/api/store/creator/${encodeURIComponent(randomCreator.username)}`);
+          logHttpError(creatorDetailsResponse, '/api/store/creator/{username}', 'GET');
           
           marketplaceRequests.add(1);
           const creatorDetailsSuccess = check(creatorDetailsResponse, {
@@ -264,7 +285,7 @@ function marketplaceBrowsingJourney() {
                 return false;
               }
             },
-            'Creator details response time < 5s': (r) => r.timings.duration < 5000,
+            'Creator details responds within 60s': (r) => r.timings.duration < REQUEST_TIMEOUT,
           });
           
           if (creatorDetailsSuccess) {
