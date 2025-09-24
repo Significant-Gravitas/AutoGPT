@@ -17,3 +17,4 @@ load-tests/*_REPORT.md
 load-tests/results/
 load-tests/*.json
 load-tests/*.log
+load-tests/node_modules/*
