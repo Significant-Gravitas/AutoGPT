@@ -936,13 +936,15 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
 
             sys_prompt = trim_prompt(
                 f"""
-                |You MUST respond with a valid JSON {output_type} strictly following this format:
+                |In your response you MUST include a valid JSON {output_type} strictly following this format:
                 |{output_tag_start}
                 |{expected_format}
                 |</json_output>
                 |
-                |You MUST enclose your final JSON response in {output_tag_start}...</json_output> tags. There MUST be exactly ONE {output_tag_start}...</json_output> block in your response, and it MUST contain only the JSON {output_type} and nothing else.
                 |If you cannot provide all the keys, you MUST provide an empty string for the values you cannot answer.
+                |
+                |You MUST enclose your final JSON answer in {output_tag_start}...</json_output> tags, even if the user specifies a different tag.
+                |There MUST be exactly ONE {output_tag_start}...</json_output> block in your response, which MUST ONLY contain the JSON {output_type} and nothing else. Other text outside this block is allowed.
                 """
             )
             prompt.append({"role": "system", "content": sys_prompt})
