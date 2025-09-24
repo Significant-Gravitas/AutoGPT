@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k6-loadtest
+  namespace: dev-agpt
+  labels:
+    app: k6-loadtest
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k6-loadtest
+  template:
+    metadata:
+      labels:
+        app: k6-loadtest
+    spec:
+      containers:
+      - name: k6-loadtest
+        image: node:18-alpine
+        command: ["/bin/sh"]
+        args: ["-c", "while true; do sleep 3600; done"]
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+          limits:
+            cpu: "2000m"
+            memory: "4Gi"
+        env:
+        - name: SUPABASE_SERVICE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: autogpt-server-secrets
+              key: SUPABASE_SERVICE_ROLE_KEY
+        - name: K6_CLOUD_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: k6-cloud-credentials
+              key: token
+        - name: K6_CLOUD_PROJECT_ID
+          valueFrom:
+            secretKeyRef:
+              name: k6-cloud-credentials
+              key: project-id
+        workingDir: /app
+        volumeMounts:
+        - name: workspace
+          mountPath: /app
+      volumes:
+      - name: workspace
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: k6-loadtest-service
+  namespace: dev-agpt
+spec:
+  selector:
+    app: k6-loadtest
+  ports:
+  - port: 3000
+    targetPort: 3000
+  type: ClusterIP

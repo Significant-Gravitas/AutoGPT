@@ -86,9 +86,18 @@ export default function () {
       
       if (apiType === 0) {
         // Credits API request
-        const creditsCheck = check(response, {
-          'Credits API: Status is 200': (r) => r.status === 200,
-          'Credits API: Response has credits': (r) => {
+        check(response, {
+          'Credits API: HTTP Status is 200': (r) => r.status === 200,
+          'Credits API: Not Auth Error (401/403)': (r) => r.status !== 401 && r.status !== 403,
+          'Credits API: Response has valid JSON': (r) => {
+            try {
+              JSON.parse(r.body);
+              return true;
+            } catch (e) {
+              return false;
+            }
+          },
+          'Credits API: Response has credits field': (r) => {
             try {
               const data = JSON.parse(r.body);
               return data && typeof data.credits === 'number';
@@ -96,12 +105,29 @@ export default function () {
               return false;
             }
           },
+          'Credits API: Overall Success': (r) => {
+            try {
+              if (r.status !== 200) return false;
+              const data = JSON.parse(r.body);
+              return data && typeof data.credits === 'number';
+            } catch (e) {
+              return false;
+            }
+          }
         });
-        if (creditsCheck) creditsSuccesses++;
       } else if (apiType === 1) {
         // Graphs API request
-        const graphsCheck = check(response, {
-          'Graphs API: Status is 200': (r) => r.status === 200,
+        check(response, {
+          'Graphs API: HTTP Status is 200': (r) => r.status === 200,
+          'Graphs API: Not Auth Error (401/403)': (r) => r.status !== 401 && r.status !== 403,
+          'Graphs API: Response has valid JSON': (r) => {
+            try {
+              JSON.parse(r.body);
+              return true;
+            } catch (e) {
+              return false;
+            }
+          },
           'Graphs API: Response is array': (r) => {
             try {
               const data = JSON.parse(r.body);
@@ -110,13 +136,30 @@ export default function () {
               return false;
             }
           },
+          'Graphs API: Overall Success': (r) => {
+            try {
+              if (r.status !== 200) return false;
+              const data = JSON.parse(r.body);
+              return Array.isArray(data);
+            } catch (e) {
+              return false;
+            }
+          }
         });
-        if (graphsCheck) graphsSuccesses++;
       } else {
         // Blocks API request
-        const blocksCheck = check(response, {
-          'Blocks API: Status is 200': (r) => r.status === 200,
-          'Blocks API: Response has blocks': (r) => {
+        check(response, {
+          'Blocks API: HTTP Status is 200': (r) => r.status === 200,
+          'Blocks API: Not Auth Error (401/403)': (r) => r.status !== 401 && r.status !== 403,
+          'Blocks API: Response has valid JSON': (r) => {
+            try {
+              JSON.parse(r.body);
+              return true;
+            } catch (e) {
+              return false;
+            }
+          },
+          'Blocks API: Response has blocks data': (r) => {
             try {
               const data = JSON.parse(r.body);
               return data && (Array.isArray(data) || typeof data === 'object');
@@ -124,12 +167,20 @@ export default function () {
               return false;
             }
           },
+          'Blocks API: Overall Success': (r) => {
+            try {
+              if (r.status !== 200) return false;
+              const data = JSON.parse(r.body);
+              return data && (Array.isArray(data) || typeof data === 'object');
+            } catch (e) {
+              return false;
+            }
+          }
         });
-        if (blocksCheck) blocksSuccesses++;
       }
     }
     
-    console.log(`✅ VU ${__VU} completed: ${creditsSuccesses}/${requestsPerVU} credits, ${graphsSuccesses}/${requestsPerVU} graphs, ${blocksSuccesses}/${requestsPerVU} blocks successful`);
+    console.log(`✅ VU ${__VU} completed ${responses.length} API requests with detailed auth/validation tracking`);
     
   } catch (error) {
     console.error(`💥 Test failed: ${error.message}`);

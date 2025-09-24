@@ -36,7 +36,8 @@ async function authenticateUser(user, attempt = 1) {
   return new Promise((resolve) => {
     const postData = JSON.stringify({
       email: user.email,
-      password: user.password
+      password: user.password,
+      expires_in: 86400  // 24 hours in seconds (24 * 60 * 60)
     });
     
     const options = {

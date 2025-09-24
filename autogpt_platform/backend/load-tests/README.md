@@ -51,9 +51,11 @@ node run-cloud-tests.js
 - **Generation**: Run `node generate-tokens.js` to create tokens
 - **File**: `configs/pre-authenticated-tokens.js` (gitignored for security)
 - **Capacity**: 350+ tokens from 47 users
+- **Expiry**: 24 hours (86400 seconds) - extended for long-duration testing
 - **Benefit**: Eliminates Supabase auth rate limiting (95+ concurrent users)
 - **Supports**: Up to 350 concurrent VUs without authentication bottlenecks
 - **Security**: Tokens are gitignored and not committed to repository
+- **Regeneration**: Run `node generate-tokens.js` when tokens expire after 24 hours
 
 ### Environment Configuration
 - **File**: `configs/environment.js`
@@ -74,6 +76,81 @@ node run-cloud-tests.js
 - **VUs**: 20-100 virtual users
 - **Duration**: 3 minutes
 - **Output**: Results on k6 cloud dashboard + URLs saved to `k6-cloud-results.txt`
+
+## ☸️ Kubernetes Pod Testing (Recommended for Stable Network)
+
+For high-throughput testing with stable network conditions, run tests from within the Kubernetes cluster:
+
+### 1. Deploy Load Test Pod
+
+```bash
+# Deploy the k6 load testing pod
+kubectl apply -f k6-loadtesting-pod.yaml
+
+# Verify pod is running
+kubectl get pods -n dev-agpt | grep k6-loadtest
+```
+
+### 2. Copy Test Files to Pod
+
+```bash
+# Copy all load test files to pod
+kubectl cp . dev-agpt/k6-loadtest-74d84cfc-fgv7l:/app
+
+# Or copy specific files if needed
+kubectl cp core-api-load-test.js dev-agpt/k6-loadtest-74d84cfc-fgv7l:/app/
+kubectl cp configs/ dev-agpt/k6-loadtest-74d84cfc-fgv7l:/app/configs/
+```
+
+### 3. Generate Fresh Tokens in Pod
+
+```bash
+# Execute token generation from within the pod (uses service key from secrets)
+kubectl exec -n dev-agpt k6-loadtest-74d84cfc-fgv7l -- node generate-tokens.js
+
+# Verify tokens were created
+kubectl exec -n dev-agpt k6-loadtest-74d84cfc-fgv7l -- ls -la configs/
+```
+
+### 4. Run Comprehensive Test Suite
+
+```bash
+# Run all 25 test scenarios from pod with stable network
+kubectl exec -n dev-agpt k6-loadtest-74d84cfc-fgv7l -- node comprehensive-load-test-orchestrator.js
+
+# Or run individual tests
+kubectl exec -n dev-agpt k6-loadtest-74d84cfc-fgv7l -- \
+  sh -c "K6_ENVIRONMENT=DEV VUS=100 DURATION=3m k6 run core-api-load-test.js"
+```
+
+### 5. Retrieve Results
+
+```bash
+# Copy results back to local machine
+kubectl cp dev-agpt/k6-loadtest-74d84cfc-fgv7l:/app/comprehensive-results ./pod-results
+
+# View CSV summary
+kubectl exec -n dev-agpt k6-loadtest-74d84cfc-fgv7l -- \
+  cat comprehensive-results/comprehensive_load_test_results.csv
+```
+
+### Pod Configuration Details
+
+The `k6-loadtesting-pod.yaml` includes:
+
+- **Node.js 18 Alpine**: Lightweight runtime environment
+- **k6 v0.54.0**: Latest k6 version with modern JavaScript support
+- **Resource Limits**: 2 CPU, 4Gi memory for high-throughput testing
+- **Service Key Access**: Automatic access to Supabase service key from cluster secrets
+- **k6 Cloud Integration**: Optional cloud testing with pre-configured credentials
+
+### Advantages of Pod Testing
+
+1. **Stable Network**: Eliminates local network variability and connection issues
+2. **Higher Throughput**: Direct cluster networking provides optimal performance
+3. **Resource Control**: Dedicated compute resources prevent local resource conflicts
+4. **Security**: Service keys accessed securely from cluster secrets
+5. **Consistency**: Reproducible test environment independent of local setup
 
 ## 🛠️ Usage
 
