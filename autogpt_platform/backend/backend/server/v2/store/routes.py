@@ -539,6 +539,13 @@ async def delete_submission(
             user_id=user_id,
             submission_id=submission_id,
         )
+
+        # Clear submissions cache for this specific user after deletion
+        if result:
+            # We don't know the exact page/page_size combinations cached,
+            # but most common are the defaults (page=1, page_size=20)
+            _get_cached_submissions.cache_delete(user_id, 1, 20)
+
         return result
     except Exception:
         logger.exception("Exception occurred whilst deleting store submission")
@@ -653,10 +660,12 @@ async def create_submission(
 
         # Clear relevant caches when a new submission is created
         _get_cached_store_agents.cache_clear()
-        # Clear user's own agents cache for this user
-        _get_cached_my_agents.cache_clear()
-        # Clear user's submissions cache
-        _get_cached_submissions.cache_clear()
+        # Clear user's own agents cache - we don't know all page/size combinations
+        for page in range(1, 20):
+            # but clear the common defaults
+            _get_cached_my_agents.cache_delete(user_id, page=page, page_size=20)
+            # Clear user's submissions cache for common defaults
+            _get_cached_submissions.cache_delete(user_id, page=page, page_size=20)
 
         return result
     except Exception:
@@ -707,10 +716,14 @@ async def edit_submission(
         recommended_schedule_cron=submission_request.recommended_schedule_cron,
     )
 
-    # Clear caches related to this submission
-    _get_cached_submissions.cache_clear()
-    _get_cached_store_agent_by_version.cache_delete(store_listing_version_id)
-    _get_cached_agent_graph.cache_delete(store_listing_version_id)
+    # Clear relevant caches when a new submission is created
+    _get_cached_store_agents.cache_clear()
+    # Clear user's own agents cache - we don't know all page/size combinations
+    for page in range(1, 20):
+        # but clear the common defaults
+        _get_cached_my_agents.cache_delete(user_id, page=page, page_size=20)
+        # Clear user's submissions cache for common defaults
+        _get_cached_submissions.cache_delete(user_id, page=page, page_size=20)
 
     return result
 
