@@ -1,5 +1,6 @@
 import ast
 import logging
+import secrets
 from abc import ABC
 from enum import Enum, EnumMeta
 from json import JSONDecodeError
@@ -204,13 +205,13 @@ MODEL_METADATA = {
         "anthropic", 200000, 32000
     ),  # claude-opus-4-1-20250805
     LlmModel.CLAUDE_4_OPUS: ModelMetadata(
-        "anthropic", 200000, 8192
+        "anthropic", 200000, 32000
     ),  # claude-4-opus-20250514
     LlmModel.CLAUDE_4_SONNET: ModelMetadata(
-        "anthropic", 200000, 8192
+        "anthropic", 200000, 64000
     ),  # claude-4-sonnet-20250514
     LlmModel.CLAUDE_3_7_SONNET: ModelMetadata(
-        "anthropic", 200000, 8192
+        "anthropic", 200000, 64000
     ),  # claude-3-7-sonnet-20250219
     LlmModel.CLAUDE_3_5_SONNET: ModelMetadata(
         "anthropic", 200000, 8192
@@ -920,11 +921,13 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         if input_data.sys_prompt:
             prompt.append({"role": "system", "content": input_data.sys_prompt})
 
-        expected_json_type = "object" if not input_data.list_result else "array"
+        # Use a one-time unique tag to prevent collisions with user/LLM content
+        output_tag_start = f'<json_output id="{secrets.token_hex(8)}">'
+        output_type = "object" if not input_data.list_result else "array"
         if input_data.expected_format:
             expected_format = json.dumps(input_data.expected_format, indent=2)
 
-            if expected_json_type == "array":
+            if output_type == "array":
                 indented_obj_format = expected_format.replace("\n", "\n  ")
                 expected_format = f"[\n  {indented_obj_format},\n  ...\n]"
 
@@ -933,9 +936,12 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
 
             sys_prompt = trim_prompt(
                 f"""
-                |You MUST respond with a valid JSON {expected_json_type} strictly following this format:
+                |You MUST respond with a valid JSON {output_type} strictly following this format:
+                |{output_tag_start}
                 |{expected_format}
+                |</json_output>
                 |
+                |You MUST enclose your final JSON response in {output_tag_start}...</json_output> tags. There MUST be exactly ONE {output_tag_start}...</json_output> block in your response, and it MUST contain only the JSON {output_type} and nothing else.
                 |If you cannot provide all the keys, you MUST provide an empty string for the values you cannot answer.
                 """
             )
@@ -955,11 +961,11 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             except JSONDecodeError as e:
                 return f"JSON decode error: {e}"
 
-        logger.debug(f"LLM request: {prompt}")
         error_feedback_message = ""
         llm_model = input_data.model
 
         for retry_count in range(input_data.retry):
+            logger.debug(f"LLM request: {prompt}")
             try:
                 llm_response = await self.llm_call(
                     credentials=credentials,
@@ -984,29 +990,28 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
 
                 if input_data.expected_format:
                     try:
-                        json_strings = (
-                            json.find_objects_in_text(response_text)
-                            if expected_json_type == "object"
-                            else json.find_arrays_in_text(response_text)
-                        )
-                        if not json_strings:
+                        if output_tag_start not in response_text:
                             raise ValueError(
-                                f"No JSON {expected_json_type} found in the response."
+                                "Response does not contain the expected "
+                                f"{output_tag_start}...</json_output> block."
                             )
-
-                        # Try to parse last JSON object/array in the response
-                        response_obj = json.loads(json_strings.pop())
+                        json_output = (
+                            response_text.split(output_tag_start, 1)[1]
+                            .rsplit("</json_output>", 1)[0]
+                            .strip()
+                        )
+                        response_obj = json.loads(json_output)
                     except (ValueError, JSONDecodeError) as parse_error:
                         prompt.append({"role": "assistant", "content": response_text})
 
                         indented_parse_error = str(parse_error).replace("\n", "\n|")
                         error_feedback_message = trim_prompt(
                             f"""
-                            |Your previous response did not contain a parseable JSON {expected_json_type}:
+                            |Your previous response did not contain a parseable JSON {output_type}:
                             |
                             |{indented_parse_error}
                             |
-                            |Please provide a valid JSON {expected_json_type} in your response that matches the expected format.
+                            |Please provide a {output_tag_start}...</json_output> block containing a valid JSON {output_type} that matches the expected format.
                         """
                         )
                         prompt.append(

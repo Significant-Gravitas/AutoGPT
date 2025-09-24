@@ -1,18 +1,12 @@
 import json
-import logging
-import signal
-from contextlib import contextmanager
 from typing import Any, Type, TypeGuard, TypeVar, overload
 
 import jsonschema
-import regex
 from fastapi.encoders import jsonable_encoder
 from prisma import Json
 from pydantic import BaseModel
 
 from .type import type_match
-
-logger = logging.getLogger(__name__)
 
 
 def to_dict(data) -> dict:
@@ -118,127 +112,3 @@ def SafeJson(data: Any) -> Json:
     # Round-trip through JSON to ensure proper serialization with fallback for non-serializable values
     json_string = dumps(data, default=lambda v: None)
     return Json(json.loads(json_string))
-
-
-# ================ PARSING ================ #
-
-
-JSON_REGEX = regex.compile(
-    r"""
-    (?P<value>
-        (?P<object> \{\s*
-            (?:
-                (?P<member>(?&string) \s*:\s* (?&value))
-                ( \s*,\s* (?&member) )*
-            )?
-        \s*\})
-        | (?P<array> \[\s*
-            (
-                (?&value)
-                ( \s*,\s* (?&value) )*
-            )?
-        \s*\])
-        | (?P<string>   " [^"\\]* (?: \\. | [^"\\]* )* ")
-        | (?P<number>   (?P<integer> -? (?: 0 | [1-9][0-9]* ))
-                        (?: \. [0-9]* )?
-                        (?: [eE] [-+]? [0-9]+ )?
-        )
-        | true
-        | false
-        | null
-    )
-    """,
-    flags=regex.VERBOSE | regex.UNICODE,
-)
-
-JSON_OBJECT_REGEX = regex.compile(
-    r"""
-    (?P<object> \{\s*
-        (?:
-            (?P<member>(?&string) \s*:\s*
-                (?P<value>
-                    (?&object)
-                    | (?P<array>    \[\s* ((?&value) (\s*,\s* (?&value))*)? \s*\])
-                    | (?P<string>   " [^"\\]* (?: \\. | [^"\\]* )* ")
-                    | (?P<number>   (?P<integer> -? (?: 0 | [1-9][0-9]* ))
-                                    (?: \. [0-9]* )?
-                                    (?: [eE] [-+]? [0-9]+ )?
-                    )
-                    | true
-                    | false
-                    | null
-                )
-            )
-            ( \s*,\s* (?&member) )*
-        )?
-    \s*\})
-    """,
-    flags=regex.VERBOSE | regex.UNICODE,
-)
-
-
-JSON_ARRAY_REGEX = regex.compile(
-    r"""
-    (?P<array> \[\s*
-        (
-            (?P<value>
-                (?P<object> \{\s*
-                    (?:
-                        (?P<member>(?&string) \s*:\s* (?&value))
-                        ( \s*,\s* (?&member) )*
-                    )?
-                \s*\})
-                | (?&array)
-                | (?P<string>   " [^"\\]* (?: \\. | [^"\\]* )* ")
-                | (?P<number>   (?P<integer> -? (?: 0 | [1-9][0-9]* ))
-                                (?: \. [0-9]* )?
-                                (?: [eE] [-+]? [0-9]+ )?
-                )
-                | true
-                | false
-                | null
-            )
-            ( \s*,\s* (?&value) )*
-        )?
-    \s*\])
-    """,
-    flags=regex.VERBOSE | regex.UNICODE,
-)
-
-
-def find_objects_in_text(text: str, timeout_seconds: int = 5) -> list[str]:
-    """Find all JSON objects in a text string with timeout protection."""
-    try:
-        with _regex_timeout(timeout_seconds):
-            json_matches = JSON_OBJECT_REGEX.findall(text)
-            return [match[0] for match in json_matches]
-    except TimeoutError:
-        logger.warning("Regex for finding JSON objects timed out")
-        return []
-
-
-def find_arrays_in_text(text: str, timeout_seconds: int = 5) -> list[str]:
-    """Find all JSON arrays in a text string with timeout protection."""
-    try:
-        with _regex_timeout(timeout_seconds):
-            json_matches = JSON_ARRAY_REGEX.findall(text)
-            return [match[0] for match in json_matches]
-    except TimeoutError:
-        logger.warning("Regex for finding JSON arrays timed out")
-        return []
-
-
-@contextmanager
-def _regex_timeout(seconds: int = 5):
-    """Context manager to timeout regex operations that might hang."""
-
-    def timeout_handler(signum, frame):
-        raise TimeoutError(f"Regex operation timed out after {seconds} seconds")
-
-    old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-    signal.alarm(seconds)
-    try:
-        yield
-    finally:
-        signal.alarm(0)
-        signal.signal(signal.SIGALRM, old_handler)
