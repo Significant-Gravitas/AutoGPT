@@ -1,14 +1,17 @@
 // Pre-authenticated tokens for load testing (EXAMPLE FILE)
-// Run: node generate-tokens.js to create the actual configs/pre-authenticated-tokens.js file
+// Copy this to pre-authenticated-tokens.js and run generate-tokens.js to populate
 // 
-// This example shows the expected structure but contains no real tokens
+// ⚠️  SECURITY: The real file contains authentication tokens
+// ⚠️  DO NOT COMMIT TO GIT - Real file is gitignored
 
 export const PRE_AUTHENTICATED_TOKENS = [
+  // Will be populated by generate-tokens.js with 350+ real tokens
+  // Example structure:
   // {
-  //   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  //   "user": "loadtest1@example.com",
-  //   "generated": "2025-09-24T02:33:27.054Z",
-  //   "round": 1
+  //   token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  //   user: "loadtest4@example.com", 
+  //   generated: "2025-01-24T10:08:04.123Z",
+  //   round: 1
   // }
 ];
 

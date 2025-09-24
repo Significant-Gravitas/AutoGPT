@@ -5,20 +5,23 @@ Clean, comprehensive load testing infrastructure for the AutoGPT Platform using 
 ## 🚀 Quick Start
 
 ```bash
-# 1. Generate pre-authenticated tokens (first time setup)
+# 1. Set up Supabase service key (required for token generation)
+export SUPABASE_SERVICE_KEY="your-supabase-service-key"
+
+# 2. Generate pre-authenticated tokens (first time setup)  
 node generate-tokens.js
 
-# 2. Set up k6 cloud credentials (optional, for cloud testing)
+# 3. Set up k6 cloud credentials (optional, for cloud testing)
 cp configs/k6-credentials.env.example configs/k6-credentials.env
 # Edit k6-credentials.env with your credentials from https://app.k6.io/
 
-# 3. Verify all tests work locally
+# 4. Verify all tests work locally
 node run-tests.js verify
 
-# 4. Run specific tests
+# 5. Run specific tests
 node run-tests.js run core-api-test DEV local
 
-# 5. Run cloud tests (requires k6 credentials)
+# 6. Run cloud tests (requires k6 credentials)
 node run-cloud-tests.js
 ```
 
@@ -155,7 +158,11 @@ Cloud test aborted / timeout
 
 **For local testing:**
 ```bash
-node generate-tokens.js  # Generate authentication tokens
+# Set up Supabase service key (get from kubectl or environment)
+export SUPABASE_SERVICE_KEY="your-supabase-service-key"
+
+# Generate authentication tokens
+node generate-tokens.js
 ```
 
 **For k6 cloud testing:**
