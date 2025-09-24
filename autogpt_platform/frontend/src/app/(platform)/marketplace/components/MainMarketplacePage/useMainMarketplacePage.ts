@@ -5,8 +5,15 @@ import {
 import { StoreAgentsResponse } from "@/app/api/__generated__/models/storeAgentsResponse";
 import { CreatorsResponse } from "@/app/api/__generated__/models/creatorsResponse";
 
+const queryConfig = {
+  staleTime: 60 * 1000, // 60 seconds - match server cache
+  gcTime: 5 * 60 * 1000, // 5 minutes
+  refetchOnWindowFocus: false, // Avoid unnecessary refetches
+  refetchOnMount: false, // Use cached data from server
+};
+
 export const useMainMarketplacePage = () => {
-  // Below queries are already fetched on server and hydrated properly in cache, hence these requests are fast
+  // Data is prefetched on server and hydrated, these queries will use cached data
   const {
     data: featuredAgents,
     isLoading: isFeaturedAgentsLoading,
@@ -15,6 +22,7 @@ export const useMainMarketplacePage = () => {
     { featured: true },
     {
       query: {
+        ...queryConfig,
         select: (x) => {
           return x.data as StoreAgentsResponse;
         },
@@ -33,6 +41,7 @@ export const useMainMarketplacePage = () => {
     },
     {
       query: {
+        ...queryConfig,
         select: (x) => {
           return x.data as StoreAgentsResponse;
         },
@@ -48,6 +57,7 @@ export const useMainMarketplacePage = () => {
     { featured: true, sorted_by: "num_agents" },
     {
       query: {
+        ...queryConfig,
         select: (x) => {
           return x.data as CreatorsResponse;
         },

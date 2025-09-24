@@ -49,7 +49,7 @@ class GraphExecutionResult(TypedDict):
     tags=["blocks"],
     dependencies=[Security(require_permission(APIKeyPermission.READ_BLOCK))],
 )
-def get_graph_blocks() -> Sequence[dict[Any, Any]]:
+async def get_graph_blocks() -> Sequence[dict[Any, Any]]:
     blocks = [block() for block in backend.data.block.get_blocks().values()]
     return [b.to_dict() for b in blocks if not b.disabled]
 

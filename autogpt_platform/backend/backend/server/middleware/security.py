@@ -81,6 +81,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
 
+        # Add noindex header for shared execution pages
+        if "/public/shared" in request.url.path:
+            response.headers["X-Robots-Tag"] = "noindex, nofollow"
+
         # Default: Disable caching for all endpoints
         # Only allow caching for explicitly permitted paths
         if not self.is_cacheable_path(request.url.path):

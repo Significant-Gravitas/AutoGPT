@@ -2,7 +2,7 @@ import Avatar, {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
-import { StarRatingIcons } from "@/components/ui/icons";
+import { StarRatingIcons } from "@/components/__legacy__/ui/icons";
 
 interface CreatorInfoCardProps {
   username: string;

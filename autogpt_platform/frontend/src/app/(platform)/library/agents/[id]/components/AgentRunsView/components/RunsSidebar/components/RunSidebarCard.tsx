@@ -23,7 +23,7 @@ export function RunSidebarCard({
     <button
       className={cn(
         "w-full rounded-large border border-slate-50/70 bg-white p-3 text-left transition-all duration-150 hover:scale-[1.01] hover:bg-slate-50/50",
-        selected ? "ring-2 ring-slate-800" : undefined,
+        selected ? "large ring-2 ring-slate-800" : undefined,
       )}
       onClick={onClick}
     >

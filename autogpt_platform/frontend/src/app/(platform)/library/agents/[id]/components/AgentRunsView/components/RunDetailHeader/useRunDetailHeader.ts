@@ -144,6 +144,7 @@ export function useRunDetailHeader(
     canStop,
     isStopping,
     isDeleting,
+    isRunning: run?.status === "RUNNING",
     isRunningAgain,
     handleShowDeleteDialog,
     handleDeleteRun,

@@ -18,6 +18,7 @@ import backend.data.block
 import backend.data.db
 import backend.data.graph
 import backend.data.user
+import backend.integrations.webhooks.utils
 import backend.server.routers.postmark.postmark
 import backend.server.routers.v1
 import backend.server.v2.admin.credit_admin_routes
@@ -36,6 +37,7 @@ import backend.util.settings
 from backend.blocks.llm import LlmModel
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
+from backend.monitoring.instrumentation import instrument_fastapi
 from backend.server.external.api import external_app
 from backend.server.middleware.security import SecurityHeadersMiddleware
 from backend.util import json
@@ -78,6 +80,8 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.user.migrate_and_encrypt_user_integrations()
     await backend.data.graph.fix_llm_provider_credentials()
     await backend.data.graph.migrate_llm_models(LlmModel.GPT4O)
+    await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
+
     with launch_darkly_context():
         yield
 
@@ -138,6 +142,16 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 # Add 401 responses to authenticated endpoints in OpenAPI spec
 add_auth_responses_to_openapi(app)
+
+# Add Prometheus instrumentation
+instrument_fastapi(
+    app,
+    service_name="rest-api",
+    expose_endpoint=True,
+    endpoint="/metrics",
+    include_in_schema=settings.config.app_env
+    == backend.util.settings.AppEnvironment.LOCAL,
+)
 
 
 def handle_internal_http_error(status_code: int = 500, log_error: bool = True):

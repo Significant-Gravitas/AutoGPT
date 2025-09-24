@@ -9,14 +9,14 @@ import AuthFeedback from "@/components/auth/AuthFeedback";
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
 import Turnstile from "@/components/auth/Turnstile";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Checkbox } from "@/components/__legacy__/ui/checkbox";
 import {
   Form,
   FormControl,
   FormField,
   FormItem,
   FormLabel,
-} from "@/components/ui/form";
+} from "@/components/__legacy__/ui/form";
 import { getBehaveAs } from "@/lib/utils";
 import { WarningOctagonIcon } from "@phosphor-icons/react/dist/ssr";
 import { LoadingSignup } from "./components/LoadingSignup";

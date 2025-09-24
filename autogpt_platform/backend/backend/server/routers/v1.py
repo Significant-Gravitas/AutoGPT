@@ -1,14 +1,17 @@
 import asyncio
 import base64
 import logging
+import time
+import uuid
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated, Any, Sequence
 
 import pydantic
 import stripe
 from autogpt_libs.auth import get_user_id, requires_user
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from autogpt_libs.utils.cache import cached
 from fastapi import (
     APIRouter,
     Body,
@@ -36,10 +39,10 @@ from backend.data.credit import (
     RefundRequest,
     TransactionHistory,
     get_auto_top_up,
-    get_block_costs,
     get_user_credit_model,
     set_auto_top_up,
 )
+from backend.data.execution import UserContext
 from backend.data.model import CredentialsMetaInput
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.onboarding import (
@@ -62,6 +65,11 @@ from backend.executor import utils as execution_utils
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     on_graph_activate,
     on_graph_deactivate,
+)
+from backend.monitoring.instrumentation import (
+    record_block_execution,
+    record_graph_execution,
+    record_graph_operation,
 )
 from backend.server.model import (
     CreateAPIKeyRequest,
@@ -95,6 +103,7 @@ def _create_file_size_error(size_bytes: int, max_size_mb: int) -> HTTPException:
 
 settings = Settings()
 logger = logging.getLogger(__name__)
+
 
 _user_credit_model = get_user_credit_model()
 
@@ -254,18 +263,37 @@ async def is_onboarding_enabled():
 ########################################################
 
 
+@cached()
+def _get_cached_blocks() -> Sequence[dict[Any, Any]]:
+    """
+    Get cached blocks with thundering herd protection.
+
+    Uses sync_cache decorator to prevent multiple concurrent requests
+    from all executing the expensive block loading operation.
+    """
+    from backend.data.credit import get_block_cost
+
+    block_classes = get_blocks()
+    result = []
+
+    for block_class in block_classes.values():
+        block_instance = block_class()
+        if not block_instance.disabled:
+            # Get costs for this specific block class without creating another instance
+            costs = get_block_cost(block_instance)
+            result.append({**block_instance.to_dict(), "costs": costs})
+
+    return result
+
+
 @v1_router.get(
     path="/blocks",
     summary="List available blocks",
     tags=["blocks"],
     dependencies=[Security(requires_user)],
 )
-def get_graph_blocks() -> Sequence[dict[Any, Any]]:
-    blocks = [block() for block in get_blocks().values()]
-    costs = get_block_costs()
-    return [
-        {**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks if not b.disabled
-    ]
+async def get_graph_blocks() -> Sequence[dict[Any, Any]]:
+    return _get_cached_blocks()
 
 
 @v1_router.post(
@@ -274,15 +302,45 @@ def get_graph_blocks() -> Sequence[dict[Any, Any]]:
     tags=["blocks"],
     dependencies=[Security(requires_user)],
 )
-async def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlockOutput:
+async def execute_graph_block(
+    block_id: str, data: BlockInput, user_id: Annotated[str, Security(get_user_id)]
+) -> CompletedBlockOutput:
     obj = get_block(block_id)
     if not obj:
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
 
-    output = defaultdict(list)
-    async for name, data in obj.execute(data):
-        output[name].append(data)
-    return output
+    # Get user context for block execution
+    user = await get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    user_context = UserContext(timezone=user.timezone)
+
+    start_time = time.time()
+    try:
+        output = defaultdict(list)
+        async for name, data in obj.execute(
+            data,
+            user_context=user_context,
+            user_id=user_id,
+            # Note: graph_exec_id and graph_id are not available for direct block execution
+        ):
+            output[name].append(data)
+
+        # Record successful block execution with duration
+        duration = time.time() - start_time
+        block_type = obj.__class__.__name__
+        record_block_execution(
+            block_type=block_type, status="success", duration=duration
+        )
+
+        return output
+    except Exception:
+        # Record failed block execution
+        duration = time.time() - start_time
+        block_type = obj.__class__.__name__
+        record_block_execution(block_type=block_type, status="error", duration=duration)
+        raise
 
 
 @v1_router.post(
@@ -575,7 +633,13 @@ class DeleteGraphResponse(TypedDict):
 async def list_graphs(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> Sequence[graph_db.GraphMeta]:
-    return await graph_db.list_graphs(filter_by="active", user_id=user_id)
+    paginated_result = await graph_db.list_graphs_paginated(
+        user_id=user_id,
+        page=1,
+        page_size=250,
+        filter_by="active",
+    )
+    return paginated_result.graphs
 
 
 @v1_router.get(
@@ -778,7 +842,7 @@ async def execute_graph(
         )
 
     try:
-        return await execution_utils.add_graph_execution(
+        result = await execution_utils.add_graph_execution(
             graph_id=graph_id,
             user_id=user_id,
             inputs=inputs,
@@ -786,7 +850,16 @@ async def execute_graph(
             graph_version=graph_version,
             graph_credentials_inputs=credentials_inputs,
         )
+        # Record successful graph execution
+        record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
+        record_graph_operation(operation="execute", status="success")
+        return result
     except GraphValidationError as e:
+        # Record failed graph execution
+        record_graph_execution(
+            graph_id=graph_id, status="validation_error", user_id=user_id
+        )
+        record_graph_operation(operation="execute", status="validation_error")
         # Return structured validation errors that the frontend can parse
         raise HTTPException(
             status_code=400,
@@ -797,6 +870,11 @@ async def execute_graph(
                 "node_errors": e.node_errors,
             },
         )
+    except Exception:
+        # Record any other failures
+        record_graph_execution(graph_id=graph_id, status="error", user_id=user_id)
+        record_graph_operation(operation="execute", status="error")
+        raise
 
 
 @v1_router.post(
@@ -850,7 +928,12 @@ async def _stop_graph_run(
 async def list_graphs_executions(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[execution_db.GraphExecutionMeta]:
-    return await execution_db.get_graph_executions(user_id=user_id)
+    paginated_result = await execution_db.get_graph_executions_paginated(
+        user_id=user_id,
+        page=1,
+        page_size=250,
+    )
+    return paginated_result.executions
 
 
 @v1_router.get(
@@ -919,6 +1002,99 @@ async def delete_graph_execution(
     await execution_db.delete_graph_execution(
         graph_exec_id=graph_exec_id, user_id=user_id
     )
+
+
+class ShareRequest(pydantic.BaseModel):
+    """Optional request body for share endpoint."""
+
+    pass  # Empty body is fine
+
+
+class ShareResponse(pydantic.BaseModel):
+    """Response from share endpoints."""
+
+    share_url: str
+    share_token: str
+
+
+@v1_router.post(
+    "/graphs/{graph_id}/executions/{graph_exec_id}/share",
+    dependencies=[Security(requires_user)],
+)
+async def enable_execution_sharing(
+    graph_id: Annotated[str, Path],
+    graph_exec_id: Annotated[str, Path],
+    user_id: Annotated[str, Security(get_user_id)],
+    _body: ShareRequest = Body(default=ShareRequest()),
+) -> ShareResponse:
+    """Enable sharing for a graph execution."""
+    # Verify the execution belongs to the user
+    execution = await execution_db.get_graph_execution(
+        user_id=user_id, execution_id=graph_exec_id
+    )
+    if not execution:
+        raise HTTPException(status_code=404, detail="Execution not found")
+
+    # Generate a unique share token
+    share_token = str(uuid.uuid4())
+
+    # Update the execution with share info
+    await execution_db.update_graph_execution_share_status(
+        execution_id=graph_exec_id,
+        user_id=user_id,
+        is_shared=True,
+        share_token=share_token,
+        shared_at=datetime.now(timezone.utc),
+    )
+
+    # Return the share URL
+    frontend_url = Settings().config.frontend_base_url or "http://localhost:3000"
+    share_url = f"{frontend_url}/share/{share_token}"
+
+    return ShareResponse(share_url=share_url, share_token=share_token)
+
+
+@v1_router.delete(
+    "/graphs/{graph_id}/executions/{graph_exec_id}/share",
+    status_code=HTTP_204_NO_CONTENT,
+    dependencies=[Security(requires_user)],
+)
+async def disable_execution_sharing(
+    graph_id: Annotated[str, Path],
+    graph_exec_id: Annotated[str, Path],
+    user_id: Annotated[str, Security(get_user_id)],
+) -> None:
+    """Disable sharing for a graph execution."""
+    # Verify the execution belongs to the user
+    execution = await execution_db.get_graph_execution(
+        user_id=user_id, execution_id=graph_exec_id
+    )
+    if not execution:
+        raise HTTPException(status_code=404, detail="Execution not found")
+
+    # Remove share info
+    await execution_db.update_graph_execution_share_status(
+        execution_id=graph_exec_id,
+        user_id=user_id,
+        is_shared=False,
+        share_token=None,
+        shared_at=None,
+    )
+
+
+@v1_router.get("/public/shared/{share_token}")
+async def get_shared_execution(
+    share_token: Annotated[
+        str,
+        Path(regex=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+    ],
+) -> execution_db.SharedExecutionResponse:
+    """Get a shared graph execution by share token (no auth required)."""
+    execution = await execution_db.get_graph_execution_by_share_token(share_token)
+    if not execution:
+        raise HTTPException(status_code=404, detail="Shared execution not found")
+
+    return execution
 
 
 ########################################################

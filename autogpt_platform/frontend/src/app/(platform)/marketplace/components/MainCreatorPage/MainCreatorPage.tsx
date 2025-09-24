@@ -1,6 +1,6 @@
 "use client";
 
-import { Separator } from "@/components/ui/separator";
+import { Separator } from "@/components/__legacy__/ui/separator";
 import { AgentsSection } from "../AgentsSection/AgentsSection";
 import { MarketplaceCreatorPageParams } from "../../creator/[creator]/page";
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";

@@ -9,7 +9,7 @@ import {
   IconSliders,
   IconType,
   IconUploadCloud,
-} from "@/components/ui/icons";
+} from "@/components/__legacy__/ui/icons";
 import { StorefrontIcon } from "@phosphor-icons/react";
 
 type Link = {

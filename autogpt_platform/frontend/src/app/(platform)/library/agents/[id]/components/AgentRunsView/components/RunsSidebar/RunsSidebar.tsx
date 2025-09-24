@@ -14,7 +14,7 @@ import { ScheduleListItem } from "./components/ScheduleListItem";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { InfiniteList } from "@/components/molecules/InfiniteList/InfiniteList";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 
 interface RunsSidebarProps {
   agent: LibraryAgent;
@@ -96,10 +96,10 @@ export function RunsSidebar({
             hasMore={!!hasMoreRuns}
             isFetchingMore={isFetchingMoreRuns}
             onEndReached={fetchMoreRuns}
-            className="flex flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 lg:flex-col lg:gap-1 lg:overflow-x-hidden"
+            className="flex flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 lg:flex-col lg:gap-3 lg:overflow-x-hidden"
             itemWrapperClassName="w-auto lg:w-full"
             renderItem={(run) => (
-              <div className="mb-3 w-[15rem] lg:w-full">
+              <div className="w-[15rem] lg:w-full">
                 <RunListItem
                   run={run}
                   title={agent.name}
@@ -111,9 +111,9 @@ export function RunsSidebar({
           />
         </TabsLineContent>
         <TabsLineContent value="scheduled">
-          <div className="flex flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 lg:flex-col lg:gap-1 lg:overflow-x-hidden">
+          <div className="flex flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 lg:flex-col lg:gap-3 lg:overflow-x-hidden">
             {schedules.map((s: GraphExecutionJobInfo) => (
-              <div className="mb-3 w-[15rem] lg:w-full" key={s.id}>
+              <div className="w-[15rem] lg:w-full" key={s.id}>
                 <ScheduleListItem
                   schedule={s}
                   selected={selectedRunId === `schedule:${s.id}`}

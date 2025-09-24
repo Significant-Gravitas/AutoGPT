@@ -13,11 +13,11 @@ import {
 } from "@/lib/autogpt-server-api";
 import { cn } from "@/lib/utils";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/__legacy__/ui/badge";
 import { Button } from "@/components/atoms/Button/Button";
-import LoadingBox, { LoadingSpinner } from "@/components/ui/loading";
-import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import LoadingBox, { LoadingSpinner } from "@/components/__legacy__/ui/loading";
+import { Separator } from "@/components/__legacy__/ui/separator";
+import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
 import { AgentRunsQuery } from "../use-agent-runs";
 import { agentRunStatusMap } from "./agent-run-status-chip";

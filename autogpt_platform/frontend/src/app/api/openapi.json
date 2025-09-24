@@ -1968,6 +1968,135 @@
         }
       }
     },
+    "/api/graphs/{graph_id}/executions/{graph_exec_id}/share": {
+      "post": {
+        "tags": ["v1"],
+        "summary": "Enable Execution Sharing",
+        "description": "Enable sharing for a graph execution.",
+        "operationId": "postV1EnableExecutionSharing",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Graph Id" }
+          },
+          {
+            "name": "graph_exec_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Graph Exec Id" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShareRequest",
+                "default": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ShareResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["v1"],
+        "summary": "Disable Execution Sharing",
+        "description": "Disable sharing for a graph execution.",
+        "operationId": "deleteV1DisableExecutionSharing",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Graph Id" }
+          },
+          {
+            "name": "graph_exec_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Graph Exec Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/public/shared/{share_token}": {
+      "get": {
+        "tags": ["v1"],
+        "summary": "Get Shared Execution",
+        "description": "Get a shared graph execution by share token (no auth required).",
+        "operationId": "getV1GetSharedExecution",
+        "parameters": [
+          {
+            "name": "share_token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "title": "Share Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedExecutionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/graphs/{graph_id}/schedules": {
       "post": {
         "tags": ["v1", "schedules"],
@@ -2364,7 +2493,7 @@
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Get user profile",
-        "description": "Get the profile details for the authenticated user.",
+        "description": "Get the profile details for the authenticated user.\nCached for 1 hour per user.",
         "operationId": "getV2Get user profile",
         "responses": {
           "200": {
@@ -2422,7 +2551,7 @@
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "List store agents",
-        "description": "Get a paginated list of agents from the store with optional filtering and sorting.\n\nArgs:\n    featured (bool, optional): Filter to only show featured agents. Defaults to False.\n    creator (str | None, optional): Filter agents by creator username. Defaults to None.\n    sorted_by (str | None, optional): Sort agents by \"runs\" or \"rating\". Defaults to None.\n    search_query (str | None, optional): Search agents by name, subheading and description. Defaults to None.\n    category (str | None, optional): Filter agents by category. Defaults to None.\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of agents per page. Defaults to 20.\n\nReturns:\n    StoreAgentsResponse: Paginated list of agents matching the filters\n\nRaises:\n    HTTPException: If page or page_size are less than 1\n\nUsed for:\n- Home Page Featured Agents\n- Home Page Top Agents\n- Search Results\n- Agent Details - Other Agents By Creator\n- Agent Details - Similar Agents\n- Creator Details - Agents By Creator",
+        "description": "Get a paginated list of agents from the store with optional filtering and sorting.\nResults are cached for 15 minutes.\n\nArgs:\n    featured (bool, optional): Filter to only show featured agents. Defaults to False.\n    creator (str | None, optional): Filter agents by creator username. Defaults to None.\n    sorted_by (str | None, optional): Sort agents by \"runs\" or \"rating\". Defaults to None.\n    search_query (str | None, optional): Search agents by name, subheading and description. Defaults to None.\n    category (str | None, optional): Filter agents by category. Defaults to None.\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of agents per page. Defaults to 20.\n\nReturns:\n    StoreAgentsResponse: Paginated list of agents matching the filters\n\nRaises:\n    HTTPException: If page or page_size are less than 1\n\nUsed for:\n- Home Page Featured Agents\n- Home Page Top Agents\n- Search Results\n- Agent Details - Other Agents By Creator\n- Agent Details - Similar Agents\n- Creator Details - Agents By Creator",
         "operationId": "getV2List store agents",
         "parameters": [
           {
@@ -2508,7 +2637,7 @@
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "Get specific agent",
-        "description": "This is only used on the AgentDetails Page\n\nIt returns the store listing agents details.",
+        "description": "This is only used on the AgentDetails Page.\nResults are cached for 15 minutes.\n\nIt returns the store listing agents details.",
         "operationId": "getV2Get specific agent",
         "parameters": [
           {
@@ -2548,7 +2677,7 @@
       "get": {
         "tags": ["v2", "store"],
         "summary": "Get agent graph",
-        "description": "Get Agent Graph from Store Listing Version ID.",
+        "description": "Get Agent Graph from Store Listing Version ID.\nResults are cached for 1 hour.",
         "operationId": "getV2Get agent graph",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -2582,7 +2711,7 @@
       "get": {
         "tags": ["v2", "store"],
         "summary": "Get agent by version",
-        "description": "Get Store Agent Details from Store Listing Version ID.",
+        "description": "Get Store Agent Details from Store Listing Version ID.\nResults are cached for 1 hour.",
         "operationId": "getV2Get agent by version",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -2672,7 +2801,7 @@
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "List store creators",
-        "description": "This is needed for:\n- Home Page Featured Creators\n- Search Results Page\n\n---\n\nTo support this functionality we need:\n- featured: bool - to limit the list to just featured agents\n- search_query: str - vector search based on the creators profile description.\n- sorted_by: [agent_rating, agent_runs] -",
+        "description": "This is needed for:\n- Home Page Featured Creators\n- Search Results Page\n\nResults are cached for 1 hour.\n\n---\n\nTo support this functionality we need:\n- featured: bool - to limit the list to just featured agents\n- search_query: str - vector search based on the creators profile description.\n- sorted_by: [agent_rating, agent_runs] -",
         "operationId": "getV2List store creators",
         "parameters": [
           {
@@ -2740,7 +2869,7 @@
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "Get creator details",
-        "description": "Get the details of a creator\n- Creator Details Page",
+        "description": "Get the details of a creator.\nResults are cached for 1 hour.\n- Creator Details Page",
         "operationId": "getV2Get creator details",
         "parameters": [
           {
@@ -2774,6 +2903,7 @@
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Get my agents",
+        "description": "Get user's own agents.\nResults are cached for 5 minutes per user.",
         "operationId": "getV2Get my agents",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -2868,7 +2998,7 @@
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "List my submissions",
-        "description": "Get a paginated list of store submissions for the authenticated user.\n\nArgs:\n    user_id (str): ID of the authenticated user\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of submissions per page. Defaults to 20.\n\nReturns:\n    StoreListingsResponse: Paginated list of store submissions\n\nRaises:\n    HTTPException: If page or page_size are less than 1",
+        "description": "Get a paginated list of store submissions for the authenticated user.\nResults are cached for 1 hour per user.\n\nArgs:\n    user_id (str): ID of the authenticated user\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of submissions per page. Defaults to 20.\n\nReturns:\n    StoreListingsResponse: Paginated list of store submissions\n\nRaises:\n    HTTPException: If page or page_size are less than 1",
         "operationId": "getV2List my submissions",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -3097,6 +3227,20 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/store/metrics/cache": {
+      "get": {
+        "tags": ["v2", "store", "metrics"],
+        "summary": "Get cache metrics in Prometheus format",
+        "description": "Get cache metrics in Prometheus text format.\n\nReturns Prometheus-compatible metrics for monitoring cache performance.\nMetrics include size, maxsize, TTL, and hit rate for each cache.\n\nReturns:\n    str: Prometheus-formatted metrics text",
+        "operationId": "getV2Get cache metrics in prometheus format",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "text/plain": { "schema": { "type": "string" } } }
           }
         }
       }
@@ -4056,6 +4200,70 @@
         }
       }
     },
+    "/api/library/agents/favorites": {
+      "get": {
+        "tags": ["v2", "library", "private"],
+        "summary": "List Favorite Library Agents",
+        "description": "Get all favorite agents in the user's library.\n\nArgs:\n    user_id: ID of the authenticated user.\n    page: Page number to retrieve.\n    page_size: Number of agents per page.\n\nReturns:\n    A LibraryAgentResponse containing favorite agents and pagination metadata.\n\nRaises:\n    HTTPException: If a server/database error occurs.",
+        "operationId": "getV2List favorite library agents",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Page number to retrieve (must be >= 1)",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "Page number to retrieve (must be >= 1)"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Number of agents per page (must be >= 1)",
+              "default": 15,
+              "title": "Page Size"
+            },
+            "description": "Number of agents per page (must be >= 1)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryAgentResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": { "application/json": {} }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
     "/api/library/agents/{library_agent_id}": {
       "get": {
         "tags": ["v2", "library", "private"],
@@ -4649,6 +4857,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
@@ -4689,6 +4901,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
@@ -5228,6 +5444,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
@@ -5313,6 +5533,15 @@
             "type": "string",
             "format": "date-time",
             "title": "Ended At"
+          },
+          "is_shared": {
+            "type": "boolean",
+            "title": "Is Shared",
+            "default": false
+          },
+          "share_token": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Share Token"
           },
           "stats": {
             "anyOf": [
@@ -5438,6 +5667,15 @@
             "format": "date-time",
             "title": "Ended At"
           },
+          "is_shared": {
+            "type": "boolean",
+            "title": "Is Shared",
+            "default": false
+          },
+          "share_token": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Share Token"
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -5513,6 +5751,15 @@
             "format": "date-time",
             "title": "Ended At"
           },
+          "is_shared": {
+            "type": "boolean",
+            "title": "Is Shared",
+            "default": false
+          },
+          "share_token": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Share Token"
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -5574,6 +5821,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
@@ -5648,6 +5899,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
@@ -5679,6 +5934,11 @@
             "default": []
           },
           "user_id": { "type": "string", "title": "User Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
           "input_schema": {
             "additionalProperties": true,
             "type": "object",
@@ -5715,6 +5975,7 @@
           "name",
           "description",
           "user_id",
+          "created_at",
           "input_schema",
           "output_schema",
           "has_external_trigger",
@@ -5842,6 +6103,10 @@
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "input_schema": {
             "additionalProperties": true,
             "type": "object",
@@ -5880,6 +6145,7 @@
             "type": "boolean",
             "title": "Is Latest Version"
           },
+          "is_favorite": { "type": "boolean", "title": "Is Favorite" },
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
@@ -5903,7 +6169,8 @@
           "has_external_trigger",
           "new_output",
           "can_access_graph",
-          "is_latest_version"
+          "is_latest_version",
+          "is_favorite"
         ],
         "title": "LibraryAgent",
         "description": "Represents an agent in the library, including metadata for display and\nuser interaction within the system."
@@ -5937,6 +6204,11 @@
           },
           "id": { "type": "string", "title": "Id" },
           "user_id": { "type": "string", "title": "User Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
           "updated_at": {
             "type": "string",
             "format": "date-time",
@@ -5959,6 +6231,7 @@
           "description",
           "id",
           "user_id",
+          "created_at",
           "updated_at",
           "webhook"
         ],
@@ -7154,6 +7427,54 @@
         "required": ["active_graph_version"],
         "title": "SetGraphActiveVersion"
       },
+      "ShareRequest": {
+        "properties": {},
+        "type": "object",
+        "title": "ShareRequest",
+        "description": "Optional request body for share endpoint."
+      },
+      "ShareResponse": {
+        "properties": {
+          "share_url": { "type": "string", "title": "Share Url" },
+          "share_token": { "type": "string", "title": "Share Token" }
+        },
+        "type": "object",
+        "required": ["share_url", "share_token"],
+        "title": "ShareResponse",
+        "description": "Response from share endpoints."
+      },
+      "SharedExecutionResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "graph_name": { "type": "string", "title": "Graph Name" },
+          "graph_description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Description"
+          },
+          "status": { "$ref": "#/components/schemas/AgentExecutionStatus" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "outputs": {
+            "additionalProperties": { "items": {}, "type": "array" },
+            "type": "object",
+            "title": "Outputs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "graph_name",
+          "graph_description",
+          "status",
+          "created_at",
+          "outputs"
+        ],
+        "title": "SharedExecutionResponse",
+        "description": "Public-safe response for shared executions"
+      },
       "Stats": {
         "properties": {
           "cost": {
@@ -7257,6 +7578,10 @@
           "creator_avatar": { "type": "string", "title": "Creator Avatar" },
           "sub_heading": { "type": "string", "title": "Sub Heading" },
           "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "categories": {
             "items": { "type": "string" },
             "type": "array",
@@ -7409,6 +7734,10 @@
           "sub_heading": { "type": "string", "title": "Sub Heading" },
           "slug": { "type": "string", "title": "Slug" },
           "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "image_urls": {
             "items": { "type": "string" },
             "type": "array",
@@ -7499,6 +7828,10 @@
             "title": "Description",
             "default": ""
           },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
           "categories": {
             "items": { "type": "string" },
             "type": "array",
@@ -7539,6 +7872,10 @@
             "type": "string",
             "title": "Description",
             "default": ""
+          },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
           },
           "categories": {
             "items": { "type": "string" },
