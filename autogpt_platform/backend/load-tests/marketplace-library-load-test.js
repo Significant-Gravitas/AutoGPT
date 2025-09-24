@@ -3,7 +3,7 @@ import http from 'k6/http';
 import { Counter } from 'k6/metrics';
 
 import { getEnvironmentConfig } from './configs/environment.js';
-import { getAuthenticatedUser } from './utils/auth.js';
+import { getPreAuthenticatedHeaders } from './configs/pre-authenticated-tokens.js';
 
 const config = getEnvironmentConfig();
 const BASE_URL = config.API_BASE_URL;
@@ -51,9 +51,9 @@ export const options = {
 export default function () {
   console.log(`📚 VU ${__VU} starting authenticated library journey...`);
   
-  // Authenticate user
-  const userAuth = getAuthenticatedUser();
-  if (!userAuth || !userAuth.access_token) {
+  // Get pre-authenticated headers
+  const headers = getPreAuthenticatedHeaders(__VU);
+  if (!headers || !headers.Authorization) {
     console.log(`❌ VU ${__VU} authentication failed, skipping iteration`);
     authenticationAttempts.add(1);
     return;
@@ -65,16 +65,12 @@ export default function () {
   // Run multiple library operations per iteration
   for (let i = 0; i < REQUESTS_PER_VU; i++) {
     console.log(`🔄 VU ${__VU} starting library operation ${i + 1}/${REQUESTS_PER_VU}...`);
-    authenticatedLibraryJourney(userAuth);
+    authenticatedLibraryJourney(headers);
   }
 }
 
-function authenticatedLibraryJourney(userAuth) {
+function authenticatedLibraryJourney(headers) {
   const journeyStart = Date.now();
-  const headers = {
-    'Authorization': `Bearer ${userAuth.access_token}`,
-    'Content-Type': 'application/json',
-  };
   
   // Step 1: Get user's library agents
   console.log(`📖 VU ${__VU} fetching user library agents...`);

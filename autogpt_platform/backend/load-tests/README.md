@@ -252,16 +252,47 @@ k6 run single-endpoint-test.js
 
 For granular control over individual test scripts:
 
+#### k6 Cloud Execution (Recommended for Performance Testing)
+
 ```bash
-# Run specific test with custom parameters
+# IMPORTANT: Use 'k6 cloud run' for true cloud execution
+# This runs tests on k6 cloud infrastructure (not local with cloud output)
+
+# Single test with cloud execution
 K6_ENVIRONMENT=DEV VUS=100 DURATION=3m \
 K6_CLOUD_PROJECT_ID=4254406 K6_CLOUD_TOKEN=your-token \
-k6 run core-api-load-test.js --out cloud
+k6 cloud run core-api-load-test.js
 
-# Local execution with JSON output
+# Single endpoint testing on k6 cloud
+K6_ENVIRONMENT=DEV VUS=50 DURATION=3m ENDPOINT=credits CONCURRENT_REQUESTS=10 \
+k6 cloud run single-endpoint-test.js
+
+# Serial execution of single endpoint tests (Tests 11-14)
+node run-single-endpoint-tests.js
+```
+
+#### Local Execution with Cloud Output (For Debugging Only)
+
+```bash
+# This runs locally but uploads results to k6 cloud dashboard
+K6_ENVIRONMENT=DEV VUS=10 DURATION=1m \
+k6 run basic-connectivity-test.js --out cloud
+
+# Local execution with JSON output (no cloud)
 K6_ENVIRONMENT=LOCAL VUS=10 DURATION=1m \
 k6 run basic-connectivity-test.js --out json=results.json
 ```
+
+#### Key Difference: Cloud vs Local Execution
+
+- **`k6 cloud run script.js`** - Runs on k6 cloud servers (Columbus zone) ✅ **Recommended for performance testing**
+- **`k6 run script.js --out cloud`** - Runs locally but sends results to cloud dashboard (for debugging only)
+
+**Why Cloud Execution Matters:**
+- Eliminates local network bottlenecks
+- Consistent geographic location (Columbus)
+- Higher concurrent user capacity
+- More accurate performance metrics
 
 
 ---

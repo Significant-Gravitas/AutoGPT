@@ -2,7 +2,7 @@ import http from 'k6/http';
 import { check, sleep, group } from 'k6';
 import { Rate, Trend, Counter } from 'k6/metrics';
 import { getEnvironmentConfig, PERFORMANCE_CONFIG } from '../configs/environment.js';
-import { getAuthenticatedUser, getAuthHeaders } from '../utils/auth.js';
+import { getPreAuthenticatedHeaders } from '../configs/pre-authenticated-tokens.js';
 import { 
   generateTestGraph, 
   generateExecutionInputs, 
@@ -54,26 +54,24 @@ export default function (data) {
   // Get load multiplier - how many concurrent user journeys each VU should simulate
   const requestsPerVU = parseInt(__ENV.REQUESTS_PER_VU) || 1;
   
-  let userAuth;
+  let headers;
   
   try {
-    userAuth = getAuthenticatedUser();
+    headers = getPreAuthenticatedHeaders(__VU);
   } catch (error) {
     console.error(`❌ Authentication failed:`, error);
     authErrors.add(1);
     return;
   }
   
-  // Handle authentication failure gracefully (null returned from auth fix)
-  if (!userAuth || !userAuth.access_token) {
-    console.log(`⚠️ VU ${__VU} has no valid authentication - skipping comprehensive platform test`);
+  // Handle authentication failure gracefully
+  if (!headers || !headers.Authorization) {
+    console.log(`⚠️ VU ${__VU} has no valid pre-authentication token - skipping comprehensive platform test`);
     check(null, {
       'Comprehensive Platform: Failed gracefully without crashing VU': () => true,
     });
     return; // Exit iteration gracefully without crashing
   }
-  
-  const headers = getAuthHeaders(userAuth.access_token);
   
   console.log(`🚀 VU ${__VU} simulating ${requestsPerVU} realistic user workflows...`);
   
