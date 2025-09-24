@@ -124,7 +124,7 @@ export function TaskGroups({ groups, setGroups }: Props) {
         <div
           key={group.name}
           ref={setRef(group.name)}
-          className="mt-3 overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100"
+          className="mt-3 overflow-hidden rounded-lg border border-zinc-100 bg-zinc-50"
         >
           {/* Group Header */}
           <div
@@ -168,7 +168,7 @@ export function TaskGroups({ groups, setGroups }: Props) {
             className={cn(
               "overflow-hidden transition-all duration-300 ease-in-out",
               group.isOpen || !isGroupCompleted(group)
-                ? "max-h-[1000px] opacity-100"
+                ? "max-h-[1200px] opacity-100"
                 : "max-h-0 opacity-0",
             )}
           >
@@ -176,7 +176,7 @@ export function TaskGroups({ groups, setGroups }: Props) {
               <div
                 key={task.id}
                 ref={setRef(task.id)}
-                className="mx-3 border-t border-zinc-300 px-1 pb-1 pt-3"
+                className="mx-3 border-t border-zinc-200 px-1 pb-0.5 pt-3"
               >
                 <div className="mb-2 flex items-center justify-between">
                   {/* Checkmark and name */}
@@ -222,7 +222,7 @@ export function TaskGroups({ groups, setGroups }: Props) {
                   <>
                     <div
                       className={cn(
-                        "overflow-hidden pl-6 text-xs font-normal text-zinc-500 transition-all duration-300 ease-in-out",
+                        "mt-0 overflow-hidden pl-6 pt-0 text-xs font-normal text-zinc-500 transition-all duration-300 ease-in-out",
                         isTaskCompleted(task) && "line-through",
                         group.isOpen
                           ? "max-h-[100px] opacity-100"
@@ -263,7 +263,7 @@ export function TaskGroups({ groups, setGroups }: Props) {
         </div>
       ))}
       {/* Hidden Tasks group */}
-      <div className="mt-3 overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100">
+      <div className="mt-3 overflow-hidden rounded-lg border border-zinc-100 bg-zinc-50">
         {/* Group Header */}
         <div className="flex items-center justify-between p-3">
           {/* Name and details */}
@@ -278,14 +278,25 @@ export function TaskGroups({ groups, setGroups }: Props) {
         </div>
         {/* Tasks */}
         <div>
-          <div className="mx-3 border-t border-zinc-300 px-1 pb-1 pt-3">
+          <div className="mx-3 border-t border-zinc-200 px-1 pb-1 pt-3">
             <div className="mb-2 flex items-center justify-between">
               {/* Question mark and rectangle */}
               <div className="flex items-center gap-2">
                 <div className="flex h-4 w-4 items-center justify-center">
                   <BadgeQuestionMark />
                 </div>
-                <div className="h-4 w-32 rounded bg-zinc-200" />
+                <div className="h-4 w-64 rounded-full bg-zinc-100" />
+              </div>
+            </div>
+          </div>
+          <div className="mx-3 border-t border-zinc-200 px-1 pb-1 pt-3">
+            <div className="mb-2 flex items-center justify-between">
+              {/* Question mark and rectangle */}
+              <div className="flex items-center gap-2">
+                <div className="flex h-4 w-4 items-center justify-center">
+                  <BadgeQuestionMark />
+                </div>
+                <div className="h-4 w-64 rounded-full bg-zinc-100" />
               </div>
             </div>
           </div>

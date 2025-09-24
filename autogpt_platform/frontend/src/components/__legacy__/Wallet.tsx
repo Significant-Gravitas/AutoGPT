@@ -278,21 +278,21 @@ export default function Wallet() {
       <PopoverContent
         className={cn(
           "absolute -right-[7.9rem] -top-[3.2rem] z-50 w-[28.5rem] px-[0.625rem] py-2",
-          "rounded-xl border-zinc-200 bg-zinc-50 shadow-[0_3px_3px] shadow-zinc-300",
+          "rounded-xl border-zinc-100 bg-white shadow-[0_3px_3px] shadow-zinc-200",
         )}
       >
         {/* Header */}
-        <div className="mx-1 flex items-center justify-between border-b border-zinc-300 pb-2">
+        <div className="mx-1 flex items-center justify-between border-b border-zinc-200 pb-3">
           <span className="font-poppins font-medium text-zinc-900">
-            Your wallet
+            Your credits
           </span>
-          <div className="flex items-center text-sm font-semibold text-violet-700">
+          <div className="flex items-center text-sm text-violet-700">
             <div className="rounded-lg bg-violet-100 px-3 py-2">
               Earn credits{" "}
               <span className="font-semibold">{formatCredits(credits)}</span>
             </div>
             <PopoverClose>
-              <X className="ml-[2.8rem] h-5 w-5 text-zinc-800 hover:text-foreground" />
+              <X className="ml-2 h-5 w-5 text-zinc-800 hover:text-foreground" />
             </PopoverClose>
           </div>
         </div>
@@ -302,10 +302,7 @@ export default function Wallet() {
             <WalletRefill />
           )}
           {/* Tasks */}
-          <p className="mx-1 mt-4 font-sans text-xs font-medium text-violet-700">
-            Onboarding tasks
-          </p>
-          <p className="mx-1 my-1 font-sans text-xs font-normal text-zinc-500">
+          <p className="mx-1 my-3 font-sans text-xs font-normal text-zinc-400">
             Complete the following tasks to earn more credits!
           </p>
           <TaskGroups groups={groups} setGroups={setGroups} />
