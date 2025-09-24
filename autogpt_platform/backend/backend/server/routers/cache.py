@@ -54,6 +54,7 @@ async def get_cached_graph(
         graph_id=graph_id,
         version=version,
         user_id=user_id,
+        include_subgraphs=True,  # needed to construct full credentials input schema
     )
 
 
