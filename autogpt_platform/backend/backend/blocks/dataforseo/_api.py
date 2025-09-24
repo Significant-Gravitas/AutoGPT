@@ -148,6 +148,8 @@ class DataForSeoClient:
             task_data["include_clickstream_data"] = include_clickstream_data
         if limit is not None:
             task_data["limit"] = limit
+        if depth is not None:
+            task_data["depth"] = depth
 
         payload = [task_data]
 
