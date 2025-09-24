@@ -51,7 +51,7 @@ class CloudStorageHandler:
         if not current_task:
             # If we're not in a task, create a temporary client
             logger.warning(
-                "Creating GCS client outside of task context - using temporary client"
+                "[CloudStorage] Creating GCS client outside of task context - using temporary client"
             )
             timeout = aiohttp.ClientTimeout(total=300)
             session = aiohttp.ClientSession(
@@ -82,14 +82,14 @@ class CloudStorageHandler:
             try:
                 await self._async_gcs_client.close()
             except Exception as e:
-                logger.warning(f"Error closing GCS client: {e}")
+                logger.warning(f"[CloudStorage] Error closing GCS client: {e}")
             self._async_gcs_client = None
 
         if self._session is not None:
             try:
                 await self._session.close()
             except Exception as e:
-                logger.debug(f"Error closing session: {e}")
+                logger.warning(f"[CloudStorage] Error closing session: {e}")
             self._session = None
 
     async def __aenter__(self):
@@ -246,6 +246,7 @@ class CloudStorageHandler:
         # Log context for debugging
         current_task = asyncio.current_task()
         logger.info(
+            f"[CloudStorage]"
             f"_retrieve_file_gcs called - "
             f"current_task: {current_task}, "
             f"in_task: {current_task is not None}"
@@ -263,7 +264,7 @@ class CloudStorageHandler:
 
         # Use a fresh client for each download to avoid session issues
         # This is less efficient but more reliable with the executor's event loop
-        logger.info("Creating fresh GCS client for download")
+        logger.info("[CloudStorage] Creating fresh GCS client for download")
 
         # Create a new session specifically for this download
         session = aiohttp.ClientSession(
@@ -276,12 +277,14 @@ class CloudStorageHandler:
             async_client = async_gcs_storage.Storage(session=session)
 
             logger.info(
-                f"About to download from GCS - bucket: {bucket_name}, blob: {blob_name}"
+                f"[CloudStorage] About to download from GCS - bucket: {bucket_name}, blob: {blob_name}"
             )
 
             # Download content using the fresh client
             content = await async_client.download(bucket_name, blob_name)
-            logger.info(f"GCS download successful - size: {len(content)} bytes")
+            logger.info(
+                f"[CloudStorage] GCS download successful - size: {len(content)} bytes"
+            )
 
             # Clean up
             await async_client.close()
@@ -295,15 +298,17 @@ class CloudStorageHandler:
                 try:
                     await async_client.close()
                 except Exception as cleanup_error:
-                    logger.info(f"Error closing GCS client: {cleanup_error}")
+                    logger.warning(
+                        f"[CloudStorage] Error closing GCS client: {cleanup_error}"
+                    )
             try:
                 await session.close()
             except Exception as cleanup_error:
-                logger.info(f"Error closing session: {cleanup_error}")
+                logger.warning(f"[CloudStorage] Error closing session: {cleanup_error}")
 
             # Log the specific error for debugging
             logger.error(
-                f"GCS download failed - error: {str(e)}, "
+                f"[CloudStorage] GCS download failed - error: {str(e)}, "
                 f"error_type: {type(e).__name__}, "
                 f"bucket: {bucket_name}, blob: redacted for privacy"
             )
@@ -311,7 +316,7 @@ class CloudStorageHandler:
             # Special handling for timeout error
             if "Timeout context manager" in str(e):
                 logger.critical(
-                    f"TIMEOUT ERROR in GCS download! "
+                    f"[CloudStorage] TIMEOUT ERROR in GCS download! "
                     f"current_task: {current_task}, "
                     f"bucket: {bucket_name}, blob: redacted for privacy"
                 )
@@ -399,7 +404,7 @@ class CloudStorageHandler:
 
         # Legacy uploads directory (uploads/*) - allow for backwards compatibility with warning
         # Note: We already validated it starts with "uploads/" above, so this is guaranteed to match
-        logger.warning(f"Accessing legacy upload path: {blob_name}")
+        logger.warning(f"[CloudStorage] Accessing legacy upload path: {blob_name}")
         return
 
     async def generate_signed_url(
@@ -527,7 +532,7 @@ class CloudStorageHandler:
                     except Exception as e:
                         # Log specific errors for debugging
                         logger.warning(
-                            f"Failed to process file {blob_name} during cleanup: {e}"
+                            f"[CloudStorage] Failed to process file {blob_name} during cleanup: {e}"
                         )
                         # Skip files with invalid metadata or delete errors
                         pass
@@ -543,7 +548,7 @@ class CloudStorageHandler:
 
         except Exception as e:
             # Log the error for debugging but continue operation
-            logger.error(f"Cleanup operation failed: {e}")
+            logger.error(f"[CloudStorage] Cleanup operation failed: {e}")
             # Return 0 - we'll try again next cleanup cycle
             return 0
 
@@ -586,11 +591,15 @@ class CloudStorageHandler:
         except Exception as e:
             # If file doesn't exist or we can't read metadata
             if "404" in str(e) or "Not Found" in str(e):
-                logger.debug(f"File not found during expiration check: {blob_name}")
+                logger.warning(
+                    f"[CloudStorage] File not found during expiration check: {blob_name}"
+                )
                 return True  # File doesn't exist, consider it expired
 
             # Log other types of errors for debugging
-            logger.warning(f"Failed to check expiration for {blob_name}: {e}")
+            logger.warning(
+                f"[CloudStorage] Failed to check expiration for {blob_name}: {e}"
+            )
             # If we can't read metadata for other reasons, assume not expired
             return False
 
@@ -640,11 +649,15 @@ async def cleanup_expired_files_async() -> int:
     # Use cleanup lock to prevent concurrent cleanup operations
     async with _cleanup_lock:
         try:
-            logger.info("Starting cleanup of expired cloud storage files")
+            logger.info(
+                "[CloudStorage] Starting cleanup of expired cloud storage files"
+            )
             handler = await get_cloud_storage_handler()
             deleted_count = await handler.delete_expired_files()
-            logger.info(f"Cleaned up {deleted_count} expired files from cloud storage")
+            logger.info(
+                f"[CloudStorage] Cleaned up {deleted_count} expired files from cloud storage"
+            )
             return deleted_count
         except Exception as e:
-            logger.error(f"Error during cloud storage cleanup: {e}")
+            logger.error(f"[CloudStorage] Error during cloud storage cleanup: {e}")
             return 0
