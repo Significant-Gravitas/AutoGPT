@@ -125,14 +125,6 @@ class VirusScannerService:
                 f"Scanning {filename} with chunk size: {chunk_size // 1_048_576} MB (retry {retry + 1}/{self.settings.max_retries})"
             )
             try:
-                # Log task creation context
-                current_task = asyncio.current_task()
-                logger.debug(
-                    f"Creating virus scan tasks - current_task: {current_task}, "
-                    f"in_task: {current_task is not None}, "
-                    f"num_chunks: {len(range(0, len(content), chunk_size))}"
-                )
-
                 tasks = [
                     asyncio.create_task(self._instream(content[o : o + chunk_size]))
                     for o in range(0, len(content), chunk_size)
@@ -199,15 +191,6 @@ async def scan_content_safe(content: bytes, *, filename: str = "unknown") -> Non
     """
     from backend.server.v2.store.exceptions import VirusDetectedError, VirusScanError
 
-    # Log context about asyncio task state
-    current_task = asyncio.current_task()
-    logger.debug(
-        f"scan_content_safe called - filename: {filename}, "
-        f"content_size: {len(content)}, "
-        f"current_task: {current_task}, "
-        f"in_task: {current_task is not None}"
-    )
-
     try:
         result = await get_virus_scanner().scan_file(content, filename=filename)
         if not result.is_clean:
@@ -222,18 +205,5 @@ async def scan_content_safe(content: bytes, *, filename: str = "unknown") -> Non
     except VirusDetectedError:
         raise
     except Exception as e:
-        # Enhanced error logging with asyncio context
-        logger.error(
-            f"Virus scanning failed for {filename}: {str(e)}, "
-            f"error_type: {type(e).__name__}, "
-            f"task_context: {current_task}"
-        )
-        # Log if this is the timeout error we're looking for
-        if "Timeout context manager" in str(e):
-            logger.critical(
-                f"TIMEOUT ERROR DETECTED! filename: {filename}, "
-                f"current_task: {current_task}, "
-                f"task_name: {current_task.get_name() if current_task else 'NO_TASK'}, "
-                f"full_error: {e}"
-            )
+        logger.error(f"Virus scanning failed for {filename}: {str(e)}")
         raise VirusScanError(f"Virus scanning failed: {str(e)}") from e
