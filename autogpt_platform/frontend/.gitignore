@@ -58,3 +58,6 @@ storybook-static
 
 # Generated API files
 src/app/api/__generated__/
+
+# Lighthouse CI reports
+lhci_reports/

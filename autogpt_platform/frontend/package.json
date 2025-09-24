@@ -18,6 +18,8 @@
     "build-storybook": "storybook build",
     "test-storybook": "test-storybook",
     "test-storybook:ci": "concurrently -k -s first -n \"SB,TEST\" -c \"magenta,blue\" \"pnpm run build-storybook -- --quiet && npx http-server storybook-static --port 6006 --silent\" \"wait-on tcp:6006 && pnpm run test-storybook\"",
+    "lighthouse": "lhci autorun",
+    "lighthouse:local": "lhci autorun --config=./lighthouserc.local.json",
     "generate:api": "npx --yes tsx ./scripts/generate-api-queries.ts && orval --config ./orval.config.ts",
     "generate:api:force": "npx --yes tsx ./scripts/generate-api-queries.ts --force && orval --config ./orval.config.ts"
   },
@@ -107,6 +109,7 @@
   },
   "devDependencies": {
     "@chromatic-com/storybook": "4.1.1",
+    "@lhci/cli": "^0.15.0",
     "@playwright/test": "1.55.0",
     "@storybook/addon-a11y": "9.1.5",
     "@storybook/addon-docs": "9.1.5",
