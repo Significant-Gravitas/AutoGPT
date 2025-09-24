@@ -174,12 +174,15 @@ class TestStoreMediaFileSecurity:
         """Test file size limits."""
         # Mock cloud storage handler - get_cloud_storage_handler is async
         # but is_cloud_path and parse_cloud_path are sync methods
-        from unittest.mock import MagicMock, AsyncMock
+        from unittest.mock import MagicMock
+
         mock_handler = MagicMock()
         mock_handler.is_cloud_path.return_value = False
+
         # Make get_cloud_storage_handler an async function that returns the mock handler
         async def async_get_handler():
             return mock_handler
+
         mock_cloud_storage.side_effect = async_get_handler
         mock_scan.return_value = None
 
@@ -199,10 +202,13 @@ class TestStoreMediaFileSecurity:
     async def test_directory_size_limits(self, mock_cloud_storage, mock_scan):
         """Test directory size limits."""
         from unittest.mock import MagicMock
+
         mock_handler = MagicMock()
         mock_handler.is_cloud_path.return_value = False
+
         async def async_get_handler():
             return mock_handler
+
         mock_cloud_storage.side_effect = async_get_handler
         mock_scan.return_value = None
 
