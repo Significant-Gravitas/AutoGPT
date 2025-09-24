@@ -100,14 +100,17 @@ async function generateTokens() {
   const tokens = [];
   const startTime = Date.now();
   
-  // Generate 7-8 tokens per user to reach 350+ total
-  const tokensPerUser = Math.ceil(350 / TEST_USERS.length);
-  console.log(`📊 Generating ${tokensPerUser} tokens per user (${TEST_USERS.length} users)\n`);
+  // Generate tokens - configurable via --count argument or default to 150
+  const targetTokens = parseInt(process.argv.find(arg => arg.startsWith('--count='))?.split('=')[1]) || 
+                      parseInt(process.env.TOKEN_COUNT) || 
+                      150;
+  const tokensPerUser = Math.ceil(targetTokens / TEST_USERS.length);
+  console.log(`📊 Generating ${tokensPerUser} tokens per user (${TEST_USERS.length} users) - Target: ${targetTokens}\n`);
   
   for (let round = 1; round <= tokensPerUser; round++) {
     console.log(`🔄 Round ${round}/${tokensPerUser}:`);
     
-    for (let i = 0; i < TEST_USERS.length && tokens.length < 350; i++) {
+    for (let i = 0; i < TEST_USERS.length && tokens.length < targetTokens; i++) {
       const user = TEST_USERS[i];
       
       process.stdout.write(`   ${user.email.padEnd(25)} ... `);
@@ -121,18 +124,18 @@ async function generateTokens() {
           generated: new Date().toISOString(),
           round: round
         });
-        console.log(`✅ (${tokens.length}/350)`);
+        console.log(`✅ (${tokens.length}/${targetTokens})`);
       } else {
         console.log(`❌`);
       }
       
       // Respect rate limits - wait 500ms between requests
-      if (tokens.length < 350) {
+      if (tokens.length < targetTokens) {
         await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
     
-    if (tokens.length >= 350) break;
+    if (tokens.length >= targetTokens) break;
     
     // Wait longer between rounds
     if (round < tokensPerUser) {
@@ -176,11 +179,18 @@ export function getPreAuthenticatedToken(vuId = 1) {
   };
 }
 
+// Generate single session ID for this test run
+const LOAD_TEST_SESSION_ID = '${new Date().toISOString().slice(0,16).replace(/:/g,'-')}-' + Math.random().toString(36).substr(2, 8);
+
 export function getPreAuthenticatedHeaders(vuId = 1) {
   const authData = getPreAuthenticatedToken(vuId);
+  
   return {
     'Content-Type': 'application/json',
     'Authorization': \`Bearer \${authData.access_token}\`,
+    'X-Load-Test-Session': LOAD_TEST_SESSION_ID,
+    'X-Load-Test-VU': vuId.toString(),
+    'X-Load-Test-User': authData.user.email,
   };
 }
 
