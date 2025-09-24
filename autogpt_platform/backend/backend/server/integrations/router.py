@@ -3,8 +3,6 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Annotated, Awaitable, List, Literal
 
-from backend.data.onboarding import complete_webhook_trigger_step
-
 from autogpt_libs.auth import get_user_id
 from fastapi import (
     APIRouter,
@@ -34,6 +32,7 @@ from backend.data.model import (
     OAuth2Credentials,
     UserIntegrations,
 )
+from backend.data.onboarding import complete_webhook_trigger_step
 from backend.data.user import get_user_integrations
 from backend.executor.utils import add_graph_execution
 from backend.integrations.ayrshare import AyrshareClient, SocialPlatform
