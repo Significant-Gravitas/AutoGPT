@@ -1,0 +1,137 @@
+"""
+Cache functions for main V1 API endpoints.
+
+This module contains all caching decorators and helpers for the V1 API,
+separated from the main routes for better organization and maintainability.
+"""
+
+from typing import Sequence
+
+from autogpt_libs.utils.cache import cached
+
+from backend.data import block as block_db
+from backend.data import execution as execution_db
+from backend.data import graph as graph_db
+from backend.data import user as user_db
+
+# ===== Block Caches =====
+
+
+# Cache block definitions - they rarely change
+@cached(maxsize=1, ttl_seconds=3600)
+def get_cached_graph_blocks():
+    """Cached helper to get available graph blocks."""
+    return block_db.get_blocks()
+
+
+# ===== Graph Caches =====
+
+
+# Cache user's graphs list for 15 minutes
+@cached(maxsize=1000, ttl_seconds=900)
+async def get_cached_graphs(
+    user_id: str,
+    page: int,
+    page_size: int,
+):
+    """Cached helper to get user's graphs."""
+    return await graph_db.list_graphs_paginated(
+        user_id=user_id,
+        page=page,
+        page_size=page_size,
+    )
+
+
+# Cache individual graph details for 30 minutes
+@cached(maxsize=500, ttl_seconds=1800)
+async def get_cached_graph(
+    graph_id: str,
+    version: int | None,
+    user_id: str,
+):
+    """Cached helper to get graph details."""
+    return await graph_db.get_graph(
+        graph_id=graph_id,
+        version=version,
+        user_id=user_id,
+    )
+
+
+# Cache graph versions for 30 minutes
+@cached(maxsize=500, ttl_seconds=1800)
+async def get_cached_graph_all_versions(
+    graph_id: str,
+    user_id: str,
+) -> Sequence[graph_db.GraphModel]:
+    """Cached helper to get all versions of a graph."""
+    return await graph_db.get_graph_all_versions(
+        graph_id=graph_id,
+        user_id=user_id,
+    )
+
+
+# ===== Execution Caches =====
+
+
+# Cache graph executions for 5 minutes (they update frequently)
+@cached(maxsize=1000, ttl_seconds=300)
+async def get_cached_graph_executions(
+    graph_id: str,
+    user_id: str,
+    page: int,
+    page_size: int,
+):
+    """Cached helper to get graph executions."""
+    return await execution_db.get_graph_executions_paginated(
+        graph_id=graph_id,
+        user_id=user_id,
+        page=page,
+        page_size=page_size,
+    )
+
+
+# Cache all user executions for 5 minutes
+@cached(maxsize=500, ttl_seconds=300)
+async def get_cached_graphs_executions(
+    user_id: str,
+    page: int,
+    page_size: int,
+):
+    """Cached helper to get all user's graph executions."""
+    return await execution_db.get_graph_executions_paginated(
+        user_id=user_id,
+        page=page,
+        page_size=page_size,
+    )
+
+
+# Cache individual execution details for 10 minutes
+@cached(maxsize=1000, ttl_seconds=600)
+async def get_cached_graph_execution(
+    graph_exec_id: str,
+    user_id: str,
+):
+    """Cached helper to get graph execution details."""
+    return await execution_db.get_graph_execution(
+        user_id=user_id,
+        execution_id=graph_exec_id,
+        include_node_executions=False,
+    )
+
+
+# ===== User Preference Caches =====
+
+
+# Cache user timezone for 1 hour
+@cached(maxsize=1000, ttl_seconds=3600)
+async def get_cached_user_timezone(user_id: str):
+    """Cached helper to get user timezone."""
+    user = await user_db.get_user_by_id(user_id)
+    return {"timezone": user.timezone if user else "UTC"}
+
+
+# Cache user preferences for 30 minutes
+@cached(maxsize=1000, ttl_seconds=1800)
+async def get_cached_user_preferences(user_id: str):
+    """Cached helper to get user notification preferences."""
+    return await user_db.get_user_notification_preference(user_id)
