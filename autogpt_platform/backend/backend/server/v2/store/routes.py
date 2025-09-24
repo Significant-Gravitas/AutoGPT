@@ -26,8 +26,8 @@ router = fastapi.APIRouter()
 ##############################################
 
 
-# Cache user profiles for 5 minutes per user
-@cached(maxsize=1000, ttl_seconds=300)
+# Cache user profiles for 1 hour per user
+@cached(maxsize=1000, ttl_seconds=3600)
 async def _get_cached_user_profile(user_id: str):
     """Cached helper to get user profile."""
     return await backend.server.v2.store.db.get_user_profile(user_id)
@@ -45,7 +45,7 @@ async def get_profile(
 ):
     """
     Get the profile details for the authenticated user.
-    Cached for 5 minutes per user.
+    Cached for 1 hour per user.
     """
     try:
         profile = await _get_cached_user_profile(user_id)
@@ -113,9 +113,9 @@ async def update_or_create_profile(
 ##############################################
 
 
-# Cache store agents list for 2 minutes
+# Cache store agents list for 15 minutes
 # Different cache entries for different query combinations
-@cached(maxsize=500, ttl_seconds=120)
+@cached(maxsize=500, ttl_seconds=900)
 async def _get_cached_store_agents(
     featured: bool,
     creator: str | None,
@@ -154,7 +154,7 @@ async def get_agents(
 ):
     """
     Get a paginated list of agents from the store with optional filtering and sorting.
-    Results are cached for 2 minutes.
+    Results are cached for 15 minutes.
 
     Args:
         featured (bool, optional): Filter to only show featured agents. Defaults to False.
@@ -211,8 +211,8 @@ async def get_agents(
         )
 
 
-# Cache individual agent details for 5 minutes
-@cached(maxsize=200, ttl_seconds=300)
+# Cache individual agent details for 15 minutes
+@cached(maxsize=200, ttl_seconds=900)
 async def _get_cached_agent_details(username: str, agent_name: str):
     """Cached helper to get agent details."""
     return await backend.server.v2.store.db.get_store_agent_details(
@@ -229,7 +229,7 @@ async def _get_cached_agent_details(username: str, agent_name: str):
 async def get_agent(username: str, agent_name: str):
     """
     This is only used on the AgentDetails Page.
-    Results are cached for 5 minutes.
+    Results are cached for 15 minutes.
 
     It returns the store listing agents details.
     """
@@ -251,8 +251,8 @@ async def get_agent(username: str, agent_name: str):
         )
 
 
-# Cache agent graphs for 10 minutes
-@cached(maxsize=200, ttl_seconds=600)
+# Cache agent graphs for 1 hour
+@cached(maxsize=200, ttl_seconds=3600)
 async def _get_cached_agent_graph(store_listing_version_id: str):
     """Cached helper to get agent graph."""
     return await backend.server.v2.store.db.get_available_graph(
@@ -269,7 +269,7 @@ async def _get_cached_agent_graph(store_listing_version_id: str):
 async def get_graph_meta_by_store_listing_version_id(store_listing_version_id: str):
     """
     Get Agent Graph from Store Listing Version ID.
-    Results are cached for 10 minutes.
+    Results are cached for 1 hour.
     """
     try:
         graph = await _get_cached_agent_graph(store_listing_version_id)
@@ -282,8 +282,8 @@ async def get_graph_meta_by_store_listing_version_id(store_listing_version_id: s
         )
 
 
-# Cache agent by version for 10 minutes
-@cached(maxsize=200, ttl_seconds=600)
+# Cache agent by version for 1 hour
+@cached(maxsize=200, ttl_seconds=3600)
 async def _get_cached_store_agent_by_version(store_listing_version_id: str):
     """Cached helper to get store agent by version ID."""
     return await backend.server.v2.store.db.get_store_agent_by_version_id(
@@ -301,7 +301,7 @@ async def _get_cached_store_agent_by_version(store_listing_version_id: str):
 async def get_store_agent(store_listing_version_id: str):
     """
     Get Store Agent Details from Store Listing Version ID.
-    Results are cached for 10 minutes.
+    Results are cached for 1 hour.
     """
     try:
         agent = await _get_cached_store_agent_by_version(store_listing_version_id)
@@ -364,8 +364,8 @@ async def create_review(
 ##############################################
 
 
-# Cache creators list for 5 minutes
-@cached(maxsize=200, ttl_seconds=300)
+# Cache creators list for 1 hour
+@cached(maxsize=200, ttl_seconds=3600)
 async def _get_cached_store_creators(
     featured: bool,
     search_query: str | None,
@@ -401,7 +401,7 @@ async def get_creators(
     - Home Page Featured Creators
     - Search Results Page
 
-    Results are cached for 5 minutes.
+    Results are cached for 1 hour.
 
     ---
 
@@ -437,8 +437,8 @@ async def get_creators(
         )
 
 
-# Cache individual creator details for 5 minutes
-@cached(maxsize=100, ttl_seconds=300)
+# Cache individual creator details for 1 hour
+@cached(maxsize=100, ttl_seconds=3600)
 async def _get_cached_creator_details(username: str):
     """Cached helper to get creator details."""
     return await backend.server.v2.store.db.get_store_creator_details(
@@ -457,7 +457,7 @@ async def get_creator(
 ):
     """
     Get the details of a creator.
-    Results are cached for 5 minutes.
+    Results are cached for 1 hour.
     - Creator Details Page
     """
     try:
@@ -477,8 +477,8 @@ async def get_creator(
 ############################################
 ############# Store Submissions ###############
 ############################################
-# Cache user's own agents for 1 minute (shorter TTL as this changes more frequently)
-@cached(maxsize=500, ttl_seconds=60)
+# Cache user's own agents for 1 hour (shorter TTL as this changes more frequently)
+@cached(maxsize=500, ttl_seconds=3600)
 async def _get_cached_my_agents(user_id: str, page: int, page_size: int):
     """Cached helper to get user's agents."""
     return await backend.server.v2.store.db.get_my_agents(
@@ -500,7 +500,7 @@ async def get_my_agents(
 ):
     """
     Get user's own agents.
-    Results are cached for 1 minute per user.
+    Results are cached for 1 hour per user.
     """
     try:
         agents = await _get_cached_my_agents(user_id, page=page, page_size=page_size)
@@ -555,8 +555,8 @@ async def delete_submission(
         )
 
 
-# Cache user's submissions for 1 minute (shorter TTL as this changes frequently)
-@cached(maxsize=500, ttl_seconds=60)
+# Cache user's submissions for 1 hour (shorter TTL as this changes frequently)
+@cached(maxsize=500, ttl_seconds=3600)
 async def _get_cached_submissions(user_id: str, page: int, page_size: int):
     """Cached helper to get user's submissions."""
     return await backend.server.v2.store.db.get_store_submissions(
@@ -580,7 +580,7 @@ async def get_submissions(
 ):
     """
     Get a paginated list of store submissions for the authenticated user.
-    Results are cached for 1 minute per user.
+    Results are cached for 1 hour per user.
 
     Args:
         user_id (str): ID of the authenticated user
