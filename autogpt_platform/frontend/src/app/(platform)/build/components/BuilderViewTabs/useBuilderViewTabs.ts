@@ -12,7 +12,7 @@ export function useBuilderView() {
   const searchParams = useSearchParams();
 
   const currentView = searchParams.get("view");
-  const defaultView = (isNewFlowEditorEnabled ?? false) ? "new" : "old";
+  const defaultView = "old";
   const selectedView = useMemo<BuilderView>(() => {
     if (currentView === "new" || currentView === "old") return currentView;
     return defaultView;
