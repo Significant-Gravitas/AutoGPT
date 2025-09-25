@@ -10,6 +10,7 @@ from backend.util.settings import Config
 from backend.util.text import TextFormatter
 from backend.util.type import LongTextType, MediaFileType, ShortTextType
 
+formatter = TextFormatter()
 config = Config()
 
 
@@ -131,11 +132,6 @@ class AgentOutputBlock(Block):
             default="",
             advanced=True,
         )
-        escape_html: bool = SchemaField(
-            default=False,
-            advanced=True,
-            description="Whether to escape special characters in the inserted values to be HTML-safe. Enable for HTML output, disable for plain text.",
-        )
         advanced: bool = SchemaField(
             description="Whether to treat the output as advanced.",
             default=False,
@@ -197,7 +193,6 @@ class AgentOutputBlock(Block):
         """
         if input_data.format:
             try:
-                formatter = TextFormatter(autoescape=input_data.escape_html)
                 yield "output", formatter.format_string(
                     input_data.format, {input_data.name: input_data.value}
                 )
