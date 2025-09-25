@@ -17,20 +17,40 @@ import { execSync } from "child_process";
 import fs from "fs";
 
 const TESTS = {
+  "connectivity-test": {
+    script: "tests/basic/connectivity-test.js",
+    description: "Basic connectivity validation",
+    cloudConfig: { vus: 10, duration: "2m" },
+  },
+  "single-endpoint-test": {
+    script: "tests/basic/single-endpoint-test.js",
+    description: "Individual API endpoint testing",
+    cloudConfig: { vus: 25, duration: "3m" },
+  },
   "core-api-test": {
-    script: "core-api-load-test.js",
+    script: "tests/api/core-api-test.js",
     description: "Core API endpoints performance test",
     cloudConfig: { vus: 100, duration: "5m" },
   },
   "graph-execution-test": {
-    script: "graph-execution-load-test.js", 
+    script: "tests/api/graph-execution-test.js",
     description: "Graph creation and execution pipeline test",
     cloudConfig: { vus: 80, duration: "5m" },
   },
-  "marketplace-test": {
-    script: "marketplace-access-load-test.js",
-    description: "Public marketplace access test", 
+  "marketplace-public-test": {
+    script: "tests/marketplace/public-access-test.js",
+    description: "Public marketplace browsing test",
     cloudConfig: { vus: 150, duration: "3m" },
+  },
+  "marketplace-library-test": {
+    script: "tests/marketplace/library-access-test.js",
+    description: "Authenticated marketplace/library test",
+    cloudConfig: { vus: 100, duration: "4m" },
+  },
+  "comprehensive-test": {
+    script: "tests/comprehensive/platform-journey-test.js",
+    description: "Complete user journey simulation",
+    cloudConfig: { vus: 50, duration: "6m" },
   },
 };
 
@@ -58,7 +78,7 @@ function verifySetup() {
   // Quick test
   try {
     execSync(
-      "K6_ENVIRONMENT=DEV VUS=1 DURATION=10s k6 run core-api-load-test.js --quiet",
+      "K6_ENVIRONMENT=DEV VUS=1 DURATION=10s k6 run tests/basic/connectivity-test.js --quiet",
       { stdio: "inherit", cwd: process.cwd() },
     );
     console.log("✅ Verification successful");
@@ -114,7 +134,7 @@ function runCloudTest(testName, environment) {
     if (urlMatch) {
       const url = urlMatch[0];
       console.log(`🔗 Test URL: ${url}`);
-      
+
       // Save to results file
       const timestamp = new Date().toISOString();
       const result = `${timestamp} - ${testName}: ${url}\n`;
@@ -139,17 +159,17 @@ function runAllLocalTests(environment) {
 
 function runAllCloudTests(environment) {
   console.log(`☁️ Running all tests in k6 cloud on ${environment}`);
-  
+
   const testNames = Object.keys(TESTS);
   for (let i = 0; i < testNames.length; i++) {
     const testName = testNames[i];
     console.log(`\n📊 Test ${i + 1}/${testNames.length}: ${testName}`);
-    
+
     runCloudTest(testName, environment);
-    
+
     // Brief pause between cloud tests (except last one)
     if (i < testNames.length - 1) {
-      console.log('⏸️ Waiting 2 minutes before next cloud test...');
+      console.log("⏸️ Waiting 2 minutes before next cloud test...");
       execSync("sleep 120");
     }
   }
@@ -158,17 +178,17 @@ function runAllCloudTests(environment) {
 function listTests() {
   console.log("📋 Available Tests:");
   console.log("==================");
-  
+
   Object.entries(TESTS).forEach(([name, test]) => {
     const { vus, duration } = test.cloudConfig;
     console.log(`  ${name.padEnd(20)} - ${test.description}`);
-    console.log(`  ${' '.repeat(20)}   Cloud: ${vus} VUs × ${duration}`);
+    console.log(`  ${" ".repeat(20)}   Cloud: ${vus} VUs × ${duration}`);
   });
-  
+
   console.log("\n🌍 Available Environments: LOCAL, DEV, PROD");
   console.log("\n💡 Examples:");
   console.log("  # Local execution (5 VUs, 30s)");
-  console.log("  node run-tests.js verify");  
+  console.log("  node run-tests.js verify");
   console.log("  node run-tests.js run core-api-test DEV");
   console.log("  node run-tests.js run core-api-test,marketplace-test DEV");
   console.log("  node run-tests.js run all DEV");
@@ -176,30 +196,34 @@ function listTests() {
   console.log("  # Cloud execution (high VUs, longer duration)");
   console.log("  node run-tests.js cloud core-api DEV");
   console.log("  node run-tests.js cloud all DEV");
-  
+
   const hasCloudCreds = checkCloudCredentials();
-  console.log(`\n☁️ Cloud Status: ${hasCloudCreds ? '✅ Configured' : '❌ Missing credentials'}`);
+  console.log(
+    `\n☁️ Cloud Status: ${hasCloudCreds ? "✅ Configured" : "❌ Missing credentials"}`,
+  );
 }
 
 function runSequentialTests(testNames, environment, isCloud = false) {
-  const tests = testNames.split(',').map(t => t.trim());
-  const mode = isCloud ? 'cloud' : 'local';
-  console.log(`🚀 Running ${tests.length} tests sequentially in ${mode} mode on ${environment}`);
-  
+  const tests = testNames.split(",").map((t) => t.trim());
+  const mode = isCloud ? "cloud" : "local";
+  console.log(
+    `🚀 Running ${tests.length} tests sequentially in ${mode} mode on ${environment}`,
+  );
+
   for (let i = 0; i < tests.length; i++) {
     const testName = tests[i];
     console.log(`\n📊 Test ${i + 1}/${tests.length}: ${testName}`);
-    
+
     if (isCloud) {
       runCloudTest(testName, environment);
     } else {
       runLocalTest(testName, environment);
     }
-    
+
     // Brief pause between tests (except last one)
     if (i < tests.length - 1) {
-      const pauseTime = isCloud ? '2 minutes' : '10 seconds';
-      const pauseCmd = isCloud ? 'sleep 120' : 'sleep 10';
+      const pauseTime = isCloud ? "2 minutes" : "10 seconds";
+      const pauseCmd = isCloud ? "sleep 120" : "sleep 10";
       console.log(`⏸️ Waiting ${pauseTime} before next test...`);
       if (!isCloud) {
         // Note: In real implementation, would use setTimeout/sleep for local tests
@@ -221,7 +245,7 @@ switch (command) {
   case "run":
     if (testOrEnv === "all") {
       runAllLocalTests(environment || "DEV");
-    } else if (testOrEnv?.includes(',')) {
+    } else if (testOrEnv?.includes(",")) {
       runSequentialTests(testOrEnv, environment || "DEV", false);
     } else {
       runLocalTest(testOrEnv, environment || "DEV");
@@ -233,7 +257,7 @@ switch (command) {
     }
     if (testOrEnv === "all") {
       runAllCloudTests(environment || "DEV");
-    } else if (testOrEnv?.includes(',')) {
+    } else if (testOrEnv?.includes(",")) {
       runSequentialTests(testOrEnv, environment || "DEV", true);
     } else {
       runCloudTest(testOrEnv, environment || "DEV");

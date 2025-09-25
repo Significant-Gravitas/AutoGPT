@@ -30,9 +30,21 @@ node run-tests.js cloud all DEV
 The AutoGPT Platform uses a single unified test runner (`run-tests.js`) for both local and cloud execution:
 
 ### Available Tests
+
+#### Basic Tests (Simple validation)
+- **connectivity-test**: Basic connectivity and authentication validation
+- **single-endpoint-test**: Individual API endpoint testing with high concurrency
+
+#### API Tests (Core functionality)  
 - **core-api-test**: Core API endpoints (`/api/credits`, `/api/graphs`, `/api/blocks`, `/api/executions`)
 - **graph-execution-test**: Complete graph creation and execution pipeline
-- **marketplace-test**: Public marketplace browsing and search
+
+#### Marketplace Tests (User-facing features)
+- **marketplace-public-test**: Public marketplace browsing and search
+- **marketplace-library-test**: Authenticated marketplace and user library operations
+
+#### Comprehensive Tests (End-to-end scenarios)
+- **comprehensive-test**: Complete user journey simulation with multiple operations
 
 ### Test Modes
 - **Local Mode**: 5 VUs × 30s - Quick validation and debugging
@@ -53,13 +65,13 @@ node run-tests.js verify
 node run-tests.js run core-api-test DEV
 
 # Run multiple tests sequentially (comma-separated)
-node run-tests.js run core-api-test,marketplace-test DEV
+node run-tests.js run connectivity-test,core-api-test,marketplace-public-test DEV
 
 # Run all tests locally
 node run-tests.js run all DEV
 
 # Run specific test in k6 cloud
-node run-tests.js cloud core-api DEV
+node run-tests.js cloud core-api-test DEV
 
 # Run all tests in k6 cloud
 node run-tests.js cloud all DEV
@@ -177,10 +189,20 @@ load-tests/
 ├── configs/
 │   ├── environment.js                     # Environment URLs and configuration
 │   └── pre-authenticated-tokens.js        # Generated tokens (gitignored)
-├── Core Test Scripts:
-├── core-api-load-test.js                  # Core API endpoints test
-├── graph-execution-load-test.js           # Graph workflow execution test  
-├── marketplace-access-load-test.js        # Public marketplace browsing test
+├── tests/
+│   ├── basic/
+│   │   ├── connectivity-test.js           # Basic connectivity validation
+│   │   └── single-endpoint-test.js        # Individual API endpoint testing
+│   ├── api/
+│   │   ├── core-api-test.js               # Core authenticated API endpoints
+│   │   └── graph-execution-test.js        # Graph workflow pipeline testing
+│   ├── marketplace/
+│   │   ├── public-access-test.js          # Public marketplace browsing
+│   │   └── library-access-test.js         # Authenticated marketplace/library
+│   └── comprehensive/
+│       └── platform-journey-test.js       # Complete user journey simulation
+├── orchestrator/
+│   └── comprehensive-orchestrator.js      # Full 25-test orchestration suite
 ├── results/                               # Local test results (auto-created)
 ├── k6-cloud-results.txt                   # Cloud test URLs (auto-created)
 └── *.json                                 # Test output files (auto-created)
