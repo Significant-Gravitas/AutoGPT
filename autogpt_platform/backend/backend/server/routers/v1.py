@@ -91,7 +91,7 @@ from backend.util.timezone_utils import (
     get_user_timezone_or_utc,
 )
 from backend.util.virus_scanner import scan_content_safe
-
+from backend.server.v2.library import cache as library_cache
 
 def _create_file_size_error(size_bytes: int, max_size_mb: int) -> HTTPException:
     """Create standardized file size error response."""
@@ -674,7 +674,7 @@ async def get_graph(
         )
         # If graph not found, clear cache entry as permissions may have changed
         if not graph:
-            cache.get_cached_graph.cache_delete(graph_id, version, user_id)
+            cache.get_cached_graph.cache_delete(graph_id=graph_id, version=version, user_id=user_id)
     else:
         graph = await graph_db.get_graph(
             graph_id,
@@ -723,7 +723,9 @@ async def create_new_graph(
     await library_db.create_library_agent(graph, user_id=user_id)
 
     # Clear graphs list cache after creating new graph
-    cache.get_cached_graphs.cache_delete(user_id, 1, 250)
+    cache.get_cached_graphs.cache_delete(user_id=user_id, page=1, page_size=250)
+    for page in range(1, 20):
+        library_cache.get_cached_library_agents.cache_delete(user_id=user_id, page=page, page_size=8)
 
     return await on_graph_activate(graph, user_id=user_id)
 
@@ -745,12 +747,12 @@ async def delete_graph(
     )
 
     # Clear caches after deleting graph
-    cache.get_cached_graphs.cache_delete(user_id, 1, 250)
-    cache.get_cached_graph.cache_delete(graph_id, None, user_id)
-    cache.get_cached_graph_all_versions.cache_delete(graph_id, user_id)
+    cache.get_cached_graphs.cache_delete(user_id=user_id, page=1, page_size=250)
+    cache.get_cached_graph.cache_delete(graph_id=graph_id, version=None, user_id=user_id)
+    cache.get_cached_graph_all_versions.cache_delete(graph_id=graph_id, user_id=user_id)
     # Clear execution caches for this graph
     for page in range(1, 10):
-        cache.get_cached_graph_executions.cache_delete(graph_id, user_id, page, 25)
+        cache.get_cached_graph_executions.cache_delete(graph_id=graph_id, user_id=user_id, page=page, page_size=25)
 
     return result
 
@@ -810,9 +812,9 @@ async def update_graph(
     assert new_graph_version_with_subgraphs  # make type checker happy
 
     # Clear caches after updating graph
-    cache.get_cached_graph.cache_delete(graph_id, None, user_id)
-    cache.get_cached_graph_all_versions.cache_delete(graph_id, user_id)
-    cache.get_cached_graphs.cache_delete(user_id, 1, 250)
+    cache.get_cached_graph.cache_delete(graph_id=graph_id, version=None, user_id=user_id)
+    cache.get_cached_graph_all_versions.cache_delete(graph_id=graph_id, user_id=user_id)
+    cache.get_cached_graphs.cache_delete(user_id=user_id, page=1, page_size=250)
 
     return new_graph_version_with_subgraphs
 
