@@ -1,4 +1,4 @@
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { beautifyString, cn } from "@/lib/utils";
 import { Plus } from "lucide-react";
 import Image from "next/image";

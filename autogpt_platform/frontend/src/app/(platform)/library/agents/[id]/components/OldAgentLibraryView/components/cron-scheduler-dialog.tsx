@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { Input } from "@/components/__legacy__/ui/input";
+import { Button } from "@/components/__legacy__/ui/button";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { CronScheduler } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/components/cron-scheduler";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";

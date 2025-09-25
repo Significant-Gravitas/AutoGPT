@@ -1,6 +1,6 @@
 import React, { FC, useMemo, useState } from "react";
-import { Button } from "../../../../../components/ui/button";
-import { ContentRenderer } from "../../../../../components/ui/render";
+import { Button } from "../../../../../components/__legacy__/ui/button";
+import { ContentRenderer } from "../../../../../components/__legacy__/ui/render";
 import { beautifyString } from "@/lib/utils";
 import { Clipboard, Maximize2 } from "lucide-react";
 import { useToast } from "../../../../../components/molecules/Toast/use-toast";
@@ -12,9 +12,9 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from "../../../../../components/ui/dialog";
-import { ScrollArea } from "../../../../../components/ui/scroll-area";
-import { Separator } from "../../../../../components/ui/separator";
+} from "../../../../../components/__legacy__/ui/dialog";
+import { ScrollArea } from "../../../../../components/__legacy__/ui/scroll-area";
+import { Separator } from "../../../../../components/__legacy__/ui/separator";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
   globalRegistry,

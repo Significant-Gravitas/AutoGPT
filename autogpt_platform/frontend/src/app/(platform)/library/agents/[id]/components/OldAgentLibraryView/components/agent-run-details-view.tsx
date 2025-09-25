@@ -11,16 +11,21 @@ import {
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
-import ActionButtonGroup from "@/components/agptui/action-button-group";
-import type { ButtonAction } from "@/components/agptui/types";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import ActionButtonGroup from "@/components/__legacy__/action-button-group";
+import type { ButtonAction } from "@/components/__legacy__/types";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/__legacy__/ui/card";
 import {
   IconRefresh,
   IconSquare,
   IconCircleAlert,
-} from "@/components/ui/icons";
-import { Input } from "@/components/ui/input";
-import LoadingBox from "@/components/ui/loading";
+} from "@/components/__legacy__/ui/icons";
+import { Input } from "@/components/__legacy__/ui/input";
+import LoadingBox from "@/components/__legacy__/ui/loading";
 import {
   Tooltip,
   TooltipContent,

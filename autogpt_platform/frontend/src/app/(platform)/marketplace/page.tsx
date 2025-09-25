@@ -9,6 +9,8 @@ import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { MainMarkeplacePage } from "./components/MainMarketplacePage/MainMarketplacePage";
 import { MainMarketplacePageLoading } from "./components/MainMarketplacePageLoading";
 
+export const dynamic = "force-dynamic";
+
 // FIX: Correct metadata
 export const metadata: Metadata = {
   title: "Marketplace - AutoGPT Platform",

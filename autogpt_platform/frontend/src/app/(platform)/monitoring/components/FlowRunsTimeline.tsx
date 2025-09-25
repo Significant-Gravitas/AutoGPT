@@ -11,7 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import moment from "moment/moment";
-import { Card } from "@/components/ui/card";
+import { Card } from "@/components/__legacy__/ui/card";
 import { cn, hashString } from "@/lib/utils";
 import React from "react";
 import { FlowRunStatusBadge } from "@/app/(platform)/monitoring/components/FlowRunStatusBadge";

@@ -3,7 +3,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover";
+} from "@/components/__legacy__/ui/popover";
 import { Button } from "@/components/atoms/Button/Button";
 import { MagnifyingGlassIcon } from "@radix-ui/react-icons";
 import { CustomNode } from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";

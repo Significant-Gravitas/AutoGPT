@@ -1,4 +1,7 @@
-import { Input as BaseInput, type InputProps } from "@/components/ui/input";
+import {
+  Input as BaseInput,
+  type InputProps,
+} from "@/components/__legacy__/ui/input";
 import { cn } from "@/lib/utils";
 import { Eye, EyeSlash } from "@phosphor-icons/react";
 import { ReactNode, useState } from "react";

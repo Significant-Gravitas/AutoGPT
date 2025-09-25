@@ -16,7 +16,7 @@ import { RunDetailHeader } from "../RunDetailHeader/RunDetailHeader";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 import { formatInTimezone, getTimezoneDisplayName } from "@/lib/timezone-utils";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { AgentInputsReadOnly } from "../AgentInputsReadOnly/AgentInputsReadOnly";
 import { ScheduleActions } from "./components/ScheduleActions";
 

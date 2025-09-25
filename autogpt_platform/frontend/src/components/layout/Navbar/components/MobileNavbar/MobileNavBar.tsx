@@ -5,8 +5,8 @@ import {
   PopoverContent,
   PopoverPortal,
   PopoverTrigger,
-} from "@/components/ui/popover";
-import { Separator } from "@/components/ui/separator";
+} from "@/components/__legacy__/ui/popover";
+import { Separator } from "@/components/__legacy__/ui/separator";
 import { AnimatePresence, motion } from "framer-motion";
 import { usePathname } from "next/navigation";
 import * as React from "react";

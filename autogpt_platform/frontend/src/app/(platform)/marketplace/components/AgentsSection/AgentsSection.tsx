@@ -4,7 +4,7 @@ import {
   Carousel,
   CarouselContent,
   CarouselItem,
-} from "@/components/ui/carousel";
+} from "@/components/__legacy__/ui/carousel";
 import { useAgentsSection } from "./useAgentsSection";
 import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
 import { StoreCard } from "../StoreCard/StoreCard";
