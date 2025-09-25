@@ -78,6 +78,12 @@ class DataForSeoRelatedKeywordsBlock(Block):
             ge=1,
             le=3000,
         )
+        depth: int = SchemaField(
+            description="Keyword search depth (0-4). Controls the number of returned keywords: 0=1 keyword, 1=~8 keywords, 2=~72 keywords, 3=~584 keywords, 4=~4680 keywords",
+            default=1,
+            ge=0,
+            le=4,
+        )
 
     class Output(BlockSchema):
         related_keywords: List[RelatedKeyword] = SchemaField(
@@ -154,6 +160,7 @@ class DataForSeoRelatedKeywordsBlock(Block):
             include_serp_info=input_data.include_serp_info,
             include_clickstream_data=input_data.include_clickstream_data,
             limit=input_data.limit,
+            depth=input_data.depth,
         )
 
     async def run(
