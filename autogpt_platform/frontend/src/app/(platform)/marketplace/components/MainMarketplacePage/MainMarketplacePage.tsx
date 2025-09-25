@@ -1,5 +1,5 @@
 "use client";
-import { Separator } from "@/components/ui/separator";
+import { Separator } from "@/components/__legacy__/ui/separator";
 import { FeaturedSection } from "../FeaturedSection/FeaturedSection";
 import { BecomeACreator } from "../BecomeACreator/BecomeACreator";
 import { HeroSection } from "../HeroSection/HeroSection";

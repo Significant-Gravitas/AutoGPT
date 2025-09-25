@@ -1,5 +1,9 @@
 import { Button } from "@/components/atoms/Button/Button";
-import { IconKey, IconKeyPlus, IconUserPlus } from "@/components/ui/icons";
+import {
+  IconKey,
+  IconKeyPlus,
+  IconUserPlus,
+} from "@/components/__legacy__/ui/icons";
 import {
   Select,
   SelectContent,
@@ -7,7 +11,7 @@ import {
   SelectSeparator,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@/components/__legacy__/ui/select";
 import useCredentials from "@/hooks/useCredentials";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {

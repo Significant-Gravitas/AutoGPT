@@ -1,8 +1,8 @@
 import React, { FC } from "react";
-import { Button } from "../../../../../components/ui/button";
+import { Button } from "../../../../../components/__legacy__/ui/button";
 import { NodeExecutionResult } from "@/lib/autogpt-server-api/types";
 import DataTable from "./DataTable";
-import { Separator } from "@/components/ui/separator";
+import { Separator } from "@/components/__legacy__/ui/separator";
 
 interface OutputModalProps {
   isOpen: boolean;

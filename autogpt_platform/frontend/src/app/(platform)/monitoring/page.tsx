@@ -8,7 +8,7 @@ import {
   useDeleteV1DeleteExecutionSchedule,
 } from "@/app/api/__generated__/endpoints/schedules/schedules";
 
-import { Card } from "@/components/ui/card";
+import { Card } from "@/components/__legacy__/ui/card";
 import { SchedulesTable } from "@/app/(platform)/monitoring/components/SchedulesTable";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import AgentFlowList from "./components/AgentFlowList";

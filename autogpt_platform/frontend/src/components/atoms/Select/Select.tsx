@@ -8,7 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
   SelectSeparator,
-} from "@/components/ui/select";
+} from "@/components/__legacy__/ui/select";
 import { cn } from "@/lib/utils";
 import { ReactNode } from "react";
 import { Text } from "../Text/Text";

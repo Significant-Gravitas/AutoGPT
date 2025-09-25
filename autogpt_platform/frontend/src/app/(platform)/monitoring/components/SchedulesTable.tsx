@@ -1,7 +1,7 @@
 import { LibraryAgent } from "@/lib/autogpt-server-api";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Button } from "@/components/__legacy__/ui/button";
+import { Card } from "@/components/__legacy__/ui/card";
 import {
   Table,
   TableBody,
@@ -9,9 +9,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
+} from "@/components/__legacy__/ui/table";
+import { Badge } from "@/components/__legacy__/ui/badge";
+import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import { ClockIcon, Loader2 } from "lucide-react";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
@@ -26,7 +26,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@/components/__legacy__/ui/select";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
@@ -34,10 +34,10 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { TextRenderer } from "../../../../components/ui/render";
-import { Input } from "../../../../components/ui/input";
-import { Label } from "../../../../components/ui/label";
+} from "@/components/__legacy__/ui/dialog";
+import { TextRenderer } from "../../../../components/__legacy__/ui/render";
+import { Input } from "../../../../components/__legacy__/ui/input";
+import { Label } from "../../../../components/__legacy__/ui/label";
 
 interface SchedulesTableProps {
   schedules: GraphExecutionJobInfo[];

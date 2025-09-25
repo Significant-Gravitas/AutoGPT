@@ -1,6 +1,6 @@
 "use client";
-import { IconLogOut } from "@/components/ui/icons";
-import { LoadingSpinner } from "@/components/ui/loading";
+import { IconLogOut } from "@/components/__legacy__/ui/icons";
+import { LoadingSpinner } from "@/components/__legacy__/ui/loading";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { cn } from "@/lib/utils";
 import * as Sentry from "@sentry/nextjs";

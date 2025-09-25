@@ -5,12 +5,12 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@/components/__legacy__/ui/table";
 import {
   StoreSubmission,
   SubmissionStatus,
 } from "@/lib/autogpt-server-api/types";
-import { PaginationControls } from "../../../../../components/ui/pagination-controls";
+import { PaginationControls } from "../../../../../components/__legacy__/ui/pagination-controls";
 import { getAdminListingsWithVersions } from "@/app/(platform)/admin/marketplace/actions";
 import { ExpandableRow } from "./ExpandleRow";
 import { SearchAndFilterAdminMarketplace } from "./SearchFilterForm";

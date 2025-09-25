@@ -1,9 +1,14 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { GraphExecutionMeta, LibraryAgent } from "@/lib/autogpt-server-api";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/__legacy__/ui/card";
 import Link from "next/link";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { IconSquare } from "@/components/ui/icons";
+import { Button, buttonVariants } from "@/components/__legacy__/ui/button";
+import { IconSquare } from "@/components/__legacy__/ui/icons";
 import { ExitIcon, Pencil2Icon } from "@radix-ui/react-icons";
 import moment from "moment/moment";
 import { FlowRunStatusBadge } from "@/app/(platform)/monitoring/components/FlowRunStatusBadge";
