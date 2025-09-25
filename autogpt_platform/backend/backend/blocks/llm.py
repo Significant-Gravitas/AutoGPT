@@ -979,6 +979,10 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                             output_tag_start=output_tag_start,
                         )
                     except (ValueError, JSONDecodeError) as parse_error:
+                        logger.warning(
+                            f"Error getting JSON from LLM response: {parse_error}\n\n"
+                            f"Response start+end: `{response_text[:40]}...{response_text[-20:]}`"
+                        )
                         prompt.append({"role": "assistant", "content": response_text})
 
                         error_feedback_message = self.invalid_response_feedback(
@@ -1164,7 +1168,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             try:
                 return json.loads(response_text)
             except JSONDecodeError as first_parse_error:
-                # If that didn't work, try finding the { and } to deal with possible ```json
+                # If that didn't work, try finding the { and } to deal with possible ```json fences etc.
                 json_start = response_text.find("{")
                 json_end = response_text.rfind("}")
                 try:
