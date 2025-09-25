@@ -815,9 +815,9 @@ async def list_graphs_paginated(
         where=where_clause,
         distinct=["id"],
         order={"version": "desc"},
+        include=AGENT_GRAPH_INCLUDE,
         skip=offset,
         take=page_size,
-        # Don't include nodes for list endpoint - GraphMeta excludes them anyway
     )
 
     graph_models: list[GraphMeta] = []
