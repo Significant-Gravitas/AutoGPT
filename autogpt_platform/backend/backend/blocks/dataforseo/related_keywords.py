@@ -183,6 +183,9 @@ class DataForSeoRelatedKeywordsBlock(Block):
             items = (
                 first_result.get("items", []) if isinstance(first_result, dict) else []
             )
+            # Ensure items is never None
+            if items is None:
+                items = []
             for item in items:
                 # Extract keyword_data from the item
                 keyword_data = item.get("keyword_data", {})
