@@ -7,9 +7,9 @@
  * This replaces the old token generation scripts with a clean, single script
  */
 
-const https = require("https");
-const fs = require("fs");
-const path = require("path");
+import https from "https";
+import fs from "fs";
+import path from "path";
 
 // Get Supabase service key from environment (REQUIRED for token generation)
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -229,8 +229,8 @@ console.log(\`🔐 Loaded \${TOKEN_STATS.total} pre-authenticated tokens from \$
 }
 
 // Run if called directly
-if (require.main === module) {
+if (process.argv[1] === new URL(import.meta.url).pathname) {
   generateTokens().catch(console.error);
 }
 
-module.exports = { generateTokens };
+export { generateTokens };
