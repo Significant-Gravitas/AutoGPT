@@ -5,7 +5,7 @@ import { SwitchWidget } from "./SwitchWidget";
 import { FileWidget } from "./FileWidget";
 import { DateInputWidget } from "./DateInputWidget";
 import { TimeInputWidget } from "./TimeInputWidget";
-import { DateTimeInputWidget } from "./DateTimeInput";
+import { DateTimeInputWidget } from "./DateTimeInputWidget";
 
 export const widgets: RegistryWidgetsType = {
   TextWidget: TextInputWidget,
