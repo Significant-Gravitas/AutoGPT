@@ -90,9 +90,7 @@ class DataForSeoKeywordSuggestionsBlock(Block):
         seed_keyword: str = SchemaField(
             description="The seed keyword used for the query"
         )
-        error: str = SchemaField(
-            description="Error message if the API call failed"
-        )
+        error: str = SchemaField(description="Error message if the API call failed")
 
     def __init__(self):
         super().__init__(
@@ -175,7 +173,9 @@ class DataForSeoKeywordSuggestionsBlock(Block):
                 # results is a list, get the first element
                 first_result = results[0] if isinstance(results, list) else results
                 items = (
-                    first_result.get("items", []) if isinstance(first_result, dict) else []
+                    first_result.get("items", [])
+                    if isinstance(first_result, dict)
+                    else []
                 )
                 for item in items:
                     # Create the KeywordSuggestion object
@@ -188,7 +188,9 @@ class DataForSeoKeywordSuggestionsBlock(Block):
                             "keyword_difficulty"
                         ),
                         serp_info=(
-                            item.get("serp_info") if input_data.include_serp_info else None
+                            item.get("serp_info")
+                            if input_data.include_serp_info
+                            else None
                         ),
                         clickstream_data=(
                             item.get("clickstream_keyword_info")

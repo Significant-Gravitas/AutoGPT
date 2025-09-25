@@ -98,9 +98,7 @@ class DataForSeoRelatedKeywordsBlock(Block):
         seed_keyword: str = SchemaField(
             description="The seed keyword used for the query"
         )
-        error: str = SchemaField(
-            description="Error message if the API call failed"
-        )
+        error: str = SchemaField(description="Error message if the API call failed")
 
     def __init__(self):
         super().__init__(
@@ -185,7 +183,9 @@ class DataForSeoRelatedKeywordsBlock(Block):
                 # results is a list, get the first element
                 first_result = results[0] if isinstance(results, list) else results
                 items = (
-                    first_result.get("items", []) if isinstance(first_result, dict) else []
+                    first_result.get("items", [])
+                    if isinstance(first_result, dict)
+                    else []
                 )
                 # Ensure items is never None
                 if items is None:
@@ -200,11 +200,13 @@ class DataForSeoRelatedKeywordsBlock(Block):
                         search_volume=keyword_data.get("keyword_info", {}).get(
                             "search_volume"
                         ),
-                        competition=keyword_data.get("keyword_info", {}).get("competition"),
-                        cpc=keyword_data.get("keyword_info", {}).get("cpc"),
-                        keyword_difficulty=keyword_data.get("keyword_properties", {}).get(
-                            "keyword_difficulty"
+                        competition=keyword_data.get("keyword_info", {}).get(
+                            "competition"
                         ),
+                        cpc=keyword_data.get("keyword_info", {}).get("cpc"),
+                        keyword_difficulty=keyword_data.get(
+                            "keyword_properties", {}
+                        ).get("keyword_difficulty"),
                         serp_info=(
                             keyword_data.get("serp_info")
                             if input_data.include_serp_info
