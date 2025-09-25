@@ -24,6 +24,7 @@ pnpm generate:api:force
 ```
 
 This creates:
+
 - `src/app/api/__generated__/endpoints/` - API endpoint hooks
 - `src/app/api/__generated__/models/` - TypeScript type definitions
 - `src/app/api/openapi.json` - OpenAPI specification
@@ -57,6 +58,7 @@ In CI, this process is handled automatically by the `generate:api:force` command
 ## Lighthouse Integration
 
 With this setup complete, the Lighthouse CI integration will work correctly:
+
 - Local testing: `pnpm lighthouse:local`
 - Full audit: `pnpm lighthouse`
 - CI integration: Automatic via GitHub Actions
