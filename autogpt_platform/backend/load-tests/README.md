@@ -1,6 +1,6 @@
 # AutoGPT Platform Load Tests
 
-Clean, comprehensive load testing infrastructure for the AutoGPT Platform using k6.
+Clean, streamlined load testing infrastructure for the AutoGPT Platform using k6.
 
 ## 🚀 Quick Start
 
@@ -8,68 +8,84 @@ Clean, comprehensive load testing infrastructure for the AutoGPT Platform using 
 # 1. Set up Supabase service key (required for token generation)
 export SUPABASE_SERVICE_KEY="your-supabase-service-key"
 
-# 2. Generate pre-authenticated tokens (first time setup - creates 350 tokens with 24-hour expiry)
+# 2. Generate pre-authenticated tokens (first time setup - creates 150+ tokens with 24-hour expiry)
 node generate-tokens.js
 
 # 3. Set up k6 cloud credentials (for cloud testing)
 export K6_CLOUD_TOKEN="your-k6-cloud-token"
 export K6_CLOUD_PROJECT_ID="4254406"
 
-# 4. Run small validation tests (3 tests, ~5 minutes)
-node load-test-orchestrator.js DEV cloud small
+# 4. Verify setup and run quick test
+node run-tests.js verify
 
-# 5. Run full comprehensive tests (25 tests, ~2 hours)  
-node load-test-orchestrator.js DEV cloud full
+# 5. Run tests locally (development/debugging)
+node run-tests.js run all DEV
 
-# 6. Run tests locally (for debugging)
-node load-test-orchestrator.js LOCAL local small
+# 6. Run tests in k6 cloud (performance testing)
+node run-tests.js cloud all DEV
 ```
 
-## 📋 Unified Load Test Orchestrator
+## 📋 Unified Test Runner
 
-The AutoGPT Platform now uses a unified orchestrator (`load-test-orchestrator.js`) that manages all load testing scenarios:
+The AutoGPT Platform uses a single unified test runner (`run-tests.js`) for both local and cloud execution:
 
-### Test Scales
-- **small**: 3 validation tests (~5 minutes) - Quick functionality verification
-- **full**: 25 comprehensive tests (~2 hours) - Complete performance analysis
+### Available Tests
+- **core-api-test**: Core API endpoints (`/api/credits`, `/api/graphs`, `/api/blocks`, `/api/executions`)
+- **graph-execution-test**: Complete graph creation and execution pipeline
+- **marketplace-test**: Public marketplace browsing and search
 
-### Test Categories (25 Total Tests)
+### Test Modes
+- **Local Mode**: 5 VUs × 30s - Quick validation and debugging
+- **Cloud Mode**: 80-150 VUs × 3-5m - Real performance testing
 
-#### 1. Marketplace Tests (8 tests)
-- **Viewing_Marketplace_Logged_Out**: Public marketplace browsing (106-314 VUs)
-- **Viewing_Marketplace_Logged_In**: Authenticated marketplace browsing (53-157 VUs)
-- **Adding_Agent_to_Library**: Library management operations (32-95 VUs)
-- **Viewing_Library_Home**: User library interface (53-157 VUs)
+## 🛠️ Usage
 
-#### 2. Core API Tests (2 tests)
-- **Core_API_Load_Test**: `/api/credits`, `/api/graphs`, `/api/blocks`, `/api/executions` (100 VUs)
-- **Graph_Execution_Load_Test**: Complete workflow execution pipeline (100 VUs)
+### Basic Commands
 
-#### 3. Single Endpoint Tests (4 tests)
-- Individual API endpoint stress testing: Credits, Graphs, Blocks, Executions (50 VUs each)
+```bash
+# List available tests and show cloud credentials status
+node run-tests.js list
 
-#### 4. Comprehensive Platform Tests (3 tests)
-- **End-to-end user journeys**: Low (25), Medium (50), High (100 VUs)
+# Quick setup verification
+node run-tests.js verify
 
-#### 5. Stress Tests (2 tests)
-- **Maximum load testing**: Marketplace (500 VUs), Core API (300 VUs)
+# Run specific test locally  
+node run-tests.js run core-api-test DEV
 
-#### 6. Extended Duration Tests (2 tests)
-- **Long-duration sustainability**: 10-minute tests (100 VUs each)
+# Run multiple tests sequentially (comma-separated)
+node run-tests.js run core-api-test,marketplace-test DEV
 
-#### 7. Authentication & Mixed Load Tests (4 tests)
-- **User authentication workflows** and **mixed load patterns** (50-200 VUs)
+# Run all tests locally
+node run-tests.js run all DEV
+
+# Run specific test in k6 cloud
+node run-tests.js cloud core-api DEV
+
+# Run all tests in k6 cloud
+node run-tests.js cloud all DEV
+```
+
+### NPM Scripts
+
+```bash
+# Quick verification
+npm run verify
+
+# Run all tests locally
+npm test  
+
+# Run all tests in k6 cloud
+npm run cloud
+```
 
 ## 🔧 Test Configuration
 
 ### Pre-Authenticated Tokens
 - **Generation**: Run `node generate-tokens.js` to create tokens
 - **File**: `configs/pre-authenticated-tokens.js` (gitignored for security)
-- **Capacity**: 350+ tokens from 47 users
+- **Capacity**: 150+ tokens supporting high-concurrency testing
 - **Expiry**: 24 hours (86400 seconds) - extended for long-duration testing
-- **Benefit**: Eliminates Supabase auth rate limiting (95+ concurrent users)
-- **Supports**: Up to 350 concurrent VUs without authentication bottlenecks
-- **Security**: Tokens are gitignored and not committed to repository
+- **Benefit**: Eliminates Supabase auth rate limiting at scale
 - **Regeneration**: Run `node generate-tokens.js` when tokens expire after 24 hours
 
 ### Environment Configuration
@@ -77,70 +93,33 @@ The AutoGPT Platform now uses a unified orchestrator (`load-test-orchestrator.js
 - **DEV**: `https://dev-api.agpt.co` (development environment) 
 - **PROD**: `https://api.agpt.co` (production environment - coordinate with team!)
 
-## 📊 Test Modes
+## 📊 Performance Testing Features
 
-### Local Mode
-- **Purpose**: Debugging and development testing
-- **VUs**: 1-10 virtual users, short duration
-- **Output**: JSON results saved to `results-*` directories
+### Real-Time Monitoring
+- **k6 Cloud Dashboard**: Live performance metrics during cloud test execution
+- **URL Tracking**: Test URLs automatically saved to `k6-cloud-results.txt`
+- **Error Tracking**: Detailed failure analysis and HTTP status monitoring
+- **Custom Metrics**: Request success/failure rates, response times, user journey tracking
 
-### Cloud Mode (Recommended)
-- **Purpose**: Real performance testing and scalability validation
-- **VUs**: 32-500 virtual users (varies by test)
-- **Duration**: 3 minutes (10 minutes for extended tests)
-- **Output**: Live k6 cloud dashboards + URLs captured automatically
-
-
-## 🛠️ Usage
-
-### Unified Load Test Orchestrator
-
-The orchestrator supports different environments, execution modes, and test scales:
-
-```bash
-# Syntax: node load-test-orchestrator.js [ENVIRONMENT] [MODE] [SCALE]
-
-# ENVIRONMENT: LOCAL | DEV | PROD
-# MODE: local | cloud  
-# SCALE: small | full
-```
-
-### Examples
-
-```bash
-# Quick validation (3 tests, local execution)
-node load-test-orchestrator.js DEV local small
-
-# Full test suite (25 tests, k6 cloud execution) - RECOMMENDED
-node load-test-orchestrator.js DEV cloud full
-
-# Local development testing
-node load-test-orchestrator.js LOCAL local small
-
-# Production testing (coordinate with team!)
-node load-test-orchestrator.js PROD cloud small
-```
-
-### Help
-```bash
-# Show all available options and examples
-node load-test-orchestrator.js --help
-```
+### Load Testing Capabilities
+- **High Concurrency**: Up to 150+ virtual users per test
+- **Authentication Scaling**: Pre-auth tokens support 150+ concurrent users
+- **Sequential Execution**: Multiple tests run one after another with proper delays
+- **Cloud Infrastructure**: Tests run on k6 cloud servers for consistent results
 
 ## 📈 Performance Expectations
 
-### Current Validated Limits
-- **Maximum Load Tested**: 314 VUs successfully handled ✅
-- **Database Connection Pool**: ~102 RPS ceiling due to connection limits  
-- **Authentication**: 350 concurrent users supported with pre-auth tokens
-- **Library Workflows**: Fail around 157 VUs (marketplace-library tests)
-- **Marketplace Browsing**: Scales well up to 314 VUs
+### Validated Performance Limits
+- **Core API**: 100 VUs successfully handling `/api/credits`, `/api/graphs`, `/api/blocks`, `/api/executions`
+- **Graph Execution**: 80 VUs for complete workflow pipeline
+- **Marketplace Browsing**: 150 VUs for public marketplace access
+- **Authentication**: 150+ concurrent users with pre-authenticated tokens
 
-### Target Performance Metrics  
-- **P95 Latency**: < 60 seconds (current thresholds)
-- **P99 Latency**: < 60 seconds (current thresholds)
-- **Success Rate**: > 80% (allowing for infrastructure limits)
-- **Execution Time**: ~5 minutes per test scenario
+### Target Metrics  
+- **P95 Latency**: Target < 5 seconds (marketplace), < 2 seconds (core API)
+- **P99 Latency**: Target < 10 seconds (marketplace), < 5 seconds (core API)
+- **Success Rate**: Target > 95% under normal load
+- **Error Rate**: Target < 5% for all endpoints
 
 ## 🔍 Troubleshooting
 
@@ -150,44 +129,39 @@ node load-test-orchestrator.js --help
 ```
 ❌ No valid authentication token available
 ```
-- **Solution**: Run `node generate-tokens.js` to create fresh tokens (24-hour expiry)
+- **Solution**: Run `node generate-tokens.js` to create fresh tokens
 
-**2. k6 Cloud Failures**  
+**2. Cloud Credentials Missing**  
 ```
-Cloud test aborted or failed to start
+❌ Missing k6 cloud credentials
 ```
-- **Solution**: Verify `K6_CLOUD_TOKEN` and `K6_CLOUD_PROJECT_ID=4254406` are set correctly
+- **Solution**: Set `K6_CLOUD_TOKEN` and `K6_CLOUD_PROJECT_ID=4254406`
 
-**3. Test Failures (Exit code 99)**
+**3. Setup Verification Failed**
 ```
-❌ Test FAILED (exit code 99) 
+❌ Verification failed
 ```
-- **Cause**: k6 threshold violations (P95/P99 response times exceeded)
-- **Expected**: Some tests may fail under very high load (>150 VUs for library workflows)
+- **Solution**: Check tokens exist and local API is accessible
 
 ### Required Setup
 
 **1. Supabase Service Key (Required for all testing):**
 ```bash
-# Get service key from Kubernetes secrets or environment
-kubectl get secret dev-agpt-secrets -n dev-agpt -o jsonpath='{.data.SUPABASE_SERVICE_KEY}' | base64 -d
-
-# Export for local use
+# Get service key from environment or Kubernetes
 export SUPABASE_SERVICE_KEY="your-supabase-service-key"
 ```
 
 **2. Generate Pre-Authenticated Tokens (Required):**
 ```bash
-# Creates 350 tokens with 24-hour expiry - prevents auth rate limiting  
+# Creates tokens with 24-hour expiry - prevents auth rate limiting  
 node generate-tokens.js
 
-# Regenerate when tokens expire (every 24 hours)
+# Regenerate when tokens expire
 node generate-tokens.js
 ```
 
 **3. k6 Cloud Credentials (Required for cloud testing):**
 ```bash
-# Get credentials from https://app.k6.io/
 export K6_CLOUD_TOKEN="your-k6-cloud-token" 
 export K6_CLOUD_PROJECT_ID="4254406"  # AutoGPT Platform project ID
 ```
@@ -197,110 +171,64 @@ export K6_CLOUD_PROJECT_ID="4254406"  # AutoGPT Platform project ID
 ```
 load-tests/
 ├── README.md                              # This documentation
-├── load-test-orchestrator.js              # Unified test orchestrator (MAIN ENTRY POINT)
+├── run-tests.js                           # Unified test runner (MAIN ENTRY POINT)
 ├── generate-tokens.js                     # Generate pre-auth tokens
-├── package.json                           # Node.js dependencies
-├── k6-loadtesting-pod.yaml               # Kubernetes pod for cluster testing
+├── package.json                           # Node.js dependencies and scripts
 ├── configs/
-│   ├── environment.js                     # Environment URLs
-│   ├── pre-authenticated-tokens.js        # 350+ tokens (gitignored)
-│   ├── pre-authenticated-tokens.example.js # Token file template  
-│   └── k6-credentials.env.example         # k6 cloud credentials template
-├── data/
-│   └── test-users.json                    # 47 test user accounts
-├── utils/
-│   ├── auth.js                            # Authentication utilities
-│   └── test-data.js                       # Test data generation
-├── Individual Test Scripts:
-├── basic-connectivity-test.js             # Basic connectivity validation
+│   ├── environment.js                     # Environment URLs and configuration
+│   └── pre-authenticated-tokens.js        # Generated tokens (gitignored)
+├── Core Test Scripts:
 ├── core-api-load-test.js                  # Core API endpoints test
 ├── graph-execution-load-test.js           # Graph workflow execution test  
-├── marketplace-access-load-test.js        # Public marketplace browsing
-├── marketplace-library-load-test.js       # Authenticated marketplace/library
-├── single-endpoint-test.js                # Individual API endpoint testing
-├── scenarios/
-│   └── comprehensive-platform-load-test.js # End-to-end user journeys
-├── results-*/                             # Test results (auto-created)
-└── *.txt                                  # Test URLs and logs (auto-created)
+├── marketplace-access-load-test.js        # Public marketplace browsing test
+├── results/                               # Local test results (auto-created)
+├── k6-cloud-results.txt                   # Cloud test URLs (auto-created)
+└── *.json                                 # Test output files (auto-created)
 ```
 
-## 🎯 Performance Testing Best Practices
+## 🎯 Best Practices
 
-1. **Start with Small Scale**: Always run `node load-test-orchestrator.js DEV cloud small` first
-2. **Test Locally for Development**: Use `local` mode for debugging and development
-3. **Use k6 Cloud for Performance**: Use `cloud` mode for actual performance testing
+1. **Start with Verification**: Always run `node run-tests.js verify` first
+2. **Local for Development**: Use `run` command for debugging and development
+3. **Cloud for Performance**: Use `cloud` command for actual performance testing
 4. **Monitor Real-Time**: Check k6 cloud dashboards during test execution
-5. **Regenerate Tokens**: Run `node generate-tokens.js` every 24 hours when tokens expire
+5. **Regenerate Tokens**: Refresh tokens every 24 hours when they expire
+6. **Sequential Testing**: Use comma-separated tests for organized execution
 
-## 📚 Advanced Usage
+## 🚀 Advanced Usage
 
-### Custom Test Parameters
-
-The orchestrator allows environment variables for fine-tuning:
-
-```bash
-# Custom VU and duration for specific tests
-VUS=50 DURATION=5m RAMP_UP=1m RAMP_DOWN=1m \
-node load-test-orchestrator.js DEV cloud small
-
-# Single endpoint testing with high concurrency
-ENDPOINT=blocks CONCURRENT_REQUESTS=100 VUS=10 DURATION=3m \
-k6 run single-endpoint-test.js
-```
-
-### Direct k6 Execution (Advanced Users)
+### Direct k6 Execution
 
 For granular control over individual test scripts:
 
-#### k6 Cloud Execution (Recommended for Performance Testing)
-
 ```bash
-# IMPORTANT: Use 'k6 cloud run' for true cloud execution
-# This runs tests on k6 cloud infrastructure (not local with cloud output)
+# k6 Cloud execution (recommended for performance testing)
+K6_ENVIRONMENT=DEV VUS=100 DURATION=5m \
+k6 cloud run --env K6_ENVIRONMENT=DEV --env VUS=100 --env DURATION=5m core-api-load-test.js
 
-# Single test with cloud execution
-K6_ENVIRONMENT=DEV VUS=100 DURATION=3m \
-K6_CLOUD_PROJECT_ID=4254406 K6_CLOUD_TOKEN=your-token \
-k6 cloud run core-api-load-test.js
-
-# Single endpoint testing on k6 cloud
-K6_ENVIRONMENT=DEV VUS=50 DURATION=3m ENDPOINT=credits CONCURRENT_REQUESTS=10 \
-k6 cloud run single-endpoint-test.js
-
-# Serial execution of single endpoint tests (Tests 11-14)
-node run-single-endpoint-tests.js
-```
-
-#### Local Execution with Cloud Output (For Debugging Only)
-
-```bash
-# This runs locally but uploads results to k6 cloud dashboard
+# Local execution with cloud output (debugging)
 K6_ENVIRONMENT=DEV VUS=10 DURATION=1m \
-k6 run basic-connectivity-test.js --out cloud
+k6 run core-api-load-test.js --out cloud
 
-# Local execution with JSON output (no cloud)
-K6_ENVIRONMENT=LOCAL VUS=10 DURATION=1m \
-k6 run basic-connectivity-test.js --out json=results.json
+# Local execution with JSON output (offline testing)
+K6_ENVIRONMENT=DEV VUS=10 DURATION=1m \
+k6 run core-api-load-test.js --out json=results.json
 ```
 
-#### Key Difference: Cloud vs Local Execution
+### Custom Token Generation
 
-- **`k6 cloud run script.js`** - Runs on k6 cloud servers (Columbus zone) ✅ **Recommended for performance testing**
-- **`k6 run script.js --out cloud`** - Runs locally but sends results to cloud dashboard (for debugging only)
+```bash
+# Generate specific number of tokens
+node generate-tokens.js --count=200
 
-**Why Cloud Execution Matters:**
-- Eliminates local network bottlenecks
-- Consistent geographic location (Columbus)
-- Higher concurrent user capacity
-- More accurate performance metrics
-
-
----
+# Generate tokens with custom timeout
+node generate-tokens.js --count=100 --timeout=60
+```
 
 ## 🔗 Related Documentation
 
 - [k6 Documentation](https://k6.io/docs/)
 - [AutoGPT Platform API Documentation](https://docs.agpt.co/)
-- [Supabase Connection Limits](https://supabase.com/docs/guides/database/connection-limits)
+- [k6 Cloud Dashboard](https://significantgravitas.grafana.net/a/k6-app/)
 
 For questions or issues, please refer to the [AutoGPT Platform issues](https://github.com/Significant-Gravitas/AutoGPT/issues).
