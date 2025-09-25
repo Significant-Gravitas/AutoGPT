@@ -221,6 +221,11 @@ class FillTextTemplateBlock(Block):
         format: str = SchemaField(
             description="Template to format the text using `values`. Use Jinja2 syntax."
         )
+        escape_html: bool = SchemaField(
+            default=False,
+            advanced=True,
+            description="Whether to escape special characters in the inserted values to be HTML-safe. Enable for HTML output, disable for plain text.",
+        )
 
     class Output(BlockSchema):
         output: str = SchemaField(description="Formatted text")
@@ -254,6 +259,7 @@ class FillTextTemplateBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        formatter = text.TextFormatter(autoescape=input_data.escape_html)
         yield "output", formatter.format_string(input_data.format, input_data.values)
 
 
