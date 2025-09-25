@@ -46,13 +46,7 @@ export function RunAgentInputs({
 }: Props & React.HTMLAttributes<HTMLElement>) {
   const { handleUploadFile, uploadProgress } = useRunAgentInputs();
 
-  let dataType = determineDataType(schema);
-
-  // Override dataType if format is "table"
-  // This is needed because determineDataType doesn't always see the format field
-  if ("format" in schema && (schema as any).format === "table") {
-    dataType = DataType.TABLE;
-  }
+  const dataType = determineDataType(schema);
 
   const baseId = String(schema.title ?? "input")
     .replace(/\s+/g, "-")

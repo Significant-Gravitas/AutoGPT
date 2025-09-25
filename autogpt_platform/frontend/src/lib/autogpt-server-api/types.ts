@@ -1161,7 +1161,13 @@ export function determineDataType(schema: BlockIOSubSchema): DataType {
     // (array | null)
     if (types.includes("array") && types.includes("null")) {
       const arrSchema = schema.anyOf.find((s) => s.type === "array");
-      if (arrSchema) return _handleSingleTypeSchema(arrSchema);
+      if (arrSchema) {
+        // Check for table format before delegating to _handleSingleTypeSchema
+        if ("format" in arrSchema && arrSchema.format === "table") {
+          return DataType.TABLE;
+        }
+        return _handleSingleTypeSchema(arrSchema);
+      }
       return DataType.ARRAY;
     }
 
