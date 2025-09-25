@@ -4,6 +4,7 @@ from typing import Any, Optional
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, HTTPException, Query, Security, status
 
+import backend.server.routers.cache as cache
 import backend.server.v2.library.cache as library_cache
 import backend.server.v2.library.db as db
 import backend.server.v2.library.model as models
@@ -55,9 +56,9 @@ async def list_presets(
         # Use cache only for default queries (no filter)
         if graph_id is None:
             return await library_cache.get_cached_library_presets(
-                user_id,
-                page,
-                page_size,
+                user_id=user_id,
+                page=page,
+                page_size=page_size,
             )
         else:
             # Direct DB query for filtered requests
@@ -224,8 +225,12 @@ async def setup_trigger(
 
     # Clear presets list cache after creating new preset
     for page in range(1, 5):
-        library_cache.get_cached_library_presets.cache_delete(user_id, page, 10)
-        library_cache.get_cached_library_presets.cache_delete(user_id, page, 20)
+        library_cache.get_cached_library_presets.cache_delete(
+            user_id=user_id, page=page, page_size=10
+        )
+        library_cache.get_cached_library_presets.cache_delete(
+            user_id=user_id, page=page, page_size=20
+        )
 
     return new_preset
 
@@ -451,6 +456,14 @@ async def execute_preset(
     # Merge input overrides with preset inputs
     merged_node_input = preset.inputs | inputs
     merged_credential_inputs = preset.credentials | credential_inputs
+
+    for page in range(1, 10):
+        cache.get_cached_graph_executions.cache_delete(
+            graph_id=preset.graph_id, user_id=user_id, page=page, page_size=20
+        )
+        cache.get_cached_graph_executions.cache_delete(
+            user_id=user_id, page=page, page_size=20
+        )
 
     return await add_graph_execution(
         user_id=user_id,

@@ -91,8 +91,8 @@ async def get_cached_graph_all_versions(
 # ===== Execution Caches =====
 
 
-# Cache graph executions for 5 minutes (they update frequently)
-@cached(maxsize=1000, ttl_seconds=300)
+# Cache graph executions for 10 seconds.
+@cached(maxsize=1000, ttl_seconds=10)
 async def get_cached_graph_executions(
     graph_id: str,
     user_id: str,
@@ -108,8 +108,8 @@ async def get_cached_graph_executions(
     )
 
 
-# Cache all user executions for 5 minutes
-@cached(maxsize=500, ttl_seconds=300)
+# Cache all user executions for 10 seconds.
+@cached(maxsize=500, ttl_seconds=10)
 async def get_cached_graphs_executions(
     user_id: str,
     page: int,
@@ -123,8 +123,8 @@ async def get_cached_graphs_executions(
     )
 
 
-# Cache individual execution details for 10 minutes
-@cached(maxsize=1000, ttl_seconds=600)
+# Cache individual execution details for 10 seconds.
+@cached(maxsize=1000, ttl_seconds=10)
 async def get_cached_graph_execution(
     graph_exec_id: str,
     user_id: str,

@@ -181,6 +181,7 @@ async def update_user_timezone_route(
 ) -> TimezoneResponse:
     """Update user timezone. The timezone should be a valid IANA timezone identifier."""
     user = await update_user_timezone(user_id, str(request.timezone))
+    cache.get_cached_user_timezone.cache_delete(user_id)
     return TimezoneResponse(timezone=user.timezone)
 
 
@@ -732,12 +733,7 @@ async def delete_graph(
     cache.get_cached_graph.cache_delete(
         graph_id=graph_id, version=None, user_id=user_id
     )
-    cache.get_cached_graph_all_versions.cache_delete(graph_id=graph_id, user_id=user_id)
-    # Clear execution caches for this graph
-    for page in range(1, 10):
-        cache.get_cached_graph_executions.cache_delete(
-            graph_id=graph_id, user_id=user_id, page=page, page_size=25
-        )
+    cache.get_cached_graph_all_versions.cache_delete(graph_id, user_id=user_id)
 
     return result
 
@@ -800,7 +796,7 @@ async def update_graph(
     cache.get_cached_graph.cache_delete(
         graph_id=graph_id, version=None, user_id=user_id
     )
-    cache.get_cached_graph_all_versions.cache_delete(graph_id=graph_id, user_id=user_id)
+    cache.get_cached_graph_all_versions.cache_delete(graph_id, user_id=user_id)
     cache.get_cached_graphs.cache_delete(user_id=user_id, page=1, page_size=250)
 
     return new_graph_version_with_subgraphs
@@ -880,6 +876,12 @@ async def execute_graph(
         # Record successful graph execution
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
         record_graph_operation(operation="execute", status="success")
+
+        for page in range(1, 10):
+            cache.get_cached_graph_executions.cache_delete(
+                graph_id=graph_id, user_id=user_id, page=page, page_size=20
+            )
+
         return result
     except GraphValidationError as e:
         # Record failed graph execution
