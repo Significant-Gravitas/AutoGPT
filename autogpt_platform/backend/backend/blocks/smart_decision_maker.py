@@ -523,6 +523,7 @@ class SmartDecisionMakerBlock(Block):
             credentials=credentials,
             llm_model=input_data.model,
             prompt=prompt,
+            json_format=False,
             max_tokens=input_data.max_tokens,
             tools=tool_functions,
             ollama_host=input_data.ollama_host,
