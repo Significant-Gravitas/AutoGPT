@@ -60,9 +60,8 @@ class AIConditionBlock(AIBlockBase):
         no_output: Any = SchemaField(
             description="The output value if the condition is false"
         )
-        error_message: str = SchemaField(
-            description="Error message if the AI evaluation is uncertain or fails",
-            default="",
+        error: str = SchemaField(
+            description="Error message if the AI evaluation is uncertain or fails"
         )
 
     def __init__(self):
@@ -84,7 +83,6 @@ class AIConditionBlock(AIBlockBase):
             test_output=[
                 ("result", True),
                 ("yes_output", "Valid email"),
-                ("error_message", ""),
             ],
             test_mock={
                 "llm_call": lambda *args, **kwargs: LLMResponse(
@@ -135,7 +133,6 @@ class AIConditionBlock(AIBlockBase):
 
         # Convert input_value to string for AI evaluation
         input_str = str(input_data.input_value)
-        error_message = ""  # Track error messages
 
         # Create the prompt for AI evaluation
         prompt = [
@@ -185,9 +182,9 @@ class AIConditionBlock(AIBlockBase):
                 elif tokens == {"false"} or tokens == {"no"} or tokens == {"0"}:
                     result = False
                 else:
-                    # Unclear or conflicting response - default to False and set error
+                    # Unclear or conflicting response - default to False and yield error
                     result = False
-                    error_message = f"Unclear AI response: '{response.response}'"
+                    yield "error", f"Unclear AI response: '{response.response}'"
 
             # Update internal stats
             self.merge_stats(
@@ -201,12 +198,12 @@ class AIConditionBlock(AIBlockBase):
         except Exception as e:
             # In case of any error, default to False to be safe
             result = False
-            error_message = f"AI evaluation failed: {str(e)}"
             # Log the error but don't fail the block execution
             import logging
 
             logger = logging.getLogger(__name__)
             logger.error(f"AI condition evaluation failed: {str(e)}")
+            yield "error", f"AI evaluation failed: {str(e)}"
 
         # Yield results
         yield "result", result
@@ -215,6 +212,3 @@ class AIConditionBlock(AIBlockBase):
             yield "yes_output", yes_value
         else:
             yield "no_output", no_value
-
-        # Always yield error_message (empty string if no error)
-        yield "error_message", error_message
