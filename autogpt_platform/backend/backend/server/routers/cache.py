@@ -45,7 +45,8 @@ def get_cached_blocks() -> Sequence[dict]:
 
 
 # Cache user's graphs list for 15 minutes
-@cached(maxsize=1000, ttl_seconds=900)
+# Uses shared_cache since cache_delete is called on this function
+@cached(maxsize=1000, ttl_seconds=900, shared_cache=True)
 async def get_cached_graphs(
     user_id: str,
     page: int,
@@ -60,7 +61,8 @@ async def get_cached_graphs(
 
 
 # Cache individual graph details for 30 minutes
-@cached(maxsize=500, ttl_seconds=1800)
+# Uses shared_cache since cache_delete is called on this function
+@cached(maxsize=500, ttl_seconds=1800, shared_cache=True)
 async def get_cached_graph(
     graph_id: str,
     version: int | None,
@@ -76,7 +78,8 @@ async def get_cached_graph(
 
 
 # Cache graph versions for 30 minutes
-@cached(maxsize=500, ttl_seconds=1800)
+# Uses shared_cache since cache_delete is called on this function
+@cached(maxsize=500, ttl_seconds=1800, shared_cache=True)
 async def get_cached_graph_all_versions(
     graph_id: str,
     user_id: str,
@@ -92,7 +95,8 @@ async def get_cached_graph_all_versions(
 
 
 # Cache graph executions for 10 seconds.
-@cached(maxsize=1000, ttl_seconds=10)
+# Uses shared_cache since cache_delete is called on this function
+@cached(maxsize=1000, ttl_seconds=10, shared_cache=True)
 async def get_cached_graph_executions(
     graph_id: str,
     user_id: str,
@@ -109,6 +113,7 @@ async def get_cached_graph_executions(
 
 
 # Cache all user executions for 10 seconds.
+# No shared_cache - cache_delete not used for this function
 @cached(maxsize=500, ttl_seconds=10)
 async def get_cached_graphs_executions(
     user_id: str,
@@ -124,6 +129,7 @@ async def get_cached_graphs_executions(
 
 
 # Cache individual execution details for 10 seconds.
+# No shared_cache - cache_delete not used for this function
 @cached(maxsize=1000, ttl_seconds=10)
 async def get_cached_graph_execution(
     graph_exec_id: str,
@@ -141,7 +147,8 @@ async def get_cached_graph_execution(
 
 
 # Cache user timezone for 1 hour
-@cached(maxsize=1000, ttl_seconds=3600)
+# Uses shared_cache since cache_delete is called on this function
+@cached(maxsize=1000, ttl_seconds=3600, shared_cache=True)
 async def get_cached_user_timezone(user_id: str):
     """Cached helper to get user timezone."""
     user = await user_db.get_user_by_id(user_id)
@@ -149,7 +156,8 @@ async def get_cached_user_timezone(user_id: str):
 
 
 # Cache user preferences for 30 minutes
-@cached(maxsize=1000, ttl_seconds=1800)
+# Uses shared_cache since cache_delete is called on this function
+@cached(maxsize=1000, ttl_seconds=1800, shared_cache=True)
 async def get_cached_user_preferences(user_id: str):
     """Cached helper to get user notification preferences."""
     return await user_db.get_user_notification_preference(user_id)

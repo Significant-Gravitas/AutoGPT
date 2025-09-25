@@ -11,7 +11,8 @@ import backend.server.v2.store.db
 
 
 # Cache user profiles for 1 hour per user
-@cached(maxsize=1000, ttl_seconds=3600)
+# Uses shared_cache since cache_delete is called on this function
+@cached(maxsize=1000, ttl_seconds=3600, shared_cache=True)
 async def _get_cached_user_profile(user_id: str):
     """Cached helper to get user profile."""
     return await backend.server.v2.store.db.get_user_profile(user_id)
@@ -19,6 +20,7 @@ async def _get_cached_user_profile(user_id: str):
 
 # Cache store agents list for 15 minutes
 # Different cache entries for different query combinations
+# No shared_cache - cache_delete not used for this function
 @cached(maxsize=5000, ttl_seconds=900)
 async def _get_cached_store_agents(
     featured: bool,
@@ -42,6 +44,7 @@ async def _get_cached_store_agents(
 
 
 # Cache individual agent details for 15 minutes
+# No shared_cache - cache_delete not used for this function
 @cached(maxsize=200, ttl_seconds=900)
 async def _get_cached_agent_details(username: str, agent_name: str):
     """Cached helper to get agent details."""
@@ -51,6 +54,7 @@ async def _get_cached_agent_details(username: str, agent_name: str):
 
 
 # Cache agent graphs for 1 hour
+# No shared_cache - cache_delete not used for this function
 @cached(maxsize=200, ttl_seconds=3600)
 async def _get_cached_agent_graph(store_listing_version_id: str):
     """Cached helper to get agent graph."""
@@ -60,6 +64,7 @@ async def _get_cached_agent_graph(store_listing_version_id: str):
 
 
 # Cache agent by version for 1 hour
+# No shared_cache - cache_delete not used for this function
 @cached(maxsize=200, ttl_seconds=3600)
 async def _get_cached_store_agent_by_version(store_listing_version_id: str):
     """Cached helper to get store agent by version ID."""
@@ -69,6 +74,7 @@ async def _get_cached_store_agent_by_version(store_listing_version_id: str):
 
 
 # Cache creators list for 1 hour
+# No shared_cache - cache_delete not used for this function
 @cached(maxsize=200, ttl_seconds=3600)
 async def _get_cached_store_creators(
     featured: bool,
@@ -88,6 +94,7 @@ async def _get_cached_store_creators(
 
 
 # Cache individual creator details for 1 hour
+# No shared_cache - cache_delete not used for this function
 @cached(maxsize=100, ttl_seconds=3600)
 async def _get_cached_creator_details(username: str):
     """Cached helper to get creator details."""
@@ -97,6 +104,7 @@ async def _get_cached_creator_details(username: str):
 
 
 # Cache user's own agents for 5 mins (shorter TTL as this changes more frequently)
+# No shared_cache - cache_delete not used for this function
 @cached(maxsize=500, ttl_seconds=300)
 async def _get_cached_my_agents(user_id: str, page: int, page_size: int):
     """Cached helper to get user's agents."""
@@ -106,7 +114,8 @@ async def _get_cached_my_agents(user_id: str, page: int, page_size: int):
 
 
 # Cache user's submissions for 1 hour (shorter TTL as this changes frequently)
-@cached(maxsize=500, ttl_seconds=3600)
+# Uses shared_cache since cache_delete is called on this function
+@cached(maxsize=500, ttl_seconds=3600, shared_cache=True)
 async def _get_cached_submissions(user_id: str, page: int, page_size: int):
     """Cached helper to get user's submissions."""
     return await backend.server.v2.store.db.get_store_submissions(

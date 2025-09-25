@@ -70,6 +70,11 @@ async def lifespan_context(app: fastapi.FastAPI):
 
     await backend.data.db.connect()
 
+    # Initialize Redis clients for cache system
+    from backend.util.cache_redis_init import initialize_cache_redis
+
+    initialize_cache_redis()
+
     # Ensure SDK auto-registration is patched before initializing blocks
     from backend.sdk.registry import AutoRegistry
 
