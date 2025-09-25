@@ -9,19 +9,36 @@ from typing import Sequence
 
 from autogpt_libs.utils.cache import cached
 
-from backend.data import block as block_db
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data import user as user_db
+from backend.data.block import get_blocks
 
 # ===== Block Caches =====
 
 
-# Cache block definitions - they rarely change
+# Cache block definitions with costs - they rarely change
 @cached(maxsize=1, ttl_seconds=3600)
-def get_cached_graph_blocks():
-    """Cached helper to get available graph blocks."""
-    return block_db.get_blocks()
+def get_cached_blocks() -> Sequence[dict]:
+    """
+    Get cached blocks with thundering herd protection.
+
+    Uses cached decorator to prevent multiple concurrent requests
+    from all executing the expensive block loading operation.
+    """
+    from backend.data.credit import get_block_cost
+
+    block_classes = get_blocks()
+    result = []
+
+    for block_class in block_classes.values():
+        block_instance = block_class()
+        if not block_instance.disabled:
+            # Get costs for this specific block class without creating another instance
+            costs = get_block_cost(block_instance)
+            result.append({**block_instance.to_dict(), "costs": costs})
+
+    return result
 
 
 # ===== Graph Caches =====

@@ -11,7 +11,6 @@ import pydantic
 import stripe
 from autogpt_libs.auth import get_user_id, requires_user
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
-from autogpt_libs.utils.cache import cached
 from fastapi import (
     APIRouter,
     Body,
@@ -34,7 +33,7 @@ import backend.server.v2.library.db as library_db
 from backend.data import api_key as api_key_db
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
-from backend.data.block import BlockInput, CompletedBlockOutput, get_block, get_blocks
+from backend.data.block import BlockInput, CompletedBlockOutput, get_block
 from backend.data.credit import (
     AutoTopUpConfig,
     RefundRequest,
@@ -82,6 +81,7 @@ from backend.server.model import (
     UpdateTimezoneRequest,
     UploadFileResponse,
 )
+from backend.server.v2.library import cache as library_cache
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.exceptions import GraphValidationError, NotFoundError
@@ -91,7 +91,7 @@ from backend.util.timezone_utils import (
     get_user_timezone_or_utc,
 )
 from backend.util.virus_scanner import scan_content_safe
-from backend.server.v2.library import cache as library_cache
+
 
 def _create_file_size_error(size_bytes: int, max_size_mb: int) -> HTTPException:
     """Create standardized file size error response."""
@@ -269,29 +269,6 @@ async def is_onboarding_enabled():
 ########################################################
 
 
-@cached()
-def _get_cached_blocks() -> Sequence[dict[Any, Any]]:
-    """
-    Get cached blocks with thundering herd protection.
-
-    Uses sync_cache decorator to prevent multiple concurrent requests
-    from all executing the expensive block loading operation.
-    """
-    from backend.data.credit import get_block_cost
-
-    block_classes = get_blocks()
-    result = []
-
-    for block_class in block_classes.values():
-        block_instance = block_class()
-        if not block_instance.disabled:
-            # Get costs for this specific block class without creating another instance
-            costs = get_block_cost(block_instance)
-            result.append({**block_instance.to_dict(), "costs": costs})
-
-    return result
-
-
 @v1_router.get(
     path="/blocks",
     summary="List available blocks",
@@ -299,7 +276,7 @@ def _get_cached_blocks() -> Sequence[dict[Any, Any]]:
     dependencies=[Security(requires_user)],
 )
 async def get_graph_blocks() -> Sequence[dict[Any, Any]]:
-    return _get_cached_blocks()
+    return cache.get_cached_blocks()
 
 
 @v1_router.post(
@@ -674,7 +651,9 @@ async def get_graph(
         )
         # If graph not found, clear cache entry as permissions may have changed
         if not graph:
-            cache.get_cached_graph.cache_delete(graph_id=graph_id, version=version, user_id=user_id)
+            cache.get_cached_graph.cache_delete(
+                graph_id=graph_id, version=version, user_id=user_id
+            )
     else:
         graph = await graph_db.get_graph(
             graph_id,
@@ -725,7 +704,9 @@ async def create_new_graph(
     # Clear graphs list cache after creating new graph
     cache.get_cached_graphs.cache_delete(user_id=user_id, page=1, page_size=250)
     for page in range(1, 20):
-        library_cache.get_cached_library_agents.cache_delete(user_id=user_id, page=page, page_size=8)
+        library_cache.get_cached_library_agents.cache_delete(
+            user_id=user_id, page=page, page_size=8
+        )
 
     return await on_graph_activate(graph, user_id=user_id)
 
@@ -748,11 +729,15 @@ async def delete_graph(
 
     # Clear caches after deleting graph
     cache.get_cached_graphs.cache_delete(user_id=user_id, page=1, page_size=250)
-    cache.get_cached_graph.cache_delete(graph_id=graph_id, version=None, user_id=user_id)
+    cache.get_cached_graph.cache_delete(
+        graph_id=graph_id, version=None, user_id=user_id
+    )
     cache.get_cached_graph_all_versions.cache_delete(graph_id=graph_id, user_id=user_id)
     # Clear execution caches for this graph
     for page in range(1, 10):
-        cache.get_cached_graph_executions.cache_delete(graph_id=graph_id, user_id=user_id, page=page, page_size=25)
+        cache.get_cached_graph_executions.cache_delete(
+            graph_id=graph_id, user_id=user_id, page=page, page_size=25
+        )
 
     return result
 
@@ -812,7 +797,9 @@ async def update_graph(
     assert new_graph_version_with_subgraphs  # make type checker happy
 
     # Clear caches after updating graph
-    cache.get_cached_graph.cache_delete(graph_id=graph_id, version=None, user_id=user_id)
+    cache.get_cached_graph.cache_delete(
+        graph_id=graph_id, version=None, user_id=user_id
+    )
     cache.get_cached_graph_all_versions.cache_delete(graph_id=graph_id, user_id=user_id)
     cache.get_cached_graphs.cache_delete(user_id=user_id, page=1, page_size=250)
 
