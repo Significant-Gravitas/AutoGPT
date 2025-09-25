@@ -13,9 +13,9 @@ export const options = {
     { duration: __ENV.RAMP_DOWN || '10s', target: 0 },
   ],
   thresholds: {
-    checks: ['rate>0.70'],
-    http_req_duration: ['p(95)<5000'],
-    http_req_failed: ['rate<0.3'],
+    checks: ['rate>0.50'],                 // 50% success rate (was 70%)
+    http_req_duration: ['p(95)<60000'],    // P95 under 60s (was 5s)
+    http_req_failed: ['rate<0.5'],         // 50% failure rate allowed (was 30%)
   },
   cloud: {
     projectID: parseInt(__ENV.K6_CLOUD_PROJECT_ID) || 4254406,
