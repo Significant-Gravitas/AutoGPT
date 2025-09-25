@@ -112,12 +112,13 @@ export const FlowRunsStatus: React.FC<{
         </p>
         {filteredFlowRuns.some((r) => r.stats) && (
           <p>
-            <strong>Total cost:</strong>{" "}
-            {filteredFlowRuns.reduce(
-              (total, run) => total + (run.stats?.cost ?? 0),
-              0,
-            )}{" "}
-            seconds
+            <strong>Total cost:</strong> $
+            {(
+              filteredFlowRuns.reduce(
+                (total, run) => total + (run.stats?.cost ?? 0),
+                0,
+              ) / 100
+            ).toFixed(2)}
           </p>
         )}
       </div>
