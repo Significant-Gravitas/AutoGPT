@@ -52,6 +52,7 @@ export const AUTH_CONFIG = {
       user_id: "test-user-3",
     },
   ],
+
   // JWT token for API access (will be set during test execution)
   JWT_TOKEN: null,
 };
