@@ -177,6 +177,8 @@ class DataForSeoKeywordSuggestionsBlock(Block):
                     if isinstance(first_result, dict)
                     else []
                 )
+                if items is None:
+                    items = []
                 for item in items:
                     # Create the KeywordSuggestion object
                     suggestion = KeywordSuggestion(
