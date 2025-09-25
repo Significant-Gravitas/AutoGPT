@@ -97,7 +97,7 @@ class DataForSeoClient:
         if data.get("tasks") and len(data["tasks"]) > 0:
             task = data["tasks"][0]
             if task.get("status_code") == 20000:  # Success code
-                return task.get("result", [])
+                return task.get("result") or []
             else:
                 error_msg = task.get("status_message", "Task failed")
                 raise Exception(f"DataForSEO task error: {error_msg}")
@@ -174,7 +174,7 @@ class DataForSeoClient:
         if data.get("tasks") and len(data["tasks"]) > 0:
             task = data["tasks"][0]
             if task.get("status_code") == 20000:  # Success code
-                return task.get("result", [])
+                return task.get("result") or []
             else:
                 error_msg = task.get("status_message", "Task failed")
                 raise Exception(f"DataForSEO task error: {error_msg}")
