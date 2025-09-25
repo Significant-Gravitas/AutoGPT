@@ -397,7 +397,8 @@ export type NodeExecutionResult = {
     | "RUNNING"
     | "COMPLETED"
     | "TERMINATED"
-    | "FAILED";
+    | "FAILED"
+    | "SKIPPED";
   input_data: Record<string, any>;
   output_data: Record<string, Array<any>>;
   add_time: Date;

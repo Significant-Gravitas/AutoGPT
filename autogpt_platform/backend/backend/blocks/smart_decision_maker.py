@@ -389,7 +389,9 @@ class SmartDecisionMakerBlock(Block):
         return {"type": "function", "function": tool_function}
 
     @staticmethod
-    async def _create_function_signature(node_id: str) -> list[dict[str, Any]]:
+    async def _create_function_signature(
+        node_id: str, user_id: str | None = None, check_optional: bool = True
+    ) -> list[dict[str, Any]]:
         """
         Creates function signatures for tools linked to a specified node within a graph.
 
@@ -399,6 +401,8 @@ class SmartDecisionMakerBlock(Block):
 
         Args:
             node_id: The node_id for which to create function signatures.
+            user_id: The ID of the user, used for checking credential-based optional blocks.
+            check_optional: Whether to check and skip optional blocks based on their conditions.
 
         Returns:
             list[dict[str, Any]]: A list of dictionaries, each representing a function signature
@@ -429,17 +433,41 @@ class SmartDecisionMakerBlock(Block):
         for sink_node, links in grouped_tool_links.values():
             if not sink_node:
                 raise ValueError(f"Sink node not found: {links[0].sink_id}")
-            
+
             # todo: use the renamed value of metadata when available
 
             # Check if this node is marked as optional and should be skipped
             optional_config = get_optional_config(sink_node.metadata)
-            if optional_config and optional_config.enabled:
-                # For now, we'll filter out nodes that are marked as optional
-                # In future, we can add more sophisticated checks here
-                # based on the optional conditions (credentials, flags, etc.)
-                # TODO: Add runtime checks for whether node should be skipped
-                continue
+            if optional_config and optional_config.enabled and check_optional:
+                # Check conditions to determine if block should be skipped
+                skip_block = False
+
+                # Check credential availability if configured
+                if optional_config.conditions.on_missing_credentials and user_id:
+                    # Get credential fields from the block
+                    sink_block = sink_node.block
+                    if hasattr(sink_block, "input_schema"):
+                        creds_fields = sink_block.input_schema.get_credentials_fields()
+                        if creds_fields:
+                            # For Smart Decision Maker, we simplify by assuming
+                            # credentials might be missing if optional is enabled
+                            # Full check happens at execution time
+                            logger.debug(
+                                f"Optional block {sink_node.id} may be skipped based on credentials"
+                            )
+                            # Continue to exclude from available tools
+                            continue
+
+                # If other conditions exist but can't be checked now, be conservative
+                if (
+                    optional_config.conditions.input_flag
+                    or optional_config.conditions.kv_flag
+                ):
+                    # These runtime flags can't be checked here, so exclude the block
+                    logger.debug(
+                        f"Optional block {sink_node.id} excluded due to runtime conditions"
+                    )
+                    continue
 
             if sink_node.block_id == AgentExecutorBlock().id:
                 return_tool_functions.append(
@@ -468,7 +496,9 @@ class SmartDecisionMakerBlock(Block):
         user_id: str,
         **kwargs,
     ) -> BlockOutput:
-        tool_functions = await self._create_function_signature(node_id)
+        tool_functions = await self._create_function_signature(
+            node_id, user_id=user_id, check_optional=True
+        )
         yield "tool_functions", json.dumps(tool_functions)
 
         input_data.conversation_history = input_data.conversation_history or []

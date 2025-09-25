@@ -13,6 +13,7 @@ from pika.spec import Basic, BasicProperties
 from redis.asyncio.lock import Lock as RedisLock
 
 from backend.blocks.io import AgentOutputBlock
+from backend.blocks.persistence import get_storage_key
 from backend.data.model import GraphExecutionStats, NodeExecutionStats
 from backend.data.notifications import (
     AgentRunData,
@@ -27,6 +28,7 @@ from backend.executor.activity_status_generator import (
 )
 from backend.executor.utils import LogMetadata
 from backend.notifications.notifications import queue_notification
+from backend.util.clients import get_database_manager_async_client
 from backend.util.exceptions import InsufficientBalanceError, ModerationError
 
 if TYPE_CHECKING:
@@ -74,7 +76,6 @@ from backend.server.v2.AutoMod.manager import automod_manager
 from backend.util import json
 from backend.util.clients import (
     get_async_execution_event_bus,
-    get_database_manager_async_client,
     get_database_manager_client,
     get_execution_event_bus,
     get_notification_manager_client,
@@ -133,6 +134,7 @@ async def should_skip_node(
     user_id: str,
     user_context: UserContext,
     input_data: BlockInput,
+    graph_id: str,
 ) -> tuple[bool, str]:
     """
     Check if a node should be skipped based on optional configuration.
@@ -177,9 +179,21 @@ async def should_skip_node(
 
     # Check key-value flag
     if conditions.kv_flag:
-        # TODO: Implement key-value store check once available
-        # For now, we'll skip this condition
-        pass
+        # Determine storage key (assume within_agent scope for now)
+        storage_key = get_storage_key(conditions.kv_flag, "within_agent", graph_id)
+
+        # Retrieve the value from KV store
+        kv_value = await get_database_manager_async_client().get_execution_kv_data(
+            user_id=user_id,
+            key=storage_key,
+        )
+
+        # Skip if flag is True (treat missing/None as False)
+        if kv_value is True:
+            skip_reasons.append(f"KV flag '{conditions.kv_flag}' is true")
+            conditions_met.append(True)
+        else:
+            conditions_met.append(False)
 
     # Apply logical operator
     if not conditions_met:
@@ -586,10 +600,13 @@ class ExecutionProcessor:
                 user_id=node_exec.user_id,
                 user_context=node_exec.user_context,
                 input_data=node_exec.inputs,
+                graph_id=node_exec.graph_id,
             )
 
             if should_skip:
-                log_metadata.info(f"Skipping node execution {node_exec.node_exec_id}: {skip_reason}")
+                log_metadata.info(
+                    f"Skipping node execution {node_exec.node_exec_id}: {skip_reason}"
+                )
                 await async_update_node_execution_status(
                     db_client=db_client,
                     exec_id=node_exec.node_exec_id,

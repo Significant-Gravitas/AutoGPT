@@ -128,6 +128,7 @@ export const CustomNode = React.memo(
     const [isLoading, setIsLoading] = useState(false);
 
     let subGraphID = "";
+    const isOptional = data.metadata?.optional?.enabled || false;
 
     if (data.uiType === BlockUIType.AGENT) {
       // Display the graph's schema instead AgentExecutorBlock's schema.
@@ -646,7 +647,9 @@ export const CustomNode = React.memo(
       "dark-theme",
       "rounded-xl",
       "bg-white/[.9] dark:bg-gray-800/[.9]",
-      "border border-gray-300 dark:border-gray-600",
+      isOptional
+        ? "border-2 border-dashed border-blue-400 dark:border-blue-500"
+        : "border border-gray-300 dark:border-gray-600",
       data.uiType === BlockUIType.NOTE ? "w-[300px]" : "w-[500px]",
       data.uiType === BlockUIType.NOTE
         ? "bg-yellow-100 dark:bg-yellow-900"
@@ -675,6 +678,8 @@ export const CustomNode = React.memo(
           return "border-purple-200 dark:border-purple-800 border-4";
         case "queued":
           return "border-cyan-200 dark:border-cyan-800 border-4";
+        case "skipped":
+          return "border-gray-300 dark:border-gray-600 border-4";
         default:
           return "";
       }
@@ -736,6 +741,44 @@ export const CustomNode = React.memo(
       </div>
     );
 
+    const toggleOptional = () => {
+      const currentOptional = data.metadata?.optional || {};
+      updateNodeData(id, {
+        metadata: {
+          ...data.metadata,
+          optional: {
+            ...currentOptional,
+            enabled: !currentOptional.enabled,
+            // Default conditions when enabling
+            conditions: currentOptional.conditions || {
+              on_missing_credentials: true,
+              operator: "or",
+            },
+          },
+        },
+      });
+    };
+
+    const [showOptionalConfig, setShowOptionalConfig] = useState(false);
+
+    const configureOptionalConditions = () => {
+      setShowOptionalConfig(true);
+    };
+
+    const saveOptionalConditions = (conditions: any) => {
+      const currentOptional = data.metadata?.optional || {};
+      updateNodeData(id, {
+        metadata: {
+          ...data.metadata,
+          optional: {
+            ...currentOptional,
+            conditions,
+          },
+        },
+      });
+      setShowOptionalConfig(false);
+    };
+
     const ContextMenuContent = () => (
       <ContextMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md dark:bg-gray-800">
         <ContextMenu.Item
@@ -753,6 +796,48 @@ export const CustomNode = React.memo(
             <ExitIcon className="mr-2 h-5 w-5 dark:text-gray-100" />
             <span className="dark:text-gray-100">Open agent</span>
           </ContextMenu.Item>
+        )}
+        <ContextMenu.Separator className="my-1 h-px bg-gray-300 dark:bg-gray-600" />
+        <ContextMenu.Item
+          onSelect={toggleOptional}
+          className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+        >
+          <Switch
+            checked={isOptional}
+            className="mr-2 h-4 w-4 pointer-events-none"
+          />
+          <span className="dark:text-gray-100">Make Optional</span>
+        </ContextMenu.Item>
+        {isOptional && (
+          <>
+            <ContextMenu.Item
+              onSelect={configureOptionalConditions}
+              className="flex cursor-pointer items-center rounded-md px-3 py-2 pl-8 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+            >
+              <span className="dark:text-gray-100">
+                ↳ Configure conditions...
+              </span>
+            </ContextMenu.Item>
+            <div className="pl-12 text-xs text-gray-500 dark:text-gray-400 space-y-1 py-1">
+              {data.metadata?.optional?.conditions?.on_missing_credentials && (
+                <div>• Skip on missing credentials</div>
+              )}
+              {data.metadata?.optional?.conditions?.input_flag && (
+                <div>• Input flag: {data.metadata.optional.conditions.input_flag}</div>
+              )}
+              {data.metadata?.optional?.conditions?.kv_flag && (
+                <div>• KV flag: {data.metadata.optional.conditions.kv_flag}</div>
+              )}
+              {data.metadata?.optional?.conditions?.operator === 'and' && (
+                <div>• Using AND operator</div>
+              )}
+              {!data.metadata?.optional?.conditions?.on_missing_credentials &&
+               !data.metadata?.optional?.conditions?.input_flag &&
+               !data.metadata?.optional?.conditions?.kv_flag && (
+                <div>• No conditions set</div>
+              )}
+            </div>
+          </>
         )}
         <ContextMenu.Separator className="my-1 h-px bg-gray-300 dark:bg-gray-600" />
         <ContextMenu.Item
@@ -881,6 +966,14 @@ export const CustomNode = React.memo(
                     {blockCost.cost_type}
                   </span>
                 </div>
+              )}
+              {isOptional && (
+                <Badge
+                  variant="outline"
+                  className="h-6 whitespace-nowrap rounded-full border border-blue-400 bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400"
+                >
+                  Optional
+                </Badge>
               )}
               {data.categories.map((category) => (
                 <Badge
@@ -1034,6 +1127,8 @@ export const CustomNode = React.memo(
                           ].includes(data.status || ""),
                           "border-blue-600 bg-blue-600 text-white":
                             data.status === "QUEUED",
+                          "border-gray-400 bg-gray-400 text-white":
+                            data.status === "SKIPPED",
                           "border-gray-600 bg-gray-600 font-black":
                             data.status === "INCOMPLETE",
                         },
@@ -1066,9 +1161,132 @@ export const CustomNode = React.memo(
     );
 
     return (
-      <ContextMenu.Root>
-        <ContextMenu.Trigger>{nodeContent()}</ContextMenu.Trigger>
-      </ContextMenu.Root>
+      <>
+        {showOptionalConfig && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-[500px] max-w-[90vw]">
+              <h2 className="text-xl font-bold mb-4 dark:text-white">
+                Configure Optional Conditions
+              </h2>
+
+              <div className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="on_missing_credentials"
+                    checked={data.metadata?.optional?.conditions?.on_missing_credentials || false}
+                    onChange={(e) => {
+                      const conditions = data.metadata?.optional?.conditions || {};
+                      saveOptionalConditions({
+                        ...conditions,
+                        on_missing_credentials: e.target.checked,
+                      });
+                    }}
+                    className="h-4 w-4"
+                  />
+                  <label htmlFor="on_missing_credentials" className="dark:text-gray-100">
+                    Skip on missing credentials
+                  </label>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium dark:text-gray-100">
+                    Input Flag (boolean agent input)
+                  </label>
+                  <input
+                    type="text"
+                    value={data.metadata?.optional?.conditions?.input_flag || ''}
+                    onChange={(e) => {
+                      const conditions = data.metadata?.optional?.conditions || {};
+                      saveOptionalConditions({
+                        ...conditions,
+                        input_flag: e.target.value || undefined,
+                      });
+                    }}
+                    placeholder="e.g., skip_linear"
+                    className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium dark:text-gray-100">
+                    Key-Value Flag (from persistence blocks)
+                  </label>
+                  <input
+                    type="text"
+                    value={data.metadata?.optional?.conditions?.kv_flag || ''}
+                    onChange={(e) => {
+                      const conditions = data.metadata?.optional?.conditions || {};
+                      saveOptionalConditions({
+                        ...conditions,
+                        kv_flag: e.target.value || undefined,
+                      });
+                    }}
+                    placeholder="e.g., enable_integration"
+                    className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium dark:text-gray-100">
+                    Condition Operator
+                  </label>
+                  <select
+                    value={data.metadata?.optional?.conditions?.operator || 'or'}
+                    onChange={(e) => {
+                      const conditions = data.metadata?.optional?.conditions || {};
+                      saveOptionalConditions({
+                        ...conditions,
+                        operator: e.target.value,
+                      });
+                    }}
+                    className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                  >
+                    <option value="or">OR (skip if ANY condition is met)</option>
+                    <option value="and">AND (skip if ALL conditions are met)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium dark:text-gray-100">
+                    Skip Message (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={data.metadata?.optional?.skip_message || ''}
+                    onChange={(e) => {
+                      const currentOptional = data.metadata?.optional || {};
+                      updateNodeData(id, {
+                        metadata: {
+                          ...data.metadata,
+                          optional: {
+                            ...currentOptional,
+                            skip_message: e.target.value || undefined,
+                          },
+                        },
+                      });
+                    }}
+                    placeholder="Custom message when block is skipped"
+                    className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 mt-6">
+                <button
+                  onClick={() => setShowOptionalConfig(false)}
+                  className="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600 dark:text-white"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        <ContextMenu.Root>
+          <ContextMenu.Trigger>{nodeContent()}</ContextMenu.Trigger>
+        </ContextMenu.Root>
+      </>
     );
   },
   (prevProps, nextProps) => {
