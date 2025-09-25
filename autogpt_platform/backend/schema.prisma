@@ -135,7 +135,7 @@ model AgentGraph {
   StoreListingVersions StoreListingVersion[]
 
   @@id(name: "graphVersionId", [id, version])
-  @@index([userId, isActive, id, version])
+  @@index([userId, isActive])
   @@index([forkedFromId, forkedFromVersion])
 }
 
@@ -377,7 +377,7 @@ model AgentGraphExecution {
   sharedAt    DateTime?
 
   @@index([agentGraphId, agentGraphVersion])
-  @@index([userId, isDeleted, createdAt])
+  @@index([userId])
   @@index([createdAt])
   @@index([agentPresetId])
   @@index([shareToken])
