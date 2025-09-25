@@ -106,7 +106,7 @@ class AIConditionBlock(AIBlockBase):
             credentials=credentials,
             llm_model=llm_model,
             prompt=prompt,
-            json_format=False,
+            force_json_output=False,
             max_tokens=max_tokens,
         )
 
