@@ -180,9 +180,11 @@ class DataForSeoRelatedKeywordsBlock(Block):
         if results and len(results) > 0:
             # results is a list, get the first element
             first_result = results[0] if isinstance(results, list) else results
-            items = (
-                first_result.get("items", []) if isinstance(first_result, dict) else []
-            )
+            # Handle three cases: missing key, null value, and valid list value
+            if isinstance(first_result, dict):
+                items = first_result.get("items") or []
+            else:
+                items = []
             for item in items:
                 # Extract keyword_data from the item
                 keyword_data = item.get("keyword_data", {})
