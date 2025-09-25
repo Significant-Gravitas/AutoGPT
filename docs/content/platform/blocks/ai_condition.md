@@ -29,6 +29,7 @@ The block uses a Large Language Model (LLM) to evaluate the condition by:
 | Result | A boolean value (true or false) indicating whether the condition was met |
 | Yes Output | The output value if the condition is true. This will be the Yes Value if provided, or Input Value if not |
 | No Output | The output value if the condition is false. This will be the No Value if provided, or Input Value if not |
+| Error Message | Error message if the AI evaluation is uncertain or fails (empty string if successful) |
 
 ## Examples
 

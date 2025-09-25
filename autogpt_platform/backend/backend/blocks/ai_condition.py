@@ -60,6 +60,10 @@ class AIConditionBlock(AIBlockBase):
         no_output: Any = SchemaField(
             description="The output value if the condition is false"
         )
+        error_message: str = SchemaField(
+            description="Error message if the AI evaluation is uncertain or fails",
+            default="",
+        )
 
     def __init__(self):
         super().__init__(
@@ -80,6 +84,7 @@ class AIConditionBlock(AIBlockBase):
             test_output=[
                 ("result", True),
                 ("yes_output", "Valid email"),
+                ("error_message", ""),
             ],
             test_mock={
                 "llm_call": lambda *args, **kwargs: LLMResponse(
@@ -130,6 +135,7 @@ class AIConditionBlock(AIBlockBase):
 
         # Convert input_value to string for AI evaluation
         input_str = str(input_data.input_value)
+        error_message = ""  # Track error messages
 
         # Create the prompt for AI evaluation
         prompt = [
@@ -168,23 +174,20 @@ class AIConditionBlock(AIBlockBase):
             elif response_text == "false":
                 result = False
             else:
-                # If the response is not clear, try to interpret it
-                # Look for boolean indicators in the response
-                if (
-                    "true" in response_text
-                    or "yes" in response_text
-                    or "1" in response_text
-                ):
+                # If the response is not clear, try to interpret it using word boundaries
+                import re
+
+                # Use word boundaries to avoid false positives like 'untrue' or '10'
+                tokens = set(re.findall(r"\b(true|false|yes|no|1|0)\b", response_text))
+
+                if tokens == {"true"} or tokens == {"yes"} or tokens == {"1"}:
                     result = True
-                elif (
-                    "false" in response_text
-                    or "no" in response_text
-                    or "0" in response_text
-                ):
+                elif tokens == {"false"} or tokens == {"no"} or tokens == {"0"}:
                     result = False
                 else:
-                    # Default to False if unclear
+                    # Unclear or conflicting response - default to False and set error
                     result = False
+                    error_message = f"Unclear AI response: '{response.response}'"
 
             # Update internal stats
             self.merge_stats(
@@ -198,6 +201,7 @@ class AIConditionBlock(AIBlockBase):
         except Exception as e:
             # In case of any error, default to False to be safe
             result = False
+            error_message = f"AI evaluation failed: {str(e)}"
             # Log the error but don't fail the block execution
             import logging
 
@@ -211,3 +215,6 @@ class AIConditionBlock(AIBlockBase):
             yield "yes_output", yes_value
         else:
             yield "no_output", no_value
+
+        # Always yield error_message (empty string if no error)
+        yield "error_message", error_message
