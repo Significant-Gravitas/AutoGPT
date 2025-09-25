@@ -208,6 +208,7 @@ type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta & {
         anyOf: BlockIOSimpleTypeSubSchema[];
         default?: string | number | boolean | null;
         secret?: boolean;
+        format?: string; // For table format and other formats on anyOf schemas
       }
     | BlockIOOneOfSubSchema
     | BlockIODiscriminatedOneOfSubSchema
@@ -1160,14 +1161,13 @@ export function determineDataType(schema: BlockIOSubSchema): DataType {
 
     // (array | null)
     if (types.includes("array") && types.includes("null")) {
-      const arrSchema = schema.anyOf.find((s) => s.type === "array");
-      if (arrSchema) {
-        // Check for table format before delegating to _handleSingleTypeSchema
-        if ("format" in arrSchema && arrSchema.format === "table") {
-          return DataType.TABLE;
-        }
-        return _handleSingleTypeSchema(arrSchema);
+      // Check for table format on the parent schema (where anyOf is)
+      if ("format" in schema && schema.format === "table") {
+        return DataType.TABLE;
       }
+
+      const arrSchema = schema.anyOf.find((s) => s.type === "array");
+      if (arrSchema) return _handleSingleTypeSchema(arrSchema);
       return DataType.ARRAY;
     }
 
