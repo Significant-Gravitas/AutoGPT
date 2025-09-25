@@ -1,8 +1,8 @@
-import functools
 import logging
 from datetime import datetime, timedelta, timezone
 
 import prisma
+from autogpt_libs.utils.cache import cached
 
 import backend.data.block
 from backend.blocks import load_all_blocks
@@ -296,7 +296,7 @@ def _matches_llm_model(schema_cls: type[BlockSchema], query: str) -> bool:
     return False
 
 
-@functools.cache
+@cached()
 def _get_all_providers() -> dict[ProviderName, Provider]:
     providers: dict[ProviderName, Provider] = {}
 

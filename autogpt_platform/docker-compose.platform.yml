@@ -37,7 +37,7 @@ services:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
       target: migrate
-    command: ["sh", "-c", "poetry run prisma migrate deploy"]
+    command: ["sh", "-c", "poetry run prisma generate && poetry run prisma migrate deploy"]
     develop:
       watch:
         - path: ./
