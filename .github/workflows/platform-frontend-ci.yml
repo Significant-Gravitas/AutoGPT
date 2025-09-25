@@ -328,6 +328,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Generate API client code
+        run: |
+          echo "Generating API client code from OpenAPI spec..."
+          pnpm run generate:api:force || {
+            echo "⚠️ API generation failed, but continuing with build"
+          }
+
       - name: Build application
         run: NEXT_PUBLIC_PW_TEST=true pnpm build
 
