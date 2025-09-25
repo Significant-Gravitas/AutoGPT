@@ -8,6 +8,7 @@ import { MultiToggle } from "@/components/molecules/MultiToggle/MultiToggle";
 import {
   BlockIOObjectSubSchema,
   BlockIOSubSchema,
+  BlockIOTableSubSchema,
   DataType,
   determineDataType,
   TableRow,
@@ -217,7 +218,7 @@ export function RunAgentInputs({
 
     case DataType.TABLE: {
       // Render a simple table UI for the run modal
-      const tableSchema = schema as any; // BlockIOTableSubSchema
+      const tableSchema = schema as BlockIOTableSubSchema;
       const headers = tableSchema.items?.properties
         ? Object.keys(tableSchema.items.properties)
         : ["Column 1", "Column 2", "Column 3"];
