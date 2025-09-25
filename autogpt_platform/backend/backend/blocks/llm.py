@@ -1,6 +1,8 @@
+# This file contains a lot of prompt block strings that would trigger "line too long"
 # flake8: noqa: E501
 import ast
 import logging
+import re
 import secrets
 from abc import ABC
 from enum import Enum, EnumMeta
@@ -789,9 +791,10 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             default=False,
             description=(
                 "Whether to force the LLM to produce a JSON-only response. "
-                "This can increase a model's reliability of outputting valid JSON. "
-                "However, it may also reduce the quality of the response, because it "
-                "prohibits the LLM from reasoning before providing its JSON response."
+                "This can increase the block's reliability, "
+                "but may also reduce the quality of the response "
+                "because it prohibits the LLM from reasoning "
+                "before providing its JSON response."
             ),
         )
         credentials: AICredentials = AICredentialsField()
@@ -979,9 +982,13 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                             output_tag_start=output_tag_start,
                         )
                     except (ValueError, JSONDecodeError) as parse_error:
+                        censored_response = re.sub(r"[A-Za-z0-9]", "*", response_text)
+                        response_snippet = (
+                            f"{censored_response[:50]}...{censored_response[-30:]}"
+                        )
                         logger.warning(
                             f"Error getting JSON from LLM response: {parse_error}\n\n"
-                            f"Response start+end: `{response_text[:40]}...{response_text[-20:]}`"
+                            f"Response start+end: `{response_snippet}`"
                         )
                         prompt.append({"role": "assistant", "content": response_text})
 
