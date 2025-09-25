@@ -339,6 +339,7 @@ enum AgentExecutionStatus {
   COMPLETED
   TERMINATED
   FAILED
+  SKIPPED
 }
 
 // This model describes the execution of an AgentGraph.

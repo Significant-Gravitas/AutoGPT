@@ -115,6 +115,10 @@ VALID_STATUS_TRANSITIONS = {
         ExecutionStatus.QUEUED,
         ExecutionStatus.RUNNING,
     ],
+    ExecutionStatus.SKIPPED: [
+        ExecutionStatus.INCOMPLETE,
+        ExecutionStatus.QUEUED,
+    ],
 }
 
 

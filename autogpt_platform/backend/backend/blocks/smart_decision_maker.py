@@ -14,6 +14,7 @@ from backend.data.block import (
     BlockType,
 )
 from backend.data.model import NodeExecutionStats, SchemaField
+from backend.data.optional_block import get_optional_config
 from backend.util import json
 from backend.util.clients import get_database_manager_async_client
 
@@ -428,6 +429,17 @@ class SmartDecisionMakerBlock(Block):
         for sink_node, links in grouped_tool_links.values():
             if not sink_node:
                 raise ValueError(f"Sink node not found: {links[0].sink_id}")
+            
+            # todo: use the renamed value of metadata when available
+
+            # Check if this node is marked as optional and should be skipped
+            optional_config = get_optional_config(sink_node.metadata)
+            if optional_config and optional_config.enabled:
+                # For now, we'll filter out nodes that are marked as optional
+                # In future, we can add more sophisticated checks here
+                # based on the optional conditions (credentials, flags, etc.)
+                # TODO: Add runtime checks for whether node should be skipped
+                continue
 
             if sink_node.block_id == AgentExecutorBlock().id:
                 return_tool_functions.append(

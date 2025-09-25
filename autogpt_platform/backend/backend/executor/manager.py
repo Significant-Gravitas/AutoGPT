@@ -55,6 +55,7 @@ from backend.data.execution import (
     UserContext,
 )
 from backend.data.graph import Link, Node
+from backend.data.optional_block import get_optional_config
 from backend.executor.utils import (
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
     GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
@@ -124,6 +125,73 @@ def execute_graph(
 
 
 T = TypeVar("T")
+
+
+async def should_skip_node(
+    node: Node,
+    creds_manager: IntegrationCredentialsManager,
+    user_id: str,
+    user_context: UserContext,
+    input_data: BlockInput,
+) -> tuple[bool, str]:
+    """
+    Check if a node should be skipped based on optional configuration.
+
+    Returns:
+        Tuple of (should_skip, skip_reason)
+    """
+    optional_config = get_optional_config(node.metadata)
+
+    if not optional_config or not optional_config.enabled:
+        return False, ""
+
+    conditions = optional_config.conditions
+    skip_reasons = []
+    conditions_met = []
+
+    # Check credential availability
+    if conditions.on_missing_credentials:
+        node_block = node.block
+        input_model = cast(type[BlockSchema], node_block.input_schema)
+        for field_name, input_type in input_model.get_credentials_fields().items():
+            if field_name in input_data:
+                credentials_meta = input_type(**input_data[field_name])
+                # Check if credentials exist without acquiring lock
+                if not await creds_manager.exists(user_id, credentials_meta.id):
+                    skip_reasons.append(f"Missing credentials: {field_name}")
+                    conditions_met.append(True)
+                    break
+        else:
+            # All credentials exist
+            if conditions.on_missing_credentials:
+                conditions_met.append(False)
+
+    # Check input flag
+    if conditions.input_flag and conditions.input_flag in input_data:
+        flag_value = input_data.get(conditions.input_flag, False)
+        if flag_value is True:  # Skip if flag is True
+            skip_reasons.append(f"Input flag '{conditions.input_flag}' is true")
+            conditions_met.append(True)
+        else:
+            conditions_met.append(False)
+
+    # Check key-value flag
+    if conditions.kv_flag:
+        # TODO: Implement key-value store check once available
+        # For now, we'll skip this condition
+        pass
+
+    # Apply logical operator
+    if not conditions_met:
+        return False, ""
+
+    if conditions.operator == "and":
+        should_skip = all(conditions_met)
+    else:  # OR
+        should_skip = any(conditions_met)
+
+    skip_message = optional_config.skip_message or "; ".join(skip_reasons)
+    return should_skip, skip_message
 
 
 async def execute_node(
@@ -511,6 +579,25 @@ class ExecutionProcessor:
             )
 
         try:
+            # Check if node should be skipped
+            should_skip, skip_reason = await should_skip_node(
+                node=node,
+                creds_manager=self.creds_manager,
+                user_id=node_exec.user_id,
+                user_context=node_exec.user_context,
+                input_data=node_exec.inputs,
+            )
+
+            if should_skip:
+                log_metadata.info(f"Skipping node execution {node_exec.node_exec_id}: {skip_reason}")
+                await async_update_node_execution_status(
+                    db_client=db_client,
+                    exec_id=node_exec.node_exec_id,
+                    status=ExecutionStatus.SKIPPED,
+                    stats={"skip_reason": skip_reason},
+                )
+                return ExecutionStatus.SKIPPED
+
             log_metadata.info(f"Start node execution {node_exec.node_exec_id}")
             await async_update_node_execution_status(
                 db_client=db_client,
