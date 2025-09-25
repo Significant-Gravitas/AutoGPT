@@ -7,8 +7,9 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import BoringAvatar from "boring-avatars";
+
 import Image, { ImageProps } from "next/image";
-import BoringAvatarWrapper from "@/components/ui/BoringAvatarWrapper";
 
 type AvatarContextValue = {
   isLoaded: boolean;
@@ -184,11 +185,12 @@ export function AvatarFallback({
       ].join(" ")}
       {...props}
     >
-      <BoringAvatarWrapper
+      <BoringAvatar
         size={computedSize}
         name={name}
         variant="marble"
         colors={["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"]}
+        square={false}
       />
     </span>
   );

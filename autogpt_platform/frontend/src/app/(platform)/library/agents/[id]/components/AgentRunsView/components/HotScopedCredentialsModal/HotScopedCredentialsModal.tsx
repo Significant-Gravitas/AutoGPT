@@ -10,7 +10,7 @@ import {
   FormDescription,
   FormField,
   FormLabel,
-} from "@/components/ui/form";
+} from "@/components/__legacy__/ui/form";
 import useCredentials from "@/hooks/useCredentials";
 import {
   BlockIOCredentialsSubSchema,

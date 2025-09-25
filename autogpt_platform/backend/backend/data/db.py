@@ -83,7 +83,7 @@ async def disconnect():
 
 
 # Transaction timeout constant (in milliseconds)
-TRANSACTION_TIMEOUT = 15000  # 15 seconds - Increased from 5s to prevent timeout errors
+TRANSACTION_TIMEOUT = 30000  # 30 seconds - Increased from 15s to prevent timeout errors during graph creation under load
 
 
 @asynccontextmanager

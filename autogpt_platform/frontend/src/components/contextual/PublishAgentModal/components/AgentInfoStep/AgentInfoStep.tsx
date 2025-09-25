@@ -5,7 +5,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { StepHeader } from "../StepHeader";
 import { Input } from "@/components/atoms/Input/Input";
 import { Select } from "@/components/atoms/Select/Select";
-import { Form, FormField } from "@/components/ui/form";
+import { Form, FormField } from "@/components/__legacy__/ui/form";
 import { CronExpressionDialog } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/components/cron-scheduler-dialog";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { CalendarClockIcon } from "lucide-react";

@@ -7,7 +7,7 @@ import AuthFeedback from "@/components/auth/AuthFeedback";
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
 import Turnstile from "@/components/auth/Turnstile";
-import { Form, FormField } from "@/components/ui/form";
+import { Form, FormField } from "@/components/__legacy__/ui/form";
 import { getBehaveAs } from "@/lib/utils";
 import { LoadingLogin } from "./components/LoadingLogin";
 import { useLoginPage } from "./useLoginPage";

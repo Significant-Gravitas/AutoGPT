@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { LoadingSpinner } from "@/components/ui/loading";
+import { LoadingSpinner } from "@/components/__legacy__/ui/loading";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 

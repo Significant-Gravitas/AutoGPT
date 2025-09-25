@@ -1,6 +1,6 @@
 import React from "react";
 
-import { Separator } from "@/components/ui/separator";
+import { Separator } from "@/components/__legacy__/ui/separator";
 import { BlockMenuDefaultContent } from "../BlockMenuDefaultContent/BlockMenuDefaultContent";
 import { BlockMenuSidebar } from "../BlockMenuSidebar/BlockMenuSidebar";
 

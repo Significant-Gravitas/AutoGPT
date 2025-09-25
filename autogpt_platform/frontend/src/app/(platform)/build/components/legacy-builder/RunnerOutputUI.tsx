@@ -5,11 +5,11 @@ import {
   SheetHeader,
   SheetTitle,
   SheetDescription,
-} from "@/components/ui/sheet";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
+} from "@/components/__legacy__/ui/sheet";
+import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
+import { Label } from "@/components/__legacy__/ui/label";
+import { Textarea } from "@/components/__legacy__/ui/textarea";
+import { Button } from "@/components/__legacy__/ui/button";
 import { Clipboard } from "lucide-react";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 

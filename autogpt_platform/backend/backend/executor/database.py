@@ -85,6 +85,16 @@ class DatabaseManager(AppService):
     async def health_check(self) -> str:
         if not db.is_connected():
             raise UnhealthyServiceError("Database is not connected")
+
+        try:
+            # Test actual database connectivity by executing a simple query
+            # This will fail if Prisma query engine is not responding
+            result = await db.query_raw_with_schema("SELECT 1 as health_check")
+            if not result or result[0].get("health_check") != 1:
+                raise UnhealthyServiceError("Database query test failed")
+        except Exception as e:
+            raise UnhealthyServiceError(f"Database health check failed: {e}")
+
         return await super().health_check()
 
     @classmethod

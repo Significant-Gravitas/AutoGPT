@@ -1,8 +1,7 @@
 import logging
 import os
-from functools import cache
 
-from autogpt_libs.utils.cache import thread_cached
+from autogpt_libs.utils.cache import cached, thread_cached
 from dotenv import load_dotenv
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
@@ -35,7 +34,7 @@ def disconnect():
     get_redis().close()
 
 
-@cache
+@cached()
 def get_redis() -> Redis:
     return connect()
 

@@ -10,10 +10,10 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+} from "@/components/__legacy__/ui/form";
+import { Input } from "@/components/__legacy__/ui/input";
+import { Button } from "@/components/__legacy__/ui/button";
+import { Textarea } from "@/components/__legacy__/ui/textarea";
 import { EnterIcon } from "@radix-ui/react-icons";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {

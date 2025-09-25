@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { CheckIcon, CopyIcon, DownloadIcon } from "@phosphor-icons/react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/__legacy__/ui/button";
 import { OutputRenderer, OutputMetadata } from "../types";
 import { downloadOutputs } from "../utils/download";
 

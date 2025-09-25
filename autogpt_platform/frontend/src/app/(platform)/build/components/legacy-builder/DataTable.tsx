@@ -1,8 +1,8 @@
 import { beautifyString } from "@/lib/utils";
 import { Clipboard, Maximize2 } from "lucide-react";
 import React, { useState } from "react";
-import { Button } from "../../../../../components/ui/button";
-import { ContentRenderer } from "../../../../../components/ui/render";
+import { Button } from "../../../../../components/__legacy__/ui/button";
+import { ContentRenderer } from "../../../../../components/__legacy__/ui/render";
 import {
   Table,
   TableBody,
@@ -10,7 +10,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "../../../../../components/ui/table";
+} from "../../../../../components/__legacy__/ui/table";
 import { useToast } from "../../../../../components/molecules/Toast/use-toast";
 import ExpandableOutputDialog from "./ExpandableOutputDialog";
 
