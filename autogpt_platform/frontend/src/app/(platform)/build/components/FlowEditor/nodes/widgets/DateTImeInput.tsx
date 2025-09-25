@@ -4,7 +4,6 @@ import { DateTimeInput } from "@/components/atoms/DateTimeInput/DateTimeInput";
 export const DateTimeInputWidget = (props: WidgetProps) => {
   const { value, onChange, disabled, readonly, placeholder, autofocus, id } =
     props;
-
   return (
     <DateTimeInput
       size="small"
