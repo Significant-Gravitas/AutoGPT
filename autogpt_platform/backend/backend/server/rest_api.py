@@ -1,6 +1,5 @@
 import contextlib
 import logging
-import os
 from enum import Enum
 from typing import Any, Optional
 
@@ -280,15 +279,12 @@ class AgentServer(backend.util.service.AppProcess):
         )
         config = backend.util.settings.Config()
 
-        # Use multiple workers for better concurrency handling (100+ VUs)
-        workers = int(os.getenv("UVICORN_WORKERS", "4"))
-
         uvicorn.run(
             server_app,
             host=config.agent_api_host,
             port=config.agent_api_port,
             log_config=None,
-            workers=workers,  # Multiple workers for concurrency
+            workers=config.agent_api_workers,  # Configurable workers for concurrency
         )
 
     def cleanup(self):
