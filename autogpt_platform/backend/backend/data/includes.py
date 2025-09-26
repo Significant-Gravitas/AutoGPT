@@ -92,15 +92,8 @@ INTEGRATION_WEBHOOK_INCLUDE: prisma.types.IntegrationWebhookInclude = {
 
 def library_agent_include(user_id: str) -> prisma.types.LibraryAgentInclude:
     return {
-        "AgentGraph": {
-            "include": {
-                **AGENT_GRAPH_INCLUDE_LIGHT,  # Use lightweight includes for performance
-                "Executions": {
-                    "where": {"userId": user_id},
-                    "order_by": {"createdAt": "desc"},
-                    "take": MAX_LIBRARY_AGENT_EXECUTIONS_FETCH,  # Limit recent executions for performance
-                },
-            }
-        },
-        "Creator": True,
+        "AgentGraph": True,  # Just basic graph metadata (name, description, id)
+        "Creator": True,  # Creator info for avatar
+        # NO NODES: Not needed for library listing view
+        # NO EXECUTIONS: Not used by frontend for library listing
     }
