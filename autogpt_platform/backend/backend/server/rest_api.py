@@ -8,6 +8,7 @@ import fastapi.responses
 import pydantic
 import starlette.middleware.cors
 import uvicorn
+from fastapi.middleware.gzip import GZipMiddleware
 from autogpt_libs.auth import add_auth_responses_to_openapi
 from autogpt_libs.auth import verify_settings as verify_auth_settings
 from fastapi.exceptions import RequestValidationError
@@ -139,6 +140,9 @@ app = fastapi.FastAPI(
 )
 
 app.add_middleware(SecurityHeadersMiddleware)
+
+# Add GZip compression middleware for large responses (like /api/blocks)
+app.add_middleware(GZipMiddleware, minimum_size=50_000)  # 50KB threshold
 
 # Add 401 responses to authenticated endpoints in OpenAPI spec
 add_auth_responses_to_openapi(app)

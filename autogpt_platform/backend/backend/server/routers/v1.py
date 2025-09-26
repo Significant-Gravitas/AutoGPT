@@ -7,6 +7,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Annotated, Any, Sequence
 
+import orjson
 import pydantic
 import stripe
 from autogpt_libs.auth import get_user_id, requires_user
@@ -264,12 +265,13 @@ async def is_onboarding_enabled():
 
 
 @cached()
-def _get_cached_blocks() -> Sequence[dict[Any, Any]]:
+def _get_cached_blocks() -> bytes:
     """
-    Get cached blocks with thundering herd protection.
+    Get cached blocks with thundering herd protection and optimized serialization.
 
     Uses sync_cache decorator to prevent multiple concurrent requests
     from all executing the expensive block loading operation.
+    Returns pre-serialized bytes for faster response times.
     """
     from backend.data.credit import get_block_cost
 
@@ -283,7 +285,8 @@ def _get_cached_blocks() -> Sequence[dict[Any, Any]]:
             costs = get_block_cost(block_instance)
             result.append({**block_instance.to_dict(), "costs": costs})
 
-    return result
+    # Pre-serialize with orjson for faster response times
+    return orjson.dumps(result)
 
 
 @v1_router.get(
@@ -292,8 +295,23 @@ def _get_cached_blocks() -> Sequence[dict[Any, Any]]:
     tags=["blocks"],
     dependencies=[Security(requires_user)],
 )
-async def get_graph_blocks() -> Sequence[dict[Any, Any]]:
-    return _get_cached_blocks()
+async def get_graph_blocks() -> Response:
+    """
+    Get available blocks with optimized performance:
+    - Pre-serialized JSON with orjson (cached)
+    - Automatic gzip compression via middleware for large responses
+    - Client-side caching headers
+    """
+    # Get cached pre-serialized blocks (only expensive on first call)
+    blocks_bytes = _get_cached_blocks()
+    
+    return Response(
+        content=blocks_bytes,
+        media_type="application/json",
+        headers={
+            "Cache-Control": "public, max-age=300",  # Cache for 5 minutes
+        }
+    )
 
 
 @v1_router.post(
