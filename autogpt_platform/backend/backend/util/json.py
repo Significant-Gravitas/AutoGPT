@@ -2,6 +2,7 @@ import json
 from typing import Any, Type, TypeGuard, TypeVar, overload
 
 import jsonschema
+import orjson
 from fastapi.encoders import jsonable_encoder
 from prisma import Json
 from pydantic import BaseModel
@@ -21,16 +22,16 @@ def dumps(data: Any, *args: Any, **kwargs: Any) -> str:
 
     This function converts the input data to a JSON-serializable format using FastAPI's
     jsonable_encoder before dumping to JSON. It handles Pydantic models, complex types,
-    and ensures proper serialization.
+    and ensures proper serialization. Uses orjson for high performance.
 
     Parameters
     ----------
     data : Any
         The data to serialize. Can be any type including Pydantic models, dicts, lists, etc.
     *args : Any
-        Additional positional arguments passed to json.dumps()
+        Additional positional arguments (ignored with orjson)
     **kwargs : Any
-        Additional keyword arguments passed to json.dumps() (e.g., indent, separators)
+        Additional keyword arguments (limited support with orjson)
 
     Returns
     -------
@@ -45,7 +46,14 @@ def dumps(data: Any, *args: Any, **kwargs: Any) -> str:
     >>> dumps(pydantic_model_instance, indent=2)
     '{\n  "field1": "value1",\n  "field2": "value2"\n}'
     """
-    return json.dumps(to_dict(data), *args, **kwargs)
+    serializable_data = to_dict(data)
+
+    # orjson is faster but has limited options support
+    option = 0
+    if kwargs.get("indent") is not None:
+        option |= orjson.OPT_INDENT_2
+    # orjson.dumps returns bytes, so we decode to str
+    return orjson.dumps(serializable_data, option=option).decode("utf-8")
 
 
 T = TypeVar("T")
@@ -62,9 +70,9 @@ def loads(data: str | bytes, *args, **kwargs) -> Any: ...
 def loads(
     data: str | bytes, *args, target_type: Type[T] | None = None, **kwargs
 ) -> Any:
-    if isinstance(data, bytes):
-        data = data.decode("utf-8")
-    parsed = json.loads(data, *args, **kwargs)
+    # orjson can handle both str and bytes directly
+    parsed = orjson.loads(data)
+
     if target_type:
         return type_match(parsed, target_type)
     return parsed
@@ -98,11 +106,35 @@ def convert_pydantic_to_json(output_data: Any) -> Any:
     return output_data
 
 
+def _sanitize_null_bytes(data: Any) -> Any:
+    """
+    Recursively sanitize null bytes from data structures to prevent PostgreSQL 22P05 errors.
+    PostgreSQL cannot store null bytes (\u0000) in text fields.
+    """
+    if isinstance(data, str):
+        return data.replace("\u0000", "")
+    elif isinstance(data, dict):
+        return {key: _sanitize_null_bytes(value) for key, value in data.items()}
+    elif isinstance(data, list):
+        return [_sanitize_null_bytes(item) for item in data]
+    elif isinstance(data, tuple):
+        return tuple(_sanitize_null_bytes(item) for item in data)
+    else:
+        # For other types (int, float, bool, None, etc.), return as-is
+        return data
+
+
 def SafeJson(data: Any) -> Json:
-    """Safely serialize data and return Prisma's Json type."""
-    if isinstance(data, BaseModel):
+    """
+    Safely serialize data and return Prisma's Json type.
+    Sanitizes null bytes to prevent PostgreSQL 22P05 errors.
+    """
+    # Sanitize null bytes before serialization
+    sanitized_data = _sanitize_null_bytes(data)
+
+    if isinstance(sanitized_data, BaseModel):
         return Json(
-            data.model_dump(
+            sanitized_data.model_dump(
                 mode="json",
                 warnings="error",
                 exclude_none=True,
@@ -110,5 +142,5 @@ def SafeJson(data: Any) -> Json:
             )
         )
     # Round-trip through JSON to ensure proper serialization with fallback for non-serializable values
-    json_string = dumps(data, default=lambda v: None)
+    json_string = dumps(sanitized_data, default=lambda v: None)
     return Json(json.loads(json_string))
