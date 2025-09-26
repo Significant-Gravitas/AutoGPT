@@ -129,12 +129,9 @@ def SafeJson(data: Any) -> Json:
     Safely serialize data and return Prisma's Json type.
     Sanitizes null bytes to prevent PostgreSQL 22P05 errors.
     """
-    # Sanitize null bytes before serialization
-    sanitized_data = _sanitize_null_bytes(data)
-
-    if isinstance(sanitized_data, BaseModel):
+    if isinstance(_sanitize_null_bytes(data), BaseModel):
         return Json(
-            sanitized_data.model_dump(
+            _sanitize_null_bytes(data).model_dump(
                 mode="json",
                 warnings="error",
                 exclude_none=True,
@@ -142,5 +139,5 @@ def SafeJson(data: Any) -> Json:
             )
         )
     # Round-trip through JSON to ensure proper serialization with fallback for non-serializable values
-    json_string = dumps(sanitized_data, default=lambda v: None)
+    json_string = dumps(_sanitize_null_bytes(data), default=lambda v: None)
     return Json(json.loads(json_string))
