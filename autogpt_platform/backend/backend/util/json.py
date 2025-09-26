@@ -11,6 +11,7 @@ from .type import type_match
 # Try to import orjson for better performance
 try:
     import orjson
+
     HAS_ORJSON = True
 except ImportError:
     HAS_ORJSON = False
@@ -57,10 +58,10 @@ def dumps(data: Any, *args: Any, **kwargs: Any) -> str:
     if HAS_ORJSON:
         # orjson is faster but has limited options support
         option = 0
-        if kwargs.get('indent') is not None:
+        if kwargs.get("indent") is not None:
             option |= orjson.OPT_INDENT_2
         # orjson.dumps returns bytes, so we decode to str
-        return orjson.dumps(serializable_data, option=option).decode('utf-8')
+        return orjson.dumps(serializable_data, option=option).decode("utf-8")
     else:
         # Fallback to standard json
         return json.dumps(serializable_data, *args, **kwargs)
