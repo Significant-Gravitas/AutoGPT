@@ -3,6 +3,7 @@ from typing import Sequence, cast
 import prisma.enums
 import prisma.types
 
+# Full node includes for detailed views (graph editing, execution details)
 AGENT_NODE_INCLUDE: prisma.types.AgentNodeInclude = {
     "Input": True,
     "Output": True,
@@ -10,8 +11,19 @@ AGENT_NODE_INCLUDE: prisma.types.AgentNodeInclude = {
     "AgentBlock": True,
 }
 
+# Lightweight node includes for library listings (performance optimized)
+AGENT_NODE_INCLUDE_LIGHT: prisma.types.AgentNodeInclude = {
+    # Only include essential block info, skip heavy Input/Output/Webhook data
+    "AgentBlock": True,
+}
+
 AGENT_GRAPH_INCLUDE: prisma.types.AgentGraphInclude = {
     "Nodes": {"include": AGENT_NODE_INCLUDE}
+}
+
+# Lightweight graph include for library listings
+AGENT_GRAPH_INCLUDE_LIGHT: prisma.types.AgentGraphInclude = {
+    "Nodes": {"include": AGENT_NODE_INCLUDE_LIGHT}
 }
 
 EXECUTION_RESULT_ORDER: list[prisma.types.AgentNodeExecutionOrderByInput] = [
@@ -28,7 +40,7 @@ EXECUTION_RESULT_INCLUDE: prisma.types.AgentNodeExecutionInclude = {
 }
 
 MAX_NODE_EXECUTIONS_FETCH = 1000
-MAX_LIBRARY_AGENT_EXECUTIONS_FETCH = 50
+MAX_LIBRARY_AGENT_EXECUTIONS_FETCH = 10
 
 # Default limits for potentially large result sets
 MAX_CREDIT_REFUND_REQUESTS_FETCH = 100
@@ -82,7 +94,7 @@ def library_agent_include(user_id: str) -> prisma.types.LibraryAgentInclude:
     return {
         "AgentGraph": {
             "include": {
-                **AGENT_GRAPH_INCLUDE,
+                **AGENT_GRAPH_INCLUDE_LIGHT,  # Use lightweight includes for performance
                 "Executions": {
                     "where": {"userId": user_id},
                     "order_by": {"createdAt": "desc"},
