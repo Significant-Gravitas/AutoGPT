@@ -284,7 +284,7 @@ class AgentServer(backend.util.service.AppProcess):
             host=config.agent_api_host,
             port=config.agent_api_port,
             log_config=None,
-            workers=config.agent_api_workers,  # Configurable workers for concurrency
+            workers=config.agent_api_workers,
         )
 
     def cleanup(self):

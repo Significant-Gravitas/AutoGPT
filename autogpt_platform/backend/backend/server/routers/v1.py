@@ -296,17 +296,8 @@ def _get_cached_blocks() -> bytes:
     dependencies=[Security(requires_user)],
 )
 async def get_graph_blocks() -> Response:
-    """
-    Get available blocks with optimized performance:
-    - Pre-serialized JSON with orjson (cached)
-    - Automatic gzip compression via middleware for large responses
-    - Client-side caching headers
-    """
-    # Get cached pre-serialized blocks (only expensive on first call)
-    blocks_bytes = _get_cached_blocks()
-
     return Response(
-        content=blocks_bytes,
+        content=_get_cached_blocks(),
         media_type="application/json",
         headers={
             "Cache-Control": "public, max-age=300",  # Cache for 5 minutes
