@@ -71,6 +71,16 @@ async def lifespan_context(app: fastapi.FastAPI):
 
     await backend.data.db.connect()
 
+    # Configure thread pool for better performance with sync operations in async endpoints
+    # Default is 40, increasing to 100 for better I/O-bound performance (inspired by Shippo optimization)
+    try:
+        import anyio.to_thread
+        anyio.to_thread.current_default_thread_limiter().total_tokens = 100
+        logger.info("Thread pool size increased to 100 for better async/sync performance")
+    except (ImportError, AttributeError) as e:
+        logger.warning(f"Could not configure thread pool size: {e}")
+        # Continue without thread pool configuration
+
     # Ensure SDK auto-registration is patched before initializing blocks
     from backend.sdk.registry import AutoRegistry
 

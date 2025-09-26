@@ -24,6 +24,7 @@ from fastapi import (
     Security,
     UploadFile,
 )
+from fastapi.concurrency import run_in_threadpool
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 from typing_extensions import Optional, TypedDict
 
@@ -264,11 +265,10 @@ async def is_onboarding_enabled():
 ########################################################
 
 
-@cached()
-def _get_cached_blocks() -> str:
+def _compute_blocks_sync() -> str:
     """
-    Get cached blocks with thundering herd protection.
-    Serializes once and caches the JSON string.
+    Synchronous function to compute blocks data.
+    This does the heavy lifting: instantiate 226+ blocks, compute costs, serialize.
     """
     from backend.data.credit import get_block_cost
 
@@ -287,6 +287,17 @@ def _get_cached_blocks() -> str:
     return dumps(result)
 
 
+@cached()
+async def _get_cached_blocks() -> str:
+    """
+    Async cached function with thundering herd protection.
+    On cache miss: runs heavy work in thread pool
+    On cache hit: returns cached string immediately (no thread pool needed)
+    """
+    # Only run in thread pool on cache miss - cache hits return immediately
+    return await run_in_threadpool(_compute_blocks_sync)
+
+
 @v1_router.get(
     path="/blocks",
     summary="List available blocks",
@@ -294,8 +305,10 @@ def _get_cached_blocks() -> str:
     dependencies=[Security(requires_user)],
 )
 async def get_graph_blocks() -> Response:
+    # Cache hit: returns immediately, Cache miss: runs in thread pool
+    content = await _get_cached_blocks()
     return Response(
-        content=_get_cached_blocks(),
+        content=content,
         media_type="application/json",
     )
 
