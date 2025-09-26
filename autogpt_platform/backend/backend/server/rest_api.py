@@ -279,12 +279,14 @@ class AgentServer(backend.util.service.AppProcess):
         )
         config = backend.util.settings.Config()
 
+        # Note: Can't use workers with app object directly, only with import strings
+        # For production deployment, use uvicorn CLI with import string and workers
         uvicorn.run(
             server_app,
             host=config.agent_api_host,
             port=config.agent_api_port,
             log_config=None,
-            workers=config.agent_api_workers,
+            workers=1,  # Multiple workers require import string, not app object
         )
 
     def cleanup(self):
