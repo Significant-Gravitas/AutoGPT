@@ -28,6 +28,13 @@ EXECUTION_RESULT_INCLUDE: prisma.types.AgentNodeExecutionInclude = {
 }
 
 MAX_NODE_EXECUTIONS_FETCH = 1000
+MAX_LIBRARY_AGENT_EXECUTIONS_FETCH = 50
+
+# Default limits for potentially large result sets
+MAX_CREDIT_REFUND_REQUESTS_FETCH = 100
+MAX_INTEGRATION_WEBHOOKS_FETCH = 100
+MAX_USER_API_KEYS_FETCH = 500
+MAX_GRAPH_VERSIONS_FETCH = 50
 
 GRAPH_EXECUTION_INCLUDE_WITH_NODES: prisma.types.AgentGraphExecutionInclude = {
     "NodeExecutions": {
@@ -76,7 +83,11 @@ def library_agent_include(user_id: str) -> prisma.types.LibraryAgentInclude:
         "AgentGraph": {
             "include": {
                 **AGENT_GRAPH_INCLUDE,
-                "Executions": {"where": {"userId": user_id}},
+                "Executions": {
+                    "where": {"userId": user_id},
+                    "order_by": {"createdAt": "desc"},
+                    "take": MAX_LIBRARY_AGENT_EXECUTIONS_FETCH,  # Limit recent executions for performance
+                },
             }
         },
         "Creator": True,

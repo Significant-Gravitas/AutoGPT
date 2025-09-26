@@ -71,12 +71,22 @@ async def lifespan_context(app: fastapi.FastAPI):
 
     await backend.data.db.connect()
 
-    # Configure thread pool for better performance with sync operations in async endpoints
-    # Default is 40, increasing to 100 for better I/O-bound performance (inspired by Shippo optimization)
+    # Configure thread pool for FastAPI sync operation performance
+    # CRITICAL: FastAPI automatically runs ALL sync functions in this thread pool:
+    # - Any endpoint defined with 'def' (not async def)
+    # - Any dependency function defined with 'def' (not async def)
+    # - Manual run_in_threadpool() calls (like JWT decoding)
+    # Default pool size is only 40 threads, causing bottlenecks under high concurrency
+    config = backend.util.settings.Config()
     try:
         import anyio.to_thread
-        anyio.to_thread.current_default_thread_limiter().total_tokens = 100
-        logger.info("Thread pool size increased to 100 for better async/sync performance")
+
+        anyio.to_thread.current_default_thread_limiter().total_tokens = (
+            config.fastapi_thread_pool_size
+        )
+        logger.info(
+            f"Thread pool size set to {config.fastapi_thread_pool_size} for sync endpoint/dependency performance"
+        )
     except (ImportError, AttributeError) as e:
         logger.warning(f"Could not configure thread pool size: {e}")
         # Continue without thread pool configuration
@@ -297,16 +307,17 @@ class AgentServer(backend.util.service.AppProcess):
             "log_config": None,
             # Explicitly use uvloop for better performance (if available)
             "loop": "uvloop",
-            # Use httptools for HTTP parsing (if available)  
+            # Use httptools for HTTP parsing (if available)
             "http": "httptools",
         }
-        
+
         # Only add debug in local environment (not supported in all uvicorn versions)
         if config.app_env == backend.util.settings.AppEnvironment.LOCAL:
             import os
+
             # Enable asyncio debug mode via environment variable
             os.environ["PYTHONASYNCIODEBUG"] = "1"
-            
+
         uvicorn.run(**uvicorn_config)
 
     def cleanup(self):

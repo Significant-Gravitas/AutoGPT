@@ -25,6 +25,7 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 from typing_extensions import Optional, TypedDict
 
@@ -279,8 +280,11 @@ def _compute_blocks_sync() -> str:
         block_instance = block_class()
         if not block_instance.disabled:
             costs = get_block_cost(block_instance)
-            # Convert BlockCost objects to dictionaries for JSON serialization
-            costs_dict = [cost.model_dump() for cost in costs]
+            # Convert BlockCost BaseModel objects to dictionaries for JSON serialization
+            costs_dict = [
+                cost.model_dump() if isinstance(cost, BaseModel) else cost
+                for cost in costs
+            ]
             result.append({**block_instance.to_dict(), "costs": costs_dict})
 
     # Use our JSON utility which properly handles complex types through to_dict conversion

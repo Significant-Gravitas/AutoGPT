@@ -80,12 +80,12 @@ class SecurityHeadersMiddleware:
 
         # Extract path from scope
         path = scope["path"]
-        
+
         async def send_wrapper(message: Message) -> None:
             if message["type"] == "http.response.start":
                 # Add security headers to the response
                 headers = dict(message.get("headers", []))
-                
+
                 # Add general security headers
                 headers[b"x-content-type-options"] = b"nosniff"
                 headers[b"x-frame-options"] = b"DENY"
@@ -99,7 +99,9 @@ class SecurityHeadersMiddleware:
                 # Default: Disable caching for all endpoints
                 # Only allow caching for explicitly permitted paths
                 if not self.is_cacheable_path(path):
-                    headers[b"cache-control"] = b"no-store, no-cache, must-revalidate, private"
+                    headers[b"cache-control"] = (
+                        b"no-store, no-cache, must-revalidate, private"
+                    )
                     headers[b"pragma"] = b"no-cache"
                     headers[b"expires"] = b"0"
 

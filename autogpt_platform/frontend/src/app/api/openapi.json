@@ -912,15 +912,7 @@
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": { "additionalProperties": true, "type": "object" },
-                  "type": "array",
-                  "title": "Response Getv1List Available Blocks"
-                }
-              }
-            }
+            "content": { "application/json": { "schema": {} } }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
