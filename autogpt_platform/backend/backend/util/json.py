@@ -11,8 +11,8 @@ from pydantic import BaseModel
 from .type import type_match
 
 # Precompiled regex to remove PostgreSQL-incompatible control characters
-# Removes \u0000-\u0008, \u000B, \u000E-\u001F (keeps tab \u0009, newline \u000A, carriage return \u000D)
-POSTGRES_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0B\x0E-\x1F]")
+# Removes \u0000-\u0008, \u000B-\u000C, \u000E-\u001F, \u007F (keeps tab \u0009, newline \u000A, carriage return \u000D)
+POSTGRES_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]")
 
 
 def to_dict(data) -> dict:
@@ -21,7 +21,9 @@ def to_dict(data) -> dict:
     return jsonable_encoder(data)
 
 
-def dumps(data: Any, *args: Any, indent: int | None = None, **kwargs: Any) -> str:
+def dumps(
+    data: Any, *args: Any, indent: int | None = None, option: int = 0, **kwargs: Any
+) -> str:
     """
     Serialize data to JSON string with automatic conversion of Pydantic models and complex types.
 
@@ -37,8 +39,10 @@ def dumps(data: Any, *args: Any, indent: int | None = None, **kwargs: Any) -> st
         Additional positional arguments
     indent : int | None
         If not None, pretty-print with indentation
+    option : int
+        orjson option flags (default: 0)
     **kwargs : Any
-        Additional keyword arguments (limited options supported)
+        Additional keyword arguments passed to orjson.dumps
 
     Returns
     -------
@@ -55,10 +59,16 @@ def dumps(data: Any, *args: Any, indent: int | None = None, **kwargs: Any) -> st
     """
     serializable_data = to_dict(data)
 
-    option = 0
+    # Handle indent parameter
     if indent is not None or kwargs.get("indent") is not None:
         option |= orjson.OPT_INDENT_2
-    return orjson.dumps(serializable_data, option=option).decode("utf-8")
+
+    # Remove indent from kwargs since orjson doesn't accept it
+    orjson_kwargs = {k: v for k, v in kwargs.items() if k != "indent"}
+
+    return orjson.dumps(serializable_data, option=option, **orjson_kwargs).decode(
+        "utf-8"
+    )
 
 
 T = TypeVar("T")
