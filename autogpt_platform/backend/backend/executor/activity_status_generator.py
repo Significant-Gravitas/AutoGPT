@@ -423,7 +423,6 @@ async def _call_llm_direct(
         credentials=credentials,
         llm_model=LlmModel.GPT4O_MINI,
         prompt=prompt,
-        json_format=False,
         max_tokens=150,
         compress_prompt_to_fit=True,
     )
