@@ -69,11 +69,17 @@ def _create_retry_callback(context: str = ""):
                 f"{type(exception).__name__}: {exception}"
             )
         else:
-            # Retry attempt
-            logger.warning(
-                f"{prefix}Retry attempt {attempt_number} for '{func_name}': "
-                f"{type(exception).__name__}: {exception}"
-            )
+            # Retry attempt - log critical warning only once at threshold-1
+            if attempt_number == EXCESSIVE_RETRY_THRESHOLD - 1:
+                logger.error(
+                    f"{prefix}CRITICAL: Retry attempt {attempt_number} for '{func_name}' approaching failure threshold: "
+                    f"{type(exception).__name__}: {exception}"
+                )
+            else:
+                logger.warning(
+                    f"{prefix}Retry attempt {attempt_number} for '{func_name}': "
+                    f"{type(exception).__name__}: {exception}"
+                )
 
     return callback
 

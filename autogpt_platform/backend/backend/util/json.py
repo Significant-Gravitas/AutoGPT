@@ -1,4 +1,5 @@
 import json
+import re
 from typing import Any, Type, TypeGuard, TypeVar, overload
 
 import jsonschema
@@ -8,6 +9,10 @@ from prisma import Json
 from pydantic import BaseModel
 
 from .type import type_match
+
+# Precompiled regex to remove PostgreSQL-incompatible control characters
+# Removes \u0000-\u0008, \u000B, \u000E-\u001F (keeps tab \u0009, newline \u000A, carriage return \u000D)
+POSTGRES_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0B\x0E-\x1F]")
 
 
 def to_dict(data) -> dict:
@@ -119,5 +124,6 @@ def SafeJson(data: Any) -> Json:
     else:
         json_string = dumps(data, default=lambda v: None)
 
-    sanitized_json = json_string.replace("\u0000", "")
+    # Remove PostgreSQL-incompatible control characters in single regex operation
+    sanitized_json = POSTGRES_CONTROL_CHARS.sub("", json_string)
     return Json(json.loads(sanitized_json))
