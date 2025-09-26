@@ -21,10 +21,10 @@ logger = logging.getLogger(__name__)
 EXCESSIVE_RETRY_THRESHOLD = 50
 
 
-def _send_final_failure_alert(
+def _send_critical_retry_alert(
     func_name: str, attempt_number: int, exception: Exception, context: str = ""
 ):
-    """Send alert when a function finally fails after excessive retries."""
+    """Send alert when a function is approaching the retry failure threshold."""
     try:
         # Import here to avoid circular imports
         from backend.util.clients import get_notification_manager_client
@@ -33,19 +33,19 @@ def _send_final_failure_alert(
 
         prefix = f"{context}: " if context else ""
         alert_msg = (
-            f"🚨 Operation Failed After {attempt_number} Retries: {prefix}'{func_name}'\n\n"
+            f"🚨 CRITICAL: Operation Approaching Failure Threshold: {prefix}'{func_name}'\n\n"
+            f"Current attempt: {attempt_number}/{EXCESSIVE_RETRY_THRESHOLD}\n"
             f"Error: {type(exception).__name__}: {exception}\n\n"
-            f"This indicates a persistent issue that requires investigation. "
-            f"The operation has exhausted all retry attempts and failed."
+            f"This operation is about to fail permanently. Investigate immediately."
         )
 
         notification_client.discord_system_alert(alert_msg)
         logger.critical(
-            f"ALERT SENT: Operation {func_name} failed after {attempt_number} attempts"
+            f"CRITICAL ALERT SENT: Operation {func_name} at attempt {attempt_number}"
         )
 
     except Exception as alert_error:
-        logger.error(f"Failed to send final failure alert: {alert_error}")
+        logger.error(f"Failed to send critical retry alert: {alert_error}")
         # Don't let alerting failures break the main flow
 
 
@@ -60,20 +60,16 @@ def _create_retry_callback(context: str = ""):
         prefix = f"{context}: " if context else ""
 
         if retry_state.outcome.failed and retry_state.next_action is None:
-            # Final failure - send alert if we exceeded the threshold
-            if attempt_number >= EXCESSIVE_RETRY_THRESHOLD:
-                _send_final_failure_alert(func_name, attempt_number, exception, context)
-
+            # Final failure - just log the error (alert was already sent at attempt 49)
             logger.error(
                 f"{prefix}Giving up after {attempt_number} attempts for '{func_name}': "
                 f"{type(exception).__name__}: {exception}"
             )
         else:
-            # Retry attempt - log critical warning only once at threshold-1
+            # Retry attempt - send critical alert only once at threshold-1
             if attempt_number == EXCESSIVE_RETRY_THRESHOLD - 1:
-                logger.error(
-                    f"{prefix}CRITICAL: Retry attempt {attempt_number} for '{func_name}' approaching failure threshold: "
-                    f"{type(exception).__name__}: {exception}"
+                _send_critical_retry_alert(
+                    func_name, attempt_number, exception, context
                 )
             else:
                 logger.warning(
