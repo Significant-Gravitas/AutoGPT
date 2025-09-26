@@ -55,6 +55,7 @@ export function AgentRunDraftView({
   doCreateSchedule: _doCreateSchedule,
   onCreateSchedule,
   agentActions,
+  runCount,
   className,
   recommendedScheduleCron,
 }: {
@@ -73,6 +74,7 @@ export function AgentRunDraftView({
     credentialsInputs: Record<string, CredentialsMetaInput>,
   ) => Promise<void>;
   onCreateSchedule?: (schedule: Schedule) => void;
+  runCount: number;
   className?: string;
 } & (
   | {
@@ -198,6 +200,9 @@ export function AgentRunDraftView({
     if (onboardingState?.completedSteps.includes("MARKETPLACE_ADD_AGENT")) {
       completeOnboardingStep("MARKETPLACE_RUN_AGENT");
     }
+    if (runCount > 0) {
+      completeOnboardingStep("RE_RUN_AGENT");
+    }
   }, [
     api,
     graph,
@@ -319,11 +324,6 @@ export function AgentRunDraftView({
         setChangedPresetAttributes(new Set()); // reset change tracker
       })
       .catch(toastOnFail("set up agent trigger"));
-
-    // Mark run agent onboarding step as completed(?)
-    if (onboardingState?.completedSteps.includes("MARKETPLACE_ADD_AGENT")) {
-      completeOnboardingStep("MARKETPLACE_RUN_AGENT");
-    }
   }, [
     api,
     graph,

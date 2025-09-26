@@ -1,19 +1,13 @@
 "use client";
 
-import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import FlowEditor from "@/app/(platform)/build/components/legacy-builder/Flow/Flow";
 import LoadingBox from "@/components/__legacy__/ui/loading";
 import { GraphID } from "@/lib/autogpt-server-api/types";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect } from "react";
+import { Suspense } from "react";
 
 function BuilderContent() {
   const query = useSearchParams();
-  const { completeStep } = useOnboarding();
-
-  useEffect(() => {
-    completeStep("BUILDER_OPEN");
-  }, [completeStep]);
 
   const _graphVersion = query.get("flowVersion");
   const graphVersion = _graphVersion ? parseInt(_graphVersion) : undefined;

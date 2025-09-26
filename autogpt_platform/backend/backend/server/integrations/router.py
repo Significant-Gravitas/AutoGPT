@@ -32,6 +32,7 @@ from backend.data.model import (
     OAuth2Credentials,
     UserIntegrations,
 )
+from backend.data.onboarding import complete_webhook_trigger_step
 from backend.data.user import get_user_integrations
 from backend.executor.utils import add_graph_execution
 from backend.integrations.ayrshare import AyrshareClient, SocialPlatform
@@ -367,6 +368,8 @@ async def webhook_ingress_generic(
         return
 
     executions: list[Awaitable] = []
+    await complete_webhook_trigger_step(user_id)
+
     for node in webhook.triggered_nodes:
         logger.debug(f"Webhook-attached node: {node}")
         if not node.is_triggered_by_event_type(event_type):

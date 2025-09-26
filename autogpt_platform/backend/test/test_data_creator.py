@@ -471,7 +471,7 @@ async def main():
                 data={
                     "userId": user.id,
                     "completedSteps": completed_steps,
-                    "notificationDot": random.choice([True, False]),
+                    "walletShown": random.choice([True, False]),
                     "notified": (
                         random.sample(completed_steps, k=min(3, len(completed_steps)))
                         if completed_steps
