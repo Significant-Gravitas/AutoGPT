@@ -105,38 +105,19 @@ def convert_pydantic_to_json(output_data: Any) -> Any:
     return output_data
 
 
-def _sanitize_null_bytes(data: Any) -> Any:
-    """
-    Recursively sanitize null bytes from data structures to prevent PostgreSQL 22P05 errors.
-    PostgreSQL cannot store null bytes (\u0000) in text fields.
-    """
-    if isinstance(data, str):
-        return data.replace("\u0000", "")
-    elif isinstance(data, dict):
-        return {key: _sanitize_null_bytes(value) for key, value in data.items()}
-    elif isinstance(data, list):
-        return [_sanitize_null_bytes(item) for item in data]
-    elif isinstance(data, tuple):
-        return tuple(_sanitize_null_bytes(item) for item in data)
-    else:
-        # For other types (int, float, bool, None, etc.), return as-is
-        return data
-
-
 def SafeJson(data: Any) -> Json:
     """
     Safely serialize data and return Prisma's Json type.
     Sanitizes null bytes to prevent PostgreSQL 22P05 errors.
     """
-    if isinstance(_sanitize_null_bytes(data), BaseModel):
-        return Json(
-            _sanitize_null_bytes(data).model_dump(
-                mode="json",
-                warnings="error",
-                exclude_none=True,
-                fallback=lambda v: None,
-            )
+    if isinstance(data, BaseModel):
+        json_string = data.model_dump_json(
+            warnings="error",
+            exclude_none=True,
+            fallback=lambda v: None,
         )
-    # Round-trip through JSON to ensure proper serialization with fallback for non-serializable values
-    json_string = dumps(_sanitize_null_bytes(data), default=lambda v: None)
-    return Json(json.loads(json_string))
+    else:
+        json_string = dumps(data, default=lambda v: None)
+
+    sanitized_json = json_string.replace("\u0000", "")
+    return Json(json.loads(sanitized_json))
