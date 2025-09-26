@@ -42,7 +42,7 @@ def dumps(
     option : int
         orjson option flags (default: 0)
     **kwargs : Any
-        Additional keyword arguments passed to orjson.dumps
+        Additional keyword arguments. Supported: default, ensure_ascii, separators, indent
 
     Returns
     -------
@@ -63,8 +63,11 @@ def dumps(
     if indent is not None or kwargs.get("indent") is not None:
         option |= orjson.OPT_INDENT_2
 
-    # Remove indent from kwargs since orjson doesn't accept it
-    orjson_kwargs = {k: v for k, v in kwargs.items() if k != "indent"}
+    # orjson only accepts specific parameters, filter out stdlib json params
+    # ensure_ascii: orjson always produces UTF-8 (better than ASCII)
+    # separators: orjson uses compact separators by default  
+    supported_orjson_params = {"default"}
+    orjson_kwargs = {k: v for k, v in kwargs.items() if k in supported_orjson_params}
 
     return orjson.dumps(serializable_data, option=option, **orjson_kwargs).decode(
         "utf-8"
