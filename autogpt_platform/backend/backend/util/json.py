@@ -16,7 +16,7 @@ def to_dict(data) -> dict:
     return jsonable_encoder(data)
 
 
-def dumps(data: Any, *args: Any, **kwargs: Any) -> str:
+def dumps(data: Any, *args: Any, indent: int | None = None, **kwargs: Any) -> str:
     """
     Serialize data to JSON string with automatic conversion of Pydantic models and complex types.
 
@@ -30,6 +30,8 @@ def dumps(data: Any, *args: Any, **kwargs: Any) -> str:
         The data to serialize. Can be any type including Pydantic models, dicts, lists, etc.
     *args : Any
         Additional positional arguments
+    indent : int | None
+        If not None, pretty-print with indentation
     **kwargs : Any
         Additional keyword arguments (limited options supported)
 
@@ -49,7 +51,7 @@ def dumps(data: Any, *args: Any, **kwargs: Any) -> str:
     serializable_data = to_dict(data)
 
     option = 0
-    if kwargs.get("indent") is not None:
+    if indent is not None or kwargs.get("indent") is not None:
         option |= orjson.OPT_INDENT_2
     return orjson.dumps(serializable_data, option=option).decode("utf-8")
 
