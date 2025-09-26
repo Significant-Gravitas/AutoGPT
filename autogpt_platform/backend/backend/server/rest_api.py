@@ -289,12 +289,25 @@ class AgentServer(backend.util.service.AppProcess):
         )
         config = backend.util.settings.Config()
 
-        uvicorn.run(
-            server_app,
-            host=config.agent_api_host,
-            port=config.agent_api_port,
-            log_config=None,
-        )
+        # Configure uvicorn with performance optimizations from Kludex FastAPI tips
+        uvicorn_config = {
+            "app": server_app,
+            "host": config.agent_api_host,
+            "port": config.agent_api_port,
+            "log_config": None,
+            # Explicitly use uvloop for better performance (if available)
+            "loop": "uvloop",
+            # Use httptools for HTTP parsing (if available)  
+            "http": "httptools",
+        }
+        
+        # Only add debug in local environment (not supported in all uvicorn versions)
+        if config.app_env == backend.util.settings.AppEnvironment.LOCAL:
+            import os
+            # Enable asyncio debug mode via environment variable
+            os.environ["PYTHONASYNCIODEBUG"] = "1"
+            
+        uvicorn.run(**uvicorn_config)
 
     def cleanup(self):
         super().cleanup()
