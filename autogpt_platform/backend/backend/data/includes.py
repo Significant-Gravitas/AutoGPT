@@ -3,7 +3,6 @@ from typing import Sequence, cast
 import prisma.enums
 import prisma.types
 
-# Full node includes for detailed views (graph editing, execution details)
 AGENT_NODE_INCLUDE: prisma.types.AgentNodeInclude = {
     "Input": True,
     "Output": True,
@@ -11,20 +10,10 @@ AGENT_NODE_INCLUDE: prisma.types.AgentNodeInclude = {
     "AgentBlock": True,
 }
 
-# Lightweight node includes for library listings (performance optimized)
-AGENT_NODE_INCLUDE_LIGHT: prisma.types.AgentNodeInclude = {
-    # Only include essential block info, skip heavy Input/Output/Webhook data
-    "AgentBlock": True,
-}
-
 AGENT_GRAPH_INCLUDE: prisma.types.AgentGraphInclude = {
     "Nodes": {"include": AGENT_NODE_INCLUDE}
 }
 
-# Lightweight graph include for library listings
-AGENT_GRAPH_INCLUDE_LIGHT: prisma.types.AgentGraphInclude = {
-    "Nodes": {"include": AGENT_NODE_INCLUDE_LIGHT}
-}
 
 EXECUTION_RESULT_ORDER: list[prisma.types.AgentNodeExecutionOrderByInput] = [
     {"queuedTime": "desc"},
@@ -94,7 +83,6 @@ def library_agent_include(
     user_id: str,
     include_nodes: bool = True,
     include_executions: bool = True,
-    include_full_nodes: bool = False,
     execution_limit: int = MAX_LIBRARY_AGENT_EXECUTIONS_FETCH,
 ) -> prisma.types.LibraryAgentInclude:
     """
@@ -104,7 +92,6 @@ def library_agent_include(
         user_id: User ID for filtering user-specific data
         include_nodes: Whether to include graph nodes (default: True, needed for get_sub_graphs)
         include_executions: Whether to include executions (default: True, safe with execution_limit)
-        include_full_nodes: Whether to include full node data vs lightweight (default: False for performance)
         execution_limit: Limit on executions to fetch (default: MAX_LIBRARY_AGENT_EXECUTIONS_FETCH)
 
     Defaults maintain backward compatibility and safety - includes everything needed for all functionality.
@@ -112,9 +99,8 @@ def library_agent_include(
     for listing views where frontend fetches data separately.
 
     Performance impact:
-    - Default (lightweight nodes + limited executions): Original performance, works everywhere
-    - Listing optimization (no nodes/executions): ~2s for 15 agents
-    - Full nodes: 30s timeout risk (167+ nodes with nested Input/Output/Webhook data)
+    - Default (full nodes + limited executions): Original performance, works everywhere
+    - Listing optimization (no nodes/executions): ~2s for 15 agents vs potential timeouts
     - Unlimited executions: varies by user (thousands of executions = timeouts)
     """
     result: prisma.types.LibraryAgentInclude = {
@@ -125,14 +111,9 @@ def library_agent_include(
     if include_nodes or include_executions:
         agent_graph_include = {}
 
-        # Add nodes if requested
+        # Add nodes if requested (always full nodes)
         if include_nodes:
-            if include_full_nodes:
-                agent_graph_include.update(AGENT_GRAPH_INCLUDE)  # Full nodes
-            else:
-                agent_graph_include.update(
-                    AGENT_GRAPH_INCLUDE_LIGHT
-                )  # Lightweight nodes
+            agent_graph_include.update(AGENT_GRAPH_INCLUDE)  # Full nodes
 
         # Add executions if requested
         if include_executions:
