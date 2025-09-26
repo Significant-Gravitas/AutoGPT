@@ -501,11 +501,62 @@ async def create_post(
     raise ValueError(f"Failed to create post: {response.status} - {error_message}")
 
 
+class PostListItem(BaseModel):
+    """Response model for individual posts in a posts list response.
+
+    This is a simplified version compared to PostResponse, as the list endpoint
+    returns less detailed information than the create/get single post endpoints.
+    """
+
+    ID: int
+    site_ID: int
+    author: PostAuthor
+    date: datetime
+    modified: datetime
+    title: str
+    URL: str
+    short_URL: str
+    content: str | None = None
+    excerpt: str | None = None
+    slug: str
+    guid: str
+    status: str
+    sticky: bool
+    password: str | None = ""
+    parent: Union[Dict[str, Any], bool, None] = None
+    type: str
+    discussion: Dict[str, Union[str, bool, int]] | None = None
+    likes_enabled: bool | None = None
+    sharing_enabled: bool | None = None
+    like_count: int | None = None
+    i_like: bool | None = None
+    is_reblogged: bool | None = None
+    is_following: bool | None = None
+    global_ID: str | None = None
+    featured_image: str | None = None
+    post_thumbnail: Dict[str, Any] | None = None
+    format: str | None = None
+    geo: Union[Dict[str, Any], bool, None] = None
+    menu_order: int | None = None
+    page_template: str | None = None
+    publicize_URLs: List[str] | None = None
+    terms: Dict[str, Dict[str, Any]] | None = None
+    tags: Dict[str, Dict[str, Any]] | None = None
+    categories: Dict[str, Dict[str, Any]] | None = None
+    attachments: Dict[str, Dict[str, Any]] | None = None
+    attachment_count: int | None = None
+    metadata: List[Dict[str, Any]] | None = None
+    meta: Dict[str, Any] | None = None
+    capabilities: Dict[str, bool] | None = None
+    revisions: List[int] | None = None
+    other_URLs: Dict[str, Any] | None = None
+
+
 class PostsResponse(BaseModel):
     """Response model for WordPress posts list."""
 
     found: int
-    posts: List[PostResponse]
+    posts: List[PostListItem]
     meta: Dict[str, Any]
 
 

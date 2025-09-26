@@ -10,6 +10,7 @@ from backend.sdk import (
 
 from ._api import (
     CreatePostRequest,
+    PostListItem,
     PostResponse,
     PostsResponse,
     PostStatus,
