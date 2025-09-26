@@ -92,8 +92,8 @@ INTEGRATION_WEBHOOK_INCLUDE: prisma.types.IntegrationWebhookInclude = {
 
 def library_agent_include(
     user_id: str,
-    include_nodes: bool = False,
-    include_executions: bool = False,
+    include_nodes: bool = True,
+    include_executions: bool = True,
     include_full_nodes: bool = False,
     execution_limit: int = MAX_LIBRARY_AGENT_EXECUTIONS_FETCH,
 ) -> prisma.types.LibraryAgentInclude:
@@ -102,19 +102,20 @@ def library_agent_include(
 
     Args:
         user_id: User ID for filtering user-specific data
-        include_nodes: Whether to include graph nodes (default: False for performance)
-        include_executions: Whether to include executions (default: False, usually fetched separately)
+        include_nodes: Whether to include graph nodes (default: True, needed for get_sub_graphs)
+        include_executions: Whether to include executions (default: True, safe with execution_limit)
         include_full_nodes: Whether to include full node data vs lightweight (default: False for performance)
         execution_limit: Limit on executions to fetch (default: MAX_LIBRARY_AGENT_EXECUTIONS_FETCH)
 
-    Defaults are optimized for library listing/detail views - only basic metadata.
-    Frontend typically fetches nodes/executions separately via dedicated endpoints.
+    Defaults maintain backward compatibility and safety - includes everything needed for all functionality.
+    For performance optimization, explicitly set include_nodes=False and include_executions=False
+    for listing views where frontend fetches data separately.
 
     Performance impact:
-    - Basic only: ~2s for 15 agents
-    - With lightweight nodes: ~5s
-    - With full nodes: 30s timeout (167+ nodes with nested Input/Output/Webhook data)
-    - With executions: varies by user (thousands of executions = timeouts)
+    - Default (lightweight nodes + limited executions): Original performance, works everywhere
+    - Listing optimization (no nodes/executions): ~2s for 15 agents
+    - Full nodes: 30s timeout risk (167+ nodes with nested Input/Output/Webhook data)
+    - Unlimited executions: varies by user (thousands of executions = timeouts)
     """
     result: prisma.types.LibraryAgentInclude = {
         "Creator": True,  # Always needed for creator info
