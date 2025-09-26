@@ -190,12 +190,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for agent server API to run on",
     )
 
-    agent_api_workers: int = Field(
-        default=8,
-        ge=1,
-        le=32,
-        description="Number of uvicorn workers for the agent server API (optimal for I/O-bound workloads like /api/blocks)",
-    )
 
     notification_service_port: int = Field(
         default=8007,

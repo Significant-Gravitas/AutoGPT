@@ -268,26 +268,22 @@ async def health():
     return {"status": "healthy"}
 
 
-# Configure CORS middleware at module level so it's available via import string
-server_app = starlette.middleware.cors.CORSMiddleware(
-    app=app,
-    allow_origins=settings.config.backend_cors_allow_origins,
-    allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
-)
-
 class AgentServer(backend.util.service.AppProcess):
     def run(self):
+        server_app = starlette.middleware.cors.CORSMiddleware(
+            app=app,
+            allow_origins=settings.config.backend_cors_allow_origins,
+            allow_credentials=True,
+            allow_methods=["*"],  # Allows all methods
+            allow_headers=["*"],  # Allows all headers
+        )
         config = backend.util.settings.Config()
 
-        # Use import string for multiple workers (uvicorn limitation)
         uvicorn.run(
-            "backend.server.rest_api:server_app",
+            server_app,
             host=config.agent_api_host,
             port=config.agent_api_port,
             log_config=None,
-            workers=config.agent_api_workers,
         )
 
     def cleanup(self):
