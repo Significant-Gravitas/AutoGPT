@@ -278,14 +278,10 @@ class AgentServer(backend.util.service.AppProcess):
             allow_methods=["*"],  # Allows all methods
             allow_headers=["*"],  # Allows all headers
         )
-        # Determine optimal worker count for environment
-        # In Kubernetes/containers, use 1 worker per replica for better resource utilization
-        # In development/bare metal, use multiple workers for concurrency
-        workers = int(
-            os.getenv(
-                "UVICORN_WORKERS", "1" if os.getenv("KUBERNETES_SERVICE_HOST") else "4"
-            )
-        )
+        # Use multiple workers for better concurrency handling
+        # Default to 4 workers to handle concurrent requests (like 100+ VUs)
+        # Can be overridden with UVICORN_WORKERS env var
+        workers = int(os.getenv("UVICORN_WORKERS", "4"))
 
         uvicorn.run(
             server_app,
@@ -293,7 +289,6 @@ class AgentServer(backend.util.service.AppProcess):
             port=backend.util.settings.Config().agent_api_port,
             log_config=None,
             workers=workers,  # Environment-aware worker count
-            worker_class="uvicorn.workers.UvicornWorker",  # Explicit worker class
             loop="asyncio",  # Optimal event loop for async workloads
             http="httptools",  # Faster HTTP parser than h11 (included in uvicorn[standard])
             access_log=False,  # Disable access logs for better performance
