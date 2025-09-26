@@ -66,8 +66,8 @@ def _create_retry_callback(context: str = ""):
                 f"{type(exception).__name__}: {exception}"
             )
         else:
-            # Retry attempt - send critical alert only once at threshold-1
-            if attempt_number == EXCESSIVE_RETRY_THRESHOLD - 1:
+            # Retry attempt - send critical alert only once at threshold
+            if attempt_number == EXCESSIVE_RETRY_THRESHOLD:
                 _send_critical_retry_alert(
                     func_name, attempt_number, exception, context
                 )
