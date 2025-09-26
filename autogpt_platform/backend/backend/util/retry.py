@@ -17,6 +17,37 @@ from backend.util.process import get_service_name
 
 logger = logging.getLogger(__name__)
 
+# Alert threshold for excessive retries
+EXCESSIVE_RETRY_THRESHOLD = 50
+
+
+def _send_retry_alert(
+    func_name: str, attempt_number: int, exception: Exception, context: str = ""
+):
+    """Send alert for excessive retry attempts."""
+    try:
+        # Import here to avoid circular imports
+        from backend.util.clients import get_notification_manager_client
+
+        notification_client = get_notification_manager_client()
+
+        prefix = f"{context}: " if context else ""
+        alert_msg = (
+            f"🚨 Excessive Retry Alert: {prefix}'{func_name}' has failed {attempt_number} times!\n\n"
+            f"Error: {type(exception).__name__}: {exception}\n\n"
+            f"This indicates a persistent issue that requires investigation. "
+            f"The operation has been retrying for an extended period."
+        )
+
+        notification_client.discord_system_alert(alert_msg)
+        logger.critical(
+            f"ALERT SENT: Excessive retries detected for {func_name} after {attempt_number} attempts"
+        )
+
+    except Exception as alert_error:
+        logger.error(f"Failed to send retry alert: {alert_error}")
+        # Don't let alerting failures break the main flow
+
 
 def _create_retry_callback(context: str = ""):
     """Create a retry callback with optional context."""
@@ -27,6 +58,10 @@ def _create_retry_callback(context: str = ""):
         func_name = getattr(retry_state.fn, "__name__", "unknown")
 
         prefix = f"{context}: " if context else ""
+
+        # Send alert if we've exceeded the threshold
+        if attempt_number >= EXCESSIVE_RETRY_THRESHOLD:
+            _send_retry_alert(func_name, attempt_number, exception, context)
 
         if retry_state.outcome.failed and retry_state.next_action is None:
             # Final failure
@@ -103,6 +138,13 @@ def conn_retry(
     def on_retry(retry_state):
         prefix = _log_prefix(resource_name, conn_id)
         exception = retry_state.outcome.exception()
+        attempt_number = retry_state.attempt_number
+
+        # Send alert if we've exceeded the threshold
+        if attempt_number >= EXCESSIVE_RETRY_THRESHOLD:
+            func_name = f"{resource_name}:{action_name}"
+            context = f"Connection retry {resource_name}"
+            _send_retry_alert(func_name, attempt_number, exception, context)
 
         if retry_state.outcome.failed and retry_state.next_action is None:
             logger.error(f"{prefix} {action_name} failed after retries: {exception}")
