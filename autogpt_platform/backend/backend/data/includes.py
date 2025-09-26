@@ -90,10 +90,60 @@ INTEGRATION_WEBHOOK_INCLUDE: prisma.types.IntegrationWebhookInclude = {
 }
 
 
-def library_agent_include(user_id: str) -> prisma.types.LibraryAgentInclude:
-    return {
-        "AgentGraph": True,  # Just basic graph metadata (name, description, id)
-        "Creator": True,  # Creator info for avatar
-        # NO NODES: Not needed for library listing view
-        # NO EXECUTIONS: Not used by frontend for library listing
+def library_agent_include(
+    user_id: str,
+    include_nodes: bool = False,
+    include_executions: bool = False,
+    include_full_nodes: bool = False,
+    execution_limit: int = MAX_LIBRARY_AGENT_EXECUTIONS_FETCH,
+) -> prisma.types.LibraryAgentInclude:
+    """
+    Fully configurable includes for library agent queries with performance optimization.
+
+    Args:
+        user_id: User ID for filtering user-specific data
+        include_nodes: Whether to include graph nodes (default: False for performance)
+        include_executions: Whether to include executions (default: False, usually fetched separately)
+        include_full_nodes: Whether to include full node data vs lightweight (default: False for performance)
+        execution_limit: Limit on executions to fetch (default: MAX_LIBRARY_AGENT_EXECUTIONS_FETCH)
+
+    Defaults are optimized for library listing/detail views - only basic metadata.
+    Frontend typically fetches nodes/executions separately via dedicated endpoints.
+
+    Performance impact:
+    - Basic only: ~2s for 15 agents
+    - With lightweight nodes: ~5s
+    - With full nodes: 30s timeout (167+ nodes with nested Input/Output/Webhook data)
+    - With executions: varies by user (thousands of executions = timeouts)
+    """
+    result: prisma.types.LibraryAgentInclude = {
+        "Creator": True,  # Always needed for creator info
     }
+
+    # Build AgentGraph include based on requested options
+    if include_nodes or include_executions:
+        agent_graph_include = {}
+
+        # Add nodes if requested
+        if include_nodes:
+            if include_full_nodes:
+                agent_graph_include.update(AGENT_GRAPH_INCLUDE)  # Full nodes
+            else:
+                agent_graph_include.update(
+                    AGENT_GRAPH_INCLUDE_LIGHT
+                )  # Lightweight nodes
+
+        # Add executions if requested
+        if include_executions:
+            agent_graph_include["Executions"] = {
+                "where": {"userId": user_id},
+                "order_by": {"createdAt": "desc"},
+                "take": execution_limit,
+            }
+
+        result["AgentGraph"] = {"include": agent_graph_include}  # type: ignore
+    else:
+        # Default: Basic metadata only (fast - recommended for most use cases)
+        result["AgentGraph"] = True  # Basic graph metadata (name, description, id)
+
+    return result
