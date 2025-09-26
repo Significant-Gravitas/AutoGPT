@@ -65,7 +65,7 @@ def dumps(
 
     # orjson only accepts specific parameters, filter out stdlib json params
     # ensure_ascii: orjson always produces UTF-8 (better than ASCII)
-    # separators: orjson uses compact separators by default  
+    # separators: orjson uses compact separators by default
     supported_orjson_params = {"default"}
     orjson_kwargs = {k: v for k, v in kwargs.items() if k in supported_orjson_params}
 
