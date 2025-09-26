@@ -67,7 +67,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     # - Manually called run_in_threadpool() operations
     # Default thread pool size is only 40, which becomes a bottleneck under high concurrency
     fastapi_thread_pool_size: int = Field(
-        default=64,
+        default=40,
         ge=40,
         le=500,
         description="Thread pool size for FastAPI sync operations. All sync endpoints and dependencies automatically use this pool. Higher values support more concurrent sync operations but use more memory.",
