@@ -285,7 +285,6 @@ def _get_cached_blocks() -> bytes:
             costs = get_block_cost(block_instance)
             result.append({**block_instance.to_dict(), "costs": costs})
 
-    # Pre-serialize with orjson for faster response times
     return orjson.dumps(result)
 
 

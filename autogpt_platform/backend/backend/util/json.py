@@ -22,16 +22,16 @@ def dumps(data: Any, *args: Any, **kwargs: Any) -> str:
 
     This function converts the input data to a JSON-serializable format using FastAPI's
     jsonable_encoder before dumping to JSON. It handles Pydantic models, complex types,
-    and ensures proper serialization. Uses orjson for high performance.
+    and ensures proper serialization.
 
     Parameters
     ----------
     data : Any
         The data to serialize. Can be any type including Pydantic models, dicts, lists, etc.
     *args : Any
-        Additional positional arguments (ignored with orjson)
+        Additional positional arguments
     **kwargs : Any
-        Additional keyword arguments (limited support with orjson)
+        Additional keyword arguments (limited options supported)
 
     Returns
     -------
@@ -48,11 +48,9 @@ def dumps(data: Any, *args: Any, **kwargs: Any) -> str:
     """
     serializable_data = to_dict(data)
 
-    # orjson is faster but has limited options support
     option = 0
     if kwargs.get("indent") is not None:
         option |= orjson.OPT_INDENT_2
-    # orjson.dumps returns bytes, so we decode to str
     return orjson.dumps(serializable_data, option=option).decode("utf-8")
 
 
@@ -70,7 +68,6 @@ def loads(data: str | bytes, *args, **kwargs) -> Any: ...
 def loads(
     data: str | bytes, *args, target_type: Type[T] | None = None, **kwargs
 ) -> Any:
-    # orjson can handle both str and bytes directly
     parsed = orjson.loads(data)
 
     if target_type:
