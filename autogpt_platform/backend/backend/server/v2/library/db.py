@@ -306,9 +306,7 @@ async def get_library_agent_by_store_version_id(
             "agentGraphVersion": store_listing_version.agentGraphVersion,
             "isDeleted": False,
         },
-        include=library_agent_include(
-            user_id, include_nodes=False, include_executions=False
-        ),
+        include=library_agent_include(user_id),
     )
     return library_model.LibraryAgent.from_db(agent) if agent else None
 
