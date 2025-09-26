@@ -194,7 +194,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=8,
         ge=1,
         le=32,
-        description="Number of uvicorn workers for the agent server API (only used in production deployment with import string, not direct app object)",
+        description="Number of uvicorn workers for the agent server API (optimal for I/O-bound workloads like /api/blocks)",
     )
 
     notification_service_port: int = Field(
