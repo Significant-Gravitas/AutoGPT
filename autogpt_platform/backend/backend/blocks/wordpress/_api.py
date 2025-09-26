@@ -499,3 +499,64 @@ async def create_post(
     )
     error_message = error_data.get("message", response.text)
     raise ValueError(f"Failed to create post: {response.status} - {error_message}")
+
+
+class PostsResponse(BaseModel):
+    """Response model for WordPress posts list."""
+
+    found: int
+    posts: List[PostResponse]
+    meta: Dict[str, Any]
+
+
+async def get_posts(
+    credentials: Credentials,
+    site: str,
+    status: str | None = None,
+    number: int = 100,
+    offset: int = 0,
+) -> PostsResponse:
+    """
+    Get posts from a WordPress site.
+
+    Args:
+        credentials: OAuth credentials
+        site: Site ID or domain (e.g., "myblog.wordpress.com" or "123456789")
+        status: Filter by post status (e.g., "publish", "draft", "pending", etc.)
+        number: Number of posts to retrieve (max 100)
+        offset: Number of posts to skip (for pagination)
+
+    Returns:
+        PostsResponse with the list of posts
+    """
+
+    endpoint = f"/rest/v1.1/sites/{site}/posts"
+
+    headers = {
+        "Authorization": credentials.auth_header(),
+    }
+
+    params: Dict[str, Any] = {
+        "number": min(number, 100),  # Max 100 posts per request
+        "offset": offset,
+    }
+
+    if status:
+        params["status"] = status
+
+    response = await Requests().get(
+        f"{WORDPRESS_BASE_URL.rstrip('/')}{endpoint}",
+        headers=headers,
+        params=params,
+    )
+
+    if response.ok:
+        return PostsResponse.model_validate(response.json())
+
+    error_data = (
+        response.json()
+        if response.headers.get("content-type", "").startswith("application/json")
+        else {}
+    )
+    error_message = error_data.get("message", response.text)
+    raise ValueError(f"Failed to get posts: {response.status} - {error_message}")

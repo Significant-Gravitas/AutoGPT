@@ -8,7 +8,14 @@ from backend.sdk import (
     SchemaField,
 )
 
-from ._api import CreatePostRequest, PostResponse, PostStatus, create_post
+from ._api import (
+    CreatePostRequest,
+    PostResponse,
+    PostsResponse,
+    PostStatus,
+    create_post,
+    get_posts,
+)
 from ._config import wordpress
 
 
@@ -48,6 +55,10 @@ class WordPressCreatePostBlock(Block):
         media_urls: list[str] = SchemaField(
             description="URLs of images to sideload and attach to the post", default=[]
         )
+        publish_as_draft: bool = SchemaField(
+            description="If True, publishes the post as a draft. If False, publishes it publicly.",
+            default=False,
+        )
 
     class Output(BlockSchema):
         post_id: int = SchemaField(description="The ID of the created post")
@@ -77,7 +88,9 @@ class WordPressCreatePostBlock(Block):
             tags=input_data.tags,
             featured_image=input_data.featured_image,
             media_urls=input_data.media_urls,
-            status=PostStatus.PUBLISH,
+            status=(
+                PostStatus.DRAFT if input_data.publish_as_draft else PostStatus.PUBLISH
+            ),
         )
 
         post_response: PostResponse = await create_post(
@@ -90,3 +103,55 @@ class WordPressCreatePostBlock(Block):
         yield "post_url", post_response.URL
         yield "short_url", post_response.short_URL
         yield "post_data", post_response.model_dump()
+
+
+class WordPressGetAllPostsBlock(Block):
+    """
+    Fetches all posts from a WordPress.com site or Jetpack-enabled site.
+    Supports filtering by status and pagination.
+    """
+
+    class Input(BlockSchema):
+        credentials: CredentialsMetaInput = wordpress.credentials_field()
+        site: str = SchemaField(
+            description="Site ID or domain (e.g., 'myblog.wordpress.com' or '123456789')"
+        )
+        status: str | None = SchemaField(
+            description="Filter by post status: 'publish', 'draft', 'pending', 'private', 'future', 'auto-draft', or None for all",
+            default=None,
+        )
+        number: int = SchemaField(
+            description="Number of posts to retrieve (max 100 per request)", default=20
+        )
+        offset: int = SchemaField(
+            description="Number of posts to skip (for pagination)", default=0
+        )
+
+    class Output(BlockSchema):
+        found: int = SchemaField(description="Total number of posts found")
+        posts: list[dict] = SchemaField(
+            description="List of post objects with their details"
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="b3e0c4d1-7f9a-4b2e-8c5d-1a2b3c4d5e6f",
+            description="Fetch all posts from WordPress.com or Jetpack sites",
+            categories={BlockCategory.SOCIAL},
+            input_schema=self.Input,
+            output_schema=self.Output,
+        )
+
+    async def run(
+        self, input_data: Input, *, credentials: Credentials, **kwargs
+    ) -> BlockOutput:
+        posts_response: PostsResponse = await get_posts(
+            credentials=credentials,
+            site=input_data.site,
+            status=input_data.status,
+            number=input_data.number,
+            offset=input_data.offset,
+        )
+
+        yield "found", posts_response.found
+        yield "posts", [post.model_dump() for post in posts_response.posts]
