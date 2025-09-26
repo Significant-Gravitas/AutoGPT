@@ -278,20 +278,17 @@ class AgentServer(backend.util.service.AppProcess):
             allow_methods=["*"],  # Allows all methods
             allow_headers=["*"],  # Allows all headers
         )
-        # Use multiple workers for better concurrency handling
-        # Default to 4 workers to handle concurrent requests (like 100+ VUs)
-        # Can be overridden with UVICORN_WORKERS env var
+        config = backend.util.settings.Config()
+
+        # Use multiple workers for better concurrency handling (100+ VUs)
         workers = int(os.getenv("UVICORN_WORKERS", "4"))
 
         uvicorn.run(
             server_app,
-            host=backend.util.settings.Config().agent_api_host,
-            port=backend.util.settings.Config().agent_api_port,
+            host=config.agent_api_host,
+            port=config.agent_api_port,
             log_config=None,
-            workers=workers,  # Environment-aware worker count
-            loop="asyncio",  # Optimal event loop for async workloads
-            http="httptools",  # Faster HTTP parser than h11 (included in uvicorn[standard])
-            access_log=False,  # Disable access logs for better performance
+            workers=workers,  # Multiple workers for concurrency
         )
 
     def cleanup(self):
