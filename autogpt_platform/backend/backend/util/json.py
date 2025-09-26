@@ -8,6 +8,13 @@ from pydantic import BaseModel
 
 from .type import type_match
 
+# Try to import orjson for better performance
+try:
+    import orjson
+    HAS_ORJSON = True
+except ImportError:
+    HAS_ORJSON = False
+
 
 def to_dict(data) -> dict:
     if isinstance(data, BaseModel):
@@ -21,16 +28,16 @@ def dumps(data: Any, *args: Any, **kwargs: Any) -> str:
 
     This function converts the input data to a JSON-serializable format using FastAPI's
     jsonable_encoder before dumping to JSON. It handles Pydantic models, complex types,
-    and ensures proper serialization.
+    and ensures proper serialization. Uses orjson for better performance when available.
 
     Parameters
     ----------
     data : Any
         The data to serialize. Can be any type including Pydantic models, dicts, lists, etc.
     *args : Any
-        Additional positional arguments passed to json.dumps()
+        Additional positional arguments passed to json.dumps() (ignored if using orjson)
     **kwargs : Any
-        Additional keyword arguments passed to json.dumps() (e.g., indent, separators)
+        Additional keyword arguments passed to json.dumps() (limited support with orjson)
 
     Returns
     -------
@@ -45,7 +52,18 @@ def dumps(data: Any, *args: Any, **kwargs: Any) -> str:
     >>> dumps(pydantic_model_instance, indent=2)
     '{\n  "field1": "value1",\n  "field2": "value2"\n}'
     """
-    return json.dumps(to_dict(data), *args, **kwargs)
+    serializable_data = to_dict(data)
+
+    if HAS_ORJSON:
+        # orjson is faster but has limited options support
+        option = 0
+        if kwargs.get('indent') is not None:
+            option |= orjson.OPT_INDENT_2
+        # orjson.dumps returns bytes, so we decode to str
+        return orjson.dumps(serializable_data, option=option).decode('utf-8')
+    else:
+        # Fallback to standard json
+        return json.dumps(serializable_data, *args, **kwargs)
 
 
 T = TypeVar("T")
@@ -62,9 +80,15 @@ def loads(data: str | bytes, *args, **kwargs) -> Any: ...
 def loads(
     data: str | bytes, *args, target_type: Type[T] | None = None, **kwargs
 ) -> Any:
-    if isinstance(data, bytes):
-        data = data.decode("utf-8")
-    parsed = json.loads(data, *args, **kwargs)
+    if HAS_ORJSON:
+        # orjson can handle both str and bytes directly
+        parsed = orjson.loads(data)
+    else:
+        # Standard json requires string input
+        if isinstance(data, bytes):
+            data = data.decode("utf-8")
+        parsed = json.loads(data, *args, **kwargs)
+
     if target_type:
         return type_match(parsed, target_type)
     return parsed
