@@ -7,7 +7,6 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Annotated, Any, Sequence
 
-import orjson
 import pydantic
 import stripe
 from autogpt_libs.auth import get_user_id, requires_user
@@ -86,6 +85,7 @@ from backend.server.model import (
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.exceptions import GraphValidationError, NotFoundError
+from backend.util.json import dumps
 from backend.util.settings import Settings
 from backend.util.timezone_utils import (
     convert_utc_time_to_user_timezone,
@@ -279,9 +279,12 @@ def _get_cached_blocks() -> str:
         block_instance = block_class()
         if not block_instance.disabled:
             costs = get_block_cost(block_instance)
-            result.append({**block_instance.to_dict(), "costs": costs})
+            # Convert BlockCost objects to dictionaries for JSON serialization
+            costs_dict = [cost.model_dump() for cost in costs]
+            result.append({**block_instance.to_dict(), "costs": costs_dict})
 
-    return orjson.dumps(result).decode("utf-8")
+    # Use our JSON utility which properly handles complex types through to_dict conversion
+    return dumps(result)
 
 
 @v1_router.get(
