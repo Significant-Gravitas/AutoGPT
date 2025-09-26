@@ -25,6 +25,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         "/api/health",
         "/api/v1/health",
         "/api/status",
+        "/api/blocks",
+        "/api/v1/blocks",
         # Public store/marketplace pages (read-only)
         "/api/store/agents",
         "/api/v1/store/agents",

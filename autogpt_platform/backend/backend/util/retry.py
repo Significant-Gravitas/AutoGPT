@@ -63,7 +63,7 @@ def _create_retry_callback(context: str = ""):
             # Final failure - send alert if we exceeded the threshold
             if attempt_number >= EXCESSIVE_RETRY_THRESHOLD:
                 _send_final_failure_alert(func_name, attempt_number, exception, context)
-                
+
             logger.error(
                 f"{prefix}Giving up after {attempt_number} attempts for '{func_name}': "
                 f"{type(exception).__name__}: {exception}"

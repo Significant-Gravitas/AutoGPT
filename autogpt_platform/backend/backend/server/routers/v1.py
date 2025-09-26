@@ -265,13 +265,10 @@ async def is_onboarding_enabled():
 
 
 @cached()
-def _get_cached_blocks() -> bytes:
+def _get_cached_blocks() -> str:
     """
-    Get cached blocks with thundering herd protection and optimized serialization.
-
-    Uses sync_cache decorator to prevent multiple concurrent requests
-    from all executing the expensive block loading operation.
-    Returns pre-serialized bytes for faster response times.
+    Get cached blocks with thundering herd protection.
+    Serializes once and caches the JSON string.
     """
     from backend.data.credit import get_block_cost
 
@@ -281,11 +278,10 @@ def _get_cached_blocks() -> bytes:
     for block_class in block_classes.values():
         block_instance = block_class()
         if not block_instance.disabled:
-            # Get costs for this specific block class without creating another instance
             costs = get_block_cost(block_instance)
             result.append({**block_instance.to_dict(), "costs": costs})
 
-    return orjson.dumps(result)
+    return orjson.dumps(result).decode("utf-8")
 
 
 @v1_router.get(
@@ -298,9 +294,6 @@ async def get_graph_blocks() -> Response:
     return Response(
         content=_get_cached_blocks(),
         media_type="application/json",
-        headers={
-            "Cache-Control": "public, max-age=300",  # Cache for 5 minutes
-        },
     )
 
 
