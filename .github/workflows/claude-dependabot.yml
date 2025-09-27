@@ -78,7 +78,7 @@ jobs:
 
       # Frontend Node.js/pnpm setup (mirrors platform-frontend-ci.yml)
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "21"
 
