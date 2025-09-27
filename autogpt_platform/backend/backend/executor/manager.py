@@ -1465,10 +1465,16 @@ class ExecutionManager(AppProcess):
             timeout=settings.config.cluster_lock_timeout,
         )
         current_owner = cluster_lock.try_acquire()
-        if current_owner is not None:
-            logger.warning(
-                f"[{self.service_name}] Graph {graph_exec_id} already running on pod {current_owner}"
-            )
+        if current_owner != self.executor_id:
+            # Either someone else has it or Redis is unavailable
+            if current_owner is not None:
+                logger.warning(
+                    f"[{self.service_name}] Graph {graph_exec_id} already running on pod {current_owner}"
+                )
+            else:
+                logger.warning(
+                    f"[{self.service_name}] Could not acquire lock for {graph_exec_id} - Redis unavailable"
+                )
             _ack_message(reject=True, requeue=True)
             return
         self._execution_locks[graph_exec_id] = cluster_lock

@@ -24,15 +24,17 @@ class ClusterLock:
         """Try to acquire the lock.
 
         Returns:
-            None if acquired successfully, or current owner ID if someone else holds it
+            - owner_id (self.owner_id) if successfully acquired
+            - different owner_id if someone else holds the lock
+            - None if Redis is unavailable or other error
         """
         try:
             success = self.redis.set(self.key, self.owner_id, nx=True, ex=self.timeout)
             if success:
                 self._last_refresh = time.time()
-                return None
+                return self.owner_id  # Successfully acquired
 
-            # Failed to acquire, get current owner for debugging
+            # Failed to acquire, get current owner
             current_value = self.redis.get(self.key)
             if current_value:
                 current_owner = (
@@ -43,11 +45,11 @@ class ClusterLock:
                 return current_owner
 
             # Key doesn't exist but we failed to set it - race condition or Redis issue
-            return "redis_unavailable"
+            return None
 
         except Exception as e:
             logger.error(f"ClusterLock.try_acquire failed for key {self.key}: {e}")
-            return "redis_unavailable"
+            return None
 
     def refresh(self) -> bool:
         """Refresh lock TTL if we still own it.

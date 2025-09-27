@@ -63,7 +63,7 @@ class TestClusterLockBasic:
 
         # Lock should be acquired successfully
         result = lock.try_acquire()
-        assert result is None  # None means successfully acquired
+        assert result == owner_id  # Returns our owner_id when successfully acquired
         assert lock._last_refresh > 0
 
         # Lock key should exist in Redis
@@ -80,11 +80,11 @@ class TestClusterLockBasic:
 
         # First lock should succeed
         result1 = lock1.try_acquire()
-        assert result1 is None  # Successfully acquired
+        assert result1 == owner1  # Successfully acquired, returns our owner_id
 
         # Second lock should fail and return the first owner
         result2 = lock2.try_acquire()
-        assert result2 == owner1  # Returns the current owner
+        assert result2 == owner1  # Returns the current owner (first owner)
         assert lock2._last_refresh == 0
 
     def test_lock_release_deletes_redis_key(self, redis_client, lock_key, owner_id):
@@ -104,8 +104,9 @@ class TestClusterLockBasic:
         assert redis_client.exists(lock_key) == 0
 
         # Another lock should be able to acquire immediately
-        new_lock = ClusterLock(redis_client, lock_key, str(uuid.uuid4()), timeout=60)
-        assert new_lock.try_acquire() is None
+        new_owner_id = str(uuid.uuid4())
+        new_lock = ClusterLock(redis_client, lock_key, new_owner_id, timeout=60)
+        assert new_lock.try_acquire() == new_owner_id
 
 
 class TestClusterLockRefresh:
@@ -199,7 +200,7 @@ class TestClusterLockExpiry:
 
         # New lock with same key should succeed
         new_lock = ClusterLock(redis_client, lock_key, owner_id, timeout=60)
-        assert new_lock.try_acquire() is None
+        assert new_lock.try_acquire() == owner_id
 
     def test_lock_refresh_prevents_expiry(self, redis_client, lock_key, owner_id):
         """Test refreshing prevents lock from expiring."""
@@ -230,7 +231,7 @@ class TestClusterLockConcurrency:
         def try_acquire_lock(thread_id):
             owner_id = f"thread_{thread_id}"
             lock = ClusterLock(redis_client, lock_key, owner_id, timeout=60)
-            if lock.try_acquire() is None:
+            if lock.try_acquire() == owner_id:
                 successful_acquisitions.append(thread_id)
                 time.sleep(0.1)  # Hold lock briefly
                 lock.release()
@@ -254,7 +255,7 @@ class TestClusterLockConcurrency:
         for i, owner_id in enumerate(owners):
             lock = ClusterLock(redis_client, lock_key, owner_id, timeout=1)  # 1 second
 
-            assert lock.try_acquire() is None
+            assert lock.try_acquire() == owner_id
             time.sleep(1.5)  # Wait for expiry
 
             # Verify lock expired
@@ -269,7 +270,7 @@ class TestClusterLockConcurrency:
         lock2 = ClusterLock(redis_client, lock_key, owner2, timeout=5)
 
         # Thread 1 holds lock and refreshes
-        assert lock1.try_acquire() is None
+        assert lock1.try_acquire() == owner1
 
         def refresh_continuously():
             for _ in range(10):
@@ -280,7 +281,7 @@ class TestClusterLockConcurrency:
         def try_acquire_continuously():
             attempts = 0
             while attempts < 20:
-                if lock2.try_acquire() is None:
+                if lock2.try_acquire() == owner2:
                     return True
                 time.sleep(0.1)
                 attempts += 1
@@ -311,9 +312,9 @@ class TestClusterLockErrorHandling:
         )
         lock = ClusterLock(bad_redis, lock_key, owner_id, timeout=60)
 
-        # Should return "redis_unavailable", not raise exception
+        # Should return None for Redis connection failures
         result = lock.try_acquire()
-        assert result == "redis_unavailable"  # Returns sentinel value when Redis fails
+        assert result is None  # Returns None when Redis fails
         assert lock._last_refresh == 0
 
     def test_redis_connection_failure_on_refresh(
@@ -323,7 +324,7 @@ class TestClusterLockErrorHandling:
         lock = ClusterLock(redis_client, lock_key, owner_id, timeout=60)
 
         # Acquire normally
-        assert lock.try_acquire() is None
+        assert lock.try_acquire() == owner_id
 
         # Replace Redis client with failing one
         lock.redis = redis.Redis(
@@ -411,7 +412,7 @@ class TestClusterLockRealWorldScenarios:
             """Simulate graph execution with cluster lock."""
             lock = ClusterLock(redis_client, lock_key, pod_id, timeout=300)
 
-            if lock.try_acquire() is None:
+            if lock.try_acquire() == pod_id:
                 # Simulate execution work
                 execution_results[pod_id] = "executed"
                 time.sleep(0.1)
@@ -449,7 +450,7 @@ class TestClusterLockRealWorldScenarios:
 
         def long_execution_with_refresh():
             """Simulate long-running execution with periodic refresh."""
-            assert lock.try_acquire() is None
+            assert lock.try_acquire() == owner_id
 
             # Simulate 10 seconds of work with refreshes every 2 seconds
             # This respects rate limiting - actual refreshes will happen at 0s, 3s, 6s, 9s
@@ -474,7 +475,7 @@ class TestClusterLockRealWorldScenarios:
         )  # Use shorter timeout
 
         # Normal operation
-        assert lock.try_acquire() is None
+        assert lock.try_acquire() == owner_id
         lock._last_refresh = 0  # Force refresh past rate limit
         assert lock.refresh() is True
 
@@ -498,7 +499,7 @@ class TestClusterLockRealWorldScenarios:
         time.sleep(4)
 
         new_lock = ClusterLock(redis_client, lock_key, owner_id, timeout=60)
-        assert new_lock.try_acquire() is None
+        assert new_lock.try_acquire() == owner_id
 
 
 if __name__ == "__main__":
