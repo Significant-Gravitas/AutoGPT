@@ -60,7 +60,7 @@ def _create_retry_callback(context: str = ""):
         prefix = f"{context}: " if context else ""
 
         if retry_state.outcome.failed and retry_state.next_action is None:
-            # Final failure - just log the error (alert was already sent at attempt 49)
+            # Final failure - just log the error (alert was already sent at excessive threshold)
             logger.error(
                 f"{prefix}Giving up after {attempt_number} attempts for '{func_name}': "
                 f"{type(exception).__name__}: {exception}"

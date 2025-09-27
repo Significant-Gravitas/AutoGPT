@@ -307,6 +307,23 @@ async def _get_cached_blocks() -> str:
     summary="List available blocks",
     tags=["blocks"],
     dependencies=[Security(requires_user)],
+    response_model=list[dict[str, Any]],
+    responses={
+        200: {
+            "description": "List of available blocks with their schemas and costs",
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "description": "Block definition with schema and cost information",
+                        },
+                    }
+                }
+            },
+        }
+    },
 )
 async def get_graph_blocks() -> Response:
     # Cache hit: returns immediately, Cache miss: runs in thread pool

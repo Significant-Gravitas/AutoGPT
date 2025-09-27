@@ -86,24 +86,24 @@ class SecurityHeadersMiddleware:
                 # Add security headers to the response
                 headers = dict(message.get("headers", []))
 
-                # Add general security headers
-                headers[b"x-content-type-options"] = b"nosniff"
-                headers[b"x-frame-options"] = b"DENY"
-                headers[b"x-xss-protection"] = b"1; mode=block"
-                headers[b"referrer-policy"] = b"strict-origin-when-cross-origin"
+                # Add general security headers (HTTP spec requires proper capitalization)
+                headers[b"X-Content-Type-Options"] = b"nosniff"
+                headers[b"X-Frame-Options"] = b"DENY"
+                headers[b"X-XSS-Protection"] = b"1; mode=block"
+                headers[b"Referrer-Policy"] = b"strict-origin-when-cross-origin"
 
                 # Add noindex header for shared execution pages
                 if "/public/shared" in path:
-                    headers[b"x-robots-tag"] = b"noindex, nofollow"
+                    headers[b"X-Robots-Tag"] = b"noindex, nofollow"
 
                 # Default: Disable caching for all endpoints
                 # Only allow caching for explicitly permitted paths
                 if not self.is_cacheable_path(path):
-                    headers[b"cache-control"] = (
+                    headers[b"Cache-Control"] = (
                         b"no-store, no-cache, must-revalidate, private"
                     )
-                    headers[b"pragma"] = b"no-cache"
-                    headers[b"expires"] = b"0"
+                    headers[b"Pragma"] = b"no-cache"
+                    headers[b"Expires"] = b"0"
 
                 # Convert headers back to list format
                 message["headers"] = list(headers.items())

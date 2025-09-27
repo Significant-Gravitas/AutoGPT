@@ -305,11 +305,15 @@ class AgentServer(backend.util.service.AppProcess):
             "host": config.agent_api_host,
             "port": config.agent_api_port,
             "log_config": None,
-            # Explicitly use uvloop for better performance (if available)
-            "loop": "uvloop",
             # Use httptools for HTTP parsing (if available)
             "http": "httptools",
         }
+
+        # Only use uvloop on Unix-like systems (not supported on Windows)
+        import platform
+
+        if platform.system() != "Windows":
+            uvicorn_config["loop"] = "uvloop"
 
         # Only add debug in local environment (not supported in all uvicorn versions)
         if config.app_env == backend.util.settings.AppEnvironment.LOCAL:
