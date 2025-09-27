@@ -429,7 +429,7 @@ class ExecutionProcessor:
             graph_id=node_exec.graph_id,
             node_eid=node_exec.node_exec_id,
             node_id=node_exec.node_id,
-            block_name="-",
+            block_name=b.name if (b := get_block(node_exec.block_id)) else "-",
         )
         db_client = get_db_async_client()
         node = await db_client.get_node(node_exec.node_id)
