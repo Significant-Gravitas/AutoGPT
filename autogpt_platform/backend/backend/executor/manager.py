@@ -12,16 +12,15 @@ from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
 from prometheus_client import Gauge, start_http_server
-from pydantic import JsonValue
 from redis.asyncio.lock import Lock as AsyncRedisLock
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentOutputBlock
 from backend.data import redis_client as redis
 from backend.data.block import (
-    BlockData,
     BlockInput,
     BlockOutput,
+    BlockOutputEntry,
     BlockSchema,
     get_block,
 )
@@ -33,6 +32,7 @@ from backend.data.execution import (
     GraphExecutionEntry,
     NodeExecutionEntry,
     NodeExecutionResult,
+    NodesInputMasks,
     UserContext,
 )
 from backend.data.graph import Link, Node
@@ -133,7 +133,7 @@ async def execute_node(
     creds_manager: IntegrationCredentialsManager,
     data: NodeExecutionEntry,
     execution_stats: NodeExecutionStats | None = None,
-    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+    nodes_input_masks: Optional[NodesInputMasks] = None,
 ) -> BlockOutput:
     """
     Execute a node in the graph. This will trigger a block execution on a node,
@@ -239,12 +239,12 @@ async def execute_node(
 async def _enqueue_next_nodes(
     db_client: "DatabaseManagerAsyncClient",
     node: Node,
-    output: BlockData,
+    output: BlockOutputEntry,
     user_id: str,
     graph_exec_id: str,
     graph_id: str,
     log_metadata: LogMetadata,
-    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]],
+    nodes_input_masks: Optional[NodesInputMasks],
     user_context: UserContext,
 ) -> list[NodeExecutionEntry]:
     async def add_enqueued_execution(
@@ -421,7 +421,7 @@ class ExecutionProcessor:
         self,
         node_exec: NodeExecutionEntry,
         node_exec_progress: NodeExecutionProgress,
-        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]],
+        nodes_input_masks: Optional[NodesInputMasks],
         graph_stats_pair: tuple[GraphExecutionStats, threading.Lock],
     ) -> NodeExecutionStats:
         log_metadata = LogMetadata(
@@ -489,7 +489,7 @@ class ExecutionProcessor:
         stats: NodeExecutionStats,
         db_client: "DatabaseManagerAsyncClient",
         log_metadata: LogMetadata,
-        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+        nodes_input_masks: Optional[NodesInputMasks] = None,
     ) -> ExecutionStatus:
         status = ExecutionStatus.RUNNING
 
@@ -607,7 +607,7 @@ class ExecutionProcessor:
             )
             return
 
-        if exec_meta.status == ExecutionStatus.QUEUED:
+        if exec_meta.status in [ExecutionStatus.QUEUED, ExecutionStatus.INCOMPLETE]:
             log_metadata.info(f"⚙️ Starting graph execution #{graph_exec.graph_exec_id}")
             exec_meta.status = ExecutionStatus.RUNNING
             send_execution_update(
@@ -1055,7 +1055,7 @@ class ExecutionProcessor:
         node_id: str,
         graph_exec: GraphExecutionEntry,
         log_metadata: LogMetadata,
-        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]],
+        nodes_input_masks: Optional[NodesInputMasks],
         execution_queue: ExecutionQueue[NodeExecutionEntry],
     ) -> None:
         """Process a node's output, update its status, and enqueue next nodes.

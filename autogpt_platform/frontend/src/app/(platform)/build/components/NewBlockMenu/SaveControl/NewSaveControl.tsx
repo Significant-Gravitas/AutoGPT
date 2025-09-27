@@ -3,13 +3,13 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+} from "@/components/__legacy__/ui/popover";
+import { Card, CardContent, CardFooter } from "@/components/__legacy__/ui/card";
+import { Input } from "@/components/__legacy__/ui/input";
+import { Button } from "@/components/__legacy__/ui/button";
 import { GraphMeta } from "@/lib/autogpt-server-api";
-import { Label } from "@/components/ui/label";
-import { IconSave } from "@/components/ui/icons";
+import { Label } from "@/components/__legacy__/ui/label";
+import { IconSave } from "@/components/__legacy__/ui/icons";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { ControlPanelButton } from "../ControlPanelButton";
 
@@ -23,9 +23,9 @@ interface SaveControlProps {
   onDescriptionChange: (description: string) => void;
   pinSavePopover: boolean;
 
-  blockMenuSelected: "save" | "block" | "";
+  blockMenuSelected: "save" | "block" | "search" | "";
   setBlockMenuSelected: React.Dispatch<
-    React.SetStateAction<"" | "save" | "block">
+    React.SetStateAction<"" | "save" | "block" | "search">
   >;
 }
 
@@ -41,7 +41,6 @@ export const NewSaveControl = ({
   setBlockMenuSelected,
   pinSavePopover,
 }: SaveControlProps) => {
-
   const handleSave = useCallback(() => {
     onSave();
   }, [onSave]);
@@ -51,8 +50,8 @@ export const NewSaveControl = ({
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key === "s") {
-        event.preventDefault(); 
-        handleSave(); 
+        event.preventDefault();
+        handleSave();
         toast({
           duration: 2000,
           title: "All changes saved successfully!",

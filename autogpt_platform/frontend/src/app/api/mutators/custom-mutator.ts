@@ -33,7 +33,9 @@ const getBody = <T>(c: Response | Request): Promise<T> => {
   return c.text() as Promise<T>;
 };
 
-export const customMutator = async <T = any>(
+export const customMutator = async <
+  T extends { data: any; status: number; headers: Headers },
+>(
   url: string,
   options: RequestInit & {
     params?: any;
@@ -55,7 +57,13 @@ export const customMutator = async <T = any>(
   const contentType = isFormData ? "multipart/form-data" : "application/json";
 
   // Currently, only two content types are handled here: application/json and multipart/form-data
-  if (!isFormData && data && !headers["Content-Type"]) {
+  // For POST/PUT/PATCH requests, always set Content-Type to application/json if not FormData
+  // This is required by the proxy even for requests without a body
+  if (
+    !isFormData &&
+    !headers["Content-Type"] &&
+    ["POST", "PUT", "PATCH"].includes(method)
+  ) {
     headers["Content-Type"] = "application/json";
   }
 
@@ -98,7 +106,7 @@ export const customMutator = async <T = any>(
     throw new Error(`Request failed with status ${response.status}`);
   }
 
-  const response_data = await getBody<T>(response);
+  const response_data = await getBody<T["data"]>(response);
 
   // Transform ISO date strings to Date objects in the response data
   const transformedData = transformDates(response_data);

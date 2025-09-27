@@ -35,17 +35,44 @@ export default defineConfig({
               useInfiniteQueryParam: "page",
             },
           },
+          "getV2List favorite library agents": {
+            query: {
+              useInfinite: true,
+              useInfiniteQueryParam: "page",
+            },
+          },
           "getV1List graph executions": {
             query: {
               useInfinite: true,
               useInfiniteQueryParam: "page",
             },
           },
+          "getV2Get builder blocks": {
+            query: {
+              useInfinite: true,
+              useInfiniteQueryParam: "page",
+              useQuery: true,
+            },
+          },
+          "getV2Get builder integration providers": {
+            query: {
+              useInfinite: true,
+              useInfiniteQueryParam: "page",
+            },
+          },
+          "getV2List store agents": {
+            query: {
+              useInfinite: true,
+              useInfiniteQueryParam: "page",
+              useQuery: true,
+            },
+          },
         },
       },
     },
     hooks: {
-      afterAllFilesWrite: "prettier --write",
+      afterAllFilesWrite:
+        "prettier --ignore-path= --write ./src/app/api/__generated__",
     },
   },
   // autogpt_zod_schema: {

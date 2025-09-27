@@ -1,14 +1,14 @@
 "use client";
-import OnboardingButton from "@/components/onboarding/OnboardingButton";
+import OnboardingButton from "../components/OnboardingButton";
 import {
   OnboardingFooter,
   OnboardingHeader,
   OnboardingStep,
-} from "@/components/onboarding/OnboardingStep";
-import { OnboardingText } from "@/components/onboarding/OnboardingText";
-import OnboardingList from "@/components/onboarding/OnboardingList";
+} from "../components/OnboardingStep";
+import { OnboardingText } from "../components/OnboardingText";
+import OnboardingList from "../components/OnboardingList";
 import { isEmptyOrWhitespace } from "@/lib/utils";
-import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import { useOnboarding } from "../../../../providers/onboarding/onboarding-provider";
 
 const reasons = [
   {

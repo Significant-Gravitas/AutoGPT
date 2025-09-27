@@ -1,6 +1,6 @@
 "use client";
 
-import { Separator } from "@/components/ui/separator";
+import { Separator } from "@/components/__legacy__/ui/separator";
 import { AgentsSection } from "../AgentsSection/AgentsSection";
 import { MarketplaceCreatorPageParams } from "../../creator/[creator]/page";
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
@@ -43,7 +43,7 @@ export const MainCreatorPage = ({ params }: MainCreatorPageProps) => {
         <main className="mt-5 px-4">
           <Breadcrumbs
             items={[
-              { name: "Store", link: "/marketplace" },
+              { name: "Marketplace", link: "/marketplace" },
               { name: creator.name, link: "#" },
             ]}
           />

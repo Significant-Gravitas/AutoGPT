@@ -1,4 +1,4 @@
-import { InputProps } from "@/components/ui/input";
+import { InputProps } from "@/components/__legacy__/ui/input";
 import {
   filterNumberInput,
   filterPhoneInput,
@@ -17,7 +17,9 @@ interface ExtendedInputProps extends InputProps {
     | "amount"
     | "tel"
     | "url"
-    | "textarea";
+    | "textarea"
+    | "date"
+    | "datetime-local";
 }
 
 export function useInput(args: ExtendedInputProps) {

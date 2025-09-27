@@ -1,5 +1,5 @@
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/__legacy__/ui/button";
+import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { Plus } from "lucide-react";
 import Image from "next/image";
@@ -11,7 +11,7 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
   edited_time?: Date;
   version?: number;
-  image_url?: string;
+  image_url: string | null;
   highlightedText?: string;
 }
 

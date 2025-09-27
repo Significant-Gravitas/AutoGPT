@@ -32,6 +32,10 @@ export const variants = {
     "font-sans text-[0.75rem] font-normal leading-[1.125rem] text-zinc-800",
   "small-medium":
     "font-sans text-[0.75rem] font-medium leading-[1.125rem] text-zinc-800",
+
+  // Label Text
+  label:
+    "font-sans text-[0.6785rem] font-medium uppercase leading-[1.25rem] tracking-[0.06785rem] text-zinc-800",
 } as const;
 
 export type Variant = keyof typeof variants;
@@ -49,4 +53,5 @@ export const variantElementMap: Record<Variant, As> = {
   "body-medium": "p",
   small: "p",
   "small-medium": "p",
+  label: "span",
 };

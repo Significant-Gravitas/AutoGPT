@@ -1,6 +1,7 @@
 import logging
 import uuid
 from collections import defaultdict
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal, Optional, cast
 
 from prisma.enums import SubmissionStatus
@@ -12,7 +13,7 @@ from prisma.types import (
     AgentNodeLinkCreateInput,
     StoreListingVersionWhereInput,
 )
-from pydantic import Field, JsonValue, create_model
+from pydantic import BaseModel, Field, create_model
 from pydantic.fields import computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
@@ -28,12 +29,14 @@ from backend.data.model import (
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
 from backend.util.json import SafeJson
+from backend.util.models import Pagination
 
 from .block import Block, BlockInput, BlockSchema, BlockType, get_block, get_blocks
 from .db import BaseDbModel, query_raw_with_schema, transaction
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE
 
 if TYPE_CHECKING:
+    from .execution import NodesInputMasks
     from .integrations import Webhook
 
 logger = logging.getLogger(__name__)
@@ -159,6 +162,8 @@ class BaseGraph(BaseDbModel):
     is_active: bool = True
     name: str
     description: str
+    instructions: str | None = None
+    recommended_schedule_cron: str | None = None
     nodes: list[Node] = []
     links: list[Link] = []
     forked_from_id: str | None = None
@@ -205,6 +210,35 @@ class BaseGraph(BaseDbModel):
             None,
         )
 
+    @computed_field
+    @property
+    def trigger_setup_info(self) -> "GraphTriggerInfo | None":
+        if not (
+            self.webhook_input_node
+            and (trigger_block := self.webhook_input_node.block).webhook_config
+        ):
+            return None
+
+        return GraphTriggerInfo(
+            provider=trigger_block.webhook_config.provider,
+            config_schema={
+                **(json_schema := trigger_block.input_schema.jsonschema()),
+                "properties": {
+                    pn: sub_schema
+                    for pn, sub_schema in json_schema["properties"].items()
+                    if not is_credentials_field_name(pn)
+                },
+                "required": [
+                    pn
+                    for pn in json_schema.get("required", [])
+                    if not is_credentials_field_name(pn)
+                ],
+            },
+            credentials_input_name=next(
+                iter(trigger_block.input_schema.get_credentials_fields()), None
+            ),
+        )
+
     @staticmethod
     def _generate_schema(
         *props: tuple[type[AgentInputBlock.Input] | type[AgentOutputBlock.Input], dict],
@@ -236,6 +270,14 @@ class BaseGraph(BaseDbModel):
             },
             "required": [p.name for p in schema_fields if p.value is None],
         }
+
+
+class GraphTriggerInfo(BaseModel):
+    provider: ProviderName
+    config_schema: dict[str, Any] = Field(
+        description="Input schema for the trigger block"
+    )
+    credentials_input_name: Optional[str]
 
 
 class Graph(BaseGraph):
@@ -342,6 +384,8 @@ class GraphModel(Graph):
     user_id: str
     nodes: list[NodeModel] = []  # type: ignore
 
+    created_at: datetime
+
     @property
     def starting_nodes(self) -> list[NodeModel]:
         outbound_nodes = {link.sink_id for link in self.links}
@@ -353,6 +397,10 @@ class GraphModel(Graph):
             for node in self.nodes
             if node.id not in outbound_nodes or node.id in input_nodes
         ]
+
+    @property
+    def webhook_input_node(self) -> NodeModel | None:  # type: ignore
+        return cast(NodeModel, super().webhook_input_node)
 
     def meta(self) -> "GraphMeta":
         """
@@ -414,7 +462,7 @@ class GraphModel(Graph):
     def validate_graph(
         self,
         for_run: bool = False,
-        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+        nodes_input_masks: Optional["NodesInputMasks"] = None,
     ):
         """
         Validate graph structure and raise `ValueError` on issues.
@@ -428,7 +476,7 @@ class GraphModel(Graph):
     def _validate_graph(
         graph: BaseGraph,
         for_run: bool = False,
-        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+        nodes_input_masks: Optional["NodesInputMasks"] = None,
     ) -> None:
         errors = GraphModel._validate_graph_get_errors(
             graph, for_run, nodes_input_masks
@@ -442,7 +490,7 @@ class GraphModel(Graph):
     def validate_graph_get_errors(
         self,
         for_run: bool = False,
-        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+        nodes_input_masks: Optional["NodesInputMasks"] = None,
     ) -> dict[str, dict[str, str]]:
         """
         Validate graph and return structured errors per node.
@@ -464,7 +512,7 @@ class GraphModel(Graph):
     def _validate_graph_get_errors(
         graph: BaseGraph,
         for_run: bool = False,
-        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+        nodes_input_masks: Optional["NodesInputMasks"] = None,
     ) -> dict[str, dict[str, str]]:
         """
         Validate graph and return structured errors per node.
@@ -655,9 +703,12 @@ class GraphModel(Graph):
             version=graph.version,
             forked_from_id=graph.forkedFromId,
             forked_from_version=graph.forkedFromVersion,
+            created_at=graph.createdAt,
             is_active=graph.isActive,
             name=graph.name or "",
             description=graph.description or "",
+            instructions=graph.instructions,
+            recommended_schedule_cron=graph.recommendedScheduleCron,
             nodes=[NodeModel.from_db(node, for_export) for node in graph.Nodes or []],
             links=list(
                 {
@@ -696,6 +747,13 @@ class GraphMeta(Graph):
         return GraphMeta(**graph.model_dump())
 
 
+class GraphsPaginated(BaseModel):
+    """Response schema for paginated graphs."""
+
+    graphs: list[GraphMeta]
+    pagination: Pagination
+
+
 # --------------------- CRUD functions --------------------- #
 
 
@@ -724,31 +782,42 @@ async def set_node_webhook(node_id: str, webhook_id: str | None) -> NodeModel:
     return NodeModel.from_db(node)
 
 
-async def list_graphs(
+async def list_graphs_paginated(
     user_id: str,
+    page: int = 1,
+    page_size: int = 25,
     filter_by: Literal["active"] | None = "active",
-) -> list[GraphMeta]:
+) -> GraphsPaginated:
     """
-    Retrieves graph metadata objects.
-    Default behaviour is to get all currently active graphs.
+    Retrieves paginated graph metadata objects.
 
     Args:
+        user_id: The ID of the user that owns the graphs.
+        page: Page number (1-based).
+        page_size: Number of graphs per page.
         filter_by: An optional filter to either select graphs.
-        user_id: The ID of the user that owns the graph.
 
     Returns:
-        list[GraphMeta]: A list of objects representing the retrieved graphs.
+        GraphsPaginated: Paginated list of graph metadata.
     """
     where_clause: AgentGraphWhereInput = {"userId": user_id}
 
     if filter_by == "active":
         where_clause["isActive"] = True
 
+    # Get total count
+    total_count = await AgentGraph.prisma().count(where=where_clause)
+    total_pages = (total_count + page_size - 1) // page_size
+
+    # Get paginated results
+    offset = (page - 1) * page_size
     graphs = await AgentGraph.prisma().find_many(
         where=where_clause,
         distinct=["id"],
         order={"version": "desc"},
         include=AGENT_GRAPH_INCLUDE,
+        skip=offset,
+        take=page_size,
     )
 
     graph_models: list[GraphMeta] = []
@@ -762,7 +831,15 @@ async def list_graphs(
             logger.error(f"Error processing graph {graph.id}: {e}")
             continue
 
-    return graph_models
+    return GraphsPaginated(
+        graphs=graph_models,
+        pagination=Pagination(
+            total_items=total_count,
+            total_pages=total_pages,
+            current_page=page,
+            page_size=page_size,
+        ),
+    )
 
 
 async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph | None:
@@ -1045,6 +1122,7 @@ async def __create_graph(tx, graph: Graph, user_id: str):
                 version=graph.version,
                 name=graph.name,
                 description=graph.description,
+                recommendedScheduleCron=graph.recommended_schedule_cron,
                 isActive=graph.is_active,
                 userId=user_id,
                 forkedFromId=graph.forked_from_id,
@@ -1103,6 +1181,7 @@ def make_graph_model(creatable_graph: Graph, user_id: str) -> GraphModel:
     return GraphModel(
         **creatable_graph.model_dump(exclude={"nodes"}),
         user_id=user_id,
+        created_at=datetime.now(tz=timezone.utc),
         nodes=[
             NodeModel(
                 **creatable_node.model_dump(),

@@ -1,10 +1,9 @@
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/__legacy__/ui/button";
 import { X } from "@phosphor-icons/react";
 import { PropsWithChildren } from "react";
 import { Drawer } from "vaul";
 import { DialogCtx } from "../useDialogCtx";
 import { drawerStyles, modalStyles } from "./styles";
-import styles from "./styles.module.css";
 
 type BaseProps = DialogCtx & PropsWithChildren;
 
@@ -62,9 +61,7 @@ export function DrawerWrap({
             )
           ) : null}
         </div>
-        <div className={`overflow-auto ${styles.scrollableContent}`}>
-          {children}
-        </div>
+        <div>{children}</div>
       </Drawer.Content>
     </Drawer.Portal>
   );

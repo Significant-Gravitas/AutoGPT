@@ -1,6 +1,5 @@
 import logging
 
-import autogpt_libs.auth.models
 import fastapi.responses
 import pytest
 
@@ -36,21 +35,20 @@ async def execute_graph(
     logger.info(f"Input data: {input_data}")
 
     # --- Test adding new executions --- #
-    response = await agent_server.test_execute_graph(
+    graph_exec = await agent_server.test_execute_graph(
         user_id=test_user.id,
         graph_id=test_graph.id,
         graph_version=test_graph.version,
         node_input=input_data,
     )
-    graph_exec_id = response.graph_exec_id
-    logger.info(f"Created execution with ID: {graph_exec_id}")
+    logger.info(f"Created execution with ID: {graph_exec.id}")
 
     # Execution queue should be empty
     logger.info("Waiting for execution to complete...")
-    result = await wait_execution(test_user.id, graph_exec_id, 30)
+    result = await wait_execution(test_user.id, graph_exec.id, 30)
     logger.info(f"Execution completed with {len(result)} results")
     assert len(result) == num_execs
-    return graph_exec_id
+    return graph_exec.id
 
 
 async def assert_sample_graph_executions(
@@ -380,7 +378,7 @@ async def test_execute_preset(server: SpinTestServer):
 
     # Verify execution
     assert result is not None
-    graph_exec_id = result["id"]
+    graph_exec_id = result.id
 
     # Wait for execution to complete
     executions = await wait_execution(test_user.id, graph_exec_id)
@@ -469,7 +467,7 @@ async def test_execute_preset_with_clash(server: SpinTestServer):
 
     # Verify execution
     assert result is not None, "Result must not be None"
-    graph_exec_id = result["id"]
+    graph_exec_id = result.id
 
     # Wait for execution to complete
     executions = await wait_execution(test_user.id, graph_exec_id)
@@ -521,12 +519,7 @@ async def test_store_listing_graph(server: SpinTestServer):
             is_approved=True,
             comments="Test comments",
         ),
-        autogpt_libs.auth.models.User(
-            user_id=admin_user.id,
-            role="admin",
-            email=admin_user.email,
-            phone_number="1234567890",
-        ),
+        user_id=admin_user.id,
     )
     alt_test_user = admin_user
 
