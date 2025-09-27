@@ -13,7 +13,7 @@ from backend.sdk import (
 )
 
 from ._config import exa
-from .helpers import ContentSettings
+from .helpers import ContentSettings, to_camel_case_dict
 
 
 class ExaFindSimilarBlock(Block):
@@ -95,7 +95,7 @@ class ExaFindSimilarBlock(Block):
         payload = {
             "url": input_data.url,
             "numResults": input_data.number_of_results,
-            "contents": input_data.contents.model_dump(),
+            "contents": to_camel_case_dict(input_data.contents.model_dump()),
         }
 
         optional_field_mapping = {
