@@ -270,6 +270,7 @@ def SchemaField(
     min_length: Optional[int] = None,
     max_length: Optional[int] = None,
     discriminator: Optional[str] = None,
+    format: Optional[str] = None,
     json_schema_extra: Optional[dict[str, Any]] = None,
 ) -> T:
     if default is PydanticUndefined and default_factory is None:
@@ -285,6 +286,7 @@ def SchemaField(
             "advanced": advanced,
             "hidden": hidden,
             "depends_on": depends_on,
+            "format": format,
             **(json_schema_extra or {}),
         }.items()
         if v is not None
