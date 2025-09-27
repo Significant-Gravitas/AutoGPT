@@ -911,15 +911,13 @@
         "operationId": "getV1List available blocks",
         "responses": {
           "200": {
-            "description": "List of available blocks with their schemas and costs",
+            "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "type": "object",
-                    "description": "Block definition with schema and cost information"
-                  },
-                  "type": "array"
+                  "items": { "additionalProperties": true, "type": "object" },
+                  "type": "array",
+                  "title": "Response Getv1List Available Blocks"
                 }
               }
             }

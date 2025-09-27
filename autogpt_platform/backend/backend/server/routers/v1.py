@@ -307,18 +307,15 @@ async def _get_cached_blocks() -> str:
     summary="List available blocks",
     tags=["blocks"],
     dependencies=[Security(requires_user)],
-    response_model=list[dict[str, Any]],
     responses={
         200: {
-            "description": "List of available blocks with their schemas and costs",
+            "description": "Successful Response",
             "content": {
                 "application/json": {
                     "schema": {
+                        "items": {"additionalProperties": True, "type": "object"},
                         "type": "array",
-                        "items": {
-                            "type": "object",
-                            "description": "Block definition with schema and cost information",
-                        },
+                        "title": "Response Getv1List Available Blocks",
                     }
                 }
             },
