@@ -144,7 +144,7 @@ export function RunDetailHeader({
                 <>
                   <span className="mx-1 inline-block text-zinc-200">|</span>
                   <Text variant="small" className="!text-zinc-600">
-                    Cost: ${run.stats.cost}
+                    Cost: ${(run.stats.cost / 100).toFixed(2)}
                   </Text>
                 </>
               )}
