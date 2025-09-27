@@ -3,39 +3,21 @@ import logging
 import os
 import threading
 import time
+import uuid
 from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
 
+from autogpt_libs.utils.synchronize import ClusterLock
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
-from pydantic import JsonValue
-from redis.asyncio.lock import Lock as RedisLock
-
-from backend.blocks.io import AgentOutputBlock
-from backend.data.model import GraphExecutionStats, NodeExecutionStats
-from backend.data.notifications import (
-    AgentRunData,
-    LowBalanceData,
-    NotificationEventModel,
-    NotificationType,
-    ZeroBalanceData,
-)
-from backend.data.rabbitmq import SyncRabbitMQ
-from backend.executor.activity_status_generator import (
-    generate_activity_status_for_execution,
-)
-from backend.executor.utils import LogMetadata
-from backend.notifications.notifications import queue_notification
-from backend.util.exceptions import InsufficientBalanceError, ModerationError
-
-if TYPE_CHECKING:
-    from backend.executor import DatabaseManagerClient, DatabaseManagerAsyncClient
-
 from prometheus_client import Gauge, start_http_server
+from pydantic import JsonValue
+from redis.asyncio.lock import Lock as AsyncRedisLock
 
 from backend.blocks.agent import AgentExecutorBlock
+from backend.blocks.io import AgentOutputBlock
 from backend.data import redis_client as redis
 from backend.data.block import (
     BlockData,
@@ -55,12 +37,25 @@ from backend.data.execution import (
     UserContext,
 )
 from backend.data.graph import Link, Node
+from backend.data.model import GraphExecutionStats, NodeExecutionStats
+from backend.data.notifications import (
+    AgentRunData,
+    LowBalanceData,
+    NotificationEventModel,
+    NotificationType,
+    ZeroBalanceData,
+)
+from backend.data.rabbitmq import SyncRabbitMQ
+from backend.executor.activity_status_generator import (
+    generate_activity_status_for_execution,
+)
 from backend.executor.utils import (
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
     GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
     GRAPH_EXECUTION_QUEUE_NAME,
     CancelExecutionEvent,
     ExecutionOutputEntry,
+    LogMetadata,
     NodeExecutionProgress,
     block_usage_cost,
     create_execution_queue_config,
@@ -69,6 +64,7 @@ from backend.executor.utils import (
     validate_exec,
 )
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.notifications.notifications import queue_notification
 from backend.server.v2.AutoMod.manager import automod_manager
 from backend.util import json
 from backend.util.clients import (
@@ -84,12 +80,17 @@ from backend.util.decorator import (
     error_logged,
     time_measured,
 )
+from backend.util.exceptions import InsufficientBalanceError, ModerationError
 from backend.util.file import clean_exec_files
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.metrics import DiscordChannel
 from backend.util.process import AppProcess, set_service_name
 from backend.util.retry import continuous_retry, func_retry
 from backend.util.settings import Settings
+
+if TYPE_CHECKING:
+    from backend.executor import DatabaseManagerAsyncClient, DatabaseManagerClient
+
 
 _logger = logging.getLogger(__name__)
 logger = TruncatedLogger(_logger, prefix="[GraphExecutor]")
@@ -1220,6 +1221,9 @@ class ExecutionManager(AppProcess):
         self.pool_size = settings.config.num_graph_workers
         self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
 
+        # Generate a unique persistent owner ID for this executor instance
+        self.owner_id = str(uuid.uuid4())
+
         self._executor = None
         self._stop_consuming = None
 
@@ -1227,6 +1231,9 @@ class ExecutionManager(AppProcess):
         self._cancel_client = None
         self._run_thread = None
         self._run_client = None
+
+        self._cluster_mutex = None
+        self._execution_locks = {}
 
     @property
     def cancel_thread(self) -> threading.Thread:
@@ -1272,6 +1279,15 @@ class ExecutionManager(AppProcess):
         if self._run_client is None:
             self._run_client = SyncRabbitMQ(create_execution_queue_config())
         return self._run_client
+
+    @property
+    def redis_client(self):
+        if self._cluster_mutex is None:
+            self._cluster_mutex = redis.get_redis()
+        return self._cluster_mutex
+
+    def _get_execution_lock_key(self, graph_exec_id: str) -> str:
+        return f"exec_lock:{graph_exec_id}"
 
     def run(self):
         logger.info(f"[{self.service_name}] ⏳ Spawn max-{self.pool_size} workers...")
@@ -1435,18 +1451,34 @@ class ExecutionManager(AppProcess):
         logger.info(
             f"[{self.service_name}] Received RUN for graph_exec_id={graph_exec_id}"
         )
+
+        # Check for local duplicate execution first
         if graph_exec_id in self.active_graph_runs:
-            # TODO: Make this check cluster-wide, prevent duplicate runs across executor pods.
-            logger.error(
-                f"[{self.service_name}] Graph {graph_exec_id} already running; rejecting duplicate run."
+            logger.warning(
+                f"[{self.service_name}] Graph {graph_exec_id} already running locally; rejecting duplicate."
             )
-            _ack_message(reject=True, requeue=False)
+            _ack_message(reject=True, requeue=True)
             return
+
+        # Try to acquire cluster-wide execution lock
+        lock_key = self._get_execution_lock_key(graph_exec_id)
+        cluster_lock = ClusterLock(
+            self.redis_client, lock_key, self.owner_id, timeout=300
+        )
+        if not cluster_lock.try_acquire():
+            logger.warning(
+                f"[{self.service_name}] Graph {graph_exec_id} already running on another pod"
+            )
+            _ack_message(reject=True, requeue=True)
+            return
+
+        logger.debug(f"[{self.service_name}] Acquired cluster lock for {graph_exec_id}")
 
         cancel_event = threading.Event()
 
         future = self.executor.submit(execute_graph, graph_exec_entry, cancel_event)
         self.active_graph_runs[graph_exec_id] = (future, cancel_event)
+        self._execution_locks[graph_exec_id] = cluster_lock
         self._update_prompt_metrics()
 
         def _on_run_done(f: Future):
@@ -1464,6 +1496,10 @@ class ExecutionManager(AppProcess):
                     f"[{self.service_name}] Error in run completion callback: {e}"
                 )
             finally:
+                # Release the cluster-wide execution lock
+                if graph_exec_id in self._execution_locks:
+                    self._execution_locks[graph_exec_id].release()
+                    del self._execution_locks[graph_exec_id]
                 self._cleanup_completed_runs()
 
         future.add_done_callback(_on_run_done)
@@ -1481,6 +1517,29 @@ class ExecutionManager(AppProcess):
 
         self._update_prompt_metrics()
         return completed_runs
+
+    def _refresh_active_execution_locks(self) -> None:
+        """
+        Refresh cluster locks for all currently active executions.
+        This prevents lock expiry during long-running executions.
+        """
+        if not self.active_graph_runs:
+            return
+
+        refreshed_count = 0
+        for graph_exec_id in list(self.active_graph_runs.keys()):
+            if graph_exec_id in self._execution_locks:
+                if self._execution_locks[graph_exec_id].refresh():
+                    refreshed_count += 1
+                else:
+                    logger.warning(
+                        f"[{self.service_name}] Failed to refresh lock for {graph_exec_id}"
+                    )
+
+        if refreshed_count > 0:
+            logger.debug(
+                f"[{self.service_name}] 🔄 Refreshed {refreshed_count} execution locks"
+            )
 
     def _update_prompt_metrics(self):
         active_count = len(self.active_graph_runs)
@@ -1546,6 +1605,9 @@ class ExecutionManager(AppProcess):
                         f"{prefix} ⏳ Still waiting for {len(self.active_graph_runs)} executions: {ids}"
                     )
 
+                    # Refresh locks during graceful shutdown to prevent expiry
+                    self._refresh_active_execution_locks()
+
                 time.sleep(wait_interval)
                 waited += wait_interval
 
@@ -1562,6 +1624,19 @@ class ExecutionManager(AppProcess):
             logger.info(f"{prefix} ✅ Executor shutdown completed")
         except Exception as e:
             logger.error(f"{prefix} ⚠️ Error during executor shutdown: {type(e)} {e}")
+
+        # Release remaining execution locks
+        try:
+            # Release all active execution locks manually
+            released_count = 0
+            for graph_exec_id in list(self.active_graph_runs.keys()):
+                if graph_exec_id in self._execution_locks:
+                    self._execution_locks[graph_exec_id].release()
+                    del self._execution_locks[graph_exec_id]
+                    released_count += 1
+            logger.info(f"{prefix} ✅ Released {released_count} execution locks")
+        except Exception as e:
+            logger.warning(f"{prefix} ⚠️ Failed to release all locks: {e}")
 
         # Disconnect the run execution consumer
         self._stop_message_consumers(
@@ -1668,9 +1743,9 @@ def update_graph_execution_state(
 
 
 @asynccontextmanager
-async def synchronized(key: str, timeout: int = 60):
+async def synchronized(key: str, timeout: int = 300):
     r = await redis.get_redis_async()
-    lock: RedisLock = r.lock(f"lock:{key}", timeout=timeout)
+    lock: AsyncRedisLock = r.lock(f"lock:{key}", timeout=timeout)
     try:
         await lock.acquire()
         yield
