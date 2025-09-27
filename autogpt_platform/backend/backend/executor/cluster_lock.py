@@ -1,13 +1,7 @@
-"""
-Redis-based distributed locking for cluster coordination.
-
-This module provides ClusterLock, a thread-safe, process-safe distributed lock
-that prevents duplicate graph execution across multiple ExecutionManager instances.
-"""
+"""Redis-based distributed locking for cluster coordination."""
 
 import logging
 import time
-from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -17,162 +11,101 @@ logger = logging.getLogger(__name__)
 
 
 class ClusterLock:
-    """
-    Redis-based distributed lock for cluster coordination.
-
-    Provides thread-safe, process-safe distributed locking using Redis SET commands
-    with NX (only if not exists) and EX (expiry) flags for atomic lock acquisition.
-
-    Features:
-    - Automatic lock expiry to prevent deadlocks
-    - Ownership verification before refresh/release operations
-    - Rate-limited refresh to reduce Redis load
-    - Graceful handling of Redis connection failures
-    - Context manager support for automatic cleanup
-    - Both blocking and non-blocking acquisition modes
-
-    Example usage:
-        # Blocking lock (raises exception on failure)
-        with cluster_lock.acquire() as lock:
-            # Critical section - only one process can execute this
-            perform_exclusive_operation()
-
-        # Non-blocking lock (yields None on failure)
-        with cluster_lock.acquire(blocking=False) as lock:
-            if lock is not None:
-                perform_exclusive_operation()
-            else:
-                handle_lock_contention()
-
-    Args:
-        redis: Redis client instance
-        key: Unique lock identifier (should be descriptive, e.g., "execution:graph_123")
-        owner_id: Unique identifier for the lock owner (e.g., process UUID)
-        timeout: Lock expiry time in seconds (default: 300s = 5 minutes)
-    """
+    """Simple Redis-based distributed lock for preventing duplicate execution."""
 
     def __init__(self, redis: "Redis", key: str, owner_id: str, timeout: int = 300):
-        if not key:
-            raise ValueError("Lock key cannot be empty")
-        if not owner_id:
-            raise ValueError("Owner ID cannot be empty")
-        if timeout <= 0:
-            raise ValueError("Timeout must be positive")
-
         self.redis = redis
         self.key = key
         self.owner_id = owner_id
         self.timeout = timeout
-        self._acquired = False
         self._last_refresh = 0.0
 
-    @contextmanager
-    def acquire(self, blocking: bool = True):
+    def try_acquire(self) -> str | None:
+        """Try to acquire the lock.
+
+        Returns:
+            None if acquired successfully, or current owner ID if someone else holds it
         """
-        Context manager that acquires and automatically releases the lock.
-
-        Args:
-            blocking: If True, raises exception on failure. If False, yields None on failure.
-
-        Raises:
-            RuntimeError: When blocking=True and lock cannot be acquired
-            ConnectionError: When Redis is unavailable and blocking=True
-        """
-        try:
-            success = self.try_acquire()
-            if not success:
-                if blocking:
-                    raise RuntimeError(f"Lock already held: {self.key}")
-                yield None
-                return
-
-            logger.debug(f"ClusterLock acquired: {self.key} by {self.owner_id}")
-            try:
-                yield self
-            finally:
-                self.release()
-
-        except Exception as e:
-            if "Redis" in str(type(e).__name__) or "Connection" in str(
-                type(e).__name__
-            ):
-                logger.warning(f"Redis connection failed during lock acquisition: {e}")
-                if blocking:
-                    raise ConnectionError(f"Redis unavailable for lock {self.key}: {e}")
-                yield None
-            else:
-                raise
-
-    def try_acquire(self) -> bool:
-        """Internal method to attempt lock acquisition."""
         try:
             success = self.redis.set(self.key, self.owner_id, nx=True, ex=self.timeout)
             if success:
-                self._acquired = True
                 self._last_refresh = time.time()
-                logger.debug(f"Lock acquired successfully: {self.key}")
-            return bool(success)
-        except Exception as e:
-            logger.warning(f"Failed to acquire lock {self.key}: {e}")
-            return False
+                return None
+
+            # Failed to acquire, get current owner for debugging
+            current_value = self.redis.get(self.key)
+            if current_value:
+                current_owner = (
+                    current_value.decode("utf-8")
+                    if isinstance(current_value, bytes)
+                    else str(current_value)
+                )
+                return current_owner
+
+            # Key doesn't exist but we failed to set it - race condition or Redis issue
+            return "unknown"
+
+        except Exception:
+            return "unknown"
 
     def refresh(self) -> bool:
-        """
-        Refresh the lock TTL to prevent expiry.
+        """Refresh lock TTL if we still own it.
 
-        Returns:
-            bool: True if refresh successful, False if lock expired or we don't own it
+        Rate limited to at most once every timeout/10 seconds (minimum 1 second).
+        During rate limiting, still verifies lock existence but skips TTL extension.
+        Setting _last_refresh to 0 bypasses rate limiting for testing.
         """
-        if not self._acquired:
-            return False
-
-        # Rate limiting: only refresh if it's been >timeout/10 since last refresh
+        # Calculate refresh interval: max(timeout // 10, 1)
+        refresh_interval = max(self.timeout // 10, 1)
         current_time = time.time()
-        refresh_interval = self.timeout // 10
-        if current_time - self._last_refresh < refresh_interval:
-            return True  # Skip refresh, still valid
+
+        # Check if we're within the rate limit period
+        # _last_refresh == 0 forces a refresh (bypasses rate limiting for testing)
+        is_rate_limited = (
+            self._last_refresh > 0
+            and (current_time - self._last_refresh) < refresh_interval
+        )
 
         try:
-            # Atomic check-and-refresh: only refresh if we still own the lock
+            # Always verify lock existence, even during rate limiting
             current_value = self.redis.get(self.key)
-            if current_value is not None:
-                # Handle both decoded (str) and raw (bytes) Redis responses
-                if isinstance(current_value, str):
-                    is_owner = current_value == self.owner_id
-                else:
-                    is_owner = current_value.decode("utf-8") == self.owner_id
+            if not current_value:
+                self._last_refresh = 0
+                return False
 
-                if is_owner:
-                    result = self.redis.expire(self.key, self.timeout)
-                    if result:
-                        self._last_refresh = current_time
-                        logger.debug(f"Lock refreshed successfully: {self.key}")
-                        return True
-                    else:
-                        logger.warning(
-                            f"Failed to refresh lock (key not found): {self.key}"
-                        )
-                else:
-                    logger.warning(f"Lock ownership lost during refresh: {self.key}")
+            stored_owner = (
+                current_value.decode("utf-8")
+                if isinstance(current_value, bytes)
+                else str(current_value)
+            )
+            if stored_owner != self.owner_id:
+                self._last_refresh = 0
+                return False
 
-            # We no longer own the lock
-            self._acquired = False
+            # If rate limited, return True but don't update TTL or timestamp
+            if is_rate_limited:
+                return True
+
+            # Perform actual refresh
+            if self.redis.expire(self.key, self.timeout):
+                self._last_refresh = current_time
+                return True
+
+            self._last_refresh = 0
             return False
 
-        except Exception as e:
-            logger.warning(f"Failed to refresh lock {self.key}: {e}")
-            self._acquired = False
+        except Exception:
+            self._last_refresh = 0
             return False
 
     def release(self):
-        """Release the lock by marking it as no longer acquired locally.
-
-        The lock will expire naturally via Redis TTL, which is simpler and more
-        reliable than trying to delete it manually.
-        """
-        if not self._acquired:
+        """Release the lock."""
+        if self._last_refresh == 0:
             return
 
-        logger.debug(f"Lock released locally, will expire via TTL: {self.key}")
-        self._acquired = False
+        try:
+            self.redis.delete(self.key)
+        except Exception:
+            pass
+
         self._last_refresh = 0.0
