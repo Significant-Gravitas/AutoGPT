@@ -1,5 +1,6 @@
 import contextlib
 import logging
+import platform
 from enum import Enum
 from typing import Any, Optional
 
@@ -307,13 +308,9 @@ class AgentServer(backend.util.service.AppProcess):
             "log_config": None,
             # Use httptools for HTTP parsing (if available)
             "http": "httptools",
+            # Only use uvloop on Unix-like systems (not supported on Windows)
+            "loop": "uvloop" if platform.system() != "Windows" else "auto",
         }
-
-        # Only use uvloop on Unix-like systems (not supported on Windows)
-        import platform
-
-        if platform.system() != "Windows":
-            uvicorn_config["loop"] = "uvloop"
 
         # Only add debug in local environment (not supported in all uvicorn versions)
         if config.app_env == backend.util.settings.AppEnvironment.LOCAL:
