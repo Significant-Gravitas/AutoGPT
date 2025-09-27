@@ -215,3 +215,29 @@ class TestSafeJson:
         }
         result = SafeJson(data)
         assert isinstance(result, Json)
+
+    def test_control_character_sanitization(self):
+        """Test that PostgreSQL-incompatible control characters are sanitized by SafeJson."""
+        # Test data with problematic control characters that would cause PostgreSQL errors
+        problematic_data = {
+            "null_byte": "data with \x00 null",
+            "bell_char": "data with \x07 bell",
+            "form_feed": "data with \x0C feed",
+            "escape_char": "data with \x1B escape",
+            "delete_char": "data with \x7F delete",
+        }
+
+        # SafeJson should successfully process data with control characters
+        result = SafeJson(problematic_data)
+        assert isinstance(result, Json)
+
+        # Test that safe whitespace characters are preserved
+        safe_data = {
+            "with_tab": "text with \t tab",
+            "with_newline": "text with \n newline",
+            "with_carriage_return": "text with \r carriage return",
+            "normal_text": "completely normal text",
+        }
+
+        safe_result = SafeJson(safe_data)
+        assert isinstance(safe_result, Json)

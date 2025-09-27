@@ -38,6 +38,7 @@ mem0ai = "^0.1.115"
 moviepy = "^2.1.2"
 ollama = "^0.5.1"
 openai = "^1.97.1"
+orjson = "^3.10.0"
 pika = "^1.3.2"
 pinecone = "^7.3.0"
 poetry = "2.1.1" # CHECK DEPENDABOT SUPPORT BEFORE UPGRADING

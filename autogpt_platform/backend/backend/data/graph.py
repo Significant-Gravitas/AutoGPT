@@ -20,6 +20,7 @@ from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LlmModel
 from backend.data.db import prisma as db
+from backend.data.includes import MAX_GRAPH_VERSIONS_FETCH
 from backend.data.model import (
     CredentialsField,
     CredentialsFieldInfo,
@@ -1059,11 +1060,14 @@ async def set_graph_active_version(graph_id: str, version: int, user_id: str) ->
     )
 
 
-async def get_graph_all_versions(graph_id: str, user_id: str) -> list[GraphModel]:
+async def get_graph_all_versions(
+    graph_id: str, user_id: str, limit: int = MAX_GRAPH_VERSIONS_FETCH
+) -> list[GraphModel]:
     graph_versions = await AgentGraph.prisma().find_many(
         where={"id": graph_id, "userId": user_id},
         order={"version": "desc"},
         include=AGENT_GRAPH_INCLUDE,
+        take=limit,
     )
 
     if not graph_versions:

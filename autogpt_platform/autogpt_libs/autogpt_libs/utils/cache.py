@@ -115,12 +115,23 @@ def cached(
     """
 
     def decorator(target_func):
-        # Cache storage and locks
+        # Cache storage and per-event-loop locks
         cache_storage = {}
+        _event_loop_locks = {}  # Maps event loop to its asyncio.Lock
 
         if inspect.iscoroutinefunction(target_func):
-            # Async function with asyncio.Lock
-            cache_lock = asyncio.Lock()
+
+            def _get_cache_lock():
+                """Get or create an asyncio.Lock for the current event loop."""
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    # No event loop, use None as default key
+                    loop = None
+
+                if loop not in _event_loop_locks:
+                    return _event_loop_locks.setdefault(loop, asyncio.Lock())
+                return _event_loop_locks[loop]
 
             @wraps(target_func)
             async def async_wrapper(*args: P.args, **kwargs: P.kwargs):
@@ -141,7 +152,7 @@ def cached(
                                 return result
 
                 # Slow path: acquire lock for cache miss/expiry
-                async with cache_lock:
+                async with _get_cache_lock():
                     # Double-check: another coroutine might have populated cache
                     if key in cache_storage:
                         if ttl_seconds is None:
