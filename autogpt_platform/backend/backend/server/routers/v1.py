@@ -11,7 +11,6 @@ import pydantic
 import stripe
 from autogpt_libs.auth import get_user_id, requires_user
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
-from autogpt_libs.utils.cache import cached
 from fastapi import (
     APIRouter,
     Body,
@@ -29,11 +28,12 @@ from typing_extensions import Optional, TypedDict
 
 import backend.server.integrations.router
 import backend.server.routers.analytics
+import backend.server.routers.cache as cache
 import backend.server.v2.library.db as library_db
 from backend.data import api_key as api_key_db
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
-from backend.data.block import BlockInput, CompletedBlockOutput, get_block, get_blocks
+from backend.data.block import BlockInput, CompletedBlockOutput, get_block
 from backend.data.credit import (
     AutoTopUpConfig,
     RefundRequest,
@@ -55,7 +55,6 @@ from backend.data.onboarding import (
 from backend.data.user import (
     get_or_create_user,
     get_user_by_id,
-    get_user_notification_preference,
     update_user_email,
     update_user_notification_preference,
     update_user_timezone,
@@ -82,6 +81,7 @@ from backend.server.model import (
     UpdateTimezoneRequest,
     UploadFileResponse,
 )
+from backend.server.v2.library import cache as library_cache
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.exceptions import GraphValidationError, NotFoundError
@@ -165,7 +165,9 @@ async def get_user_timezone_route(
 ) -> TimezoneResponse:
     """Get user timezone setting."""
     user = await get_or_create_user(user_data)
-    return TimezoneResponse(timezone=user.timezone)
+    # Use cached timezone for subsequent calls
+    result = await cache.get_cached_user_timezone(user.id)
+    return TimezoneResponse(timezone=result["timezone"])
 
 
 @v1_router.post(
@@ -179,6 +181,7 @@ async def update_user_timezone_route(
 ) -> TimezoneResponse:
     """Update user timezone. The timezone should be a valid IANA timezone identifier."""
     user = await update_user_timezone(user_id, str(request.timezone))
+    cache.get_cached_user_timezone.cache_delete(user_id)
     return TimezoneResponse(timezone=user.timezone)
 
 
@@ -191,7 +194,7 @@ async def update_user_timezone_route(
 async def get_preferences(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> NotificationPreference:
-    preferences = await get_user_notification_preference(user_id)
+    preferences = await cache.get_cached_user_preferences(user_id)
     return preferences
 
 
@@ -206,6 +209,10 @@ async def update_preferences(
     preferences: NotificationPreferenceDTO = Body(...),
 ) -> NotificationPreference:
     output = await update_user_notification_preference(user_id, preferences)
+
+    # Clear preferences cache after update
+    cache.get_cached_user_preferences.cache_delete(user_id)
+
     return output
 
 
@@ -263,29 +270,6 @@ async def is_onboarding_enabled():
 ########################################################
 
 
-@cached()
-def _get_cached_blocks() -> Sequence[dict[Any, Any]]:
-    """
-    Get cached blocks with thundering herd protection.
-
-    Uses sync_cache decorator to prevent multiple concurrent requests
-    from all executing the expensive block loading operation.
-    """
-    from backend.data.credit import get_block_cost
-
-    block_classes = get_blocks()
-    result = []
-
-    for block_class in block_classes.values():
-        block_instance = block_class()
-        if not block_instance.disabled:
-            # Get costs for this specific block class without creating another instance
-            costs = get_block_cost(block_instance)
-            result.append({**block_instance.to_dict(), "costs": costs})
-
-    return result
-
-
 @v1_router.get(
     path="/blocks",
     summary="List available blocks",
@@ -293,7 +277,7 @@ def _get_cached_blocks() -> Sequence[dict[Any, Any]]:
     dependencies=[Security(requires_user)],
 )
 async def get_graph_blocks() -> Sequence[dict[Any, Any]]:
-    return _get_cached_blocks()
+    return cache.get_cached_blocks()
 
 
 @v1_router.post(
@@ -633,11 +617,10 @@ class DeleteGraphResponse(TypedDict):
 async def list_graphs(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> Sequence[graph_db.GraphMeta]:
-    paginated_result = await graph_db.list_graphs_paginated(
+    paginated_result = await cache.get_cached_graphs(
         user_id=user_id,
         page=1,
         page_size=250,
-        filter_by="active",
     )
     return paginated_result.graphs
 
@@ -660,13 +643,26 @@ async def get_graph(
     version: int | None = None,
     for_export: bool = False,
 ) -> graph_db.GraphModel:
-    graph = await graph_db.get_graph(
-        graph_id,
-        version,
-        user_id=user_id,
-        for_export=for_export,
-        include_subgraphs=True,  # needed to construct full credentials input schema
-    )
+    # Use cache for non-export requests
+    if not for_export:
+        graph = await cache.get_cached_graph(
+            graph_id=graph_id,
+            version=version,
+            user_id=user_id,
+        )
+        # If graph not found, clear cache entry as permissions may have changed
+        if not graph:
+            cache.get_cached_graph.cache_delete(
+                graph_id=graph_id, version=version, user_id=user_id
+            )
+    else:
+        graph = await graph_db.get_graph(
+            graph_id,
+            version,
+            user_id=user_id,
+            for_export=for_export,
+            include_subgraphs=True,  # needed to construct full credentials input schema
+        )
     if not graph:
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
     return graph
@@ -681,7 +677,7 @@ async def get_graph(
 async def get_graph_all_versions(
     graph_id: str, user_id: Annotated[str, Security(get_user_id)]
 ) -> Sequence[graph_db.GraphModel]:
-    graphs = await graph_db.get_graph_all_versions(graph_id, user_id=user_id)
+    graphs = await cache.get_cached_graph_all_versions(graph_id, user_id=user_id)
     if not graphs:
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
     return graphs
@@ -705,6 +701,14 @@ async def create_new_graph(
     # as the graph already valid and no sub-graphs are returned back.
     await graph_db.create_graph(graph, user_id=user_id)
     await library_db.create_library_agent(graph, user_id=user_id)
+
+    # Clear graphs list cache after creating new graph
+    cache.get_cached_graphs.cache_delete(user_id=user_id, page=1, page_size=250)
+    for page in range(1, 20):
+        library_cache.get_cached_library_agents.cache_delete(
+            user_id=user_id, page=page, page_size=8
+        )
+
     return await on_graph_activate(graph, user_id=user_id)
 
 
@@ -720,7 +724,18 @@ async def delete_graph(
     if active_version := await graph_db.get_graph(graph_id, user_id=user_id):
         await on_graph_deactivate(active_version, user_id=user_id)
 
-    return {"version_counts": await graph_db.delete_graph(graph_id, user_id=user_id)}
+    result = DeleteGraphResponse(
+        version_counts=await graph_db.delete_graph(graph_id, user_id=user_id)
+    )
+
+    # Clear caches after deleting graph
+    cache.get_cached_graphs.cache_delete(user_id=user_id, page=1, page_size=250)
+    cache.get_cached_graph.cache_delete(
+        graph_id=graph_id, version=None, user_id=user_id
+    )
+    cache.get_cached_graph_all_versions.cache_delete(graph_id, user_id=user_id)
+
+    return result
 
 
 @v1_router.put(
@@ -776,6 +791,14 @@ async def update_graph(
         include_subgraphs=True,
     )
     assert new_graph_version_with_subgraphs  # make type checker happy
+
+    # Clear caches after updating graph
+    cache.get_cached_graph.cache_delete(
+        graph_id=graph_id, version=None, user_id=user_id
+    )
+    cache.get_cached_graph_all_versions.cache_delete(graph_id, user_id=user_id)
+    cache.get_cached_graphs.cache_delete(user_id=user_id, page=1, page_size=250)
+
     return new_graph_version_with_subgraphs
 
 
@@ -853,6 +876,12 @@ async def execute_graph(
         # Record successful graph execution
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
         record_graph_operation(operation="execute", status="success")
+
+        for page in range(1, 10):
+            cache.get_cached_graph_executions.cache_delete(
+                graph_id=graph_id, user_id=user_id, page=page, page_size=20
+            )
+
         return result
     except GraphValidationError as e:
         # Record failed graph execution
@@ -928,7 +957,7 @@ async def _stop_graph_run(
 async def list_graphs_executions(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[execution_db.GraphExecutionMeta]:
-    paginated_result = await execution_db.get_graph_executions_paginated(
+    paginated_result = await cache.get_cached_graphs_executions(
         user_id=user_id,
         page=1,
         page_size=250,
@@ -950,7 +979,7 @@ async def list_graph_executions(
         25, ge=1, le=100, description="Number of executions per page"
     ),
 ) -> execution_db.GraphExecutionsPaginated:
-    return await execution_db.get_graph_executions_paginated(
+    return await cache.get_cached_graph_executions(
         graph_id=graph_id,
         user_id=user_id,
         page=page,

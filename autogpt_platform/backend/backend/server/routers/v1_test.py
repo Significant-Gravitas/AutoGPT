@@ -102,13 +102,13 @@ def test_get_graph_blocks(
     mock_block.id = "test-block"
     mock_block.disabled = False
 
-    # Mock get_blocks
+    # Mock get_blocks in cache module where it's actually used
     mocker.patch(
-        "backend.server.routers.v1.get_blocks",
+        "backend.server.routers.cache.get_blocks",
         return_value={"test-block": lambda: mock_block},
     )
 
-    # Mock block costs
+    # Mock block costs where it's imported inside the function
     mocker.patch(
         "backend.data.credit.get_block_cost",
         return_value=[{"cost": 10, "type": "credit"}],

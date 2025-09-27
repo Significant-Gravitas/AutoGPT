@@ -4,6 +4,8 @@ from typing import Any, Optional
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, HTTPException, Query, Security, status
 
+import backend.server.routers.cache as cache
+import backend.server.v2.library.cache as library_cache
 import backend.server.v2.library.db as db
 import backend.server.v2.library.model as models
 from backend.data.execution import GraphExecutionMeta
@@ -51,12 +53,21 @@ async def list_presets(
         models.LibraryAgentPresetResponse: A response containing the list of presets.
     """
     try:
-        return await db.list_presets(
-            user_id=user_id,
-            graph_id=graph_id,
-            page=page,
-            page_size=page_size,
-        )
+        # Use cache only for default queries (no filter)
+        if graph_id is None:
+            return await library_cache.get_cached_library_presets(
+                user_id=user_id,
+                page=page,
+                page_size=page_size,
+            )
+        else:
+            # Direct DB query for filtered requests
+            return await db.list_presets(
+                user_id=user_id,
+                graph_id=graph_id,
+                page=page,
+                page_size=page_size,
+            )
     except Exception as e:
         logger.exception("Failed to list presets for user %s: %s", user_id, e)
         raise HTTPException(
@@ -87,7 +98,7 @@ async def get_preset(
         HTTPException: If the preset is not found or an error occurs.
     """
     try:
-        preset = await db.get_preset(user_id, preset_id)
+        preset = await library_cache.get_cached_library_preset(preset_id, user_id)
     except Exception as e:
         logger.exception(
             "Error retrieving preset %s for user %s: %s", preset_id, user_id, e
@@ -131,9 +142,20 @@ async def create_preset(
     """
     try:
         if isinstance(preset, models.LibraryAgentPresetCreatable):
-            return await db.create_preset(user_id, preset)
+            result = await db.create_preset(user_id, preset)
         else:
-            return await db.create_preset_from_graph_execution(user_id, preset)
+            result = await db.create_preset_from_graph_execution(user_id, preset)
+
+        # Clear presets list cache after creating new preset
+        for page in range(1, 5):
+            library_cache.get_cached_library_presets.cache_delete(
+                user_id=user_id, page=page, page_size=10
+            )
+            library_cache.get_cached_library_presets.cache_delete(
+                user_id=user_id, page=page, page_size=20
+            )
+
+        return result
     except NotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception as e:
@@ -200,6 +222,16 @@ async def setup_trigger(
             is_active=True,
         ),
     )
+
+    # Clear presets list cache after creating new preset
+    for page in range(1, 5):
+        library_cache.get_cached_library_presets.cache_delete(
+            user_id=user_id, page=page, page_size=10
+        )
+        library_cache.get_cached_library_presets.cache_delete(
+            user_id=user_id, page=page, page_size=20
+        )
+
     return new_preset
 
 
@@ -278,6 +310,18 @@ async def update_preset(
             description=preset.description,
             is_active=preset.is_active,
         )
+
+        # Clear caches after updating preset
+        library_cache.get_cached_library_preset.cache_delete(
+            preset_id=preset_id, user_id=user_id
+        )
+        for page in range(1, 5):
+            library_cache.get_cached_library_presets.cache_delete(
+                user_id=user_id, page=page, page_size=10
+            )
+            library_cache.get_cached_library_presets.cache_delete(
+                user_id=user_id, page=page, page_size=20
+            )
     except Exception as e:
         logger.exception("Preset update failed for user %s: %s", user_id, e)
         raise HTTPException(
@@ -351,6 +395,18 @@ async def delete_preset(
 
     try:
         await db.delete_preset(user_id, preset_id)
+
+        # Clear caches after deleting preset
+        library_cache.get_cached_library_preset.cache_delete(
+            preset_id=preset_id, user_id=user_id
+        )
+        for page in range(1, 5):
+            library_cache.get_cached_library_presets.cache_delete(
+                user_id=user_id, page=page, page_size=10
+            )
+            library_cache.get_cached_library_presets.cache_delete(
+                user_id=user_id, page=page, page_size=20
+            )
     except Exception as e:
         logger.exception(
             "Error deleting preset %s for user %s: %s", preset_id, user_id, e
@@ -400,6 +456,14 @@ async def execute_preset(
     # Merge input overrides with preset inputs
     merged_node_input = preset.inputs | inputs
     merged_credential_inputs = preset.credentials | credential_inputs
+
+    for page in range(1, 10):
+        cache.get_cached_graph_executions.cache_delete(
+            graph_id=preset.graph_id, user_id=user_id, page=page, page_size=20
+        )
+        cache.get_cached_graph_executions.cache_delete(
+            user_id=user_id, page=page, page_size=20
+        )
 
     return await add_graph_execution(
         user_id=user_id,
