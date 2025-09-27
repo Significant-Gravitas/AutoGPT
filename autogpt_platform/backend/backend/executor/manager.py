@@ -9,7 +9,6 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
 
-from autogpt_libs.utils.synchronize import ClusterLock
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
 from prometheus_client import Gauge, start_http_server
@@ -87,6 +86,8 @@ from backend.util.metrics import DiscordChannel
 from backend.util.process import AppProcess, set_service_name
 from backend.util.retry import continuous_retry, func_retry
 from backend.util.settings import Settings
+
+from .cluster_lock import ClusterLock
 
 if TYPE_CHECKING:
     from backend.executor import DatabaseManagerAsyncClient, DatabaseManagerClient
