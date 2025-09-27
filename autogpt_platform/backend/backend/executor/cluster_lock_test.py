@@ -311,9 +311,9 @@ class TestClusterLockErrorHandling:
         )
         lock = ClusterLock(bad_redis, lock_key, owner_id, timeout=60)
 
-        # Should return "unknown", not raise exception
+        # Should return "redis_unavailable", not raise exception
         result = lock.try_acquire()
-        assert result == "unknown"  # Returns "unknown" when Redis fails
+        assert result == "redis_unavailable"  # Returns sentinel value when Redis fails
         assert lock._last_refresh == 0
 
     def test_redis_connection_failure_on_refresh(

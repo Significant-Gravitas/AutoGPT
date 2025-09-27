@@ -43,10 +43,11 @@ class ClusterLock:
                 return current_owner
 
             # Key doesn't exist but we failed to set it - race condition or Redis issue
-            return "unknown"
+            return "redis_unavailable"
 
-        except Exception:
-            return "unknown"
+        except Exception as e:
+            logger.error(f"ClusterLock.try_acquire failed for key {self.key}: {e}")
+            return "redis_unavailable"
 
     def refresh(self) -> bool:
         """Refresh lock TTL if we still own it.
@@ -94,7 +95,8 @@ class ClusterLock:
             self._last_refresh = 0
             return False
 
-        except Exception:
+        except Exception as e:
+            logger.error(f"ClusterLock.refresh failed for key {self.key}: {e}")
             self._last_refresh = 0
             return False
 

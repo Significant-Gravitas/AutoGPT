@@ -122,7 +122,7 @@ def init_worker():
 def execute_graph(
     graph_exec_entry: "GraphExecutionEntry",
     cancel_event: threading.Event,
-    cluster_lock: ClusterLock | None = None,
+    cluster_lock: ClusterLock,
 ):
     """Execute graph using thread-local ExecutionProcessor instance"""
     return _tls.processor.on_graph_execution(
@@ -590,7 +590,7 @@ class ExecutionProcessor:
         self,
         graph_exec: GraphExecutionEntry,
         cancel: threading.Event,
-        cluster_lock: ClusterLock | None = None,
+        cluster_lock: ClusterLock,
     ):
         log_metadata = LogMetadata(
             logger=_logger,
@@ -751,7 +751,7 @@ class ExecutionProcessor:
         cancel: threading.Event,
         log_metadata: LogMetadata,
         execution_stats: GraphExecutionStats,
-        cluster_lock: ClusterLock | None = None,
+        cluster_lock: ClusterLock,
     ) -> ExecutionStatus:
         """
         Returns:
@@ -937,15 +937,8 @@ class ExecutionProcessor:
                         and execution_queue.empty()
                         and (running_node_execution or running_node_evaluation)
                     ):
-                        # There is nothing to execute, and no output to process, let's relax for a while.
+                        cluster_lock.refresh()
                         time.sleep(0.1)
-
-                        # Refresh cluster lock to prevent expiry during long executions
-                        if cluster_lock and not cluster_lock.refresh():
-                            log_metadata.warning(
-                                f"Failed to refresh cluster lock for {graph_exec.graph_exec_id}"
-                            )
-                            # Continue execution - lock failure is not fatal, other mechanisms will handle conflicts
 
             # loop done --------------------------------------------------
 
@@ -1246,7 +1239,6 @@ class ExecutionManager(AppProcess):
         self._run_thread = None
         self._run_client = None
 
-        self._cluster_redis = None
         self._execution_locks = {}
 
     @property
@@ -1293,15 +1285,6 @@ class ExecutionManager(AppProcess):
         if self._run_client is None:
             self._run_client = SyncRabbitMQ(create_execution_queue_config())
         return self._run_client
-
-    @property
-    def cluster_redis(self):
-        if self._cluster_redis is None:
-            self._cluster_redis = redis.get_redis()
-        return self._cluster_redis
-
-    def _get_execution_lock_key(self, graph_exec_id: str) -> str:
-        return f"exec_lock:{graph_exec_id}"
 
     def run(self):
         logger.info(f"[{self.service_name}] ⏳ Spawn max-{self.pool_size} workers...")
@@ -1475,10 +1458,9 @@ class ExecutionManager(AppProcess):
             return
 
         # Try to acquire cluster-wide execution lock
-        lock_key = self._get_execution_lock_key(graph_exec_id)
         cluster_lock = ClusterLock(
-            redis=self.cluster_redis,
-            key=lock_key,
+            redis=redis.get_redis(),
+            key=f"exec_lock:{graph_exec_id}",
             owner_id=self.executor_id,
             timeout=settings.config.cluster_lock_timeout,
         )
@@ -1489,6 +1471,7 @@ class ExecutionManager(AppProcess):
             )
             _ack_message(reject=True, requeue=True)
             return
+        self._execution_locks[graph_exec_id] = cluster_lock
 
         logger.info(
             f"[{self.service_name}] Acquired cluster lock for {graph_exec_id} with executor {self.executor_id}"
@@ -1500,7 +1483,6 @@ class ExecutionManager(AppProcess):
             execute_graph, graph_exec_entry, cancel_event, cluster_lock
         )
         self.active_graph_runs[graph_exec_id] = (future, cancel_event)
-        self._execution_locks[graph_exec_id] = cluster_lock
         self._update_prompt_metrics()
 
         def _on_run_done(f: Future):
@@ -1539,21 +1521,6 @@ class ExecutionManager(AppProcess):
 
         self._update_prompt_metrics()
         return completed_runs
-
-    def _refresh_active_execution_locks(self) -> None:
-        """
-        Refresh cluster locks for all currently active executions.
-        This prevents lock expiry during long-running executions.
-        """
-        if not self.active_graph_runs:
-            return
-
-        for graph_exec_id in list(self.active_graph_runs.keys()):
-            if graph_exec_id in self._execution_locks:
-                if not self._execution_locks[graph_exec_id].refresh():
-                    logger.warning(
-                        f"[{self.service_name}] Failed to refresh lock for {graph_exec_id}"
-                    )
 
     def _update_prompt_metrics(self):
         active_count = len(self.active_graph_runs)
@@ -1619,8 +1586,9 @@ class ExecutionManager(AppProcess):
                         f"{prefix} ⏳ Still waiting for {len(self.active_graph_runs)} executions: {ids}"
                     )
 
-                    # Refresh locks during graceful shutdown to prevent expiry
-                    self._refresh_active_execution_locks()
+                    for graph_exec_id in self.active_graph_runs:
+                        if lock := self._execution_locks.get(graph_exec_id):
+                            lock.refresh()
 
                 time.sleep(wait_interval)
                 waited += wait_interval
