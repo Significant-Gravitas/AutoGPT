@@ -911,8 +911,18 @@
         "operationId": "getV1List available blocks",
         "responses": {
           "200": {
-            "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "description": "List of available blocks with their schemas and costs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "object",
+                    "description": "Block definition with schema and cost information"
+                  },
+                  "type": "array"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
