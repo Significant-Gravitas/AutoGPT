@@ -135,22 +135,25 @@ class ClusterLock:
         try:
             # Atomic check-and-refresh: only refresh if we still own the lock
             current_value = self.redis.get(self.key)
-            if current_value is not None and (
-                current_value == self.owner_id  # Already decoded
-                if isinstance(current_value, str)
-                else current_value.decode("utf-8") == self.owner_id  # Raw bytes
-            ):
-                result = self.redis.expire(self.key, self.timeout)
-                if result:
-                    self._last_refresh = current_time
-                    logger.debug(f"Lock refreshed successfully: {self.key}")
-                    return True
+            if current_value is not None:
+                # Handle both decoded (str) and raw (bytes) Redis responses
+                if isinstance(current_value, str):
+                    is_owner = current_value == self.owner_id
                 else:
-                    logger.warning(
-                        f"Failed to refresh lock (key not found): {self.key}"
-                    )
-            else:
-                logger.warning(f"Lock ownership lost during refresh: {self.key}")
+                    is_owner = current_value.decode("utf-8") == self.owner_id
+
+                if is_owner:
+                    result = self.redis.expire(self.key, self.timeout)
+                    if result:
+                        self._last_refresh = current_time
+                        logger.debug(f"Lock refreshed successfully: {self.key}")
+                        return True
+                    else:
+                        logger.warning(
+                            f"Failed to refresh lock (key not found): {self.key}"
+                        )
+                else:
+                    logger.warning(f"Lock ownership lost during refresh: {self.key}")
 
             # We no longer own the lock
             self._acquired = False

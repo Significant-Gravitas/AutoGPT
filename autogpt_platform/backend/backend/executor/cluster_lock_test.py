@@ -530,7 +530,9 @@ class TestClusterLockRealWorldScenarios:
     def test_graceful_degradation_pattern(self, redis_client, lock_key):
         """Test graceful degradation when Redis becomes unavailable."""
         owner_id = str(uuid.uuid4())
-        lock = ClusterLock(redis_client, lock_key, owner_id, timeout=3)  # Use shorter timeout
+        lock = ClusterLock(
+            redis_client, lock_key, owner_id, timeout=3
+        )  # Use shorter timeout
 
         # Normal operation
         assert lock.try_acquire() is True
