@@ -135,13 +135,10 @@ class ClusterLock:
         try:
             # Atomic check-and-refresh: only refresh if we still own the lock
             current_value = self.redis.get(self.key)
-            if (
-                current_value is not None
-                and (
-                    current_value == self.owner_id  # Already decoded
-                    if isinstance(current_value, str)
-                    else current_value.decode("utf-8") == self.owner_id  # Raw bytes
-                )
+            if current_value is not None and (
+                current_value == self.owner_id  # Already decoded
+                if isinstance(current_value, str)
+                else current_value.decode("utf-8") == self.owner_id  # Raw bytes
             ):
                 result = self.redis.expire(self.key, self.timeout)
                 if result:

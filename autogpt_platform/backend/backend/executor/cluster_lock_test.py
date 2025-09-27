@@ -373,7 +373,10 @@ class TestClusterLockErrorHandling:
     def test_context_manager_redis_failure_blocking(self, lock_key, owner_id):
         """Test context manager handles Redis failure when blocking=True."""
         bad_redis = redis.Redis(
-            host="invalid_host", port=1234, socket_connect_timeout=1, decode_responses=False
+            host="invalid_host",
+            port=1234,
+            socket_connect_timeout=1,
+            decode_responses=False,
         )
         lock = ClusterLock(bad_redis, lock_key, owner_id, timeout=60)
 
@@ -527,7 +530,7 @@ class TestClusterLockRealWorldScenarios:
     def test_graceful_degradation_pattern(self, redis_client, lock_key):
         """Test graceful degradation when Redis becomes unavailable."""
         owner_id = str(uuid.uuid4())
-        lock = ClusterLock(redis_client, lock_key, owner_id, timeout=60)
+        lock = ClusterLock(redis_client, lock_key, owner_id, timeout=3)  # Use shorter timeout
 
         # Normal operation
         assert lock.try_acquire() is True
@@ -537,7 +540,10 @@ class TestClusterLockRealWorldScenarios:
         # Simulate Redis becoming unavailable
         original_redis = lock.redis
         lock.redis = redis.Redis(
-            host="invalid_host", port=1234, socket_connect_timeout=1, decode_responses=False
+            host="invalid_host",
+            port=1234,
+            socket_connect_timeout=1,
+            decode_responses=False,
         )
 
         # Should degrade gracefully
@@ -547,8 +553,8 @@ class TestClusterLockRealWorldScenarios:
 
         # Restore Redis and verify can acquire again
         lock.redis = original_redis
-        # Wait for original lock to expire
-        time.sleep(1)
+        # Wait for original lock to expire (use longer wait for 3s timeout)
+        time.sleep(4)
 
         new_lock = ClusterLock(redis_client, lock_key, owner_id, timeout=60)
         assert new_lock.try_acquire() is True
