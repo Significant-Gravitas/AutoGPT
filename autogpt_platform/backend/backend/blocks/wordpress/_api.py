@@ -499,3 +499,115 @@ async def create_post(
     )
     error_message = error_data.get("message", response.text)
     raise ValueError(f"Failed to create post: {response.status} - {error_message}")
+
+
+class PostListItem(BaseModel):
+    """Response model for individual posts in a posts list response.
+
+    This is a simplified version compared to PostResponse, as the list endpoint
+    returns less detailed information than the create/get single post endpoints.
+    """
+
+    ID: int
+    site_ID: int
+    author: PostAuthor
+    date: datetime
+    modified: datetime
+    title: str
+    URL: str
+    short_URL: str
+    content: str | None = None
+    excerpt: str | None = None
+    slug: str
+    guid: str
+    status: str
+    sticky: bool
+    password: str | None = ""
+    parent: Union[Dict[str, Any], bool, None] = None
+    type: str
+    discussion: Dict[str, Union[str, bool, int]] | None = None
+    likes_enabled: bool | None = None
+    sharing_enabled: bool | None = None
+    like_count: int | None = None
+    i_like: bool | None = None
+    is_reblogged: bool | None = None
+    is_following: bool | None = None
+    global_ID: str | None = None
+    featured_image: str | None = None
+    post_thumbnail: Dict[str, Any] | None = None
+    format: str | None = None
+    geo: Union[Dict[str, Any], bool, None] = None
+    menu_order: int | None = None
+    page_template: str | None = None
+    publicize_URLs: List[str] | None = None
+    terms: Dict[str, Dict[str, Any]] | None = None
+    tags: Dict[str, Dict[str, Any]] | None = None
+    categories: Dict[str, Dict[str, Any]] | None = None
+    attachments: Dict[str, Dict[str, Any]] | None = None
+    attachment_count: int | None = None
+    metadata: List[Dict[str, Any]] | None = None
+    meta: Dict[str, Any] | None = None
+    capabilities: Dict[str, bool] | None = None
+    revisions: List[int] | None = None
+    other_URLs: Dict[str, Any] | None = None
+
+
+class PostsResponse(BaseModel):
+    """Response model for WordPress posts list."""
+
+    found: int
+    posts: List[PostListItem]
+    meta: Dict[str, Any]
+
+
+async def get_posts(
+    credentials: Credentials,
+    site: str,
+    status: str | None = None,
+    number: int = 100,
+    offset: int = 0,
+) -> PostsResponse:
+    """
+    Get posts from a WordPress site.
+
+    Args:
+        credentials: OAuth credentials
+        site: Site ID or domain (e.g., "myblog.wordpress.com" or "123456789")
+        status: Filter by post status (e.g., "publish", "draft", "pending", etc.)
+        number: Number of posts to retrieve (max 100)
+        offset: Number of posts to skip (for pagination)
+
+    Returns:
+        PostsResponse with the list of posts
+    """
+
+    endpoint = f"/rest/v1.1/sites/{site}/posts"
+
+    headers = {
+        "Authorization": credentials.auth_header(),
+    }
+
+    params: Dict[str, Any] = {
+        "number": min(number, 100),  # Max 100 posts per request
+        "offset": offset,
+    }
+
+    if status:
+        params["status"] = status
+
+    response = await Requests().get(
+        f"{WORDPRESS_BASE_URL.rstrip('/')}{endpoint}",
+        headers=headers,
+        params=params,
+    )
+
+    if response.ok:
+        return PostsResponse.model_validate(response.json())
+
+    error_data = (
+        response.json()
+        if response.headers.get("content-type", "").startswith("application/json")
+        else {}
+    )
+    error_message = error_data.get("message", response.text)
+    raise ValueError(f"Failed to get posts: {response.status} - {error_message}")
