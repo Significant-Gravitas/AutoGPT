@@ -588,13 +588,12 @@ async def get_posts(
     }
 
     params: Dict[str, Any] = {
-        "number": min(number, 100),  # Max 100 posts per request
+        "number": max(1, min(number, 100)),  # 1–100 posts per request
         "offset": offset,
     }
 
     if status:
         params["status"] = status
-
     response = await Requests().get(
         f"{WORDPRESS_BASE_URL.rstrip('/')}{endpoint}",
         headers=headers,
