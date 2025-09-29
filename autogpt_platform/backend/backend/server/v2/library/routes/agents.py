@@ -230,7 +230,7 @@ async def add_marketplace_agent_to_library(
         # Clear library caches after adding new agent
         for page in range(1, 20):
             library_cache.get_cached_library_agents.cache_delete(
-                user_id=user_id, page=page, page_size=8
+                user_id=user_id, page=page, page_size=10
             )
 
         return result
@@ -283,13 +283,20 @@ async def update_library_agent(
         HTTPException(500): If a server/database error occurs.
     """
     try:
-        return await library_db.update_library_agent(
+        result = await library_db.update_library_agent(
             library_agent_id=library_agent_id,
             user_id=user_id,
             auto_update_version=payload.auto_update_version,
             is_favorite=payload.is_favorite,
             is_archived=payload.is_archived,
         )
+
+        for page in range(1, 20):
+            library_cache.get_cached_library_agent_favorites.cache_delete(
+                user_id=user_id, page=page, page_size=10
+            )
+
+        return result
     except NotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -347,7 +354,7 @@ async def delete_library_agent(
         )
         for page in range(1, 20):
             library_cache.get_cached_library_agents.cache_delete(
-                user_id=user_id, page=page, page_size=8
+                user_id=user_id, page=page, page_size=10
             )
 
         return Response(status_code=status.HTTP_204_NO_CONTENT)

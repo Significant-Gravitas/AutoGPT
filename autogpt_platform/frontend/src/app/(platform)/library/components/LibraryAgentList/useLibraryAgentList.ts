@@ -15,7 +15,7 @@ export const useLibraryAgentList = () => {
   } = useGetV2ListLibraryAgentsInfinite(
     {
       page: 1,
-      page_size: 8,
+      page_size: 10,
       search_term: searchTerm || undefined,
       sort_by: librarySort,
     },

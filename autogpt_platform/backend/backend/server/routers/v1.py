@@ -765,7 +765,7 @@ async def create_new_graph(
     cache.get_cached_graphs.cache_delete(user_id=user_id, page=1, page_size=250)
     for page in range(1, 20):
         library_cache.get_cached_library_agents.cache_delete(
-            user_id=user_id, page=page, page_size=8
+            user_id=user_id, page=page, page_size=10
         )
 
     return await on_graph_activate(graph, user_id=user_id)
