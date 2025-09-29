@@ -1735,7 +1735,10 @@ async def synchronized(key: str, timeout: int = settings.config.cluster_lock_tim
         yield
     finally:
         if await lock.locked() and await lock.owned():
-            await lock.release()
+            try:
+                await lock.release()
+            except Exception as e:
+                logger.warning(f"Failed to release lock for key {key}: {e}")
 
 
 def increment_execution_count(user_id: str) -> int:
