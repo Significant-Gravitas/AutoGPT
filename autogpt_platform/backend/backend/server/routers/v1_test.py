@@ -110,7 +110,7 @@ def test_get_graph_blocks(
 
     # Mock block costs where it's imported inside the function
     mocker.patch(
-        "backend.server.routers.v1.get_block_cost",
+        "backend.data.credit.get_block_cost",
         return_value=[{"cost": 10, "type": "credit"}],
     )
 
