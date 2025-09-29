@@ -563,8 +563,37 @@ class SmartDecisionMakerBlock(Block):
                 and "parameters" in tool_def["function"]
             ):
                 expected_args = tool_def["function"]["parameters"].get("properties", {})
+                required_args = tool_def["function"]["parameters"].get("required", [])
             else:
-                expected_args = tool_args.keys()
+                expected_args = {}
+                required_args = []
+
+            # Validate arguments: check for typos and missing required arguments
+            provided_args = set(tool_args.keys())
+            expected_arg_names = set(expected_args.keys())
+
+            # Find invalid/typo'd arguments
+            invalid_args = provided_args - expected_arg_names
+
+            # Find missing required arguments
+            missing_required = set(required_args) - provided_args
+
+            # If there are validation errors, yield an error message
+            if invalid_args or missing_required:
+                error_parts = []
+                if invalid_args:
+                    error_parts.append(
+                        f"Invalid arguments for {tool_name}: {', '.join(sorted(invalid_args))}. "
+                        f"Valid arguments are: {', '.join(sorted(expected_arg_names))}"
+                    )
+                if missing_required:
+                    error_parts.append(
+                        f"Missing required arguments for {tool_name}: {', '.join(sorted(missing_required))}"
+                    )
+
+                error_message = ". ".join(error_parts)
+                yield "error", error_message
+                return
 
             # Yield provided arguments and None for missing ones
             for arg_name in expected_args:

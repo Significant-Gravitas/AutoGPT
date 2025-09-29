@@ -249,3 +249,176 @@ async def test_smart_decision_maker_tracks_llm_stats():
         # Verify outputs
         assert "finished" in outputs  # Should have finished since no tool calls
         assert outputs["finished"] == "I need to think about this."
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_smart_decision_maker_invalid_tool_arguments():
+    """
+    Test that SmartDecisionMakerBlock correctly validates tool call arguments
+    and returns an error when invalid arguments are provided or required arguments are missing.
+    """
+    from unittest.mock import MagicMock, patch
+    import backend.blocks.llm as llm_module
+    from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
+
+    block = SmartDecisionMakerBlock()
+
+    # Mock function signatures for a tool with specific required arguments
+    mock_tool_functions = [{
+        "type": "function",
+        "function": {
+            "name": "get_related_search_keywords",
+            "description": "Get related search keywords",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "keyword": {"type": "string", "description": "The main keyword"},
+                    "max_keyword_difficulty": {"type": "integer", "description": "Maximum keyword difficulty"},
+                    "minimum_volume": {"type": "integer", "description": "Minimum search volume"}
+                },
+                "required": ["keyword", "max_keyword_difficulty"]
+            }
+        }
+    }]
+
+    # Mock the llm.llm_call function to return a tool call with typo'd arguments
+    mock_response = MagicMock()
+    mock_response.response = None
+    mock_tool_call = MagicMock()
+    mock_tool_call.function.name = "get_related_search_keywords"
+    mock_tool_call.function.arguments = '{"keyword":"heygen pricing","maximum_keyword_difficulty":"40","minimum_volume":"200"}'
+    mock_response.tool_calls = [mock_tool_call]
+    mock_response.prompt_tokens = 50
+    mock_response.completion_tokens = 25
+    mock_response.reasoning = None
+    mock_response.raw_response = {
+        "role": "assistant",
+        "content": None,
+        "tool_calls": [{
+            "id": "call_mvdl4CBlrH25rtX4qLTjprrI",
+            "type": "function",
+            "function": {
+                "name": "get_related_search_keywords",
+                "arguments": '{"keyword":"heygen pricing","maximum_keyword_difficulty":"40","minimum_volume":"200"}'
+            }
+        }]
+    }
+
+    # Mock the _create_function_signature method to return our test tool function
+    with patch("backend.blocks.llm.llm_call", return_value=mock_response), patch.object(
+        SmartDecisionMakerBlock, "_create_function_signature", return_value=mock_tool_functions
+    ):
+
+        # Create test input
+        input_data = SmartDecisionMakerBlock.Input(
+            prompt="Find related keywords for 'heygen pricing'",
+            model=llm_module.LlmModel.GPT4O,
+            credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
+        )
+
+        # Execute the block
+        outputs = {}
+        async for output_name, output_data in block.run(
+            input_data,
+            credentials=llm_module.TEST_CREDENTIALS,
+            graph_id="test-graph-id",
+            node_id="test-node-id",
+            graph_exec_id="test-exec-id",
+            node_exec_id="test-node-exec-id",
+            user_id="test-user-id",
+        ):
+            outputs[output_name] = output_data
+
+        # Verify that an error was returned
+        assert "error" in outputs
+        assert "Invalid arguments for get_related_search_keywords: maximum_keyword_difficulty" in outputs["error"]
+        assert "Valid arguments are" in outputs["error"]
+        assert "max_keyword_difficulty" in outputs["error"]
+        assert "Missing required arguments for get_related_search_keywords: max_keyword_difficulty" in outputs["error"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_smart_decision_maker_valid_tool_arguments():
+    """
+    Test that SmartDecisionMakerBlock correctly processes valid tool call arguments.
+    """
+    from unittest.mock import MagicMock, patch
+    import backend.blocks.llm as llm_module
+    from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
+
+    block = SmartDecisionMakerBlock()
+
+    # Mock function signatures for a tool with specific required arguments
+    mock_tool_functions = [{
+        "type": "function",
+        "function": {
+            "name": "get_related_search_keywords",
+            "description": "Get related search keywords",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "keyword": {"type": "string", "description": "The main keyword"},
+                    "max_keyword_difficulty": {"type": "integer", "description": "Maximum keyword difficulty"},
+                    "minimum_volume": {"type": "integer", "description": "Minimum search volume"}
+                },
+                "required": ["keyword", "max_keyword_difficulty"]
+            }
+        }
+    }]
+
+    # Mock the llm.llm_call function to return a tool call with correct arguments
+    mock_response = MagicMock()
+    mock_response.response = None
+    mock_tool_call = MagicMock()
+    mock_tool_call.function.name = "get_related_search_keywords"
+    mock_tool_call.function.arguments = '{"keyword":"heygen pricing","max_keyword_difficulty":"40","minimum_volume":"200"}'
+    mock_response.tool_calls = [mock_tool_call]
+    mock_response.prompt_tokens = 50
+    mock_response.completion_tokens = 25
+    mock_response.reasoning = None
+    mock_response.raw_response = {
+        "role": "assistant",
+        "content": None,
+        "tool_calls": [{
+            "id": "call_mvdl4CBlrH25rtX4qLTjprrI",
+            "type": "function",
+            "function": {
+                "name": "get_related_search_keywords",
+                "arguments": '{"keyword":"heygen pricing","max_keyword_difficulty":"40","minimum_volume":"200"}'
+            }
+        }]
+    }
+
+    # Mock the _create_function_signature method to return our test tool function
+    with patch("backend.blocks.llm.llm_call", return_value=mock_response), patch.object(
+        SmartDecisionMakerBlock, "_create_function_signature", return_value=mock_tool_functions
+    ):
+
+        # Create test input
+        input_data = SmartDecisionMakerBlock.Input(
+            prompt="Find related keywords for 'heygen pricing'",
+            model=llm_module.LlmModel.GPT4O,
+            credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
+        )
+
+        # Execute the block
+        outputs = {}
+        async for output_name, output_data in block.run(
+            input_data,
+            credentials=llm_module.TEST_CREDENTIALS,
+            graph_id="test-graph-id",
+            node_id="test-node-id",
+            graph_exec_id="test-exec-id",
+            node_exec_id="test-node-exec-id",
+            user_id="test-user-id",
+        ):
+            outputs[output_name] = output_data
+
+        # Verify that tool arguments were yielded correctly and no error was returned
+        assert "error" not in outputs
+        assert "tools_^_get_related_search_keywords_~_keyword" in outputs
+        assert outputs["tools_^_get_related_search_keywords_~_keyword"] == "heygen pricing"
+        assert "tools_^_get_related_search_keywords_~_max_keyword_difficulty" in outputs
+        assert outputs["tools_^_get_related_search_keywords_~_max_keyword_difficulty"] == "40"
+        assert "tools_^_get_related_search_keywords_~_minimum_volume" in outputs
+        assert outputs["tools_^_get_related_search_keywords_~_minimum_volume"] == "200"
