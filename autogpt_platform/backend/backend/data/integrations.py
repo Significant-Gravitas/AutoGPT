@@ -11,7 +11,10 @@ from prisma.types import (
 from pydantic import Field, computed_field
 
 from backend.data.event_bus import AsyncRedisEventBus
-from backend.data.includes import INTEGRATION_WEBHOOK_INCLUDE
+from backend.data.includes import (
+    INTEGRATION_WEBHOOK_INCLUDE,
+    MAX_INTEGRATION_WEBHOOKS_FETCH,
+)
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks.utils import webhook_ingress_url
 from backend.server.v2.library.model import LibraryAgentPreset
@@ -128,22 +131,36 @@ async def get_webhook(
 
 @overload
 async def get_all_webhooks_by_creds(
-    user_id: str, credentials_id: str, *, include_relations: Literal[True]
+    user_id: str,
+    credentials_id: str,
+    *,
+    include_relations: Literal[True],
+    limit: int = MAX_INTEGRATION_WEBHOOKS_FETCH,
 ) -> list[WebhookWithRelations]: ...
 @overload
 async def get_all_webhooks_by_creds(
-    user_id: str, credentials_id: str, *, include_relations: Literal[False] = False
+    user_id: str,
+    credentials_id: str,
+    *,
+    include_relations: Literal[False] = False,
+    limit: int = MAX_INTEGRATION_WEBHOOKS_FETCH,
 ) -> list[Webhook]: ...
 
 
 async def get_all_webhooks_by_creds(
-    user_id: str, credentials_id: str, *, include_relations: bool = False
+    user_id: str,
+    credentials_id: str,
+    *,
+    include_relations: bool = False,
+    limit: int = MAX_INTEGRATION_WEBHOOKS_FETCH,
 ) -> list[Webhook] | list[WebhookWithRelations]:
     if not credentials_id:
         raise ValueError("credentials_id must not be empty")
     webhooks = await IntegrationWebhook.prisma().find_many(
         where={"userId": user_id, "credentialsId": credentials_id},
         include=INTEGRATION_WEBHOOK_INCLUDE if include_relations else None,
+        order={"createdAt": "desc"},
+        take=limit,
     )
     return [
         (WebhookWithRelations if include_relations else Webhook).from_db(webhook)

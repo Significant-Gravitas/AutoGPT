@@ -1,15 +1,15 @@
-import { Separator } from "@/components/__legacy__/ui/separator";
+// import { Separator } from "@/components/__legacy__/ui/separator";
 import { cn } from "@/lib/utils";
 import React, { useMemo } from "react";
 import { BlockMenu } from "../BlockMenu/BlockMenu";
 import { useNewControlPanel } from "./useNewControlPanel";
-import { NewSaveControl } from "../SaveControl/NewSaveControl";
+// import { NewSaveControl } from "../SaveControl/NewSaveControl";
 import { GraphExecutionID } from "@/lib/autogpt-server-api";
-import { history } from "@/app/(platform)/build/components/legacy-builder/history";
-import { ControlPanelButton } from "../ControlPanelButton";
+// import { ControlPanelButton } from "../ControlPanelButton";
 import { ArrowUUpLeftIcon, ArrowUUpRightIcon } from "@phosphor-icons/react";
-import { GraphSearchMenu } from "../GraphMenu/GraphMenu";
-import { CustomNode } from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
+// import { GraphSearchMenu } from "../GraphMenu/GraphMenu";
+import { CustomNode } from "../../FlowEditor/nodes/CustomNode";
+import { history } from "@/app/(platform)/build/components/legacy-builder/history";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 export type Control = {
@@ -19,44 +19,41 @@ export type Control = {
   onClick: () => void;
 };
 
-interface ControlPanelProps {
-  className?: string;
-  flowExecutionID: GraphExecutionID | undefined;
-  visualizeBeads: "no" | "static" | "animate";
-  pinSavePopover: boolean;
-  pinBlocksPopover: boolean;
-  nodes: CustomNode[];
-  onNodeSelect: (nodeId: string) => void;
-  onNodeHover?: (nodeId: string | null) => void;
-}
-
+export type NewControlPanelProps = {
+  flowExecutionID?: GraphExecutionID | undefined;
+  visualizeBeads?: "no" | "static" | "animate";
+  pinSavePopover?: boolean;
+  pinBlocksPopover?: boolean;
+  nodes?: CustomNode[];
+  onNodeSelect?: (nodeId: string) => void;
+  onNodeHover?: (nodeId: string) => void;
+};
 export const NewControlPanel = ({
-  flowExecutionID,
-  visualizeBeads,
-  pinSavePopover,
-  pinBlocksPopover,
-  nodes,
-  onNodeSelect,
-  onNodeHover,
-  className,
-}: ControlPanelProps) => {
-  const isGraphSearchEnabled = useGetFlag(Flag.GRAPH_SEARCH);
+  flowExecutionID: _flowExecutionID,
+  visualizeBeads: _visualizeBeads,
+  pinSavePopover: _pinSavePopover,
+  pinBlocksPopover: _pinBlocksPopover,
+  nodes: _nodes,
+  onNodeSelect: _onNodeSelect,
+  onNodeHover: _onNodeHover,
+}: NewControlPanelProps) => {
+  const _isGraphSearchEnabled = useGetFlag(Flag.GRAPH_SEARCH);
 
   const {
     blockMenuSelected,
     setBlockMenuSelected,
-    agentDescription,
-    setAgentDescription,
-    saveAgent,
-    agentName,
-    setAgentName,
-    savedAgent,
-    isSaving,
-    isRunning,
-    isStopping,
-  } = useNewControlPanel({ flowExecutionID, visualizeBeads });
+    // agentDescription,
+    // setAgentDescription,
+    // saveAgent,
+    // agentName,
+    // setAgentName,
+    // savedAgent,
+    // isSaving,
+    // isRunning,
+    // isStopping,
+  } = useNewControlPanel({});
 
-  const controls: Control[] = useMemo(
+  const _controls: Control[] = useMemo(
     () => [
       {
         label: "Undo",
@@ -77,17 +74,16 @@ export const NewControlPanel = ({
   return (
     <section
       className={cn(
-        "absolute left-4 top-24 z-10 w-[4.25rem] overflow-hidden rounded-[1rem] border-none bg-white p-0 shadow-[0_1px_5px_0_rgba(0,0,0,0.1)]",
-        className,
+        "top- absolute left-4 z-10 w-[4.25rem] overflow-hidden rounded-[1rem] border-none bg-white p-0 shadow-[0_1px_5px_0_rgba(0,0,0,0.1)]",
       )}
     >
       <div className="flex flex-col items-center justify-center rounded-[1rem] p-0">
         <BlockMenu
-          pinBlocksPopover={pinBlocksPopover}
+          // pinBlocksPopover={pinBlocksPopover}
           blockMenuSelected={blockMenuSelected}
           setBlockMenuSelected={setBlockMenuSelected}
         />
-        <Separator className="text-[#E1E1E1]" />
+        {/* <Separator className="text-[#E1E1E1]" />
         {isGraphSearchEnabled && (
           <>
             <GraphSearchMenu
@@ -124,7 +120,7 @@ export const NewControlPanel = ({
           pinSavePopover={pinSavePopover}
           blockMenuSelected={blockMenuSelected}
           setBlockMenuSelected={setBlockMenuSelected}
-        />
+        /> */}
       </div>
     </section>
   );

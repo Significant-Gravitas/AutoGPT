@@ -5,10 +5,12 @@ import { DefaultStateType, useBlockMenuContext } from "../block-menu-provider";
 import { useSuggestionContent } from "./useSuggestionContent";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { blockMenuContainerStyle } from "../style";
+import { useNodeStore } from "../../../stores/nodeStore";
 
 export const SuggestionContent = () => {
   const { setIntegration, setDefaultState } = useBlockMenuContext();
   const { data, isLoading, isError, error, refetch } = useSuggestionContent();
+  const addBlock = useNodeStore((state) => state.addBlock);
 
   if (isError) {
     return (
@@ -73,6 +75,7 @@ export const SuggestionContent = () => {
                     key={`block-${index}`}
                     title={block.name}
                     description={block.description}
+                    onClick={() => addBlock(block)}
                   />
                 ))
               : Array(3)

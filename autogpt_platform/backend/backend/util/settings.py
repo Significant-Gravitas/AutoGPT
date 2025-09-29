@@ -59,6 +59,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=1000,
         description="Maximum number of workers to use for graph execution.",
     )
+
+    # FastAPI Thread Pool Configuration
+    # IMPORTANT: FastAPI automatically offloads ALL sync functions to a thread pool:
+    # - Sync endpoint functions (def instead of async def)
+    # - Sync dependency functions (def instead of async def)
+    # - Manually called run_in_threadpool() operations
+    # Default thread pool size is only 40, which becomes a bottleneck under high concurrency
+    fastapi_thread_pool_size: int = Field(
+        default=60,
+        ge=40,
+        le=500,
+        description="Thread pool size for FastAPI sync operations. All sync endpoints and dependencies automatically use this pool. Higher values support more concurrent sync operations but use more memory.",
+    )
     pyro_host: str = Field(
         default="localhost",
         description="The default hostname of the Pyro server.",
@@ -126,6 +139,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     execution_late_notification_threshold_secs: int = Field(
         default=5 * 60,
         description="Time in seconds after which the execution stuck on QUEUED status is considered late.",
+    )
+    cluster_lock_timeout: int = Field(
+        default=300,
+        description="Cluster lock timeout in seconds for graph execution coordination.",
     )
     execution_late_notification_checkrange_secs: int = Field(
         default=60 * 60,
