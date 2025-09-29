@@ -11,6 +11,7 @@ import pydantic
 import stripe
 from autogpt_libs.auth import get_user_id, requires_user
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from autogpt_libs.utils.cache import cached
 from fastapi import (
     APIRouter,
     Body,
@@ -35,7 +36,7 @@ import backend.server.v2.library.db as library_db
 from backend.data import api_key as api_key_db
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
-from backend.data.block import BlockInput, CompletedBlockOutput, get_block
+from backend.data.block import BlockInput, CompletedBlockOutput, get_block, get_blocks
 from backend.data.credit import (
     AutoTopUpConfig,
     RefundRequest,
@@ -299,8 +300,7 @@ def _compute_blocks_sync() -> str:
 
 
 @cached()
-async def 
-_blocks() -> str:
+async def _get_cached_blocks() -> str:
     """
     Async cached function with thundering herd protection.
     On cache miss: runs heavy work in thread pool
@@ -330,7 +330,6 @@ _blocks() -> str:
         }
     },
 )
-
 async def get_graph_blocks() -> Response:
     # Cache hit: returns immediately, Cache miss: runs in thread pool
     content = await _get_cached_blocks()
