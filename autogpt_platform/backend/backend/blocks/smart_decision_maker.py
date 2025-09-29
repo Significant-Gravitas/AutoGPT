@@ -565,12 +565,44 @@ class SmartDecisionMakerBlock(Block):
             else:
                 expected_args = tool_args.keys()
 
-            # Yield provided arguments and None for missing ones
+            # Validate tool call arguments and provide detailed error messages
+            provided_args = set(tool_args.keys())
+            expected_args_set = (
+                set(expected_args.keys())
+                if isinstance(expected_args, dict)
+                else set(expected_args)
+            )
+
+            # Get required parameters from the schema
+            required_params = set()
+            if (
+                tool_def
+                and "function" in tool_def
+                and "parameters" in tool_def["function"]
+            ):
+                required_params = set(
+                    tool_def["function"]["parameters"].get("required", [])
+                )
+
+            # Check for unexpected arguments (typos)
+            unexpected_args = provided_args - expected_args_set
+            # Only check for missing REQUIRED parameters
+            missing_required_args = required_params - provided_args
+
+            if unexpected_args or missing_required_args:
+                error_msg = f"Tool call '{tool_name}' has parameter errors:"
+                if unexpected_args:
+                    error_msg += f" Unknown parameters: {sorted(unexpected_args)}."
+                if missing_required_args:
+                    error_msg += f" Missing required parameters: {sorted(missing_required_args)}."
+                error_msg += f" Expected parameters: {sorted(expected_args_set)}."
+                if required_params:
+                    error_msg += f" Required parameters: {sorted(required_params)}."
+                raise ValueError(error_msg)
+
+            # Yield provided arguments, use .get() for optional parameters
             for arg_name in expected_args:
-                if arg_name in tool_args:
-                    yield f"tools_^_{tool_name}_~_{arg_name}", tool_args[arg_name]
-                else:
-                    yield f"tools_^_{tool_name}_~_{arg_name}", None
+                yield f"tools_^_{tool_name}_~_{arg_name}", tool_args.get(arg_name)
 
         # Add reasoning to conversation history if available
         if response.reasoning:
