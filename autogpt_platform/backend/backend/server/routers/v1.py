@@ -23,6 +23,8 @@ from fastapi import (
     Security,
     UploadFile,
 )
+from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 from typing_extensions import Optional, TypedDict
 
@@ -85,6 +87,7 @@ from backend.server.v2.library import cache as library_cache
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.exceptions import GraphValidationError, NotFoundError
+from backend.util.json import dumps
 from backend.util.settings import Settings
 from backend.util.timezone_utils import (
     convert_utc_time_to_user_timezone,
@@ -270,14 +273,71 @@ async def is_onboarding_enabled():
 ########################################################
 
 
+def _compute_blocks_sync() -> str:
+    """
+    Synchronous function to compute blocks data.
+    This does the heavy lifting: instantiate 226+ blocks, compute costs, serialize.
+    """
+    from backend.data.credit import get_block_cost
+
+    block_classes = get_blocks()
+    result = []
+
+    for block_class in block_classes.values():
+        block_instance = block_class()
+        if not block_instance.disabled:
+            costs = get_block_cost(block_instance)
+            # Convert BlockCost BaseModel objects to dictionaries for JSON serialization
+            costs_dict = [
+                cost.model_dump() if isinstance(cost, BaseModel) else cost
+                for cost in costs
+            ]
+            result.append({**block_instance.to_dict(), "costs": costs_dict})
+
+    # Use our JSON utility which properly handles complex types through to_dict conversion
+    return dumps(result)
+
+
+@cached()
+async def 
+_blocks() -> str:
+    """
+    Async cached function with thundering herd protection.
+    On cache miss: runs heavy work in thread pool
+    On cache hit: returns cached string immediately (no thread pool needed)
+    """
+    # Only run in thread pool on cache miss - cache hits return immediately
+    return await run_in_threadpool(_compute_blocks_sync)
+
+
 @v1_router.get(
     path="/blocks",
     summary="List available blocks",
     tags=["blocks"],
     dependencies=[Security(requires_user)],
+    responses={
+        200: {
+            "description": "Successful Response",
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "items": {"additionalProperties": True, "type": "object"},
+                        "type": "array",
+                        "title": "Response Getv1List Available Blocks",
+                    }
+                }
+            },
+        }
+    },
 )
-async def get_graph_blocks() -> Sequence[dict[Any, Any]]:
-    return cache.get_cached_blocks()
+
+async def get_graph_blocks() -> Response:
+    # Cache hit: returns immediately, Cache miss: runs in thread pool
+    content = await _get_cached_blocks()
+    return Response(
+        content=content,
+        media_type="application/json",
+    )
 
 
 @v1_router.post(
