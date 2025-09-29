@@ -556,33 +556,22 @@ class SmartDecisionMakerBlock(Block):
                 None,
             )
 
+            # Get parameters schema from tool definition
             if (
                 tool_def
                 and "function" in tool_def
                 and "parameters" in tool_def["function"]
             ):
-                expected_args = tool_def["function"]["parameters"].get("properties", {})
+                parameters = tool_def["function"]["parameters"]
+                expected_args = parameters.get("properties", {})
+                required_params = set(parameters.get("required", []))
             else:
-                expected_args = tool_args.keys()
+                expected_args = {arg: {} for arg in tool_args.keys()}
+                required_params = set()
 
             # Validate tool call arguments and provide detailed error messages
             provided_args = set(tool_args.keys())
-            expected_args_set = (
-                set(expected_args.keys())
-                if isinstance(expected_args, dict)
-                else set(expected_args)
-            )
-
-            # Get required parameters from the schema
-            required_params = set()
-            if (
-                tool_def
-                and "function" in tool_def
-                and "parameters" in tool_def["function"]
-            ):
-                required_params = set(
-                    tool_def["function"]["parameters"].get("required", [])
-                )
+            expected_args_set = set(expected_args.keys())
 
             # Check for unexpected arguments (typos)
             unexpected_args = provided_args - expected_args_set
