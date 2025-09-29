@@ -16,7 +16,7 @@ bearer_jwt_auth = HTTPBearer(
 )
 
 
-def get_jwt_payload(
+async def get_jwt_payload(
     credentials: HTTPAuthorizationCredentials | None = Security(bearer_jwt_auth),
 ) -> dict[str, Any]:
     """

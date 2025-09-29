@@ -1,5 +1,6 @@
 import contextlib
 import logging
+import platform
 from enum import Enum
 from typing import Any, Optional
 
@@ -11,6 +12,7 @@ import uvicorn
 from autogpt_libs.auth import add_auth_responses_to_openapi
 from autogpt_libs.auth import verify_settings as verify_auth_settings
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.routing import APIRoute
 from prisma.errors import PrismaError
 
@@ -69,6 +71,26 @@ async def lifespan_context(app: fastapi.FastAPI):
     verify_auth_settings()
 
     await backend.data.db.connect()
+
+    # Configure thread pool for FastAPI sync operation performance
+    # CRITICAL: FastAPI automatically runs ALL sync functions in this thread pool:
+    # - Any endpoint defined with 'def' (not async def)
+    # - Any dependency function defined with 'def' (not async def)
+    # - Manual run_in_threadpool() calls (like JWT decoding)
+    # Default pool size is only 40 threads, causing bottlenecks under high concurrency
+    config = backend.util.settings.Config()
+    try:
+        import anyio.to_thread
+
+        anyio.to_thread.current_default_thread_limiter().total_tokens = (
+            config.fastapi_thread_pool_size
+        )
+        logger.info(
+            f"Thread pool size set to {config.fastapi_thread_pool_size} for sync endpoint/dependency performance"
+        )
+    except (ImportError, AttributeError) as e:
+        logger.warning(f"Could not configure thread pool size: {e}")
+        # Continue without thread pool configuration
 
     # Ensure SDK auto-registration is patched before initializing blocks
     from backend.sdk.registry import AutoRegistry
@@ -139,6 +161,9 @@ app = fastapi.FastAPI(
 )
 
 app.add_middleware(SecurityHeadersMiddleware)
+
+# Add GZip compression middleware for large responses (like /api/blocks)
+app.add_middleware(GZipMiddleware, minimum_size=50_000)  # 50KB threshold
 
 # Add 401 responses to authenticated endpoints in OpenAPI spec
 add_auth_responses_to_openapi(app)
@@ -273,12 +298,28 @@ class AgentServer(backend.util.service.AppProcess):
             allow_methods=["*"],  # Allows all methods
             allow_headers=["*"],  # Allows all headers
         )
-        uvicorn.run(
-            server_app,
-            host=backend.util.settings.Config().agent_api_host,
-            port=backend.util.settings.Config().agent_api_port,
-            log_config=None,
-        )
+        config = backend.util.settings.Config()
+
+        # Configure uvicorn with performance optimizations from Kludex FastAPI tips
+        uvicorn_config = {
+            "app": server_app,
+            "host": config.agent_api_host,
+            "port": config.agent_api_port,
+            "log_config": None,
+            # Use httptools for HTTP parsing (if available)
+            "http": "httptools",
+            # Only use uvloop on Unix-like systems (not supported on Windows)
+            "loop": "uvloop" if platform.system() != "Windows" else "auto",
+        }
+
+        # Only add debug in local environment (not supported in all uvicorn versions)
+        if config.app_env == backend.util.settings.AppEnvironment.LOCAL:
+            import os
+
+            # Enable asyncio debug mode via environment variable
+            os.environ["PYTHONASYNCIODEBUG"] = "1"
+
+        uvicorn.run(**uvicorn_config)
 
     def cleanup(self):
         super().cleanup()
