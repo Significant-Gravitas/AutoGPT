@@ -1,3 +1,5 @@
+from typing import Any
+
 from firecrawl import FirecrawlApp
 
 from backend.sdk import (
@@ -20,7 +22,10 @@ class FirecrawlMapWebsiteBlock(Block):
         url: str = SchemaField(description="The website url to map")
 
     class Output(BlockSchema):
-        links: list[str] = SchemaField(description="The links of the website")
+        links: list[str] = SchemaField(description="List of URLs found on the website")
+        results: list[dict[str, Any]] = SchemaField(
+            description="List of search results with url, title, and description"
+        )
 
     def __init__(self):
         super().__init__(
@@ -41,4 +46,15 @@ class FirecrawlMapWebsiteBlock(Block):
             url=input_data.url,
         )
 
-        yield "links", map_result.links
+        # Convert SearchResult objects to dicts
+        results_data = [
+            {
+                "url": link.url,
+                "title": link.title,
+                "description": link.description,
+            }
+            for link in map_result.links
+        ]
+
+        yield "links", [link.url for link in map_result.links]
+        yield "results", results_data
