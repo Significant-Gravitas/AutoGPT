@@ -15,6 +15,7 @@ const TallyPopupSimple = () => {
   const [userAgent, setUserAgent] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   // const [userId, setUserId] = useState<string>("");
+  const [userEmail, setUserEmail] = useState<string>("");
   const router = useRouter();
   const pathname = usePathname();
 
@@ -49,6 +50,7 @@ const TallyPopupSimple = () => {
     getCurrentUser().then(({ user, error }) => {
       setIsAuthenticated(user != null);
       // setUserId(user?.id || "");
+      setUserEmail(user?.email || "");
     });
   }, [pathname]);
 
@@ -140,6 +142,7 @@ const TallyPopupSimple = () => {
         data-is-authenticated={
           isAuthenticated === null ? "unknown" : String(isAuthenticated)
         }
+        data-email={userEmail || "not-authenticated"}
         // data-user-id={userId || "not-authenticated"}
       >
         <QuestionMarkCircledIcon className="h-14 w-14" />
