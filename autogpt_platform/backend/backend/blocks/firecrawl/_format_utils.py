@@ -1,12 +1,14 @@
 """Utility functions for converting between our ScrapeFormat enum and firecrawl FormatOption types."""
 
-from typing import Any, List
+from typing import List
 
 from firecrawl.v2.types import FormatOption, ScreenshotFormat
 
+from backend.blocks.firecrawl._api import ScrapeFormat
+
 
 def convert_to_format_options(
-    formats: List[Any],  # List of ScrapeFormat enum values
+    formats: List[ScrapeFormat],
 ) -> List[FormatOption]:
     """Convert our ScrapeFormat enum values to firecrawl FormatOption types.
 
@@ -21,6 +23,6 @@ def convert_to_format_options(
             result.append(ScreenshotFormat(type="screenshot", full_page=True))
         else:
             # Regular string literals
-            result.append(format_enum.value)  # type: ignore[arg-type]
+            result.append(format_enum.value)
 
     return result

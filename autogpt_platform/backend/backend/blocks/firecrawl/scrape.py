@@ -1,8 +1,8 @@
-from enum import Enum
 from typing import Any
 
 from firecrawl import FirecrawlApp
 
+from backend.blocks.firecrawl._api import ScrapeFormat
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -15,17 +15,6 @@ from backend.sdk import (
 
 from ._config import firecrawl
 from ._format_utils import convert_to_format_options
-
-
-class ScrapeFormat(Enum):
-    MARKDOWN = "markdown"
-    HTML = "html"
-    RAW_HTML = "rawHtml"
-    LINKS = "links"
-    SCREENSHOT = "screenshot"
-    SCREENSHOT_FULL_PAGE = "screenshot@fullPage"
-    JSON = "json"
-    CHANGE_TRACKING = "changeTracking"
 
 
 class FirecrawlScrapeBlock(Block):
@@ -82,7 +71,7 @@ class FirecrawlScrapeBlock(Block):
 
         scrape_result = app.scrape(
             input_data.url,
-            formats=convert_to_format_options(input_data.formats),  # type: ignore[arg-type]
+            formats=convert_to_format_options(input_data.formats),
             only_main_content=input_data.only_main_content,
             max_age=input_data.max_age,
             wait_for=input_data.wait_for,
