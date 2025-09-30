@@ -1,9 +1,9 @@
 import React from "react";
-import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/__legacy__/ui/separator";
+import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import { beautifyString, getPrimaryCategoryColor } from "@/lib/utils";
 import { SearchableNode } from "../GraphMenuSearchBar/useGraphMenuSearchBar";
-import { TextRenderer } from "@/components/ui/render";
+import { TextRenderer } from "@/components/__legacy__/ui/render";
 import {
   Tooltip,
   TooltipContent,

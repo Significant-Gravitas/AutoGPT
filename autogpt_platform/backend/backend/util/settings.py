@@ -68,8 +68,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The default timeout in seconds, for Pyro client connections.",
     )
     pyro_client_comm_retry: int = Field(
-        default=5,
+        default=100,
         description="The default number of retries for Pyro client connections.",
+    )
+    pyro_client_max_wait: float = Field(
+        default=30.0,
+        description="The maximum wait time in seconds for Pyro client retries.",
     )
     rpc_client_call_timeout: int = Field(
         default=300,
@@ -122,6 +126,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     execution_late_notification_threshold_secs: int = Field(
         default=5 * 60,
         description="Time in seconds after which the execution stuck on QUEUED status is considered late.",
+    )
+    cluster_lock_timeout: int = Field(
+        default=300,
+        description="Cluster lock timeout in seconds for graph execution coordination.",
     )
     execution_late_notification_checkrange_secs: int = Field(
         default=60 * 60,

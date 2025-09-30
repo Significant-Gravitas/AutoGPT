@@ -1,7 +1,11 @@
 import { Input } from "@/components/atoms/Input/Input";
 import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { Form, FormDescription, FormField } from "@/components/ui/form";
+import {
+  Form,
+  FormDescription,
+  FormField,
+} from "@/components/__legacy__/ui/form";
 import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,

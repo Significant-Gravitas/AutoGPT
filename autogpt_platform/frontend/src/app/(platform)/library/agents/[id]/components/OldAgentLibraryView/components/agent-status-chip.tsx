@@ -1,6 +1,6 @@
 import React from "react";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/__legacy__/ui/badge";
 
 export type AgentStatus = "active" | "inactive" | "error" | "broken";
 

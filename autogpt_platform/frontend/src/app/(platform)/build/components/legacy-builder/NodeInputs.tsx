@@ -1,9 +1,9 @@
-import { Calendar } from "@/components/ui/calendar";
+import { Calendar } from "@/components/__legacy__/ui/calendar";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover";
+} from "@/components/__legacy__/ui/popover";
 import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 import { beautifyString, cn } from "@/lib/utils";
@@ -36,14 +36,14 @@ import React, {
   useState,
   useRef,
 } from "react";
-import { Button } from "../../../../../components/ui/button";
+import { Button } from "../../../../../components/__legacy__/ui/button";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../../../../../components/ui/select";
+} from "../../../../../components/__legacy__/ui/select";
 import {
   MultiSelector,
   MultiSelectorContent,
@@ -51,8 +51,8 @@ import {
   MultiSelectorItem,
   MultiSelectorList,
   MultiSelectorTrigger,
-} from "../../../../../components/ui/multiselect";
-import { LocalValuedInput } from "../../../../../components/ui/input";
+} from "../../../../../components/__legacy__/ui/multiselect";
+import { LocalValuedInput } from "../../../../../components/__legacy__/ui/input";
 import NodeHandle from "./NodeHandle";
 import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
 import { Switch } from "../../../../../components/atoms/Switch/Switch";
