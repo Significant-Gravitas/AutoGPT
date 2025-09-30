@@ -1,4 +1,3 @@
-import functools
 import inspect
 import logging
 import os
@@ -21,6 +20,7 @@ from typing import (
 
 import jsonref
 import jsonschema
+from autogpt_libs.utils.cache import cached
 from prisma.models import AgentBlock
 from prisma.types import AgentBlockCreateInput
 from pydantic import BaseModel
@@ -89,6 +89,45 @@ class BlockCategory(Enum):
 
     def dict(self) -> dict[str, str]:
         return {"category": self.name, "description": self.value}
+
+
+class BlockCostType(str, Enum):
+    RUN = "run"  # cost X credits per run
+    BYTE = "byte"  # cost X credits per byte
+    SECOND = "second"  # cost X credits per second
+
+
+class BlockCost(BaseModel):
+    cost_amount: int
+    cost_filter: BlockInput
+    cost_type: BlockCostType
+
+    def __init__(
+        self,
+        cost_amount: int,
+        cost_type: BlockCostType = BlockCostType.RUN,
+        cost_filter: Optional[BlockInput] = None,
+        **data: Any,
+    ) -> None:
+        super().__init__(
+            cost_amount=cost_amount,
+            cost_filter=cost_filter or {},
+            cost_type=cost_type,
+            **data,
+        )
+
+
+class BlockInfo(BaseModel):
+    id: str
+    name: str
+    inputSchema: dict[str, Any]
+    outputSchema: dict[str, Any]
+    costs: list[BlockCost]
+    description: str
+    categories: list[dict[str, str]]
+    contributors: list[dict[str, Any]]
+    staticOutput: bool
+    uiType: str
 
 
 class BlockSchema(BaseModel):
@@ -454,6 +493,24 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             "uiType": self.block_type.value,
         }
 
+    def get_info(self) -> BlockInfo:
+        from backend.data.credit import get_block_cost
+
+        return BlockInfo(
+            id=self.id,
+            name=self.name,
+            inputSchema=self.input_schema.jsonschema(),
+            outputSchema=self.output_schema.jsonschema(),
+            costs=get_block_cost(self),
+            description=self.description,
+            categories=[category.dict() for category in self.categories],
+            contributors=[
+                contributor.model_dump() for contributor in self.contributors
+            ],
+            staticOutput=self.static_output,
+            uiType=self.block_type.value,
+        )
+
     async def execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
         if error := self.input_schema.validate_data(input_data):
             raise ValueError(
@@ -665,7 +722,7 @@ def get_block(block_id: str) -> Block[BlockSchema, BlockSchema] | None:
     return cls() if cls else None
 
 
-@functools.cache
+@cached()
 def get_webhook_block_ids() -> Sequence[str]:
     return [
         id
@@ -674,7 +731,7 @@ def get_webhook_block_ids() -> Sequence[str]:
     ]
 
 
-@functools.cache
+@cached()
 def get_io_block_ids() -> Sequence[str]:
     return [
         id

@@ -3,15 +3,15 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover";
-import { ToyBrick } from "lucide-react";
+} from "@/components/__legacy__/ui/popover";
 import { BlockMenuContent } from "../BlockMenuContent/BlockMenuContent";
 import { ControlPanelButton } from "../ControlPanelButton";
 import { useBlockMenu } from "./useBlockMenu";
 import { BlockMenuStateProvider } from "../block-menu-provider";
+import { LegoIcon } from "@phosphor-icons/react";
 
 interface BlockMenuProps {
-  pinBlocksPopover: boolean;
+  // pinBlocksPopover: boolean;
   blockMenuSelected: "save" | "block" | "search" | "";
   setBlockMenuSelected: React.Dispatch<
     React.SetStateAction<"" | "save" | "block" | "search">
@@ -19,13 +19,17 @@ interface BlockMenuProps {
 }
 
 export const BlockMenu: React.FC<BlockMenuProps> = ({
-  pinBlocksPopover,
+  // pinBlocksPopover,
   blockMenuSelected,
   setBlockMenuSelected,
 }) => {
-  const {open, onOpen} = useBlockMenu({pinBlocksPopover, setBlockMenuSelected});
+  const { open: _open, onOpen } = useBlockMenu({
+    // pinBlocksPopover,
+    setBlockMenuSelected,
+  });
   return (
-    <Popover open={pinBlocksPopover ? true : open} onOpenChange={onOpen}>
+    // pinBlocksPopover ? true : open
+    <Popover onOpenChange={onOpen}>
       <PopoverTrigger className="hover:cursor-pointer">
         <ControlPanelButton
           data-id="blocks-control-popover-trigger"
@@ -33,8 +37,8 @@ export const BlockMenu: React.FC<BlockMenuProps> = ({
           selected={blockMenuSelected === "block"}
           className="rounded-none"
         >
-           {/* Need to find phosphor icon alternative for this lucide icon */}
-          <ToyBrick className="h-5 w-6" strokeWidth={2} /> 
+          {/* Need to find phosphor icon alternative for this lucide icon */}
+          <LegoIcon className="h-6 w-6" />
         </ControlPanelButton>
       </PopoverTrigger>
 
@@ -42,13 +46,12 @@ export const BlockMenu: React.FC<BlockMenuProps> = ({
         side="right"
         align="start"
         sideOffset={16}
-        className="absolute h-[75vh] w-[46.625rem] overflow-hidden rounded-[1rem] border-none p-0 shadow-[0_2px_6px_0_rgba(0,0,0,0.05)]"
+        className="absolute h-[80vh] w-[46.625rem] overflow-hidden rounded-[1rem] border-none p-0 shadow-[0_2px_6px_0_rgba(0,0,0,0.05)]"
         data-id="blocks-control-popover-content"
       >
-          <BlockMenuStateProvider>
-            <BlockMenuContent />
-          </BlockMenuStateProvider>
-
+        <BlockMenuStateProvider>
+          <BlockMenuContent />
+        </BlockMenuStateProvider>
       </PopoverContent>
     </Popover>
   );

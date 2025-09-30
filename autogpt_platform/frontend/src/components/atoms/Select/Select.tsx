@@ -8,7 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
   SelectSeparator,
-} from "@/components/ui/select";
+} from "@/components/__legacy__/ui/select";
 import { cn } from "@/lib/utils";
 import { ReactNode } from "react";
 import { Text } from "../Text/Text";
@@ -36,6 +36,7 @@ export interface SelectFieldProps {
   options: SelectOption[];
   size?: "small" | "medium";
   renderItem?: (option: SelectOption) => React.ReactNode;
+  wrapperClassName?: string;
 }
 
 export function Select({
@@ -52,6 +53,7 @@ export function Select({
   options,
   size = "medium",
   renderItem,
+  wrapperClassName,
 }: SelectFieldProps) {
   const triggerStyles = cn(
     // Base styles matching Input
@@ -117,7 +119,7 @@ export function Select({
   );
 
   const selectWithError = (
-    <div className="relative mb-6">
+    <div className={cn("relative mb-6", wrapperClassName)}>
       {select}
       <Text
         variant="small-medium"

@@ -468,7 +468,7 @@ class TestGenerateActivityStatusForExecution:
         ):
 
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
-            mock_settings.return_value.secrets.openai_api_key = "test_key"
+            mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
             mock_llm.return_value = (
                 "I analyzed your data and provided the requested insights."
             )
@@ -520,7 +520,7 @@ class TestGenerateActivityStatusForExecution:
             "backend.executor.activity_status_generator.is_feature_enabled",
             return_value=True,
         ):
-            mock_settings.return_value.secrets.openai_api_key = ""
+            mock_settings.return_value.secrets.openai_internal_api_key = ""
 
             result = await generate_activity_status_for_execution(
                 graph_exec_id="test_exec",
@@ -546,7 +546,7 @@ class TestGenerateActivityStatusForExecution:
             "backend.executor.activity_status_generator.is_feature_enabled",
             return_value=True,
         ):
-            mock_settings.return_value.secrets.openai_api_key = "test_key"
+            mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
 
             result = await generate_activity_status_for_execution(
                 graph_exec_id="test_exec",
@@ -581,7 +581,7 @@ class TestGenerateActivityStatusForExecution:
         ):
 
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
-            mock_settings.return_value.secrets.openai_api_key = "test_key"
+            mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
             mock_llm.return_value = "Agent completed execution."
 
             result = await generate_activity_status_for_execution(
@@ -633,7 +633,7 @@ class TestIntegration:
         ):
 
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
-            mock_settings.return_value.secrets.openai_api_key = "test_key"
+            mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
 
             mock_response = LLMResponse(
                 raw_response={},

@@ -25,10 +25,9 @@ import {
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { exportAsJSONFile } from "@/lib/utils";
 
-import DeleteConfirmDialog from "@/components/agptui/delete-confirm-dialog";
-import type { ButtonAction } from "@/components/agptui/types";
-import { useOnboarding } from "@/components/onboarding/onboarding-provider";
-import { Button } from "@/components/ui/button";
+import DeleteConfirmDialog from "@/components/__legacy__/delete-confirm-dialog";
+import type { ButtonAction } from "@/components/__legacy__/types";
+import { Button } from "@/components/__legacy__/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -36,8 +35,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import LoadingBox, { LoadingSpinner } from "@/components/ui/loading";
+} from "@/components/__legacy__/ui/dialog";
+import LoadingBox, { LoadingSpinner } from "@/components/__legacy__/ui/loading";
 import {
   useToast,
   useToastOnFail,
@@ -48,6 +47,7 @@ import { CreatePresetDialog } from "./components/create-preset-dialog";
 import { useAgentRunsInfinite } from "./use-agent-runs";
 import { AgentRunsSelectorList } from "./components/agent-runs-selector-list";
 import { AgentScheduleDetailsView } from "./components/agent-schedule-details-view";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 
 export function OldAgentLibraryView() {
   const { id: agentID }: { id: LibraryAgentID } = useParams();
@@ -309,7 +309,7 @@ export function OldAgentLibraryView() {
     const newSelectedRun = agentRuns.find((run) => run.id == selectedView.id);
     if (selectedView.id !== selectedRun?.id) {
       // Pull partial data from "cache" while waiting for the rest to load
-      setSelectedRun(newSelectedRun ?? null);
+      setSelectedRun((newSelectedRun as GraphExecutionMeta) ?? null);
     }
   }, [api, selectedView, agentRuns, selectedRun?.id]);
 
@@ -558,6 +558,7 @@ export function OldAgentLibraryView() {
             onCreateSchedule={onCreateSchedule}
             onCreatePreset={onCreatePreset}
             agentActions={agentActions}
+            recommendedScheduleCron={agent?.recommended_schedule_cron || null}
           />
         ) : selectedView.type == "preset" ? (
           /* Edit & update presets */
@@ -567,6 +568,7 @@ export function OldAgentLibraryView() {
               agentPresets.find((preset) => preset.id == selectedView.id)!
             }
             onRun={selectRun}
+            recommendedScheduleCron={agent?.recommended_schedule_cron || null}
             onCreateSchedule={onCreateSchedule}
             onUpdatePreset={onUpdatePreset}
             doDeletePreset={setConfirmingDeleteAgentPreset}

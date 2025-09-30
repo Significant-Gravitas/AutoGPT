@@ -3,8 +3,8 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useRouter } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
-import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 import { useGetV2DownloadAgentFile } from "@/app/api/__generated__/endpoints/store/store";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 
 interface UseAgentInfoProps {
   storeListingVersionId: string;

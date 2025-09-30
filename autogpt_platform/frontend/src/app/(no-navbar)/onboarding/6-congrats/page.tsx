@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { finishOnboarding } from "./actions";
-import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import { useOnboarding } from "../../../../providers/onboarding/onboarding-provider";
 import * as party from "party-js";
 
 export default function Page() {

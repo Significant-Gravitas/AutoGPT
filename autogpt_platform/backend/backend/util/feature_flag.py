@@ -5,7 +5,7 @@ from functools import wraps
 from typing import Any, Awaitable, Callable, TypeVar
 
 import ldclient
-from autogpt_libs.utils.cache import async_ttl_cache
+from autogpt_libs.utils.cache import cached
 from fastapi import HTTPException
 from ldclient import Context, LDClient
 from ldclient.config import Config
@@ -72,7 +72,7 @@ def shutdown_launchdarkly() -> None:
         logger.info("LaunchDarkly client closed successfully")
 
 
-@async_ttl_cache(maxsize=1000, ttl_seconds=86400)  # 1000 entries, 24 hours TTL
+@cached(maxsize=1000, ttl_seconds=86400)  # 1000 entries, 24 hours TTL
 async def _fetch_user_context_data(user_id: str) -> Context:
     """
     Fetch user context for LaunchDarkly from Supabase.

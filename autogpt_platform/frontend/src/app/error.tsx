@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { IconCircleAlert } from "@/components/ui/icons";
-import { Button } from "@/components/ui/button";
+import { IconCircleAlert } from "@/components/__legacy__/ui/icons";
+import { Button } from "@/components/__legacy__/ui/button";
 import Link from "next/link";
 
 export default function Error({

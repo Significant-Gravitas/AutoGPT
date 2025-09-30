@@ -1,7 +1,6 @@
 import {
   IconBuilder,
   IconEdit,
-  IconLayoutDashboard,
   IconLibrary,
   IconLogOut,
   IconMarketplace,
@@ -10,7 +9,8 @@ import {
   IconSliders,
   IconType,
   IconUploadCloud,
-} from "@/components/ui/icons";
+} from "@/components/__legacy__/ui/icons";
+import { StorefrontIcon } from "@phosphor-icons/react";
 
 type Link = {
   name: string;
@@ -155,10 +155,10 @@ export function getAccountMenuItems(userRole?: string): MenuItemGroup[] {
 }
 
 export function getAccountMenuOptionIcon(icon: IconType) {
-  const iconClass = "w-6 h-6";
+  const iconClass = "w-5 h-5";
   switch (icon) {
     case IconType.LayoutDashboard:
-      return <IconLayoutDashboard className={iconClass} />;
+      return <StorefrontIcon className={iconClass} />;
     case IconType.UploadCloud:
       return <IconUploadCloud className={iconClass} />;
     case IconType.Edit:

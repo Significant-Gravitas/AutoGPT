@@ -1,5 +1,5 @@
 "use client";
-import { Input } from "@/components/ui/input";
+import { Input } from "@/components/__legacy__/ui/input";
 import { Search, X } from "lucide-react";
 import { useLibrarySearchbar } from "./useLibrarySearchbar";
 

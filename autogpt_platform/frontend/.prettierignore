@@ -4,3 +4,5 @@ pnpm-lock.yaml
 .auth
 build
 public
+Dockerfile
+.prettierignore

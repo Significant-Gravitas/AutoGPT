@@ -16,8 +16,8 @@ def format_filter_for_jinja2(value, format_string=None):
 
 
 class TextFormatter:
-    def __init__(self):
-        self.env = SandboxedEnvironment(loader=BaseLoader(), autoescape=True)
+    def __init__(self, autoescape: bool = True):
+        self.env = SandboxedEnvironment(loader=BaseLoader(), autoescape=autoescape)
         self.env.globals.clear()
 
         # Instead of clearing all filters, just remove potentially unsafe ones
