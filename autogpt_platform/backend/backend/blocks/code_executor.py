@@ -152,14 +152,16 @@ class CodeExecutionBlock(Block):
                 "template_id": "",
             },
             test_output=[
+                ("results", []),
                 ("response", "Hello World"),
                 ("stdout_logs", "Hello World\n"),
             ],
             test_mock={
                 "execute_code": lambda code, language, setup_commands, timeout, api_key, template_id: (
-                    "Hello World",
-                    "Hello World\n",
-                    "",
+                    [],  # results
+                    "Hello World",  # text_output
+                    "Hello World\n",  # stdout_logs
+                    "",  # stderr_logs
                 ),
             },
         )
@@ -328,10 +330,10 @@ class InstantiationBlock(Block):
             ],
             test_mock={
                 "execute_code": lambda setup_code, language, setup_commands, timeout, api_key, template_id: (
-                    "sandbox_id",
-                    "Hello World",
-                    "Hello World\n",
-                    "",
+                    "sandbox_id",  # sandbox_id
+                    "Hello World",  # text_output
+                    "Hello World\n",  # stdout_logs
+                    "",  # stderr_logs
                 ),
             },
         )
@@ -465,14 +467,16 @@ class StepExecutionBlock(Block):
                 "language": ProgrammingLanguage.PYTHON.value,
             },
             test_output=[
+                ("results", []),
                 ("response", "Hello World"),
                 ("stdout_logs", "Hello World\n"),
             ],
             test_mock={
                 "execute_step_code": lambda sandbox_id, step_code, language, api_key: (
-                    "Hello World",
-                    "Hello World\n",
-                    "",
+                    [],  # results
+                    "Hello World",  # text_output
+                    "Hello World\n",  # stdout_logs
+                    "",  # stderr_logs
                 ),
             },
         )
