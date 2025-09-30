@@ -116,32 +116,32 @@ def test_parse_jwt_token_missing_audience():
     assert "Invalid token" in str(exc_info.value)
 
 
-def test_get_jwt_payload_with_valid_token():
+async def test_get_jwt_payload_with_valid_token():
     """Test extracting JWT payload with valid bearer token."""
     token = create_token(TEST_USER_PAYLOAD)
     credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
-    result = jwt_utils.get_jwt_payload(credentials)
+    result = await jwt_utils.get_jwt_payload(credentials)
     assert result["sub"] == "test-user-id"
     assert result["role"] == "user"
 
 
-def test_get_jwt_payload_no_credentials():
+async def test_get_jwt_payload_no_credentials():
     """Test JWT payload when no credentials provided."""
     with pytest.raises(HTTPException) as exc_info:
-        jwt_utils.get_jwt_payload(None)
+        await jwt_utils.get_jwt_payload(None)
     assert exc_info.value.status_code == 401
     assert "Authorization header is missing" in exc_info.value.detail
 
 
-def test_get_jwt_payload_invalid_token():
+async def test_get_jwt_payload_invalid_token():
     """Test JWT payload extraction with invalid token."""
     credentials = HTTPAuthorizationCredentials(
         scheme="Bearer", credentials="invalid.token.here"
     )
 
     with pytest.raises(HTTPException) as exc_info:
-        jwt_utils.get_jwt_payload(credentials)
+        await jwt_utils.get_jwt_payload(credentials)
     assert exc_info.value.status_code == 401
     assert "Invalid token" in exc_info.value.detail
 
