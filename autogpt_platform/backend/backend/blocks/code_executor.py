@@ -1,8 +1,9 @@
 from enum import Enum
-from typing import Literal
+from typing import Literal, Optional
 
 from e2b_code_interpreter import AsyncSandbox
-from pydantic import SecretStr
+from e2b_code_interpreter.charts import Chart as E2BExecutionResultChart
+from pydantic import BaseModel, JsonValue, SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import (
@@ -34,6 +35,37 @@ class ProgrammingLanguage(Enum):
     BASH = "bash"
     R = "r"
     JAVA = "java"
+
+
+class CodeExecutionResult(BaseModel):
+    """
+    *Pydantic model mirroring `e2b_code_interpreter.Result`*
+
+    Represents the data to be displayed as a result of executing a cell in a Jupyter notebook.
+    The result is similar to the structure returned by ipython kernel: https://ipython.readthedocs.io/en/stable/development/execution.html#execution-semantics
+
+    The result can contain multiple types of data, such as text, images, plots, etc. Each type of data is represented
+    as a string, and the result can contain multiple types of data. The display calls don't have to have text representation,
+    for the actual result the representation is always present for the result, the other representations are always optional.
+    """
+
+    class Chart(BaseModel, E2BExecutionResultChart):
+        pass
+
+    text: Optional[str] = None
+    html: Optional[str] = None
+    markdown: Optional[str] = None
+    svg: Optional[str] = None
+    png: Optional[str] = None
+    jpeg: Optional[str] = None
+    pdf: Optional[str] = None
+    latex: Optional[str] = None
+    json: Optional[JsonValue] = None  # type: ignore (reportIncompatibleMethodOverride)
+    javascript: Optional[str] = None
+    data: Optional[dict] = None
+    chart: Optional[Chart] = None
+    extra: Optional[dict] = None
+    """Extra data that can be included. Not part of the standard types."""
 
 
 class CodeExecutionBlock(Block):
@@ -87,7 +119,16 @@ class CodeExecutionBlock(Block):
         )
 
     class Output(BlockSchema):
-        response: str = SchemaField(description="Response from code execution")
+        results: list[CodeExecutionResult] = SchemaField(
+            description="List of results from the code execution"
+        )
+        main_result: CodeExecutionResult = SchemaField(
+            title="Main Result", description="The main result from the code execution"
+        )
+        response: str = SchemaField(
+            title="Main Text Output",
+            description="Text output (if any) of the main execution result",
+        )
         stdout_logs: str = SchemaField(
             description="Standard output logs from execution"
         )
@@ -158,11 +199,12 @@ class CodeExecutionBlock(Block):
             if execution.error:
                 raise Exception(execution.error)
 
-            response = execution.text
+            results = execution.results
+            text_response = execution.text
             stdout_logs = "".join(execution.logs.stdout)
             stderr_logs = "".join(execution.logs.stderr)
 
-            return response, stdout_logs, stderr_logs
+            return results, text_response, stdout_logs, stderr_logs
 
         except Exception as e:
             raise e
@@ -171,7 +213,7 @@ class CodeExecutionBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            response, stdout_logs, stderr_logs = await self.execute_code(
+            results, text_response, stdout_logs, stderr_logs = await self.execute_code(
                 input_data.code,
                 input_data.language,
                 input_data.setup_commands,
@@ -180,8 +222,21 @@ class CodeExecutionBlock(Block):
                 input_data.template_id,
             )
 
-            if response:
-                yield "response", response
+            # Determine result object shape & filter out empty formats
+            results = [
+                {
+                    f: r[f]
+                    for f in [*r.formats(), "extra", "is_main_result"]
+                    if getattr(r, f, None) is not None
+                }
+                for r in results
+            ]
+            yield "results", results
+            for r in results:
+                if r.pop("is_main_result", False):
+                    yield "main_result", r
+            if text_response:
+                yield "response", text_response
             if stdout_logs:
                 yield "stdout_logs", stdout_logs
             if stderr_logs:
