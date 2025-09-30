@@ -2,7 +2,7 @@
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { useMainAgentPage } from "./useMainAgentPage";
 import { MarketplaceAgentPageParams } from "../../agent/[creator]/[slug]/page";
-import { Separator } from "@/components/ui/separator";
+import { Separator } from "@/components/__legacy__/ui/separator";
 import { AgentsSection } from "../AgentsSection/AgentsSection";
 import { BecomeACreator } from "../BecomeACreator/BecomeACreator";
 import { AgentPageLoading } from "../AgentPageLoading";

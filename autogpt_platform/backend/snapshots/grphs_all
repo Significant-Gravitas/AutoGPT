@@ -15,6 +15,7 @@
       "required": [],
       "type": "object"
     },
+    "instructions": null,
     "is_active": true,
     "name": "Test Graph",
     "output_schema": {

@@ -7,7 +7,7 @@ import os
 import threading
 import time
 from abc import ABC, abstractmethod
-from functools import cached_property, update_wrapper
+from functools import update_wrapper
 from typing import (
     Any,
     Awaitable,
@@ -43,6 +43,7 @@ api_host = config.pyro_host
 api_comm_retry = config.pyro_client_comm_retry
 api_comm_timeout = config.pyro_client_comm_timeout
 api_call_timeout = config.rpc_client_call_timeout
+api_comm_max_wait = config.pyro_client_max_wait
 
 
 def _validate_no_prisma_objects(obj: Any, path: str = "result") -> None:
@@ -352,7 +353,7 @@ def get_service_client(
         # Use preconfigured retry decorator for service communication
         return create_retry_decorator(
             max_attempts=api_comm_retry,
-            max_wait=5.0,
+            max_wait=api_comm_max_wait,
             context="Service communication",
             exclude_exceptions=(
                 # Don't retry these specific exceptions that won't be fixed by retrying
@@ -374,6 +375,8 @@ def get_service_client(
             self.base_url = f"http://{host}:{port}".rstrip("/")
             self._connection_failure_count = 0
             self._last_client_reset = 0
+            self._async_clients = {}  # None key for default async client
+            self._sync_clients = {}  # For sync clients (no event loop concept)
 
         def _create_sync_client(self) -> httpx.Client:
             return httpx.Client(
@@ -397,13 +400,33 @@ def get_service_client(
                 ),
             )
 
-        @cached_property
+        @property
         def sync_client(self) -> httpx.Client:
-            return self._create_sync_client()
+            """Get the sync client (thread-safe singleton)."""
+            # Use service name as key for better identification
+            service_name = service_client_type.get_service_type().__name__
+            if client := self._sync_clients.get(service_name):
+                return client
+            return self._sync_clients.setdefault(
+                service_name, self._create_sync_client()
+            )
 
-        @cached_property
+        @property
         def async_client(self) -> httpx.AsyncClient:
-            return self._create_async_client()
+            """Get the appropriate async client for the current context.
+
+            Returns per-event-loop client when in async context,
+            falls back to default client otherwise.
+            """
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                # No event loop, use None as default key
+                loop = None
+
+            if client := self._async_clients.get(loop):
+                return client
+            return self._async_clients.setdefault(loop, self._create_async_client())
 
         def _handle_connection_error(self, error: Exception) -> None:
             """Handle connection errors and implement self-healing"""
@@ -422,10 +445,8 @@ def get_service_client(
 
                 # Clear cached clients to force recreation on next access
                 # Only recreate when there's actually a problem
-                if hasattr(self, "sync_client"):
-                    delattr(self, "sync_client")
-                if hasattr(self, "async_client"):
-                    delattr(self, "async_client")
+                self._sync_clients.clear()
+                self._async_clients.clear()
 
                 # Reset counters
                 self._connection_failure_count = 0
@@ -491,28 +512,37 @@ def get_service_client(
                 raise
 
         async def aclose(self) -> None:
-            if hasattr(self, "sync_client"):
-                self.sync_client.close()
-            if hasattr(self, "async_client"):
-                await self.async_client.aclose()
+            # Close all sync clients
+            for client in self._sync_clients.values():
+                client.close()
+            self._sync_clients.clear()
+
+            # Close all async clients (including default with None key)
+            for client in self._async_clients.values():
+                await client.aclose()
+            self._async_clients.clear()
 
         def close(self) -> None:
-            if hasattr(self, "sync_client"):
-                self.sync_client.close()
-            # Note: Cannot close async client synchronously
+            # Close all sync clients
+            for client in self._sync_clients.values():
+                client.close()
+            self._sync_clients.clear()
+            # Note: Cannot close async clients synchronously
+            # They will be cleaned up by garbage collection
 
         def __del__(self):
             """Cleanup HTTP clients on garbage collection to prevent resource leaks."""
             try:
-                if hasattr(self, "sync_client"):
-                    self.sync_client.close()
-                if hasattr(self, "async_client"):
-                    # Note: Can't await in __del__, so we just close sync
-                    # The async client will be cleaned up by garbage collection
+                # Close any remaining sync clients
+                for client in self._sync_clients.values():
+                    client.close()
+
+                # Warn if async clients weren't properly closed
+                if self._async_clients:
                     import warnings
 
                     warnings.warn(
-                        "DynamicClient async client not explicitly closed. "
+                        "DynamicClient async clients not explicitly closed. "
                         "Call aclose() before destroying the client.",
                         ResourceWarning,
                         stacklevel=2,

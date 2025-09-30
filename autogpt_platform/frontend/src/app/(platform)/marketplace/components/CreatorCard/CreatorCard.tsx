@@ -33,7 +33,6 @@ export const CreatorCard = ({
               width={64}
               height={64}
               className="h-full w-full object-cover"
-              priority
             />
           ) : (
             <div className="h-full w-full bg-neutral-300 dark:bg-neutral-600" />

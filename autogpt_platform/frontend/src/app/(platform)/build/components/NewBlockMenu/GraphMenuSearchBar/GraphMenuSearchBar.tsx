@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import React from "react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { Input } from "@/components/__legacy__/ui/input";
+import { Button } from "@/components/__legacy__/ui/button";
 import { MagnifyingGlassIcon, XIcon } from "@phosphor-icons/react";
 import { useGraphMenuSearchBarComponent } from "./useGraphMenuSearchBarComponent";
 
@@ -30,7 +30,10 @@ export const GraphMenuSearchBar: React.FC<GraphMenuSearchBarProps> = ({
       )}
     >
       <div className="flex h-6 w-6 items-center justify-center">
-        <MagnifyingGlassIcon className="h-6 w-6 text-zinc-700" strokeWidth={2} />
+        <MagnifyingGlassIcon
+          className="h-6 w-6 text-zinc-700"
+          strokeWidth={2}
+        />
       </div>
       <Input
         ref={inputRef}

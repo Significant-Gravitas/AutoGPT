@@ -177,7 +177,9 @@ async def test_add_agent_to_library(mocker):
             },
             "isCreatedByUser": False,
         },
-        include=library_agent_include("test-user"),
+        include=library_agent_include(
+            "test-user", include_nodes=False, include_executions=False
+        ),
     )
 
 

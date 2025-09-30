@@ -1,5 +1,5 @@
 import { useGraphSearch } from "../GraphMenuSearchBar/useGraphMenuSearchBar";
-import { CustomNode } from "@/components/CustomNode";
+import { CustomNode } from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
 
 interface UseGraphMenuProps {
   nodes: CustomNode[];
@@ -15,7 +15,7 @@ export const useGraphMenu = ({
   setBlockMenuSelected,
   onNodeSelect,
 }: UseGraphMenuProps) => {
-  const { open, setOpen, searchQuery, setSearchQuery, filteredNodes } = 
+  const { open, setOpen, searchQuery, setSearchQuery, filteredNodes } =
     useGraphSearch(nodes);
 
   const handleNodeSelect = (nodeId: string) => {

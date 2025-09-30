@@ -316,6 +316,7 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
     # Mock the graph execution object
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
     mock_graph_exec.id = "execution-id-123"
+    mock_graph_exec.node_executions = []  # Add this to avoid AttributeError
     mock_graph_exec.to_graph_execution_entry.return_value = mocker.MagicMock()
 
     # Mock user context
@@ -346,6 +347,10 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
     )
     mock_prisma.is_connected.return_value = True
     mock_edb.create_graph_execution = mocker.AsyncMock(return_value=mock_graph_exec)
+    mock_edb.update_graph_execution_stats = mocker.AsyncMock(
+        return_value=mock_graph_exec
+    )
+    mock_edb.update_node_execution_status_batch = mocker.AsyncMock()
     mock_get_user_context.return_value = mock_user_context
     mock_get_queue.return_value = mock_queue
     mock_get_event_bus.return_value = mock_event_bus

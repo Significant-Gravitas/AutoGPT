@@ -1,5 +1,5 @@
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/__legacy__/ui/button";
+import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { ArrowUpRight } from "lucide-react";
 import React, { ButtonHTMLAttributes } from "react";

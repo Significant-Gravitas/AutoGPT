@@ -519,35 +519,121 @@ class SmartDecisionMakerBlock(Block):
         ):
             prompt.append({"role": "user", "content": prefix + input_data.prompt})
 
-        response = await llm.llm_call(
-            credentials=credentials,
-            llm_model=input_data.model,
-            prompt=prompt,
-            json_format=False,
-            max_tokens=input_data.max_tokens,
-            tools=tool_functions,
-            ollama_host=input_data.ollama_host,
-            parallel_tool_calls=input_data.multiple_tool_calls,
+        # Use retry decorator for LLM calls with validation
+        from backend.util.retry import create_retry_decorator
+
+        # Create retry decorator that excludes ValueError from retry (for non-LLM errors)
+        llm_retry = create_retry_decorator(
+            max_attempts=input_data.retry,
+            exclude_exceptions=(),  # Don't exclude ValueError - we want to retry validation failures
+            context="SmartDecisionMaker LLM call",
         )
 
-        # Track LLM usage stats
-        self.merge_stats(
-            NodeExecutionStats(
-                input_token_count=response.prompt_tokens,
-                output_token_count=response.completion_tokens,
-                llm_call_count=1,
+        @llm_retry
+        async def call_llm_with_validation():
+            response = await llm.llm_call(
+                credentials=credentials,
+                llm_model=input_data.model,
+                prompt=prompt,
+                max_tokens=input_data.max_tokens,
+                tools=tool_functions,
+                ollama_host=input_data.ollama_host,
+                parallel_tool_calls=input_data.multiple_tool_calls,
             )
-        )
+
+            # Track LLM usage stats
+            self.merge_stats(
+                NodeExecutionStats(
+                    input_token_count=response.prompt_tokens,
+                    output_token_count=response.completion_tokens,
+                    llm_call_count=1,
+                )
+            )
+
+            if not response.tool_calls:
+                return response, None  # No tool calls, return response
+
+            # Validate all tool calls before proceeding
+            validation_errors = []
+            for tool_call in response.tool_calls:
+                tool_name = tool_call.function.name
+                tool_args = json.loads(tool_call.function.arguments)
+
+                # Find the tool definition to get the expected arguments
+                tool_def = next(
+                    (
+                        tool
+                        for tool in tool_functions
+                        if tool["function"]["name"] == tool_name
+                    ),
+                    None,
+                )
+
+                # Get parameters schema from tool definition
+                if (
+                    tool_def
+                    and "function" in tool_def
+                    and "parameters" in tool_def["function"]
+                ):
+                    parameters = tool_def["function"]["parameters"]
+                    expected_args = parameters.get("properties", {})
+                    required_params = set(parameters.get("required", []))
+                else:
+                    expected_args = {arg: {} for arg in tool_args.keys()}
+                    required_params = set()
+
+                # Validate tool call arguments
+                provided_args = set(tool_args.keys())
+                expected_args_set = set(expected_args.keys())
+
+                # Check for unexpected arguments (typos)
+                unexpected_args = provided_args - expected_args_set
+                # Only check for missing REQUIRED parameters
+                missing_required_args = required_params - provided_args
+
+                if unexpected_args or missing_required_args:
+                    error_msg = f"Tool call '{tool_name}' has parameter errors:"
+                    if unexpected_args:
+                        error_msg += f" Unknown parameters: {sorted(unexpected_args)}."
+                    if missing_required_args:
+                        error_msg += f" Missing required parameters: {sorted(missing_required_args)}."
+                    error_msg += f" Expected parameters: {sorted(expected_args_set)}."
+                    if required_params:
+                        error_msg += f" Required parameters: {sorted(required_params)}."
+                    validation_errors.append(error_msg)
+
+            # If validation failed, add feedback and raise for retry
+            if validation_errors:
+                # Add the failed response to conversation
+                prompt.append(response.raw_response)
+
+                # Add error feedback for retry
+                error_feedback = (
+                    "Your tool call had parameter errors. Please fix the following issues and try again:\n"
+                    + "\n".join(f"- {error}" for error in validation_errors)
+                    + "\n\nPlease make sure to use the exact parameter names as specified in the function schema."
+                )
+                prompt.append({"role": "user", "content": error_feedback})
+
+                raise ValueError(
+                    f"Tool call validation failed: {'; '.join(validation_errors)}"
+                )
+
+            return response, validation_errors
+
+        # Call the LLM with retry logic
+        response, validation_errors = await call_llm_with_validation()
 
         if not response.tool_calls:
             yield "finished", response.response
             return
 
+        # If we get here, validation passed - yield tool outputs
         for tool_call in response.tool_calls:
             tool_name = tool_call.function.name
             tool_args = json.loads(tool_call.function.arguments)
 
-            # Find the tool definition to get the expected arguments
+            # Get expected arguments (already validated above)
             tool_def = next(
                 (
                     tool
@@ -556,7 +642,6 @@ class SmartDecisionMakerBlock(Block):
                 ),
                 None,
             )
-
             if (
                 tool_def
                 and "function" in tool_def
@@ -564,14 +649,11 @@ class SmartDecisionMakerBlock(Block):
             ):
                 expected_args = tool_def["function"]["parameters"].get("properties", {})
             else:
-                expected_args = tool_args.keys()
+                expected_args = {arg: {} for arg in tool_args.keys()}
 
-            # Yield provided arguments and None for missing ones
+            # Yield provided arguments, use .get() for optional parameters
             for arg_name in expected_args:
-                if arg_name in tool_args:
-                    yield f"tools_^_{tool_name}_~_{arg_name}", tool_args[arg_name]
-                else:
-                    yield f"tools_^_{tool_name}_~_{arg_name}", None
+                yield f"tools_^_{tool_name}_~_{arg_name}", tool_args.get(arg_name)
 
         # Add reasoning to conversation history if available
         if response.reasoning:

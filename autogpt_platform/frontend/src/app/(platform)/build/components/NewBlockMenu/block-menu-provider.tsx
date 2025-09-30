@@ -2,16 +2,16 @@
 
 import { createContext, ReactNode, useContext, useState } from "react";
 
-export type DefaultStateType =
-  | "suggestion"
-  | "all_blocks"
-  | "input_blocks"
-  | "action_blocks"
-  | "output_blocks"
-  | "integrations"
-  | "marketplace_agents"
-  | "my_agents";
-
+export enum DefaultStateType {
+  SUGGESTION = "suggestion",
+  ALL_BLOCKS = "all_blocks",
+  INPUT_BLOCKS = "input_blocks",
+  ACTION_BLOCKS = "action_blocks",
+  OUTPUT_BLOCKS = "output_blocks",
+  INTEGRATIONS = "integrations",
+  MARKETPLACE_AGENTS = "marketplace_agents",
+  MY_AGENTS = "my_agents",
+}
 
 interface BlockMenuContextType {
   searchQuery: string;
@@ -20,7 +20,9 @@ interface BlockMenuContextType {
   setSearchId: React.Dispatch<React.SetStateAction<string | undefined>>;
   defaultState: DefaultStateType;
   setDefaultState: React.Dispatch<React.SetStateAction<DefaultStateType>>;
-}   
+  integration: string | undefined;
+  setIntegration: React.Dispatch<React.SetStateAction<string | undefined>>;
+}
 
 export const BlockMenuContext = createContext<BlockMenuContextType>(
   {} as BlockMenuContextType,
@@ -35,7 +37,10 @@ export function BlockMenuStateProvider({
 }: BlockMenuStateProviderProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchId, setSearchId] = useState<string | undefined>(undefined);
-  const [defaultState, setDefaultState] = useState<DefaultStateType>("suggestion");
+  const [defaultState, setDefaultState] = useState<DefaultStateType>(
+    DefaultStateType.SUGGESTION,
+  );
+  const [integration, setIntegration] = useState<string | undefined>(undefined);
 
   return (
     <BlockMenuContext.Provider
@@ -46,6 +51,8 @@ export function BlockMenuStateProvider({
         setSearchId,
         defaultState,
         setDefaultState,
+        integration,
+        setIntegration,
       }}
     >
       {children}

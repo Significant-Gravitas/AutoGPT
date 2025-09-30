@@ -6,7 +6,7 @@ interface Props {
   onRun: () => void;
   isExecuting?: boolean;
   isSettingUpTrigger?: boolean;
-  allRequiredInputsAreSet?: boolean;
+  isRunReady?: boolean;
 }
 
 export function RunActions({
@@ -14,14 +14,14 @@ export function RunActions({
   onRun,
   isExecuting = false,
   isSettingUpTrigger = false,
-  allRequiredInputsAreSet = true,
+  isRunReady = true,
 }: Props) {
   return (
     <div className="flex justify-end gap-3">
       <Button
         variant="primary"
         onClick={onRun}
-        disabled={!allRequiredInputsAreSet || isExecuting || isSettingUpTrigger}
+        disabled={!isRunReady || isExecuting || isSettingUpTrigger}
         loading={isExecuting || isSettingUpTrigger}
       >
         {defaultRunType === "automatic-trigger"

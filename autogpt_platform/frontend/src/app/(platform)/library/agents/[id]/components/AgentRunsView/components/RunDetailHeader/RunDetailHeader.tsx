@@ -1,24 +1,21 @@
-import { RunStatusBadge } from "../RunDetails/components/RunStatusBadge";
+import React from "react";
+import { RunStatusBadge } from "../SelectedRunView/components/RunStatusBadge";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import {
-  PencilSimpleIcon,
   TrashIcon,
   StopIcon,
   PlayIcon,
-  ArrowSquareOut,
+  ArrowSquareOutIcon,
 } from "@phosphor-icons/react";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import moment from "moment";
 import { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
 import { useRunDetailHeader } from "./useRunDetailHeader";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/molecules/DropdownMenu/DropdownMenu";
-import Link from "next/link";
+import { AgentActionsDropdown } from "../AgentActionsDropdown";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { ShareRunButton } from "../ShareRunButton/ShareRunButton";
 
 type Props = {
   agent: LibraryAgent;
@@ -35,16 +32,22 @@ export function RunDetailHeader({
   onSelectRun,
   onClearSelectedRun,
 }: Props) {
+  const shareExecutionResultsEnabled = useGetFlag(Flag.SHARE_EXECUTION_RESULTS);
+
   const {
-    stopRun,
     canStop,
     isStopping,
-    deleteRun,
     isDeleting,
-    runAgain,
+    isRunning,
     isRunningAgain,
     openInBuilderHref,
+    showDeleteDialog,
+    handleStopRun,
+    handleRunAgain,
+    handleDeleteRun,
+    handleShowDeleteDialog,
   } = useRunDetailHeader(agent.graph_id, run, onSelectRun, onClearSelectedRun);
+
   return (
     <div>
       <div className="flex w-full items-center justify-between">
@@ -64,53 +67,50 @@ export function RunDetailHeader({
                 <Button
                   variant="secondary"
                   size="small"
-                  onClick={runAgain}
+                  onClick={handleRunAgain}
                   loading={isRunningAgain}
                 >
                   <PlayIcon size={16} /> Run again
                 </Button>
-                <Button
-                  variant="secondary"
-                  size="small"
-                  onClick={deleteRun}
-                  loading={isDeleting}
-                >
-                  <TrashIcon size={16} /> Delete run
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="secondary" size="small">
-                      •••
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    {canStop ? (
-                      <DropdownMenuItem onClick={stopRun} disabled={isStopping}>
-                        <StopIcon size={14} className="mr-2" /> Stop run
-                      </DropdownMenuItem>
-                    ) : null}
-                    {openInBuilderHref ? (
-                      <DropdownMenuItem asChild>
-                        <Link
-                          href={openInBuilderHref}
-                          target="_blank"
-                          className="flex items-center gap-2"
-                        >
-                          <ArrowSquareOut size={14} /> Open in builder
-                        </Link>
-                      </DropdownMenuItem>
-                    ) : null}
-                    <DropdownMenuItem asChild>
-                      <Link
-                        href={`/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`}
-                        target="_blank"
-                        className="flex items-center gap-2"
-                      >
-                        <PencilSimpleIcon size={16} /> Edit agent
-                      </Link>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                {shareExecutionResultsEnabled && (
+                  <ShareRunButton
+                    graphId={agent.graph_id}
+                    executionId={run.id}
+                    isShared={run.is_shared}
+                    shareToken={run.share_token}
+                  />
+                )}
+                {!isRunning ? (
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    onClick={() => handleShowDeleteDialog(true)}
+                  >
+                    <TrashIcon size={16} /> Delete run
+                  </Button>
+                ) : null}
+                {openInBuilderHref ? (
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    as="NextLink"
+                    href={openInBuilderHref}
+                    target="_blank"
+                  >
+                    <ArrowSquareOutIcon size={16} /> Edit run
+                  </Button>
+                ) : null}
+                {canStop ? (
+                  <Button
+                    variant="destructive"
+                    size="small"
+                    onClick={handleStopRun}
+                    disabled={isStopping}
+                  >
+                    <StopIcon size={14} /> Stop agent
+                  </Button>
+                ) : null}
+                <AgentActionsDropdown agent={agent} />
               </div>
             ) : null}
           </div>
@@ -164,6 +164,40 @@ export function RunDetailHeader({
           ) : null}
         </div>
       </div>
+
+      <Dialog
+        controlled={{
+          isOpen: showDeleteDialog,
+          set: handleShowDeleteDialog,
+        }}
+        styling={{ maxWidth: "32rem" }}
+        title="Delete run"
+      >
+        <Dialog.Content>
+          <div>
+            <Text variant="large">
+              Are you sure you want to delete this run? This action cannot be
+              undone.
+            </Text>
+            <Dialog.Footer>
+              <Button
+                variant="secondary"
+                disabled={isDeleting}
+                onClick={() => handleShowDeleteDialog(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDeleteRun}
+                loading={isDeleting}
+              >
+                Delete
+              </Button>
+            </Dialog.Footer>
+          </div>
+        </Dialog.Content>
+      </Dialog>
     </div>
   );
 }
