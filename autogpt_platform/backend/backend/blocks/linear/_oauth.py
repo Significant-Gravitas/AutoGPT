@@ -90,9 +90,9 @@ class LinearOAuthHandler(BaseOAuthHandler):
     ) -> OAuth2Credentials:
         """
         Migrate an old long-lived token to a new short-lived token with refresh token.
-        
-        This uses Linear's /oauth/migrate_old_token endpoint to exchange current 
-        long-lived tokens for short-lived tokens with refresh tokens without 
+
+        This uses Linear's /oauth/migrate_old_token endpoint to exchange current
+        long-lived tokens for short-lived tokens with refresh tokens without
         requiring users to re-authorize.
         """
         if not credentials.access_token:
@@ -145,7 +145,7 @@ class LinearOAuthHandler(BaseOAuthHandler):
             access_token_expires_at=access_token_expires_at,
             refresh_token_expires_at=None,
         )
-        
+
         new_credentials.id = credentials.id
         return new_credentials
 
@@ -172,29 +172,27 @@ class LinearOAuthHandler(BaseOAuthHandler):
     ) -> OAuth2Credentials:
         # Determine if this is a refresh token request
         is_refresh = params.get("grant_type") == "refresh_token"
-        
+
         # Build request body with appropriate grant_type
         request_body = {
             "client_id": self.client_id,
             "client_secret": self.client_secret,
             **params,
         }
-        
+
         # Set default grant_type if not provided
         if "grant_type" not in request_body:
             request_body["grant_type"] = "authorization_code"
 
-        headers = {
-            "Content-Type": "application/x-www-form-urlencoded"
-        }
-        
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+
         # For refresh token requests, support HTTP Basic Authentication as recommended
         if is_refresh:
             # Option 1: Use HTTP Basic Auth (preferred by Linear)
             client_credentials = f"{self.client_id}:{self.client_secret}"
             encoded_credentials = base64.b64encode(client_credentials.encode()).decode()
             headers["Authorization"] = f"Basic {encoded_credentials}"
-            
+
             # Remove client credentials from body when using Basic Auth
             request_body.pop("client_id", None)
             request_body.pop("client_secret", None)
@@ -241,30 +239,34 @@ class LinearOAuthHandler(BaseOAuthHandler):
             title=current_credentials.title if current_credentials else None,
             username=username or "Unknown User",
             access_token=token_data["access_token"],
-            scopes=token_data["scope"].split(",") if "scope" in token_data else (
-                current_credentials.scopes if current_credentials else []
+            scopes=(
+                token_data["scope"].split(",")
+                if "scope" in token_data
+                else (current_credentials.scopes if current_credentials else [])
             ),
             refresh_token=token_data.get("refresh_token"),
             access_token_expires_at=access_token_expires_at,
             refresh_token_expires_at=None,  # Linear doesn't provide refresh token expiration
         )
-        
+
         if current_credentials:
             new_credentials.id = current_credentials.id
-            
+
         return new_credentials
 
     async def get_access_token(self, credentials: OAuth2Credentials) -> str:
         """
         Returns a valid access token, handling migration and refresh as needed.
-        
+
         This overrides the base implementation to handle Linear's token migration
         from old long-lived tokens to new short-lived tokens with refresh tokens.
         """
         # If token has no expiration and no refresh token, it might be an old token
         # that needs migration
-        if (credentials.access_token_expires_at is None and 
-            credentials.refresh_token is None):
+        if (
+            credentials.access_token_expires_at is None
+            and credentials.refresh_token is None
+        ):
             try:
                 # Attempt to migrate the old token
                 migrated_credentials = await self.migrate_old_token(credentials)
@@ -279,18 +281,18 @@ class LinearOAuthHandler(BaseOAuthHandler):
         # Use the standard refresh logic from the base class
         if self.needs_refresh(credentials):
             credentials = await self.refresh_tokens(credentials)
-            
+
         return credentials.access_token.get_secret_value()
 
     def needs_migration(self, credentials: OAuth2Credentials) -> bool:
         """
         Check if credentials represent an old long-lived token that needs migration.
-        
+
         Old tokens have no expiration time and no refresh token.
         """
         return (
-            credentials.access_token_expires_at is None and 
-            credentials.refresh_token is None
+            credentials.access_token_expires_at is None
+            and credentials.refresh_token is None
         )
 
     async def _request_username(self, access_token: str) -> Optional[str]:
