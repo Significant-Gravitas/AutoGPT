@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, Check, BadgeQuestionMark } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as party from "party-js";
@@ -7,19 +7,25 @@ import { Task, TaskGroup } from "@/components/__legacy__/Wallet";
 
 interface Props {
   groups: TaskGroup[];
-  setGroups: React.Dispatch<React.SetStateAction<TaskGroup[]>>;
 }
 
-export function TaskGroups({ groups, setGroups }: Props) {
+export function TaskGroups({ groups }: Props) {
   const { state, updateState } = useOnboarding();
   const refs = useRef<Record<string, HTMLDivElement | null>>({});
 
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    const initialState: Record<string, boolean> = {};
+    groups.forEach((group) => {
+      initialState[group.name] = true;
+    });
+    return initialState;
+  });
+
   const toggleGroup = useCallback((name: string) => {
-    setGroups((prevGroups) =>
-      prevGroups.map((group) =>
-        group.name === name ? { ...group, isOpen: !group.isOpen } : group,
-      ),
-    );
+    setOpenGroups((prev) => ({
+      ...prev,
+      [name]: !prev[name],
+    }));
   }, []);
 
   const isTaskCompleted = useCallback(
@@ -45,9 +51,15 @@ export function TaskGroups({ groups, setGroups }: Props) {
 
   useEffect(() => {
     // Close completed groups
-    setGroups((prevGroups) =>
-      prevGroups.map((group) =>
-        isGroupCompleted(group) ? { ...group, isOpen: false } : group,
+    setOpenGroups((prevGroups) =>
+      groups.reduce(
+        (acc, group) => {
+          acc[group.name] = isGroupCompleted(group)
+            ? false
+            : prevGroups[group.name];
+          return acc;
+        },
+        {} as Record<string, boolean>,
       ),
     );
   }, [state?.completedSteps, isGroupCompleted]);
@@ -158,7 +170,7 @@ export function TaskGroups({ groups, setGroups }: Props) {
                 </div>
               )}
               <ChevronDown
-                className={`h-5 w-5 text-slate-950 transition-transform duration-300 ease-in-out ${group.isOpen ? "rotate-180" : ""}`}
+                className={`h-5 w-5 text-slate-950 transition-transform duration-300 ease-in-out ${openGroups[group.name] ? "rotate-180" : ""}`}
               />
             </div>
           </div>
@@ -167,7 +179,7 @@ export function TaskGroups({ groups, setGroups }: Props) {
           <div
             className={cn(
               "overflow-hidden transition-all duration-300 ease-in-out",
-              group.isOpen || !isGroupCompleted(group)
+              openGroups[group.name] || !isGroupCompleted(group)
                 ? "max-h-[1200px] opacity-100"
                 : "max-h-0 opacity-0",
             )}
@@ -216,7 +228,30 @@ export function TaskGroups({ groups, setGroups }: Props) {
                     </span>
                   )}
                 </div>
-
+                {/* Progress bar and counter text */}
+                {task.progress && !isTaskCompleted(task) && (
+                  <div className="mb-1 flex w-full items-center justify-between pl-6 pr-3">
+                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-100">
+                      <div
+                        className="h-full bg-violet-400 transition-all duration-500 ease-in-out"
+                        style={{
+                          width: `${Math.min(
+                            100,
+                            (task.progress.current / task.progress.target) *
+                              100,
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                    <span className="mx-1 w-8 text-right text-xs font-normal text-zinc-500">
+                      {(
+                        (task.progress.current / task.progress.target) *
+                        100
+                      ).toFixed(0)}
+                      %
+                    </span>
+                  </div>
+                )}
                 {/* Details section */}
                 {!isGroupCompleted(group) && (
                   <>
@@ -224,7 +259,7 @@ export function TaskGroups({ groups, setGroups }: Props) {
                       className={cn(
                         "mt-0 overflow-hidden pl-6 pt-0 text-xs font-normal text-zinc-500 transition-all duration-300 ease-in-out",
                         isTaskCompleted(task) && "line-through",
-                        group.isOpen
+                        openGroups[group.name]
                           ? "max-h-[100px] opacity-100"
                           : "max-h-0 opacity-0",
                       )}
@@ -235,7 +270,7 @@ export function TaskGroups({ groups, setGroups }: Props) {
                       <div
                         className={cn(
                           "relative mx-6 aspect-video overflow-hidden rounded-lg transition-all duration-300 ease-in-out",
-                          group.isOpen
+                          openGroups[group.name]
                             ? "my-2 max-h-[200px] opacity-100"
                             : "max-h-0 opacity-0",
                         )}

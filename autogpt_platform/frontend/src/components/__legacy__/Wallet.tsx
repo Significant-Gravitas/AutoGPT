@@ -24,126 +24,144 @@ export interface Task {
   amount: number;
   details: string;
   video?: string;
+  progress?: {
+    current: number;
+    target: number;
+  };
 }
 
 export interface TaskGroup {
   name: string;
   details: string;
   tasks: Task[];
-  isOpen: boolean;
 }
 
 export default function Wallet() {
-  const [groups, setGroups] = useState<TaskGroup[]>([
-    {
-      name: "First Wins",
-      details: "Kickstart your journey with quick wins.",
-      isOpen: true,
-      tasks: [
-        {
-          id: "GET_RESULTS",
-          name: "Complete onboarding and see your first agent's results",
-          amount: 3,
-          details: "",
-        },
-        {
-          id: "MARKETPLACE_VISIT",
-          name: "Go to Marketplace",
-          amount: 1,
-          details: "Click Marketplace in the top navigation",
-          video: "/onboarding/marketplace-visit.mp4",
-        },
-        {
-          id: "MARKETPLACE_ADD_AGENT",
-          name: "Find and add an agent",
-          amount: 1,
-          details:
-            "Search for an agent in the Marketplace and add it to your Library",
-          video: "/onboarding/marketplace-add.mp4",
-        },
-        {
-          id: "MARKETPLACE_RUN_AGENT",
-          name: "Open the Library page and run an agent",
-          amount: 1,
-          details: "Go to the Library, open an agent you want, and run it",
-          video: "/onboarding/marketplace-run.mp4",
-        },
-        {
-          id: "BUILDER_SAVE_AGENT",
-          name: "Place your first blocks and save your agent",
-          amount: 1,
-          details:
-            "Open block library on the left and add a block to the canvas then save your agent",
-          video: "/onboarding/builder-save.mp4",
-        },
-      ],
-    },
-    {
-      name: "Consistency Challenge",
-      isOpen: true,
-      details: "Build your rhythm and make agents part of your routine.",
-      tasks: [
-        {
-          id: "RE_RUN_AGENT",
-          name: "Re-run an agent",
-          amount: 1,
-          details: "Re-run an agent from the Library",
-        },
-        {
-          id: "SCHEDULE_AGENT",
-          name: "Schedule your first agent",
-          amount: 1,
-          details: "Schedule an agent to run on a recurring basis",
-        },
-        {
-          id: "RUN_AGENTS",
-          name: "Run 10 agents",
-          amount: 3,
-          details: "Run agents from Library or Builder 10 times",
-        },
-        {
-          id: "RUN_3_DAYS",
-          name: "Run agents 3 days in a row",
-          amount: 1,
-          details:
-            "Run any agents from the Library or Builder for 3 days in a row",
-        },
-      ],
-    },
-    {
-      name: "The Pro Playground",
-      details: "Master powerful features to supercharge your workflow.",
-      isOpen: true,
-      tasks: [
-        {
-          id: "TRIGGER_WEBHOOK",
-          name: "Trigger an agent via webhook",
-          amount: 1,
-          details:
-            "In the Builder, go to Settings and copy the Webhook URL. Use it to trigger your agent from another app.",
-        },
-        {
-          id: "RUN_14_DAYS",
-          name: "Run agents 14 days in a row",
-          amount: 3,
-          details:
-            "Run any agents from the Library or Builder for 10 days in a row",
-        },
-        {
-          id: "RUN_AGENTS_100",
-          name: "Complete 100 agent runs",
-          amount: 3,
-          details: "Let your agents run and complete 100 tasks in total",
-        },
-      ],
-    },
-  ]);
+  const { state, updateState } = useOnboarding();
+  const groups = useMemo<TaskGroup[]>(() => {
+    return [
+      {
+        name: "First Wins",
+        details: "Kickstart your journey with quick wins.",
+        tasks: [
+          {
+            id: "GET_RESULTS",
+            name: "Complete onboarding and see your first agent's results",
+            amount: 3,
+            details: "",
+          },
+          {
+            id: "MARKETPLACE_VISIT",
+            name: "Go to Marketplace",
+            amount: 1,
+            details: "Click Marketplace in the top navigation",
+            video: "/onboarding/marketplace-visit.mp4",
+          },
+          {
+            id: "MARKETPLACE_ADD_AGENT",
+            name: "Find and add an agent",
+            amount: 1,
+            details:
+              "Search for an agent in the Marketplace and add it to your Library",
+            video: "/onboarding/marketplace-add.mp4",
+          },
+          {
+            id: "MARKETPLACE_RUN_AGENT",
+            name: "Open the Library page and run an agent",
+            amount: 1,
+            details: "Go to the Library, open an agent you want, and run it",
+            video: "/onboarding/marketplace-run.mp4",
+          },
+          {
+            id: "BUILDER_SAVE_AGENT",
+            name: "Place your first blocks and save your agent",
+            amount: 1,
+            details:
+              "Open block library on the left and add a block to the canvas then save your agent",
+            video: "/onboarding/builder-save.mp4",
+          },
+        ],
+      },
+      {
+        name: "Consistency Challenge",
+        details: "Build your rhythm and make agents part of your routine.",
+        tasks: [
+          {
+            id: "RE_RUN_AGENT",
+            name: "Re-run an agent",
+            amount: 1,
+            details: "Re-run an agent from the Library",
+          },
+          {
+            id: "SCHEDULE_AGENT",
+            name: "Schedule your first agent",
+            amount: 1,
+            details: "Schedule an agent to run on a recurring basis",
+          },
+          {
+            id: "RUN_AGENTS",
+            name: "Run 10 agents",
+            amount: 3,
+            details: "Run agents from Library or Builder 10 times",
+            progress: {
+              current: state?.agentRuns || 0,
+              target: 10,
+            },
+          },
+          {
+            id: "RUN_3_DAYS",
+            name: "Run agents 3 days in a row",
+            amount: 1,
+            details:
+              "Run any agents from the Library or Builder for 3 days in a row",
+            progress: {
+              current: state?.consecutiveRunDays || 0,
+              target: 3,
+            },
+          },
+        ],
+      },
+      {
+        name: "The Pro Playground",
+        details: "Master powerful features to supercharge your workflow.",
+        tasks: [
+          {
+            id: "TRIGGER_WEBHOOK",
+            name: "Trigger an agent via webhook",
+            amount: 1,
+            details:
+              "In the Builder, go to Settings and copy the Webhook URL. Use it to trigger your agent from another app.",
+          },
+          {
+            id: "RUN_14_DAYS",
+            name: "Run agents 14 days in a row",
+            amount: 3,
+            details:
+              "Run any agents from the Library or Builder for 10 days in a row",
+            progress: {
+              current: state?.consecutiveRunDays || 0,
+              target: 14,
+            },
+          },
+          {
+            id: "RUN_AGENTS_100",
+            name: "Complete 100 agent runs",
+            amount: 3,
+            details: "Let your agents run and complete 100 tasks in total",
+            progress: {
+              current: state?.agentRuns || 0,
+              target: 100,
+            },
+          },
+        ],
+      },
+    ];
+  }, [state]);
 
   const { credits, formatCredits, fetchCredits } = useCredits({
     fetchInitialCredits: true,
   });
 
-  const { state, updateState } = useOnboarding();
   const [prevCredits, setPrevCredits] = useState<number | null>(credits);
   const [flash, setFlash] = useState(false);
   const [walletOpen, setWalletOpen] = useState(state?.walletShown || false);
@@ -305,7 +323,7 @@ export default function Wallet() {
           <p className="mx-1 my-3 font-sans text-xs font-normal text-zinc-400">
             Complete the following tasks to earn more credits!
           </p>
-          <TaskGroups groups={groups} setGroups={setGroups} />
+          <TaskGroups groups={groups} />
         </ScrollArea>
       </PopoverContent>
     </Popover>
