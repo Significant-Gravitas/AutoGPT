@@ -47,7 +47,7 @@ const TallyPopupSimple = () => {
 
   useEffect(() => {
     // Check authentication status using server action (works with httpOnly cookies)
-    getCurrentUser().then(({ user, error }) => {
+    getCurrentUser().then(({ user }) => {
       setIsAuthenticated(user != null);
       // setUserId(user?.id || "");
       setUserEmail(user?.email || "");
