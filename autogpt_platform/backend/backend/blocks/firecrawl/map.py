@@ -14,7 +14,6 @@ from ._config import firecrawl
 
 
 class FirecrawlMapWebsiteBlock(Block):
-
     class Input(BlockSchema):
         credentials: CredentialsMetaInput = firecrawl.credentials_field()
 
@@ -35,7 +34,6 @@ class FirecrawlMapWebsiteBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-
         app = FirecrawlApp(api_key=credentials.api_key.get_secret_value())
 
         # Sync call

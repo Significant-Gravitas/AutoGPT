@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, cast
+from typing import Any
 
 from firecrawl import FirecrawlApp
 
@@ -14,6 +14,7 @@ from backend.sdk import (
 )
 
 from ._config import firecrawl
+from ._format_utils import convert_to_format_options
 
 
 class ScrapeFormat(Enum):
@@ -28,7 +29,6 @@ class ScrapeFormat(Enum):
 
 
 class FirecrawlScrapeBlock(Block):
-
     class Input(BlockSchema):
         credentials: CredentialsMetaInput = firecrawl.credentials_field()
         url: str = SchemaField(description="The URL to crawl")
@@ -78,12 +78,11 @@ class FirecrawlScrapeBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-
         app = FirecrawlApp(api_key=credentials.api_key.get_secret_value())
 
         scrape_result = app.scrape(
             input_data.url,
-            formats=cast(Any, [format.value for format in input_data.formats]),
+            formats=convert_to_format_options(input_data.formats),  # type: ignore[arg-type]
             only_main_content=input_data.only_main_content,
             max_age=input_data.max_age,
             wait_for=input_data.wait_for,
