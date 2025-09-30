@@ -11,7 +11,7 @@ import { BlockMenuStateProvider } from "../block-menu-provider";
 import { LegoIcon } from "@phosphor-icons/react";
 
 interface BlockMenuProps {
-  pinBlocksPopover: boolean;
+  // pinBlocksPopover: boolean;
   blockMenuSelected: "save" | "block" | "search" | "";
   setBlockMenuSelected: React.Dispatch<
     React.SetStateAction<"" | "save" | "block" | "search">
@@ -19,16 +19,17 @@ interface BlockMenuProps {
 }
 
 export const BlockMenu: React.FC<BlockMenuProps> = ({
-  pinBlocksPopover,
+  // pinBlocksPopover,
   blockMenuSelected,
   setBlockMenuSelected,
 }) => {
-  const { open, onOpen } = useBlockMenu({
-    pinBlocksPopover,
+  const { open: _open, onOpen } = useBlockMenu({
+    // pinBlocksPopover,
     setBlockMenuSelected,
   });
   return (
-    <Popover open={pinBlocksPopover ? true : open} onOpenChange={onOpen}>
+    // pinBlocksPopover ? true : open
+    <Popover onOpenChange={onOpen}>
       <PopoverTrigger className="hover:cursor-pointer">
         <ControlPanelButton
           data-id="blocks-control-popover-trigger"
