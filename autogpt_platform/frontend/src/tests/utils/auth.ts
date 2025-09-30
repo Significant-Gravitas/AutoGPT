@@ -1,4 +1,3 @@
-import { faker } from "@faker-js/faker";
 import fs from "fs";
 import path from "path";
 import { signupTestUser } from "./signup";
@@ -22,6 +21,7 @@ export async function createTestUser(
   password?: string,
   ignoreOnboarding: boolean = true,
 ): Promise<TestUser> {
+  const { faker } = await import("@faker-js/faker");
   const userEmail = email || faker.internet.email();
   const userPassword = password || faker.internet.password({ length: 12 });
 
