@@ -101,7 +101,9 @@ async def list_library_agents(
     try:
         library_agents = await prisma.models.LibraryAgent.prisma().find_many(
             where=where_clause,
-            include=library_agent_include(user_id),
+            include=library_agent_include(
+                user_id, include_nodes=False, include_executions=False
+            ),
             order=order_by,
             skip=(page - 1) * page_size,
             take=page_size,
@@ -185,7 +187,9 @@ async def list_favorite_library_agents(
     try:
         library_agents = await prisma.models.LibraryAgent.prisma().find_many(
             where=where_clause,
-            include=library_agent_include(user_id),
+            include=library_agent_include(
+                user_id, include_nodes=False, include_executions=False
+            ),
             order=order_by,
             skip=(page - 1) * page_size,
             take=page_size,
@@ -417,7 +421,9 @@ async def create_library_agent(
                             }
                         },
                     ),
-                    include=library_agent_include(user_id),
+                    include=library_agent_include(
+                        user_id, include_nodes=False, include_executions=False
+                    ),
                 )
                 for graph_entry in graph_entries
             )
@@ -642,7 +648,9 @@ async def add_store_agent_to_library(
                 },
                 "isCreatedByUser": False,
             },
-            include=library_agent_include(user_id),
+            include=library_agent_include(
+                user_id, include_nodes=False, include_executions=False
+            ),
         )
         logger.debug(
             f"Added graph #{graph.id} v{graph.version}"
