@@ -5,6 +5,7 @@ import { Button } from "../../__legacy__/ui/button";
 import { QuestionMarkCircledIcon } from "@radix-ui/react-icons";
 import { useRouter, usePathname } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
+import { getCurrentUser } from "@/lib/supabase/actions";
 
 const TallyPopupSimple = () => {
   const [isFormVisible, setIsFormVisible] = useState(false);
@@ -12,6 +13,8 @@ const TallyPopupSimple = () => {
   const [replayUrl, setReplayUrl] = useState("");
   const [pageUrl, setPageUrl] = useState("");
   const [userAgent, setUserAgent] = useState("");
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  // const [userId, setUserId] = useState<string>("");
   const router = useRouter();
   const pathname = usePathname();
 
@@ -39,7 +42,15 @@ const TallyPopupSimple = () => {
         }
       }
     }
-  }, []);
+  }, [pathname]);
+
+  useEffect(() => {
+    // Check authentication status using server action (works with httpOnly cookies)
+    getCurrentUser().then(({ user, error }) => {
+      setIsAuthenticated(user != null);
+      // setUserId(user?.id || "");
+    });
+  }, [pathname]);
 
   useEffect(() => {
     // Load Tally script
@@ -126,6 +137,10 @@ const TallyPopupSimple = () => {
         data-sentry-replay-url={replayUrl || "not-initialized"}
         data-user-agent={userAgent}
         data-page-url={pageUrl}
+        data-is-authenticated={
+          isAuthenticated === null ? "unknown" : String(isAuthenticated)
+        }
+        // data-user-id={userId || "not-authenticated"}
       >
         <QuestionMarkCircledIcon className="h-14 w-14" />
         <span className="sr-only">Reach Out</span>
