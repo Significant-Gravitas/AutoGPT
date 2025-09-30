@@ -60,7 +60,7 @@ test("user can signup with custom credentials", async ({ page }) => {
 
   try {
     const customEmail = generateTestEmail();
-    const customPassword = generateTestPassword();
+    const customPassword = await generateTestPassword();
 
     const testUser = await signupTestUser(page, customEmail, customPassword);
 
@@ -82,7 +82,7 @@ test("user can signup with existing email handling", async ({
 }) => {
   try {
     const testEmail = generateTestEmail();
-    const testPassword = generateTestPassword();
+    const testPassword = await generateTestPassword();
 
     // First signup
     const firstUser = await signupTestUser(page, testEmail, testPassword);
