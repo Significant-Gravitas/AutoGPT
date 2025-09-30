@@ -1,7 +1,8 @@
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
-from firecrawl import FirecrawlApp, ScrapeOptions
+from firecrawl import FirecrawlApp
+from firecrawl.v2.types import ScrapeOptions
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -68,12 +69,17 @@ class FirecrawlSearchBlock(Block):
         scrape_result = app.search(
             input_data.query,
             limit=input_data.limit,
-            scrape_options=ScrapeOptions(
-                formats=[format.value for format in input_data.formats],
-                maxAge=input_data.max_age,
-                waitFor=input_data.wait_for,
+            scrape_options=(
+                ScrapeOptions(
+                    formats=cast(Any, [format.value for format in input_data.formats]),
+                    max_age=input_data.max_age,
+                    wait_for=input_data.wait_for,
+                )
+                if input_data.formats
+                else None
             ),
         )
         yield "data", scrape_result
-        for site in scrape_result.data:
-            yield "site", site
+        if hasattr(scrape_result, "web") and scrape_result.web:
+            for site in scrape_result.web:
+                yield "site", site

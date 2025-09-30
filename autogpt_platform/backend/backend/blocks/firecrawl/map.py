@@ -39,7 +39,7 @@ class FirecrawlMapWebsiteBlock(Block):
         app = FirecrawlApp(api_key=credentials.api_key.get_secret_value())
 
         # Sync call
-        map_result = app.map_url(
+        map_result = app.map(
             url=input_data.url,
         )
 

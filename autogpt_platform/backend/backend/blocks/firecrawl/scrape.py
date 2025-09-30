@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 from firecrawl import FirecrawlApp
 
@@ -81,9 +81,9 @@ class FirecrawlScrapeBlock(Block):
 
         app = FirecrawlApp(api_key=credentials.api_key.get_secret_value())
 
-        scrape_result = app.scrape_url(
+        scrape_result = app.scrape(
             input_data.url,
-            formats=[format.value for format in input_data.formats],
+            formats=cast(Any, [format.value for format in input_data.formats]),
             only_main_content=input_data.only_main_content,
             max_age=input_data.max_age,
             wait_for=input_data.wait_for,
@@ -96,7 +96,7 @@ class FirecrawlScrapeBlock(Block):
             elif f == ScrapeFormat.HTML:
                 yield "html", scrape_result.html
             elif f == ScrapeFormat.RAW_HTML:
-                yield "raw_html", scrape_result.rawHtml
+                yield "raw_html", scrape_result.raw_html
             elif f == ScrapeFormat.LINKS:
                 yield "links", scrape_result.links
             elif f == ScrapeFormat.SCREENSHOT:
@@ -104,6 +104,6 @@ class FirecrawlScrapeBlock(Block):
             elif f == ScrapeFormat.SCREENSHOT_FULL_PAGE:
                 yield "screenshot_full_page", scrape_result.screenshot
             elif f == ScrapeFormat.CHANGE_TRACKING:
-                yield "change_tracking", scrape_result.changeTracking
+                yield "change_tracking", scrape_result.change_tracking
             elif f == ScrapeFormat.JSON:
                 yield "json", scrape_result.json
