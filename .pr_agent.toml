@@ -1,6 +1,3 @@
-[pr_reviewer]
-num_code_suggestions=0
-
 [pr_code_suggestions]
 commitable_code_suggestions=false
 num_code_suggestions=0
