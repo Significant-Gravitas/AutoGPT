@@ -119,11 +119,11 @@ class CodeExecutionBlock(Block):
         )
 
     class Output(BlockSchema):
-        results: list[CodeExecutionResult] = SchemaField(
-            description="List of results from the code execution"
-        )
         main_result: CodeExecutionResult = SchemaField(
             title="Main Result", description="The main result from the code execution"
+        )
+        results: list[CodeExecutionResult] = SchemaField(
+            description="List of results from the code execution"
         )
         response: str = SchemaField(
             title="Main Text Output",
@@ -200,11 +200,11 @@ class CodeExecutionBlock(Block):
                 raise Exception(execution.error)
 
             results = execution.results
-            text_response = execution.text
+            text_output = execution.text
             stdout_logs = "".join(execution.logs.stdout)
             stderr_logs = "".join(execution.logs.stderr)
 
-            return results, text_response, stdout_logs, stderr_logs
+            return results, text_output, stdout_logs, stderr_logs
 
         except Exception as e:
             raise e
@@ -213,7 +213,7 @@ class CodeExecutionBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            results, text_response, stdout_logs, stderr_logs = await self.execute_code(
+            results, text_output, stdout_logs, stderr_logs = await self.execute_code(
                 input_data.code,
                 input_data.language,
                 input_data.setup_commands,
@@ -235,8 +235,8 @@ class CodeExecutionBlock(Block):
             for r in results:
                 if r.pop("is_main_result", False):
                     yield "main_result", r
-            if text_response:
-                yield "response", text_response
+            if text_output:
+                yield "response", text_output
             if stdout_logs:
                 yield "stdout_logs", stdout_logs
             if stderr_logs:
@@ -295,7 +295,10 @@ class InstantiationBlock(Block):
 
     class Output(BlockSchema):
         sandbox_id: str = SchemaField(description="ID of the sandbox instance")
-        response: str = SchemaField(description="Response from code execution")
+        response: str = SchemaField(
+            title="Text Result",
+            description="Text result (if any) of the setup code execution",
+        )
         stdout_logs: str = SchemaField(
             description="Standard output logs from execution"
         )
@@ -337,7 +340,7 @@ class InstantiationBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            sandbox_id, response, stdout_logs, stderr_logs = await self.execute_code(
+            sandbox_id, text_output, stdout_logs, stderr_logs = await self.execute_code(
                 input_data.setup_code,
                 input_data.language,
                 input_data.setup_commands,
@@ -349,8 +352,9 @@ class InstantiationBlock(Block):
                 yield "sandbox_id", sandbox_id
             else:
                 yield "error", "Sandbox ID not found"
-            if response:
-                yield "response", response
+
+            if text_output:
+                yield "response", text_output
             if stdout_logs:
                 yield "stdout_logs", stdout_logs
             if stderr_logs:
@@ -393,11 +397,11 @@ class InstantiationBlock(Block):
             if execution.error:
                 raise Exception(execution.error)
 
-            response = execution.text
+            text_output = execution.text
             stdout_logs = "".join(execution.logs.stdout)
             stderr_logs = "".join(execution.logs.stderr)
 
-            return sandbox.sandbox_id, response, stdout_logs, stderr_logs
+            return sandbox.sandbox_id, text_output, stdout_logs, stderr_logs
 
         except Exception as e:
             raise e
@@ -430,7 +434,16 @@ class StepExecutionBlock(Block):
         )
 
     class Output(BlockSchema):
-        response: str = SchemaField(description="Response from code execution")
+        main_result: CodeExecutionResult = SchemaField(
+            title="Main Result", description="The main result from the code execution"
+        )
+        results: list[CodeExecutionResult] = SchemaField(
+            description="List of results from the code execution"
+        )
+        response: str = SchemaField(
+            title="Main Text Output",
+            description="Text output (if any) of the main execution result",
+        )
         stdout_logs: str = SchemaField(
             description="Standard output logs from execution"
         )
@@ -482,11 +495,12 @@ class StepExecutionBlock(Block):
             if execution.error:
                 raise Exception(execution.error)
 
-            response = execution.text
+            results = execution.results
+            text_output = execution.text
             stdout_logs = "".join(execution.logs.stdout)
             stderr_logs = "".join(execution.logs.stderr)
 
-            return response, stdout_logs, stderr_logs
+            return results, text_output, stdout_logs, stderr_logs
 
         except Exception as e:
             raise e
@@ -495,15 +509,30 @@ class StepExecutionBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            response, stdout_logs, stderr_logs = await self.execute_step_code(
-                input_data.sandbox_id,
-                input_data.step_code,
-                input_data.language,
-                credentials.api_key.get_secret_value(),
+            results, text_output, stdout_logs, stderr_logs = (
+                await self.execute_step_code(
+                    input_data.sandbox_id,
+                    input_data.step_code,
+                    input_data.language,
+                    credentials.api_key.get_secret_value(),
+                )
             )
 
-            if response:
-                yield "response", response
+            # Determine result object shape & filter out empty formats
+            results = [
+                {
+                    f: r[f]
+                    for f in [*r.formats(), "extra", "is_main_result"]
+                    if getattr(r, f, None) is not None
+                }
+                for r in results
+            ]
+            yield "results", results
+            for r in results:
+                if r.pop("is_main_result", False):
+                    yield "main_result", r
+            if text_output:
+                yield "response", text_output
             if stdout_logs:
                 yield "stdout_logs", stdout_logs
             if stderr_logs:
