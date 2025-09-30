@@ -15,19 +15,16 @@ node generate-tokens.js --count=160
 export K6_CLOUD_TOKEN="your-k6-cloud-token"  
 export K6_CLOUD_PROJECT_ID="4254406"
 
-# 4. Verify setup and run quick test
-node run-tests.js verify
+# 4. Run orchestrated load tests locally
+node orchestrator/orchestrator.js DEV local
 
-# 5. Run tests locally (development/debugging)
-node run-tests.js run all DEV
-
-# 6. Run tests in k6 cloud (performance testing)
-node run-tests.js cloud all DEV
+# 5. Run orchestrated load tests in k6 cloud (recommended)
+node orchestrator/orchestrator.js DEV cloud
 ```
 
-## 📋 Unified Test Runner
+## 📋 Load Test Orchestrator
 
-The AutoGPT Platform uses a single unified test runner (`run-tests.js`) for both local and cloud execution:
+The AutoGPT Platform uses a comprehensive load test orchestrator (`orchestrator/orchestrator.js`) that runs 12 optimized tests with maximum VU counts:
 
 ### Available Tests
 
@@ -60,38 +57,26 @@ The AutoGPT Platform uses a single unified test runner (`run-tests.js`) for both
 ### Basic Commands
 
 ```bash
-# List available tests and show cloud credentials status
-node run-tests.js list
+# Run 12 optimized tests locally (for debugging)
+node orchestrator/orchestrator.js DEV local
 
-# Quick setup verification
-node run-tests.js verify
+# Run 12 optimized tests in k6 cloud (recommended for performance testing)
+node orchestrator/orchestrator.js DEV cloud
 
-# Run specific test locally
-node run-tests.js run core-api-test DEV
+# Run against production (coordinate with team!)
+node orchestrator/orchestrator.js PROD cloud
 
-# Run multiple tests sequentially (comma-separated)
-node run-tests.js run connectivity-test,core-api-test,marketplace-public-test DEV
-
-# Run all tests locally
-node run-tests.js run all DEV
-
-# Run specific test in k6 cloud
-node run-tests.js cloud core-api-test DEV
-
-# Run all tests in k6 cloud
-node run-tests.js cloud all DEV
+# Run individual test directly with k6
+K6_ENVIRONMENT=DEV VUS=100 DURATION=3m k6 run tests/api/core-api-test.js
 ```
 
 ### NPM Scripts
 
 ```bash
-# Quick verification
-npm run verify
+# Run orchestrator locally
+npm run local
 
-# Run all tests locally
-npm test
-
-# Run all tests in k6 cloud
+# Run orchestrator in k6 cloud
 npm run cloud
 ```
 
@@ -230,8 +215,8 @@ node generate-tokens.js --count=160
 export K6_CLOUD_TOKEN="your-k6-cloud-token"
 export K6_CLOUD_PROJECT_ID="4254406"  # AutoGPT Platform project ID
 
-# Verify credentials work
-node run-tests.js list  # Shows ✅ k6 cloud credentials configured
+# Verify credentials work by running orchestrator
+node orchestrator/orchestrator.js DEV cloud
 ```
 
 ## 📂 File Structure
@@ -239,9 +224,10 @@ node run-tests.js list  # Shows ✅ k6 cloud credentials configured
 ```
 load-tests/
 ├── README.md                              # This documentation
-├── run-tests.js                           # Unified test runner (MAIN ENTRY POINT)
-├── generate-tokens.js                     # Generate pre-auth tokens
+├── generate-tokens.js                     # Generate pre-auth tokens (MAIN TOKEN SETUP)
 ├── package.json                           # Node.js dependencies and scripts
+├── orchestrator/
+│   └── orchestrator.js                    # Main test orchestrator (MAIN ENTRY POINT)
 ├── configs/
 │   ├── environment.js                     # Environment URLs and configuration
 │   └── pre-authenticated-tokens.js        # Generated tokens (gitignored)
@@ -257,21 +243,19 @@ load-tests/
 │   │   └── library-access-test.js         # Authenticated marketplace/library
 │   └── comprehensive/
 │       └── platform-journey-test.js       # Complete user journey simulation
-├── orchestrator/
-│   └── comprehensive-orchestrator.js      # Full 25-test orchestration suite
 ├── results/                               # Local test results (auto-created)
-├── k6-cloud-results.txt                   # Cloud test URLs (auto-created)
-└── *.json                                 # Test output files (auto-created)
+├── unified-results-*.json                 # Orchestrator results (auto-created)
+└── *.log                                  # Test execution logs (auto-created)
 ```
 
 ## 🎯 Best Practices
 
-1. **Start with Verification**: Always run `node run-tests.js verify` first
-2. **Local for Development**: Use `run` command for debugging and development
-3. **Cloud for Performance**: Use `cloud` command for actual performance testing
+1. **Generate Tokens First**: Always run `node generate-tokens.js --count=160` before testing
+2. **Local for Development**: Use `DEV local` for debugging and development
+3. **Cloud for Performance**: Use `DEV cloud` for actual performance testing
 4. **Monitor Real-Time**: Check k6 cloud dashboards during test execution
 5. **Regenerate Tokens**: Refresh tokens every 24 hours when they expire
-6. **Sequential Testing**: Use comma-separated tests for organized execution
+6. **Unified Testing**: Orchestrator runs 12 optimized tests automatically
 
 ## 🚀 Advanced Usage
 
