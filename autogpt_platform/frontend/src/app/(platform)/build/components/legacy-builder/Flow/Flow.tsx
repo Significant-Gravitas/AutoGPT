@@ -858,7 +858,7 @@ const FlowEditor: React.FC<{
               visualizeBeads={visualizeBeads}
               pinSavePopover={pinSavePopover}
               pinBlocksPopover={pinBlocksPopover}
-              nodes={nodes}
+              // nodes={nodes}
               onNodeSelect={navigateToNode}
               onNodeHover={highlightNode}
             />

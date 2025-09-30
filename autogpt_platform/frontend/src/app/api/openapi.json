@@ -2493,7 +2493,7 @@
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Get user profile",
-        "description": "Get the profile details for the authenticated user.",
+        "description": "Get the profile details for the authenticated user.\nCached for 1 hour per user.",
         "operationId": "getV2Get user profile",
         "responses": {
           "200": {
@@ -2551,7 +2551,7 @@
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "List store agents",
-        "description": "Get a paginated list of agents from the store with optional filtering and sorting.\n\nArgs:\n    featured (bool, optional): Filter to only show featured agents. Defaults to False.\n    creator (str | None, optional): Filter agents by creator username. Defaults to None.\n    sorted_by (str | None, optional): Sort agents by \"runs\" or \"rating\". Defaults to None.\n    search_query (str | None, optional): Search agents by name, subheading and description. Defaults to None.\n    category (str | None, optional): Filter agents by category. Defaults to None.\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of agents per page. Defaults to 20.\n\nReturns:\n    StoreAgentsResponse: Paginated list of agents matching the filters\n\nRaises:\n    HTTPException: If page or page_size are less than 1\n\nUsed for:\n- Home Page Featured Agents\n- Home Page Top Agents\n- Search Results\n- Agent Details - Other Agents By Creator\n- Agent Details - Similar Agents\n- Creator Details - Agents By Creator",
+        "description": "Get a paginated list of agents from the store with optional filtering and sorting.\nResults are cached for 15 minutes.\n\nArgs:\n    featured (bool, optional): Filter to only show featured agents. Defaults to False.\n    creator (str | None, optional): Filter agents by creator username. Defaults to None.\n    sorted_by (str | None, optional): Sort agents by \"runs\" or \"rating\". Defaults to None.\n    search_query (str | None, optional): Search agents by name, subheading and description. Defaults to None.\n    category (str | None, optional): Filter agents by category. Defaults to None.\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of agents per page. Defaults to 20.\n\nReturns:\n    StoreAgentsResponse: Paginated list of agents matching the filters\n\nRaises:\n    HTTPException: If page or page_size are less than 1\n\nUsed for:\n- Home Page Featured Agents\n- Home Page Top Agents\n- Search Results\n- Agent Details - Other Agents By Creator\n- Agent Details - Similar Agents\n- Creator Details - Agents By Creator",
         "operationId": "getV2List store agents",
         "parameters": [
           {
@@ -2637,7 +2637,7 @@
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "Get specific agent",
-        "description": "This is only used on the AgentDetails Page\n\nIt returns the store listing agents details.",
+        "description": "This is only used on the AgentDetails Page.\nResults are cached for 15 minutes.\n\nIt returns the store listing agents details.",
         "operationId": "getV2Get specific agent",
         "parameters": [
           {
@@ -2677,7 +2677,7 @@
       "get": {
         "tags": ["v2", "store"],
         "summary": "Get agent graph",
-        "description": "Get Agent Graph from Store Listing Version ID.",
+        "description": "Get Agent Graph from Store Listing Version ID.\nResults are cached for 1 hour.",
         "operationId": "getV2Get agent graph",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -2711,7 +2711,7 @@
       "get": {
         "tags": ["v2", "store"],
         "summary": "Get agent by version",
-        "description": "Get Store Agent Details from Store Listing Version ID.",
+        "description": "Get Store Agent Details from Store Listing Version ID.\nResults are cached for 1 hour.",
         "operationId": "getV2Get agent by version",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -2801,7 +2801,7 @@
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "List store creators",
-        "description": "This is needed for:\n- Home Page Featured Creators\n- Search Results Page\n\n---\n\nTo support this functionality we need:\n- featured: bool - to limit the list to just featured agents\n- search_query: str - vector search based on the creators profile description.\n- sorted_by: [agent_rating, agent_runs] -",
+        "description": "This is needed for:\n- Home Page Featured Creators\n- Search Results Page\n\nResults are cached for 1 hour.\n\n---\n\nTo support this functionality we need:\n- featured: bool - to limit the list to just featured agents\n- search_query: str - vector search based on the creators profile description.\n- sorted_by: [agent_rating, agent_runs] -",
         "operationId": "getV2List store creators",
         "parameters": [
           {
@@ -2869,7 +2869,7 @@
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "Get creator details",
-        "description": "Get the details of a creator\n- Creator Details Page",
+        "description": "Get the details of a creator.\nResults are cached for 1 hour.\n- Creator Details Page",
         "operationId": "getV2Get creator details",
         "parameters": [
           {
@@ -2903,6 +2903,7 @@
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Get my agents",
+        "description": "Get user's own agents.\nResults are cached for 5 minutes per user.",
         "operationId": "getV2Get my agents",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -2997,7 +2998,7 @@
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "List my submissions",
-        "description": "Get a paginated list of store submissions for the authenticated user.\n\nArgs:\n    user_id (str): ID of the authenticated user\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of submissions per page. Defaults to 20.\n\nReturns:\n    StoreListingsResponse: Paginated list of store submissions\n\nRaises:\n    HTTPException: If page or page_size are less than 1",
+        "description": "Get a paginated list of store submissions for the authenticated user.\nResults are cached for 1 hour per user.\n\nArgs:\n    user_id (str): ID of the authenticated user\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of submissions per page. Defaults to 20.\n\nReturns:\n    StoreListingsResponse: Paginated list of store submissions\n\nRaises:\n    HTTPException: If page or page_size are less than 1",
         "operationId": "getV2List my submissions",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -3226,6 +3227,20 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/store/metrics/cache": {
+      "get": {
+        "tags": ["v2", "store", "metrics"],
+        "summary": "Get cache metrics in Prometheus format",
+        "description": "Get cache metrics in Prometheus text format.\n\nReturns Prometheus-compatible metrics for monitoring cache performance.\nMetrics include size, maxsize, TTL, and hit rate for each cache.\n\nReturns:\n    str: Prometheus-formatted metrics text",
+        "operationId": "getV2Get cache metrics in prometheus format",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "text/plain": { "schema": { "type": "string" } } }
           }
         }
       }
