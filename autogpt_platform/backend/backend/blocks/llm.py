@@ -104,6 +104,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     CLAUDE_3_7_SONNET = "claude-3-7-sonnet-20250219"
     CLAUDE_3_5_SONNET = "claude-3-5-sonnet-latest"
     CLAUDE_3_5_HAIKU = "claude-3-5-haiku-latest"
+    CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"
     CLAUDE_3_HAIKU = "claude-3-haiku-20240307"
     # AI/ML API models
     AIML_API_QWEN2_5_72B = "Qwen/Qwen2.5-72B-Instruct-Turbo"
@@ -222,6 +223,9 @@ MODEL_METADATA = {
     LlmModel.CLAUDE_3_5_HAIKU: ModelMetadata(
         "anthropic", 200000, 8192
     ),  # claude-3-5-haiku-20241022
+    LlmModel.CLAUDE_4_5_SONNET: ModelMetadata(
+        "anthropic", 200000, 64000
+    ),  # claude-sonnet-4-5-20250929
     LlmModel.CLAUDE_3_HAIKU: ModelMetadata(
         "anthropic", 200000, 4096
     ),  # claude-3-haiku-20240307
