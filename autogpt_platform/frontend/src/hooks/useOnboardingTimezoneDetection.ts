@@ -1,17 +1,24 @@
 import { useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
 import { usePostV1UpdateUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 
 /**
- * Hook to silently detect and set user's timezone during onboarding
- * This version doesn't show any toast notifications
+ * Hook to silently detect and set user's timezone ONLY during actual onboarding flow
+ * This prevents unnecessary timezone API calls during authentication and platform usage
  * @returns void
  */
 export const useOnboardingTimezoneDetection = () => {
   const updateTimezone = usePostV1UpdateUserTimezone();
   const hasAttemptedDetection = useRef(false);
+  const pathname = usePathname();
 
   useEffect(() => {
-    // Only attempt once
+    // Only run during actual onboarding routes - prevents running on every auth
+    if (!pathname.startsWith("/onboarding")) {
+      return;
+    }
+
+    // Only attempt once per session
     if (hasAttemptedDetection.current) {
       return;
     }
@@ -36,7 +43,7 @@ export const useOnboardingTimezoneDetection = () => {
         });
 
         console.log(
-          `Timezone automatically set to ${browserTimezone} during onboarding`,
+          `Timezone automatically set to ${browserTimezone} during onboarding flow`,
         );
       } catch (error) {
         console.error(
@@ -47,11 +54,11 @@ export const useOnboardingTimezoneDetection = () => {
       }
     };
 
-    // Small delay to ensure user is created
+    // Small delay to ensure user is created and route is stable
     const timer = setTimeout(() => {
       detectAndSetTimezone();
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, []); // Run once on mount
+  }, [pathname, updateTimezone]); // Include pathname and updateTimezone in deps
 };
