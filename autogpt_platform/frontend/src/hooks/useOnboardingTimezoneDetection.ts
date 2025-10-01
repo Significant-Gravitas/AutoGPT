@@ -14,9 +14,12 @@ export const useOnboardingTimezoneDetection = () => {
   const pathname = usePathname();
   const { user, isUserLoading } = useSupabase();
 
+  // Check if we're on onboarding route (computed outside useEffect to avoid re-computing)
+  const isOnOnboardingRoute = pathname.startsWith("/onboarding");
+
   useEffect(() => {
     // Only run during actual onboarding routes - prevents running on every auth
-    if (!pathname.startsWith("/onboarding")) {
+    if (!isOnOnboardingRoute) {
       return;
     }
 
@@ -49,7 +52,7 @@ export const useOnboardingTimezoneDetection = () => {
           data: { timezone: browserTimezone } as any,
         });
 
-        console.log(
+        console.info(
           `Timezone automatically set to ${browserTimezone} during onboarding flow`,
         );
       } catch (error) {
@@ -62,5 +65,5 @@ export const useOnboardingTimezoneDetection = () => {
     };
 
     detectAndSetTimezone();
-  }, [pathname, updateTimezone, user, isUserLoading]);
+  }, [isOnOnboardingRoute, updateTimezone, user, isUserLoading]); // Use computed boolean to reduce re-renders
 };
