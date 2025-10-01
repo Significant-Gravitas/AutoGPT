@@ -249,3 +249,232 @@ async def test_smart_decision_maker_tracks_llm_stats():
         # Verify outputs
         assert "finished" in outputs  # Should have finished since no tool calls
         assert outputs["finished"] == "I need to think about this."
+
+
+@pytest.mark.asyncio
+async def test_smart_decision_maker_parameter_validation():
+    """Test that SmartDecisionMakerBlock correctly validates tool call parameters."""
+    from unittest.mock import MagicMock, patch
+
+    import backend.blocks.llm as llm_module
+    from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
+
+    block = SmartDecisionMakerBlock()
+
+    # Mock tool functions with specific parameter schema
+    mock_tool_functions = [
+        {
+            "type": "function",
+            "function": {
+                "name": "search_keywords",
+                "description": "Search for keywords with difficulty filtering",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "Search query"},
+                        "max_keyword_difficulty": {
+                            "type": "integer",
+                            "description": "Maximum keyword difficulty (required)",
+                        },
+                        "optional_param": {
+                            "type": "string",
+                            "description": "Optional parameter with default",
+                            "default": "default_value",
+                        },
+                    },
+                    "required": ["query", "max_keyword_difficulty"],
+                },
+            },
+        }
+    ]
+
+    # Test case 1: Tool call with TYPO in parameter name (should retry and eventually fail)
+    mock_tool_call_with_typo = MagicMock()
+    mock_tool_call_with_typo.function.name = "search_keywords"
+    mock_tool_call_with_typo.function.arguments = '{"query": "test", "maximum_keyword_difficulty": 50}'  # TYPO: maximum instead of max
+
+    mock_response_with_typo = MagicMock()
+    mock_response_with_typo.response = None
+    mock_response_with_typo.tool_calls = [mock_tool_call_with_typo]
+    mock_response_with_typo.prompt_tokens = 50
+    mock_response_with_typo.completion_tokens = 25
+    mock_response_with_typo.reasoning = None
+    mock_response_with_typo.raw_response = {"role": "assistant", "content": None}
+
+    with patch(
+        "backend.blocks.llm.llm_call", return_value=mock_response_with_typo
+    ) as mock_llm_call, patch.object(
+        SmartDecisionMakerBlock,
+        "_create_function_signature",
+        return_value=mock_tool_functions,
+    ):
+
+        input_data = SmartDecisionMakerBlock.Input(
+            prompt="Search for keywords",
+            model=llm_module.LlmModel.GPT4O,
+            credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
+            retry=2,  # Set retry to 2 for testing
+        )
+
+        # Should raise ValueError after retries due to typo'd parameter name
+        with pytest.raises(ValueError) as exc_info:
+            outputs = {}
+            async for output_name, output_data in block.run(
+                input_data,
+                credentials=llm_module.TEST_CREDENTIALS,
+                graph_id="test-graph-id",
+                node_id="test-node-id",
+                graph_exec_id="test-exec-id",
+                node_exec_id="test-node-exec-id",
+                user_id="test-user-id",
+            ):
+                outputs[output_name] = output_data
+
+        # Verify error message contains details about the typo
+        error_msg = str(exc_info.value)
+        assert "Tool call validation failed" in error_msg
+        assert "Unknown parameters: ['maximum_keyword_difficulty']" in error_msg
+
+        # Verify that LLM was called the expected number of times (retries)
+        assert mock_llm_call.call_count == 2  # Should retry based on input_data.retry
+
+    # Test case 2: Tool call missing REQUIRED parameter (should raise ValueError)
+    mock_tool_call_missing_required = MagicMock()
+    mock_tool_call_missing_required.function.name = "search_keywords"
+    mock_tool_call_missing_required.function.arguments = (
+        '{"query": "test"}'  # Missing required max_keyword_difficulty
+    )
+
+    mock_response_missing_required = MagicMock()
+    mock_response_missing_required.response = None
+    mock_response_missing_required.tool_calls = [mock_tool_call_missing_required]
+    mock_response_missing_required.prompt_tokens = 50
+    mock_response_missing_required.completion_tokens = 25
+    mock_response_missing_required.reasoning = None
+    mock_response_missing_required.raw_response = {"role": "assistant", "content": None}
+
+    with patch(
+        "backend.blocks.llm.llm_call", return_value=mock_response_missing_required
+    ), patch.object(
+        SmartDecisionMakerBlock,
+        "_create_function_signature",
+        return_value=mock_tool_functions,
+    ):
+
+        input_data = SmartDecisionMakerBlock.Input(
+            prompt="Search for keywords",
+            model=llm_module.LlmModel.GPT4O,
+            credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
+        )
+
+        # Should raise ValueError due to missing required parameter
+        with pytest.raises(ValueError) as exc_info:
+            outputs = {}
+            async for output_name, output_data in block.run(
+                input_data,
+                credentials=llm_module.TEST_CREDENTIALS,
+                graph_id="test-graph-id",
+                node_id="test-node-id",
+                graph_exec_id="test-exec-id",
+                node_exec_id="test-node-exec-id",
+                user_id="test-user-id",
+            ):
+                outputs[output_name] = output_data
+
+        error_msg = str(exc_info.value)
+        assert "Tool call 'search_keywords' has parameter errors" in error_msg
+        assert "Missing required parameters: ['max_keyword_difficulty']" in error_msg
+
+    # Test case 3: Valid tool call with OPTIONAL parameter missing (should succeed)
+    mock_tool_call_valid = MagicMock()
+    mock_tool_call_valid.function.name = "search_keywords"
+    mock_tool_call_valid.function.arguments = '{"query": "test", "max_keyword_difficulty": 50}'  # optional_param missing, but that's OK
+
+    mock_response_valid = MagicMock()
+    mock_response_valid.response = None
+    mock_response_valid.tool_calls = [mock_tool_call_valid]
+    mock_response_valid.prompt_tokens = 50
+    mock_response_valid.completion_tokens = 25
+    mock_response_valid.reasoning = None
+    mock_response_valid.raw_response = {"role": "assistant", "content": None}
+
+    with patch(
+        "backend.blocks.llm.llm_call", return_value=mock_response_valid
+    ), patch.object(
+        SmartDecisionMakerBlock,
+        "_create_function_signature",
+        return_value=mock_tool_functions,
+    ):
+
+        input_data = SmartDecisionMakerBlock.Input(
+            prompt="Search for keywords",
+            model=llm_module.LlmModel.GPT4O,
+            credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
+        )
+
+        # Should succeed - optional parameter missing is OK
+        outputs = {}
+        async for output_name, output_data in block.run(
+            input_data,
+            credentials=llm_module.TEST_CREDENTIALS,
+            graph_id="test-graph-id",
+            node_id="test-node-id",
+            graph_exec_id="test-exec-id",
+            node_exec_id="test-node-exec-id",
+            user_id="test-user-id",
+        ):
+            outputs[output_name] = output_data
+
+        # Verify tool outputs were generated correctly
+        assert "tools_^_search_keywords_~_query" in outputs
+        assert outputs["tools_^_search_keywords_~_query"] == "test"
+        assert "tools_^_search_keywords_~_max_keyword_difficulty" in outputs
+        assert outputs["tools_^_search_keywords_~_max_keyword_difficulty"] == 50
+        # Optional parameter should be None when not provided
+        assert "tools_^_search_keywords_~_optional_param" in outputs
+        assert outputs["tools_^_search_keywords_~_optional_param"] is None
+
+    # Test case 4: Valid tool call with ALL parameters (should succeed)
+    mock_tool_call_all_params = MagicMock()
+    mock_tool_call_all_params.function.name = "search_keywords"
+    mock_tool_call_all_params.function.arguments = '{"query": "test", "max_keyword_difficulty": 50, "optional_param": "custom_value"}'
+
+    mock_response_all_params = MagicMock()
+    mock_response_all_params.response = None
+    mock_response_all_params.tool_calls = [mock_tool_call_all_params]
+    mock_response_all_params.prompt_tokens = 50
+    mock_response_all_params.completion_tokens = 25
+    mock_response_all_params.reasoning = None
+    mock_response_all_params.raw_response = {"role": "assistant", "content": None}
+
+    with patch(
+        "backend.blocks.llm.llm_call", return_value=mock_response_all_params
+    ), patch.object(
+        SmartDecisionMakerBlock,
+        "_create_function_signature",
+        return_value=mock_tool_functions,
+    ):
+
+        input_data = SmartDecisionMakerBlock.Input(
+            prompt="Search for keywords",
+            model=llm_module.LlmModel.GPT4O,
+            credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
+        )
+
+        # Should succeed with all parameters
+        outputs = {}
+        async for output_name, output_data in block.run(
+            input_data,
+            credentials=llm_module.TEST_CREDENTIALS,
+            graph_id="test-graph-id",
+            node_id="test-node-id",
+            graph_exec_id="test-exec-id",
+            node_exec_id="test-node-exec-id",
+            user_id="test-user-id",
+        ):
+            outputs[output_name] = output_data
+
+        # Verify all tool outputs were generated correctly
+        assert outputs["tools_^_search_keywords_~_query"] == "test"
+        assert outputs["tools_^_search_keywords_~_max_keyword_difficulty"] == 50
+        assert outputs["tools_^_search_keywords_~_optional_param"] == "custom_value"
