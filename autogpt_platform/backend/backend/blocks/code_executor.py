@@ -256,7 +256,7 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
                 ("stdout_logs", "Hello World\n"),
             ],
             test_mock={
-                "execute_code": lambda api_key, code, language, template_id, setup_commands, timeout: (  # noqa
+                "execute_code": lambda api_key, code, language, template_id, setup_commands, timeout, dispose_sandbox: (  # noqa
                     [],  # results
                     "Hello World",  # text_output
                     "Hello World\n",  # stdout_logs
@@ -491,7 +491,7 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
                 ("stdout_logs", "Hello World\n"),
             ],
             test_mock={
-                "execute_code": lambda api_key, code, language, sandbox_id: (
+                "execute_code": lambda api_key, code, language, sandbox_id, dispose_sandbox: (  # noqa
                     [],  # results
                     "Hello World",  # text_output
                     "Hello World\n",  # stdout_logs
