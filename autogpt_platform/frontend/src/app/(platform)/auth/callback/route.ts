@@ -22,9 +22,7 @@ function validateRedirectUrl(url: string): string {
     // Check for completely invalid patterns that suggest URL corruption
     if (
       cleanUrl.includes(",") || // Any comma suggests concatenated URLs
-      cleanUrl.includes(" ") || // Spaces in URLs are problematic
-      cleanUrl.includes("%20,") || // URL-encoded corrupted patterns
-      cleanUrl.includes(",%20") // The specific reported issue
+      cleanUrl.includes(" ") // Spaces in URLs are problematic
     ) {
       console.warn(
         "Detected corrupted redirect URL (likely race condition):",
