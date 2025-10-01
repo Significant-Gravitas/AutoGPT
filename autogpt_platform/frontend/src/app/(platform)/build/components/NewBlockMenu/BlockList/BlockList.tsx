@@ -1,18 +1,11 @@
 import React from "react";
 import { Block } from "../Block";
 import { blockMenuContainerStyle } from "../style";
-
-export interface BlockType {
-  id: string;
-  name: string;
-  description: string;
-  category?: string;
-  type?: string;
-  provider?: string;
-}
+import { useNodeStore } from "../../../stores/nodeStore";
+import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 
 interface BlocksListProps {
-  blocks: BlockType[];
+  blocks: BlockInfo[];
   loading?: boolean;
 }
 
@@ -20,6 +13,7 @@ export const BlocksList: React.FC<BlocksListProps> = ({
   blocks,
   loading = false,
 }) => {
+  const { addBlock } = useNodeStore();
   if (loading) {
     return (
       <div className={blockMenuContainerStyle}>
@@ -30,6 +24,11 @@ export const BlocksList: React.FC<BlocksListProps> = ({
     );
   }
   return blocks.map((block) => (
-    <Block key={block.id} title={block.name} description={block.description} />
+    <Block
+      key={block.id}
+      title={block.name}
+      description={block.description}
+      onClick={() => addBlock(block)}
+    />
   ));
 };

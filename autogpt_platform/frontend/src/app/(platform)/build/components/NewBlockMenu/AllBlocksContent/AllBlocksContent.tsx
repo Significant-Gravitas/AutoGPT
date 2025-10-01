@@ -1,11 +1,12 @@
 import React, { Fragment } from "react";
 import { Block } from "../Block";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/__legacy__/ui/button";
+import { Separator } from "@/components/__legacy__/ui/separator";
 import { beautifyString } from "@/lib/utils";
 import { useAllBlockContent } from "./useAllBlockContent";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { blockMenuContainerStyle } from "../style";
+import { useNodeStore } from "../../../stores/nodeStore";
 
 export const AllBlocksContent = () => {
   const {
@@ -17,6 +18,8 @@ export const AllBlocksContent = () => {
     isLoadingMore,
     isErrorOnLoadingMore,
   } = useAllBlockContent();
+
+  const addBlock = useNodeStore((state) => state.addBlock);
 
   if (isLoading) {
     return (
@@ -71,6 +74,7 @@ export const AllBlocksContent = () => {
                   key={`${category.name}-${block.id}`}
                   title={block.name as string}
                   description={block.name as string}
+                  onClick={() => addBlock(block)}
                 />
               ))}
 

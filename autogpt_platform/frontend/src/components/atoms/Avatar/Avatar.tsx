@@ -7,6 +7,8 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import BoringAvatar from "boring-avatars";
+
 import Image, { ImageProps } from "next/image";
 
 type AvatarContextValue = {
@@ -91,16 +93,18 @@ export function AvatarImage({
   unoptimized,
   ...rest
 }: AvatarImageProps): JSX.Element | null {
-  const { setIsLoaded, setHasImage } = useAvatarContext();
+  const { setIsLoaded, setHasImage, hasImage } = useAvatarContext();
+
+  const normalizedSrc = typeof src === "string" ? src.trim() : src;
 
   useEffect(
     function setHasImageOnSrcChange() {
-      setHasImage(Boolean(src));
+      setHasImage(Boolean(normalizedSrc));
     },
-    [src, setHasImage],
+    [normalizedSrc, setHasImage],
   );
 
-  if (!src) return null;
+  if (!normalizedSrc || !hasImage) return null;
 
   const sizeFromClass = getAvatarSizeFromClassName(className);
   const computedWidth = width || sizeFromClass || 40;
@@ -120,7 +124,7 @@ export function AvatarImage({
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={src}
+        src={normalizedSrc}
         alt={alt || "Avatar image"}
         className={["h-full w-full object-cover", className || ""].join(" ")}
         width={computedWidth}
@@ -142,7 +146,7 @@ export function AvatarImage({
 
   return (
     <Image
-      src={src}
+      src={normalizedSrc}
       alt={alt || "Avatar image"}
       className={["h-full w-full object-cover", className || ""].join(" ")}
       width={fill ? undefined : computedWidth}
@@ -170,15 +174,24 @@ export function AvatarFallback({
   const { isLoaded, hasImage } = useAvatarContext();
   const show = !isLoaded || !hasImage;
   if (!show) return null;
+  const computedSize = _size || getAvatarSizeFromClassName(className) || 40;
+  const name =
+    typeof children === "string" && children.trim() ? children : "User";
   return (
     <span
       className={[
-        "flex h-full w-full items-center justify-center rounded-full bg-neutral-200 text-neutral-600",
+        "flex h-full w-full items-center justify-center rounded-full bg-neutral-200 text-lg text-neutral-600",
         className || "",
       ].join(" ")}
       {...props}
     >
-      {children}
+      <BoringAvatar
+        size={computedSize}
+        name={name}
+        variant="marble"
+        colors={["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"]}
+        square={false}
+      />
     </span>
   );
 }

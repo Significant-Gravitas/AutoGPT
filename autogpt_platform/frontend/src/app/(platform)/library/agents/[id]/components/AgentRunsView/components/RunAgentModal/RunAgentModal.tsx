@@ -8,28 +8,34 @@ import { useAgentRunModal } from "./useAgentRunModal";
 import { ModalHeader } from "./components/ModalHeader/ModalHeader";
 import { AgentCostSection } from "./components/AgentCostSection/AgentCostSection";
 import { AgentSectionHeader } from "./components/AgentSectionHeader/AgentSectionHeader";
-import { DefaultRunView } from "./components/DefaultRunView/DefaultRunView";
+import { ModalRunSection } from "./components/ModalRunSection/ModalRunSection";
 import { RunAgentModalContextProvider } from "./context";
-import { ScheduleView } from "./components/ScheduleView/ScheduleView";
 import { AgentDetails } from "./components/AgentDetails/AgentDetails";
 import { RunActions } from "./components/RunActions/RunActions";
-import { ScheduleActions } from "./components/ScheduleActions/ScheduleActions";
-import { Text } from "@/components/atoms/Text/Text";
-import { AlarmIcon, TrashIcon } from "@phosphor-icons/react";
+import { ScheduleAgentModal } from "../ScheduleAgentModal/ScheduleAgentModal";
+import { AlarmIcon } from "@phosphor-icons/react";
+import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
+import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 
 interface Props {
   triggerSlot: React.ReactNode;
   agent: LibraryAgent;
   agentId: string;
   agentVersion?: number;
+  onRunCreated?: (execution: GraphExecutionMeta) => void;
+  onScheduleCreated?: (schedule: GraphExecutionJobInfo) => void;
 }
 
-export function RunAgentModal({ triggerSlot, agent }: Props) {
+export function RunAgentModal({
+  triggerSlot,
+  agent,
+  onRunCreated,
+  onScheduleCreated,
+}: Props) {
   const {
     // UI state
     isOpen,
     setIsOpen,
-    showScheduleView,
 
     // Run mode
     defaultRunType,
@@ -48,10 +54,6 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
     setPresetName,
     setPresetDescription,
 
-    // Scheduling
-    scheduleName,
-    cronExpression,
-
     // Validation/readiness
     allRequiredInputsAreSet,
 
@@ -61,19 +63,15 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
 
     // Async states
     isExecuting,
-    isCreatingSchedule,
     isSettingUpTrigger,
 
     // Actions
     handleRun,
-    handleSchedule,
-    handleShowSchedule,
-    handleGoBack,
-    handleSetScheduleName,
-    handleSetCronExpression,
-  } = useAgentRunModal(agent);
+  } = useAgentRunModal(agent, {
+    onRun: onRunCreated,
+  });
 
-  const [isScheduleFormValid, setIsScheduleFormValid] = useState(true);
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
 
   const hasAnySetupFields =
     Object.keys(agentInputFields || {}).length > 0 ||
@@ -100,14 +98,20 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
 
   function handleSetOpen(open: boolean) {
     setIsOpen(open);
-    // Always reset to Run view when opening/closing
-    if (open || !open) handleGoBack();
   }
 
-  function handleRemoveSchedule() {
-    handleGoBack();
-    handleSetScheduleName("");
-    handleSetCronExpression("");
+  function handleOpenScheduleModal() {
+    setIsScheduleModalOpen(true);
+  }
+
+  function handleCloseScheduleModal() {
+    setIsScheduleModalOpen(false);
+  }
+
+  function handleScheduleCreated(schedule: GraphExecutionJobInfo) {
+    handleCloseScheduleModal();
+    setIsOpen(false); // Close the main RunAgentModal
+    onScheduleCreated?.(schedule);
   }
 
   return (
@@ -154,59 +158,10 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
                             : "Agent Setup"
                         }
                       />
-                      <div>
-                        <DefaultRunView />
-                      </div>
+                      <ModalRunSection />
                     </>
                   </RunAgentModalContextProvider>
                 ) : null}
-              </div>
-
-              {/* Schedule Section - always visible */}
-              <div className="mt-4">
-                <AgentSectionHeader title="Schedule Setup" />
-                {showScheduleView ? (
-                  <>
-                    <div className="my-4 flex justify-start">
-                      <Button
-                        variant="secondary"
-                        size="small"
-                        onClick={handleRemoveSchedule}
-                      >
-                        <TrashIcon size={16} />
-                        Remove schedule
-                      </Button>
-                    </div>
-                    <ScheduleView
-                      scheduleName={scheduleName}
-                      cronExpression={cronExpression}
-                      recommendedScheduleCron={agent.recommended_schedule_cron}
-                      onScheduleNameChange={handleSetScheduleName}
-                      onCronExpressionChange={handleSetCronExpression}
-                      onValidityChange={setIsScheduleFormValid}
-                    />
-                  </>
-                ) : (
-                  <div className="mt-2 flex flex-col items-start gap-2">
-                    <Text variant="body" className="mb-3 !text-zinc-500">
-                      No schedule configured. Create a schedule to run this
-                      agent automatically at a specific time.{" "}
-                      {agent.recommended_schedule_cron && (
-                        <span className="text-blue-600">
-                          This agent has a recommended schedule.
-                        </span>
-                      )}
-                    </Text>
-                    <Button
-                      variant="secondary"
-                      size="small"
-                      onClick={handleShowSchedule}
-                    >
-                      <AlarmIcon size={16} />
-                      Create schedule
-                    </Button>
-                  </div>
-                )}
               </div>
 
               {/* Agent Details Section */}
@@ -220,25 +175,33 @@ export function RunAgentModal({ triggerSlot, agent }: Props) {
             className="fixed bottom-1 left-0 z-10 w-full bg-white p-4"
             style={{ boxShadow: "0px -8px 10px white" }}
           >
-            {showScheduleView ? (
-              <ScheduleActions
-                onSchedule={handleSchedule}
-                isCreatingSchedule={isCreatingSchedule}
-                allRequiredInputsAreSet={
-                  allRequiredInputsAreSet &&
-                  !!scheduleName.trim() &&
-                  isScheduleFormValid
+            <div className="flex items-center justify-end gap-3">
+              <Button
+                variant="secondary"
+                onClick={handleOpenScheduleModal}
+                disabled={
+                  isExecuting || isSettingUpTrigger || !allRequiredInputsAreSet
                 }
-              />
-            ) : (
+              >
+                <AlarmIcon size={16} />
+                Schedule Agent
+              </Button>
               <RunActions
                 defaultRunType={defaultRunType}
                 onRun={handleRun}
                 isExecuting={isExecuting}
                 isSettingUpTrigger={isSettingUpTrigger}
-                allRequiredInputsAreSet={allRequiredInputsAreSet}
+                isRunReady={allRequiredInputsAreSet}
               />
-            )}
+            </div>
+            <ScheduleAgentModal
+              isOpen={isScheduleModalOpen}
+              onClose={handleCloseScheduleModal}
+              agent={agent}
+              inputValues={inputValues}
+              inputCredentials={inputCredentials}
+              onScheduleCreated={handleScheduleCreated}
+            />
           </Dialog.Footer>
         </Dialog.Content>
       </Dialog>

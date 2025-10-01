@@ -23,6 +23,7 @@ from pydantic import BaseModel
 
 from backend.data import db
 from backend.data.block_cost_config import BLOCK_COSTS
+from backend.data.includes import MAX_CREDIT_REFUND_REQUESTS_FETCH
 from backend.data.model import (
     AutoTopUpConfig,
     RefundRequest,
@@ -905,7 +906,9 @@ class UserCredit(UserCreditBase):
             ),
         )
 
-    async def get_refund_requests(self, user_id: str) -> list[RefundRequest]:
+    async def get_refund_requests(
+        self, user_id: str, limit: int = MAX_CREDIT_REFUND_REQUESTS_FETCH
+    ) -> list[RefundRequest]:
         return [
             RefundRequest(
                 id=r.id,
@@ -921,6 +924,7 @@ class UserCredit(UserCreditBase):
             for r in await CreditRefundRequest.prisma().find_many(
                 where={"userId": user_id},
                 order={"createdAt": "desc"},
+                take=limit,
             )
         ]
 

@@ -10,7 +10,6 @@ from backend.util.settings import Config
 from backend.util.text import TextFormatter
 from backend.util.type import LongTextType, MediaFileType, ShortTextType
 
-formatter = TextFormatter()
 config = Config()
 
 
@@ -132,6 +131,11 @@ class AgentOutputBlock(Block):
             default="",
             advanced=True,
         )
+        escape_html: bool = SchemaField(
+            default=False,
+            advanced=True,
+            description="Whether to escape special characters in the inserted values to be HTML-safe. Enable for HTML output, disable for plain text.",
+        )
         advanced: bool = SchemaField(
             description="Whether to treat the output as advanced.",
             default=False,
@@ -193,6 +197,7 @@ class AgentOutputBlock(Block):
         """
         if input_data.format:
             try:
+                formatter = TextFormatter(autoescape=input_data.escape_html)
                 yield "output", formatter.format_string(
                     input_data.format, {input_data.name: input_data.value}
                 )
@@ -549,6 +554,89 @@ class AgentToggleInputBlock(AgentInputBlock):
         )
 
 
+class AgentTableInputBlock(AgentInputBlock):
+    """
+    This block allows users to input data in a table format.
+
+    Configure the table columns at build time, then users can input
+    rows of data at runtime. Each row is output as a dictionary
+    with column names as keys.
+    """
+
+    class Input(AgentInputBlock.Input):
+        value: Optional[list[dict[str, Any]]] = SchemaField(
+            description="The table data as a list of dictionaries.",
+            default=None,
+            advanced=False,
+            title="Default Value",
+        )
+        column_headers: list[str] = SchemaField(
+            description="Column headers for the table.",
+            default_factory=lambda: ["Column 1", "Column 2", "Column 3"],
+            advanced=False,
+            title="Column Headers",
+        )
+
+        def generate_schema(self):
+            """Generate schema for the value field with table format."""
+            schema = super().generate_schema()
+            schema["type"] = "array"
+            schema["format"] = "table"
+            schema["items"] = {
+                "type": "object",
+                "properties": {
+                    header: {"type": "string"}
+                    for header in (
+                        self.column_headers or ["Column 1", "Column 2", "Column 3"]
+                    )
+                },
+            }
+            if self.value is not None:
+                schema["default"] = self.value
+            return schema
+
+    class Output(AgentInputBlock.Output):
+        result: list[dict[str, Any]] = SchemaField(
+            description="The table data as a list of dictionaries with headers as keys."
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="5603b273-f41e-4020-af7d-fbc9c6a8d928",
+            description="Block for table data input with customizable headers.",
+            disabled=not config.enable_agent_input_subtype_blocks,
+            input_schema=AgentTableInputBlock.Input,
+            output_schema=AgentTableInputBlock.Output,
+            test_input=[
+                {
+                    "name": "test_table",
+                    "column_headers": ["Name", "Age", "City"],
+                    "value": [
+                        {"Name": "John", "Age": "30", "City": "New York"},
+                        {"Name": "Jane", "Age": "25", "City": "London"},
+                    ],
+                    "description": "Example table input",
+                }
+            ],
+            test_output=[
+                (
+                    "result",
+                    [
+                        {"Name": "John", "Age": "30", "City": "New York"},
+                        {"Name": "Jane", "Age": "25", "City": "London"},
+                    ],
+                )
+            ],
+        )
+
+    async def run(self, input_data: Input, *args, **kwargs) -> BlockOutput:
+        """
+        Yields the table data as a list of dictionaries.
+        """
+        # Pass through the value, defaulting to empty list if None
+        yield "result", input_data.value if input_data.value is not None else []
+
+
 IO_BLOCK_IDs = [
     AgentInputBlock().id,
     AgentOutputBlock().id,
@@ -560,4 +648,5 @@ IO_BLOCK_IDs = [
     AgentFileInputBlock().id,
     AgentDropdownInputBlock().id,
     AgentToggleInputBlock().id,
+    AgentTableInputBlock().id,
 ]

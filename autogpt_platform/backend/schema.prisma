@@ -69,15 +69,23 @@ enum OnboardingStep {
   AGENT_NEW_RUN
   AGENT_INPUT
   CONGRATS
+  // First Wins
   GET_RESULTS
-  RUN_AGENTS
-  // Marketplace
   MARKETPLACE_VISIT
   MARKETPLACE_ADD_AGENT
   MARKETPLACE_RUN_AGENT
-  // Builder
-  BUILDER_OPEN
   BUILDER_SAVE_AGENT
+  // Consistency Challenge
+  RE_RUN_AGENT
+  SCHEDULE_AGENT
+  RUN_AGENTS
+  RUN_3_DAYS
+  // The Pro Playground
+  TRIGGER_WEBHOOK
+  RUN_14_DAYS
+  RUN_AGENTS_100
+  // No longer rewarded but exist for analytical purposes
+  BUILDER_OPEN
   BUILDER_RUN_AGENT
 }
 
@@ -87,7 +95,7 @@ model UserOnboarding {
   updatedAt DateTime? @updatedAt
 
   completedSteps                OnboardingStep[] @default([])
-  notificationDot               Boolean          @default(true)
+  walletShown                   Boolean          @default(false)
   notified                      OnboardingStep[] @default([])
   rewardedFor                   OnboardingStep[] @default([])
   usageReason                   String?
@@ -97,6 +105,8 @@ model UserOnboarding {
   agentInput                    Json?
   onboardingAgentExecutionId    String?
   agentRuns                     Int              @default(0)
+  lastRunAt                     DateTime?
+  consecutiveRunDays            Int              @default(0)
 
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -111,6 +121,7 @@ model AgentGraph {
 
   name        String?
   description String?
+  instructions String?
   recommendedScheduleCron String?
 
   isActive Boolean @default(true)
@@ -135,7 +146,7 @@ model AgentGraph {
   StoreListingVersions StoreListingVersion[]
 
   @@id(name: "graphVersionId", [id, version])
-  @@index([userId, isActive])
+  @@index([userId, isActive, id, version])
   @@index([forkedFromId, forkedFromVersion])
 }
 
@@ -371,10 +382,16 @@ model AgentGraphExecution {
 
   stats Json?
 
+  // Sharing fields
+  isShared    Boolean   @default(false)
+  shareToken  String?   @unique
+  sharedAt    DateTime?
+
   @@index([agentGraphId, agentGraphVersion])
-  @@index([userId])
+  @@index([userId, isDeleted, createdAt])
   @@index([createdAt])
   @@index([agentPresetId])
+  @@index([shareToken])
 }
 
 // This model describes the execution of an AgentNode.
@@ -529,7 +546,7 @@ model CreditTransaction {
   createdAt      DateTime @default(now())
 
   userId String
-  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  User   User?   @relation(fields: [userId], references: [id], onDelete: NoAction)
 
   amount Int
   type   CreditTransactionType
@@ -759,6 +776,7 @@ model StoreListingVersion {
   videoUrl    String?
   imageUrls   String[]
   description String
+  instructions String?
   categories  String[]
 
   isFeatured Boolean @default(false)

@@ -1,6 +1,6 @@
 "use client";
-import { IconAutoGPTLogo, IconType } from "@/components/ui/icons";
-import Wallet from "../../../agptui/Wallet";
+import { IconAutoGPTLogo, IconType } from "@/components/__legacy__/ui/icons";
+import Wallet from "../../../__legacy__/Wallet";
 import { AccountMenu } from "./AccountMenu/AccountMenu";
 import { LoginButton } from "./LoginButton";
 import { MobileNavBar } from "./MobileNavbar/MobileNavBar";
@@ -27,7 +27,7 @@ export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
 
   return (
     <>
-      <nav className="sticky top-0 z-40 inline-flex h-16 items-center border border-white/50 bg-[#f3f4f6]/20 p-3 backdrop-blur-[26px]">
+      <nav className="sticky top-0 z-40 inline-flex h-16 w-full items-center border border-white/50 bg-[#f3f4f6]/20 p-3 backdrop-blur-[26px]">
         {/* Left section */}
         <div className="hidden flex-1 items-center gap-3 md:flex md:gap-5">
           {isLoggedIn

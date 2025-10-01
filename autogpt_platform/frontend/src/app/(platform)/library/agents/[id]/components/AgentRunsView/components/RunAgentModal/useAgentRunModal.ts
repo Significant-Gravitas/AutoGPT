@@ -15,6 +15,8 @@ import { usePostV2SetupTrigger } from "@/app/api/__generated__/endpoints/presets
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
+import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 
 export type RunVariant =
   | "manual"
@@ -47,6 +49,14 @@ export function useAgentRunModal(
   const [cronExpression, setCronExpression] = useState(
     agent.recommended_schedule_cron || "0 9 * * 1",
   );
+  const { completeStep: completeOnboardingStep } = useOnboarding();
+
+  // Get user timezone for scheduling
+  const { data: userTimezone } = useGetV1GetUserTimezone({
+    query: {
+      select: (res) => (res.status === 200 ? res.data.timezone : undefined),
+    },
+  });
 
   // Determine the default run type based on agent capabilities
   const defaultRunType: RunVariant = agent.has_external_trigger
@@ -307,8 +317,12 @@ export function useAgentRunModal(
         inputs: inputValues,
         graph_version: agent.graph_version,
         credentials: inputCredentials,
+        timezone:
+          userTimezone && userTimezone !== "not-set" ? userTimezone : undefined,
       },
     });
+
+    completeOnboardingStep("SCHEDULE_AGENT");
   }, [
     allRequiredInputsAreSet,
     scheduleName,
@@ -319,6 +333,7 @@ export function useAgentRunModal(
     notifyMissingRequirements,
     createScheduleMutation,
     toast,
+    userTimezone,
   ]);
 
   function handleShowSchedule() {

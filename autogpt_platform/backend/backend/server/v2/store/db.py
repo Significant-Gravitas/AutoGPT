@@ -309,6 +309,29 @@ async def get_store_agent_details(
             store_listing.hasApprovedVersion if store_listing else False
         )
 
+        if active_version_id:
+            agent_by_active = await prisma.models.StoreAgent.prisma().find_first(
+                where={"storeListingVersionId": active_version_id}
+            )
+            if agent_by_active:
+                agent = agent_by_active
+        elif store_listing:
+            latest_approved = (
+                await prisma.models.StoreListingVersion.prisma().find_first(
+                    where={
+                        "storeListingId": store_listing.id,
+                        "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+                    },
+                    order=[{"version": "desc"}],
+                )
+            )
+            if latest_approved:
+                agent_latest = await prisma.models.StoreAgent.prisma().find_first(
+                    where={"storeListingVersionId": latest_approved.id}
+                )
+                if agent_latest:
+                    agent = agent_latest
+
         if store_listing and store_listing.ActiveVersion:
             recommended_schedule_cron = (
                 store_listing.ActiveVersion.recommendedScheduleCron
@@ -602,6 +625,7 @@ async def get_store_submissions(
                 sub_heading=sub.sub_heading,
                 slug=sub.slug,
                 description=sub.description,
+                instructions=getattr(sub, "instructions", None),
                 image_urls=sub.image_urls or [],
                 date_submitted=sub.date_submitted or datetime.now(tz=timezone.utc),
                 status=sub.status,
@@ -693,6 +717,7 @@ async def create_store_submission(
     video_url: str | None = None,
     image_urls: list[str] = [],
     description: str = "",
+    instructions: str | None = None,
     sub_heading: str = "",
     categories: list[str] = [],
     changes_summary: str | None = "Initial Submission",
@@ -764,6 +789,7 @@ async def create_store_submission(
                 video_url=video_url,
                 image_urls=image_urls,
                 description=description,
+                instructions=instructions,
                 sub_heading=sub_heading,
                 categories=categories,
                 changes_summary=changes_summary,
@@ -785,6 +811,7 @@ async def create_store_submission(
                         videoUrl=video_url,
                         imageUrls=image_urls,
                         description=description,
+                        instructions=instructions,
                         categories=categories,
                         subHeading=sub_heading,
                         submissionStatus=prisma.enums.SubmissionStatus.PENDING,
@@ -815,6 +842,7 @@ async def create_store_submission(
             slug=slug,
             sub_heading=sub_heading,
             description=description,
+            instructions=instructions,
             image_urls=image_urls,
             date_submitted=listing.createdAt,
             status=prisma.enums.SubmissionStatus.PENDING,
@@ -847,6 +875,7 @@ async def edit_store_submission(
     categories: list[str] = [],
     changes_summary: str | None = "Update submission",
     recommended_schedule_cron: str | None = None,
+    instructions: str | None = None,
 ) -> backend.server.v2.store.model.StoreSubmission:
     """
     Edit an existing store listing submission.
@@ -927,6 +956,7 @@ async def edit_store_submission(
                 categories=categories,
                 changes_summary=changes_summary,
                 recommended_schedule_cron=recommended_schedule_cron,
+                instructions=instructions,
             )
 
         # For PENDING submissions, we can update the existing version
@@ -943,6 +973,7 @@ async def edit_store_submission(
                     subHeading=sub_heading,
                     changesSummary=changes_summary,
                     recommendedScheduleCron=recommended_schedule_cron,
+                    instructions=instructions,
                 ),
             )
 
@@ -961,6 +992,7 @@ async def edit_store_submission(
                 sub_heading=sub_heading,
                 slug=current_version.StoreListing.slug,
                 description=description,
+                instructions=instructions,
                 image_urls=image_urls,
                 date_submitted=updated_version.submittedAt or updated_version.createdAt,
                 status=updated_version.submissionStatus,
@@ -1002,6 +1034,7 @@ async def create_store_version(
     video_url: str | None = None,
     image_urls: list[str] = [],
     description: str = "",
+    instructions: str | None = None,
     sub_heading: str = "",
     categories: list[str] = [],
     changes_summary: str | None = "Initial submission",
@@ -1070,6 +1103,7 @@ async def create_store_version(
                 videoUrl=video_url,
                 imageUrls=image_urls,
                 description=description,
+                instructions=instructions,
                 categories=categories,
                 subHeading=sub_heading,
                 submissionStatus=prisma.enums.SubmissionStatus.PENDING,
@@ -1091,6 +1125,7 @@ async def create_store_version(
             slug=listing.slug,
             sub_heading=sub_heading,
             description=description,
+            instructions=instructions,
             image_urls=image_urls,
             date_submitted=datetime.now(),
             status=prisma.enums.SubmissionStatus.PENDING,
@@ -1267,7 +1302,20 @@ async def get_my_agents(
     try:
         search_filter: prisma.types.LibraryAgentWhereInput = {
             "userId": user_id,
-            "AgentGraph": {"is": {"StoreListings": {"none": {"isDeleted": False}}}},
+            "AgentGraph": {
+                "is": {
+                    "StoreListings": {
+                        "none": {
+                            "isDeleted": False,
+                            "Versions": {
+                                "some": {
+                                    "isAvailable": True,
+                                }
+                            },
+                        }
+                    }
+                }
+            },
             "isArchived": False,
             "isDeleted": False,
         }
@@ -1505,6 +1553,7 @@ async def review_store_submission(
                         "name": store_listing_version.name,
                         "description": store_listing_version.description,
                         "recommendedScheduleCron": store_listing_version.recommendedScheduleCron,
+                        "instructions": store_listing_version.instructions,
                     },
                 )
 
@@ -1728,6 +1777,7 @@ async def review_store_submission(
                 else ""
             ),
             description=submission.description,
+            instructions=submission.instructions,
             image_urls=submission.imageUrls or [],
             date_submitted=submission.submittedAt or submission.createdAt,
             status=submission.submissionStatus,
@@ -1863,6 +1913,7 @@ async def get_admin_listings_with_versions(
                     sub_heading=version.subHeading,
                     slug=listing.slug,
                     description=version.description,
+                    instructions=version.instructions,
                     image_urls=version.imageUrls or [],
                     date_submitted=version.submittedAt or version.createdAt,
                     status=version.submissionStatus,

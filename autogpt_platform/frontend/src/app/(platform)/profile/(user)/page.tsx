@@ -2,7 +2,7 @@ import React from "react";
 import { Metadata } from "next/types";
 import { redirect } from "next/navigation";
 import BackendAPI from "@/lib/autogpt-server-api";
-import { ProfileInfoForm } from "@/components/agptui/ProfileInfoForm";
+import { ProfileInfoForm } from "@/components/__legacy__/ProfileInfoForm";
 
 // Force dynamic rendering to avoid static generation issues with cookies
 export const dynamic = "force-dynamic";

@@ -43,6 +43,7 @@ class LibraryAgent(pydantic.BaseModel):
 
     name: str
     description: str
+    instructions: str | None = None
 
     input_schema: dict[str, Any]  # Should be BlockIOObjectSubSchema in frontend
     output_schema: dict[str, Any]
@@ -63,6 +64,9 @@ class LibraryAgent(pydantic.BaseModel):
 
     # Indicates if this agent is the latest version
     is_latest_version: bool
+
+    # Whether the agent is marked as favorite by the user
+    is_favorite: bool
 
     # Recommended schedule cron (from marketplace agents)
     recommended_schedule_cron: str | None = None
@@ -123,6 +127,7 @@ class LibraryAgent(pydantic.BaseModel):
             updated_at=updated_at,
             name=graph.name,
             description=graph.description,
+            instructions=graph.instructions,
             input_schema=graph.input_schema,
             output_schema=graph.output_schema,
             credentials_input_schema=(
@@ -133,6 +138,7 @@ class LibraryAgent(pydantic.BaseModel):
             new_output=new_output,
             can_access_graph=can_access_graph,
             is_latest_version=is_latest_version,
+            is_favorite=agent.isFavorite,
             recommended_schedule_cron=agent.AgentGraph.recommendedScheduleCron,
         )
 
@@ -257,6 +263,7 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
 
     id: str
     user_id: str
+    created_at: datetime.datetime
     updated_at: datetime.datetime
 
     webhook: "Webhook | None"
@@ -286,6 +293,7 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
         return cls(
             id=preset.id,
             user_id=preset.userId,
+            created_at=preset.createdAt,
             updated_at=preset.updatedAt,
             graph_id=preset.agentGraphId,
             graph_version=preset.agentGraphVersion,
