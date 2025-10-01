@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from e2b_code_interpreter import AsyncSandbox
 from e2b_code_interpreter import Result as E2BExecutionResult
@@ -135,9 +135,10 @@ class BaseE2BExecutorMixin:
 
     def process_execution_results(
         self, results: list[E2BExecutionResult]
-    ) -> list[dict]:
+    ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
         """Process and filter execution results."""
-        return [
+        # Filter out empty formats and convert to dicts
+        processed_results = [
             {
                 f: value
                 for f in [*r.formats(), "extra", "is_main_result"]
@@ -145,6 +146,13 @@ class BaseE2BExecutorMixin:
             }
             for r in results
         ]
+        if main_result := next(
+            (r for r in processed_results if r.get("is_main_result")), None
+        ):
+            # Make main_result a copy we can modify & remove is_main_result
+            (main_result := {**main_result}).pop("is_main_result")
+
+        return main_result, processed_results
 
 
 class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
@@ -273,12 +281,8 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
             )
 
             # Determine result object shape & filter out empty formats
-            results = self.process_execution_results(results)
-            if main_result := next(
-                (r for r in results if r.get("is_main_result")), None
-            ):
-                # Make an object copy we can modify & remove is_main_result
-                (main_result := {**main_result}).pop("is_main_result")
+            main_result, results = self.process_execution_results(results)
+            if main_result:
                 yield "main_result", main_result
             yield "results", results
             if text_output:
@@ -510,12 +514,8 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
             )
 
             # Determine result object shape & filter out empty formats
-            results = self.process_execution_results(results)
-            if main_result := next(
-                (r for r in results if r.get("is_main_result")), None
-            ):
-                # Make an object copy we can modify & remove is_main_result
-                (main_result := {**main_result}).pop("is_main_result")
+            main_result, results = self.process_execution_results(results)
+            if main_result:
                 yield "main_result", main_result
             yield "results", results
             if text_output:
