@@ -11,37 +11,46 @@ async function shouldShowOnboarding() {
   );
 }
 
+// Default redirect path - matches the home page redirect destination
+const DEFAULT_REDIRECT_PATH = "/marketplace";
+
 // Validate redirect URL to prevent open redirect attacks and malformed URLs
 function validateRedirectUrl(url: string): string {
   try {
-    // Clean up the URL first
     const cleanUrl = url.trim();
 
-    // Check for malformed URL patterns that could cause issues
+    // Check for completely invalid patterns that suggest URL corruption
     if (
-      cleanUrl.includes(",%20") ||
-      cleanUrl.includes(", /") ||
-      cleanUrl.includes(" /")
+      cleanUrl.includes(",") || // Any comma suggests concatenated URLs
+      cleanUrl.includes(" ") || // Spaces in URLs are problematic
+      cleanUrl.includes("%20,") || // URL-encoded corrupted patterns
+      cleanUrl.includes(",%20") // The specific reported issue
     ) {
-      console.warn("Detected malformed redirect URL:", cleanUrl);
-      return "/marketplace"; // Default to marketplace for malformed URLs
+      console.warn(
+        "Detected corrupted redirect URL (likely race condition):",
+        cleanUrl,
+      );
+      return DEFAULT_REDIRECT_PATH;
     }
 
     // Only allow relative URLs that start with /
-    if (cleanUrl.startsWith("/") && !cleanUrl.startsWith("//")) {
-      // Additional validation for common problematic patterns
-      if (cleanUrl.includes("%20/") || cleanUrl.split("/").length > 10) {
-        console.warn("Suspicious redirect URL pattern:", cleanUrl);
-        return "/marketplace";
-      }
-      return cleanUrl;
+    if (!cleanUrl.startsWith("/") || cleanUrl.startsWith("//")) {
+      console.warn("Invalid redirect URL format:", cleanUrl);
+      return DEFAULT_REDIRECT_PATH;
     }
 
-    // Default to marketplace for any invalid URLs
-    return "/marketplace";
+    // Additional safety checks
+    if (cleanUrl.split("/").length > 5) {
+      // Reasonable path depth limit
+      console.warn("Suspiciously deep redirect URL:", cleanUrl);
+      return DEFAULT_REDIRECT_PATH;
+    }
+
+    // For now, allow any valid relative path (can be restricted later if needed)
+    return cleanUrl;
   } catch (error) {
     console.error("Error validating redirect URL:", error);
-    return "/marketplace";
+    return DEFAULT_REDIRECT_PATH;
   }
 }
 
