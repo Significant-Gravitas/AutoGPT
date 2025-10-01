@@ -27,11 +27,16 @@ Sentry.init({
 
   // Add optional integrations for additional features
   integrations: [
-    Sentry.replayIntegration(),
+    Sentry.captureConsoleIntegration(),
+    Sentry.extraErrorDataIntegration(),
+    Sentry.browserProfilingIntegration(),
     Sentry.httpClientIntegration(),
+    // Sentry.launchDarklyIntegration(),
+    Sentry.replayIntegration({
+      unmask: [".sentry-unmask, [data-sentry-unmask]"],
+    }),
     Sentry.replayCanvasIntegration(),
     Sentry.reportingObserverIntegration(),
-    Sentry.browserProfilingIntegration(),
     // Sentry.feedbackIntegration({
     //   // Additional SDK configuration goes in here, for example:
     //   colorScheme: "system",

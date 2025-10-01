@@ -451,7 +451,7 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
         )
 
     class Output(BlockSchema):
-        main_result: CodeExecutionResult = SchemaField(
+        main_result: MainCodeExecutionResult = SchemaField(
             title="Main Result", description="The main result from the code execution"
         )
         results: list[CodeExecutionResult] = SchemaField(
