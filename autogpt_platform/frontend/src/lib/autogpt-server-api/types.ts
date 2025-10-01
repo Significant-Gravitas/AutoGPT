@@ -955,7 +955,10 @@ export type OnboardingStep =
   // The Pro Playground
   | "TRIGGER_WEBHOOK"
   | "RUN_14_DAYS"
-  | "RUN_AGENTS_100";
+  | "RUN_AGENTS_100"
+  // No longer used but tracked
+  | "BUILDER_OPEN"
+  | "BUILDER_RUN_AGENT";
 
 export interface UserOnboarding {
   completedSteps: OnboardingStep[];

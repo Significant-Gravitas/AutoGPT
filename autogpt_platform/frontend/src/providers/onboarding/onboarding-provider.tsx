@@ -92,8 +92,6 @@ export default function OnboardingProvider({
 
     const fetchOnboarding = async () => {
       try {
-        console.log("Fetching onboarding data");
-
         // For non-onboarding routes, we still need basic onboarding state for step completion
         // but we can skip the expensive isOnboardingEnabled() check
         if (isOnOnboardingRoute) {
@@ -170,7 +168,6 @@ export default function OnboardingProvider({
         }
         return { ...prev, ...newState };
       });
-      console.log("Updating onboarding state:", newState);
       // Make the API call asynchronously to not block render
       setTimeout(() => {
         api.updateUserOnboarding(newState).catch((error) => {
