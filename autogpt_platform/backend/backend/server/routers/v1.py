@@ -938,9 +938,11 @@ async def execute_graph(
 
         for page in range(1, 10):
             cache.get_cached_graph_executions.cache_delete(
-                graph_id=graph_id, user_id=user_id, page=page, page_size=20
+                graph_id=graph_id, user_id=user_id, page=page, page_size=25
             )
-
+            library_cache.get_cached_library_agents.cache_delete(
+                user_id=user_id, page=page, page_size=10
+            )
         return result
     except GraphValidationError as e:
         # Record failed graph execution
