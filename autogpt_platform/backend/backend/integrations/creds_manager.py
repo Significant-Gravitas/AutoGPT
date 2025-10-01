@@ -151,7 +151,10 @@ class IntegrationCredentialsManager:
                 fresh_credentials = await oauth_handler.refresh_tokens(credentials)
                 await self.store.update_creds(user_id, fresh_credentials)
                 if _lock and (await _lock.locked()) and (await _lock.owned()):
-                    await _lock.release()
+                    try:
+                        await _lock.release()
+                    except Exception as e:
+                        logger.warning(f"Failed to release OAuth refresh lock: {e}")
 
                 credentials = fresh_credentials
         return credentials
@@ -184,7 +187,10 @@ class IntegrationCredentialsManager:
             yield
         finally:
             if (await lock.locked()) and (await lock.owned()):
-                await lock.release()
+                try:
+                    await lock.release()
+                except Exception as e:
+                    logger.warning(f"Failed to release credentials lock: {e}")
 
     async def release_all_locks(self):
         """Call this on process termination to ensure all locks are released"""
