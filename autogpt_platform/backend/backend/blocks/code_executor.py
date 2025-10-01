@@ -38,7 +38,7 @@ class ProgrammingLanguage(Enum):
     JAVA = "java"
 
 
-class CodeExecutionResult(BaseModel):
+class MainCodeExecutionResult(BaseModel):
     """
     *Pydantic model mirroring `e2b_code_interpreter.Result`*
 
@@ -69,6 +69,13 @@ class CodeExecutionResult(BaseModel):
     """Extra data that can be included. Not part of the standard types."""
 
 
+class CodeExecutionResult(MainCodeExecutionResult):
+    __doc__ = MainCodeExecutionResult.__doc__
+
+    is_main_result: bool = False
+    """Whether this data is the main result of the cell. Data can be produced by display calls of which can be multiple in a cell."""  # noqa
+
+
 class BaseE2BExecutorMixin:
     """Shared implementation methods for E2B executor blocks."""
 
@@ -81,6 +88,7 @@ class BaseE2BExecutorMixin:
         setup_commands: Optional[list[str]] = None,
         timeout: Optional[int] = None,
         sandbox_id: Optional[str] = None,
+        dispose_sandbox: bool = False,
     ):
         """
         Unified code execution method that handles all three use cases:
@@ -88,34 +96,42 @@ class BaseE2BExecutorMixin:
         2. Create new sandbox, execute, and return sandbox_id (InstantiateCodeSandboxBlock)
         3. Connect to existing sandbox and execute (ExecuteCodeStepBlock)
         """  # noqa
-        if sandbox_id:
-            # Connect to existing sandbox (ExecuteCodeStepBlock case)
-            sandbox = await AsyncSandbox.connect(sandbox_id=sandbox_id, api_key=api_key)
-        else:
-            # Create new sandbox (ExecuteCodeBlock/InstantiateCodeSandboxBlock case)
-            sandbox = await AsyncSandbox.create(
-                api_key=api_key, template=template_id, timeout=timeout
+        sandbox = None
+        try:
+            if sandbox_id:
+                # Connect to existing sandbox (ExecuteCodeStepBlock case)
+                sandbox = await AsyncSandbox.connect(
+                    sandbox_id=sandbox_id, api_key=api_key
+                )
+            else:
+                # Create new sandbox (ExecuteCodeBlock/InstantiateCodeSandboxBlock case)
+                sandbox = await AsyncSandbox.create(
+                    api_key=api_key, template=template_id, timeout=timeout
+                )
+                if setup_commands:
+                    for cmd in setup_commands:
+                        await sandbox.commands.run(cmd)
+
+            # Execute the code
+            execution = await sandbox.run_code(
+                code,
+                language=language.value,
+                on_error=lambda e: sandbox.kill(),  # Kill the sandbox on error
             )
-            if setup_commands:
-                for cmd in setup_commands:
-                    await sandbox.commands.run(cmd)
 
-        # Execute the code
-        execution = await sandbox.run_code(
-            code,
-            language=language.value,
-            on_error=lambda e: sandbox.kill(),  # Kill the sandbox on error
-        )
+            if execution.error:
+                raise Exception(execution.error)
 
-        if execution.error:
-            raise Exception(execution.error)
+            results = execution.results
+            text_output = execution.text
+            stdout_logs = "".join(execution.logs.stdout)
+            stderr_logs = "".join(execution.logs.stderr)
 
-        results = execution.results
-        text_output = execution.text
-        stdout_logs = "".join(execution.logs.stdout)
-        stderr_logs = "".join(execution.logs.stderr)
-
-        return results, text_output, stdout_logs, stderr_logs, sandbox.sandbox_id
+            return results, text_output, stdout_logs, stderr_logs, sandbox.sandbox_id
+        finally:
+            # Dispose of sandbox if requested to reduce usage costs
+            if dispose_sandbox and sandbox:
+                await sandbox.kill()
 
     def process_execution_results(
         self, results: list[E2BExecutionResult]
@@ -123,9 +139,9 @@ class BaseE2BExecutorMixin:
         """Process and filter execution results."""
         return [
             {
-                f: r[f]
+                f: value
                 for f in [*r.formats(), "extra", "is_main_result"]
-                if getattr(r, f, None) is not None
+                if (value := getattr(r, f, None)) is not None
             }
             for r in results
         ]
@@ -175,6 +191,14 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
             description="Execution timeout in seconds", default=300
         )
 
+        dispose_sandbox: bool = SchemaField(
+            description=(
+                "Whether to dispose of the sandbox immediately after execution. "
+                "If disabled, the sandbox will run until its timeout expires."
+            ),
+            default=True,
+        )
+
         template_id: str = SchemaField(
             description=(
                 "You can use an E2B sandbox template by entering its ID here. "
@@ -186,7 +210,7 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
         )
 
     class Output(BlockSchema):
-        main_result: CodeExecutionResult = SchemaField(
+        main_result: MainCodeExecutionResult = SchemaField(
             title="Main Result", description="The main result from the code execution"
         )
         results: list[CodeExecutionResult] = SchemaField(
@@ -245,14 +269,18 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
                 template_id=input_data.template_id,
                 setup_commands=input_data.setup_commands,
                 timeout=input_data.timeout,
+                dispose_sandbox=input_data.dispose_sandbox,
             )
 
             # Determine result object shape & filter out empty formats
             results = self.process_execution_results(results)
+            if main_result := next(
+                (r for r in results if r.get("is_main_result")), None
+            ):
+                # Make an object copy we can modify & remove is_main_result
+                (main_result := {**main_result}).pop("is_main_result")
+                yield "main_result", main_result
             yield "results", results
-            for r in results:
-                if r.pop("is_main_result", False):
-                    yield "main_result", r
             if text_output:
                 yield "response", text_output
             if stdout:
@@ -417,6 +445,11 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
             advanced=False,
         )
 
+        dispose_sandbox: bool = SchemaField(
+            description="Whether to dispose of the sandbox after executing this code.",
+            default=False,
+        )
+
     class Output(BlockSchema):
         main_result: CodeExecutionResult = SchemaField(
             title="Main Result", description="The main result from the code execution"
@@ -473,14 +506,18 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
                 code=input_data.step_code,
                 language=input_data.language,
                 sandbox_id=input_data.sandbox_id,
+                dispose_sandbox=input_data.dispose_sandbox,
             )
 
             # Determine result object shape & filter out empty formats
             results = self.process_execution_results(results)
+            if main_result := next(
+                (r for r in results if r.get("is_main_result")), None
+            ):
+                # Make an object copy we can modify & remove is_main_result
+                (main_result := {**main_result}).pop("is_main_result")
+                yield "main_result", main_result
             yield "results", results
-            for r in results:
-                if r.pop("is_main_result", False):
-                    yield "main_result", r
             if text_output:
                 yield "response", text_output
             if stdout:
