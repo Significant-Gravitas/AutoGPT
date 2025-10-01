@@ -4,7 +4,6 @@ import FlowEditor from "@/app/(platform)/build/components/legacy-builder/Flow/Fl
 // import LoadingBox from "@/components/__legacy__/ui/loading";
 import { GraphID } from "@/lib/autogpt-server-api/types";
 import { useSearchParams } from "next/navigation";
-import { useEffect } from "react";
 import { Flow } from "./components/FlowEditor/Flow";
 import { BuilderViewTabs } from "./components/BuilderViewTabs/BuilderViewTabs";
 import { useBuilderView } from "./components/BuilderViewTabs/useBuilderViewTabs";
