@@ -436,7 +436,7 @@ class ExecutionProcessor:
             graph_id=node_exec.graph_id,
             node_eid=node_exec.node_exec_id,
             node_id=node_exec.node_id,
-            block_name="-",
+            block_name=b.name if (b := get_block(node_exec.block_id)) else "-",
         )
         db_client = get_db_async_client()
         node = await db_client.get_node(node_exec.node_id)
@@ -1735,7 +1735,10 @@ async def synchronized(key: str, timeout: int = settings.config.cluster_lock_tim
         yield
     finally:
         if await lock.locked() and await lock.owned():
-            await lock.release()
+            try:
+                await lock.release()
+            except Exception as e:
+                logger.warning(f"Failed to release lock for key {key}: {e}")
 
 
 def increment_execution_count(user_id: str) -> int:

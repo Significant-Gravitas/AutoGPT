@@ -1,5 +1,9 @@
+# This file contains a lot of prompt block strings that would trigger "line too long"
+# flake8: noqa: E501
 import ast
 import logging
+import re
+import secrets
 from abc import ABC
 from enum import Enum, EnumMeta
 from json import JSONDecodeError
@@ -27,7 +31,7 @@ from backend.util.prompt import compress_prompt, estimate_token_count
 from backend.util.text import TextFormatter
 
 logger = TruncatedLogger(logging.getLogger(__name__), "[LLM-Block]")
-fmt = TextFormatter()
+fmt = TextFormatter(autoescape=False)
 
 LLMProviderName = Literal[
     ProviderName.AIML_API,
@@ -97,6 +101,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     CLAUDE_4_1_OPUS = "claude-opus-4-1-20250805"
     CLAUDE_4_OPUS = "claude-opus-4-20250514"
     CLAUDE_4_SONNET = "claude-sonnet-4-20250514"
+    CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"
     CLAUDE_3_7_SONNET = "claude-3-7-sonnet-20250219"
     CLAUDE_3_5_SONNET = "claude-3-5-sonnet-latest"
     CLAUDE_3_5_HAIKU = "claude-3-5-haiku-latest"
@@ -204,13 +209,16 @@ MODEL_METADATA = {
         "anthropic", 200000, 32000
     ),  # claude-opus-4-1-20250805
     LlmModel.CLAUDE_4_OPUS: ModelMetadata(
-        "anthropic", 200000, 8192
+        "anthropic", 200000, 32000
     ),  # claude-4-opus-20250514
     LlmModel.CLAUDE_4_SONNET: ModelMetadata(
-        "anthropic", 200000, 8192
+        "anthropic", 200000, 64000
     ),  # claude-4-sonnet-20250514
+    LlmModel.CLAUDE_4_5_SONNET: ModelMetadata(
+        "anthropic", 200000, 64000
+    ),  # claude-sonnet-4-5-20250929
     LlmModel.CLAUDE_3_7_SONNET: ModelMetadata(
-        "anthropic", 200000, 8192
+        "anthropic", 200000, 64000
     ),  # claude-3-7-sonnet-20250219
     LlmModel.CLAUDE_3_5_SONNET: ModelMetadata(
         "anthropic", 200000, 8192
@@ -382,7 +390,9 @@ def extract_openai_tool_calls(response) -> list[ToolContentBlock] | None:
     return None
 
 
-def get_parallel_tool_calls_param(llm_model: LlmModel, parallel_tool_calls):
+def get_parallel_tool_calls_param(
+    llm_model: LlmModel, parallel_tool_calls: bool | None
+):
     """Get the appropriate parallel_tool_calls parameter for OpenAI-compatible APIs."""
     if llm_model.startswith("o") or parallel_tool_calls is None:
         return openai.NOT_GIVEN
@@ -393,8 +403,8 @@ async def llm_call(
     credentials: APIKeyCredentials,
     llm_model: LlmModel,
     prompt: list[dict],
-    json_format: bool,
     max_tokens: int | None,
+    force_json_output: bool = False,
     tools: list[dict] | None = None,
     ollama_host: str = "localhost:11434",
     parallel_tool_calls=None,
@@ -407,7 +417,7 @@ async def llm_call(
         credentials: The API key credentials to use.
         llm_model: The LLM model to use.
         prompt: The prompt to send to the LLM.
-        json_format: Whether the response should be in JSON format.
+        force_json_output: Whether the response should be in JSON format.
         max_tokens: The maximum number of tokens to generate in the chat completion.
         tools: The tools to use in the chat completion.
         ollama_host: The host for ollama to use.
@@ -446,7 +456,7 @@ async def llm_call(
             llm_model, parallel_tool_calls
         )
 
-        if json_format:
+        if force_json_output:
             response_format = {"type": "json_object"}
 
         response = await oai_client.chat.completions.create(
@@ -559,7 +569,7 @@ async def llm_call(
             raise ValueError("Groq does not support tools.")
 
         client = AsyncGroq(api_key=credentials.api_key.get_secret_value())
-        response_format = {"type": "json_object"} if json_format else None
+        response_format = {"type": "json_object"} if force_json_output else None
         response = await client.chat.completions.create(
             model=llm_model.value,
             messages=prompt,  # type: ignore
@@ -717,7 +727,7 @@ async def llm_call(
         )
 
         response_format = None
-        if json_format:
+        if force_json_output:
             response_format = {"type": "json_object"}
 
         parallel_tool_calls_param = get_parallel_tool_calls_param(
@@ -779,6 +789,17 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             default=LlmModel.GPT4O,
             description="The language model to use for answering the prompt.",
             advanced=False,
+        )
+        force_json_output: bool = SchemaField(
+            title="Restrict LLM to pure JSON output",
+            default=False,
+            description=(
+                "Whether to force the LLM to produce a JSON-only response. "
+                "This can increase the block's reliability, "
+                "but may also reduce the quality of the response "
+                "because it prohibits the LLM from reasoning "
+                "before providing its JSON response."
+            ),
         )
         credentials: AICredentials = AICredentialsField()
         sys_prompt: str = SchemaField(
@@ -848,17 +869,18 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 "llm_call": lambda *args, **kwargs: LLMResponse(
                     raw_response="",
                     prompt=[""],
-                    response=json.dumps(
-                        {
-                            "key1": "key1Value",
-                            "key2": "key2Value",
-                        }
+                    response=(
+                        '<json_output id="test123456">{\n'
+                        '  "key1": "key1Value",\n'
+                        '  "key2": "key2Value"\n'
+                        "}</json_output>"
                     ),
                     tool_calls=None,
                     prompt_tokens=0,
                     completion_tokens=0,
                     reasoning=None,
-                )
+                ),
+                "get_collision_proof_output_tag_id": lambda *args: "test123456",
             },
         )
 
@@ -867,9 +889,9 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         credentials: APIKeyCredentials,
         llm_model: LlmModel,
         prompt: list[dict],
-        json_format: bool,
-        compress_prompt_to_fit: bool,
         max_tokens: int | None,
+        force_json_output: bool = False,
+        compress_prompt_to_fit: bool = True,
         tools: list[dict] | None = None,
         ollama_host: str = "localhost:11434",
     ) -> LLMResponse:
@@ -882,8 +904,8 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             credentials=credentials,
             llm_model=llm_model,
             prompt=prompt,
-            json_format=json_format,
             max_tokens=max_tokens,
+            force_json_output=force_json_output,
             tools=tools,
             ollama_host=ollama_host,
             compress_prompt_to_fit=compress_prompt_to_fit,
@@ -895,11 +917,6 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         logger.debug(f"Calling LLM with input data: {input_data}")
         prompt = [json.to_dict(p) for p in input_data.conversation_history]
 
-        def trim_prompt(s: str) -> str:
-            """Removes indentation up to and including `|` from a multi-line prompt."""
-            lines = s.strip().split("\n")
-            return "\n".join([line.strip().lstrip("|") for line in lines])
-
         values = input_data.prompt_values
         if values:
             input_data.prompt = fmt.format_string(input_data.prompt, values)
@@ -908,28 +925,15 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         if input_data.sys_prompt:
             prompt.append({"role": "system", "content": input_data.sys_prompt})
 
+        # Use a one-time unique tag to prevent collisions with user/LLM content
+        output_tag_id = self.get_collision_proof_output_tag_id()
+        output_tag_start = f'<json_output id="{output_tag_id}">'
         if input_data.expected_format:
-            expected_format = [
-                f"{json.dumps(k)}: {json.dumps(v)}"
-                for k, v in input_data.expected_format.items()
-            ]
-            if input_data.list_result:
-                format_prompt = (
-                    f'"results": [\n  {{\n  {", ".join(expected_format)}\n  }}\n]'
-                )
-            else:
-                format_prompt = ",\n|  ".join(expected_format)
-
-            sys_prompt = trim_prompt(
-                f"""
-                |Reply with pure JSON strictly following this JSON format:
-                |{{
-                |  {format_prompt}
-                |}}
-                |
-                |Ensure the response is valid JSON. DO NOT include any additional text (e.g. markdown code block fences) outside of the JSON.
-                |If you cannot provide all the keys, provide an empty string for the values you cannot answer.
-                """
+            sys_prompt = self.response_format_instructions(
+                input_data.expected_format,
+                list_mode=input_data.list_result,
+                pure_json_mode=input_data.force_json_output,
+                output_tag_start=output_tag_start,
             )
             prompt.append({"role": "system", "content": sys_prompt})
 
@@ -947,18 +951,21 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             except JSONDecodeError as e:
                 return f"JSON decode error: {e}"
 
-        logger.debug(f"LLM request: {prompt}")
         error_feedback_message = ""
         llm_model = input_data.model
 
         for retry_count in range(input_data.retry):
+            logger.debug(f"LLM request: {prompt}")
             try:
                 llm_response = await self.llm_call(
                     credentials=credentials,
                     llm_model=llm_model,
                     prompt=prompt,
                     compress_prompt_to_fit=input_data.compress_prompt_to_fit,
-                    json_format=bool(input_data.expected_format),
+                    force_json_output=(
+                        input_data.force_json_output
+                        and bool(input_data.expected_format)
+                    ),
                     ollama_host=input_data.ollama_host,
                     max_tokens=input_data.max_tokens,
                 )
@@ -973,30 +980,52 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
 
                 if input_data.expected_format:
                     try:
-                        response_obj = json.loads(response_text)
-                    except JSONDecodeError as json_error:
+                        response_obj = self.get_json_from_response(
+                            response_text,
+                            pure_json_mode=input_data.force_json_output,
+                            output_tag_start=output_tag_start,
+                        )
+                    except (ValueError, JSONDecodeError) as parse_error:
+                        censored_response = re.sub(r"[A-Za-z0-9]", "*", response_text)
+                        response_snippet = (
+                            f"{censored_response[:50]}...{censored_response[-30:]}"
+                        )
+                        logger.warning(
+                            f"Error getting JSON from LLM response: {parse_error}\n\n"
+                            f"Response start+end: `{response_snippet}`"
+                        )
                         prompt.append({"role": "assistant", "content": response_text})
 
-                        indented_json_error = str(json_error).replace("\n", "\n|")
-                        error_feedback_message = trim_prompt(
-                            f"""
-                            |Your previous response could not be parsed as valid JSON:
-                            |
-                            |{indented_json_error}
-                            |
-                            |Please provide a valid JSON response that matches the expected format.
-                        """
+                        error_feedback_message = self.invalid_response_feedback(
+                            parse_error,
+                            was_parseable=False,
+                            list_mode=input_data.list_result,
+                            pure_json_mode=input_data.force_json_output,
+                            output_tag_start=output_tag_start,
                         )
                         prompt.append(
                             {"role": "user", "content": error_feedback_message}
                         )
                         continue
 
+                    # Handle object response for `force_json_output`+`list_result`
                     if input_data.list_result and isinstance(response_obj, dict):
-                        if "results" in response_obj:
-                            response_obj = response_obj.get("results", [])
-                        elif len(response_obj) == 1:
-                            response_obj = list(response_obj.values())
+                        if "results" in response_obj and isinstance(
+                            response_obj["results"], list
+                        ):
+                            response_obj = response_obj["results"]
+                        else:
+                            error_feedback_message = (
+                                "Expected an array of objects in the 'results' key, "
+                                f"but got: {response_obj}"
+                            )
+                            prompt.append(
+                                {"role": "assistant", "content": response_text}
+                            )
+                            prompt.append(
+                                {"role": "user", "content": error_feedback_message}
+                            )
+                            continue
 
                     validation_errors = "\n".join(
                         [
@@ -1022,12 +1051,12 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                         return
 
                     prompt.append({"role": "assistant", "content": response_text})
-                    error_feedback_message = trim_prompt(
-                        f"""
-                        |Your response did not match the expected format:
-                        |
-                        |{validation_errors}
-                    """
+                    error_feedback_message = self.invalid_response_feedback(
+                        validation_errors,
+                        was_parseable=True,
+                        list_mode=input_data.list_result,
+                        pure_json_mode=input_data.force_json_output,
+                        output_tag_start=output_tag_start,
                     )
                     prompt.append({"role": "user", "content": error_feedback_message})
                 else:
@@ -1058,6 +1087,127 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 error_feedback_message = f"Error calling LLM: {e}"
 
         raise RuntimeError(error_feedback_message)
+
+    def response_format_instructions(
+        self,
+        expected_object_format: dict[str, str],
+        *,
+        list_mode: bool,
+        pure_json_mode: bool,
+        output_tag_start: str,
+    ) -> str:
+        expected_output_format = json.dumps(expected_object_format, indent=2)
+        output_type = "object" if not list_mode else "array"
+        outer_output_type = "object" if pure_json_mode else output_type
+
+        if output_type == "array":
+            indented_obj_format = expected_output_format.replace("\n", "\n  ")
+            expected_output_format = f"[\n  {indented_obj_format},\n  ...\n]"
+            if pure_json_mode:
+                indented_list_format = expected_output_format.replace("\n", "\n  ")
+                expected_output_format = (
+                    "{\n"
+                    '  "reasoning": "... (optional)",\n'  # for better performance
+                    f'  "results": {indented_list_format}\n'
+                    "}"
+                )
+
+        # Preserve indentation in prompt
+        expected_output_format = expected_output_format.replace("\n", "\n|")
+
+        # Prepare prompt
+        if not pure_json_mode:
+            expected_output_format = (
+                f"{output_tag_start}\n{expected_output_format}\n</json_output>"
+            )
+
+        instructions = f"""
+        |In your response you MUST include a valid JSON {outer_output_type} strictly following this format:
+        |{expected_output_format}
+        |
+        |If you cannot provide all the keys, you MUST provide an empty string for the values you cannot answer.
+        """.strip()
+
+        if not pure_json_mode:
+            instructions += f"""
+            |
+            |You MUST enclose your final JSON answer in {output_tag_start}...</json_output> tags, even if the user specifies a different tag.
+            |There MUST be exactly ONE {output_tag_start}...</json_output> block in your response, which MUST ONLY contain the JSON {outer_output_type} and nothing else. Other text outside this block is allowed.
+            """.strip()
+
+        return trim_prompt(instructions)
+
+    def invalid_response_feedback(
+        self,
+        error,
+        *,
+        was_parseable: bool,
+        list_mode: bool,
+        pure_json_mode: bool,
+        output_tag_start: str,
+    ) -> str:
+        outer_output_type = "object" if not list_mode or pure_json_mode else "array"
+
+        if was_parseable:
+            complaint = f"Your previous response did not match the expected {outer_output_type} format."
+        else:
+            complaint = f"Your previous response did not contain a parseable JSON {outer_output_type}."
+
+        indented_parse_error = str(error).replace("\n", "\n|")
+
+        instruction = (
+            f"Please provide a {output_tag_start}...</json_output> block containing a"
+            if not pure_json_mode
+            else "Please provide a"
+        ) + f" valid JSON {outer_output_type} that matches the expected format."
+
+        return trim_prompt(
+            f"""
+            |{complaint}
+            |
+            |{indented_parse_error}
+            |
+            |{instruction}
+        """
+        )
+
+    def get_json_from_response(
+        self, response_text: str, *, pure_json_mode: bool, output_tag_start: str
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        if pure_json_mode:
+            # Handle pure JSON responses
+            try:
+                return json.loads(response_text)
+            except JSONDecodeError as first_parse_error:
+                # If that didn't work, try finding the { and } to deal with possible ```json fences etc.
+                json_start = response_text.find("{")
+                json_end = response_text.rfind("}")
+                try:
+                    return json.loads(response_text[json_start : json_end + 1])
+                except JSONDecodeError:
+                    # Raise the original error, as it's more likely to be relevant
+                    raise first_parse_error from None
+
+        if output_tag_start not in response_text:
+            raise ValueError(
+                "Response does not contain the expected "
+                f"{output_tag_start}...</json_output> block."
+            )
+        json_output = (
+            response_text.split(output_tag_start, 1)[1]
+            .rsplit("</json_output>", 1)[0]
+            .strip()
+        )
+        return json.loads(json_output)
+
+    def get_collision_proof_output_tag_id(self) -> str:
+        return secrets.token_hex(8)
+
+
+def trim_prompt(s: str) -> str:
+    """Removes indentation up to and including `|` from a multi-line prompt."""
+    lines = s.strip().split("\n")
+    return "\n".join([line.strip().lstrip("|") for line in lines])
 
 
 class AITextGeneratorBlock(AIBlockBase):
