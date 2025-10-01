@@ -1,6 +1,8 @@
 import asyncio
 import inspect
 import logging
+import os
+import pickle
 import threading
 import time
 from functools import wraps
@@ -14,11 +16,50 @@ from typing import (
     runtime_checkable,
 )
 
+from dotenv import load_dotenv
+from redis import ConnectionPool, Redis
+
+from autogpt_libs.utils.retry import conn_retry
+
 P = ParamSpec("P")
 R = TypeVar("R")
 R_co = TypeVar("R_co", covariant=True)
 
 logger = logging.getLogger(__name__)
+
+
+load_dotenv()
+HOST = os.getenv("REDIS_HOST", "localhost")
+PORT = int(os.getenv("REDIS_PORT", "6379"))
+PASSWORD = os.getenv("REDIS_PASSWORD", None)
+
+logger = logging.getLogger(__name__)
+
+
+@conn_retry("Redis", "Acquiring connection")
+def connect() -> Redis:
+    # Configure connection pool for optimal performance
+    pool = ConnectionPool(
+        host=HOST,
+        port=PORT,
+        password=PASSWORD,
+        decode_responses=False,  # Store binary data for pickle
+        max_connections=50,  # Allow up to 50 concurrent connections
+        socket_keepalive=True,  # Keep connections alive
+        socket_connect_timeout=5,
+        retry_on_timeout=True,
+    )
+    c = Redis(connection_pool=pool)
+    c.ping()
+    return c
+
+
+redis_client = connect()
+
+
+def _make_redis_key(key: tuple[Any, ...]) -> str:
+    """Convert a hashable key tuple to a Redis key string."""
+    return f"cache:{hash(key)}"
 
 
 def _make_hashable_key(
@@ -85,6 +126,7 @@ def cached(
     *,
     maxsize: int = 128,
     ttl_seconds: int | None = None,
+    shared_cache: bool = False,
 ) -> Callable[[Callable], CachedFunction]:
     """
     Thundering herd safe cache decorator for both sync and async functions.
@@ -115,7 +157,6 @@ def cached(
     """
 
     def decorator(target_func):
-        # Cache storage and per-event-loop locks
         cache_storage = {}
         _event_loop_locks = {}  # Maps event loop to its asyncio.Lock
 
@@ -138,48 +179,98 @@ def cached(
                 key = _make_hashable_key(args, kwargs)
                 current_time = time.time()
 
-                # Fast path: check cache without lock
-                if key in cache_storage:
-                    if ttl_seconds is None:
-                        logger.debug(
-                            f"Cache hit for {target_func.__name__} args: {args} kwargs: {kwargs}"
-                        )
-                        return cache_storage[key]
-                    else:
-                        cached_data = cache_storage[key]
-                        if isinstance(cached_data, tuple):
-                            result, timestamp = cached_data
-                            if current_time - timestamp < ttl_seconds:
-                                logger.debug(
-                                    f"Cache hit for {target_func.__name__} args: {args} kwargs: {kwargs}"
-                                )
-                                return result
+                # Compute redis_key once if using shared cache
+                redis_key = _make_redis_key(key)
 
-                # Slow path: acquire lock for cache miss/expiry
-                async with _get_cache_lock():
-                    # Double-check: another coroutine might have populated cache
+                # Fast path: check cache without lock
+                if shared_cache:
+                    try:
+                        # Use GET directly instead of EXISTS + GET (saves 1 round trip)
+                        cached_bytes = redis_client.get(redis_key)
+                        if cached_bytes is not None and isinstance(cached_bytes, bytes):
+                            logger.debug(
+                                f"Cache hit for {target_func.__name__} args: {args} kwargs: {kwargs}"
+                            )
+                            return pickle.loads(cached_bytes)
+                    except Exception as e:
+                        logger.error(
+                            f"Redis error during cache check for {target_func.__name__}: {e}"
+                        )
+                        # Fall through to execute function
+                        return await target_func(*args, **kwargs)
+                else:
                     if key in cache_storage:
                         if ttl_seconds is None:
+                            logger.debug(
+                                f"Cache hit for {target_func.__name__} args: {args} kwargs: {kwargs}"
+                            )
                             return cache_storage[key]
                         else:
                             cached_data = cache_storage[key]
                             if isinstance(cached_data, tuple):
                                 result, timestamp = cached_data
                                 if current_time - timestamp < ttl_seconds:
+                                    logger.debug(
+                                        f"Cache hit for {target_func.__name__} args: {args} kwargs: {kwargs}"
+                                    )
                                     return result
+
+                # Slow path: acquire lock for cache miss/expiry
+                async with _get_cache_lock():
+                    # Double-check: another coroutine might have populated cache
+                    if shared_cache:
+                        try:
+                            # Use GET directly (saves 1 round trip)
+                            cached_bytes = redis_client.get(redis_key)
+                            if cached_bytes is not None and isinstance(
+                                cached_bytes, bytes
+                            ):
+                                return pickle.loads(cached_bytes)
+                        except Exception as e:
+                            logger.error(
+                                f"Redis error during double-check for {target_func.__name__}: {e}"
+                            )
+                            # Continue to execute function
+                    else:
+                        if key in cache_storage:
+                            if ttl_seconds is None:
+                                return cache_storage[key]
+                            else:
+                                cached_data = cache_storage[key]
+                                if isinstance(cached_data, tuple):
+                                    result, timestamp = cached_data
+                                    if current_time - timestamp < ttl_seconds:
+                                        return result
 
                     # Cache miss - execute function
                     logger.debug(f"Cache miss for {target_func.__name__}")
                     result = await target_func(*args, **kwargs)
 
                     # Store result
-                    if ttl_seconds is None:
-                        cache_storage[key] = result
+                    if shared_cache:
+                        try:
+                            pickled_result = pickle.dumps(
+                                result, protocol=pickle.HIGHEST_PROTOCOL
+                            )
+                            if ttl_seconds is None:
+                                redis_client.set(redis_key, pickled_result)
+                            else:
+                                redis_client.setex(
+                                    redis_key, ttl_seconds, pickled_result
+                                )
+                        except Exception as e:
+                            logger.error(
+                                f"Redis error storing cache for {target_func.__name__}: {e}"
+                            )
+                            # Continue without caching
                     else:
-                        cache_storage[key] = (result, current_time)
+                        if ttl_seconds is None:
+                            cache_storage[key] = result
+                        else:
+                            cache_storage[key] = (result, current_time)
 
-                    # Cleanup if needed
-                    if len(cache_storage) > maxsize:
+                    # Cleanup if needed (only for local cache)
+                    if not shared_cache and len(cache_storage) > maxsize:
                         cutoff = maxsize // 2
                         oldest_keys = (
                             list(cache_storage.keys())[:-cutoff] if cutoff > 0 else []
@@ -200,48 +291,98 @@ def cached(
                 key = _make_hashable_key(args, kwargs)
                 current_time = time.time()
 
-                # Fast path: check cache without lock
-                if key in cache_storage:
-                    if ttl_seconds is None:
-                        logger.debug(
-                            f"Cache hit for {target_func.__name__} args: {args} kwargs: {kwargs}"
-                        )
-                        return cache_storage[key]
-                    else:
-                        cached_data = cache_storage[key]
-                        if isinstance(cached_data, tuple):
-                            result, timestamp = cached_data
-                            if current_time - timestamp < ttl_seconds:
-                                logger.debug(
-                                    f"Cache hit for {target_func.__name__} args: {args} kwargs: {kwargs}"
-                                )
-                                return result
+                # Compute redis_key once if using shared cache
+                redis_key = _make_redis_key(key)
 
-                # Slow path: acquire lock for cache miss/expiry
-                with cache_lock:
-                    # Double-check: another thread might have populated cache
+                # Fast path: check cache without lock
+                if shared_cache:
+                    try:
+                        # Use GET directly instead of EXISTS + GET (saves 1 round trip)
+                        cached_bytes = redis_client.get(redis_key)
+                        if cached_bytes is not None and isinstance(cached_bytes, bytes):
+                            logger.debug(
+                                f"Cache hit for {target_func.__name__} args: {args} kwargs: {kwargs}"
+                            )
+                            return pickle.loads(cached_bytes)
+                    except Exception as e:
+                        logger.error(
+                            f"Redis error during cache check for {target_func.__name__}: {e}"
+                        )
+                        # Fall through to execute function
+                        return target_func(*args, **kwargs)
+                else:
                     if key in cache_storage:
                         if ttl_seconds is None:
+                            logger.debug(
+                                f"Cache hit for {target_func.__name__} args: {args} kwargs: {kwargs}"
+                            )
                             return cache_storage[key]
                         else:
                             cached_data = cache_storage[key]
                             if isinstance(cached_data, tuple):
                                 result, timestamp = cached_data
                                 if current_time - timestamp < ttl_seconds:
+                                    logger.debug(
+                                        f"Cache hit for {target_func.__name__} args: {args} kwargs: {kwargs}"
+                                    )
                                     return result
+
+                # Slow path: acquire lock for cache miss/expiry
+                with cache_lock:
+                    # Double-check: another thread might have populated cache
+                    if shared_cache:
+                        try:
+                            # Use GET directly (saves 1 round trip)
+                            cached_bytes = redis_client.get(redis_key)
+                            if cached_bytes is not None and isinstance(
+                                cached_bytes, bytes
+                            ):
+                                return pickle.loads(cached_bytes)
+                        except Exception as e:
+                            logger.error(
+                                f"Redis error during double-check for {target_func.__name__}: {e}"
+                            )
+                            # Continue to execute function
+                    else:
+                        if key in cache_storage:
+                            if ttl_seconds is None:
+                                return cache_storage[key]
+                            else:
+                                cached_data = cache_storage[key]
+                                if isinstance(cached_data, tuple):
+                                    result, timestamp = cached_data
+                                    if current_time - timestamp < ttl_seconds:
+                                        return result
 
                     # Cache miss - execute function
                     logger.debug(f"Cache miss for {target_func.__name__}")
                     result = target_func(*args, **kwargs)
 
                     # Store result
-                    if ttl_seconds is None:
-                        cache_storage[key] = result
+                    if shared_cache:
+                        try:
+                            pickled_result = pickle.dumps(
+                                result, protocol=pickle.HIGHEST_PROTOCOL
+                            )
+                            if ttl_seconds is None:
+                                redis_client.set(redis_key, pickled_result)
+                            else:
+                                redis_client.setex(
+                                    redis_key, ttl_seconds, pickled_result
+                                )
+                        except Exception as e:
+                            logger.error(
+                                f"Redis error storing cache for {target_func.__name__}: {e}"
+                            )
+                            # Continue without caching
                     else:
-                        cache_storage[key] = (result, current_time)
+                        if ttl_seconds is None:
+                            cache_storage[key] = result
+                        else:
+                            cache_storage[key] = (result, current_time)
 
-                    # Cleanup if needed
-                    if len(cache_storage) > maxsize:
+                    # Cleanup if needed (only for local cache)
+                    if not shared_cache and len(cache_storage) > maxsize:
                         cutoff = maxsize // 2
                         oldest_keys = (
                             list(cache_storage.keys())[:-cutoff] if cutoff > 0 else []
@@ -255,22 +396,47 @@ def cached(
 
         # Add cache management methods
         def cache_clear() -> None:
-            cache_storage.clear()
+            if shared_cache:
+                # Clear only cache keys (prefixed with "cache:") using pipeline for efficiency
+                keys = list(redis_client.scan_iter("cache:*", count=100))
+                if keys:
+                    pipeline = redis_client.pipeline()
+                    for key in keys:
+                        pipeline.delete(key)
+                    pipeline.execute()
+            else:
+                cache_storage.clear()
 
         def cache_info() -> dict[str, int | None]:
-            return {
-                "size": len(cache_storage),
-                "maxsize": maxsize,
-                "ttl_seconds": ttl_seconds,
-            }
+            if shared_cache:
+                # Count only cache keys
+                cache_keys = list(redis_client.scan_iter("cache:*"))
+                return {
+                    "size": len(cache_keys),
+                    "maxsize": maxsize,
+                    "ttl_seconds": ttl_seconds,
+                }
+            else:
+                return {
+                    "size": len(cache_storage),
+                    "maxsize": maxsize,
+                    "ttl_seconds": ttl_seconds,
+                }
 
         def cache_delete(*args, **kwargs) -> bool:
             """Delete a specific cache entry. Returns True if entry existed."""
             key = _make_hashable_key(args, kwargs)
-            if key in cache_storage:
-                del cache_storage[key]
-                return True
-            return False
+            if shared_cache:
+                redis_key = _make_redis_key(key)
+                if redis_client.exists(redis_key):
+                    redis_client.delete(redis_key)
+                    return True
+                return False
+            else:
+                if key in cache_storage:
+                    del cache_storage[key]
+                    return True
+                return False
 
         setattr(wrapper, "cache_clear", cache_clear)
         setattr(wrapper, "cache_info", cache_info)

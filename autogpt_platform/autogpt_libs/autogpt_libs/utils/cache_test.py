@@ -12,7 +12,7 @@ import asyncio
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -674,3 +674,324 @@ class TestCache:
         # Try to delete non-existent entry
         was_deleted = async_deletable_function.cache_delete(99)
         assert was_deleted is False
+
+
+class TestSharedCache:
+    """Tests for shared_cache functionality using Redis."""
+
+    @pytest.fixture(autouse=True)
+    def setup_redis_mock(self):
+        """Mock Redis client for testing."""
+        with patch("autogpt_libs.utils.cache.redis_client") as mock_redis:
+            # Configure mock to behave like Redis
+            self.mock_redis = mock_redis
+            self.redis_storage = {}
+
+            def mock_get(key):
+                return self.redis_storage.get(key)
+
+            def mock_set(key, value):
+                self.redis_storage[key] = value
+                return True
+
+            def mock_setex(key, ttl, value):
+                self.redis_storage[key] = value
+                return True
+
+            def mock_exists(key):
+                return 1 if key in self.redis_storage else 0
+
+            def mock_delete(key):
+                if key in self.redis_storage:
+                    del self.redis_storage[key]
+                    return 1
+                return 0
+
+            def mock_scan_iter(pattern, count=None):
+                # Pattern is a string like "cache:*", keys in storage are strings
+                prefix = pattern.rstrip("*")
+                return [
+                    k
+                    for k in self.redis_storage.keys()
+                    if isinstance(k, str) and k.startswith(prefix)
+                ]
+
+            def mock_pipeline():
+                pipe = Mock()
+                deleted_keys = []
+
+                def pipe_delete(key):
+                    deleted_keys.append(key)
+                    return pipe
+
+                def pipe_execute():
+                    # Actually delete the keys when pipeline executes
+                    for key in deleted_keys:
+                        self.redis_storage.pop(key, None)
+                    deleted_keys.clear()
+                    return []
+
+                pipe.delete = Mock(side_effect=pipe_delete)
+                pipe.execute = Mock(side_effect=pipe_execute)
+                return pipe
+
+            mock_redis.get = Mock(side_effect=mock_get)
+            mock_redis.set = Mock(side_effect=mock_set)
+            mock_redis.setex = Mock(side_effect=mock_setex)
+            mock_redis.exists = Mock(side_effect=mock_exists)
+            mock_redis.delete = Mock(side_effect=mock_delete)
+            mock_redis.scan_iter = Mock(side_effect=mock_scan_iter)
+            mock_redis.pipeline = Mock(side_effect=mock_pipeline)
+
+            yield mock_redis
+
+            # Cleanup
+            self.redis_storage.clear()
+
+    def test_sync_shared_cache_basic(self):
+        """Test basic shared cache functionality with sync function."""
+        call_count = 0
+
+        @cached(shared_cache=True)
+        def shared_function(x: int) -> int:
+            nonlocal call_count
+            call_count += 1
+            return x * 10
+
+        # First call - should miss cache
+        result1 = shared_function(5)
+        assert result1 == 50
+        assert call_count == 1
+        assert self.mock_redis.get.called
+        assert self.mock_redis.set.called
+
+        # Second call - should hit cache
+        result2 = shared_function(5)
+        assert result2 == 50
+        assert call_count == 1  # Function not called again
+
+    @pytest.mark.asyncio
+    async def test_async_shared_cache_basic(self):
+        """Test basic shared cache functionality with async function."""
+        call_count = 0
+
+        @cached(shared_cache=True)
+        async def async_shared_function(x: int) -> int:
+            nonlocal call_count
+            call_count += 1
+            await asyncio.sleep(0.01)
+            return x * 20
+
+        # First call - should miss cache
+        result1 = await async_shared_function(3)
+        assert result1 == 60
+        assert call_count == 1
+        assert self.mock_redis.get.called
+        assert self.mock_redis.set.called
+
+        # Second call - should hit cache
+        result2 = await async_shared_function(3)
+        assert result2 == 60
+        assert call_count == 1  # Function not called again
+
+    def test_sync_shared_cache_with_ttl(self):
+        """Test shared cache with TTL using sync function."""
+        call_count = 0
+
+        @cached(shared_cache=True, ttl_seconds=60)
+        def shared_ttl_function(x: int) -> int:
+            nonlocal call_count
+            call_count += 1
+            return x * 30
+
+        # First call
+        result1 = shared_ttl_function(2)
+        assert result1 == 60
+        assert call_count == 1
+        assert self.mock_redis.setex.called
+
+        # Second call - should use cache
+        result2 = shared_ttl_function(2)
+        assert result2 == 60
+        assert call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_async_shared_cache_with_ttl(self):
+        """Test shared cache with TTL using async function."""
+        call_count = 0
+
+        @cached(shared_cache=True, ttl_seconds=120)
+        async def async_shared_ttl_function(x: int) -> int:
+            nonlocal call_count
+            call_count += 1
+            await asyncio.sleep(0.01)
+            return x * 40
+
+        # First call
+        result1 = await async_shared_ttl_function(4)
+        assert result1 == 160
+        assert call_count == 1
+        assert self.mock_redis.setex.called
+
+        # Second call - should use cache
+        result2 = await async_shared_ttl_function(4)
+        assert result2 == 160
+        assert call_count == 1
+
+    def test_shared_cache_clear(self):
+        """Test clearing shared cache."""
+        call_count = 0
+
+        @cached(shared_cache=True)
+        def clearable_shared_function(x: int) -> int:
+            nonlocal call_count
+            call_count += 1
+            return x * 50
+
+        # First call
+        result1 = clearable_shared_function(1)
+        assert result1 == 50
+        assert call_count == 1
+
+        # Second call - should use cache
+        result2 = clearable_shared_function(1)
+        assert result2 == 50
+        assert call_count == 1
+
+        # Clear cache
+        clearable_shared_function.cache_clear()
+        assert self.mock_redis.pipeline.called
+
+        # Third call - should execute function again
+        result3 = clearable_shared_function(1)
+        assert result3 == 50
+        assert call_count == 2
+
+    def test_shared_cache_delete(self):
+        """Test deleting specific shared cache entry."""
+        call_count = 0
+
+        @cached(shared_cache=True)
+        def deletable_shared_function(x: int) -> int:
+            nonlocal call_count
+            call_count += 1
+            return x * 60
+
+        # First call for x=1
+        result1 = deletable_shared_function(1)
+        assert result1 == 60
+        assert call_count == 1
+
+        # First call for x=2
+        result2 = deletable_shared_function(2)
+        assert result2 == 120
+        assert call_count == 2
+
+        # Delete entry for x=1
+        was_deleted = deletable_shared_function.cache_delete(1)
+        assert was_deleted is True
+
+        # Call with x=1 should execute function again
+        result3 = deletable_shared_function(1)
+        assert result3 == 60
+        assert call_count == 3
+
+        # Call with x=2 should still use cache
+        result4 = deletable_shared_function(2)
+        assert result4 == 120
+        assert call_count == 3
+
+    def test_shared_cache_error_handling(self):
+        """Test that Redis errors are handled gracefully."""
+        call_count = 0
+
+        @cached(shared_cache=True)
+        def error_prone_function(x: int) -> int:
+            nonlocal call_count
+            call_count += 1
+            return x * 70
+
+        # Simulate Redis error
+        self.mock_redis.get.side_effect = Exception("Redis connection error")
+
+        # Function should still work
+        result = error_prone_function(1)
+        assert result == 70
+        assert call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_async_shared_cache_error_handling(self):
+        """Test that Redis errors are handled gracefully in async functions."""
+        call_count = 0
+
+        @cached(shared_cache=True)
+        async def async_error_prone_function(x: int) -> int:
+            nonlocal call_count
+            call_count += 1
+            await asyncio.sleep(0.01)
+            return x * 80
+
+        # Simulate Redis error
+        self.mock_redis.get.side_effect = Exception("Redis connection error")
+
+        # Function should still work
+        result = await async_error_prone_function(1)
+        assert result == 80
+        assert call_count == 1
+
+    def test_shared_cache_with_complex_types(self):
+        """Test shared cache with complex return types (lists, dicts)."""
+        call_count = 0
+
+        @cached(shared_cache=True)
+        def complex_return_function(x: int) -> dict:
+            nonlocal call_count
+            call_count += 1
+            return {"value": x, "squared": x * x, "list": [1, 2, 3]}
+
+        # First call
+        result1 = complex_return_function(5)
+        assert result1 == {"value": 5, "squared": 25, "list": [1, 2, 3]}
+        assert call_count == 1
+
+        # Second call - should use cache
+        result2 = complex_return_function(5)
+        assert result2 == {"value": 5, "squared": 25, "list": [1, 2, 3]}
+        assert call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_async_thundering_herd_shared_cache(self):
+        """Test thundering herd protection with shared cache."""
+        call_count = 0
+
+        @cached(shared_cache=True)
+        async def slow_shared_function(x: int) -> int:
+            nonlocal call_count
+            call_count += 1
+            await asyncio.sleep(0.1)
+            return x * x
+
+        # Launch concurrent coroutines
+        tasks = [slow_shared_function(9) for _ in range(5)]
+        results = await asyncio.gather(*tasks)
+
+        # All results should be the same
+        assert all(result == 81 for result in results)
+        # Only one coroutine should have executed the function
+        assert call_count == 1
+
+    def test_shared_cache_info(self):
+        """Test cache_info with shared cache."""
+
+        @cached(shared_cache=True, maxsize=100, ttl_seconds=300)
+        def info_function(x: int) -> int:
+            return x * 90
+
+        # Call the function to populate cache
+        info_function(1)
+
+        # Get cache info
+        info = info_function.cache_info()
+        assert "size" in info
+        assert info["maxsize"] == 100
+        assert info["ttl_seconds"] == 300
