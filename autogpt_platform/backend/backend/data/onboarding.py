@@ -3,6 +3,7 @@ from typing import Any, Optional
 
 import prisma
 import pydantic
+from autogpt_libs.utils.cache import cached
 from prisma.enums import OnboardingStep
 from prisma.models import UserOnboarding
 from prisma.types import UserOnboardingCreateInput, UserOnboardingUpdateInput
@@ -333,8 +334,13 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
     ]
 
 
+@cached(maxsize=1, ttl_seconds=300)  # Cache for 5 minutes since this rarely changes
 async def onboarding_enabled() -> bool:
+    """
+    Check if onboarding should be enabled based on store agent count.
+    Cached to prevent repeated slow database queries.
+    """
+    # Use a more efficient query that stops counting after finding enough agents
     count = await prisma.models.StoreAgent.prisma().count(take=MIN_AGENT_COUNT + 1)
-
-    # Onboading is enabled if there are at least 2 agents in the store
+    # Onboarding is enabled if there are at least 2 agents in the store
     return count >= MIN_AGENT_COUNT
