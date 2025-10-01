@@ -178,11 +178,8 @@ async def update_user_timezone_route(
     user_id: Annotated[str, Security(get_user_id)], request: UpdateTimezoneRequest
 ) -> TimezoneResponse:
     """Update user timezone. The timezone should be a valid IANA timezone identifier."""
-    # Start timezone update as background task - don't block the response
-    asyncio.create_task(update_user_timezone(user_id, str(request.timezone)))
-
-    # Return immediately with the requested timezone (eventual consistency)
-    return TimezoneResponse(timezone=str(request.timezone))
+    user = await update_user_timezone(user_id, str(request.timezone))
+    return TimezoneResponse(timezone=user.timezone)
 
 
 @v1_router.get(
