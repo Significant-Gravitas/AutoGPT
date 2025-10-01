@@ -83,6 +83,7 @@ export function RunnerInputDialog({
           onRun={doRun ? undefined : doClose}
           doCreateSchedule={doCreateSchedule ? handleSchedule : undefined}
           onCreateSchedule={doCreateSchedule ? undefined : doClose}
+          runCount={0}
         />
       </DialogContent>
     </Dialog>
