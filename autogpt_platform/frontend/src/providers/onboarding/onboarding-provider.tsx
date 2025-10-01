@@ -85,7 +85,6 @@ export default function OnboardingProvider({
   useEffect(() => {
     const fetchOnboarding = async () => {
       try {
-        console.log("Fetching onboarding data");
         const enabled = await api.isOnboardingEnabled();
         if (!enabled && pathname.startsWith("/onboarding")) {
           router.push("/marketplace");
@@ -155,7 +154,6 @@ export default function OnboardingProvider({
         }
         return { ...prev, ...newState };
       });
-      console.log("Updating onboarding state:", newState);
       // Make the API call asynchronously to not block render
       setTimeout(() => {
         api.updateUserOnboarding(newState).catch((error) => {
