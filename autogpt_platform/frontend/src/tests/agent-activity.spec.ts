@@ -47,24 +47,11 @@ test.beforeEach(async ({ page }) => {
 test("shows badge with count when agent is running", async ({ page }) => {
   const { getId } = getSelectors(page);
 
-  // Enable console logging
-  page.on("console", (msg) => {
-    if (msg.text().includes("[AgentActivity")) {
-      console.log(`BROWSER: ${msg.text()}`);
-    }
-  });
-
   // Start the agent run
-  console.log("TEST: Clicking run button");
   await LibraryPage.clickRunButton(page);
-
-  // Wait a bit for the execution to be created
-  console.log("TEST: Waiting for execution to start");
-  await page.waitForTimeout(2000);
 
   // Wait for the badge to appear and check it has a valid count
   const badge = getId("agent-activity-badge");
-  console.log("TEST: Waiting for badge to be visible");
   await isVisible(badge);
 
   // Check that badge shows a positive number (more flexible than exact count)
@@ -81,27 +68,14 @@ test("shows badge with count when agent is running", async ({ page }) => {
 test("displays the runs on the activity dropdown", async ({ page }) => {
   const { getId } = getSelectors(page);
 
-  // Enable console logging
-  page.on("console", (msg) => {
-    if (msg.text().includes("[AgentActivity")) {
-      console.log(`BROWSER: ${msg.text()}`);
-    }
-  });
-
   const activityBtn = getId("agent-activity-button");
   await isVisible(activityBtn);
 
   // Start the agent run
-  console.log("TEST: Clicking run button");
   await LibraryPage.clickRunButton(page);
-
-  // Wait a bit for the execution to be created
-  console.log("TEST: Waiting for execution to start");
-  await page.waitForTimeout(2000);
 
   // Wait for the activity badge to appear (indicating execution started)
   const badge = getId("agent-activity-badge");
-  console.log("TEST: Waiting for badge to be visible");
   await isVisible(badge);
 
   // Click to open the dropdown
