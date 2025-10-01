@@ -30,7 +30,6 @@ class TestLLMStatsTracking:
                 credentials=llm.TEST_CREDENTIALS,
                 llm_model=llm.LlmModel.GPT4O,
                 prompt=[{"role": "user", "content": "Hello"}],
-                json_format=False,
                 max_tokens=100,
             )
 
@@ -42,6 +41,8 @@ class TestLLMStatsTracking:
     @pytest.mark.asyncio
     async def test_ai_structured_response_block_tracks_stats(self):
         """Test that AIStructuredResponseGeneratorBlock correctly tracks stats."""
+        from unittest.mock import patch
+
         import backend.blocks.llm as llm
 
         block = llm.AIStructuredResponseGeneratorBlock()
@@ -51,7 +52,7 @@ class TestLLMStatsTracking:
             return llm.LLMResponse(
                 raw_response="",
                 prompt=[],
-                response='{"key1": "value1", "key2": "value2"}',
+                response='<json_output id="test123456">{"key1": "value1", "key2": "value2"}</json_output>',
                 tool_calls=None,
                 prompt_tokens=15,
                 completion_tokens=25,
@@ -69,10 +70,12 @@ class TestLLMStatsTracking:
         )
 
         outputs = {}
-        async for output_name, output_data in block.run(
-            input_data, credentials=llm.TEST_CREDENTIALS
-        ):
-            outputs[output_name] = output_data
+        # Mock secrets.token_hex to return consistent ID
+        with patch("secrets.token_hex", return_value="test123456"):
+            async for output_name, output_data in block.run(
+                input_data, credentials=llm.TEST_CREDENTIALS
+            ):
+                outputs[output_name] = output_data
 
         # Check stats
         assert block.execution_stats.input_token_count == 15
@@ -143,7 +146,7 @@ class TestLLMStatsTracking:
                 return llm.LLMResponse(
                     raw_response="",
                     prompt=[],
-                    response='{"wrong": "format"}',
+                    response='<json_output id="test123456">{"wrong": "format"}</json_output>',
                     tool_calls=None,
                     prompt_tokens=10,
                     completion_tokens=15,
@@ -154,7 +157,7 @@ class TestLLMStatsTracking:
                 return llm.LLMResponse(
                     raw_response="",
                     prompt=[],
-                    response='{"key1": "value1", "key2": "value2"}',
+                    response='<json_output id="test123456">{"key1": "value1", "key2": "value2"}</json_output>',
                     tool_calls=None,
                     prompt_tokens=20,
                     completion_tokens=25,
@@ -173,10 +176,12 @@ class TestLLMStatsTracking:
         )
 
         outputs = {}
-        async for output_name, output_data in block.run(
-            input_data, credentials=llm.TEST_CREDENTIALS
-        ):
-            outputs[output_name] = output_data
+        # Mock secrets.token_hex to return consistent ID
+        with patch("secrets.token_hex", return_value="test123456"):
+            async for output_name, output_data in block.run(
+                input_data, credentials=llm.TEST_CREDENTIALS
+            ):
+                outputs[output_name] = output_data
 
         # Check stats - should accumulate both calls
         # For 2 attempts: attempt 1 (failed) + attempt 2 (success) = 2 total
@@ -269,7 +274,8 @@ class TestLLMStatsTracking:
                 mock_response.choices = [
                     MagicMock(
                         message=MagicMock(
-                            content='{"summary": "Test chunk summary"}', tool_calls=None
+                            content='<json_output id="test123456">{"summary": "Test chunk summary"}</json_output>',
+                            tool_calls=None,
                         )
                     )
                 ]
@@ -277,7 +283,7 @@ class TestLLMStatsTracking:
                 mock_response.choices = [
                     MagicMock(
                         message=MagicMock(
-                            content='{"final_summary": "Test final summary"}',
+                            content='<json_output id="test123456">{"final_summary": "Test final summary"}</json_output>',
                             tool_calls=None,
                         )
                     )
@@ -298,11 +304,13 @@ class TestLLMStatsTracking:
                 max_tokens=1000,  # Large enough to avoid chunking
             )
 
-            outputs = {}
-            async for output_name, output_data in block.run(
-                input_data, credentials=llm.TEST_CREDENTIALS
-            ):
-                outputs[output_name] = output_data
+            # Mock secrets.token_hex to return consistent ID
+            with patch("secrets.token_hex", return_value="test123456"):
+                outputs = {}
+                async for output_name, output_data in block.run(
+                    input_data, credentials=llm.TEST_CREDENTIALS
+                ):
+                    outputs[output_name] = output_data
 
             print(f"Actual calls made: {call_count}")
             print(f"Block stats: {block.execution_stats}")
@@ -457,7 +465,7 @@ class TestLLMStatsTracking:
             return llm.LLMResponse(
                 raw_response="",
                 prompt=[],
-                response='{"result": "test"}',
+                response='<json_output id="test123456">{"result": "test"}</json_output>',
                 tool_calls=None,
                 prompt_tokens=10,
                 completion_tokens=20,
@@ -476,10 +484,12 @@ class TestLLMStatsTracking:
 
         # Run the block
         outputs = {}
-        async for output_name, output_data in block.run(
-            input_data, credentials=llm.TEST_CREDENTIALS
-        ):
-            outputs[output_name] = output_data
+        # Mock secrets.token_hex to return consistent ID
+        with patch("secrets.token_hex", return_value="test123456"):
+            async for output_name, output_data in block.run(
+                input_data, credentials=llm.TEST_CREDENTIALS
+            ):
+                outputs[output_name] = output_data
 
         # Block finished - now grab and assert stats
         assert block.execution_stats is not None

@@ -25,7 +25,7 @@
     "defaults"
   ],
   "dependencies": {
-    "@faker-js/faker": "9.9.0",
+    "@faker-js/faker": "10.0.0",
     "@hookform/resolvers": "5.2.1",
     "@next/third-parties": "15.4.6",
     "@phosphor-icons/react": "2.1.10",
@@ -48,7 +48,10 @@
     "@radix-ui/react-tabs": "1.1.13",
     "@radix-ui/react-toast": "1.2.15",
     "@radix-ui/react-tooltip": "1.2.8",
-    "@sentry/nextjs": "9.42.0",
+    "@rjsf/core": "5.24.13",
+    "@rjsf/utils": "5.24.13",
+    "@rjsf/validator-ajv8": "5.24.13",
+    "@sentry/nextjs": "10.15.0",
     "@supabase/ssr": "0.6.1",
     "@supabase/supabase-js": "2.55.0",
     "@tanstack/react-query": "5.85.3",
@@ -103,7 +106,8 @@
     "tailwindcss-animate": "1.0.7",
     "uuid": "11.1.0",
     "vaul": "1.1.2",
-    "zod": "3.25.76"
+    "zod": "3.25.76",
+    "zustand": "5.0.8"
   },
   "devDependencies": {
     "@chromatic-com/storybook": "4.1.1",
