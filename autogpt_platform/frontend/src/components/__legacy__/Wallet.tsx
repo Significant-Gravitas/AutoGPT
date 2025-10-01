@@ -166,10 +166,6 @@ export default function Wallet() {
   const [flash, setFlash] = useState(false);
   const [walletOpen, setWalletOpen] = useState(state?.walletShown || false);
 
-  const [stepsLength, setStepsLength] = useState<number | null>(
-    state?.completedSteps?.length || null,
-  );
-
   const totalCount = useMemo(() => {
     return groups.reduce((acc, group) => acc + group.tasks.length, 0);
   }, [groups]);
@@ -184,6 +180,9 @@ export default function Wallet() {
       0,
     );
   }, [groups, state?.completedSteps]);
+
+  // Needed to show confetti when a new step is completed
+  const [stepsLength, setStepsLength] = useState(completedCount);
 
   const walletRef = useRef<HTMLButtonElement | null>(null);
 
@@ -210,20 +209,15 @@ export default function Wallet() {
     if (!state?.completedSteps) {
       return;
     }
-    // If we haven't set the length yet, just set it and return
-    if (stepsLength === null) {
-      setStepsLength(state?.completedSteps?.length);
-      return;
-    }
-    // It's enough to compare array lengths,
+    // It's enough to check completed count,
     // because the order of completed steps is not important
-    // If the length is the same, we don't need to do anything
-    if (state?.completedSteps?.length === stepsLength) {
+    // If the count is the same, we don't need to do anything
+    if (completedCount === stepsLength) {
       return;
     }
     // Otherwise, we need to set the new length
-    setStepsLength(state?.completedSteps?.length);
-    // And make confetti
+    setStepsLength(completedCount);
+    // And emit confetti
     if (walletRef.current) {
       setTimeout(() => {
         fetchCredits();
