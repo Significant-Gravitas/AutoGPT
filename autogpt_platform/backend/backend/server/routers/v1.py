@@ -923,6 +923,15 @@ async def execute_graph(
             detail="Insufficient balance to execute the agent. Please top up your account.",
         )
 
+    # Invalidate caches before execution starts so frontend sees fresh data
+    for page in range(1, 10):
+        cache.get_cached_graph_executions.cache_delete(
+            graph_id=graph_id, user_id=user_id, page=page, page_size=25
+        )
+        library_cache.get_cached_library_agents.cache_delete(
+            user_id=user_id, page=page, page_size=10
+        )
+
     try:
         result = await execution_utils.add_graph_execution(
             graph_id=graph_id,
@@ -936,13 +945,6 @@ async def execute_graph(
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
         record_graph_operation(operation="execute", status="success")
 
-        for page in range(1, 10):
-            cache.get_cached_graph_executions.cache_delete(
-                graph_id=graph_id, user_id=user_id, page=page, page_size=25
-            )
-            library_cache.get_cached_library_agents.cache_delete(
-                user_id=user_id, page=page, page_size=10
-            )
         return result
     except GraphValidationError as e:
         # Record failed graph execution
