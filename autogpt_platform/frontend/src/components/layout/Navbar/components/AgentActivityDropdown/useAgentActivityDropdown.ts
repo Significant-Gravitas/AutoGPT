@@ -38,7 +38,7 @@ export function useAgentActivityDropdown() {
     data: agents,
     isSuccess: agentsSuccess,
     error: agentsError,
-  } = useGetV2ListLibraryAgents();
+  } = useGetV2ListLibraryAgents({ page_size: 10 });
 
   const {
     data: executions,

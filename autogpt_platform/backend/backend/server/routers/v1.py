@@ -924,13 +924,15 @@ async def execute_graph(
         )
 
     # Invalidate caches before execution starts so frontend sees fresh data
+    # For some reason these are the values hard coded in list_graphs_executions
+    cache.get_cached_graphs_executions.cache_delete(
+        user_id=user_id, page=1, page_size=250
+    )
     for page in range(1, 10):
         cache.get_cached_graph_execution.cache_delete(
             graph_id=graph_id, user_id=user_id, version=graph_version
         )
-        cache.get_cached_graphs_executions.cache_delete(
-            user_id=user_id, page=page, page_size=25
-        )
+
         cache.get_cached_graph_executions.cache_delete(
             graph_id=graph_id, user_id=user_id, page=page, page_size=25
         )
