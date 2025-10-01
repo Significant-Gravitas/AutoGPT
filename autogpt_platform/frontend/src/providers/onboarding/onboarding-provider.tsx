@@ -94,7 +94,19 @@ export default function OnboardingProvider({
 
         // Only update state if onboarding data is valid
         if (onboarding) {
-          setState((prev) => ({ ...onboarding, ...prev }));
+          //todo kcze this is a patch because only TRIGGER_WEBHOOK is set on the backend and then overwritten by the frontend
+          const completeWebhook =
+            onboarding.rewardedFor.includes("TRIGGER_WEBHOOK") &&
+            !onboarding.completedSteps.includes("TRIGGER_WEBHOOK")
+              ? (["TRIGGER_WEBHOOK"] as OnboardingStep[])
+              : [];
+
+          setState((prev) => ({
+            ...onboarding,
+            completedSteps: [...completeWebhook, ...onboarding.completedSteps],
+            lastRunAt: new Date(onboarding.lastRunAt || ""),
+            ...prev,
+          }));
 
           // Redirect outside onboarding if completed
           // If user did CONGRATS step, that means they completed introductory onboarding
@@ -125,7 +137,7 @@ export default function OnboardingProvider({
           // Handle initial state
           return {
             completedSteps: [],
-            notificationDot: false,
+            walletShown: true,
             notified: [],
             rewardedFor: [],
             usageReason: null,
@@ -135,12 +147,13 @@ export default function OnboardingProvider({
             agentInput: null,
             onboardingAgentExecutionId: null,
             agentRuns: 0,
+            lastRunAt: null,
+            consecutiveRunDays: 0,
             ...newState,
           };
         }
         return { ...prev, ...newState };
       });
-
       // Make the API call asynchronously to not block render
       setTimeout(() => {
         api.updateUserOnboarding(newState).catch((error) => {
@@ -167,21 +180,61 @@ export default function OnboardingProvider({
     [state, updateState],
   );
 
-  const incrementRuns = useCallback(() => {
-    if (
-      !state ||
-      !state.completedSteps ||
-      state.completedSteps.includes("RUN_AGENTS")
-    )
-      return;
+  const isToday = useCallback((date: Date) => {
+    const today = new Date();
 
-    const finished = state.agentRuns + 1 >= 10;
-    setNpsDialogOpen(finished);
+    return (
+      date.getDate() === today.getDate() &&
+      date.getMonth() === today.getMonth() &&
+      date.getFullYear() === today.getFullYear()
+    );
+  }, []);
+
+  const isYesterday = useCallback((date: Date): boolean => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    return (
+      date.getDate() === yesterday.getDate() &&
+      date.getMonth() === yesterday.getMonth() &&
+      date.getFullYear() === yesterday.getFullYear()
+    );
+  }, []);
+
+  const incrementRuns = useCallback(() => {
+    if (!state || !state.completedSteps) return;
+
+    const tenRuns = state.agentRuns + 1 === 10;
+    const hundredRuns = state.agentRuns + 1 === 100;
+    // Calculate if it's a run on a consecutive day
+    // If the last run was yesterday, increment days
+    // Otherwise, if the last run was *not* today reset it (already checked that it wasn't yesterday at this point)
+    // Otherwise, don't do anything (the last run was today)
+    const consecutive =
+      state.lastRunAt === null || isYesterday(state.lastRunAt)
+        ? {
+            lastRunAt: new Date(),
+            consecutiveRunDays: state.consecutiveRunDays + 1,
+          }
+        : !isToday(state.lastRunAt)
+          ? { lastRunAt: new Date(), consecutiveRunDays: 1 }
+          : {};
+
+    setNpsDialogOpen(tenRuns);
     updateState({
       agentRuns: state.agentRuns + 1,
-      ...(finished && {
-        completedSteps: [...state.completedSteps, "RUN_AGENTS"],
-      }),
+      completedSteps: [
+        ...state.completedSteps,
+        ...(tenRuns ? (["RUN_AGENTS"] as OnboardingStep[]) : []),
+        ...(hundredRuns ? (["RUN_AGENTS_100"] as OnboardingStep[]) : []),
+        ...(consecutive.consecutiveRunDays === 3
+          ? (["RUN_3_DAYS"] as OnboardingStep[])
+          : []),
+        ...(consecutive.consecutiveRunDays === 14
+          ? (["RUN_14_DAYS"] as OnboardingStep[])
+          : []),
+      ],
+      ...consecutive,
     });
   }, [state, updateState]);
 
