@@ -57,14 +57,10 @@ class FirecrawlSearchBlock(Block):
         scrape_result = app.search(
             input_data.query,
             limit=input_data.limit,
-            scrape_options=(
-                ScrapeOptions(
-                    formats=convert_to_format_options(input_data.formats),
-                    max_age=input_data.max_age,
-                    wait_for=input_data.wait_for,
-                )
-                if input_data.formats
-                else None
+            scrape_options=ScrapeOptions(
+                formats=convert_to_format_options(input_data.formats) or None,
+                max_age=input_data.max_age,
+                wait_for=input_data.wait_for,
             ),
         )
         yield "data", scrape_result
