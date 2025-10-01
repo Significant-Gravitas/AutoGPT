@@ -11,14 +11,38 @@ async function shouldShowOnboarding() {
   );
 }
 
-// Validate redirect URL to prevent open redirect attacks
+// Validate redirect URL to prevent open redirect attacks and malformed URLs
 function validateRedirectUrl(url: string): string {
-  // Only allow relative URLs that start with /
-  if (url.startsWith("/") && !url.startsWith("//")) {
-    return url;
+  try {
+    // Clean up the URL first
+    const cleanUrl = url.trim();
+
+    // Check for malformed URL patterns that could cause issues
+    if (
+      cleanUrl.includes(",%20") ||
+      cleanUrl.includes(", /") ||
+      cleanUrl.includes(" /")
+    ) {
+      console.warn("Detected malformed redirect URL:", cleanUrl);
+      return "/marketplace"; // Default to marketplace for malformed URLs
+    }
+
+    // Only allow relative URLs that start with /
+    if (cleanUrl.startsWith("/") && !cleanUrl.startsWith("//")) {
+      // Additional validation for common problematic patterns
+      if (cleanUrl.includes("%20/") || cleanUrl.split("/").length > 10) {
+        console.warn("Suspicious redirect URL pattern:", cleanUrl);
+        return "/marketplace";
+      }
+      return cleanUrl;
+    }
+
+    // Default to marketplace for any invalid URLs
+    return "/marketplace";
+  } catch (error) {
+    console.error("Error validating redirect URL:", error);
+    return "/marketplace";
   }
-  // Default to home page for any invalid URLs
-  return "/";
 }
 
 // Handle the callback to complete the user session login
