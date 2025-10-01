@@ -82,6 +82,8 @@ export default function OnboardingProvider({
   // Automatically detect and set timezone for new users during onboarding
   useOnboardingTimezoneDetection();
 
+  const isOnOnboardingRoute = pathname.startsWith("/onboarding");
+
   useEffect(() => {
     // Only run heavy onboarding API calls if user is logged in and not loading
     if (isUserLoading || !user) {
@@ -92,7 +94,6 @@ export default function OnboardingProvider({
       try {
         // For non-onboarding routes, we still need basic onboarding state for step completion
         // but we can skip the expensive isOnboardingEnabled() check
-        const isOnOnboardingRoute = pathname.startsWith("/onboarding");
 
         if (isOnOnboardingRoute) {
           // Only check if onboarding is enabled when user is actually on onboarding routes
@@ -130,7 +131,7 @@ export default function OnboardingProvider({
     };
 
     fetchOnboarding();
-  }, [api, pathname, router, user, isUserLoading]);
+  }, [api, isOnOnboardingRoute, router, user, isUserLoading]);
 
   const updateState = useCallback(
     (newState: Omit<Partial<UserOnboarding>, "rewardedFor">) => {
