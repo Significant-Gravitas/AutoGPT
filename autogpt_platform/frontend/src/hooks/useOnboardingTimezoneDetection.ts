@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { usePostV1UpdateUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 
 /**
@@ -11,10 +12,16 @@ export const useOnboardingTimezoneDetection = () => {
   const updateTimezone = usePostV1UpdateUserTimezone();
   const hasAttemptedDetection = useRef(false);
   const pathname = usePathname();
+  const { user, isUserLoading } = useSupabase();
 
   useEffect(() => {
     // Only run during actual onboarding routes - prevents running on every auth
     if (!pathname.startsWith("/onboarding")) {
+      return;
+    }
+
+    // Wait for proper authentication state instead of using arbitrary timeout
+    if (isUserLoading || !user) {
       return;
     }
 
@@ -54,11 +61,6 @@ export const useOnboardingTimezoneDetection = () => {
       }
     };
 
-    // Small delay to ensure user is created and route is stable
-    const timer = setTimeout(() => {
-      detectAndSetTimezone();
-    }, 1000);
-
-    return () => clearTimeout(timer);
-  }, [pathname, updateTimezone]); // Include pathname and updateTimezone in deps
+    detectAndSetTimezone();
+  }, [pathname, updateTimezone, user, isUserLoading]);
 };
