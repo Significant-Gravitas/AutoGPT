@@ -68,7 +68,9 @@ class TestTranscribeYoutubeVideoBlock:
         mock_transcript_list._generated_transcripts = {"hu": mock_transcript_hu}
 
         # Mock API to raise NoTranscriptFound for English, then return list
-        mock_api.fetch.side_effect = NoTranscriptFound("test_video_id", ("en",), mock_transcript_list)
+        mock_api.fetch.side_effect = NoTranscriptFound(
+            "test_video_id", ("en",), mock_transcript_list
+        )
         mock_api.list.return_value = mock_transcript_list
 
         # Execute
@@ -95,11 +97,15 @@ class TestTranscribeYoutubeVideoBlock:
         mock_transcript_manual.fetch.return_value = mock_fetched_manual
 
         # Set up the transcript list
-        mock_transcript_list._manually_created_transcripts = {"es": mock_transcript_manual}
+        mock_transcript_list._manually_created_transcripts = {
+            "es": mock_transcript_manual
+        }
         mock_transcript_list._generated_transcripts = {"hu": mock_transcript_generated}
 
         # Mock API to raise NoTranscriptFound for English
-        mock_api.fetch.side_effect = NoTranscriptFound("test_video_id", ("en",), mock_transcript_list)
+        mock_api.fetch.side_effect = NoTranscriptFound(
+            "test_video_id", ("en",), mock_transcript_list
+        )
         mock_api.list.return_value = mock_transcript_list
 
         # Execute
@@ -123,7 +129,9 @@ class TestTranscribeYoutubeVideoBlock:
         mock_transcript_list._generated_transcripts = {}
 
         # Mock API to raise NoTranscriptFound
-        original_exception = NoTranscriptFound("test_video_id", ("en",), mock_transcript_list)
+        original_exception = NoTranscriptFound(
+            "test_video_id", ("en",), mock_transcript_list
+        )
         mock_api.fetch.side_effect = original_exception
         mock_api.list.return_value = mock_transcript_list
 
