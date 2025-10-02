@@ -605,7 +605,7 @@ class SmartDecisionMakerBlock(Block):
             # If validation failed, add feedback and raise for retry
             if validation_errors:
                 # Add the failed response to conversation
-                prompt.append(response.raw_response)
+                prompt.append(json.to_dict(response.raw_response))
 
                 # Add error feedback for retry
                 error_feedback = (
@@ -661,5 +661,5 @@ class SmartDecisionMakerBlock(Block):
                 {"role": "assistant", "content": f"[Reasoning]: {response.reasoning}"}
             )
 
-        prompt.append(response.raw_response)
+        prompt.append(json.to_dict(response.raw_response))
         yield "conversations", prompt
