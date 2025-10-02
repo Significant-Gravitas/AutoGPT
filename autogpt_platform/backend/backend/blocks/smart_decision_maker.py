@@ -98,6 +98,22 @@ def _create_tool_response(call_id: str, output: Any) -> dict[str, Any]:
     return {"role": "tool", "tool_call_id": call_id, "content": content}
 
 
+def _convert_raw_response_to_dict(raw_response: Any) -> dict[str, Any]:
+    """
+    Safely convert raw_response to dictionary format for conversation history.
+    Handles different response types from different LLM providers.
+    """
+    if isinstance(raw_response, str):
+        # Ollama returns a string, convert to dict format
+        return {"role": "assistant", "content": raw_response}
+    elif isinstance(raw_response, dict):
+        # Already a dict (from tests or some providers)
+        return raw_response
+    else:
+        # OpenAI/Anthropic return objects, convert with json.to_dict
+        return json.to_dict(raw_response)
+
+
 def get_pending_tool_calls(conversation_history: list[Any]) -> dict[str, int]:
     """
     All the tool calls entry in the conversation history requires a response.
@@ -605,7 +621,7 @@ class SmartDecisionMakerBlock(Block):
             # If validation failed, add feedback and raise for retry
             if validation_errors:
                 # Add the failed response to conversation
-                prompt.append(json.to_dict(response.raw_response))
+                prompt.append(_convert_raw_response_to_dict(response.raw_response))
 
                 # Add error feedback for retry
                 error_feedback = (
@@ -661,5 +677,6 @@ class SmartDecisionMakerBlock(Block):
                 {"role": "assistant", "content": f"[Reasoning]: {response.reasoning}"}
             )
 
-        prompt.append(json.to_dict(response.raw_response))
+        # Add the successful response to conversation
+        prompt.append(_convert_raw_response_to_dict(response.raw_response))
         yield "conversations", prompt
