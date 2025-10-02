@@ -1,6 +1,7 @@
 from urllib.parse import parse_qs, urlparse
 
 from youtube_transcript_api._api import YouTubeTranscriptApi
+from youtube_transcript_api._errors import NoTranscriptFound
 from youtube_transcript_api._transcripts import FetchedTranscript
 from youtube_transcript_api.formatters import TextFormatter
 
@@ -64,7 +65,29 @@ class TranscribeYoutubeVideoBlock(Block):
 
     @staticmethod
     def get_transcript(video_id: str) -> FetchedTranscript:
-        return YouTubeTranscriptApi().fetch(video_id=video_id)
+        """
+        Get transcript for a video, preferring English but falling back to any available language.
+
+        :param video_id: The YouTube video ID
+        :return: The fetched transcript
+        :raises: Any exception except NoTranscriptFound for requested languages
+        """
+        api = YouTubeTranscriptApi()
+        try:
+            # Try to get English transcript first (default behavior)
+            return api.fetch(video_id=video_id)
+        except NoTranscriptFound:
+            # If English is not available, get the first available transcript
+            transcript_list = api.list(video_id)
+            # Try manually created transcripts first, then generated ones
+            available_transcripts = list(
+                transcript_list._manually_created_transcripts.values()
+            ) + list(transcript_list._generated_transcripts.values())
+            if available_transcripts:
+                # Fetch the first available transcript
+                return available_transcripts[0].fetch()
+            # If no transcripts at all, re-raise the original error
+            raise
 
     @staticmethod
     def format_transcript(transcript: FetchedTranscript) -> str:
