@@ -220,7 +220,9 @@ class SmartDecisionMakerBlock(Block):
                 return missing_input
 
             conversation_history = data.get("conversation_history", [])
-            pending_tool_calls = get_pending_tool_calls(conversation_history)
+            # Convert to dict to handle ChatCompletionMessage objects
+            conversation_history_dicts = [json.to_dict(p) for p in conversation_history if p]
+            pending_tool_calls = get_pending_tool_calls(conversation_history_dicts)
             last_tool_output = data.get("last_tool_output")
 
             # Tool call is pending, wait for the tool output to be provided.
@@ -462,7 +464,7 @@ class SmartDecisionMakerBlock(Block):
         input_data.conversation_history = input_data.conversation_history or []
         prompt = [json.to_dict(p) for p in input_data.conversation_history if p]
 
-        pending_tool_calls = get_pending_tool_calls(input_data.conversation_history)
+        pending_tool_calls = get_pending_tool_calls(prompt)
         if pending_tool_calls and input_data.last_tool_output is None:
             raise ValueError(f"Tool call requires an output for {pending_tool_calls}")
 
