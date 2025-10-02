@@ -71,17 +71,6 @@ async def store_media_file(
     MAX_TOTAL_DISK_USAGE = 1024 * 1024 * 1024  # 1GB total per execution directory
 
     # Check total disk usage in base_path
-    def get_dir_size(path: Path) -> int:
-        """Get total size of directory."""
-        total = 0
-        try:
-            for entry in path.glob("**/*"):
-                if entry.is_file():
-                    total += entry.stat().st_size
-        except Exception:
-            pass
-        return total
-
     if base_path.exists():
         current_usage = get_dir_size(base_path)
         if current_usage > MAX_TOTAL_DISK_USAGE:
@@ -198,6 +187,18 @@ async def store_media_file(
         return MediaFileType(_file_to_data_uri(target_path))
     else:
         return MediaFileType(_strip_base_prefix(target_path, base_path))
+
+
+def get_dir_size(path: Path) -> int:
+    """Get total size of directory."""
+    total = 0
+    try:
+        for entry in path.glob("**/*"):
+            if entry.is_file():
+                total += entry.stat().st_size
+    except Exception:
+        pass
+    return total
 
 
 def get_mime_type(file: str) -> str:
