@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import * as party from "party-js";
 import WalletRefill from "./WalletRefill";
 import { OnboardingStep } from "@/lib/autogpt-server-api";
+import { storage, Key as StorageKey } from "@/services/storage/local-storage";
 
 export interface Task {
   id: OnboardingStep;
@@ -164,7 +165,8 @@ export default function Wallet() {
 
   const [prevCredits, setPrevCredits] = useState<number | null>(credits);
   const [flash, setFlash] = useState(false);
-  const [walletOpen, setWalletOpen] = useState(state?.walletShown || false);
+  const [walletOpen, setWalletOpen] = useState(false);
+  const [lastSeenCredits, setLastSeenCredits] = useState<number | null>(null);
 
   const totalCount = useMemo(() => {
     return groups.reduce((acc, group) => acc + group.tasks.length, 0);
@@ -192,6 +194,38 @@ export default function Wallet() {
     );
     setCompletedCount(completed);
   }, [groups, state?.completedSteps]);
+
+  // Load last seen credits from localStorage once on mount
+  useEffect(() => {
+    const stored = storage.get(StorageKey.WALLET_LAST_SEEN_CREDITS);
+    if (stored !== undefined && stored !== null) {
+      const parsed = parseFloat(stored);
+      if (!Number.isNaN(parsed)) setLastSeenCredits(parsed);
+      else setLastSeenCredits(0);
+    } else {
+      setLastSeenCredits(0);
+    }
+  }, []);
+
+  // Auto-open once if never shown, otherwise open only when credits increase beyond last seen
+  useEffect(() => {
+    if (typeof credits !== "number") return;
+    // Open once for first-time users
+    if (state && state.walletShown === false) {
+      setWalletOpen(true);
+      // Mark as shown so it won't reopen on every reload
+      updateState({ walletShown: true });
+      return;
+    }
+    // Open if user gained more credits than last acknowledged
+    if (
+      lastSeenCredits !== null &&
+      credits > lastSeenCredits &&
+      walletOpen === false
+    ) {
+      setWalletOpen(true);
+    }
+  }, [credits, lastSeenCredits, state?.walletShown, updateState, walletOpen]);
 
   const onWalletOpen = useCallback(async () => {
     if (!state?.walletShown) {
@@ -270,7 +304,19 @@ export default function Wallet() {
   }, [credits, prevCredits]);
 
   return (
-    <Popover open={walletOpen} onOpenChange={setWalletOpen}>
+    <Popover
+      open={walletOpen}
+      onOpenChange={(open) => {
+        setWalletOpen(open);
+        if (!open) {
+          // Persist the latest acknowledged credits so we only auto-open on future gains
+          if (typeof credits === "number") {
+            storage.set(StorageKey.WALLET_LAST_SEEN_CREDITS, String(credits));
+            setLastSeenCredits(credits);
+          }
+        }
+      }}
+    >
       <PopoverTrigger asChild>
         <div className="relative inline-block">
           <button
@@ -317,7 +363,7 @@ export default function Wallet() {
               Earn credits{" "}
               <span className="font-semibold">{formatCredits(credits)}</span>
             </div>
-            <PopoverClose>
+            <PopoverClose aria-label="Close wallet">
               <X className="ml-2 h-5 w-5 text-zinc-800 hover:text-foreground" />
             </PopoverClose>
           </div>
