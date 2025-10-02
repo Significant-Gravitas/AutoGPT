@@ -30,7 +30,7 @@ export const MainAgentPage = ({ params }: MainAgentPageProps) => {
   }
   if (hasError) {
     return (
-      <div className="mx-auto w-screen max-w-[1360px]">
+      <div className="mx-auto w-full max-w-[1360px]">
         <main className="px-4">
           <div className="flex min-h-[400px] items-center justify-center">
             <ErrorCard
@@ -48,7 +48,7 @@ export const MainAgentPage = ({ params }: MainAgentPageProps) => {
 
   if (!agent) {
     return (
-      <div className="mx-auto w-screen max-w-[1360px]">
+      <div className="mx-auto w-full max-w-[1360px]">
         <main className="px-4">
           <div className="flex min-h-[400px] items-center justify-center">
             <ErrorCard
@@ -74,7 +74,7 @@ export const MainAgentPage = ({ params }: MainAgentPageProps) => {
   ];
 
   return (
-    <div className="mx-auto w-screen max-w-[1360px]">
+    <div className="mx-auto w-full max-w-[1360px]">
       <main className="mt-5 px-4">
         <Breadcrumbs items={breadcrumbs} />
 
