@@ -81,7 +81,7 @@ class Node(BaseDbModel):
     output_links: list[Link] = []
 
     @property
-    def block(self) -> "Block[BlockSchema, BlockSchema] | _UnknownBlock":
+    def block(self) -> "Block[BlockSchema, BlockSchema] | _UnknownBlockBase":
         """Get the block for this node. Returns UnknownBlock if block is deleted/missing."""
         block = get_block(self.block_id)
         if not block:
@@ -89,7 +89,7 @@ class Node(BaseDbModel):
             logger.warning(
                 f"Block #{self.block_id} does not exist for Node #{self.id} (deleted/missing block), using UnknownBlock"
             )
-            return _UnknownBlock(self.block_id)
+            return _UnknownBlockBase(self.block_id)
         return block
 
 
@@ -1330,13 +1330,13 @@ async def migrate_llm_models(migrate_to: LlmModel):
 
 
 # Simple placeholder class for deleted/missing blocks
-class _UnknownBlock(Block):
+class _UnknownBlockBase(Block):
     """
     Placeholder for deleted/missing blocks that inherits from Block
-    to maintain full compatibility with the Block interface.
+    but uses a name that doesn't end with 'Block' to avoid auto-discovery.
     """
 
-    def __init__(self, block_id: str):
+    def __init__(self, block_id: str = "00000000-0000-0000-0000-000000000000"):
         # Initialize with minimal valid Block parameters
         super().__init__(
             id=block_id,
