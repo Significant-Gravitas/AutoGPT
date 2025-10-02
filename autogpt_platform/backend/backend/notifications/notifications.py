@@ -4,6 +4,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable
 
 import aio_pika
+from postmarker.exceptions import (
+    PMMailUnprocessableEntityException,
+    PostmarkException,
+)
 from prisma.enums import NotificationType
 
 from backend.data import rabbitmq
@@ -722,12 +726,65 @@ class NotificationManager(AppService):
                             i += len(chunk)
                             chunk_sent = True
                             break
+                    except PostmarkException as e:
+                        if attempt_size == 1:
+                            # Single notification failed - determine the actual cause
+                            error_code = getattr(e, "error_code", None)
+                            
+                            # Check for HTTP 406 - Inactive recipient
+                            if "406" in str(e) or "inactive" in str(e).lower():
+                                logger.warning(
+                                    f"Failed to send notification at index {i}: "
+                                    f"Recipient marked as inactive by Postmark. "
+                                    f"Error: {e}. Skipping this notification."
+                                )
+                            # Check for HTTP 422 - Malformed data
+                            elif isinstance(e, PMMailUnprocessableEntityException) or "422" in str(e):
+                                logger.error(
+                                    f"Failed to send notification at index {i}: "
+                                    f"Malformed notification data rejected by Postmark. "
+                                    f"Error: {e}. Skipping this notification."
+                                )
+                            # Other Postmark API errors
+                            else:
+                                logger.error(
+                                    f"Failed to send notification at index {i}: "
+                                    f"Postmark API error: {e}. Skipping this notification."
+                                )
+                            
+                            failed_indices.append(i)
+                            i += 1
+                            chunk_sent = True
+                            break
+                        # Try smaller chunk
+                        continue
+                    except ValueError as e:
+                        if attempt_size == 1:
+                            # Single notification is too large (ValueError from send_templated)
+                            if "too large" in str(e).lower():
+                                logger.error(
+                                    f"Failed to send notification at index {i}: "
+                                    f"Notification size exceeds email limit. "
+                                    f"Error: {e}. Skipping this notification."
+                                )
+                            else:
+                                logger.error(
+                                    f"Failed to send notification at index {i}: "
+                                    f"ValueError: {e}. Skipping this notification."
+                                )
+                            failed_indices.append(i)
+                            i += 1
+                            chunk_sent = True
+                            break
+                        # Try smaller chunk
+                        continue
                     except Exception as e:
                         if attempt_size == 1:
-                            # Even single notification is too large
+                            # Unknown error for single notification
                             logger.error(
-                                f"Single notification too large to send: {e}. "
-                                f"Skipping notification at index {i}"
+                                f"Failed to send notification at index {i}: "
+                                f"Unexpected error: {type(e).__name__}: {e}. "
+                                f"Skipping this notification."
                             )
                             failed_indices.append(i)
                             i += 1
