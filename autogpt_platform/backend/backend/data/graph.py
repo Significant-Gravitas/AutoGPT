@@ -32,7 +32,15 @@ from backend.util import type as type_utils
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 
-from .block import Block, BlockInput, BlockSchema, BlockType, get_block, get_blocks
+from .block import (
+    Block,
+    BlockInput,
+    BlockSchema,
+    BlockType,
+    EmptySchema,
+    get_block,
+    get_blocks,
+)
 from .db import BaseDbModel, query_raw_with_schema, transaction
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE
 
@@ -73,12 +81,15 @@ class Node(BaseDbModel):
     output_links: list[Link] = []
 
     @property
-    def block(self) -> Block[BlockSchema, BlockSchema]:
+    def block(self) -> "Block[BlockSchema, BlockSchema] | _UnknownBlockBase":
+        """Get the block for this node. Returns UnknownBlock if block is deleted/missing."""
         block = get_block(self.block_id)
         if not block:
-            raise ValueError(
-                f"Block #{self.block_id} does not exist -> Node #{self.id} is invalid"
+            # Log warning but don't raise exception - return a placeholder block for deleted blocks
+            logger.warning(
+                f"Block #{self.block_id} does not exist for Node #{self.id} (deleted/missing block), using UnknownBlock"
             )
+            return _UnknownBlockBase(self.block_id)
         return block
 
 
@@ -1316,3 +1327,34 @@ async def migrate_llm_models(migrate_to: LlmModel):
             id,
             path,
         )
+
+
+# Simple placeholder class for deleted/missing blocks
+class _UnknownBlockBase(Block):
+    """
+    Placeholder for deleted/missing blocks that inherits from Block
+    but uses a name that doesn't end with 'Block' to avoid auto-discovery.
+    """
+
+    def __init__(self, block_id: str = "00000000-0000-0000-0000-000000000000"):
+        # Initialize with minimal valid Block parameters
+        super().__init__(
+            id=block_id,
+            description=f"Unknown or deleted block (original ID: {block_id})",
+            disabled=True,
+            input_schema=EmptySchema,
+            output_schema=EmptySchema,
+            categories=set(),
+            contributors=[],
+            static_output=False,
+            block_type=BlockType.STANDARD,
+            webhook_config=None,
+        )
+
+    @property
+    def name(self):
+        return "UnknownBlock"
+
+    async def run(self, input_data, **kwargs):
+        """Always yield an error for missing blocks."""
+        yield "error", f"Block {self.id} no longer exists"
