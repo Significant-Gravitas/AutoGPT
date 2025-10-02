@@ -32,7 +32,15 @@ from backend.util import type as type_utils
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 
-from .block import Block, BlockInput, BlockSchema, BlockType, get_block, get_blocks
+from .block import (
+    Block,
+    BlockInput,
+    BlockSchema,
+    BlockType,
+    EmptySchema,
+    get_block,
+    get_blocks,
+)
 from .db import BaseDbModel, query_raw_with_schema, transaction
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE
 
@@ -1322,48 +1330,31 @@ async def migrate_llm_models(migrate_to: LlmModel):
 
 
 # Simple placeholder class for deleted/missing blocks
-class _UnknownBlock:
+class _UnknownBlock(Block):
     """
-    Simple placeholder for deleted/missing blocks.
-    Implements minimal Block interface without inheriting from Block
-    to avoid being auto-loaded by the block system.
+    Placeholder for deleted/missing blocks that inherits from Block
+    to maintain full compatibility with the Block interface.
     """
 
     def __init__(self, block_id: str):
-        self.id = block_id
-        self.description = f"Unknown or deleted block (original ID: {block_id})"
-        self.disabled = True
-        self.input_schema = None
-        self.output_schema = None
-        self.categories = set()
-        self.contributors = set()
-        self.static_output = False
-        # Additional attributes expected by various parts of the codebase
-        self.block_type = BlockType.STANDARD
-        self.webhook_config = None
-        self.execution_stats = None
-        self.is_triggered_by_event_type = None
+        # Initialize with minimal valid Block parameters
+        super().__init__(
+            id=block_id,
+            description=f"Unknown or deleted block (original ID: {block_id})",
+            disabled=True,
+            input_schema=EmptySchema,
+            output_schema=EmptySchema,
+            categories=set(),
+            contributors=[],
+            static_output=False,
+            block_type=BlockType.STANDARD,
+            webhook_config=None,
+        )
 
     @property
     def name(self):
         return "UnknownBlock"
 
-    def get_credentials_fields(self):
-        return {}
-
-    def get_credentials_fields_info(self):
-        return {}
-
-    def get_field_schema(self):
-        return None
-
-    @property
-    def jsonschema(self):
-        return None
-
-    async def execute(self, *args, **kwargs):
-        """Mock execute method for compatibility."""
-        return {"error": f"Block {self.id} no longer exists"}
-
     async def run(self, input_data, **kwargs):
+        """Always yield an error for missing blocks."""
         yield "error", f"Block {self.id} no longer exists"
