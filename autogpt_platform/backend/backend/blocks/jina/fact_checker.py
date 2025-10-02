@@ -1,4 +1,7 @@
+import asyncio
 from urllib.parse import quote
+
+import aiohttp
 
 from backend.blocks.jina._auth import (
     JinaCredentials,
@@ -16,6 +19,11 @@ class FactCheckerBlock(Block):
             description="The statement to check for factuality"
         )
         credentials: JinaCredentialsInput = JinaCredentialsField()
+        timeout: int = SchemaField(
+            description="Maximum time to wait for the API response in seconds (default: 90). "
+            "Note: Cloudflare has a 100-second timeout limit. Keep statements concise to reduce processing time.",
+            default=90,
+        )
 
     class Output(BlockSchema):
         factuality: float = SchemaField(
@@ -28,7 +36,10 @@ class FactCheckerBlock(Block):
     def __init__(self):
         super().__init__(
             id="d38b6c5e-9968-4271-8423-6cfe60d6e7e6",
-            description="This block checks the factuality of a given statement using Jina AI's Grounding API.",
+            description="This block checks the factuality of a given statement using Jina AI's Grounding API. "
+            "Note: The API is proxied by Cloudflare which enforces a 100-second timeout. "
+            "For complex statements that may take longer to process, consider breaking them into smaller parts. "
+            "The block will retry automatically for transient failures.",
             categories={BlockCategory.SEARCH},
             input_schema=FactCheckerBlock.Input,
             output_schema=FactCheckerBlock.Output,
@@ -45,13 +56,33 @@ class FactCheckerBlock(Block):
             "Authorization": f"Bearer {credentials.api_key.get_secret_value()}",
         }
 
-        response = await Requests().get(url, headers=headers)
-        data = response.json()
+        try:
+            # Create timeout configuration
+            timeout = aiohttp.ClientTimeout(total=input_data.timeout)
+            
+            # Make the request with timeout
+            # The Requests class already has retry logic for 429, 500, 502, 503, 504, 408
+            response = await Requests().get(url, headers=headers, timeout=timeout)
+            data = response.json()
 
-        if "data" in data:
-            data = data["data"]
-            yield "factuality", data["factuality"]
-            yield "result", data["result"]
-            yield "reason", data["reason"]
-        else:
-            raise RuntimeError(f"Expected 'data' key not found in response: {data}")
+            if "data" in data:
+                data = data["data"]
+                yield "factuality", data["factuality"]
+                yield "result", data["result"]
+                yield "reason", data["reason"]
+            else:
+                error_msg = f"Unexpected response format. Expected 'data' key not found in response: {data}"
+                yield "error", error_msg
+        except asyncio.TimeoutError:
+            error_msg = (
+                f"Request timed out after {input_data.timeout} seconds. "
+                "The Jina AI API took too long to respond. This may be due to Cloudflare's 100-second timeout limit. "
+                "Try reducing the complexity of your statement or breaking it into smaller parts."
+            )
+            yield "error", error_msg
+        except aiohttp.ClientError as e:
+            error_msg = f"Network error occurred: {str(e)}"
+            yield "error", error_msg
+        except Exception as e:
+            error_msg = f"Unexpected error during fact checking: {str(e)}"
+            yield "error", error_msg
