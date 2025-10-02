@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import * as party from "party-js";
 import WalletRefill from "./WalletRefill";
 import { OnboardingStep } from "@/lib/autogpt-server-api";
+import { storage, Key as StorageKey } from "@/services/storage/local-storage";
 
 export interface Task {
   id: OnboardingStep;
@@ -196,16 +197,12 @@ export default function Wallet() {
 
   // Load last seen credits from localStorage once on mount
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem("wallet_last_seen_credits");
-      if (stored !== null) {
-        const parsed = parseFloat(stored);
-        if (!Number.isNaN(parsed)) setLastSeenCredits(parsed);
-        else setLastSeenCredits(0);
-      } else {
-        setLastSeenCredits(0);
-      }
-    } catch {
+    const stored = storage.get(StorageKey.WALLET_LAST_SEEN_CREDITS);
+    if (stored !== undefined && stored !== null) {
+      const parsed = parseFloat(stored);
+      if (!Number.isNaN(parsed)) setLastSeenCredits(parsed);
+      else setLastSeenCredits(0);
+    } else {
       setLastSeenCredits(0);
     }
   }, []);
@@ -313,12 +310,10 @@ export default function Wallet() {
         setWalletOpen(open);
         if (!open) {
           // Persist the latest acknowledged credits so we only auto-open on future gains
-          try {
-            if (typeof credits === "number") {
-              localStorage.setItem("wallet_last_seen_credits", String(credits));
-              setLastSeenCredits(credits);
-            }
-          } catch {}
+          if (typeof credits === "number") {
+            storage.set(StorageKey.WALLET_LAST_SEEN_CREDITS, String(credits));
+            setLastSeenCredits(credits);
+          }
         }
       }}
     >
