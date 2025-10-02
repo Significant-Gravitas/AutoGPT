@@ -83,7 +83,6 @@ class CodeExtractionBlock(Block):
                 yield canonical_name, code
 
         # Remove all code blocks from the text to get remaining text
-        # Fixed ReDoS vulnerability by replacing \s+[\s\S]*? with [ \t]*\n([\s\S]*?)
         pattern = (
             r"```(?:"
             + "|".join(
@@ -104,9 +103,8 @@ class CodeExtractionBlock(Block):
         # Escape special regex characters in the language string
         language = re.escape(language)
         # Extract all code blocks enclosed in ```language``` blocks
-        # Fixed ReDoS vulnerability by replacing \s+(.*?) with [ \t]*\n(.*?)
         pattern = re.compile(
-            rf"```{language}[ \t]*\n(.*?)```", re.DOTALL | re.IGNORECASE
+            rf"```{language}[ \t]*\n(.*?)\n```", re.DOTALL | re.IGNORECASE
         )
         matches = pattern.finditer(text)
         # Combine all code blocks for this language with newlines between them
