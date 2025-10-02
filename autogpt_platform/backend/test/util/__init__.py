@@ -1,1 +1,0 @@
-"""Utility tests package."""
