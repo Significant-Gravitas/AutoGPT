@@ -1,10 +1,9 @@
 """Tests for prompt utility functions, especially tool call token counting."""
 
-import json
-
 import pytest
 from tiktoken import encoding_for_model
 
+from backend.util import json
 from backend.util.prompt import _msg_tokens, estimate_token_count
 
 
