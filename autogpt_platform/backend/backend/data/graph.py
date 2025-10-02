@@ -73,12 +73,15 @@ class Node(BaseDbModel):
     output_links: list[Link] = []
 
     @property
-    def block(self) -> Block[BlockSchema, BlockSchema]:
+    def block(self) -> "Block[BlockSchema, BlockSchema] | _UnknownBlock":
+        """Get the block for this node. Returns UnknownBlock if block is deleted/missing."""
         block = get_block(self.block_id)
         if not block:
-            raise ValueError(
-                f"Block #{self.block_id} does not exist -> Node #{self.id} is invalid"
+            # Log warning but don't raise exception - return a placeholder block for deleted blocks
+            logger.warning(
+                f"Block #{self.block_id} does not exist for Node #{self.id} (deleted/missing block), using UnknownBlock"
             )
+            return _UnknownBlock(self.block_id)
         return block
 
 
@@ -1316,3 +1319,51 @@ async def migrate_llm_models(migrate_to: LlmModel):
             id,
             path,
         )
+
+
+# Simple placeholder class for deleted/missing blocks
+class _UnknownBlock:
+    """
+    Simple placeholder for deleted/missing blocks.
+    Implements minimal Block interface without inheriting from Block
+    to avoid being auto-loaded by the block system.
+    """
+
+    def __init__(self, block_id: str):
+        self.id = block_id
+        self.description = f"Unknown or deleted block (original ID: {block_id})"
+        self.disabled = True
+        self.input_schema = None
+        self.output_schema = None
+        self.categories = set()
+        self.contributors = set()
+        self.static_output = False
+        # Additional attributes expected by various parts of the codebase
+        self.block_type = BlockType.STANDARD
+        self.webhook_config = None
+        self.execution_stats = None
+        self.is_triggered_by_event_type = None
+
+    @property
+    def name(self):
+        return "UnknownBlock"
+
+    def get_credentials_fields(self):
+        return {}
+
+    def get_credentials_fields_info(self):
+        return {}
+
+    def get_field_schema(self):
+        return None
+
+    @property
+    def jsonschema(self):
+        return None
+
+    async def execute(self, *args, **kwargs):
+        """Mock execute method for compatibility."""
+        return {"error": f"Block {self.id} no longer exists"}
+
+    async def run(self, input_data, **kwargs):
+        yield "error", f"Block {self.id} no longer exists"
