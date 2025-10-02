@@ -282,16 +282,39 @@ export default function useAgentGraph(
       const sinkNode = xyNodes.find((node) => node.id === nodeID);
       if (!sinkNode) return "";
 
-      const sinkNodeName =
-        sinkNode.data.block_id === SpecialBlockID.AGENT
-          ? sinkNode.data.hardcodedValues?.agent_name ||
-            availableFlows.find(
-              (flow) => flow.id === sinkNode.data.hardcodedValues.graph_id,
-            )?.name ||
-            "agentexecutorblock"
-          : sinkNode.data.title.split(" ")[0];
+      // Use customized_name from metadata if available
+      const customizedName = sinkNode.data.metadata?.customized_name;
+      if (customizedName) {
+        return customizedName;
+      }
 
-      return sinkNodeName;
+      // For agent blocks, try agent_name input first
+      if (sinkNode.data.block_id === SpecialBlockID.AGENT) {
+        const agentName = sinkNode.data.hardcodedValues?.agent_name;
+        if (agentName) {
+          return agentName;
+        }
+
+        // Fallback to graph name
+        const graphName = availableFlows.find(
+          (flow) => flow.id === sinkNode.data.hardcodedValues.graph_id,
+        )?.name;
+        if (graphName) {
+          // Use graph name with node ID suffix to ensure uniqueness
+          const nodeIdSuffix = (sinkNode.data.backend_id || nodeID).split(
+            "-",
+          )[0];
+          return `${graphName}_${nodeIdSuffix}`;
+        }
+
+        // Last resort fallback
+        return "agentexecutorblock";
+      }
+
+      // For regular blocks, use block title with node ID suffix to ensure uniqueness
+      const blockName = sinkNode.data.title.split(" ")[0];
+      const nodeIdSuffix = (sinkNode.data.backend_id || nodeID).split("-")[0];
+      return `${blockName}_${nodeIdSuffix}`;
     },
     [xyNodes, availableFlows],
   );

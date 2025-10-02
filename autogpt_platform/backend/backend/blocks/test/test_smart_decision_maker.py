@@ -174,16 +174,18 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
         len(tool_functions) == 2
     ), f"Expected 2 tool functions, got {len(tool_functions)}"
 
-    # Check the first tool function (testgraph)
+    # Check the first tool function (testgraph with node ID suffix)
     assert tool_functions[0]["type"] == "function"
-    assert tool_functions[0]["function"]["name"] == "testgraph"
+    # Tool name should be testgraph_<node_id_prefix> (e.g., testgraph_d39fefff)
+    assert tool_functions[0]["function"]["name"].startswith("testgraph_")
     assert tool_functions[0]["function"]["description"] == "Test graph description"
     assert "input_1" in tool_functions[0]["function"]["parameters"]["properties"]
     assert "input_2" in tool_functions[0]["function"]["parameters"]["properties"]
 
-    # Check the second tool function (storevalueblock)
+    # Check the second tool function (storevalueblock with node ID suffix)
     assert tool_functions[1]["type"] == "function"
-    assert tool_functions[1]["function"]["name"] == "storevalueblock"
+    # Tool name should be storevalueblock_<node_id_prefix> (e.g., storevalueblock_a1b2c3d4)
+    assert tool_functions[1]["function"]["name"].startswith("storevalueblock_")
     assert "input" in tool_functions[1]["function"]["parameters"]["properties"]
     assert (
         tool_functions[1]["function"]["parameters"]["properties"]["input"][
@@ -478,3 +480,88 @@ async def test_smart_decision_maker_parameter_validation():
         assert outputs["tools_^_search_keywords_~_query"] == "test"
         assert outputs["tools_^_search_keywords_~_max_keyword_difficulty"] == 50
         assert outputs["tools_^_search_keywords_~_optional_param"] == "custom_value"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_smart_decision_maker_unique_tool_names_for_duplicate_blocks(
+    server: SpinTestServer,
+):
+    """Test that multiple blocks of the same type result in unique tool names."""
+    from backend.blocks.basic import StoreValueBlock
+    from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
+    from backend.data import graph
+
+    test_user = await create_test_user()
+    creds = await create_credentials(server, test_user)
+
+    # Create a SmartDecisionMakerBlock connected to TWO StoreValueBlocks (same block type)
+    nodes = [
+        graph.Node(
+            block_id=SmartDecisionMakerBlock().id,
+            input_default={
+                "prompt": "Hello, World!",
+                "credentials": creds,
+            },
+        ),
+        graph.Node(
+            block_id=StoreValueBlock().id,
+        ),
+        graph.Node(
+            block_id=StoreValueBlock().id,
+        ),
+    ]
+
+    links = [
+        graph.Link(
+            source_id=nodes[0].id,
+            sink_id=nodes[1].id,
+            source_name="tools_^_store_value_1_input",
+            sink_name="input",
+        ),
+        graph.Link(
+            source_id=nodes[0].id,
+            sink_id=nodes[2].id,
+            source_name="tools_^_store_value_2_input",
+            sink_name="input",
+        ),
+    ]
+
+    test_graph = graph.Graph(
+        name="TestGraphWithDuplicateBlocks",
+        description="Test graph with duplicate block types",
+        nodes=nodes,
+        links=links,
+    )
+    test_graph = await create_graph(server, test_graph, test_user)
+
+    # Get tool functions
+    tool_functions = await SmartDecisionMakerBlock._create_function_signature(
+        test_graph.nodes[0].id
+    )
+
+    # Verify we have 2 tool functions
+    assert (
+        len(tool_functions) == 2
+    ), f"Expected 2 tool functions, got {len(tool_functions)}"
+
+    # Extract tool names
+    tool_names = [tf["function"]["name"] for tf in tool_functions]
+
+    # Verify both tools start with "storevalueblock_" (since no customized name)
+    assert all(
+        name.startswith("storevalueblock_") for name in tool_names
+    ), f"Expected all tool names to start with 'storevalueblock_', got {tool_names}"
+
+    # Verify tool names are unique (this is the key test!)
+    assert len(tool_names) == len(
+        set(tool_names)
+    ), f"Tool names should be unique, but got duplicates: {tool_names}"
+
+    # Verify each tool name has the expected format: blockname_nodeid
+    for tool_name in tool_names:
+        parts = tool_name.split("_")
+        assert (
+            len(parts) == 2
+        ), f"Expected tool name format 'blockname_nodeid', got {tool_name}"
+        # Node ID segment should be a hex string (first segment of UUID)
+        assert len(parts[1]) == 8, f"Expected 8-char node ID segment, got {parts[1]}"

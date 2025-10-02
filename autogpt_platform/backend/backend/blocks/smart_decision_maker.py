@@ -282,8 +282,18 @@ class SmartDecisionMakerBlock(Block):
         """
         block = sink_node.block
 
+        # Use customized_name from metadata if available, otherwise use block name with node ID suffix
+        customized_name = sink_node.metadata.get("customized_name")
+        if customized_name:
+            tool_name = SmartDecisionMakerBlock.cleanup(customized_name)
+        else:
+            # Use block name with shortened node ID to ensure uniqueness
+            base_name = SmartDecisionMakerBlock.cleanup(block.name)
+            node_id_suffix = sink_node.id.split("-")[0]  # Use first segment of UUID
+            tool_name = f"{base_name}_{node_id_suffix}"
+
         tool_function: dict[str, Any] = {
-            "name": SmartDecisionMakerBlock.cleanup(block.name),
+            "name": tool_name,
             "description": block.description,
         }
         sink_block_input_schema = block.input_schema
@@ -354,8 +364,22 @@ class SmartDecisionMakerBlock(Block):
                 f"Sink graph metadata not found: {graph_id} {graph_version}"
             )
 
+        # Use customized_name from metadata if available, otherwise use agent_name from input or graph name with node ID suffix
+        customized_name = sink_node.metadata.get("customized_name")
+        agent_name = sink_node.input_default.get("agent_name")
+
+        if customized_name:
+            tool_name = SmartDecisionMakerBlock.cleanup(customized_name)
+        elif agent_name:
+            tool_name = SmartDecisionMakerBlock.cleanup(agent_name)
+        else:
+            # Use graph name with shortened node ID to ensure uniqueness
+            base_name = SmartDecisionMakerBlock.cleanup(sink_graph_meta.name)
+            node_id_suffix = sink_node.id.split("-")[0]  # Use first segment of UUID
+            tool_name = f"{base_name}_{node_id_suffix}"
+
         tool_function: dict[str, Any] = {
-            "name": SmartDecisionMakerBlock.cleanup(sink_graph_meta.name),
+            "name": tool_name,
             "description": sink_graph_meta.description,
         }
 
