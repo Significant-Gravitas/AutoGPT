@@ -1,5 +1,4 @@
 import re
-import threading
 from pathlib import Path
 from typing import Any
 
@@ -230,7 +229,7 @@ class ExtractTextInformationBlock(Block):
 
             yield "matched_results", matches
             yield "matched_count", len(matches)
-        except Exception as e:
+        except Exception:
             # Return empty results on any regex error
             yield "negative", input_data.text
             yield "matched_results", []
