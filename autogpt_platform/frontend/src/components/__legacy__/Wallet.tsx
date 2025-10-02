@@ -363,7 +363,7 @@ export default function Wallet() {
               Earn credits{" "}
               <span className="font-semibold">{formatCredits(credits)}</span>
             </div>
-            <PopoverClose>
+            <PopoverClose aria-label="Close wallet">
               <X className="ml-2 h-5 w-5 text-zinc-800 hover:text-foreground" />
             </PopoverClose>
           </div>
