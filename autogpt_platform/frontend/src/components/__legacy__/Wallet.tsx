@@ -171,20 +171,27 @@ export default function Wallet() {
   }, [groups]);
 
   // Get total completed count for all groups
-  const completedCount = useMemo(() => {
-    return groups.reduce(
+  const [completedCount, setCompletedCount] = useState<number | null>(null);
+  // Needed to show confetti when a new step is completed
+  const [prevCompletedCount, setPrevCompletedCount] = useState<number | null>(
+    null,
+  );
+
+  const walletRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!state) {
+      return;
+    }
+    const completed = groups.reduce(
       (acc, group) =>
         acc +
         group.tasks.filter((task) => state?.completedSteps?.includes(task.id))
           .length,
       0,
     );
+    setCompletedCount(completed);
   }, [groups, state?.completedSteps]);
-
-  // Needed to show confetti when a new step is completed
-  const [stepsLength, setStepsLength] = useState(completedCount);
-
-  const walletRef = useRef<HTMLButtonElement | null>(null);
 
   const onWalletOpen = useCallback(async () => {
     if (!state?.walletShown) {
@@ -206,19 +213,25 @@ export default function Wallet() {
 
   // Confetti effect on the wallet button
   useEffect(() => {
-    if (!state?.completedSteps) {
-      return;
-    }
     // It's enough to check completed count,
     // because the order of completed steps is not important
     // If the count is the same, we don't need to do anything
-    if (completedCount === stepsLength) {
+    if (completedCount === null || completedCount === prevCompletedCount) {
       return;
     }
-    // Otherwise, we need to set the new length
-    setStepsLength(completedCount);
+    // Otherwise, we need to set the new prevCompletedCount
+    setPrevCompletedCount(completedCount);
+    // If there was no previous count, we don't show confetti
+    if (prevCompletedCount === null) {
+      return;
+    }
     // And emit confetti
     if (walletRef.current) {
+      // Fix confetti appearing in the top left corner
+      const rect = walletRef.current.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) {
+        return;
+      }
       setTimeout(() => {
         fetchCredits();
         party.confetti(walletRef.current!, {
@@ -236,7 +249,8 @@ export default function Wallet() {
     state?.notified,
     fadeOut,
     fetchCredits,
-    stepsLength,
+    completedCount,
+    prevCompletedCount,
     walletRef,
   ]);
 
@@ -270,7 +284,7 @@ export default function Wallet() {
             <span className="text-sm font-semibold">
               {formatCredits(credits)}
             </span>
-            {completedCount < totalCount && (
+            {completedCount && completedCount < totalCount && (
               <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"></span>
             )}
             <div className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-white px-4 py-2 shadow-md group-hover:block">

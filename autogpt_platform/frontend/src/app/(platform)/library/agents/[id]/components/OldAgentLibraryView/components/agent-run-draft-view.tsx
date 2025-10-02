@@ -103,8 +103,7 @@ export function AgentRunDraftView({
   const [changedPresetAttributes, setChangedPresetAttributes] = useState<
     Set<keyof LibraryAgentPresetUpdatable>
   >(new Set());
-  const { state: onboardingState, completeStep: completeOnboardingStep } =
-    useOnboarding();
+  const { completeStep: completeOnboardingStep } = useOnboarding();
   const [cronScheduleDialogOpen, setCronScheduleDialogOpen] = useState(false);
 
   // Update values if agentPreset parameter is changed
@@ -197,9 +196,7 @@ export function AgentRunDraftView({
         .catch(toastOnFail("execute agent preset"));
     }
     // Mark run agent onboarding step as completed
-    if (onboardingState?.completedSteps.includes("MARKETPLACE_ADD_AGENT")) {
-      completeOnboardingStep("MARKETPLACE_RUN_AGENT");
-    }
+    completeOnboardingStep("MARKETPLACE_RUN_AGENT");
     if (runCount > 0) {
       completeOnboardingStep("RE_RUN_AGENT");
     }
@@ -210,7 +207,6 @@ export function AgentRunDraftView({
     inputCredentials,
     onRun,
     toastOnFail,
-    onboardingState,
     completeOnboardingStep,
   ]);
 
@@ -246,7 +242,6 @@ export function AgentRunDraftView({
     onCreatePreset,
     toast,
     toastOnFail,
-    onboardingState,
     completeOnboardingStep,
   ]);
 
@@ -286,7 +281,6 @@ export function AgentRunDraftView({
     onUpdatePreset,
     toast,
     toastOnFail,
-    onboardingState,
     completeOnboardingStep,
   ]);
 
@@ -334,7 +328,6 @@ export function AgentRunDraftView({
     onCreatePreset,
     toast,
     toastOnFail,
-    onboardingState,
     completeOnboardingStep,
   ]);
 
