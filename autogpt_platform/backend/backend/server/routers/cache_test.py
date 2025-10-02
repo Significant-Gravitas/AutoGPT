@@ -6,7 +6,7 @@ through POST, PUT, PATCH, and DELETE operations.
 """
 
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -39,7 +39,13 @@ class TestGraphCacheInvalidation:
         with patch.object(
             graph_db, "list_graphs_paginated", new_callable=AsyncMock
         ) as mock_list:
-            mock_list.return_value = MagicMock(graphs=[])
+            # Use a simple dict instead of MagicMock to make it pickleable
+            mock_list.return_value = {
+                "graphs": [],
+                "total_count": 0,
+                "page": 1,
+                "page_size": 250,
+            }
 
             # First call should hit the database
             await cache.get_cached_graphs(mock_user_id, 1, 250)
@@ -76,8 +82,13 @@ class TestGraphCacheInvalidation:
             graph_db, "get_graph_all_versions", new_callable=AsyncMock
         ) as mock_versions:
 
-            mock_list.return_value = MagicMock(graphs=[])
-            mock_get.return_value = MagicMock(id=mock_graph_id)
+            mock_list.return_value = {
+                "graphs": [],
+                "total_count": 0,
+                "page": 1,
+                "page_size": 250,
+            }
+            mock_get.return_value = {"id": mock_graph_id}
             mock_versions.return_value = []
 
             # Pre-populate all caches (use consistent argument style)
@@ -142,9 +153,14 @@ class TestGraphCacheInvalidation:
             graph_db, "list_graphs_paginated", new_callable=AsyncMock
         ) as mock_list:
 
-            mock_get.return_value = MagicMock(id=mock_graph_id, version=1)
-            mock_versions.return_value = [MagicMock(version=1)]
-            mock_list.return_value = MagicMock(graphs=[])
+            mock_get.return_value = {"id": mock_graph_id, "version": 1}
+            mock_versions.return_value = [{"version": 1}]
+            mock_list.return_value = {
+                "graphs": [],
+                "total_count": 0,
+                "page": 1,
+                "page_size": 250,
+            }
 
             # Populate caches
             await cache.get_cached_graph(mock_graph_id, None, mock_user_id)
@@ -195,7 +211,7 @@ class TestUserPreferencesCacheInvalidation:
         with patch.object(
             cache.user_db, "get_user_notification_preference", new_callable=AsyncMock
         ) as mock_get_prefs:
-            mock_prefs = MagicMock(email_notifications=True, push_notifications=False)
+            mock_prefs = {"email_notifications": True, "push_notifications": False}
             mock_get_prefs.return_value = mock_prefs
 
             # First call hits database
@@ -212,9 +228,10 @@ class TestUserPreferencesCacheInvalidation:
             cache.get_cached_user_preferences.cache_delete(mock_user_id)
 
             # Change the mock return value to simulate updated preferences
-            mock_prefs_updated = MagicMock(
-                email_notifications=False, push_notifications=True
-            )
+            mock_prefs_updated = {
+                "email_notifications": False,
+                "push_notifications": True,
+            }
             mock_get_prefs.return_value = mock_prefs_updated
 
             # Next call should hit database and get new value
@@ -231,7 +248,12 @@ class TestUserPreferencesCacheInvalidation:
         with patch.object(
             cache.user_db, "get_user_by_id", new_callable=AsyncMock
         ) as mock_get_user:
-            mock_user = MagicMock(timezone="America/New_York")
+            # Use a simple object that supports attribute access
+            class MockUser:
+                def __init__(self, timezone):
+                    self.timezone = timezone
+
+            mock_user = MockUser("America/New_York")
             mock_get_user.return_value = mock_user
 
             # First call hits database
@@ -248,7 +270,8 @@ class TestUserPreferencesCacheInvalidation:
             cache.get_cached_user_timezone.cache_delete(mock_user_id)
 
             # Change timezone
-            mock_user.timezone = "Europe/London"
+            mock_user_updated = MockUser("Europe/London")
+            mock_get_user.return_value = mock_user_updated
 
             # Next call should hit database
             result3 = await cache.get_cached_user_timezone(mock_user_id)
@@ -270,7 +293,12 @@ class TestExecutionCacheInvalidation:
         with patch.object(
             cache.execution_db, "get_graph_executions_paginated", new_callable=AsyncMock
         ) as mock_exec:
-            mock_exec.return_value = MagicMock(executions=[])
+            mock_exec.return_value = {
+                "executions": [],
+                "total_count": 0,
+                "page": 1,
+                "page_size": 25,
+            }
 
             # Populate cache for multiple pages
             for page in range(1, 4):

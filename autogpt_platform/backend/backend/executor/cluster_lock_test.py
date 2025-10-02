@@ -22,13 +22,15 @@ logger = logging.getLogger(__name__)
 @pytest.fixture
 def redis_client():
     """Get Redis client for testing using same config as backend."""
-    from backend.data.redis_client import HOST, PASSWORD, PORT
+    from backend.util.settings import Settings
+
+    settings = Settings()
 
     # Use same config as backend but without decode_responses since ClusterLock needs raw bytes
     client = redis.Redis(
-        host=HOST,
-        port=PORT,
-        password=PASSWORD,
+        host=settings.config.redis_host,
+        port=settings.config.redis_port,
+        password=settings.config.redis_password or None,
         decode_responses=False,  # ClusterLock needs raw bytes for ownership verification
     )
 

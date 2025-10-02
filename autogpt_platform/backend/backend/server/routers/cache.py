@@ -7,12 +7,11 @@ separated from the main routes for better organization and maintainability.
 
 from typing import Sequence
 
-from autogpt_libs.utils.cache import cached
-
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data import user as user_db
 from backend.data.block import get_blocks
+from backend.util.cache import cached
 
 # ===== Block Caches =====
 

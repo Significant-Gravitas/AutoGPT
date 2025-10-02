@@ -5,7 +5,7 @@ This module tests that library caches are properly invalidated when data is modi
 """
 
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -37,7 +37,7 @@ class TestLibraryAgentCacheInvalidation:
         with patch.object(
             library_db, "list_library_agents", new_callable=AsyncMock
         ) as mock_list:
-            mock_response = MagicMock(agents=[], total_count=0, page=1, page_size=20)
+            mock_response = {"agents": [], "total_count": 0, "page": 1, "page_size": 20}
             mock_list.return_value = mock_response
 
             # First call hits database
@@ -76,9 +76,14 @@ class TestLibraryAgentCacheInvalidation:
             library_db, "list_library_agents", new_callable=AsyncMock
         ) as mock_list:
 
-            mock_agent = MagicMock(id=mock_library_agent_id, name="Test Agent")
+            mock_agent = {"id": mock_library_agent_id, "name": "Test Agent"}
             mock_get.return_value = mock_agent
-            mock_list.return_value = MagicMock(agents=[mock_agent])
+            mock_list.return_value = {
+                "agents": [mock_agent],
+                "total_count": 1,
+                "page": 1,
+                "page_size": 20,
+            }
 
             # Populate caches
             await library_cache.get_cached_library_agent(
@@ -130,7 +135,7 @@ class TestLibraryAgentCacheInvalidation:
         with patch.object(
             library_db, "list_favorite_library_agents", new_callable=AsyncMock
         ) as mock_favs:
-            mock_response = MagicMock(agents=[], total_count=0, page=1, page_size=20)
+            mock_response = {"agents": [], "total_count": 0, "page": 1, "page_size": 20}
             mock_favs.return_value = mock_response
 
             # First call hits database
@@ -169,8 +174,13 @@ class TestLibraryPresetCacheInvalidation:
             library_db, "get_preset", new_callable=AsyncMock
         ) as mock_get:
 
-            mock_preset = MagicMock(id=preset_id, name="Test Preset")
-            mock_list.return_value = MagicMock(presets=[mock_preset])
+            mock_preset = {"id": preset_id, "name": "Test Preset"}
+            mock_list.return_value = {
+                "presets": [mock_preset],
+                "total_count": 1,
+                "page": 1,
+                "page_size": 20,
+            }
             mock_get.return_value = mock_preset
 
             # Populate caches
@@ -215,7 +225,9 @@ class TestLibraryCacheMetrics:
         assert "size" in info
         assert "maxsize" in info
         assert "ttl_seconds" in info
-        assert info["maxsize"] == 1000  # As defined in cache.py
+        assert (
+            info["maxsize"] is None
+        )  # Redis manages its own size with shared_cache=True
         assert info["ttl_seconds"] == 600  # 10 minutes
 
     def test_all_library_caches_can_be_cleared(self):

@@ -5,9 +5,8 @@ This module contains all caching decorators and helpers for the Library API,
 separated from the main routes for better organization and maintainability.
 """
 
-from autogpt_libs.utils.cache import cached
-
 import backend.server.v2.library.db
+from backend.util.cache import cached
 
 # ===== Library Agent Caches =====
 

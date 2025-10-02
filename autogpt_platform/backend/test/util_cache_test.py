@@ -16,7 +16,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from autogpt_libs.utils.cache import cached, clear_thread_cache, thread_cached
+from backend.util.cache import cached, clear_thread_cache, thread_cached
 
 
 class TestThreadCached:
@@ -332,7 +332,7 @@ class TestCache:
         """Test basic sync caching functionality."""
         call_count = 0
 
-        @cached()
+        @cached(ttl_seconds=300)
         def expensive_sync_function(x: int, y: int = 0) -> int:
             nonlocal call_count
             call_count += 1
@@ -358,7 +358,7 @@ class TestCache:
         """Test basic async caching functionality."""
         call_count = 0
 
-        @cached()
+        @cached(ttl_seconds=300)
         async def expensive_async_function(x: int, y: int = 0) -> int:
             nonlocal call_count
             call_count += 1
@@ -385,7 +385,7 @@ class TestCache:
         call_count = 0
         results = []
 
-        @cached()
+        @cached(ttl_seconds=300)
         def slow_function(x: int) -> int:
             nonlocal call_count
             call_count += 1
@@ -412,7 +412,7 @@ class TestCache:
         """Test that concurrent async calls don't cause thundering herd."""
         call_count = 0
 
-        @cached()
+        @cached(ttl_seconds=300)
         async def slow_async_function(x: int) -> int:
             nonlocal call_count
             call_count += 1
@@ -508,7 +508,7 @@ class TestCache:
         """Test cache clearing functionality."""
         call_count = 0
 
-        @cached()
+        @cached(ttl_seconds=300)
         def clearable_function(x: int) -> int:
             nonlocal call_count
             call_count += 1
@@ -537,7 +537,7 @@ class TestCache:
         """Test cache clearing functionality with async function."""
         call_count = 0
 
-        @cached()
+        @cached(ttl_seconds=300)
         async def async_clearable_function(x: int) -> int:
             nonlocal call_count
             call_count += 1
@@ -567,7 +567,7 @@ class TestCache:
         """Test that cached async functions return actual results, not coroutines."""
         call_count = 0
 
-        @cached()
+        @cached(ttl_seconds=300)
         async def async_result_function(x: int) -> str:
             nonlocal call_count
             call_count += 1
@@ -593,7 +593,7 @@ class TestCache:
         """Test selective cache deletion functionality."""
         call_count = 0
 
-        @cached()
+        @cached(ttl_seconds=300)
         def deletable_function(x: int) -> int:
             nonlocal call_count
             call_count += 1
@@ -636,7 +636,7 @@ class TestCache:
         """Test selective cache deletion functionality with async function."""
         call_count = 0
 
-        @cached()
+        @cached(ttl_seconds=300)
         async def async_deletable_function(x: int) -> int:
             nonlocal call_count
             call_count += 1
@@ -682,12 +682,17 @@ class TestSharedCache:
     @pytest.fixture(autouse=True)
     def setup_redis_mock(self):
         """Mock Redis client for testing."""
-        with patch("autogpt_libs.utils.cache.redis_client") as mock_redis:
+        with patch("backend.util.cache._get_redis_client") as mock_redis_func:
             # Configure mock to behave like Redis
+            mock_redis = Mock()
             self.mock_redis = mock_redis
             self.redis_storage = {}
 
             def mock_get(key):
+                return self.redis_storage.get(key)
+
+            def mock_getex(key, ex=None):
+                # GETEX returns value and optionally refreshes TTL
                 return self.redis_storage.get(key)
 
             def mock_set(key, value):
@@ -736,12 +741,16 @@ class TestSharedCache:
                 return pipe
 
             mock_redis.get = Mock(side_effect=mock_get)
+            mock_redis.getex = Mock(side_effect=mock_getex)
             mock_redis.set = Mock(side_effect=mock_set)
             mock_redis.setex = Mock(side_effect=mock_setex)
             mock_redis.exists = Mock(side_effect=mock_exists)
             mock_redis.delete = Mock(side_effect=mock_delete)
             mock_redis.scan_iter = Mock(side_effect=mock_scan_iter)
             mock_redis.pipeline = Mock(side_effect=mock_pipeline)
+
+            # Make _get_redis_client return the mock
+            mock_redis_func.return_value = mock_redis
 
             yield mock_redis
 
@@ -752,7 +761,7 @@ class TestSharedCache:
         """Test basic shared cache functionality with sync function."""
         call_count = 0
 
-        @cached(shared_cache=True)
+        @cached(shared_cache=True, ttl_seconds=300)
         def shared_function(x: int) -> int:
             nonlocal call_count
             call_count += 1
@@ -763,7 +772,7 @@ class TestSharedCache:
         assert result1 == 50
         assert call_count == 1
         assert self.mock_redis.get.called
-        assert self.mock_redis.set.called
+        assert self.mock_redis.setex.called  # setex is used for TTL
 
         # Second call - should hit cache
         result2 = shared_function(5)
@@ -775,7 +784,7 @@ class TestSharedCache:
         """Test basic shared cache functionality with async function."""
         call_count = 0
 
-        @cached(shared_cache=True)
+        @cached(shared_cache=True, ttl_seconds=300)
         async def async_shared_function(x: int) -> int:
             nonlocal call_count
             call_count += 1
@@ -787,7 +796,7 @@ class TestSharedCache:
         assert result1 == 60
         assert call_count == 1
         assert self.mock_redis.get.called
-        assert self.mock_redis.set.called
+        assert self.mock_redis.setex.called  # setex is used for TTL
 
         # Second call - should hit cache
         result2 = await async_shared_function(3)
@@ -842,7 +851,7 @@ class TestSharedCache:
         """Test clearing shared cache."""
         call_count = 0
 
-        @cached(shared_cache=True)
+        @cached(shared_cache=True, ttl_seconds=300)
         def clearable_shared_function(x: int) -> int:
             nonlocal call_count
             call_count += 1
@@ -871,7 +880,7 @@ class TestSharedCache:
         """Test deleting specific shared cache entry."""
         call_count = 0
 
-        @cached(shared_cache=True)
+        @cached(shared_cache=True, ttl_seconds=300)
         def deletable_shared_function(x: int) -> int:
             nonlocal call_count
             call_count += 1
@@ -905,7 +914,7 @@ class TestSharedCache:
         """Test that Redis errors are handled gracefully."""
         call_count = 0
 
-        @cached(shared_cache=True)
+        @cached(shared_cache=True, ttl_seconds=300)
         def error_prone_function(x: int) -> int:
             nonlocal call_count
             call_count += 1
@@ -924,7 +933,7 @@ class TestSharedCache:
         """Test that Redis errors are handled gracefully in async functions."""
         call_count = 0
 
-        @cached(shared_cache=True)
+        @cached(shared_cache=True, ttl_seconds=300)
         async def async_error_prone_function(x: int) -> int:
             nonlocal call_count
             call_count += 1
@@ -943,7 +952,7 @@ class TestSharedCache:
         """Test shared cache with complex return types (lists, dicts)."""
         call_count = 0
 
-        @cached(shared_cache=True)
+        @cached(shared_cache=True, ttl_seconds=300)
         def complex_return_function(x: int) -> dict:
             nonlocal call_count
             call_count += 1
@@ -964,7 +973,7 @@ class TestSharedCache:
         """Test thundering herd protection with shared cache."""
         call_count = 0
 
-        @cached(shared_cache=True)
+        @cached(shared_cache=True, ttl_seconds=300)
         async def slow_shared_function(x: int) -> int:
             nonlocal call_count
             call_count += 1
@@ -993,5 +1002,5 @@ class TestSharedCache:
         # Get cache info
         info = info_function.cache_info()
         assert "size" in info
-        assert info["maxsize"] == 100
+        assert info["maxsize"] is None  # Redis manages its own size
         assert info["ttl_seconds"] == 300

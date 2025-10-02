@@ -5,9 +5,8 @@ This module contains all caching decorators and helpers for the Store API,
 separated from the main routes for better organization and maintainability.
 """
 
-from autogpt_libs.utils.cache import cached
-
 import backend.server.v2.store.db
+from backend.util.cache import cached
 
 
 # Cache user profiles for 1 hour per user
