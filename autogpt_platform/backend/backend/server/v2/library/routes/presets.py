@@ -27,6 +27,19 @@ router = APIRouter(
 )
 
 
+def _clear_presets_list_cache(user_id: str, num_pages: int = 20):
+    """
+    Clear the presets list cache for the given user.
+    """
+    for page in range(1, num_pages):
+        library_cache.get_cached_library_presets.cache_delete(
+            user_id=user_id, page=page, page_size=10
+        )
+        library_cache.get_cached_library_presets.cache_delete(
+            user_id=user_id, page=page, page_size=20
+        )
+
+
 @router.get(
     "/presets",
     summary="List presets",
@@ -146,14 +159,7 @@ async def create_preset(
         else:
             result = await db.create_preset_from_graph_execution(user_id, preset)
 
-        # Clear presets list cache after creating new preset
-        for page in range(1, 5):
-            library_cache.get_cached_library_presets.cache_delete(
-                user_id=user_id, page=page, page_size=10
-            )
-            library_cache.get_cached_library_presets.cache_delete(
-                user_id=user_id, page=page, page_size=20
-            )
+        _clear_presets_list_cache(user_id)
 
         return result
     except NotFoundError as e:
@@ -223,14 +229,7 @@ async def setup_trigger(
         ),
     )
 
-    # Clear presets list cache after creating new preset
-    for page in range(1, 5):
-        library_cache.get_cached_library_presets.cache_delete(
-            user_id=user_id, page=page, page_size=10
-        )
-        library_cache.get_cached_library_presets.cache_delete(
-            user_id=user_id, page=page, page_size=20
-        )
+    _clear_presets_list_cache(user_id)
 
     return new_preset
 
@@ -315,13 +314,8 @@ async def update_preset(
         library_cache.get_cached_library_preset.cache_delete(
             preset_id=preset_id, user_id=user_id
         )
-        for page in range(1, 5):
-            library_cache.get_cached_library_presets.cache_delete(
-                user_id=user_id, page=page, page_size=10
-            )
-            library_cache.get_cached_library_presets.cache_delete(
-                user_id=user_id, page=page, page_size=20
-            )
+        _clear_presets_list_cache(user_id)
+
     except Exception as e:
         logger.exception("Preset update failed for user %s: %s", user_id, e)
         raise HTTPException(
@@ -400,13 +394,7 @@ async def delete_preset(
         library_cache.get_cached_library_preset.cache_delete(
             preset_id=preset_id, user_id=user_id
         )
-        for page in range(1, 5):
-            library_cache.get_cached_library_presets.cache_delete(
-                user_id=user_id, page=page, page_size=10
-            )
-            library_cache.get_cached_library_presets.cache_delete(
-                user_id=user_id, page=page, page_size=20
-            )
+        _clear_presets_list_cache(user_id)
     except Exception as e:
         logger.exception(
             "Error deleting preset %s for user %s: %s", preset_id, user_id, e

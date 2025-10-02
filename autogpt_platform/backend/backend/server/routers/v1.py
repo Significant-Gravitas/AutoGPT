@@ -928,7 +928,7 @@ async def execute_graph(
     cache.get_cached_graphs_executions.cache_delete(
         user_id=user_id, page=1, page_size=250
     )
-    for page in range(1, 10):
+    for page in range(1, 20):
         cache.get_cached_graph_execution.cache_delete(
             graph_id=graph_id, user_id=user_id, version=graph_version
         )
