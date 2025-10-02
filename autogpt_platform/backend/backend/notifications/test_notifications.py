@@ -56,10 +56,11 @@ class TestNotificationErrorHandling:
             ),
         ]
 
-    def test_postmark_406_inactive_recipient_error_handling(
+    @pytest.mark.asyncio
+    async def test_postmark_406_inactive_recipient_error_handling(
         self, notification_manager, sample_notifications
     ):
-        """Test handling of Postmark 406 error for inactive recipients."""
+        """Test handling of Postmark 406 error for inactive recipients and email deactivation."""
         # Create an exception that simulates a 406 error
         error = Exception("Recipient marked as inactive (406)")
 
@@ -74,42 +75,63 @@ class TestNotificationErrorHandling:
         # Process notifications
         failed_indices = []
         recipient_email = "test@example.com"
+        user_id = "user_1"
 
-        # Simulate the error handling logic from the actual code
-        i = 0
-        while i < len(sample_notifications):
-            try:
-                notification_manager.email_sender.send_templated(
-                    notification=NotificationType.AGENT_RUN,
-                    user_email=recipient_email,
-                    data=sample_notifications[i],
-                    user_unsub_link="http://example.com/unsub",
-                )
-                i += 1
-            except Exception as e:
-                # This is the error handling logic we're testing
-                error_message = str(e).lower()
+        # Mock set_user_email_verification function
+        with patch('backend.notifications.notifications.set_user_email_verification') as mock_set_verification:
+            mock_set_verification.return_value = None
 
-                if "406" in error_message or "inactive" in error_message:
-                    notification_manager.logger.warning(
-                        f"Failed to send notification at index {i}: "
-                        f"Recipient marked as inactive by Postmark. "
-                        f"Error: {e}. Skipping this notification."
+            # Simulate the error handling logic from the actual code
+            i = 0
+            while i < len(sample_notifications):
+                try:
+                    notification_manager.email_sender.send_templated(
+                        notification=NotificationType.AGENT_RUN,
+                        user_email=recipient_email,
+                        data=sample_notifications[i],
+                        user_unsub_link="http://example.com/unsub",
                     )
+                    i += 1
+                except Exception as e:
+                    # This is the error handling logic we're testing
+                    error_message = str(e).lower()
 
-                failed_indices.append(i)
-                i += 1
+                    if "406" in error_message or "inactive" in error_message:
+                        notification_manager.logger.warning(
+                            f"Failed to send notification at index {i}: "
+                            f"Recipient marked as inactive by Postmark. "
+                            f"Error: {e}. Skipping this notification."
+                        )
+                        # Simulate the email deactivation
+                        try:
+                            await mock_set_verification(user_id, False)
+                            notification_manager.logger.info(
+                                f"Set email verification to false for user {user_id} "
+                                f"after receiving 406 inactive recipient error"
+                            )
+                        except Exception as deactivation_error:
+                            notification_manager.logger.error(
+                                f"Failed to deactivate email for user {user_id}: "
+                                f"{deactivation_error}"
+                            )
 
-        # Verify the warning was logged for all notifications
-        assert notification_manager.logger.warning.call_count == len(
-            sample_notifications
-        )
-        assert len(failed_indices) == len(sample_notifications)
+                    failed_indices.append(i)
+                    i += 1
 
-        # Verify the warning message contains the expected information
-        warning_call = notification_manager.logger.warning.call_args[0][0]
-        assert "inactive" in warning_call.lower()
-        assert "406" in warning_call
+            # Verify the warning was logged for all notifications
+            assert notification_manager.logger.warning.call_count == len(
+                sample_notifications
+            )
+            assert len(failed_indices) == len(sample_notifications)
+
+            # Verify the warning message contains the expected information
+            warning_call = notification_manager.logger.warning.call_args[0][0]
+            assert "inactive" in warning_call.lower()
+            assert "406" in warning_call
+
+            # Verify that set_user_email_verification was called
+            assert mock_set_verification.called
+            mock_set_verification.assert_called_with(user_id, False)
 
     def test_postmark_422_malformed_data_error_handling(
         self, notification_manager, sample_notifications

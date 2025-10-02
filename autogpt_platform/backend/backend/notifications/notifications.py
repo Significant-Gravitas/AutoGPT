@@ -25,7 +25,7 @@ from backend.data.notifications import (
     get_summary_params_type,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
-from backend.data.user import generate_unsubscribe_link
+from backend.data.user import generate_unsubscribe_link, set_user_email_verification
 from backend.notifications.email import EmailSender
 from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
@@ -736,6 +736,18 @@ class NotificationManager(AppService):
                                     f"Recipient marked as inactive by Postmark. "
                                     f"Error: {e}. Skipping this notification."
                                 )
+                                # Deactivate the user's email verification status
+                                try:
+                                    await set_user_email_verification(event.user_id, False)
+                                    logger.info(
+                                        f"Set email verification to false for user {event.user_id} "
+                                        f"after receiving 406 inactive recipient error"
+                                    )
+                                except Exception as deactivation_error:
+                                    logger.error(
+                                        f"Failed to deactivate email for user {event.user_id}: "
+                                        f"{deactivation_error}"
+                                    )
                             # Check for HTTP 422 - Malformed data
                             elif "422" in error_message or "unprocessable" in error_message:
                                 logger.error(
