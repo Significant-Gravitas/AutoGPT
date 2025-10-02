@@ -10,6 +10,7 @@ import React, {
 import BoringAvatar from "boring-avatars";
 
 import Image, { ImageProps } from "next/image";
+import { cn } from "@/lib/utils";
 
 type AvatarContextValue = {
   isLoaded: boolean;
@@ -44,10 +45,10 @@ export function Avatar({
   return (
     <AvatarContext.Provider value={value}>
       <div
-        className={[
+        className={cn(
           "relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full",
-          className || "",
-        ].join(" ")}
+          className,
+        )}
         {...props}
       >
         {children}
@@ -126,7 +127,7 @@ export function AvatarImage({
       <img
         src={normalizedSrc}
         alt={alt || "Avatar image"}
-        className={["h-full w-full object-cover", className || ""].join(" ")}
+        className={cn("h-full w-full object-cover", className)}
         width={computedWidth}
         height={computedHeight}
         onLoad={handleLoad}
@@ -148,7 +149,7 @@ export function AvatarImage({
     <Image
       src={normalizedSrc}
       alt={alt || "Avatar image"}
-      className={["h-full w-full object-cover", className || ""].join(" ")}
+      className={cn("h-full w-full object-cover", className)}
       width={fill ? undefined : computedWidth}
       height={fill ? undefined : computedHeight}
       fill={Boolean(fill)}
@@ -179,10 +180,10 @@ export function AvatarFallback({
     typeof children === "string" && children.trim() ? children : "User";
   return (
     <span
-      className={[
-        "flex h-full w-full items-center justify-center rounded-full bg-neutral-200 text-lg text-neutral-600",
-        className || "",
-      ].join(" ")}
+      className={cn(
+        "flex h-full w-full items-center justify-center rounded-full bg-transparent text-lg text-neutral-600",
+        className,
+      )}
       {...props}
     >
       <BoringAvatar
