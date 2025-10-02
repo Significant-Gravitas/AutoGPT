@@ -20,8 +20,16 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
+import {
+  calculateConsecutiveDays,
+  createInitialOnboardingState,
+  getRunMilestoneSteps,
+  processOnboardingData,
+  shouldRedirectFromOnboarding,
+} from "./helpers";
 
 const OnboardingContext = createContext<
   | {
@@ -39,6 +47,7 @@ const OnboardingContext = createContext<
 
 export function useOnboarding(step?: number, completeStep?: OnboardingStep) {
   const context = useContext(OnboardingContext);
+
   if (!context)
     throw new Error("useOnboarding must be used within an OnboardingProvider");
 
@@ -71,31 +80,31 @@ export default function OnboardingProvider({
   children: ReactNode;
 }) {
   const [state, setState] = useState<UserOnboarding | null>(null);
-  // Step is used to control the progress bar, it's frontend only
   const [step, setStep] = useState(1);
   const [npsDialogOpen, setNpsDialogOpen] = useState(false);
+  const hasInitialized = useRef(false);
+
   const api = useBackendAPI();
   const pathname = usePathname();
   const router = useRouter();
   const { user, isUserLoading } = useSupabase();
 
-  // Automatically detect and set timezone for new users during onboarding
   useOnboardingTimezoneDetection();
 
   const isOnOnboardingRoute = pathname.startsWith("/onboarding");
 
   useEffect(() => {
-    // Only run heavy onboarding API calls if user is logged in and not loading
-    if (isUserLoading || !user) {
+    // Prevent multiple initializations
+    if (hasInitialized.current || isUserLoading || !user) {
       return;
     }
 
-    const fetchOnboarding = async () => {
+    hasInitialized.current = true;
+
+    async function initializeOnboarding() {
       try {
-        // For non-onboarding routes, we still need basic onboarding state for step completion
-        // but we can skip the expensive isOnboardingEnabled() check
+        // Check onboarding enabled only for onboarding routes
         if (isOnOnboardingRoute) {
-          // Only check if onboarding is enabled when user is actually on onboarding routes
           const enabled = await api.isOnboardingEnabled();
           if (!enabled) {
             router.push("/marketplace");
@@ -103,72 +112,41 @@ export default function OnboardingProvider({
           }
         }
 
-        // Always fetch user onboarding state for step completion functionality
         const onboarding = await api.getUserOnboarding();
+        if (!onboarding) return;
 
-        // Only update state if onboarding data is valid
-        if (onboarding) {
-          //todo kcze this is a patch because only TRIGGER_WEBHOOK is set on the backend and then overwritten by the frontend
-          const completeWebhook =
-            onboarding.rewardedFor.includes("TRIGGER_WEBHOOK") &&
-            !onboarding.completedSteps.includes("TRIGGER_WEBHOOK")
-              ? (["TRIGGER_WEBHOOK"] as OnboardingStep[])
-              : [];
+        const processedOnboarding = processOnboardingData(onboarding);
+        setState(processedOnboarding);
 
-          setState((prev) => ({
-            ...onboarding,
-            completedSteps: [...completeWebhook, ...onboarding.completedSteps],
-            lastRunAt: new Date(onboarding.lastRunAt || ""),
-            ...prev,
-          }));
-
-          // Only handle onboarding redirects when user is on onboarding routes
-          if (isOnOnboardingRoute) {
-            // Redirect outside onboarding if completed
-            // If user did CONGRATS step, that means they completed introductory onboarding
-            if (
-              onboarding.completedSteps &&
-              onboarding.completedSteps.includes("CONGRATS") &&
-              !pathname.startsWith("/onboarding/reset")
-            ) {
-              router.push("/marketplace");
-            }
-          }
+        // Handle redirects for completed onboarding
+        if (
+          isOnOnboardingRoute &&
+          shouldRedirectFromOnboarding(
+            processedOnboarding.completedSteps,
+            pathname,
+          )
+        ) {
+          router.push("/marketplace");
         }
       } catch (error) {
-        console.error("Failed to fetch onboarding data:", error);
-        // Don't update state on error to prevent null access issues
+        console.error("Failed to initialize onboarding:", error);
+        hasInitialized.current = false; // Allow retry on next render
       }
-    };
+    }
 
-    fetchOnboarding();
-  }, [api, isOnOnboardingRoute, router, user, isUserLoading]);
+    initializeOnboarding();
+  }, [api, isOnOnboardingRoute, router, user, isUserLoading, pathname]);
 
   const updateState = useCallback(
     (newState: Omit<Partial<UserOnboarding>, "rewardedFor">) => {
       setState((prev) => {
         if (!prev) {
-          // Handle initial state
-          return {
-            completedSteps: [],
-            walletShown: true,
-            notified: [],
-            rewardedFor: [],
-            usageReason: null,
-            integrations: [],
-            otherIntegrations: null,
-            selectedStoreListingVersionId: null,
-            agentInput: null,
-            onboardingAgentExecutionId: null,
-            agentRuns: 0,
-            lastRunAt: null,
-            consecutiveRunDays: 0,
-            ...newState,
-          };
+          return createInitialOnboardingState(newState);
         }
         return { ...prev, ...newState };
       });
-      // Make the API call asynchronously to not block render
+
+      // Async API update without blocking render
       setTimeout(() => {
         api.updateUserOnboarding(newState).catch((error) => {
           console.error("Failed to update user onboarding:", error);
@@ -180,75 +158,38 @@ export default function OnboardingProvider({
 
   const completeStep = useCallback(
     (step: OnboardingStep) => {
-      if (
-        !state ||
-        !state.completedSteps ||
-        state.completedSteps.includes(step)
-      )
-        return;
-
-      updateState({
-        completedSteps: [...state.completedSteps, step],
-      });
+      if (!state?.completedSteps?.includes(step)) {
+        updateState({
+          completedSteps: [...(state?.completedSteps || []), step],
+        });
+      }
     },
-    [state, updateState],
+    [state?.completedSteps, updateState],
   );
 
-  const isToday = useCallback((date: Date) => {
-    const today = new Date();
-
-    return (
-      date.getDate() === today.getDate() &&
-      date.getMonth() === today.getMonth() &&
-      date.getFullYear() === today.getFullYear()
-    );
-  }, []);
-
-  const isYesterday = useCallback((date: Date): boolean => {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-
-    return (
-      date.getDate() === yesterday.getDate() &&
-      date.getMonth() === yesterday.getMonth() &&
-      date.getFullYear() === yesterday.getFullYear()
-    );
-  }, []);
-
   const incrementRuns = useCallback(() => {
-    if (!state || !state.completedSteps) return;
+    if (!state?.completedSteps) return;
 
-    const tenRuns = state.agentRuns + 1 === 10;
-    const hundredRuns = state.agentRuns + 1 === 100;
-    // Calculate if it's a run on a consecutive day
-    // If the last run was yesterday, increment days
-    // Otherwise, if the last run was *not* today reset it (already checked that it wasn't yesterday at this point)
-    // Otherwise, don't do anything (the last run was today)
-    const consecutive =
-      state.lastRunAt === null || isYesterday(state.lastRunAt)
-        ? {
-            lastRunAt: new Date(),
-            consecutiveRunDays: state.consecutiveRunDays + 1,
-          }
-        : !isToday(state.lastRunAt)
-          ? { lastRunAt: new Date(), consecutiveRunDays: 1 }
-          : {};
+    const newRunCount = state.agentRuns + 1;
+    const consecutiveData = calculateConsecutiveDays(
+      state.lastRunAt,
+      state.consecutiveRunDays,
+    );
 
-    setNpsDialogOpen(tenRuns);
+    const milestoneSteps = getRunMilestoneSteps(
+      newRunCount,
+      consecutiveData.consecutiveRunDays,
+    );
+
+    // Show NPS dialog at 10 runs
+    if (newRunCount === 10) {
+      setNpsDialogOpen(true);
+    }
+
     updateState({
-      agentRuns: state.agentRuns + 1,
-      completedSteps: [
-        ...state.completedSteps,
-        ...(tenRuns ? (["RUN_AGENTS"] as OnboardingStep[]) : []),
-        ...(hundredRuns ? (["RUN_AGENTS_100"] as OnboardingStep[]) : []),
-        ...(consecutive.consecutiveRunDays === 3
-          ? (["RUN_3_DAYS"] as OnboardingStep[])
-          : []),
-        ...(consecutive.consecutiveRunDays === 14
-          ? (["RUN_14_DAYS"] as OnboardingStep[])
-          : []),
-      ],
-      ...consecutive,
+      agentRuns: newRunCount,
+      completedSteps: [...state.completedSteps, ...milestoneSteps],
+      ...consecutiveData,
     });
   }, [state, updateState]);
 
