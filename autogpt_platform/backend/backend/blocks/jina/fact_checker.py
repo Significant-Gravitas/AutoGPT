@@ -59,17 +59,28 @@ class FactCheckerBlock(Block):
         try:
             # Create timeout configuration
             timeout = aiohttp.ClientTimeout(total=input_data.timeout)
-            
+
             # Make the request with timeout
             # The Requests class already has retry logic for 429, 500, 502, 503, 504, 408
             response = await Requests().get(url, headers=headers, timeout=timeout)
-            data = response.json()
+
+            try:
+                data = response.json()
+            except Exception as e:
+                error_msg = f"Failed to parse JSON response: {str(e)}"
+                yield "error", error_msg
+                return
 
             if "data" in data:
                 data = data["data"]
-                yield "factuality", data["factuality"]
-                yield "result", data["result"]
-                yield "reason", data["reason"]
+                # Ensure all required fields exist before accessing them
+                try:
+                    yield "factuality", data["factuality"]
+                    yield "result", data["result"]
+                    yield "reason", data["reason"]
+                except KeyError as e:
+                    error_msg = f"Missing expected field in response: {str(e)}. Response data: {data}"
+                    yield "error", error_msg
             else:
                 error_msg = f"Unexpected response format. Expected 'data' key not found in response: {data}"
                 yield "error", error_msg
