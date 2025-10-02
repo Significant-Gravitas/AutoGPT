@@ -1,8 +1,9 @@
 from enum import Enum
-from typing import Literal
+from typing import Literal, Optional
 
 from e2b_code_interpreter import AsyncSandbox
-from pydantic import SecretStr
+from e2b_code_interpreter.charts import Chart as E2BExecutionResultChart
+from pydantic import BaseModel, JsonValue, SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import (
@@ -34,6 +35,37 @@ class ProgrammingLanguage(Enum):
     BASH = "bash"
     R = "r"
     JAVA = "java"
+
+
+class CodeExecutionResult(BaseModel):
+    """
+    *Pydantic model mirroring `e2b_code_interpreter.Result`*
+
+    Represents the data to be displayed as a result of executing a cell in a Jupyter notebook.
+    The result is similar to the structure returned by ipython kernel: https://ipython.readthedocs.io/en/stable/development/execution.html#execution-semantics
+
+    The result can contain multiple types of data, such as text, images, plots, etc. Each type of data is represented
+    as a string, and the result can contain multiple types of data. The display calls don't have to have text representation,
+    for the actual result the representation is always present for the result, the other representations are always optional.
+    """
+
+    class Chart(BaseModel, E2BExecutionResultChart):
+        pass
+
+    text: Optional[str] = None
+    html: Optional[str] = None
+    markdown: Optional[str] = None
+    svg: Optional[str] = None
+    png: Optional[str] = None
+    jpeg: Optional[str] = None
+    pdf: Optional[str] = None
+    latex: Optional[str] = None
+    json: Optional[JsonValue] = None  # type: ignore (reportIncompatibleMethodOverride)
+    javascript: Optional[str] = None
+    data: Optional[dict] = None
+    chart: Optional[Chart] = None
+    extra: Optional[dict] = None
+    """Extra data that can be included. Not part of the standard types."""
 
 
 class CodeExecutionBlock(Block):
@@ -87,7 +119,16 @@ class CodeExecutionBlock(Block):
         )
 
     class Output(BlockSchema):
-        response: str = SchemaField(description="Response from code execution")
+        main_result: CodeExecutionResult = SchemaField(
+            title="Main Result", description="The main result from the code execution"
+        )
+        results: list[CodeExecutionResult] = SchemaField(
+            description="List of results from the code execution"
+        )
+        response: str = SchemaField(
+            title="Main Text Output",
+            description="Text output (if any) of the main execution result",
+        )
         stdout_logs: str = SchemaField(
             description="Standard output logs from execution"
         )
@@ -111,14 +152,16 @@ class CodeExecutionBlock(Block):
                 "template_id": "",
             },
             test_output=[
+                ("results", []),
                 ("response", "Hello World"),
                 ("stdout_logs", "Hello World\n"),
             ],
             test_mock={
                 "execute_code": lambda code, language, setup_commands, timeout, api_key, template_id: (
-                    "Hello World",
-                    "Hello World\n",
-                    "",
+                    [],  # results
+                    "Hello World",  # text_output
+                    "Hello World\n",  # stdout_logs
+                    "",  # stderr_logs
                 ),
             },
         )
@@ -158,11 +201,12 @@ class CodeExecutionBlock(Block):
             if execution.error:
                 raise Exception(execution.error)
 
-            response = execution.text
+            results = execution.results
+            text_output = execution.text
             stdout_logs = "".join(execution.logs.stdout)
             stderr_logs = "".join(execution.logs.stderr)
 
-            return response, stdout_logs, stderr_logs
+            return results, text_output, stdout_logs, stderr_logs
 
         except Exception as e:
             raise e
@@ -171,7 +215,7 @@ class CodeExecutionBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            response, stdout_logs, stderr_logs = await self.execute_code(
+            results, text_output, stdout_logs, stderr_logs = await self.execute_code(
                 input_data.code,
                 input_data.language,
                 input_data.setup_commands,
@@ -180,8 +224,21 @@ class CodeExecutionBlock(Block):
                 input_data.template_id,
             )
 
-            if response:
-                yield "response", response
+            # Determine result object shape & filter out empty formats
+            results = [
+                {
+                    f: r[f]
+                    for f in [*r.formats(), "extra", "is_main_result"]
+                    if getattr(r, f, None) is not None
+                }
+                for r in results
+            ]
+            yield "results", results
+            for r in results:
+                if r.pop("is_main_result", False):
+                    yield "main_result", r
+            if text_output:
+                yield "response", text_output
             if stdout_logs:
                 yield "stdout_logs", stdout_logs
             if stderr_logs:
@@ -240,7 +297,10 @@ class InstantiationBlock(Block):
 
     class Output(BlockSchema):
         sandbox_id: str = SchemaField(description="ID of the sandbox instance")
-        response: str = SchemaField(description="Response from code execution")
+        response: str = SchemaField(
+            title="Text Result",
+            description="Text result (if any) of the setup code execution",
+        )
         stdout_logs: str = SchemaField(
             description="Standard output logs from execution"
         )
@@ -270,10 +330,10 @@ class InstantiationBlock(Block):
             ],
             test_mock={
                 "execute_code": lambda setup_code, language, setup_commands, timeout, api_key, template_id: (
-                    "sandbox_id",
-                    "Hello World",
-                    "Hello World\n",
-                    "",
+                    "sandbox_id",  # sandbox_id
+                    "Hello World",  # text_output
+                    "Hello World\n",  # stdout_logs
+                    "",  # stderr_logs
                 ),
             },
         )
@@ -282,7 +342,7 @@ class InstantiationBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            sandbox_id, response, stdout_logs, stderr_logs = await self.execute_code(
+            sandbox_id, text_output, stdout_logs, stderr_logs = await self.execute_code(
                 input_data.setup_code,
                 input_data.language,
                 input_data.setup_commands,
@@ -294,8 +354,9 @@ class InstantiationBlock(Block):
                 yield "sandbox_id", sandbox_id
             else:
                 yield "error", "Sandbox ID not found"
-            if response:
-                yield "response", response
+
+            if text_output:
+                yield "response", text_output
             if stdout_logs:
                 yield "stdout_logs", stdout_logs
             if stderr_logs:
@@ -338,11 +399,11 @@ class InstantiationBlock(Block):
             if execution.error:
                 raise Exception(execution.error)
 
-            response = execution.text
+            text_output = execution.text
             stdout_logs = "".join(execution.logs.stdout)
             stderr_logs = "".join(execution.logs.stderr)
 
-            return sandbox.sandbox_id, response, stdout_logs, stderr_logs
+            return sandbox.sandbox_id, text_output, stdout_logs, stderr_logs
 
         except Exception as e:
             raise e
@@ -375,7 +436,16 @@ class StepExecutionBlock(Block):
         )
 
     class Output(BlockSchema):
-        response: str = SchemaField(description="Response from code execution")
+        main_result: CodeExecutionResult = SchemaField(
+            title="Main Result", description="The main result from the code execution"
+        )
+        results: list[CodeExecutionResult] = SchemaField(
+            description="List of results from the code execution"
+        )
+        response: str = SchemaField(
+            title="Main Text Output",
+            description="Text output (if any) of the main execution result",
+        )
         stdout_logs: str = SchemaField(
             description="Standard output logs from execution"
         )
@@ -397,14 +467,16 @@ class StepExecutionBlock(Block):
                 "language": ProgrammingLanguage.PYTHON.value,
             },
             test_output=[
+                ("results", []),
                 ("response", "Hello World"),
                 ("stdout_logs", "Hello World\n"),
             ],
             test_mock={
                 "execute_step_code": lambda sandbox_id, step_code, language, api_key: (
-                    "Hello World",
-                    "Hello World\n",
-                    "",
+                    [],  # results
+                    "Hello World",  # text_output
+                    "Hello World\n",  # stdout_logs
+                    "",  # stderr_logs
                 ),
             },
         )
@@ -427,11 +499,12 @@ class StepExecutionBlock(Block):
             if execution.error:
                 raise Exception(execution.error)
 
-            response = execution.text
+            results = execution.results
+            text_output = execution.text
             stdout_logs = "".join(execution.logs.stdout)
             stderr_logs = "".join(execution.logs.stderr)
 
-            return response, stdout_logs, stderr_logs
+            return results, text_output, stdout_logs, stderr_logs
 
         except Exception as e:
             raise e
@@ -440,15 +513,30 @@ class StepExecutionBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            response, stdout_logs, stderr_logs = await self.execute_step_code(
-                input_data.sandbox_id,
-                input_data.step_code,
-                input_data.language,
-                credentials.api_key.get_secret_value(),
+            results, text_output, stdout_logs, stderr_logs = (
+                await self.execute_step_code(
+                    input_data.sandbox_id,
+                    input_data.step_code,
+                    input_data.language,
+                    credentials.api_key.get_secret_value(),
+                )
             )
 
-            if response:
-                yield "response", response
+            # Determine result object shape & filter out empty formats
+            results = [
+                {
+                    f: r[f]
+                    for f in [*r.formats(), "extra", "is_main_result"]
+                    if getattr(r, f, None) is not None
+                }
+                for r in results
+            ]
+            yield "results", results
+            for r in results:
+                if r.pop("is_main_result", False):
+                    yield "main_result", r
+            if text_output:
+                yield "response", text_output
             if stdout_logs:
                 yield "stdout_logs", stdout_logs
             if stderr_logs:

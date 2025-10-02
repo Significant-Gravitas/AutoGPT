@@ -1,8 +1,10 @@
 import re
+from datetime import datetime
 from typing import Any, Optional
 
 import prisma
 import pydantic
+from autogpt_libs.utils.cache import cached
 from prisma.enums import OnboardingStep
 from prisma.models import UserOnboarding
 from prisma.types import UserOnboardingCreateInput, UserOnboardingUpdateInput
@@ -30,7 +32,7 @@ user_credit = get_user_credit_model()
 
 class UserOnboardingUpdate(pydantic.BaseModel):
     completedSteps: Optional[list[OnboardingStep]] = None
-    notificationDot: Optional[bool] = None
+    walletShown: Optional[bool] = None
     notified: Optional[list[OnboardingStep]] = None
     usageReason: Optional[str] = None
     integrations: Optional[list[str]] = None
@@ -39,6 +41,8 @@ class UserOnboardingUpdate(pydantic.BaseModel):
     agentInput: Optional[dict[str, Any]] = None
     onboardingAgentExecutionId: Optional[str] = None
     agentRuns: Optional[int] = None
+    lastRunAt: Optional[datetime] = None
+    consecutiveRunDays: Optional[int] = None
 
 
 async def get_user_onboarding(user_id: str):
@@ -57,16 +61,22 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
         update["completedSteps"] = list(set(data.completedSteps))
         for step in (
             OnboardingStep.AGENT_NEW_RUN,
-            OnboardingStep.RUN_AGENTS,
+            OnboardingStep.MARKETPLACE_VISIT,
             OnboardingStep.MARKETPLACE_ADD_AGENT,
             OnboardingStep.MARKETPLACE_RUN_AGENT,
             OnboardingStep.BUILDER_SAVE_AGENT,
-            OnboardingStep.BUILDER_RUN_AGENT,
+            OnboardingStep.RE_RUN_AGENT,
+            OnboardingStep.SCHEDULE_AGENT,
+            OnboardingStep.RUN_AGENTS,
+            OnboardingStep.RUN_3_DAYS,
+            OnboardingStep.TRIGGER_WEBHOOK,
+            OnboardingStep.RUN_14_DAYS,
+            OnboardingStep.RUN_AGENTS_100,
         ):
             if step in data.completedSteps:
                 await reward_user(user_id, step)
-    if data.notificationDot is not None:
-        update["notificationDot"] = data.notificationDot
+    if data.walletShown is not None:
+        update["walletShown"] = data.walletShown
     if data.notified is not None:
         update["notified"] = list(set(data.notified))
     if data.usageReason is not None:
@@ -83,6 +93,10 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
         update["onboardingAgentExecutionId"] = data.onboardingAgentExecutionId
     if data.agentRuns is not None:
         update["agentRuns"] = data.agentRuns
+    if data.lastRunAt is not None:
+        update["lastRunAt"] = data.lastRunAt
+    if data.consecutiveRunDays is not None:
+        update["consecutiveRunDays"] = data.consecutiveRunDays
 
     return await UserOnboarding.prisma().upsert(
         where={"userId": user_id},
@@ -101,16 +115,28 @@ async def reward_user(user_id: str, step: OnboardingStep):
         # This is seen as a reward for the GET_RESULTS step in the wallet
         case OnboardingStep.AGENT_NEW_RUN:
             reward = 300
-        case OnboardingStep.RUN_AGENTS:
-            reward = 300
+        case OnboardingStep.MARKETPLACE_VISIT:
+            reward = 100
         case OnboardingStep.MARKETPLACE_ADD_AGENT:
             reward = 100
         case OnboardingStep.MARKETPLACE_RUN_AGENT:
             reward = 100
         case OnboardingStep.BUILDER_SAVE_AGENT:
             reward = 100
-        case OnboardingStep.BUILDER_RUN_AGENT:
+        case OnboardingStep.RE_RUN_AGENT:
             reward = 100
+        case OnboardingStep.SCHEDULE_AGENT:
+            reward = 100
+        case OnboardingStep.RUN_AGENTS:
+            reward = 300
+        case OnboardingStep.RUN_3_DAYS:
+            reward = 100
+        case OnboardingStep.TRIGGER_WEBHOOK:
+            reward = 100
+        case OnboardingStep.RUN_14_DAYS:
+            reward = 300
+        case OnboardingStep.RUN_AGENTS_100:
+            reward = 300
 
     if reward == 0:
         return
@@ -130,6 +156,22 @@ async def reward_user(user_id: str, step: OnboardingStep):
             "rewardedFor": onboarding.rewardedFor,
         },
     )
+
+
+async def complete_webhook_trigger_step(user_id: str):
+    """
+    Completes the TRIGGER_WEBHOOK onboarding step for the user if not already completed.
+    """
+
+    onboarding = await get_user_onboarding(user_id)
+    if OnboardingStep.TRIGGER_WEBHOOK not in onboarding.completedSteps:
+        await update_user_onboarding(
+            user_id,
+            UserOnboardingUpdate(
+                completedSteps=onboarding.completedSteps
+                + [OnboardingStep.TRIGGER_WEBHOOK]
+            ),
+        )
 
 
 def clean_and_split(text: str) -> list[str]:
@@ -333,8 +375,13 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
     ]
 
 
+@cached(maxsize=1, ttl_seconds=300)  # Cache for 5 minutes since this rarely changes
 async def onboarding_enabled() -> bool:
+    """
+    Check if onboarding should be enabled based on store agent count.
+    Cached to prevent repeated slow database queries.
+    """
+    # Use a more efficient query that stops counting after finding enough agents
     count = await prisma.models.StoreAgent.prisma().count(take=MIN_AGENT_COUNT + 1)
-
-    # Onboading is enabled if there are at least 2 agents in the store
+    # Onboarding is enabled if there are at least 2 agents in the store
     return count >= MIN_AGENT_COUNT
