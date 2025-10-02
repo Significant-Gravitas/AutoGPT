@@ -3,6 +3,8 @@ import threading
 from pathlib import Path
 from typing import Any
 
+import regex  # Has built-in timeout support
+
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 from backend.util import json, text
@@ -164,33 +166,59 @@ class ExtractTextInformationBlock(Block):
             r".*\*.*\*",  # Nested quantifiers
             r"(?=.*\+)",  # Lookahead with quantifier
             r"(?=.*\*)",  # Lookahead with quantifier
+            r"\(.+\)\+",  # Group with nested quantifier
+            r"\(.+\)\*",  # Group with nested quantifier
+            r"\([^)]+\+\)\+",  # Nested quantifiers like (a+)+
+            r"\([^)]+\*\)\*",  # Nested quantifiers like (a*)*
         ]
 
-        timer = None
-        for dangerous in dangerous_patterns:
-            if re.search(dangerous, input_data.pattern):
-                # Limit execution time for potentially dangerous patterns
-                def timeout_handler():
-                    raise TimeoutError("Regex execution timeout")
+        # Check if pattern is potentially dangerous
+        is_dangerous = any(
+            re.search(dangerous, input_data.pattern) for dangerous in dangerous_patterns
+        )
 
-                # Use threading timer for timeout (5 seconds max)
-                timer = threading.Timer(5.0, timeout_handler)
-                timer.start()
-                break
-
+        # Use regex module with timeout for dangerous patterns
+        # For safe patterns, use standard re module for compatibility
         try:
             matches = []
             match_count = 0
-            for match in re.finditer(input_data.pattern, txt, flags):
-                if match_count >= MAX_MATCHES:
-                    break
-                if input_data.group <= len(match.groups()):
-                    match_text = match.group(input_data.group)
-                    # Limit match length to prevent memory exhaustion
-                    if len(match_text) > MAX_MATCH_LENGTH:
-                        match_text = match_text[:MAX_MATCH_LENGTH]
-                    matches.append(match_text)
-                    match_count += 1
+
+            if is_dangerous:
+                # Use regex module with timeout (5 seconds) for dangerous patterns
+                # The regex module supports timeout parameter in finditer
+                try:
+                    for match in regex.finditer(
+                        input_data.pattern, txt, flags=flags, timeout=5.0
+                    ):
+                        if match_count >= MAX_MATCHES:
+                            break
+                        if input_data.group <= len(match.groups()):
+                            match_text = match.group(input_data.group)
+                            # Limit match length to prevent memory exhaustion
+                            if len(match_text) > MAX_MATCH_LENGTH:
+                                match_text = match_text[:MAX_MATCH_LENGTH]
+                            matches.append(match_text)
+                            match_count += 1
+                except regex.error as e:
+                    # Timeout occurred or regex error
+                    if "timeout" in str(e).lower():
+                        # Timeout - return empty results
+                        pass
+                    else:
+                        # Other regex error
+                        raise
+            else:
+                # Use standard re module for non-dangerous patterns
+                for match in re.finditer(input_data.pattern, txt, flags):
+                    if match_count >= MAX_MATCHES:
+                        break
+                    if input_data.group <= len(match.groups()):
+                        match_text = match.group(input_data.group)
+                        # Limit match length to prevent memory exhaustion
+                        if len(match_text) > MAX_MATCH_LENGTH:
+                            match_text = match_text[:MAX_MATCH_LENGTH]
+                        matches.append(match_text)
+                        match_count += 1
 
             if not input_data.find_all:
                 matches = matches[:1]
@@ -202,15 +230,11 @@ class ExtractTextInformationBlock(Block):
 
             yield "matched_results", matches
             yield "matched_count", len(matches)
-        except TimeoutError:
-            # Return empty results on timeout
+        except Exception as e:
+            # Return empty results on any regex error
             yield "negative", input_data.text
             yield "matched_results", []
             yield "matched_count", 0
-        finally:
-            # Cancel timer if it exists
-            if timer is not None:
-                timer.cancel()
 
 
 class FillTextTemplateBlock(Block):
