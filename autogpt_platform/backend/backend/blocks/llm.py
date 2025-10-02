@@ -101,6 +101,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     CLAUDE_4_1_OPUS = "claude-opus-4-1-20250805"
     CLAUDE_4_OPUS = "claude-opus-4-20250514"
     CLAUDE_4_SONNET = "claude-sonnet-4-20250514"
+    CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"
     CLAUDE_3_7_SONNET = "claude-3-7-sonnet-20250219"
     CLAUDE_3_5_SONNET = "claude-3-5-sonnet-latest"
     CLAUDE_3_5_HAIKU = "claude-3-5-haiku-latest"
@@ -213,6 +214,9 @@ MODEL_METADATA = {
     LlmModel.CLAUDE_4_SONNET: ModelMetadata(
         "anthropic", 200000, 64000
     ),  # claude-4-sonnet-20250514
+    LlmModel.CLAUDE_4_5_SONNET: ModelMetadata(
+        "anthropic", 200000, 64000
+    ),  # claude-sonnet-4-5-20250929
     LlmModel.CLAUDE_3_7_SONNET: ModelMetadata(
         "anthropic", 200000, 64000
     ),  # claude-3-7-sonnet-20250219

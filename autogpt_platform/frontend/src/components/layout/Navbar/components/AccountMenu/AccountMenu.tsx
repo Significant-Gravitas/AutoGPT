@@ -40,7 +40,7 @@ export function AccountMenu({
           aria-haspopup="true"
           data-testid="profile-popout-menu-trigger"
         >
-          <Avatar className="h-10 w-10">
+          <Avatar>
             <AvatarImage src={avatarSrc} alt="" aria-hidden="true" />
             <AvatarFallback aria-hidden="true">
               {userName?.charAt(0) || "U"}

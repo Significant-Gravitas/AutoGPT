@@ -16,6 +16,7 @@ import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutio
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 
 export type RunVariant =
   | "manual"
@@ -48,6 +49,7 @@ export function useAgentRunModal(
   const [cronExpression, setCronExpression] = useState(
     agent.recommended_schedule_cron || "0 9 * * 1",
   );
+  const { completeStep: completeOnboardingStep } = useOnboarding();
 
   // Get user timezone for scheduling
   const { data: userTimezone } = useGetV1GetUserTimezone({
@@ -319,6 +321,8 @@ export function useAgentRunModal(
           userTimezone && userTimezone !== "not-set" ? userTimezone : undefined,
       },
     });
+
+    completeOnboardingStep("SCHEDULE_AGENT");
   }, [
     allRequiredInputsAreSet,
     scheduleName,
