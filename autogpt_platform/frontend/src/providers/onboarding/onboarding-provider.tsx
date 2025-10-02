@@ -82,14 +82,28 @@ export default function OnboardingProvider({
   // Automatically detect and set timezone for new users during onboarding
   useOnboardingTimezoneDetection();
 
+  const isOnOnboardingRoute = pathname.startsWith("/onboarding");
+
   useEffect(() => {
+    // Only run heavy onboarding API calls if user is logged in and not loading
+    if (isUserLoading || !user) {
+      return;
+    }
+
     const fetchOnboarding = async () => {
       try {
-        const enabled = await api.isOnboardingEnabled();
-        if (!enabled && pathname.startsWith("/onboarding")) {
-          router.push("/marketplace");
-          return;
+        // For non-onboarding routes, we still need basic onboarding state for step completion
+        // but we can skip the expensive isOnboardingEnabled() check
+        if (isOnOnboardingRoute) {
+          // Only check if onboarding is enabled when user is actually on onboarding routes
+          const enabled = await api.isOnboardingEnabled();
+          if (!enabled) {
+            router.push("/marketplace");
+            return;
+          }
         }
+
+        // Always fetch user onboarding state for step completion functionality
         const onboarding = await api.getUserOnboarding();
 
         // Only update state if onboarding data is valid
@@ -108,15 +122,17 @@ export default function OnboardingProvider({
             ...prev,
           }));
 
-          // Redirect outside onboarding if completed
-          // If user did CONGRATS step, that means they completed introductory onboarding
-          if (
-            onboarding.completedSteps &&
-            onboarding.completedSteps.includes("CONGRATS") &&
-            pathname.startsWith("/onboarding") &&
-            !pathname.startsWith("/onboarding/reset")
-          ) {
-            router.push("/marketplace");
+          // Only handle onboarding redirects when user is on onboarding routes
+          if (isOnOnboardingRoute) {
+            // Redirect outside onboarding if completed
+            // If user did CONGRATS step, that means they completed introductory onboarding
+            if (
+              onboarding.completedSteps &&
+              onboarding.completedSteps.includes("CONGRATS") &&
+              !pathname.startsWith("/onboarding/reset")
+            ) {
+              router.push("/marketplace");
+            }
           }
         }
       } catch (error) {
@@ -124,11 +140,9 @@ export default function OnboardingProvider({
         // Don't update state on error to prevent null access issues
       }
     };
-    if (isUserLoading || !user) {
-      return;
-    }
+
     fetchOnboarding();
-  }, [api, pathname, router, user, isUserLoading]);
+  }, [api, isOnOnboardingRoute, router, user, isUserLoading]);
 
   const updateState = useCallback(
     (newState: Omit<Partial<UserOnboarding>, "rewardedFor">) => {

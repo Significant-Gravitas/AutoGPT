@@ -11,14 +11,45 @@ async function shouldShowOnboarding() {
   );
 }
 
-// Validate redirect URL to prevent open redirect attacks
+// Default redirect path - matches the home page redirect destination
+const DEFAULT_REDIRECT_PATH = "/marketplace";
+
+// Validate redirect URL to prevent open redirect attacks and malformed URLs
 function validateRedirectUrl(url: string): string {
-  // Only allow relative URLs that start with /
-  if (url.startsWith("/") && !url.startsWith("//")) {
-    return url;
+  try {
+    const cleanUrl = url.trim();
+
+    // Check for completely invalid patterns that suggest URL corruption
+    if (
+      cleanUrl.includes(",") || // Any comma suggests concatenated URLs
+      cleanUrl.includes(" ") // Spaces in URLs are problematic
+    ) {
+      console.warn(
+        "Detected corrupted redirect URL (likely race condition):",
+        cleanUrl,
+      );
+      return DEFAULT_REDIRECT_PATH;
+    }
+
+    // Only allow relative URLs that start with /
+    if (!cleanUrl.startsWith("/") || cleanUrl.startsWith("//")) {
+      console.warn("Invalid redirect URL format:", cleanUrl);
+      return DEFAULT_REDIRECT_PATH;
+    }
+
+    // Additional safety checks
+    if (cleanUrl.split("/").length > 5) {
+      // Reasonable path depth limit
+      console.warn("Suspiciously deep redirect URL:", cleanUrl);
+      return DEFAULT_REDIRECT_PATH;
+    }
+
+    // For now, allow any valid relative path (can be restricted later if needed)
+    return cleanUrl;
+  } catch (error) {
+    console.error("Error validating redirect URL:", error);
+    return DEFAULT_REDIRECT_PATH;
   }
-  // Default to home page for any invalid URLs
-  return "/";
 }
 
 // Handle the callback to complete the user session login
