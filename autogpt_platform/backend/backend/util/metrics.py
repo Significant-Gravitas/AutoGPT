@@ -40,6 +40,29 @@ def sentry_capture_error(error: BaseException):
     sentry_sdk.flush()
 
 
+def _truncate_discord_content(content: str, max_length: int = 4000) -> str:
+    """
+    Truncate content to fit Discord's limits.
+
+    Discord has a 4096 character limit for embed descriptions and 2000 for messages.
+    We use 4000 as a safe default to account for any overhead.
+
+    Args:
+        content: The content to truncate
+        max_length: Maximum length (default 4000)
+
+    Returns:
+        Truncated content with ellipsis if needed
+    """
+    if len(content) <= max_length:
+        return content
+
+    # Truncate and add indication
+    truncated = content[: max_length - 100]  # Leave room for truncation message
+    truncated += f"\n\n... (truncated {len(content) - len(truncated)} characters)"
+    return truncated
+
+
 async def discord_send_alert(
     content: str, channel: DiscordChannel = DiscordChannel.PLATFORM
 ):
@@ -61,6 +84,9 @@ async def discord_send_alert(
     else:
         channel_name = settings.config.platform_alert_discord_channel
 
+    # Truncate content to fit Discord's limits
+    truncated_content = _truncate_discord_content(content)
+
     return await SendDiscordMessageBlock().run_once(
         SendDiscordMessageBlock.Input(
             credentials=CredentialsMetaInput(
@@ -69,7 +95,7 @@ async def discord_send_alert(
                 type=creds.type,
                 provider=ProviderName.DISCORD,
             ),
-            message_content=content,
+            message_content=truncated_content,
             channel_name=channel_name,
         ),
         "status",
