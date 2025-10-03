@@ -12,7 +12,6 @@ from typing import Any, Iterable, List, Literal, NamedTuple, Optional
 import anthropic
 import ollama
 import openai
-from anthropic.types import ToolParam
 from groq import AsyncGroq
 from pydantic import BaseModel, SecretStr
 
@@ -327,7 +326,7 @@ class LLMResponse(BaseModel):
 
 def convert_openai_tool_fmt_to_anthropic(
     openai_tools: list[dict] | None = None,
-) -> Iterable[ToolParam] | anthropic.NotGiven:
+):
     """
     Convert OpenAI tool format to Anthropic tool format.
     """
@@ -343,7 +342,7 @@ def convert_openai_tool_fmt_to_anthropic(
             # Handle case where tool is just the function definition
             function_data = tool
 
-        anthropic_tool: anthropic.types.ToolParam = {
+        anthropic_tool = {
             "name": function_data["name"],
             "description": function_data.get("description", ""),
             "input_schema": {
@@ -506,14 +505,20 @@ async def llm_call(
             api_key=credentials.api_key.get_secret_value()
         )
         try:
-            resp = await client.messages.create(
-                model=llm_model.value,
-                system=sysprompt,
-                messages=messages,
-                max_tokens=max_tokens,
-                tools=an_tools,
-                timeout=600,
-            )
+            # Build the parameters for the create call
+            create_params = {
+                "model": llm_model.value,
+                "system": sysprompt,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "timeout": 600,
+            }
+
+            # Only add tools if they exist
+            if an_tools is not anthropic.NOT_GIVEN:
+                create_params["tools"] = an_tools
+
+            resp = await client.messages.create(**create_params)
 
             if not resp.content:
                 raise ValueError("No content returned from Anthropic.")
