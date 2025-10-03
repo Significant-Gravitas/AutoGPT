@@ -98,7 +98,7 @@ class Profile(pydantic.BaseModel):
 
 
 class StoreSubmission(pydantic.BaseModel):
-    user_id: str
+    user_id: str = pydantic.Field(default="", exclude=True)
     agent_id: str
     agent_version: int
     name: str
