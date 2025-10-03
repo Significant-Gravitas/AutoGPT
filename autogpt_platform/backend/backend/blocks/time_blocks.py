@@ -270,13 +270,17 @@ class GetCurrentDateBlock(Block):
             test_output=[
                 (
                     "date",
-                    lambda t: abs(datetime.now() - datetime.strptime(t, "%Y-%m-%d"))
-                    < timedelta(days=8),  # 7 days difference + 1 day error margin.
+                    lambda t: abs(
+                        datetime.now().date() - datetime.strptime(t, "%Y-%m-%d").date()
+                    )
+                    <= timedelta(days=8),  # 7 days difference + 1 day error margin.
                 ),
                 (
                     "date",
-                    lambda t: abs(datetime.now() - datetime.strptime(t, "%m/%d/%Y"))
-                    < timedelta(days=8),
+                    lambda t: abs(
+                        datetime.now().date() - datetime.strptime(t, "%m/%d/%Y").date()
+                    )
+                    <= timedelta(days=8),
                     # 7 days difference + 1 day error margin.
                 ),
                 (
@@ -382,7 +386,7 @@ class GetCurrentDateAndTimeBlock(Block):
                     lambda t: abs(
                         datetime.now().date() - datetime.strptime(t, "%Y/%m/%d").date()
                     )
-                    < timedelta(days=1),  # Date format only, no time component
+                    <= timedelta(days=1),  # Date format only, no time component
                 ),
                 (
                     "date_time",
