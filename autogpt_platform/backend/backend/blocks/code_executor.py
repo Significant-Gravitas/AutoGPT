@@ -1,7 +1,8 @@
 from enum import Enum
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from e2b_code_interpreter import AsyncSandbox
+from e2b_code_interpreter import Result as E2BExecutionResult
 from e2b_code_interpreter.charts import Chart as E2BExecutionResultChart
 from pydantic import BaseModel, JsonValue, SecretStr
 
@@ -37,7 +38,7 @@ class ProgrammingLanguage(Enum):
     JAVA = "java"
 
 
-class CodeExecutionResult(BaseModel):
+class MainCodeExecutionResult(BaseModel):
     """
     *Pydantic model mirroring `e2b_code_interpreter.Result`*
 
@@ -47,7 +48,7 @@ class CodeExecutionResult(BaseModel):
     The result can contain multiple types of data, such as text, images, plots, etc. Each type of data is represented
     as a string, and the result can contain multiple types of data. The display calls don't have to have text representation,
     for the actual result the representation is always present for the result, the other representations are always optional.
-    """
+    """  # noqa
 
     class Chart(BaseModel, E2BExecutionResultChart):
         pass
@@ -68,14 +69,104 @@ class CodeExecutionResult(BaseModel):
     """Extra data that can be included. Not part of the standard types."""
 
 
-class CodeExecutionBlock(Block):
+class CodeExecutionResult(MainCodeExecutionResult):
+    __doc__ = MainCodeExecutionResult.__doc__
+
+    is_main_result: bool = False
+    """Whether this data is the main result of the cell. Data can be produced by display calls of which can be multiple in a cell."""  # noqa
+
+
+class BaseE2BExecutorMixin:
+    """Shared implementation methods for E2B executor blocks."""
+
+    async def execute_code(
+        self,
+        api_key: str,
+        code: str,
+        language: ProgrammingLanguage,
+        template_id: str = "",
+        setup_commands: Optional[list[str]] = None,
+        timeout: Optional[int] = None,
+        sandbox_id: Optional[str] = None,
+        dispose_sandbox: bool = False,
+    ):
+        """
+        Unified code execution method that handles all three use cases:
+        1. Create new sandbox and execute (ExecuteCodeBlock)
+        2. Create new sandbox, execute, and return sandbox_id (InstantiateCodeSandboxBlock)
+        3. Connect to existing sandbox and execute (ExecuteCodeStepBlock)
+        """  # noqa
+        sandbox = None
+        try:
+            if sandbox_id:
+                # Connect to existing sandbox (ExecuteCodeStepBlock case)
+                sandbox = await AsyncSandbox.connect(
+                    sandbox_id=sandbox_id, api_key=api_key
+                )
+            else:
+                # Create new sandbox (ExecuteCodeBlock/InstantiateCodeSandboxBlock case)
+                sandbox = await AsyncSandbox.create(
+                    api_key=api_key, template=template_id, timeout=timeout
+                )
+                if setup_commands:
+                    for cmd in setup_commands:
+                        await sandbox.commands.run(cmd)
+
+            # Execute the code
+            execution = await sandbox.run_code(
+                code,
+                language=language.value,
+                on_error=lambda e: sandbox.kill(),  # Kill the sandbox on error
+            )
+
+            if execution.error:
+                raise Exception(execution.error)
+
+            results = execution.results
+            text_output = execution.text
+            stdout_logs = "".join(execution.logs.stdout)
+            stderr_logs = "".join(execution.logs.stderr)
+
+            return results, text_output, stdout_logs, stderr_logs, sandbox.sandbox_id
+        finally:
+            # Dispose of sandbox if requested to reduce usage costs
+            if dispose_sandbox and sandbox:
+                await sandbox.kill()
+
+    def process_execution_results(
+        self, results: list[E2BExecutionResult]
+    ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+        """Process and filter execution results."""
+        # Filter out empty formats and convert to dicts
+        processed_results = [
+            {
+                f: value
+                for f in [*r.formats(), "extra", "is_main_result"]
+                if (value := getattr(r, f, None)) is not None
+            }
+            for r in results
+        ]
+        if main_result := next(
+            (r for r in processed_results if r.get("is_main_result")), None
+        ):
+            # Make main_result a copy we can modify & remove is_main_result
+            (main_result := {**main_result}).pop("is_main_result")
+
+        return main_result, processed_results
+
+
+class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
     # TODO : Add support to upload and download files
-    # Currently, You can customized the CPU and Memory, only by creating a pre customized sandbox template
+    # NOTE: Currently, you can only customize the CPU and Memory
+    #       by creating a pre customized sandbox template
     class Input(BlockSchema):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.E2B], Literal["api_key"]
         ] = CredentialsField(
-            description="Enter your api key for the E2B Sandbox. You can get it in here - https://e2b.dev/docs",
+            description=(
+                "Enter your API key for the E2B platform. "
+                "You can get it in here - https://e2b.dev/docs"
+            ),
         )
 
         # Todo : Option to run commond in background
@@ -108,6 +199,14 @@ class CodeExecutionBlock(Block):
             description="Execution timeout in seconds", default=300
         )
 
+        dispose_sandbox: bool = SchemaField(
+            description=(
+                "Whether to dispose of the sandbox immediately after execution. "
+                "If disabled, the sandbox will run until its timeout expires."
+            ),
+            default=True,
+        )
+
         template_id: str = SchemaField(
             description=(
                 "You can use an E2B sandbox template by entering its ID here. "
@@ -119,7 +218,7 @@ class CodeExecutionBlock(Block):
         )
 
     class Output(BlockSchema):
-        main_result: CodeExecutionResult = SchemaField(
+        main_result: MainCodeExecutionResult = SchemaField(
             title="Main Result", description="The main result from the code execution"
         )
         results: list[CodeExecutionResult] = SchemaField(
@@ -138,10 +237,10 @@ class CodeExecutionBlock(Block):
     def __init__(self):
         super().__init__(
             id="0b02b072-abe7-11ef-8372-fb5d162dd712",
-            description="Executes code in an isolated sandbox environment with internet access.",
+            description="Executes code in a sandbox environment with internet access.",
             categories={BlockCategory.DEVELOPER_TOOLS},
-            input_schema=CodeExecutionBlock.Input,
-            output_schema=CodeExecutionBlock.Output,
+            input_schema=ExecuteCodeBlock.Input,
+            output_schema=ExecuteCodeBlock.Output,
             test_credentials=TEST_CREDENTIALS,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -157,102 +256,54 @@ class CodeExecutionBlock(Block):
                 ("stdout_logs", "Hello World\n"),
             ],
             test_mock={
-                "execute_code": lambda code, language, setup_commands, timeout, api_key, template_id: (
+                "execute_code": lambda api_key, code, language, template_id, setup_commands, timeout, dispose_sandbox: (  # noqa
                     [],  # results
                     "Hello World",  # text_output
                     "Hello World\n",  # stdout_logs
                     "",  # stderr_logs
+                    "sandbox_id",  # sandbox_id
                 ),
             },
         )
-
-    async def execute_code(
-        self,
-        code: str,
-        language: ProgrammingLanguage,
-        setup_commands: list[str],
-        timeout: int,
-        api_key: str,
-        template_id: str,
-    ):
-        try:
-            sandbox = None
-            if template_id:
-                sandbox = await AsyncSandbox.create(
-                    template=template_id, api_key=api_key, timeout=timeout
-                )
-            else:
-                sandbox = await AsyncSandbox.create(api_key=api_key, timeout=timeout)
-
-            if not sandbox:
-                raise Exception("Sandbox not created")
-
-            # Running setup commands
-            for cmd in setup_commands:
-                await sandbox.commands.run(cmd)
-
-            # Executing the code
-            execution = await sandbox.run_code(
-                code,
-                language=language.value,
-                on_error=lambda e: sandbox.kill(),  # Kill the sandbox if there is an error
-            )
-
-            if execution.error:
-                raise Exception(execution.error)
-
-            results = execution.results
-            text_output = execution.text
-            stdout_logs = "".join(execution.logs.stdout)
-            stderr_logs = "".join(execution.logs.stderr)
-
-            return results, text_output, stdout_logs, stderr_logs
-
-        except Exception as e:
-            raise e
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            results, text_output, stdout_logs, stderr_logs = await self.execute_code(
-                input_data.code,
-                input_data.language,
-                input_data.setup_commands,
-                input_data.timeout,
-                credentials.api_key.get_secret_value(),
-                input_data.template_id,
+            results, text_output, stdout, stderr, _ = await self.execute_code(
+                api_key=credentials.api_key.get_secret_value(),
+                code=input_data.code,
+                language=input_data.language,
+                template_id=input_data.template_id,
+                setup_commands=input_data.setup_commands,
+                timeout=input_data.timeout,
+                dispose_sandbox=input_data.dispose_sandbox,
             )
 
             # Determine result object shape & filter out empty formats
-            results = [
-                {
-                    f: r[f]
-                    for f in [*r.formats(), "extra", "is_main_result"]
-                    if getattr(r, f, None) is not None
-                }
-                for r in results
-            ]
+            main_result, results = self.process_execution_results(results)
+            if main_result:
+                yield "main_result", main_result
             yield "results", results
-            for r in results:
-                if r.pop("is_main_result", False):
-                    yield "main_result", r
             if text_output:
                 yield "response", text_output
-            if stdout_logs:
-                yield "stdout_logs", stdout_logs
-            if stderr_logs:
-                yield "stderr_logs", stderr_logs
+            if stdout:
+                yield "stdout_logs", stdout
+            if stderr:
+                yield "stderr_logs", stderr
         except Exception as e:
             yield "error", str(e)
 
 
-class InstantiationBlock(Block):
+class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
     class Input(BlockSchema):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.E2B], Literal["api_key"]
         ] = CredentialsField(
-            description="Enter your api key for the E2B Sandbox. You can get it in here - https://e2b.dev/docs",
+            description=(
+                "Enter your API key for the E2B platform. "
+                "You can get it in here - https://e2b.dev/docs"
+            )
         )
 
         # Todo : Option to run commond in background
@@ -310,10 +361,13 @@ class InstantiationBlock(Block):
     def __init__(self):
         super().__init__(
             id="ff0861c9-1726-4aec-9e5b-bf53f3622112",
-            description="Instantiate an isolated sandbox environment with internet access where to execute code in.",
+            description=(
+                "Instantiate a sandbox environment with internet access "
+                "in which you can execute code with the Execute Code Step block."
+            ),
             categories={BlockCategory.DEVELOPER_TOOLS},
-            input_schema=InstantiationBlock.Input,
-            output_schema=InstantiationBlock.Output,
+            input_schema=InstantiateCodeSandboxBlock.Input,
+            output_schema=InstantiateCodeSandboxBlock.Output,
             test_credentials=TEST_CREDENTIALS,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -329,11 +383,12 @@ class InstantiationBlock(Block):
                 ("stdout_logs", "Hello World\n"),
             ],
             test_mock={
-                "execute_code": lambda setup_code, language, setup_commands, timeout, api_key, template_id: (
-                    "sandbox_id",  # sandbox_id
+                "execute_code": lambda api_key, code, language, template_id, setup_commands, timeout: (  # noqa
+                    [],  # results
                     "Hello World",  # text_output
                     "Hello World\n",  # stdout_logs
                     "",  # stderr_logs
+                    "sandbox_id",  # sandbox_id
                 ),
             },
         )
@@ -342,13 +397,13 @@ class InstantiationBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            sandbox_id, text_output, stdout_logs, stderr_logs = await self.execute_code(
-                input_data.setup_code,
-                input_data.language,
-                input_data.setup_commands,
-                input_data.timeout,
-                credentials.api_key.get_secret_value(),
-                input_data.template_id,
+            _, text_output, stdout, stderr, sandbox_id = await self.execute_code(
+                api_key=credentials.api_key.get_secret_value(),
+                code=input_data.setup_code,
+                language=input_data.language,
+                template_id=input_data.template_id,
+                setup_commands=input_data.setup_commands,
+                timeout=input_data.timeout,
             )
             if sandbox_id:
                 yield "sandbox_id", sandbox_id
@@ -357,64 +412,23 @@ class InstantiationBlock(Block):
 
             if text_output:
                 yield "response", text_output
-            if stdout_logs:
-                yield "stdout_logs", stdout_logs
-            if stderr_logs:
-                yield "stderr_logs", stderr_logs
+            if stdout:
+                yield "stdout_logs", stdout
+            if stderr:
+                yield "stderr_logs", stderr
         except Exception as e:
             yield "error", str(e)
 
-    async def execute_code(
-        self,
-        code: str,
-        language: ProgrammingLanguage,
-        setup_commands: list[str],
-        timeout: int,
-        api_key: str,
-        template_id: str,
-    ):
-        try:
-            sandbox = None
-            if template_id:
-                sandbox = await AsyncSandbox.create(
-                    template=template_id, api_key=api_key, timeout=timeout
-                )
-            else:
-                sandbox = await AsyncSandbox.create(api_key=api_key, timeout=timeout)
 
-            if not sandbox:
-                raise Exception("Sandbox not created")
-
-            # Running setup commands
-            for cmd in setup_commands:
-                await sandbox.commands.run(cmd)
-
-            # Executing the code
-            execution = await sandbox.run_code(
-                code,
-                language=language.value,
-                on_error=lambda e: sandbox.kill(),  # Kill the sandbox if there is an error
-            )
-
-            if execution.error:
-                raise Exception(execution.error)
-
-            text_output = execution.text
-            stdout_logs = "".join(execution.logs.stdout)
-            stderr_logs = "".join(execution.logs.stderr)
-
-            return sandbox.sandbox_id, text_output, stdout_logs, stderr_logs
-
-        except Exception as e:
-            raise e
-
-
-class StepExecutionBlock(Block):
+class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
     class Input(BlockSchema):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.E2B], Literal["api_key"]
         ] = CredentialsField(
-            description="Enter your api key for the E2B Sandbox. You can get it in here - https://e2b.dev/docs",
+            description=(
+                "Enter your API key for the E2B platform. "
+                "You can get it in here - https://e2b.dev/docs"
+            ),
         )
 
         sandbox_id: str = SchemaField(
@@ -435,8 +449,13 @@ class StepExecutionBlock(Block):
             advanced=False,
         )
 
+        dispose_sandbox: bool = SchemaField(
+            description="Whether to dispose of the sandbox after executing this code.",
+            default=False,
+        )
+
     class Output(BlockSchema):
-        main_result: CodeExecutionResult = SchemaField(
+        main_result: MainCodeExecutionResult = SchemaField(
             title="Main Result", description="The main result from the code execution"
         )
         results: list[CodeExecutionResult] = SchemaField(
@@ -455,10 +474,10 @@ class StepExecutionBlock(Block):
     def __init__(self):
         super().__init__(
             id="82b59b8e-ea10-4d57-9161-8b169b0adba6",
-            description="Execute code in a previously instantiated sandbox environment.",
+            description="Execute code in a previously instantiated sandbox.",
             categories={BlockCategory.DEVELOPER_TOOLS},
-            input_schema=StepExecutionBlock.Input,
-            output_schema=StepExecutionBlock.Output,
+            input_schema=ExecuteCodeStepBlock.Input,
+            output_schema=ExecuteCodeStepBlock.Output,
             test_credentials=TEST_CREDENTIALS,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -472,74 +491,38 @@ class StepExecutionBlock(Block):
                 ("stdout_logs", "Hello World\n"),
             ],
             test_mock={
-                "execute_step_code": lambda sandbox_id, step_code, language, api_key: (
+                "execute_code": lambda api_key, code, language, sandbox_id, dispose_sandbox: (  # noqa
                     [],  # results
                     "Hello World",  # text_output
                     "Hello World\n",  # stdout_logs
                     "",  # stderr_logs
+                    sandbox_id,  # sandbox_id
                 ),
             },
         )
-
-    async def execute_step_code(
-        self,
-        sandbox_id: str,
-        code: str,
-        language: ProgrammingLanguage,
-        api_key: str,
-    ):
-        try:
-            sandbox = await AsyncSandbox.connect(sandbox_id=sandbox_id, api_key=api_key)
-            if not sandbox:
-                raise Exception("Sandbox not found")
-
-            # Executing the code
-            execution = await sandbox.run_code(code, language=language.value)
-
-            if execution.error:
-                raise Exception(execution.error)
-
-            results = execution.results
-            text_output = execution.text
-            stdout_logs = "".join(execution.logs.stdout)
-            stderr_logs = "".join(execution.logs.stderr)
-
-            return results, text_output, stdout_logs, stderr_logs
-
-        except Exception as e:
-            raise e
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            results, text_output, stdout_logs, stderr_logs = (
-                await self.execute_step_code(
-                    input_data.sandbox_id,
-                    input_data.step_code,
-                    input_data.language,
-                    credentials.api_key.get_secret_value(),
-                )
+            results, text_output, stdout, stderr, _ = await self.execute_code(
+                api_key=credentials.api_key.get_secret_value(),
+                code=input_data.step_code,
+                language=input_data.language,
+                sandbox_id=input_data.sandbox_id,
+                dispose_sandbox=input_data.dispose_sandbox,
             )
 
             # Determine result object shape & filter out empty formats
-            results = [
-                {
-                    f: r[f]
-                    for f in [*r.formats(), "extra", "is_main_result"]
-                    if getattr(r, f, None) is not None
-                }
-                for r in results
-            ]
+            main_result, results = self.process_execution_results(results)
+            if main_result:
+                yield "main_result", main_result
             yield "results", results
-            for r in results:
-                if r.pop("is_main_result", False):
-                    yield "main_result", r
             if text_output:
                 yield "response", text_output
-            if stdout_logs:
-                yield "stdout_logs", stdout_logs
-            if stderr_logs:
-                yield "stderr_logs", stderr_logs
+            if stdout:
+                yield "stdout_logs", stdout
+            if stderr:
+                yield "stderr_logs", stderr
         except Exception as e:
             yield "error", str(e)
