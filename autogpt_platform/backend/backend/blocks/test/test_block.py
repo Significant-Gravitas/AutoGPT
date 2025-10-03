@@ -19,7 +19,7 @@ async def test_block_ids_valid(block: Type[Block]):
     # Skip list for blocks with known invalid UUIDs
     skip_blocks = {
         "GetWeatherInformationBlock",
-        "CodeExecutionBlock",
+        "ExecuteCodeBlock",
         "CountdownTimerBlock",
         "TwitterGetListTweetsBlock",
         "TwitterRemoveListMemberBlock",

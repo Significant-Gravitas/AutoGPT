@@ -20,7 +20,6 @@ from ._config import firecrawl
 
 @cost(BlockCost(2, BlockCostType.RUN))
 class FirecrawlExtractBlock(Block):
-
     class Input(BlockSchema):
         credentials: CredentialsMetaInput = firecrawl.credentials_field()
         urls: list[str] = SchemaField(
@@ -53,7 +52,6 @@ class FirecrawlExtractBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-
         app = FirecrawlApp(api_key=credentials.api_key.get_secret_value())
 
         extract_result = app.extract(
