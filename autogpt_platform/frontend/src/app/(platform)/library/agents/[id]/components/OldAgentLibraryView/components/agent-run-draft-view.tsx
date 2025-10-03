@@ -43,9 +43,11 @@ import {
 
 import { AgentStatus, AgentStatusChip } from "./agent-status-chip";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
+import { Node } from "@xyflow/react";
 
 export function AgentRunDraftView({
   graph,
+  nodes,
   agentPreset,
   doRun: _doRun,
   onRun,
@@ -59,6 +61,7 @@ export function AgentRunDraftView({
   recommendedScheduleCron,
 }: {
   graph: GraphMeta;
+  nodes?: Node<any>[];
   agentActions?: ButtonAction[];
   recommendedScheduleCron?: string | null;
   doRun?: (
@@ -146,12 +149,82 @@ export function AgentRunDraftView({
   }, [agentInputSchema.required, inputValues]);
   const [allCredentialsAreSet, missingCredentials] = useMemo(() => {
     const availableCredentials = new Set(Object.keys(inputCredentials));
-    const allCredentials = new Set(Object.keys(agentCredentialsInputFields));
+    let allCredentials = new Set(Object.keys(agentCredentialsInputFields));
+
+    // Filter out credentials for optional blocks with on_missing_credentials
+    if (nodes) {
+      const optionalBlocksWithMissingCreds = nodes.filter(node => {
+        const optional = node.data?.metadata?.optional;
+        return optional?.enabled === true &&
+               optional?.conditions?.on_missing_credentials === true;
+      });
+
+      // If we have optional blocks that can skip on missing credentials,
+      // we'll be more lenient with credential validation
+      if (optionalBlocksWithMissingCreds.length > 0) {
+        // Filter out credentials that might belong to optional blocks
+        const filteredCredentials = new Set<string>();
+
+        for (const credKey of allCredentials) {
+          let belongsToOptionalBlock = false;
+
+          // Check each optional block to see if it might use this credential
+          for (const node of optionalBlocksWithMissingCreds) {
+            // Check if the node's input schema has credential fields
+            const credFields = node.data.inputSchema?.properties || {};
+
+            // Look for credential fields in the block's input schema
+            for (const [fieldName, fieldSchema] of Object.entries(credFields)) {
+              // Check if this is a credentials field (type checking)
+              const isCredentialField =
+                fieldName.toLowerCase().includes('credentials') ||
+                fieldName.toLowerCase().includes('api_key') ||
+                (fieldSchema && typeof fieldSchema === 'object' && fieldSchema !== null &&
+                  ('credentials' in fieldSchema || 'oauth2' in fieldSchema));
+
+              if (isCredentialField) {
+
+                // Check if this credential key might match this block's needs
+                const credKeyLower = credKey.toLowerCase();
+
+                // Match based on provider patterns in the key
+                // e.g., "linear_api_key-oauth2_credentials" contains "linear"
+                if (node.data.blockType.toLowerCase().includes('linear') &&
+                    credKeyLower.includes('linear')) {
+                  belongsToOptionalBlock = true;
+                  break;
+                }
+
+                // Generic match - if the credential key contains the block type
+                const blockTypeWords = node.data.blockType.toLowerCase()
+                  .replace(/([A-Z])/g, ' $1')
+                  .split(/[\s_-]+/);
+
+                for (const word of blockTypeWords) {
+                  if (word.length > 3 && credKeyLower.includes(word)) {
+                    belongsToOptionalBlock = true;
+                    break;
+                  }
+                }
+              }
+            }
+
+            if (belongsToOptionalBlock) break;
+          }
+
+          if (!belongsToOptionalBlock) {
+            filteredCredentials.add(credKey);
+          }
+        }
+        allCredentials = filteredCredentials;
+      }
+    }
+
     return [
       availableCredentials.isSupersetOf(allCredentials),
       [...allCredentials.difference(availableCredentials)],
     ];
-  }, [agentCredentialsInputFields, inputCredentials]);
+  }, [agentCredentialsInputFields, inputCredentials, nodes]);
   const notifyMissingInputs = useCallback(
     (needPresetName: boolean = true) => {
       const allMissingFields = (

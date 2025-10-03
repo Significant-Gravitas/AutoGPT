@@ -193,14 +193,14 @@ class TestShouldSkipNode:
         assert should_skip is False
         assert reason == ""
 
-    async def test_skip_on_input_flag_true(
+    async def test_skip_on_skip_input_true(
         self, mock_node, mock_creds_manager, user_context
     ):
-        """Test skipping when input flag is true."""
+        """Test skipping when skip_run_block input is true."""
         mock_node.metadata = {
             "optional": {
                 "enabled": True,
-                "conditions": {"input_flag": "skip_this_block"},
+                "conditions": {"check_skip_input": True},
             }
         }
 
@@ -209,20 +209,20 @@ class TestShouldSkipNode:
             creds_manager=mock_creds_manager,
             user_id="test_user",
             user_context=user_context,
-            input_data={"skip_this_block": True},
+            input_data={"skip_run_block": True},
             graph_id="test_graph_id",
         )
         assert should_skip is True
-        assert "Input flag 'skip_this_block' is true" in reason
+        assert "Skip input is true" in reason
 
-    async def test_no_skip_on_input_flag_false(
+    async def test_no_skip_on_skip_input_false(
         self, mock_node, mock_creds_manager, user_context
     ):
-        """Test no skip when input flag is false."""
+        """Test no skip when skip_run_block input is false."""
         mock_node.metadata = {
             "optional": {
                 "enabled": True,
-                "conditions": {"input_flag": "skip_this_block"},
+                "conditions": {"check_skip_input": True},
             }
         }
 
@@ -231,7 +231,7 @@ class TestShouldSkipNode:
             creds_manager=mock_creds_manager,
             user_id="test_user",
             user_context=user_context,
-            input_data={"skip_this_block": False},
+            input_data={"skip_run_block": False},
             graph_id="test_graph_id",
         )
         assert should_skip is False
@@ -246,7 +246,7 @@ class TestShouldSkipNode:
                 "enabled": True,
                 "conditions": {
                     "on_missing_credentials": True,
-                    "input_flag": "skip_block",
+                    "check_skip_input": True,
                     "operator": "or",
                 },
             }
@@ -264,12 +264,12 @@ class TestShouldSkipNode:
             user_context=user_context,
             input_data={
                 "credentials": {"id": "cred_123"},
-                "skip_block": True,
+                "skip_run_block": True,
             },
             graph_id="test_graph_id",
         )
         assert should_skip is True  # OR: at least one condition met
-        assert "Input flag 'skip_block' is true" in reason
+        assert "Skip input is true" in reason
 
     async def test_skip_with_and_operator(
         self, mock_node, mock_creds_manager, user_context
@@ -280,7 +280,7 @@ class TestShouldSkipNode:
                 "enabled": True,
                 "conditions": {
                     "on_missing_credentials": True,
-                    "input_flag": "skip_block",
+                    "check_skip_input": True,
                     "operator": "and",
                 },
             }
@@ -298,7 +298,7 @@ class TestShouldSkipNode:
             user_context=user_context,
             input_data={
                 "credentials": {"id": "cred_123"},
-                "skip_block": False,
+                "skip_run_block": False,
             },
             graph_id="test_graph_id",
         )
@@ -312,7 +312,7 @@ class TestShouldSkipNode:
         mock_node.metadata = {
             "optional": {
                 "enabled": True,
-                "conditions": {"input_flag": "skip_this"},
+                "conditions": {"check_skip_input": True},
                 "skip_message": "Custom skip message for testing",
             }
         }
@@ -322,7 +322,7 @@ class TestShouldSkipNode:
             creds_manager=mock_creds_manager,
             user_id="test_user",
             user_context=user_context,
-            input_data={"skip_this": True},
+            input_data={"skip_run_block": True},
             graph_id="test_graph_id",
         )
         assert should_skip is True
@@ -403,7 +403,7 @@ class TestShouldSkipNode:
                 "enabled": True,
                 "conditions": {
                     "kv_flag": "enable_integration",
-                    "input_flag": "force_skip",
+                    "check_skip_input": True,
                     "operator": "or",
                 },
             }
@@ -417,17 +417,17 @@ class TestShouldSkipNode:
                 return_value=False
             )
 
-            # Even though KV flag is False, input_flag is True so it should skip (OR operator)
+            # Even though KV flag is False, skip_run_block is True so it should skip (OR operator)
             should_skip, reason = await should_skip_node(
                 node=mock_node,
                 creds_manager=mock_creds_manager,
                 user_id="test_user",
                 user_context=user_context,
-                input_data={"force_skip": True},
+                input_data={"skip_run_block": True},
                 graph_id="test_graph_id",
             )
             assert should_skip is True
-            assert "Input flag 'force_skip' is true" in reason
+            assert "Skip input is true" in reason
 
 
 @pytest.mark.asyncio

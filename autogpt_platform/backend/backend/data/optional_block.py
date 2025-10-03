@@ -16,9 +16,9 @@ class OptionalBlockConditions(BaseModel):
         default=False,
         description="Skip block if any required credentials are missing",
     )
-    input_flag: Optional[str] = Field(
-        default=None,
-        description="Name of boolean agent input field that controls skip behavior",
+    check_skip_input: bool = Field(
+        default=True,
+        description="Check the standard 'skip' input to control skip behavior",
     )
     kv_flag: Optional[str] = Field(
         default=None,

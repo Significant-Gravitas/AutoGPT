@@ -4801,7 +4801,8 @@
           "RUNNING",
           "COMPLETED",
           "TERMINATED",
-          "FAILED"
+          "FAILED",
+          "SKIPPED"
         ],
         "title": "AgentExecutionStatus"
       },

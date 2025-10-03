@@ -168,11 +168,11 @@ async def should_skip_node(
             if conditions.on_missing_credentials:
                 conditions_met.append(False)
 
-    # Check input flag
-    if conditions.input_flag and conditions.input_flag in input_data:
-        flag_value = input_data.get(conditions.input_flag, False)
-        if flag_value is True:  # Skip if flag is True
-            skip_reasons.append(f"Input flag '{conditions.input_flag}' is true")
+    # Check standard skip_run_block input (automatically added for optional blocks)
+    if conditions.check_skip_input and "skip_run_block" in input_data:
+        skip_value = input_data.get("skip_run_block", False)
+        if skip_value is True:  # Skip if input is True
+            skip_reasons.append("Skip input is true")
             conditions_met.append(True)
         else:
             conditions_met.append(False)

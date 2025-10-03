@@ -98,6 +98,7 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
           isOpen={isRunInputDialogOpen}
           doClose={() => setIsRunInputDialogOpen(false)}
           graph={graph}
+          nodes={nodes}
           doRun={saveAndRun}
           doCreateSchedule={createRunSchedule}
         />

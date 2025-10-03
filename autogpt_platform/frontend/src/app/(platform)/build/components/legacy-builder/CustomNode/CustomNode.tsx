@@ -130,6 +130,22 @@ export const CustomNode = React.memo(
     let subGraphID = "";
     const isOptional = data.metadata?.optional?.enabled || false;
 
+    // Automatically add skip_run_block input for optional blocks
+    if (isOptional && !data.inputSchema.properties?.skip_run_block) {
+      data.inputSchema = {
+        ...data.inputSchema,
+        properties: {
+          skip_run_block: {
+            type: "boolean",
+            title: "Skip Block",
+            description: "When true, this block will be skipped during execution",
+            default: false,
+          },
+          ...data.inputSchema.properties,
+        },
+      };
+    }
+
     if (data.uiType === BlockUIType.AGENT) {
       // Display the graph's schema instead AgentExecutorBlock's schema.
       data.inputSchema = data.hardcodedValues?.input_schema || {};
@@ -819,11 +835,11 @@ export const CustomNode = React.memo(
               </span>
             </ContextMenu.Item>
             <div className="pl-12 text-xs text-gray-500 dark:text-gray-400 space-y-1 py-1">
+              {data.metadata?.optional?.conditions?.check_skip_input !== false && (
+                <div>• Has skip input handle</div>
+              )}
               {data.metadata?.optional?.conditions?.on_missing_credentials && (
                 <div>• Skip on missing credentials</div>
-              )}
-              {data.metadata?.optional?.conditions?.input_flag && (
-                <div>• Input flag: {data.metadata.optional.conditions.input_flag}</div>
               )}
               {data.metadata?.optional?.conditions?.kv_flag && (
                 <div>• KV flag: {data.metadata.optional.conditions.kv_flag}</div>
@@ -831,8 +847,8 @@ export const CustomNode = React.memo(
               {data.metadata?.optional?.conditions?.operator === 'and' && (
                 <div>• Using AND operator</div>
               )}
-              {!data.metadata?.optional?.conditions?.on_missing_credentials &&
-               !data.metadata?.optional?.conditions?.input_flag &&
+              {data.metadata?.optional?.conditions?.check_skip_input === false &&
+               !data.metadata?.optional?.conditions?.on_missing_credentials &&
                !data.metadata?.optional?.conditions?.kv_flag && (
                 <div>• No conditions set</div>
               )}
@@ -1189,23 +1205,23 @@ export const CustomNode = React.memo(
                   </label>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium dark:text-gray-100">
-                    Input Flag (boolean agent input)
-                  </label>
+                <div className="flex items-center space-x-2">
                   <input
-                    type="text"
-                    value={data.metadata?.optional?.conditions?.input_flag || ''}
+                    type="checkbox"
+                    id="check_skip_input"
+                    checked={data.metadata?.optional?.conditions?.check_skip_input !== false}
                     onChange={(e) => {
                       const conditions = data.metadata?.optional?.conditions || {};
                       saveOptionalConditions({
                         ...conditions,
-                        input_flag: e.target.value || undefined,
+                        check_skip_input: e.target.checked,
                       });
                     }}
-                    placeholder="e.g., skip_linear"
-                    className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                    className="h-4 w-4"
                   />
+                  <label htmlFor="check_skip_input" className="dark:text-gray-100">
+                    Add skip input handle (skip_run_block)
+                  </label>
                 </div>
 
                 <div className="space-y-2">

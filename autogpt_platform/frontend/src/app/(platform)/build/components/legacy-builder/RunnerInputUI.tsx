@@ -1,5 +1,6 @@
 import React, { useCallback } from "react";
-
+import { Node } from "@xyflow/react";
+import { CustomNodeData } from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
 import type {
   CredentialsMetaInput,
   GraphMeta,
@@ -17,6 +18,7 @@ interface RunInputDialogProps {
   isOpen: boolean;
   doClose: () => void;
   graph: GraphMeta;
+  nodes?: Node<CustomNodeData>[];
   doRun?: (
     inputs: Record<string, any>,
     credentialsInputs: Record<string, CredentialsMetaInput>,
@@ -33,6 +35,7 @@ export function RunnerInputDialog({
   isOpen,
   doClose,
   graph,
+  nodes,
   doRun,
   doCreateSchedule,
 }: RunInputDialogProps) {
@@ -79,6 +82,7 @@ export function RunnerInputDialog({
         <AgentRunDraftView
           className="p-0"
           graph={graph}
+          nodes={nodes}
           doRun={doRun ? handleRun : undefined}
           onRun={doRun ? undefined : doClose}
           doCreateSchedule={doCreateSchedule ? handleSchedule : undefined}
