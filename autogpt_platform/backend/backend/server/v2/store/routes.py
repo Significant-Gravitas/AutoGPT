@@ -31,12 +31,12 @@ logger = logging.getLogger(__name__)
 router = fastapi.APIRouter()
 
 
-def _clear_store_agents_cache(user_id: str, num_pages: int = 20):
+def _clear_submissions_cache(user_id: str, num_pages: int = 20):
     """
-    Clear the store agents cache for the given user.
+    Clear the submissions cache for the given user.
     """
     for page in range(1, num_pages):
-        _get_cached_store_agents.cache_delete(user_id, page=page, page_size=20)
+        _get_cached_submissions.cache_delete(user_id, page=page, page_size=20)
 
 
 ##############################################
@@ -467,7 +467,7 @@ async def delete_submission(
 
         # Clear submissions cache for this specific user after deletion
         if result:
-            _clear_store_agents_cache(user_id)
+            _clear_submissions_cache(user_id)
 
         return result
     except Exception:
@@ -570,7 +570,7 @@ async def create_submission(
             recommended_schedule_cron=submission_request.recommended_schedule_cron,
         )
 
-        _clear_store_agents_cache(user_id)
+        _clear_submissions_cache(user_id)
 
         return result
     except Exception:
