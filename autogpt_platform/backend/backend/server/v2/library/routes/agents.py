@@ -229,9 +229,10 @@ async def add_marketplace_agent_to_library(
 
         # Clear library caches after adding new agent
         for page in range(1, 20):
-            library_cache.get_cached_library_agents.cache_delete(
-                user_id=user_id, page=page, page_size=10
-            )
+            for page_size in [10, 15, 20]:  # Frontend uses 10, API default is 15, cache default is 20
+                library_cache.get_cached_library_agents.cache_delete(
+                    user_id=user_id, page=page, page_size=page_size
+                )
 
         return result
 
@@ -353,9 +354,10 @@ async def delete_library_agent(
             library_agent_id=library_agent_id, user_id=user_id
         )
         for page in range(1, 20):
-            library_cache.get_cached_library_agents.cache_delete(
-                user_id=user_id, page=page, page_size=10
-            )
+            for page_size in [10, 15, 20]:  # Frontend uses 10, API default is 15, cache default is 20
+                library_cache.get_cached_library_agents.cache_delete(
+                    user_id=user_id, page=page, page_size=page_size
+                )
 
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     except NotFoundError as e:

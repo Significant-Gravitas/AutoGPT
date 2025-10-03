@@ -763,10 +763,12 @@ async def create_new_graph(
 
     # Clear graphs list cache after creating new graph
     cache.get_cached_graphs.cache_delete(user_id=user_id, page=1, page_size=250)
+    # Clear library agents cache for all common page sizes
     for page in range(1, 20):
-        library_cache.get_cached_library_agents.cache_delete(
-            user_id=user_id, page=page, page_size=10
-        )
+        for page_size in [10, 15, 20]:  # Frontend uses 10, API default is 15, cache default is 20
+            library_cache.get_cached_library_agents.cache_delete(
+                user_id=user_id, page=page, page_size=page_size
+            )
 
     return await on_graph_activate(graph, user_id=user_id)
 
@@ -936,9 +938,11 @@ async def execute_graph(
         cache.get_cached_graph_executions.cache_delete(
             graph_id=graph_id, user_id=user_id, page=page, page_size=25
         )
-        library_cache.get_cached_library_agents.cache_delete(
-            user_id=user_id, page=page, page_size=10
-        )
+        # Clear library agents cache for all common page sizes
+        for page_size in [10, 15, 20]:  # Frontend uses 10, API default is 15, cache default is 20
+            library_cache.get_cached_library_agents.cache_delete(
+                user_id=user_id, page=page, page_size=page_size
+            )
 
     try:
         result = await execution_utils.add_graph_execution(
