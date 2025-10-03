@@ -6,6 +6,7 @@ export enum Key {
   WEBSOCKET_DISCONNECT_INTENT = "websocket-disconnect-intent",
   COPIED_FLOW_DATA = "copied-flow-data",
   SHEPHERD_TOUR = "shepherd-tour",
+  WALLET_LAST_SEEN_CREDITS = "wallet-last-seen-credits",
 }
 
 function get(key: Key) {
