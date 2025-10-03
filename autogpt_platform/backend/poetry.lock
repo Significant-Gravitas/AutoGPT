@@ -413,6 +413,7 @@ pydantic-settings = "^2.10.1"
 pyjwt = {version = "^2.10.1", extras = ["crypto"]}
 redis = "^6.2.0"
 supabase = "^2.16.0"
+tenacity = "^9.1.2"
 uvicorn = "^0.35.0"
 
 [package.source]

@@ -1,29 +1,24 @@
 import logging
-import os
 
-from autogpt_libs.utils.cache import cached, thread_cached
-from dotenv import load_dotenv
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 
+from backend.util.cache import cached, thread_cached
 from backend.util.retry import conn_retry
+from backend.util.settings import Settings
 
-load_dotenv()
-
-HOST = os.getenv("REDIS_HOST", "localhost")
-PORT = int(os.getenv("REDIS_PORT", "6379"))
-PASSWORD = os.getenv("REDIS_PASSWORD", None)
+settings = Settings()
 
 logger = logging.getLogger(__name__)
 
 
 @conn_retry("Redis", "Acquiring connection")
-def connect() -> Redis:
+def connect(decode_responses: bool = True) -> Redis:
     c = Redis(
-        host=HOST,
-        port=PORT,
-        password=PASSWORD,
-        decode_responses=True,
+        host=settings.config.redis_host,
+        port=settings.config.redis_port,
+        password=settings.config.redis_password or None,
+        decode_responses=decode_responses,
     )
     c.ping()
     return c
@@ -34,7 +29,7 @@ def disconnect():
     get_redis().close()
 
 
-@cached()
+@cached(ttl_seconds=3600)
 def get_redis() -> Redis:
     return connect()
 
@@ -42,9 +37,9 @@ def get_redis() -> Redis:
 @conn_retry("AsyncRedis", "Acquiring connection")
 async def connect_async() -> AsyncRedis:
     c = AsyncRedis(
-        host=HOST,
-        port=PORT,
-        password=PASSWORD,
+        host=settings.config.redis_host,
+        port=settings.config.redis_port,
+        password=settings.config.redis_password or None,
         decode_responses=True,
     )
     await c.ping()

@@ -5,15 +5,14 @@ This module contains all caching decorators and helpers for the Library API,
 separated from the main routes for better organization and maintainability.
 """
 
-from autogpt_libs.utils.cache import cached
-
 import backend.server.v2.library.db
+from backend.util.cache import cached
 
 # ===== Library Agent Caches =====
 
 
 # Cache library agents list for 10 minutes
-@cached(maxsize=1000, ttl_seconds=600)
+@cached(maxsize=1000, ttl_seconds=600, shared_cache=True)
 async def get_cached_library_agents(
     user_id: str,
     page: int = 1,
@@ -28,7 +27,7 @@ async def get_cached_library_agents(
 
 
 # Cache user's favorite agents for 5 minutes - favorites change more frequently
-@cached(maxsize=500, ttl_seconds=300)
+@cached(maxsize=500, ttl_seconds=300, shared_cache=True)
 async def get_cached_library_agent_favorites(
     user_id: str,
     page: int = 1,
@@ -43,7 +42,7 @@ async def get_cached_library_agent_favorites(
 
 
 # Cache individual library agent details for 30 minutes
-@cached(maxsize=1000, ttl_seconds=1800)
+@cached(maxsize=1000, ttl_seconds=1800, shared_cache=True)
 async def get_cached_library_agent(
     library_agent_id: str,
     user_id: str,
@@ -56,7 +55,7 @@ async def get_cached_library_agent(
 
 
 # Cache library agent by graph ID for 30 minutes
-@cached(maxsize=1000, ttl_seconds=1800)
+@cached(maxsize=1000, ttl_seconds=1800, shared_cache=True)
 async def get_cached_library_agent_by_graph_id(
     graph_id: str,
     user_id: str,
@@ -69,7 +68,7 @@ async def get_cached_library_agent_by_graph_id(
 
 
 # Cache library agent by store version ID for 1 hour - marketplace agents are more stable
-@cached(maxsize=500, ttl_seconds=3600)
+@cached(maxsize=500, ttl_seconds=3600, shared_cache=True)
 async def get_cached_library_agent_by_store_version(
     store_listing_version_id: str,
     user_id: str,
@@ -85,7 +84,7 @@ async def get_cached_library_agent_by_store_version(
 
 
 # Cache library presets list for 30 minutes
-@cached(maxsize=500, ttl_seconds=1800)
+@cached(maxsize=500, ttl_seconds=1800, shared_cache=True)
 async def get_cached_library_presets(
     user_id: str,
     page: int = 1,
@@ -100,7 +99,7 @@ async def get_cached_library_presets(
 
 
 # Cache individual preset details for 30 minutes
-@cached(maxsize=1000, ttl_seconds=1800)
+@cached(maxsize=1000, ttl_seconds=1800, shared_cache=True)
 async def get_cached_library_preset(
     preset_id: str,
     user_id: str,

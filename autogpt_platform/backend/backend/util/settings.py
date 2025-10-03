@@ -258,6 +258,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The vhost for the RabbitMQ server",
     )
 
+    redis_host: str = Field(
+        default="localhost",
+        description="The host for the Redis server",
+    )
+    redis_port: int = Field(
+        default=6379,
+        description="The port for the Redis server",
+    )
+    redis_password: str = Field(
+        default="",
+        description="The password for the Redis server (empty string if no password)",
+    )
+
     postmark_sender_email: str = Field(
         default="invalid@invalid.com",
         description="The email address to use for sending emails",

@@ -11,7 +11,6 @@ import pydantic
 import stripe
 from autogpt_libs.auth import get_user_id, requires_user
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
-from autogpt_libs.utils.cache import cached
 from fastapi import (
     APIRouter,
     Body,
@@ -300,7 +299,7 @@ def _compute_blocks_sync() -> str:
     return dumps(result)
 
 
-@cached()
+@cached(ttl_seconds=3600)
 async def _get_cached_blocks() -> str:
     """
     Async cached function with thundering herd protection.
@@ -774,6 +773,7 @@ async def create_new_graph(
             page=page,
             page_size=cache_config.V1_LIBRARY_AGENTS_PAGE_SIZE,
         )
+
 
     # Clear my agents cache so user sees new agent immediately
     import backend.server.v2.store.cache
