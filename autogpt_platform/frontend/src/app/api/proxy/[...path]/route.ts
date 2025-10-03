@@ -2,6 +2,8 @@ import {
   ApiError,
   makeAuthenticatedFileUpload,
   makeAuthenticatedRequest,
+  makeAuthenticatedRequestWithFallback,
+  getServerAuthTokenWithFallback,
 } from "@/lib/autogpt-server-api/helpers";
 import { getAgptServerBaseUrl } from "@/lib/env-config";
 import { NextRequest, NextResponse } from "next/server";
@@ -26,11 +28,12 @@ async function handleJsonRequest(
     payload = null;
   }
 
-  return await makeAuthenticatedRequest(
+  return await makeAuthenticatedRequestWithFallback(
     method,
     backendUrl,
     payload,
     "application/json",
+    req.headers.get("Authorization"),
   );
 }
 
@@ -50,19 +53,27 @@ async function handleUrlEncodedRequest(
   const textPayload = await req.text();
   const params = new URLSearchParams(textPayload);
   const payload = Object.fromEntries(params.entries());
-  return await makeAuthenticatedRequest(
+  return await makeAuthenticatedRequestWithFallback(
     method,
     backendUrl,
     payload,
     "application/x-www-form-urlencoded",
+    req.headers.get("Authorization"),
   );
 }
 
 async function handleRequestWithoutBody(
   method: string,
   backendUrl: string,
+  authHeader?: string | null,
 ): Promise<any> {
-  return await makeAuthenticatedRequest(method, backendUrl);
+  return await makeAuthenticatedRequestWithFallback(
+    method,
+    backendUrl,
+    undefined,
+    "application/json",
+    authHeader,
+  );
 }
 
 function createUnsupportedContentTypeResponse(
@@ -167,8 +178,14 @@ async function handler(
   };
 
   try {
+    const authHeader = req.headers.get("Authorization");
+
     if (method === "GET" || method === "DELETE") {
-      responseBody = await handleRequestWithoutBody(method, backendUrl);
+      responseBody = await handleRequestWithoutBody(
+        method,
+        backendUrl,
+        authHeader,
+      );
     } else if (contentType?.includes("application/json")) {
       responseBody = await handleJsonRequest(req, method, backendUrl);
     } else if (contentType?.includes("multipart/form-data")) {
