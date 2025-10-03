@@ -12,6 +12,7 @@ import {
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
 import CredentialsProvider from "@/providers/agent-credentials/credentials-provider";
+import { SentryUserTracker } from "@/components/monitor/SentryUserTracker";
 
 export function Providers({ children, ...props }: ThemeProviderProps) {
   const queryClient = getQueryClient();
@@ -20,6 +21,7 @@ export function Providers({ children, ...props }: ThemeProviderProps) {
       <NuqsAdapter>
         <NextThemesProvider {...props}>
           <BackendAPIProvider>
+            <SentryUserTracker />
             <CredentialsProvider>
               <LaunchDarklyProvider>
                 <OnboardingProvider>
