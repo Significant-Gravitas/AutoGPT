@@ -15,6 +15,7 @@ import backend.server.v2.store.media
 import backend.server.v2.store.model
 import backend.util.json
 from backend.server.v2.store.cache import (
+    _clear_submissions_cache,
     _get_cached_agent_details,
     _get_cached_agent_graph,
     _get_cached_creator_details,
@@ -29,14 +30,6 @@ from backend.server.v2.store.cache import (
 logger = logging.getLogger(__name__)
 
 router = fastapi.APIRouter()
-
-
-def _clear_submissions_cache(user_id: str, num_pages: int = 20):
-    """
-    Clear the submissions cache for the given user.
-    """
-    for page in range(1, num_pages):
-        _get_cached_submissions.cache_delete(user_id, page=page, page_size=20)
 
 
 ##############################################
@@ -621,7 +614,7 @@ async def edit_submission(
         recommended_schedule_cron=submission_request.recommended_schedule_cron,
     )
 
-    _clear_store_agents_cache(user_id)
+    _clear_submissions_cache(user_id)
 
     return result
 

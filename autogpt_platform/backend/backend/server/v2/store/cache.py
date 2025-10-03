@@ -10,6 +10,14 @@ from autogpt_libs.utils.cache import cached
 import backend.server.v2.store.db
 
 
+def _clear_submissions_cache(user_id: str, num_pages: int = 20):
+    """
+    Clear the submissions cache for the given user.
+    """
+    for page in range(1, num_pages):
+        _get_cached_submissions.cache_delete(user_id, page=page, page_size=20)
+
+
 # Cache user profiles for 1 hour per user
 @cached(maxsize=1000, ttl_seconds=3600)
 async def _get_cached_user_profile(user_id: str):
