@@ -238,7 +238,11 @@ class SendDiscordMessageBlock(Block):
                 channel_id = int(channel_name)
                 channel = client.get_channel(channel_id)
             except ValueError:
-                # Not an ID, treat as channel name
+                # Not a valid ID, will try name lookup
+                pass
+
+            # If not found by ID (or not an ID), try name lookup
+            if not channel:
                 for guild in client.guilds:
                     if server_name and guild.name != server_name:
                         continue
