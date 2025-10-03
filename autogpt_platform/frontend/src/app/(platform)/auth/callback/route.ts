@@ -11,56 +11,12 @@ async function shouldShowOnboarding() {
   );
 }
 
-// Default redirect path - matches the home page redirect destination
-const DEFAULT_REDIRECT_PATH = "/marketplace";
-
-// Validate redirect URL to prevent open redirect attacks and malformed URLs
-function validateRedirectUrl(url: string): string {
-  try {
-    const cleanUrl = url.trim();
-
-    // Check for completely invalid patterns that suggest URL corruption
-    if (
-      cleanUrl.includes(",") || // Any comma suggests concatenated URLs
-      cleanUrl.includes(" ") // Spaces in URLs are problematic
-    ) {
-      console.warn(
-        "Detected corrupted redirect URL (likely race condition):",
-        cleanUrl,
-      );
-      return DEFAULT_REDIRECT_PATH;
-    }
-
-    // Only allow relative URLs that start with /
-    if (!cleanUrl.startsWith("/") || cleanUrl.startsWith("//")) {
-      console.warn("Invalid redirect URL format:", cleanUrl);
-      return DEFAULT_REDIRECT_PATH;
-    }
-
-    // Additional safety checks
-    if (cleanUrl.split("/").length > 5) {
-      // Reasonable path depth limit
-      console.warn("Suspiciously deep redirect URL:", cleanUrl);
-      return DEFAULT_REDIRECT_PATH;
-    }
-
-    // For now, allow any valid relative path (can be restricted later if needed)
-    return cleanUrl;
-  } catch (error) {
-    console.error("Error validating redirect URL:", error);
-    return DEFAULT_REDIRECT_PATH;
-  }
-}
-
 // Handle the callback to complete the user session login
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
 
-  // if "next" is in param, use it as the redirect URL
-  const nextParam = searchParams.get("next") ?? "/";
-  // Validate redirect URL to prevent open redirect attacks
-  let next = validateRedirectUrl(nextParam);
+  let next = "/marketplace";
 
   if (code) {
     const supabase = await getServerSupabase();
@@ -70,7 +26,7 @@ export async function GET(request: Request) {
     }
 
     const { error } = await supabase.auth.exchangeCodeForSession(code);
-    // data.session?.refresh_token is available if you need to store it for later use
+
     if (!error) {
       try {
         const api = new BackendAPI();
@@ -84,7 +40,45 @@ export async function GET(request: Request) {
         }
       } catch (createUserError) {
         console.error("Error creating user:", createUserError);
-        // Continue with redirect even if createUser fails
+
+        // Handle ApiError from the backend API client
+        if (
+          createUserError &&
+          typeof createUserError === "object" &&
+          "status" in createUserError
+        ) {
+          const apiError = createUserError as any;
+
+          if (apiError.status === 401) {
+            // Authentication issues - token missing/invalid
+            return NextResponse.redirect(
+              `${origin}/error?message=auth-token-invalid`,
+            );
+          } else if (apiError.status >= 500) {
+            // Server/database errors
+            return NextResponse.redirect(
+              `${origin}/error?message=server-error`,
+            );
+          } else if (apiError.status === 429) {
+            // Rate limiting
+            return NextResponse.redirect(
+              `${origin}/error?message=rate-limited`,
+            );
+          }
+        }
+
+        // Handle network/fetch errors
+        if (
+          createUserError instanceof TypeError &&
+          createUserError.message.includes("fetch")
+        ) {
+          return NextResponse.redirect(`${origin}/error?message=network-error`);
+        }
+
+        // Generic user creation failure
+        return NextResponse.redirect(
+          `${origin}/error?message=user-creation-failed`,
+        );
       }
 
       const forwardedHost = request.headers.get("x-forwarded-host"); // original origin before load balancer
