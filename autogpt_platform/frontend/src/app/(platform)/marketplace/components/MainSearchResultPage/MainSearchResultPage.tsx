@@ -38,8 +38,17 @@ export const MainSearchResultPage = ({
     return <MainMarketplacePageLoading />;
   }
 
-  if (hasError) {
-    return <ErrorCard />;
+  if (!hasError) {
+    return (
+      <div className="flex min-h-[500px] items-center justify-center">
+        <ErrorCard
+          isSuccess={false}
+          responseError={{ message: "Failed to load marketplace data" }}
+          context="marketplace page"
+          onRetry={() => window.location.reload()}
+        />
+      </div>
+    );
   }
   return (
     <div className="w-full">
