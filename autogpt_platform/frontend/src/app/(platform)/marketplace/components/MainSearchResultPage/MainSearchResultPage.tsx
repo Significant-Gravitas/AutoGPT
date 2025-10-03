@@ -38,7 +38,7 @@ export const MainSearchResultPage = ({
     return <MainMarketplacePageLoading />;
   }
 
-  if (!hasError) {
+  if (hasError) {
     return (
       <div className="flex min-h-[500px] items-center justify-center">
         <ErrorCard
