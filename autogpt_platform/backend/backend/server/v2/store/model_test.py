@@ -135,6 +135,7 @@ def test_creator_details():
 
 def test_store_submission():
     submission = backend.server.v2.store.model.StoreSubmission(
+        user_id="user123",
         agent_id="agent123",
         agent_version=1,
         sub_heading="Test subheading",
@@ -156,6 +157,7 @@ def test_store_submissions_response():
     response = backend.server.v2.store.model.StoreSubmissionsResponse(
         submissions=[
             backend.server.v2.store.model.StoreSubmission(
+                user_id="user123",
                 agent_id="agent123",
                 agent_version=1,
                 sub_heading="Test subheading",

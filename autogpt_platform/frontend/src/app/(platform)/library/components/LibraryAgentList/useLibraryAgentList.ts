@@ -2,6 +2,7 @@
 
 import { useGetV2ListLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
 import { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgentResponse";
+import { LIBRARY_AGENTS_PAGE_SIZE } from "@/lib/pagination-config";
 import { useLibraryPageContext } from "../state-provider";
 
 export const useLibraryAgentList = () => {
@@ -15,7 +16,7 @@ export const useLibraryAgentList = () => {
   } = useGetV2ListLibraryAgentsInfinite(
     {
       page: 1,
-      page_size: 10,
+      page_size: LIBRARY_AGENTS_PAGE_SIZE,
       search_term: searchTerm || undefined,
       sort_by: librarySort,
     },

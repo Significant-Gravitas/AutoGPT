@@ -70,12 +70,14 @@ class TestLibraryAgentCacheInvalidation:
         library_cache.get_cached_library_agent.cache_clear()
         library_cache.get_cached_library_agents.cache_clear()
 
-        with patch.object(
-            library_db, "get_library_agent", new_callable=AsyncMock
-        ) as mock_get, patch.object(
-            library_db, "list_library_agents", new_callable=AsyncMock
-        ) as mock_list:
-
+        with (
+            patch.object(
+                library_db, "get_library_agent", new_callable=AsyncMock
+            ) as mock_get,
+            patch.object(
+                library_db, "list_library_agents", new_callable=AsyncMock
+            ) as mock_list,
+        ):
             mock_agent = {"id": mock_library_agent_id, "name": "Test Agent"}
             mock_get.return_value = mock_agent
             mock_list.return_value = {
@@ -168,12 +170,12 @@ class TestLibraryPresetCacheInvalidation:
 
         preset_id = str(uuid.uuid4())
 
-        with patch.object(
-            library_db, "list_presets", new_callable=AsyncMock
-        ) as mock_list, patch.object(
-            library_db, "get_preset", new_callable=AsyncMock
-        ) as mock_get:
-
+        with (
+            patch.object(
+                library_db, "list_presets", new_callable=AsyncMock
+            ) as mock_list,
+            patch.object(library_db, "get_preset", new_callable=AsyncMock) as mock_get,
+        ):
             mock_preset = {"id": preset_id, "name": "Test Preset"}
             mock_list.return_value = {
                 "presets": [mock_preset],

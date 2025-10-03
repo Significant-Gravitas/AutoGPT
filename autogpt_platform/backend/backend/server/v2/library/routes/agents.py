@@ -5,6 +5,7 @@ import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, HTTPException, Query, Security, status
 from fastapi.responses import Response
 
+import backend.server.cache_config
 import backend.server.v2.library.cache as library_cache
 import backend.server.v2.library.db as library_db
 import backend.server.v2.library.model as library_model
@@ -228,11 +229,12 @@ async def add_marketplace_agent_to_library(
         )
 
         # Clear library caches after adding new agent
-        for page in range(1, 20):
-            for page_size in [10, 15, 20]:  # Frontend uses 10, API default is 15, cache default is 20
-                library_cache.get_cached_library_agents.cache_delete(
-                    user_id=user_id, page=page, page_size=page_size
-                )
+        for page in range(1, backend.server.cache_config.MAX_PAGES_TO_CLEAR):
+            library_cache.get_cached_library_agents.cache_delete(
+                user_id=user_id,
+                page=page,
+                page_size=backend.server.cache_config.V2_LIBRARY_AGENTS_PAGE_SIZE,
+            )
 
         return result
 
@@ -292,9 +294,11 @@ async def update_library_agent(
             is_archived=payload.is_archived,
         )
 
-        for page in range(1, 20):
+        for page in range(1, backend.server.cache_config.MAX_PAGES_TO_CLEAR):
             library_cache.get_cached_library_agent_favorites.cache_delete(
-                user_id=user_id, page=page, page_size=10
+                user_id=user_id,
+                page=page,
+                page_size=backend.server.cache_config.V2_LIBRARY_AGENTS_PAGE_SIZE,
             )
 
         return result
@@ -353,11 +357,12 @@ async def delete_library_agent(
         library_cache.get_cached_library_agent.cache_delete(
             library_agent_id=library_agent_id, user_id=user_id
         )
-        for page in range(1, 20):
-            for page_size in [10, 15, 20]:  # Frontend uses 10, API default is 15, cache default is 20
-                library_cache.get_cached_library_agents.cache_delete(
-                    user_id=user_id, page=page, page_size=page_size
-                )
+        for page in range(1, backend.server.cache_config.MAX_PAGES_TO_CLEAR):
+            library_cache.get_cached_library_agents.cache_delete(
+                user_id=user_id,
+                page=page,
+                page_size=backend.server.cache_config.V2_LIBRARY_AGENTS_PAGE_SIZE,
+            )
 
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     except NotFoundError as e:

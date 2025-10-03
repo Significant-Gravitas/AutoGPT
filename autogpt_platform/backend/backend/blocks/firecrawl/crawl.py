@@ -1,8 +1,9 @@
-from enum import Enum
 from typing import Any
 
-from firecrawl import FirecrawlApp, ScrapeOptions
+from firecrawl import FirecrawlApp
+from firecrawl.v2.types import ScrapeOptions
 
+from backend.blocks.firecrawl._api import ScrapeFormat
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -14,21 +15,10 @@ from backend.sdk import (
 )
 
 from ._config import firecrawl
-
-
-class ScrapeFormat(Enum):
-    MARKDOWN = "markdown"
-    HTML = "html"
-    RAW_HTML = "rawHtml"
-    LINKS = "links"
-    SCREENSHOT = "screenshot"
-    SCREENSHOT_FULL_PAGE = "screenshot@fullPage"
-    JSON = "json"
-    CHANGE_TRACKING = "changeTracking"
+from ._format_utils import convert_to_format_options
 
 
 class FirecrawlCrawlBlock(Block):
-
     class Input(BlockSchema):
         credentials: CredentialsMetaInput = firecrawl.credentials_field()
         url: str = SchemaField(description="The URL to crawl")
@@ -78,18 +68,17 @@ class FirecrawlCrawlBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-
         app = FirecrawlApp(api_key=credentials.api_key.get_secret_value())
 
         # Sync call
-        crawl_result = app.crawl_url(
+        crawl_result = app.crawl(
             input_data.url,
             limit=input_data.limit,
             scrape_options=ScrapeOptions(
-                formats=[format.value for format in input_data.formats],
-                onlyMainContent=input_data.only_main_content,
-                maxAge=input_data.max_age,
-                waitFor=input_data.wait_for,
+                formats=convert_to_format_options(input_data.formats),
+                only_main_content=input_data.only_main_content,
+                max_age=input_data.max_age,
+                wait_for=input_data.wait_for,
             ),
         )
         yield "data", crawl_result.data
@@ -101,7 +90,7 @@ class FirecrawlCrawlBlock(Block):
                 elif f == ScrapeFormat.HTML:
                     yield "html", data.html
                 elif f == ScrapeFormat.RAW_HTML:
-                    yield "raw_html", data.rawHtml
+                    yield "raw_html", data.raw_html
                 elif f == ScrapeFormat.LINKS:
                     yield "links", data.links
                 elif f == ScrapeFormat.SCREENSHOT:
@@ -109,6 +98,6 @@ class FirecrawlCrawlBlock(Block):
                 elif f == ScrapeFormat.SCREENSHOT_FULL_PAGE:
                     yield "screenshot_full_page", data.screenshot
                 elif f == ScrapeFormat.CHANGE_TRACKING:
-                    yield "change_tracking", data.changeTracking
+                    yield "change_tracking", data.change_tracking
                 elif f == ScrapeFormat.JSON:
                     yield "json", data.json

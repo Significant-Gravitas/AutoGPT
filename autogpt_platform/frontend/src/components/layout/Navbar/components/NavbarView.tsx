@@ -66,7 +66,7 @@ export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
       {/* Mobile Navbar - Adjust positioning */}
       <>
         {isLoggedIn ? (
-          <div className="fixed -right-4 top-2 z-50 flex items-center gap-0 md:hidden">
+          <div className="fixed right-0 top-2 z-50 flex items-center gap-0 md:hidden">
             <Wallet />
             <MobileNavBar
               userName={profile?.username}

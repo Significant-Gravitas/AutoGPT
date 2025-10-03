@@ -8,6 +8,7 @@ import fastapi
 import fastapi.responses
 
 import backend.data.graph
+import backend.server.cache_config
 import backend.server.v2.store.db
 import backend.server.v2.store.exceptions
 import backend.server.v2.store.image_gen
@@ -15,6 +16,7 @@ import backend.server.v2.store.media
 import backend.server.v2.store.model
 import backend.util.json
 from backend.server.v2.store.cache import (
+    _clear_submissions_cache,
     _get_cached_agent_details,
     _get_cached_agent_graph,
     _get_cached_creator_details,
@@ -29,6 +31,7 @@ from backend.server.v2.store.cache import (
 logger = logging.getLogger(__name__)
 
 router = fastapi.APIRouter()
+
 
 ##############################################
 ############### Profile Endpoints ############
@@ -128,7 +131,7 @@ async def get_agents(
     search_query: str | None = None,
     category: str | None = None,
     page: int = 1,
-    page_size: int = 20,
+    page_size: int = backend.server.cache_config.V2_STORE_AGENTS_PAGE_SIZE,
 ):
     """
     Get a paginated list of agents from the store with optional filtering and sorting.
@@ -326,7 +329,7 @@ async def get_creators(
     search_query: str | None = None,
     sorted_by: str | None = None,
     page: int = 1,
-    page_size: int = 20,
+    page_size: int = backend.server.cache_config.V2_STORE_CREATORS_PAGE_SIZE,
 ):
     """
     This is needed for:
@@ -412,7 +415,9 @@ async def get_creator(
 async def get_my_agents(
     user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
     page: typing.Annotated[int, fastapi.Query(ge=1)] = 1,
-    page_size: typing.Annotated[int, fastapi.Query(ge=1)] = 20,
+    page_size: typing.Annotated[
+        int, fastapi.Query(ge=1)
+    ] = backend.server.cache_config.V2_MY_AGENTS_PAGE_SIZE,
 ):
     """
     Get user's own agents.
@@ -458,10 +463,7 @@ async def delete_submission(
 
         # Clear submissions cache for this specific user after deletion
         if result:
-            # Clear user's own agents cache - we don't know all page/size combinations
-            for page in range(1, 20):
-                # Clear user's submissions cache for common defaults
-                _get_cached_submissions.cache_delete(user_id, page=page, page_size=20)
+            _clear_submissions_cache(user_id)
 
         return result
     except Exception:
@@ -482,7 +484,7 @@ async def delete_submission(
 async def get_submissions(
     user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
     page: int = 1,
-    page_size: int = 20,
+    page_size: int = backend.server.cache_config.V2_STORE_SUBMISSIONS_PAGE_SIZE,
 ):
     """
     Get a paginated list of store submissions for the authenticated user.
@@ -564,10 +566,7 @@ async def create_submission(
             recommended_schedule_cron=submission_request.recommended_schedule_cron,
         )
 
-        # Clear user's own agents cache - we don't know all page/size combinations
-        for page in range(1, 20):
-            # Clear user's submissions cache for common defaults
-            _get_cached_submissions.cache_delete(user_id, page=page, page_size=20)
+        _clear_submissions_cache(user_id)
 
         return result
     except Exception:
@@ -618,10 +617,7 @@ async def edit_submission(
         recommended_schedule_cron=submission_request.recommended_schedule_cron,
     )
 
-    # Clear user's own agents cache - we don't know all page/size combinations
-    for page in range(1, 20):
-        # Clear user's submissions cache for common defaults
-        _get_cached_submissions.cache_delete(user_id, page=page, page_size=20)
+    _clear_submissions_cache(user_id)
 
     return result
 
