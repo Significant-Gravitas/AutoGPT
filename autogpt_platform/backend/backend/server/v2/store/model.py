@@ -98,6 +98,7 @@ class Profile(pydantic.BaseModel):
 
 
 class StoreSubmission(pydantic.BaseModel):
+    user_id: str
     agent_id: str
     agent_version: int
     name: str

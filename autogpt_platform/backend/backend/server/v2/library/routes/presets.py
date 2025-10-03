@@ -4,6 +4,7 @@ from typing import Any, Optional
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, HTTPException, Query, Security, status
 
+import backend.server.cache_config
 import backend.server.routers.cache as cache
 import backend.server.v2.library.cache as library_cache
 import backend.server.v2.library.db as db
@@ -27,17 +28,22 @@ router = APIRouter(
 )
 
 
-def _clear_presets_list_cache(user_id: str, num_pages: int = 20):
+def _clear_presets_list_cache(
+    user_id: str, num_pages: int = backend.server.cache_config.MAX_PAGES_TO_CLEAR
+):
     """
     Clear the presets list cache for the given user.
+    Clears both primary and alternative page sizes for backward compatibility.
     """
-    for page in range(1, num_pages):
-        library_cache.get_cached_library_presets.cache_delete(
-            user_id=user_id, page=page, page_size=10
-        )
-        library_cache.get_cached_library_presets.cache_delete(
-            user_id=user_id, page=page, page_size=20
-        )
+    page_sizes = backend.server.cache_config.get_page_sizes_for_clearing(
+        backend.server.cache_config.V2_LIBRARY_PRESETS_PAGE_SIZE,
+        backend.server.cache_config.V2_LIBRARY_PRESETS_ALT_PAGE_SIZE,
+    )
+    for page in range(1, num_pages + 1):
+        for page_size in page_sizes:
+            library_cache.get_cached_library_presets.cache_delete(
+                user_id=user_id, page=page, page_size=page_size
+            )
 
 
 @router.get(
@@ -445,12 +451,31 @@ async def execute_preset(
     merged_node_input = preset.inputs | inputs
     merged_credential_inputs = preset.credentials | credential_inputs
 
+    # Clear graph executions cache - use both page sizes for compatibility
     for page in range(1, 10):
+        # Clear with alternative page size
         cache.get_cached_graph_executions.cache_delete(
-            graph_id=preset.graph_id, user_id=user_id, page=page, page_size=20
+            graph_id=preset.graph_id,
+            user_id=user_id,
+            page=page,
+            page_size=backend.server.cache_config.V2_GRAPH_EXECUTIONS_ALT_PAGE_SIZE,
         )
         cache.get_cached_graph_executions.cache_delete(
-            user_id=user_id, page=page, page_size=20
+            user_id=user_id,
+            page=page,
+            page_size=backend.server.cache_config.V2_GRAPH_EXECUTIONS_ALT_PAGE_SIZE,
+        )
+        # Clear with v1 page size (25)
+        cache.get_cached_graph_executions.cache_delete(
+            graph_id=preset.graph_id,
+            user_id=user_id,
+            page=page,
+            page_size=backend.server.cache_config.V1_GRAPH_EXECUTIONS_PAGE_SIZE,
+        )
+        cache.get_cached_graph_executions.cache_delete(
+            user_id=user_id,
+            page=page,
+            page_size=backend.server.cache_config.V1_GRAPH_EXECUTIONS_PAGE_SIZE,
         )
 
     return await add_graph_execution(

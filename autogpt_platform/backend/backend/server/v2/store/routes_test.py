@@ -534,6 +534,7 @@ def test_get_submissions_success(
     mocked_value = backend.server.v2.store.model.StoreSubmissionsResponse(
         submissions=[
             backend.server.v2.store.model.StoreSubmission(
+                user_id="user123",
                 name="Test Agent",
                 description="Test agent description",
                 image_urls=["test.jpg"],

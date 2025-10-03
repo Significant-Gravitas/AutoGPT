@@ -29,9 +29,11 @@ from pydantic import BaseModel
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 from typing_extensions import Optional, TypedDict
 
+import backend.server.cache_config as cache_config
 import backend.server.integrations.router
 import backend.server.routers.analytics
 import backend.server.routers.cache as cache
+import backend.server.v2.library.cache as library_cache
 import backend.server.v2.library.db as library_db
 from backend.data import api_key as api_key_db
 from backend.data import execution as execution_db
@@ -84,7 +86,6 @@ from backend.server.model import (
     UpdateTimezoneRequest,
     UploadFileResponse,
 )
-from backend.server.v2.library import cache as library_cache
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.exceptions import GraphValidationError, NotFoundError
@@ -762,11 +763,22 @@ async def create_new_graph(
     await library_db.create_library_agent(graph, user_id=user_id)
 
     # Clear graphs list cache after creating new graph
-    cache.get_cached_graphs.cache_delete(user_id=user_id, page=1, page_size=250)
-    for page in range(1, 20):
+    cache.get_cached_graphs.cache_delete(
+        user_id=user_id,
+        page=1,
+        page_size=cache_config.V1_GRAPHS_PAGE_SIZE,
+    )
+    for page in range(1, cache_config.MAX_PAGES_TO_CLEAR):
         library_cache.get_cached_library_agents.cache_delete(
-            user_id=user_id, page=page, page_size=10
+            user_id=user_id,
+            page=page,
+            page_size=cache_config.V1_LIBRARY_AGENTS_PAGE_SIZE,
         )
+
+    # Clear my agents cache so user sees new agent immediately
+    import backend.server.v2.store.cache
+
+    backend.server.v2.store.cache._clear_my_agents_cache(user_id)
 
     return await on_graph_activate(graph, user_id=user_id)
 
@@ -788,11 +800,25 @@ async def delete_graph(
     )
 
     # Clear caches after deleting graph
-    cache.get_cached_graphs.cache_delete(user_id=user_id, page=1, page_size=250)
+    cache.get_cached_graphs.cache_delete(
+        user_id=user_id,
+        page=1,
+        page_size=cache_config.V1_GRAPHS_PAGE_SIZE,
+    )
     cache.get_cached_graph.cache_delete(
         graph_id=graph_id, version=None, user_id=user_id
     )
     cache.get_cached_graph_all_versions.cache_delete(graph_id, user_id=user_id)
+
+    # Clear my agents cache so user sees agent removed immediately
+    import backend.server.v2.store.cache
+
+    backend.server.v2.store.cache._clear_my_agents_cache(user_id)
+
+    # Clear library agent by graph_id cache
+    library_cache.get_cached_library_agent_by_graph_id.cache_delete(
+        graph_id=graph_id, user_id=user_id
+    )
 
     return result
 
@@ -856,7 +882,11 @@ async def update_graph(
         graph_id=graph_id, version=None, user_id=user_id
     )
     cache.get_cached_graph_all_versions.cache_delete(graph_id, user_id=user_id)
-    cache.get_cached_graphs.cache_delete(user_id=user_id, page=1, page_size=250)
+    cache.get_cached_graphs.cache_delete(
+        user_id=user_id,
+        page=1,
+        page_size=cache_config.V1_GRAPHS_PAGE_SIZE,
+    )
 
     return new_graph_version_with_subgraphs
 
@@ -924,20 +954,26 @@ async def execute_graph(
         )
 
     # Invalidate caches before execution starts so frontend sees fresh data
-    # For some reason these are the values hard coded in list_graphs_executions
     cache.get_cached_graphs_executions.cache_delete(
-        user_id=user_id, page=1, page_size=250
+        user_id=user_id,
+        page=1,
+        page_size=cache_config.V1_GRAPHS_PAGE_SIZE,
     )
-    for page in range(1, 20):
+    for page in range(1, cache_config.MAX_PAGES_TO_CLEAR):
         cache.get_cached_graph_execution.cache_delete(
             graph_id=graph_id, user_id=user_id, version=graph_version
         )
 
         cache.get_cached_graph_executions.cache_delete(
-            graph_id=graph_id, user_id=user_id, page=page, page_size=25
+            graph_id=graph_id,
+            user_id=user_id,
+            page=page,
+            page_size=cache_config.V1_GRAPH_EXECUTIONS_PAGE_SIZE,
         )
         library_cache.get_cached_library_agents.cache_delete(
-            user_id=user_id, page=page, page_size=10
+            user_id=user_id,
+            page=page,
+            page_size=cache_config.V1_LIBRARY_AGENTS_PAGE_SIZE,
         )
 
     try:

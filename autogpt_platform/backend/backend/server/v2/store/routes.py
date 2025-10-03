@@ -8,6 +8,7 @@ import fastapi
 import fastapi.responses
 
 import backend.data.graph
+import backend.server.cache_config
 import backend.server.v2.store.db
 import backend.server.v2.store.exceptions
 import backend.server.v2.store.image_gen
@@ -130,7 +131,7 @@ async def get_agents(
     search_query: str | None = None,
     category: str | None = None,
     page: int = 1,
-    page_size: int = 20,
+    page_size: int = backend.server.cache_config.V2_STORE_AGENTS_PAGE_SIZE,
 ):
     """
     Get a paginated list of agents from the store with optional filtering and sorting.
@@ -328,7 +329,7 @@ async def get_creators(
     search_query: str | None = None,
     sorted_by: str | None = None,
     page: int = 1,
-    page_size: int = 20,
+    page_size: int = backend.server.cache_config.V2_STORE_CREATORS_PAGE_SIZE,
 ):
     """
     This is needed for:
@@ -414,7 +415,9 @@ async def get_creator(
 async def get_my_agents(
     user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
     page: typing.Annotated[int, fastapi.Query(ge=1)] = 1,
-    page_size: typing.Annotated[int, fastapi.Query(ge=1)] = 20,
+    page_size: typing.Annotated[
+        int, fastapi.Query(ge=1)
+    ] = backend.server.cache_config.V2_MY_AGENTS_PAGE_SIZE,
 ):
     """
     Get user's own agents.
@@ -481,7 +484,7 @@ async def delete_submission(
 async def get_submissions(
     user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
     page: int = 1,
-    page_size: int = 20,
+    page_size: int = backend.server.cache_config.V2_STORE_SUBMISSIONS_PAGE_SIZE,
 ):
     """
     Get a paginated list of store submissions for the authenticated user.

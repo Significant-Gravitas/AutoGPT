@@ -68,14 +68,15 @@ class TestGraphCacheInvalidation:
         cache.get_cached_graph_executions.cache_clear()
 
         # Setup mocks
-        with patch.object(
-            graph_db, "list_graphs_paginated", new_callable=AsyncMock
-        ) as mock_list, patch.object(
-            graph_db, "get_graph", new_callable=AsyncMock
-        ) as mock_get, patch.object(
-            graph_db, "get_graph_all_versions", new_callable=AsyncMock
-        ) as mock_versions:
-
+        with (
+            patch.object(
+                graph_db, "list_graphs_paginated", new_callable=AsyncMock
+            ) as mock_list,
+            patch.object(graph_db, "get_graph", new_callable=AsyncMock) as mock_get,
+            patch.object(
+                graph_db, "get_graph_all_versions", new_callable=AsyncMock
+            ) as mock_versions,
+        ):
             mock_list.return_value = MagicMock(graphs=[])
             mock_get.return_value = MagicMock(id=mock_graph_id)
             mock_versions.return_value = []
@@ -134,14 +135,15 @@ class TestGraphCacheInvalidation:
         cache.get_cached_graph_all_versions.cache_clear()
         cache.get_cached_graphs.cache_clear()
 
-        with patch.object(
-            graph_db, "get_graph", new_callable=AsyncMock
-        ) as mock_get, patch.object(
-            graph_db, "get_graph_all_versions", new_callable=AsyncMock
-        ) as mock_versions, patch.object(
-            graph_db, "list_graphs_paginated", new_callable=AsyncMock
-        ) as mock_list:
-
+        with (
+            patch.object(graph_db, "get_graph", new_callable=AsyncMock) as mock_get,
+            patch.object(
+                graph_db, "get_graph_all_versions", new_callable=AsyncMock
+            ) as mock_versions,
+            patch.object(
+                graph_db, "list_graphs_paginated", new_callable=AsyncMock
+            ) as mock_list,
+        ):
             mock_get.return_value = MagicMock(id=mock_graph_id, version=1)
             mock_versions.return_value = [MagicMock(version=1)]
             mock_list.return_value = MagicMock(graphs=[])

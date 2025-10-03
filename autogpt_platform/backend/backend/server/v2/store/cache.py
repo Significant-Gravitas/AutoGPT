@@ -7,15 +7,44 @@ separated from the main routes for better organization and maintainability.
 
 from autogpt_libs.utils.cache import cached
 
+import backend.server.cache_config
 import backend.server.v2.store.db
 
 
-def _clear_submissions_cache(user_id: str, num_pages: int = 20):
+def _clear_submissions_cache(
+    user_id: str, num_pages: int = backend.server.cache_config.MAX_PAGES_TO_CLEAR
+):
     """
     Clear the submissions cache for the given user.
+
+    Args:
+        user_id: User ID whose cache should be cleared
+        num_pages: Number of pages to clear (default from cache_config)
     """
-    for page in range(1, num_pages):
-        _get_cached_submissions.cache_delete(user_id, page=page, page_size=20)
+    for page in range(1, num_pages + 1):
+        _get_cached_submissions.cache_delete(
+            user_id=user_id,
+            page=page,
+            page_size=backend.server.cache_config.V2_STORE_SUBMISSIONS_PAGE_SIZE,
+        )
+
+
+def _clear_my_agents_cache(
+    user_id: str, num_pages: int = backend.server.cache_config.MAX_PAGES_TO_CLEAR
+):
+    """
+    Clear the my agents cache for the given user.
+
+    Args:
+        user_id: User ID whose cache should be cleared
+        num_pages: Number of pages to clear (default from cache_config)
+    """
+    for page in range(1, num_pages + 1):
+        _get_cached_my_agents.cache_delete(
+            user_id=user_id,
+            page=page,
+            page_size=backend.server.cache_config.V2_MY_AGENTS_PAGE_SIZE,
+        )
 
 
 # Cache user profiles for 1 hour per user
