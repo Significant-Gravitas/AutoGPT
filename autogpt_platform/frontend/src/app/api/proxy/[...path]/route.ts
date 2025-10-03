@@ -1,9 +1,7 @@
 import {
   ApiError,
   makeAuthenticatedFileUpload,
-  makeAuthenticatedRequest,
   makeAuthenticatedRequestWithFallback,
-  getServerAuthTokenWithFallback,
 } from "@/lib/autogpt-server-api/helpers";
 import { getAgptServerBaseUrl } from "@/lib/env-config";
 import { NextRequest, NextResponse } from "next/server";
