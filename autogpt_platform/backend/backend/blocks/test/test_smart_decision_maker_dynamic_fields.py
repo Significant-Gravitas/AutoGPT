@@ -192,7 +192,7 @@ async def test_create_block_function_signature_with_object_fields():
 
 
 @pytest.mark.asyncio
-async def test_create_function_signature_with_mapping():
+async def test_create_function_signature():
     """Test that the mapping between sanitized and original field names is built correctly."""
     block = SmartDecisionMakerBlock()
 
@@ -302,7 +302,7 @@ async def test_output_yielding_with_dynamic_fields():
 
         # Mock the function signature creation
         with patch.object(
-            block, "_create_function_signature_with_mapping", new_callable=AsyncMock
+            block, "_create_function_signature", new_callable=AsyncMock
         ) as mock_sig:
             mock_sig.return_value = (
                 [
@@ -484,7 +484,7 @@ async def test_validation_errors_dont_pollute_conversation():
 
         # Mock the function signature creation
         with patch.object(
-            block, "_create_function_signature_with_mapping", new_callable=AsyncMock
+            block, "_create_function_signature", new_callable=AsyncMock
         ) as mock_sig:
             mock_sig.return_value = (
                 [

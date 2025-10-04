@@ -224,7 +224,7 @@ async def test_smart_decision_maker_tracks_llm_stats():
         return_value=mock_response,
     ), patch.object(
         SmartDecisionMakerBlock,
-        "_create_function_signature_with_mapping",
+        "_create_function_signature",
         new_callable=AsyncMock,
         return_value=([], {}),
     ):
@@ -318,7 +318,7 @@ async def test_smart_decision_maker_parameter_validation():
         return_value=mock_response_with_typo,
     ) as mock_llm_call, patch.object(
         SmartDecisionMakerBlock,
-        "_create_function_signature_with_mapping",
+        "_create_function_signature",
         new_callable=AsyncMock,
         return_value=(mock_tool_functions, {}),
     ):
@@ -375,7 +375,7 @@ async def test_smart_decision_maker_parameter_validation():
         return_value=mock_response_missing_required,
     ), patch.object(
         SmartDecisionMakerBlock,
-        "_create_function_signature_with_mapping",
+        "_create_function_signature",
         new_callable=AsyncMock,
         return_value=(mock_tool_functions, {}),
     ):
@@ -425,7 +425,7 @@ async def test_smart_decision_maker_parameter_validation():
         return_value=mock_response_valid,
     ), patch.object(
         SmartDecisionMakerBlock,
-        "_create_function_signature_with_mapping",
+        "_create_function_signature",
         new_callable=AsyncMock,
         return_value=(mock_tool_functions, {}),
     ):
@@ -479,7 +479,7 @@ async def test_smart_decision_maker_parameter_validation():
         return_value=mock_response_all_params,
     ), patch.object(
         SmartDecisionMakerBlock,
-        "_create_function_signature_with_mapping",
+        "_create_function_signature",
         new_callable=AsyncMock,
         return_value=(mock_tool_functions, {}),
     ):
@@ -588,7 +588,7 @@ async def test_smart_decision_maker_raw_response_conversion():
         "backend.blocks.llm.llm_call", new_callable=AsyncMock
     ) as mock_llm_call, patch.object(
         SmartDecisionMakerBlock,
-        "_create_function_signature_with_mapping",
+        "_create_function_signature",
         new_callable=AsyncMock,
         return_value=(mock_tool_functions, {}),
     ):
@@ -656,7 +656,7 @@ async def test_smart_decision_maker_raw_response_conversion():
         return_value=mock_response_ollama,
     ), patch.object(
         SmartDecisionMakerBlock,
-        "_create_function_signature_with_mapping",
+        "_create_function_signature",
         new_callable=AsyncMock,
         return_value=([], {}),  # No tools for this test
     ):
@@ -702,7 +702,7 @@ async def test_smart_decision_maker_raw_response_conversion():
         return_value=mock_response_dict,
     ), patch.object(
         SmartDecisionMakerBlock,
-        "_create_function_signature_with_mapping",
+        "_create_function_signature",
         new_callable=AsyncMock,
         return_value=([], {}),
     ):
