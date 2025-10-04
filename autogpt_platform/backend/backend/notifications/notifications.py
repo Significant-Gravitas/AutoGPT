@@ -25,7 +25,7 @@ from backend.data.notifications import (
     get_summary_params_type,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
-from backend.data.user import generate_unsubscribe_link
+from backend.data.user import generate_unsubscribe_link, set_user_email_verification
 from backend.notifications.email import EmailSender
 from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
@@ -723,12 +723,53 @@ class NotificationManager(AppService):
                             chunk_sent = True
                             break
                     except Exception as e:
+                        # Check if it's a Postmark API error
                         if attempt_size == 1:
-                            # Even single notification is too large
-                            logger.error(
-                                f"Single notification too large to send: {e}. "
-                                f"Skipping notification at index {i}"
-                            )
+                            # Single notification failed - determine the actual cause
+                            error_message = str(e).lower()
+                            error_type = type(e).__name__
+
+                            # Check for HTTP 406 - Inactive recipient (common in Postmark errors)
+                            if "406" in error_message or "inactive" in error_message:
+                                logger.warning(
+                                    f"Failed to send notification at index {i}: "
+                                    f"Recipient marked as inactive by Postmark. "
+                                    f"Error: {e}. Skipping this notification."
+                                )
+                                # Deactivate the user's email verification status
+                                try:
+                                    await set_user_email_verification(event.user_id, False)
+                                    logger.info(
+                                        f"Set email verification to false for user {event.user_id} "
+                                        f"after receiving 406 inactive recipient error"
+                                    )
+                                except Exception as deactivation_error:
+                                    logger.error(
+                                        f"Failed to deactivate email for user {event.user_id}: "
+                                        f"{deactivation_error}"
+                                    )
+                            # Check for HTTP 422 - Malformed data
+                            elif "422" in error_message or "unprocessable" in error_message:
+                                logger.error(
+                                    f"Failed to send notification at index {i}: "
+                                    f"Malformed notification data rejected by Postmark. "
+                                    f"Error: {e}. Skipping this notification."
+                                )
+                            # Check if it's a ValueError for size limit
+                            elif isinstance(e, ValueError) and "too large" in error_message:
+                                logger.error(
+                                    f"Failed to send notification at index {i}: "
+                                    f"Notification size exceeds email limit. "
+                                    f"Error: {e}. Skipping this notification."
+                                )
+                            # Other API errors
+                            else:
+                                logger.error(
+                                    f"Failed to send notification at index {i}: "
+                                    f"Email API error ({error_type}): {e}. "
+                                    f"Skipping this notification."
+                                )
+
                             failed_indices.append(i)
                             i += 1
                             chunk_sent = True
