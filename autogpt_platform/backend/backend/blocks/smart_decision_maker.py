@@ -310,27 +310,36 @@ class SmartDecisionMakerBlock(Block):
         }
         sink_block_input_schema = block.input_schema
         properties = {}
+        field_mapping = {}  # clean_name -> original_name
 
         for link in links:
             field_name = link.sink_name
             is_dynamic = is_dynamic_field(field_name)
 
             if is_dynamic:
-                # For dynamic fields, always use string type since the values are individual elements
-                # Even if the base field is an object/array, the dynamic fields are scalar values
-                properties[field_name] = {
+                # For dynamic fields, don't clean the field name to preserve delimiters
+                # This allows the LLM to use the original dynamic field syntax
+                property_key = field_name
+                clean_field_name = SmartDecisionMakerBlock.cleanup(field_name)
+                field_mapping[clean_field_name] = field_name
+
+                properties[property_key] = {
                     "type": "string",
                     "description": get_dynamic_field_description(field_name),
                 }
             else:
-                # For regular fields, use the block's schema directly
+                # For regular fields, clean the property key for Anthropic API compatibility
+                clean_field_name = SmartDecisionMakerBlock.cleanup(field_name)
+                field_mapping[clean_field_name] = field_name
+
+                # Use the block's schema directly
                 try:
-                    properties[field_name] = sink_block_input_schema.get_field_schema(
-                        field_name
+                    properties[clean_field_name] = (
+                        sink_block_input_schema.get_field_schema(field_name)
                     )
                 except (KeyError, AttributeError):
                     # If field doesn't exist in schema, provide a generic one
-                    properties[field_name] = {
+                    properties[clean_field_name] = {
                         "type": "string",
                         "description": f"Value for {field_name}",
                     }
@@ -345,13 +354,20 @@ class SmartDecisionMakerBlock(Block):
         required_fields: set[str] = set()
         for link in links:
             field_name = link.sink_name
-            if is_dynamic_field(field_name):
+            is_dynamic = is_dynamic_field(field_name)
+
+            if is_dynamic:
+                # For dynamic fields, use the original field name (preserve delimiters)
+                property_key = field_name
                 base_name = extract_base_field_name(field_name)
                 if base_name in base_required:
-                    required_fields.add(field_name)
+                    required_fields.add(property_key)
             else:
+                # For regular fields, use the cleaned field name
+                clean_field_name = SmartDecisionMakerBlock.cleanup(field_name)
+                property_key = clean_field_name
                 if field_name in base_required:
-                    required_fields.add(field_name)
+                    required_fields.add(property_key)
 
         tool_function["parameters"] = {
             "type": "object",
@@ -359,6 +375,9 @@ class SmartDecisionMakerBlock(Block):
             "additionalProperties": False,
             "required": sorted(required_fields),
         }
+
+        # Store field mapping for later use in output processing
+        tool_function["_field_mapping"] = field_mapping
 
         return {"type": "function", "function": tool_function}
 
@@ -689,9 +708,29 @@ class SmartDecisionMakerBlock(Block):
             else:
                 expected_args = {arg: {} for arg in tool_args.keys()}
 
+            # Get field mapping from tool definition
+            field_mapping = (
+                tool_def.get("function", {}).get("_field_mapping", {})
+                if tool_def
+                else {}
+            )
+
             for arg_name in expected_args:
+                # For dynamic fields, arg_name will be the original field name (e.g., "values_#_name")
+                # For regular fields, arg_name will be the cleaned field name (e.g., "regular_field")
+                # We need to check if this argument name exists in tool_args, if not, try the cleaned version
+
+                if arg_name in tool_args:
+                    # Direct match - use as is
+                    arg_value = tool_args[arg_name]
+                    original_field_name = arg_name
+                else:
+                    # Check if we have a mapping for the cleaned version
+                    original_field_name = field_mapping.get(arg_name, arg_name)
+                    arg_value = tool_args.get(arg_name)
+
                 sanitized_tool_name = self.cleanup(tool_name)
-                sanitized_arg_name = self.cleanup(arg_name)
+                sanitized_arg_name = self.cleanup(original_field_name)
                 emit_key = f"tools_^_{sanitized_tool_name}_~_{sanitized_arg_name}"
 
                 logger.debug(
@@ -700,7 +739,7 @@ class SmartDecisionMakerBlock(Block):
                     node_exec_id,
                     emit_key,
                 )
-                yield emit_key, tool_args.get(arg_name)
+                yield emit_key, arg_value
 
         if response.reasoning:
             prompt.append(
