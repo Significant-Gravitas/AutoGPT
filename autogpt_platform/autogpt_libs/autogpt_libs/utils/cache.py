@@ -141,14 +141,18 @@ def cached(
                 # Fast path: check cache without lock
                 if key in cache_storage:
                     if ttl_seconds is None:
-                        logger.debug(f"Cache hit for {target_func.__name__}")
+                        logger.debug(
+                            f"Cache hit for {target_func.__name__} args: {args} kwargs: {kwargs}"
+                        )
                         return cache_storage[key]
                     else:
                         cached_data = cache_storage[key]
                         if isinstance(cached_data, tuple):
                             result, timestamp = cached_data
                             if current_time - timestamp < ttl_seconds:
-                                logger.debug(f"Cache hit for {target_func.__name__}")
+                                logger.debug(
+                                    f"Cache hit for {target_func.__name__} args: {args} kwargs: {kwargs}"
+                                )
                                 return result
 
                 # Slow path: acquire lock for cache miss/expiry
@@ -199,14 +203,18 @@ def cached(
                 # Fast path: check cache without lock
                 if key in cache_storage:
                     if ttl_seconds is None:
-                        logger.debug(f"Cache hit for {target_func.__name__}")
+                        logger.debug(
+                            f"Cache hit for {target_func.__name__} args: {args} kwargs: {kwargs}"
+                        )
                         return cache_storage[key]
                     else:
                         cached_data = cache_storage[key]
                         if isinstance(cached_data, tuple):
                             result, timestamp = cached_data
                             if current_time - timestamp < ttl_seconds:
-                                logger.debug(f"Cache hit for {target_func.__name__}")
+                                logger.debug(
+                                    f"Cache hit for {target_func.__name__} args: {args} kwargs: {kwargs}"
+                                )
                                 return result
 
                 # Slow path: acquire lock for cache miss/expiry

@@ -493,6 +493,7 @@ async def get_store_submissions(
         submission_models = []
         for sub in submissions:
             submission_model = backend.server.v2.store.model.StoreSubmission(
+                user_id=sub.user_id,
                 agent_id=sub.agent_id,
                 agent_version=sub.agent_version,
                 name=sub.name,
@@ -710,6 +711,7 @@ async def create_store_submission(
         logger.debug(f"Created store listing for agent {agent_id}")
         # Return submission details
         return backend.server.v2.store.model.StoreSubmission(
+            user_id=user_id,
             agent_id=agent_id,
             agent_version=agent_version,
             name=name,
@@ -860,6 +862,7 @@ async def edit_store_submission(
                     "Failed to update store listing version"
                 )
             return backend.server.v2.store.model.StoreSubmission(
+                user_id=user_id,
                 agent_id=current_version.agentGraphId,
                 agent_version=current_version.agentGraphVersion,
                 name=name,
@@ -993,6 +996,7 @@ async def create_store_version(
         )
         # Return submission details
         return backend.server.v2.store.model.StoreSubmission(
+            user_id=user_id,
             agent_id=agent_id,
             agent_version=agent_version,
             name=name,
@@ -1493,7 +1497,7 @@ async def review_store_submission(
             include={"StoreListing": True},
         )
 
-        if not submission:
+        if not submission or not submission.StoreListing:
             raise backend.server.v2.store.exceptions.DatabaseError(
                 f"Failed to update store listing version {store_listing_version_id}"
             )
@@ -1583,6 +1587,7 @@ async def review_store_submission(
 
         # Convert to Pydantic model for consistency
         return backend.server.v2.store.model.StoreSubmission(
+            user_id=submission.StoreListing.owningUserId,
             agent_id=submission.agentGraphId,
             agent_version=submission.agentGraphVersion,
             name=submission.name,
@@ -1715,14 +1720,17 @@ async def get_admin_listings_with_versions(
         # Get total count for pagination
         total = await prisma.models.StoreListing.prisma().count(where=where)
         total_pages = (total + page_size - 1) // page_size
-
         # Convert to response models
         listings_with_versions = []
         for listing in listings:
             versions: list[backend.server.v2.store.model.StoreSubmission] = []
+            if not listing.OwningUser:
+                logger.error(f"Listing {listing.id} has no owning user")
+                continue
             # If we have versions, turn them into StoreSubmission models
             for version in listing.Versions or []:
                 version_model = backend.server.v2.store.model.StoreSubmission(
+                    user_id=listing.OwningUser.id,
                     agent_id=version.agentGraphId,
                     agent_version=version.agentGraphVersion,
                     name=version.name,

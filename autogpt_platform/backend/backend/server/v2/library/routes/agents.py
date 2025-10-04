@@ -5,6 +5,8 @@ import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, HTTPException, Query, Security, status
 from fastapi.responses import Response
 
+import backend.server.cache_config
+import backend.server.v2.library.cache as library_cache
 import backend.server.v2.library.db as library_db
 import backend.server.v2.library.model as library_model
 import backend.server.v2.store.exceptions as store_exceptions
@@ -64,13 +66,22 @@ async def list_library_agents(
         HTTPException: If a server/database error occurs.
     """
     try:
-        return await library_db.list_library_agents(
-            user_id=user_id,
-            search_term=search_term,
-            sort_by=sort_by,
-            page=page,
-            page_size=page_size,
-        )
+        # Use cache for default queries (no search term, default sort)
+        if search_term is None and sort_by == library_model.LibraryAgentSort.UPDATED_AT:
+            return await library_cache.get_cached_library_agents(
+                user_id=user_id,
+                page=page,
+                page_size=page_size,
+            )
+        else:
+            # Direct DB query for searches and custom sorts
+            return await library_db.list_library_agents(
+                user_id=user_id,
+                search_term=search_term,
+                sort_by=sort_by,
+                page=page,
+                page_size=page_size,
+            )
     except Exception as e:
         logger.error(f"Could not list library agents for user #{user_id}: {e}")
         raise HTTPException(
@@ -114,7 +125,7 @@ async def list_favorite_library_agents(
         HTTPException: If a server/database error occurs.
     """
     try:
-        return await library_db.list_favorite_library_agents(
+        return await library_cache.get_cached_library_agent_favorites(
             user_id=user_id,
             page=page,
             page_size=page_size,
@@ -132,7 +143,9 @@ async def get_library_agent(
     library_agent_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> library_model.LibraryAgent:
-    return await library_db.get_library_agent(id=library_agent_id, user_id=user_id)
+    return await library_cache.get_cached_library_agent(
+        library_agent_id=library_agent_id, user_id=user_id
+    )
 
 
 @router.get("/by-graph/{graph_id}")
@@ -210,10 +223,20 @@ async def add_marketplace_agent_to_library(
         HTTPException(500): If a server/database error occurs.
     """
     try:
-        return await library_db.add_store_agent_to_library(
+        result = await library_db.add_store_agent_to_library(
             store_listing_version_id=store_listing_version_id,
             user_id=user_id,
         )
+
+        # Clear library caches after adding new agent
+        for page in range(1, backend.server.cache_config.MAX_PAGES_TO_CLEAR):
+            library_cache.get_cached_library_agents.cache_delete(
+                user_id=user_id,
+                page=page,
+                page_size=backend.server.cache_config.V2_LIBRARY_AGENTS_PAGE_SIZE,
+            )
+
+        return result
 
     except store_exceptions.AgentNotFoundError as e:
         logger.warning(
@@ -263,13 +286,22 @@ async def update_library_agent(
         HTTPException(500): If a server/database error occurs.
     """
     try:
-        return await library_db.update_library_agent(
+        result = await library_db.update_library_agent(
             library_agent_id=library_agent_id,
             user_id=user_id,
             auto_update_version=payload.auto_update_version,
             is_favorite=payload.is_favorite,
             is_archived=payload.is_archived,
         )
+
+        for page in range(1, backend.server.cache_config.MAX_PAGES_TO_CLEAR):
+            library_cache.get_cached_library_agent_favorites.cache_delete(
+                user_id=user_id,
+                page=page,
+                page_size=backend.server.cache_config.V2_LIBRARY_AGENTS_PAGE_SIZE,
+            )
+
+        return result
     except NotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -320,6 +352,18 @@ async def delete_library_agent(
         await library_db.delete_library_agent(
             library_agent_id=library_agent_id, user_id=user_id
         )
+
+        # Clear caches after deleting agent
+        library_cache.get_cached_library_agent.cache_delete(
+            library_agent_id=library_agent_id, user_id=user_id
+        )
+        for page in range(1, backend.server.cache_config.MAX_PAGES_TO_CLEAR):
+            library_cache.get_cached_library_agents.cache_delete(
+                user_id=user_id,
+                page=page,
+                page_size=backend.server.cache_config.V2_LIBRARY_AGENTS_PAGE_SIZE,
+            )
+
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     except NotFoundError as e:
         raise HTTPException(

@@ -7,6 +7,8 @@ import fastapi
 import fastapi.responses
 import prisma.enums
 
+import backend.server.cache_config
+import backend.server.v2.store.cache
 import backend.server.v2.store.db
 import backend.server.v2.store.model
 import backend.util.json
@@ -29,7 +31,7 @@ async def get_admin_listings_with_versions(
     status: typing.Optional[prisma.enums.SubmissionStatus] = None,
     search: typing.Optional[str] = None,
     page: int = 1,
-    page_size: int = 20,
+    page_size: int = backend.server.cache_config.V2_STORE_SUBMISSIONS_PAGE_SIZE,
 ):
     """
     Get store listings with their version history for admins.
@@ -93,6 +95,8 @@ async def review_submission(
             internal_comments=request.internal_comments or "",
             reviewer_id=user_id,
         )
+        backend.server.v2.store.cache._clear_submissions_cache(submission.user_id)
+        backend.server.v2.store.cache._get_cached_store_agents.cache_clear()
         return submission
     except Exception as e:
         logger.exception("Error reviewing submission: %s", e)

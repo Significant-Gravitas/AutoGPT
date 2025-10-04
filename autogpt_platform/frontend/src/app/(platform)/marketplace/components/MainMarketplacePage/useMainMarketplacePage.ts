@@ -4,6 +4,7 @@ import {
 } from "@/app/api/__generated__/endpoints/store/store";
 import { StoreAgentsResponse } from "@/app/api/__generated__/models/storeAgentsResponse";
 import { CreatorsResponse } from "@/app/api/__generated__/models/creatorsResponse";
+import { LARGE_PAGE_SIZE } from "@/lib/pagination-config";
 
 const queryConfig = {
   staleTime: 60 * 1000, // 60 seconds - match server cache
@@ -37,7 +38,7 @@ export const useMainMarketplacePage = () => {
   } = useGetV2ListStoreAgents(
     {
       sorted_by: "runs",
-      page_size: 1000,
+      page_size: LARGE_PAGE_SIZE,
     },
     {
       query: {

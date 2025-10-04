@@ -179,14 +179,15 @@ async def test_get_favorite_library_agents_success(
 def test_get_favorite_library_agents_error(
     mocker: pytest_mock.MockFixture, test_user_id: str
 ):
-    mock_db_call = mocker.patch(
-        "backend.server.v2.library.db.list_favorite_library_agents"
+    # Mock the cache function instead of the DB directly since routes now use cache
+    mock_cache_call = mocker.patch(
+        "backend.server.v2.library.routes.agents.library_cache.get_cached_library_agent_favorites"
     )
-    mock_db_call.side_effect = Exception("Test error")
+    mock_cache_call.side_effect = Exception("Test error")
 
     response = client.get("/agents/favorites")
     assert response.status_code == 500
-    mock_db_call.assert_called_once_with(
+    mock_cache_call.assert_called_once_with(
         user_id=test_user_id,
         page=1,
         page_size=15,

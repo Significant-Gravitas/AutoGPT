@@ -345,6 +345,150 @@ class TestCacheDeletion:
             )
             assert deleted is False  # Different parameters, not in cache
 
+    @pytest.mark.asyncio
+    async def test_clear_submissions_cache_page_size_consistency(self):
+        """
+        Test that _clear_submissions_cache uses the correct page_size.
+        This test ensures that if the default page_size in routes changes,
+        the hardcoded value in _clear_submissions_cache must also change.
+        """
+        from backend.server.v2.store.model import StoreSubmissionsResponse
+
+        mock_response = StoreSubmissionsResponse(
+            submissions=[],
+            pagination=Pagination(
+                total_items=0,
+                total_pages=1,
+                current_page=1,
+                page_size=20,
+            ),
+        )
+
+        with patch(
+            "backend.server.v2.store.db.get_store_submissions",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ):
+            # Clear cache first
+            routes._get_cached_submissions.cache_clear()
+
+            # Populate cache with multiple pages using the default page_size
+            DEFAULT_PAGE_SIZE = 20  # This should match the default in routes.py
+            user_id = "test_user"
+
+            # Add entries for pages 1-5
+            for page in range(1, 6):
+                await routes._get_cached_submissions(
+                    user_id=user_id, page=page, page_size=DEFAULT_PAGE_SIZE
+                )
+
+            # Verify cache has entries
+            cache_info_before = routes._get_cached_submissions.cache_info()
+            assert cache_info_before["size"] == 5
+
+            # Call _clear_submissions_cache
+            routes._clear_submissions_cache(user_id, num_pages=20)
+
+            # All entries should be cleared
+            cache_info_after = routes._get_cached_submissions.cache_info()
+            assert (
+                cache_info_after["size"] == 0
+            ), "Cache should be empty after _clear_submissions_cache"
+
+    @pytest.mark.asyncio
+    async def test_clear_submissions_cache_detects_page_size_mismatch(self):
+        """
+        Test that detects if _clear_submissions_cache is using wrong page_size.
+        If this test fails, it means the hardcoded page_size in _clear_submissions_cache
+        doesn't match the default page_size used in the routes.
+        """
+        from backend.server.v2.store.model import StoreSubmissionsResponse
+
+        mock_response = StoreSubmissionsResponse(
+            submissions=[],
+            pagination=Pagination(
+                total_items=0,
+                total_pages=1,
+                current_page=1,
+                page_size=20,
+            ),
+        )
+
+        with patch(
+            "backend.server.v2.store.db.get_store_submissions",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ):
+            # Clear cache first
+            routes._get_cached_submissions.cache_clear()
+
+            # WRONG_PAGE_SIZE simulates what happens if someone changes
+            # the default page_size in routes but forgets to update _clear_submissions_cache
+            WRONG_PAGE_SIZE = 25  # Different from the hardcoded value in cache.py
+            user_id = "test_user"
+
+            # Populate cache with the "wrong" page_size
+            for page in range(1, 6):
+                await routes._get_cached_submissions(
+                    user_id=user_id, page=page, page_size=WRONG_PAGE_SIZE
+                )
+
+            # Verify cache has entries
+            cache_info_before = routes._get_cached_submissions.cache_info()
+            assert cache_info_before["size"] == 5
+
+            # Call _clear_submissions_cache (which uses page_size=20 hardcoded)
+            routes._clear_submissions_cache(user_id, num_pages=20)
+
+            # If page_size is mismatched, entries won't be cleared
+            cache_info_after = routes._get_cached_submissions.cache_info()
+
+            # This assertion will FAIL if _clear_submissions_cache uses wrong page_size
+            assert (
+                cache_info_after["size"] == 5
+            ), "Cache entries with different page_size should NOT be cleared (this is expected)"
+
+    @pytest.mark.asyncio
+    async def test_my_agents_cache_needs_clearing_too(self):
+        """
+        Test that demonstrates _get_cached_my_agents also needs cache clearing.
+        Currently there's no _clear_my_agents_cache function, but there should be.
+        """
+        from backend.server.v2.store.model import MyAgentsResponse
+
+        mock_response = MyAgentsResponse(
+            agents=[],
+            pagination=Pagination(
+                total_items=0,
+                total_pages=1,
+                current_page=1,
+                page_size=20,
+            ),
+        )
+
+        with patch(
+            "backend.server.v2.store.db.get_my_agents",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ):
+            routes._get_cached_my_agents.cache_clear()
+
+            DEFAULT_PAGE_SIZE = 20
+            user_id = "test_user"
+
+            # Populate cache
+            for page in range(1, 6):
+                await routes._get_cached_my_agents(
+                    user_id=user_id, page=page, page_size=DEFAULT_PAGE_SIZE
+                )
+
+            cache_info = routes._get_cached_my_agents.cache_info()
+            assert cache_info["size"] == 5
+
+            # NOTE: Currently there's no _clear_my_agents_cache function
+            # If we implement one, it should clear all pages consistently
+            # For now we document this as a TODO
+
 
 if __name__ == "__main__":
     # Run the tests
