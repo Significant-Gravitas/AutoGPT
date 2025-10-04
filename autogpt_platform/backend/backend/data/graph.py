@@ -20,6 +20,7 @@ from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LlmModel
 from backend.data.db import prisma as db
+from backend.data.dynamic_fields import extract_base_field_name
 from backend.data.includes import MAX_GRAPH_VERSIONS_FETCH
 from backend.data.model import (
     CredentialsField,
@@ -741,7 +742,7 @@ def _is_tool_pin(name: str) -> bool:
 
 
 def _sanitize_pin_name(name: str) -> str:
-    sanitized_name = name.split("_#_")[0].split("_@_")[0].split("_$_")[0]
+    sanitized_name = extract_base_field_name(name)
     if _is_tool_pin(sanitized_name):
         return "tools"
     return sanitized_name
