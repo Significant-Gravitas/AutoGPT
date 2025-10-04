@@ -28,7 +28,8 @@ class FactCheckerBlock(Block):
     def __init__(self):
         super().__init__(
             id="d38b6c5e-9968-4271-8423-6cfe60d6e7e6",
-            description="This block checks the factuality of a given statement using Jina AI's Grounding API.",
+            description="This block checks the factuality of a given statement using Jina AI's Grounding API. "
+            "The block will retry automatically for transient failures.",
             categories={BlockCategory.SEARCH},
             input_schema=FactCheckerBlock.Input,
             output_schema=FactCheckerBlock.Output,
@@ -45,13 +46,30 @@ class FactCheckerBlock(Block):
             "Authorization": f"Bearer {credentials.api_key.get_secret_value()}",
         }
 
-        response = await Requests().get(url, headers=headers)
-        data = response.json()
+        try:
+            # The Requests class already has retry logic for 429, 500, 502, 503, 504, 408
+            response = await Requests().get(url, headers=headers)
 
-        if "data" in data:
-            data = data["data"]
-            yield "factuality", data["factuality"]
-            yield "result", data["result"]
-            yield "reason", data["reason"]
-        else:
-            raise RuntimeError(f"Expected 'data' key not found in response: {data}")
+            try:
+                data = response.json()
+            except Exception as e:
+                error_msg = f"Failed to parse JSON response: {str(e)}"
+                yield "error", error_msg
+                return
+
+            if "data" in data:
+                data = data["data"]
+                # Ensure all required fields exist before accessing them
+                try:
+                    yield "factuality", data["factuality"]
+                    yield "result", data["result"]
+                    yield "reason", data["reason"]
+                except KeyError as e:
+                    error_msg = f"Missing expected field in response: {str(e)}. Response data: {data}"
+                    yield "error", error_msg
+            else:
+                error_msg = f"Unexpected response format. Expected 'data' key not found in response: {data}"
+                yield "error", error_msg
+        except Exception as e:
+            error_msg = f"Unexpected error during fact checking: {str(e)}"
+            yield "error", error_msg
