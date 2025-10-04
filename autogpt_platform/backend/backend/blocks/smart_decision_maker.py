@@ -718,9 +718,14 @@ class SmartDecisionMakerBlock(Block):
                 original_field_name = self._sanitized_to_original.get(
                     output_key, arg_name
                 )
-                yield f"tools_^_{tool_name}_~_{original_field_name}", tool_args.get(
-                    arg_name
+                emit_key = f"tools_^_{tool_name}_~_{original_field_name}"
+                logger.debug(
+                    "[SmartDecisionMakerBlock|geid:%s|neid:%s] emit %s",
+                    graph_exec_id,
+                    node_exec_id,
+                    emit_key,
                 )
+                yield emit_key, tool_args.get(arg_name)
 
         # Add reasoning to conversation history if available
         if response.reasoning:
