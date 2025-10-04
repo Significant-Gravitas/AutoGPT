@@ -695,17 +695,29 @@ export default function useAgentGraph(
 
     // Update the node IDs on the frontend
     setSavedAgent(newSavedAgent);
+
+    // Create a mapping from old frontend IDs to new backend IDs
+    const oldToNewNodeIdMap = new Map<string, string>();
+
     setXYNodes((prev) => {
-      return newSavedAgent.nodes
+      const updatedNodes = newSavedAgent.nodes
         .map((backendNode) => {
           const key = `${backendNode.block_id}_${backendNode.metadata.position.x}_${backendNode.metadata.position.y}`;
-          const frontendNodeID = blockIDToNodeIDMap[key];
-          const frontendNode = prev.find((node) => node.id === frontendNodeID);
+          const oldFrontendNodeID = blockIDToNodeIDMap[key];
+          const frontendNode = prev.find(
+            (node) => node.id === oldFrontendNodeID,
+          );
+
+          if (frontendNode) {
+            // Store the ID mapping for edge updates
+            oldToNewNodeIdMap.set(oldFrontendNodeID, backendNode.id);
+          }
 
           const { position, ...metadata } = backendNode.metadata;
           return frontendNode
             ? ({
                 ...frontendNode,
+                id: backendNode.id, // Update the actual node ID to match backend
                 position,
                 data: {
                   ...frontendNode.data,
@@ -721,12 +733,20 @@ export default function useAgentGraph(
             : _backendNodeToXYNode(backendNode, newSavedAgent); // fallback
         })
         .filter((node) => node !== null);
+
+      return updatedNodes;
     });
-    // Reset bead count
+
+    // Update edge references to use the new node IDs
     setXYEdges((edges) => {
-      return edges.map(
-        (edge): CustomEdge => ({
+      return edges.map((edge): CustomEdge => {
+        const newSourceId = oldToNewNodeIdMap.get(edge.source) || edge.source;
+        const newTargetId = oldToNewNodeIdMap.get(edge.target) || edge.target;
+
+        return {
           ...edge,
+          source: newSourceId,
+          target: newTargetId,
           data: {
             ...edge.data,
             edgeColor: edge.data?.edgeColor ?? "grey",
@@ -734,8 +754,8 @@ export default function useAgentGraph(
             beadDown: 0,
             beadData: new Map(),
           },
-        }),
-      );
+        };
+      });
     });
     return newSavedAgent;
   }, [
