@@ -620,10 +620,7 @@ class SmartDecisionMakerBlock(Block):
 
             # If validation failed, add feedback and raise for retry
             if validation_errors:
-                # Add the failed response to conversation
-                prompt.append(_convert_raw_response_to_dict(response.raw_response))
-
-                # Add error feedback for retry
+                # Add error feedback for retry (but NOT the failed response)
                 error_feedback = (
                     "Your tool call had parameter errors. Please fix the following issues and try again:\n"
                     + "\n".join(f"- {error}" for error in validation_errors)
