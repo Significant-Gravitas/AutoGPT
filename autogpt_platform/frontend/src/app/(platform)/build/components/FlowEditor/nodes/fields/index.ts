@@ -1,5 +1,5 @@
 import { RegistryFieldsType } from "@rjsf/utils";
-import { CredentialsField } from "./CredentialField";
+import { CredentialsField } from "./CredentialField/CredentialField";
 import { AnyOfField } from "./AnyOfField/AnyOfField";
 import { ObjectField } from "./ObjectField";
 
