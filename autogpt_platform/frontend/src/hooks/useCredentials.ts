@@ -38,6 +38,11 @@ export default function useCredentials(
 ): CredentialsData | null {
   const allProviders = useContext(CredentialsProvidersContext);
 
+  // If block input schema doesn't have credentials, return null
+  if (!credsInputSchema) {
+    return null;
+  }
+
   const discriminatorValue = [
     credsInputSchema.discriminator
       ? getValue(credsInputSchema.discriminator, nodeInputValues)
@@ -50,7 +55,20 @@ export default function useCredentials(
     : null;
 
   let providerName: CredentialsProviderName;
-  if (credsInputSchema.credentials_provider.length > 1) {
+  
+  // Handle cases where credentials_provider might be undefined or not an array
+  const credentialsProviders = Array.isArray(credsInputSchema.credentials_provider) 
+    ? credsInputSchema.credentials_provider 
+    : credsInputSchema.credentials_provider 
+      ? [credsInputSchema.credentials_provider]
+      : [];
+  
+  if (credentialsProviders.length === 0) {
+    console.warn("No credentials provider specified in schema");
+    return null;
+  }
+  
+  if (credentialsProviders.length > 1) {
     if (!credsInputSchema.discriminator) {
       throw new Error(
         "Multi-provider credential input requires discriminator!",
@@ -65,21 +83,16 @@ export default function useCredentials(
     }
     providerName = discriminatedProvider;
   } else {
-    providerName = credsInputSchema.credentials_provider[0];
+    providerName = credentialsProviders[0];
   }
   const provider = allProviders ? allProviders[providerName] : null;
 
-  // If block input schema doesn't have credentials, return null
-  if (!credsInputSchema) {
-    return null;
-  }
-
-  const supportsApiKey = credsInputSchema.credentials_types.includes("api_key");
-  const supportsOAuth2 = credsInputSchema.credentials_types.includes("oauth2");
-  const supportsUserPassword =
-    credsInputSchema.credentials_types.includes("user_password");
-  const supportsHostScoped =
-    credsInputSchema.credentials_types.includes("host_scoped");
+  // Safely handle credentials_types which might be undefined
+  const credentialsTypes = credsInputSchema.credentials_types || [];
+  const supportsApiKey = credentialsTypes.includes("api_key");
+  const supportsOAuth2 = credentialsTypes.includes("oauth2");
+  const supportsUserPassword = credentialsTypes.includes("user_password");
+  const supportsHostScoped = credentialsTypes.includes("host_scoped");
 
   // No provider means maybe it's still loading
   if (!provider) {
