@@ -741,7 +741,9 @@ def _is_tool_pin(name: str) -> bool:
 
 
 def _sanitize_pin_name(name: str) -> str:
-    sanitized_name = name.split("_#_")[0].split("_@_")[0].split("_$_")[0]
+    from backend.data.dynamic_fields import extract_base_field_name
+
+    sanitized_name = extract_base_field_name(name)
     if _is_tool_pin(sanitized_name):
         return "tools"
     return sanitized_name

@@ -20,6 +20,14 @@ from backend.data.block import (
 )
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.db import prisma
+
+# Import dynamic field delimiters from centralized location
+from backend.data.dynamic_fields import (
+    DICT_SPLIT,
+    DYNAMIC_DELIMITERS,
+    LIST_SPLIT,
+    OBJC_SPLIT,
+)
 from backend.data.execution import (
     ExecutionStatus,
     GraphExecutionStats,
@@ -190,11 +198,8 @@ def _is_cost_filter_match(cost_filter: BlockInput, input_data: BlockInput) -> bo
 #  Delimiters
 # --------------------------------------------------------------------------- #
 
-LIST_SPLIT = "_$_"
-DICT_SPLIT = "_#_"
-OBJC_SPLIT = "_@_"
-
-_DELIMS = (LIST_SPLIT, DICT_SPLIT, OBJC_SPLIT)
+# Maintain backward compatibility with old name
+_DELIMS = DYNAMIC_DELIMITERS
 
 # --------------------------------------------------------------------------- #
 #  Tokenisation utilities

@@ -274,10 +274,26 @@ class SmartDecisionMakerBlock(Block):
             test_output=[],
             test_credentials=llm.TEST_CREDENTIALS,
         )
+        # Store mapping of sanitized names to original names for output yielding
+        self._sanitized_to_original: dict[str, str] = {}
 
     @staticmethod
     def cleanup(s: str):
         return re.sub(r"[^a-zA-Z0-9_-]", "_", s).lower()
+
+    @staticmethod
+    def extract_base_name(field_name: str) -> str:
+        """Extract base field name from a dynamic field name."""
+        from backend.data.dynamic_fields import extract_base_field_name
+
+        return extract_base_field_name(field_name)
+
+    @staticmethod
+    def get_dynamic_field_description(field_name: str) -> str:
+        """Generate descriptive text for a dynamic field."""
+        from backend.data.dynamic_fields import get_dynamic_field_description
+
+        return get_dynamic_field_description(field_name)
 
     @staticmethod
     async def _create_block_function_signature(
@@ -306,56 +322,55 @@ class SmartDecisionMakerBlock(Block):
         properties = {}
 
         for link in links:
-            sink_name = SmartDecisionMakerBlock.cleanup(link.sink_name)
+            original_name = link.sink_name
+            sanitized_name = SmartDecisionMakerBlock.cleanup(original_name)
 
-            # Handle dynamic fields (e.g., values_#_*, items_$_*, etc.)
-            # These are fields that get merged by the executor into their base field
-            if (
-                "_#_" in link.sink_name
-                or "_$_" in link.sink_name
-                or "_@_" in link.sink_name
-            ):
-                # For dynamic fields, provide a generic string schema
-                # The executor will handle merging these into the appropriate structure
-                properties[sink_name] = {
+            # Check if this is a dynamic field
+            from backend.data.dynamic_fields import is_dynamic_field
+
+            is_dynamic = is_dynamic_field(original_name)
+
+            if is_dynamic:
+                # For dynamic fields, always use string type since the values are individual elements
+                # Even if the base field is an object/array, the dynamic fields are scalar values
+                properties[sanitized_name] = {
                     "type": "string",
-                    "description": f"Dynamic value for {link.sink_name}",
+                    "description": SmartDecisionMakerBlock.get_dynamic_field_description(
+                        original_name
+                    ),
                 }
             else:
-                # For regular fields, use the block's schema
+                # For regular fields, use the block's schema directly
                 try:
-                    properties[sink_name] = sink_block_input_schema.get_field_schema(
-                        link.sink_name
+                    properties[sanitized_name] = (
+                        sink_block_input_schema.get_field_schema(original_name)
                     )
                 except (KeyError, AttributeError):
-                    # If the field doesn't exist in the schema, provide a generic schema
-                    properties[sink_name] = {
+                    # If field doesn't exist in schema, provide a generic one
+                    properties[sanitized_name] = {
                         "type": "string",
-                        "description": f"Value for {link.sink_name}",
+                        "description": f"Value for {original_name}",
                     }
 
-        # Build schema - handle dynamic fields properly
+        # Build the parameters schema
         base_schema = block.input_schema.jsonschema()
 
-        # Check if we have any dynamic fields (cleaned names vs original)
-        has_dynamic_fields = any(
-            "_#_" in link.sink_name
-            or "_$_" in link.sink_name
-            or "_@_" in link.sink_name
-            for link in links
-        )
+        # For blocks with dynamic fields, we create a simpler schema
+        from backend.data.dynamic_fields import is_dynamic_field
+
+        has_dynamic_fields = any(is_dynamic_field(link.sink_name) for link in links)
 
         if has_dynamic_fields:
-            # For dynamic fields, only require what we actually provide in properties
+            # Create a clean schema with only our mapped properties
             tool_function["parameters"] = {
                 "type": "object",
                 "properties": properties,
                 "additionalProperties": False,
-                # Don't inherit required fields that aren't in our properties
+                # Only require fields that exist in our properties
                 "required": [
-                    name
+                    SmartDecisionMakerBlock.cleanup(name)
                     for name in base_schema.get("required", [])
-                    if name in properties
+                    if SmartDecisionMakerBlock.cleanup(name) in properties
                 ],
             }
         else:
@@ -486,6 +501,72 @@ class SmartDecisionMakerBlock(Block):
 
         return return_tool_functions
 
+    async def _create_function_signature_with_mapping(
+        self, node_id: str
+    ) -> tuple[list[dict[str, Any]], dict[str, str]]:
+        """
+        Creates function signatures and builds sanitized-to-original field name mapping.
+
+        Args:
+            node_id: The node_id for which to create function signatures.
+
+        Returns:
+            A tuple of:
+            - List of function signatures for tools
+            - Dictionary mapping sanitized field names to original field names
+        """
+        db_client = get_database_manager_async_client()
+        tools = [
+            (link, node)
+            for link, node in await db_client.get_connected_output_nodes(node_id)
+            if link.source_name.startswith("tools_^_") and link.source_id == node_id
+        ]
+        if not tools:
+            raise ValueError("There is no next node to execute.")
+
+        return_tool_functions: list[dict[str, Any]] = []
+        all_sanitized_mappings: dict[str, str] = {}
+
+        grouped_tool_links: dict[str, tuple["Node", list["Link"]]] = {}
+        for link, node in tools:
+            if link.sink_id not in grouped_tool_links:
+                grouped_tool_links[link.sink_id] = (node, [link])
+            else:
+                grouped_tool_links[link.sink_id][1].append(link)
+
+        for sink_node, links in grouped_tool_links.values():
+            if not sink_node:
+                raise ValueError(f"Sink node not found: {links[0].sink_id}")
+
+            if sink_node.block_id == AgentExecutorBlock().id:
+                tool_func = (
+                    await SmartDecisionMakerBlock._create_agent_function_signature(
+                        sink_node, links
+                    )
+                )
+                return_tool_functions.append(tool_func)
+                # Agent functions don't have dynamic fields, but build mapping anyway
+                for link in links:
+                    sanitized = SmartDecisionMakerBlock.cleanup(link.sink_name)
+                    all_sanitized_mappings[
+                        f"{tool_func['function']['name']}_~_{sanitized}"
+                    ] = link.sink_name
+            else:
+                tool_func = (
+                    await SmartDecisionMakerBlock._create_block_function_signature(
+                        sink_node, links
+                    )
+                )
+                return_tool_functions.append(tool_func)
+                # Build mapping for this tool's fields
+                for link in links:
+                    sanitized = SmartDecisionMakerBlock.cleanup(link.sink_name)
+                    all_sanitized_mappings[
+                        f"{tool_func['function']['name']}_~_{sanitized}"
+                    ] = link.sink_name
+
+        return return_tool_functions, all_sanitized_mappings
+
     async def run(
         self,
         input_data: Input,
@@ -498,8 +579,14 @@ class SmartDecisionMakerBlock(Block):
         user_id: str,
         **kwargs,
     ) -> BlockOutput:
-        tool_functions = await self._create_function_signature(node_id)
+        # Get tool functions and build sanitized-to-original mapping
+        tool_functions, sanitized_mappings = (
+            await self._create_function_signature_with_mapping(node_id)
+        )
         yield "tool_functions", json.dumps(tool_functions)
+
+        # Store the mapping for use in output yielding
+        self._sanitized_to_original = sanitized_mappings
 
         input_data.conversation_history = input_data.conversation_history or []
         prompt = [json.to_dict(p) for p in input_data.conversation_history if p]
@@ -561,43 +648,41 @@ class SmartDecisionMakerBlock(Block):
         ):
             prompt.append({"role": "user", "content": prefix + input_data.prompt})
 
-        # Use retry decorator for LLM calls with validation
-        from backend.util.retry import create_retry_decorator
+        # Maintain a separate prompt used only for retries to avoid polluting the final conversation
+        current_prompt = list(prompt)
 
-        # Create retry decorator that excludes ValueError from retry (for non-LLM errors)
-        llm_retry = create_retry_decorator(
-            max_attempts=input_data.retry,
-            exclude_exceptions=(),  # Don't exclude ValueError - we want to retry validation failures
-            context="SmartDecisionMaker LLM call",
-        )
+        # Manual retry loop to ensure deterministic retry behavior for tests and production
+        attempts = 0
+        response = None
 
-        @llm_retry
-        async def call_llm_with_validation():
-            response = await llm.llm_call(
+        while True:
+            resp = await llm.llm_call(
                 credentials=credentials,
                 llm_model=input_data.model,
-                prompt=prompt,
+                prompt=current_prompt,
                 max_tokens=input_data.max_tokens,
                 tools=tool_functions,
                 ollama_host=input_data.ollama_host,
                 parallel_tool_calls=input_data.multiple_tool_calls,
             )
 
-            # Track LLM usage stats
+            # Track LLM usage stats per call
             self.merge_stats(
                 NodeExecutionStats(
-                    input_token_count=response.prompt_tokens,
-                    output_token_count=response.completion_tokens,
+                    input_token_count=resp.prompt_tokens,
+                    output_token_count=resp.completion_tokens,
                     llm_call_count=1,
                 )
             )
 
-            if not response.tool_calls:
-                return response, None  # No tool calls, return response
+            # No tool calls - we're done
+            if not resp.tool_calls:
+                response = resp
+                break
 
             # Validate all tool calls before proceeding
-            validation_errors = []
-            for tool_call in response.tool_calls:
+            validation_errors_list: list[str] = []
+            for tool_call in resp.tool_calls:
                 tool_name = tool_call.function.name
                 tool_args = json.loads(tool_call.function.arguments)
 
@@ -610,6 +695,8 @@ class SmartDecisionMakerBlock(Block):
                     ),
                     None,
                 )
+                if tool_def is None and len(tool_functions) == 1:
+                    tool_def = tool_functions[0]
 
                 # Get parameters schema from tool definition
                 if (
@@ -642,26 +729,33 @@ class SmartDecisionMakerBlock(Block):
                     error_msg += f" Expected parameters: {sorted(expected_args_set)}."
                     if required_params:
                         error_msg += f" Required parameters: {sorted(required_params)}."
-                    validation_errors.append(error_msg)
+                    validation_errors_list.append(error_msg)
 
-            # If validation failed, add feedback and raise for retry
-            if validation_errors:
-                # Add error feedback for retry (but NOT the failed response)
+            if validation_errors_list:
+                attempts += 1
+                # If we've reached the retry limit, raise error
+                if attempts >= max(1, int(input_data.retry)):
+                    raise ValueError(
+                        f"Tool call validation failed: {'; '.join(validation_errors_list)}"
+                    )
+
+                # Otherwise, add feedback for retry (but NOT the failed response) to the retry-only prompt
                 error_feedback = (
                     "Your tool call had parameter errors. Please fix the following issues and try again:\n"
-                    + "\n".join(f"- {error}" for error in validation_errors)
+                    + "\n".join(f"- {error}" for error in validation_errors_list)
                     + "\n\nPlease make sure to use the exact parameter names as specified in the function schema."
                 )
-                prompt.append({"role": "user", "content": error_feedback})
+                current_prompt = list(current_prompt) + [
+                    {"role": "user", "content": error_feedback}
+                ]
+                # Loop and retry
+                continue
 
-                raise ValueError(
-                    f"Tool call validation failed: {'; '.join(validation_errors)}"
-                )
+            # Validation passed
+            response = resp
+            break
 
-            return response, validation_errors
-
-        # Call the LLM with retry logic
-        response, validation_errors = await call_llm_with_validation()
+        # After loop ends, proceed with the successful response
 
         if not response.tool_calls:
             yield "finished", response.response
@@ -690,9 +784,16 @@ class SmartDecisionMakerBlock(Block):
             else:
                 expected_args = {arg: {} for arg in tool_args.keys()}
 
-            # Yield provided arguments, use .get() for optional parameters
+            # Yield provided arguments, mapping back to original field names
             for arg_name in expected_args:
-                yield f"tools_^_{tool_name}_~_{arg_name}", tool_args.get(arg_name)
+                # Build the full output key to look up the original field name
+                output_key = f"{tool_name}_~_{arg_name}"
+                original_field_name = self._sanitized_to_original.get(
+                    output_key, arg_name
+                )
+                yield f"tools_^_{tool_name}_~_{original_field_name}", tool_args.get(
+                    arg_name
+                )
 
         # Add reasoning to conversation history if available
         if response.reasoning:
