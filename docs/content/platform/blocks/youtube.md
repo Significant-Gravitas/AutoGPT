@@ -7,7 +7,7 @@ A block that transcribes the audio content of a YouTube video into text.
 This block takes a YouTube video URL as input and produces a text transcript of the video's audio content. It also extracts and provides the unique video ID associated with the YouTube video.
 
 ### How it works
-The block first extracts the video ID from the provided YouTube URL. It then uses this ID to fetch the video's transcript. The transcript is processed and formatted into a readable text format. If any errors occur during this process, the block will capture and report them.
+The block first extracts the video ID from the provided YouTube URL. It then uses this ID to fetch the video's transcript, preferring English when available. If an English transcript is not available, the block will automatically use the first available transcript in any other language (prioritizing manually created transcripts over auto-generated ones). The transcript is processed and formatted into a readable text format. If any errors occur during this process, the block will capture and report them.
 
 ### Inputs
 | Input | Description |
@@ -22,5 +22,5 @@ The block first extracts the video ID from the provided YouTube URL. It then use
 | Error | Any error message that occurs if the transcription process fails. |
 
 ### Possible use case
-A content creator could use this block to automatically generate subtitles for their YouTube videos. They could also use it to create text-based summaries of video content for SEO purposes or to make their content more accessible to hearing-impaired viewers.
+A content creator could use this block to automatically generate subtitles for their YouTube videos. They could also use it to create text-based summaries of video content for SEO purposes or to make their content more accessible to hearing-impaired viewers. The automatic language fallback feature ensures that transcripts can be obtained even from videos that only have subtitles in non-English languages.
 
