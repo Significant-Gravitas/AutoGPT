@@ -1,0 +1,15 @@
+{
+  "include": [
+    "autogpt_platform"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.*"
+  ],
+  "typeCheckingMode": "basic",
+  "pythonVersion": "3.11",
+  "pythonPlatform": "All",
+  "reportMissingImports": true,
+  "reportMissingTypeStubs": false
+}
