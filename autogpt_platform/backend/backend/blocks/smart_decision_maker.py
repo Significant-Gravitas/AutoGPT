@@ -13,7 +13,11 @@ from backend.data.block import (
     BlockSchema,
     BlockType,
 )
-from backend.data.dynamic_fields import get_dynamic_field_description, is_dynamic_field
+from backend.data.dynamic_fields import (
+    extract_base_field_name,
+    get_dynamic_field_description,
+    is_dynamic_field,
+)
 from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util import json
 from backend.util.clients import get_database_manager_async_client
@@ -333,30 +337,31 @@ class SmartDecisionMakerBlock(Block):
                         "description": f"Value for {original_name}",
                     }
 
-        # Build the parameters schema
+        # Build the parameters schema using a single unified path
         base_schema = block.input_schema.jsonschema()
+        base_required = set(base_schema.get("required", []))
 
-        has_dynamic_fields = any(is_dynamic_field(link.sink_name) for link in links)
+        # Compute required fields at the leaf level:
+        # - If a linked field is dynamic and its base is required in the block schema, require the leaf
+        # - If a linked field is regular and is required in the block schema, require the leaf
+        required_sanitized: set[str] = set()
+        for link in links:
+            original_name = link.sink_name
+            sanitized_name = SmartDecisionMakerBlock.cleanup(original_name)
+            if is_dynamic_field(original_name):
+                base_name = extract_base_field_name(original_name)
+                if base_name in base_required:
+                    required_sanitized.add(sanitized_name)
+            else:
+                if original_name in base_required:
+                    required_sanitized.add(sanitized_name)
 
-        if has_dynamic_fields:
-            # Create a clean schema with only our mapped properties
-            tool_function["parameters"] = {
-                "type": "object",
-                "properties": properties,
-                "additionalProperties": False,
-                # Only require fields that exist in our properties
-                "required": [
-                    SmartDecisionMakerBlock.cleanup(name)
-                    for name in base_schema.get("required", [])
-                    if SmartDecisionMakerBlock.cleanup(name) in properties
-                ],
-            }
-        else:
-            # For regular fields, use the base schema with our properties
-            tool_function["parameters"] = {
-                **base_schema,
-                "properties": properties,
-            }
+        tool_function["parameters"] = {
+            "type": "object",
+            "properties": properties,
+            "additionalProperties": False,
+            "required": sorted(required_sanitized),
+        }
 
         return {"type": "function", "function": tool_function}
 
