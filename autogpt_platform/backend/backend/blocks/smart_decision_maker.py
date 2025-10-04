@@ -13,6 +13,7 @@ from backend.data.block import (
     BlockSchema,
     BlockType,
 )
+from backend.data.dynamic_fields import get_dynamic_field_description, is_dynamic_field
 from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util import json
 from backend.util.clients import get_database_manager_async_client
@@ -282,20 +283,6 @@ class SmartDecisionMakerBlock(Block):
         return re.sub(r"[^a-zA-Z0-9_-]", "_", s).lower()
 
     @staticmethod
-    def extract_base_name(field_name: str) -> str:
-        """Extract base field name from a dynamic field name."""
-        from backend.data.dynamic_fields import extract_base_field_name
-
-        return extract_base_field_name(field_name)
-
-    @staticmethod
-    def get_dynamic_field_description(field_name: str) -> str:
-        """Generate descriptive text for a dynamic field."""
-        from backend.data.dynamic_fields import get_dynamic_field_description
-
-        return get_dynamic_field_description(field_name)
-
-    @staticmethod
     async def _create_block_function_signature(
         sink_node: "Node", links: list["Link"]
     ) -> dict[str, Any]:
@@ -324,10 +311,6 @@ class SmartDecisionMakerBlock(Block):
         for link in links:
             original_name = link.sink_name
             sanitized_name = SmartDecisionMakerBlock.cleanup(original_name)
-
-            # Check if this is a dynamic field
-            from backend.data.dynamic_fields import is_dynamic_field
-
             is_dynamic = is_dynamic_field(original_name)
 
             if is_dynamic:
@@ -335,9 +318,7 @@ class SmartDecisionMakerBlock(Block):
                 # Even if the base field is an object/array, the dynamic fields are scalar values
                 properties[sanitized_name] = {
                     "type": "string",
-                    "description": SmartDecisionMakerBlock.get_dynamic_field_description(
-                        original_name
-                    ),
+                    "description": get_dynamic_field_description(original_name),
                 }
             else:
                 # For regular fields, use the block's schema directly
@@ -354,9 +335,6 @@ class SmartDecisionMakerBlock(Block):
 
         # Build the parameters schema
         base_schema = block.input_schema.jsonschema()
-
-        # For blocks with dynamic fields, we create a simpler schema
-        from backend.data.dynamic_fields import is_dynamic_field
 
         has_dynamic_fields = any(is_dynamic_field(link.sink_name) for link in links)
 

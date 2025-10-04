@@ -35,32 +35,6 @@ async def test_dynamic_field_description_generation():
 
 
 @pytest.mark.asyncio
-async def test_extract_base_name():
-    """Test that base names are extracted correctly from dynamic fields."""
-    block = SmartDecisionMakerBlock()
-
-    # Test dictionary fields
-    assert block.extract_base_name("values_#_name") == "values"
-    assert block.extract_base_name("config_#_database_#_host") == "config"
-
-    # Test list fields
-    assert block.extract_base_name("items_$_0") == "items"
-    assert block.extract_base_name("results_$_5_$_10") == "results"
-
-    # Test object fields
-    assert block.extract_base_name("user_@_email") == "user"
-    assert block.extract_base_name("response_@_data_@_items") == "response"
-
-    # Test mixed fields
-    assert block.extract_base_name("data_$_0_#_key") == "data"
-    assert block.extract_base_name("complex_$_0_@_attr_#_key") == "complex"
-
-    # Test regular fields
-    assert block.extract_base_name("regular_field") == "regular_field"
-    assert block.extract_base_name("field_with_underscore") == "field_with_underscore"
-
-
-@pytest.mark.asyncio
 async def test_create_block_function_signature_with_dict_fields():
     """Test that function signatures are created correctly for dictionary dynamic fields."""
     block = SmartDecisionMakerBlock()
