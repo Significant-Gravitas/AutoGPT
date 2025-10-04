@@ -103,6 +103,27 @@ export async function getServerAuthToken(): Promise<string> {
   }
 }
 
+// Enhanced version for proxy route that supports Bearer token fallback for load testing
+export async function getServerAuthTokenWithFallback(
+  authHeader?: string,
+): Promise<string> {
+  // First try normal Supabase session
+  const sessionToken = await getServerAuthToken();
+
+  if (sessionToken !== "no-token-found") {
+    return sessionToken;
+  }
+
+  // Fallback to Bearer token from Authorization header (for load testing)
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    const bearerToken = authHeader.replace("Bearer ", "");
+    console.log("🔧 Load testing: Using Bearer token fallback");
+    return bearerToken;
+  }
+
+  return "no-token-found";
+}
+
 export function createRequestHeaders(
   token: string,
   hasRequestBody: boolean,
@@ -225,6 +246,60 @@ export async function makeAuthenticatedRequest(
   contentType: string = "application/json",
 ): Promise<any> {
   const token = await getServerAuthToken();
+  const payloadAsQuery = ["GET", "DELETE"].includes(method);
+  const hasRequestBody = !payloadAsQuery && payload !== undefined;
+
+  // Add query parameters for GET/DELETE requests
+  let requestUrl = url;
+  if (payloadAsQuery && payload) {
+    requestUrl = buildUrlWithQuery(url, payload);
+  }
+
+  const response = await fetch(requestUrl, {
+    method,
+    headers: createRequestHeaders(token, hasRequestBody, contentType),
+    body: hasRequestBody
+      ? serializeRequestBody(payload, contentType)
+      : undefined,
+  });
+
+  if (!response.ok) {
+    const errorDetail = await parseApiError(response);
+
+    // Try to parse the full response body for better error context
+    let responseData = null;
+    try {
+      responseData = await response.clone().json();
+    } catch {
+      // Ignore parsing errors
+    }
+
+    // Handle authentication errors gracefully during logout
+    if (isAuthenticationError(response, errorDetail)) {
+      if (isLogoutInProgress()) {
+        // Silently return null during logout to prevent error noise
+        console.debug(
+          "Authentication request failed during logout, ignoring:",
+          errorDetail,
+        );
+      }
+    }
+
+    // For other errors, throw ApiError with proper status code
+    throw new ApiError(errorDetail, response.status, responseData);
+  }
+
+  return parseApiResponse(response);
+}
+
+export async function makeAuthenticatedRequestWithFallback(
+  method: string,
+  url: string,
+  payload?: Record<string, any>,
+  contentType: string = "application/json",
+  authHeader?: string | null,
+): Promise<any> {
+  const token = await getServerAuthTokenWithFallback(authHeader || undefined);
   const payloadAsQuery = ["GET", "DELETE"].includes(method);
   const hasRequestBody = !payloadAsQuery && payload !== undefined;
 
