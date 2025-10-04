@@ -241,7 +241,7 @@ async def test_create_function_signature_with_mapping():
         ]
 
         # Call the method that builds signatures and mappings
-        tool_functions, mappings = await block._create_function_signature_with_mapping(
+        tool_functions, mappings = await block._create_function_signature(
             "test_node_id"
         )
 

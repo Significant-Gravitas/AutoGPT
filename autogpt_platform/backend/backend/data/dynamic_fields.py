@@ -3,7 +3,7 @@ Utilities for handling dynamic field names with special delimiters.
 
 Dynamic fields allow graphs to connect complex data structures using special delimiters:
 - _#_ for dictionary keys (e.g., "values_#_name" → values["name"])
-- _$_ for list indices (e.g., "items_$_0" → items[0])  
+- _$_ for list indices (e.g., "items_$_0" → items[0])
 - _@_ for object attributes (e.g., "obj_@_attr" → obj.attr)
 """
 
@@ -86,17 +86,3 @@ def get_dynamic_field_description(field_name: str) -> str:
             return f"Object attribute '{attr}' for base field '{base_name}' ({base_name}.{attr})"
 
     return f"Value for {field_name}"
-
-
-def sanitize_field_name(field_name: str) -> str:
-    """
-    Remove all dynamic field suffixes from a field name.
-    This is an alias for extract_base_field_name but with clearer intent for sanitization.
-
-    Args:
-        field_name: The field name to sanitize
-
-    Returns:
-        The field name with all dynamic suffixes removed
-    """
-    return extract_base_field_name(field_name)
