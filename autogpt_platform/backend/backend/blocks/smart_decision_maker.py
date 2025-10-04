@@ -334,10 +334,36 @@ class SmartDecisionMakerBlock(Block):
                         "description": f"Value for {link.sink_name}",
                     }
 
-        tool_function["parameters"] = {
-            **block.input_schema.jsonschema(),
-            "properties": properties,
-        }
+        # Build schema - handle dynamic fields properly
+        base_schema = block.input_schema.jsonschema()
+
+        # Check if we have any dynamic fields (cleaned names vs original)
+        has_dynamic_fields = any(
+            "_#_" in link.sink_name
+            or "_$_" in link.sink_name
+            or "_@_" in link.sink_name
+            for link in links
+        )
+
+        if has_dynamic_fields:
+            # For dynamic fields, only require what we actually provide in properties
+            tool_function["parameters"] = {
+                "type": "object",
+                "properties": properties,
+                "additionalProperties": False,
+                # Don't inherit required fields that aren't in our properties
+                "required": [
+                    name
+                    for name in base_schema.get("required", [])
+                    if name in properties
+                ],
+            }
+        else:
+            # For regular fields, use the base schema with our properties
+            tool_function["parameters"] = {
+                **base_schema,
+                "properties": properties,
+            }
 
         return {"type": "function", "function": tool_function}
 
