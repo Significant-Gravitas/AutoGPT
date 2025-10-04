@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { useMemo } from "react";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { BehaveAs, getBehaveAs } from "@/lib/utils";
+import * as Sentry from "@sentry/nextjs";
 
 const clientId = process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
 const envEnabled = process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true";
@@ -45,7 +46,10 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
       clientSideID={clientId}
       context={context}
       reactOptions={{ useCamelCaseFlagKeys: false }}
-      options={{ bootstrap: "localStorage" }}
+      options={{
+        bootstrap: "localStorage",
+        inspectors: [Sentry.buildLaunchDarklyFlagUsedHandler()],
+      }}
     >
       {children}
     </LDProvider>
