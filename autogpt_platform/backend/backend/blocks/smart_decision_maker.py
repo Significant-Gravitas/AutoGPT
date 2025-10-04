@@ -315,24 +315,18 @@ class SmartDecisionMakerBlock(Block):
         for link in links:
             field_name = link.sink_name
             is_dynamic = is_dynamic_field(field_name)
+            # Clean property key to ensure Anthropic API compatibility for ALL fields
+            clean_field_name = SmartDecisionMakerBlock.cleanup(field_name)
+            field_mapping[clean_field_name] = field_name
 
             if is_dynamic:
-                # For dynamic fields, don't clean the field name to preserve delimiters
-                # This allows the LLM to use the original dynamic field syntax
-                property_key = field_name
-                clean_field_name = SmartDecisionMakerBlock.cleanup(field_name)
-                field_mapping[clean_field_name] = field_name
-
-                properties[property_key] = {
+                # For dynamic fields, use cleaned name but preserve original in description
+                properties[clean_field_name] = {
                     "type": "string",
                     "description": get_dynamic_field_description(field_name),
                 }
             else:
-                # For regular fields, clean the property key for Anthropic API compatibility
-                clean_field_name = SmartDecisionMakerBlock.cleanup(field_name)
-                field_mapping[clean_field_name] = field_name
-
-                # Use the block's schema directly
+                # For regular fields, use the block's schema directly
                 try:
                     properties[clean_field_name] = (
                         sink_block_input_schema.get_field_schema(field_name)
@@ -355,19 +349,16 @@ class SmartDecisionMakerBlock(Block):
         for link in links:
             field_name = link.sink_name
             is_dynamic = is_dynamic_field(field_name)
+            # Always use cleaned field name for property key (Anthropic API compliance)
+            clean_field_name = SmartDecisionMakerBlock.cleanup(field_name)
 
             if is_dynamic:
-                # For dynamic fields, use the original field name (preserve delimiters)
-                property_key = field_name
                 base_name = extract_base_field_name(field_name)
                 if base_name in base_required:
-                    required_fields.add(property_key)
+                    required_fields.add(clean_field_name)
             else:
-                # For regular fields, use the cleaned field name
-                clean_field_name = SmartDecisionMakerBlock.cleanup(field_name)
-                property_key = clean_field_name
                 if field_name in base_required:
-                    required_fields.add(property_key)
+                    required_fields.add(clean_field_name)
 
         tool_function["parameters"] = {
             "type": "object",
@@ -715,19 +706,11 @@ class SmartDecisionMakerBlock(Block):
                 else {}
             )
 
-            for arg_name in expected_args:
-                # For dynamic fields, arg_name will be the original field name (e.g., "values_#_name")
-                # For regular fields, arg_name will be the cleaned field name (e.g., "regular_field")
-                # We need to check if this argument name exists in tool_args, if not, try the cleaned version
-
-                if arg_name in tool_args:
-                    # Direct match - use as is
-                    arg_value = tool_args[arg_name]
-                    original_field_name = arg_name
-                else:
-                    # Check if we have a mapping for the cleaned version
-                    original_field_name = field_mapping.get(arg_name, arg_name)
-                    arg_value = tool_args.get(arg_name)
+            for clean_arg_name in expected_args:
+                # arg_name is now always the cleaned field name (for Anthropic API compliance)
+                # Get the original field name from field mapping for proper emit key generation
+                original_field_name = field_mapping.get(clean_arg_name, clean_arg_name)
+                arg_value = tool_args.get(clean_arg_name)
 
                 sanitized_tool_name = self.cleanup(tool_name)
                 sanitized_arg_name = self.cleanup(original_field_name)

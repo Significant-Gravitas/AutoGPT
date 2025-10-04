@@ -52,10 +52,10 @@ async def test_smart_decision_maker_handles_dynamic_dict_fields():
     properties = signature["function"]["parameters"]["properties"]
     assert len(properties) == 3  # Should have all three fields
 
-    # Check that field names use original format (no sanitization)
-    assert "values_#_name" in properties
-    assert "values_#_age" in properties
-    assert "values_#_city" in properties
+    # Check that field names are cleaned (for Anthropic API compatibility)
+    assert "values___name" in properties
+    assert "values___age" in properties
+    assert "values___city" in properties
 
     # Each dynamic field should have proper schema with descriptive text
     for field_name, prop_value in properties.items():
@@ -63,7 +63,7 @@ async def test_smart_decision_maker_handles_dynamic_dict_fields():
         assert prop_value["type"] == "string"  # Dynamic fields get string type
         assert "description" in prop_value
         # Check that descriptions properly explain the dynamic field
-        if field_name == "values_#_name":
+        if field_name == "values___name":
             assert "Dictionary field 'name'" in prop_value["description"]
             assert "values['name']" in prop_value["description"]
 
@@ -104,16 +104,16 @@ async def test_smart_decision_maker_handles_dynamic_list_fields():
     properties = signature["function"]["parameters"]["properties"]
     assert len(properties) == 2  # Should have both list items
 
-    # Check that field names use original format (no sanitization)
-    assert "entries_$_0" in properties
-    assert "entries_$_1" in properties
+    # Check that field names are cleaned (for Anthropic API compatibility)
+    assert "entries___0" in properties
+    assert "entries___1" in properties
 
     # Each dynamic field should have proper schema with descriptive text
     for field_name, prop_value in properties.items():
         assert prop_value["type"] == "string"
         assert "description" in prop_value
         # Check that descriptions properly explain the list field
-        if field_name == "entries_$_0":
+        if field_name == "entries___0":
             assert "List item 0" in prop_value["description"]
             assert "entries[0]" in prop_value["description"]
 

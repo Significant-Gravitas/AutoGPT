@@ -80,20 +80,20 @@ async def test_create_block_function_signature_with_dict_fields():
     properties = signature["function"]["parameters"]["properties"]
     assert len(properties) == 3
 
-    # Check original field names (no sanitization)
-    assert "values_#_name" in properties
-    assert "values_#_age" in properties
-    assert "values_#_email" in properties
+    # Check cleaned field names (for Anthropic API compatibility)
+    assert "values___name" in properties
+    assert "values___age" in properties
+    assert "values___email" in properties
 
     # Check descriptions mention they are dictionary fields
-    assert "Dictionary field" in properties["values_#_name"]["description"]
-    assert "values['name']" in properties["values_#_name"]["description"]
+    assert "Dictionary field" in properties["values___name"]["description"]
+    assert "values['name']" in properties["values___name"]["description"]
 
-    assert "Dictionary field" in properties["values_#_age"]["description"]
-    assert "values['age']" in properties["values_#_age"]["description"]
+    assert "Dictionary field" in properties["values___age"]["description"]
+    assert "values['age']" in properties["values___age"]["description"]
 
-    assert "Dictionary field" in properties["values_#_email"]["description"]
-    assert "values['email']" in properties["values_#_email"]["description"]
+    assert "Dictionary field" in properties["values___email"]["description"]
+    assert "values['email']" in properties["values___email"]["description"]
 
 
 @pytest.mark.asyncio
@@ -136,17 +136,17 @@ async def test_create_block_function_signature_with_list_fields():
     assert signature["type"] == "function"
     properties = signature["function"]["parameters"]["properties"]
 
-    # Check original field names (no sanitization)
-    assert "entries_$_0" in properties
-    assert "entries_$_1" in properties
-    assert "entries_$_2" in properties
+    # Check cleaned field names (for Anthropic API compatibility)
+    assert "entries___0" in properties
+    assert "entries___1" in properties
+    assert "entries___2" in properties
 
     # Check descriptions mention they are list items
-    assert "List item 0" in properties["entries_$_0"]["description"]
-    assert "entries[0]" in properties["entries_$_0"]["description"]
+    assert "List item 0" in properties["entries___0"]["description"]
+    assert "entries[0]" in properties["entries___0"]["description"]
 
-    assert "List item 1" in properties["entries_$_1"]["description"]
-    assert "entries[1]" in properties["entries_$_1"]["description"]
+    assert "List item 1" in properties["entries___1"]["description"]
+    assert "entries[1]" in properties["entries___1"]["description"]
 
 
 @pytest.mark.asyncio
@@ -182,13 +182,13 @@ async def test_create_block_function_signature_with_object_fields():
     # Verify the signature structure
     properties = signature["function"]["parameters"]["properties"]
 
-    # Check original field names (no sanitization)
-    assert "data_@_user_name" in properties
-    assert "data_@_user_email" in properties
+    # Check cleaned field names (for Anthropic API compatibility)
+    assert "data___user_name" in properties
+    assert "data___user_email" in properties
 
     # Check descriptions mention they are object attributes
-    assert "Object attribute" in properties["data_@_user_name"]["description"]
-    assert "data.user_name" in properties["data_@_user_name"]["description"]
+    assert "Object attribute" in properties["data___user_name"]["description"]
+    assert "data.user_name" in properties["data___user_name"]["description"]
 
 
 @pytest.mark.asyncio
@@ -257,8 +257,8 @@ async def test_create_function_signature():
         )
         assert dict_tool is not None
         dict_properties = dict_tool["function"]["parameters"]["properties"]
-        assert "values_#_name" in dict_properties
-        assert "values_#_age" in dict_properties
+        assert "values___name" in dict_properties
+        assert "values___age" in dict_properties
 
         list_tool = next(
             (
@@ -270,7 +270,7 @@ async def test_create_function_signature():
         )
         assert list_tool is not None
         list_properties = list_tool["function"]["parameters"]["properties"]
-        assert "entries_$_0" in list_properties
+        assert "entries___0" in list_properties
 
 
 @pytest.mark.asyncio
@@ -287,9 +287,9 @@ async def test_output_yielding_with_dynamic_fields():
             function=Mock(
                 arguments=json.dumps(
                     {
-                        "values_#_name": "Alice",
-                        "values_#_age": 30,
-                        "values_#_email": "alice@example.com",
+                        "values___name": "Alice",
+                        "values___age": 30,
+                        "values___email": "alice@example.com",
                     }
                 ),
             )
@@ -320,9 +320,9 @@ async def test_output_yielding_with_dynamic_fields():
                         "parameters": {
                             "type": "object",
                             "properties": {
-                                "values_#_name": {"type": "string"},
-                                "values_#_age": {"type": "number"},
-                                "values_#_email": {"type": "string"},
+                                "values___name": {"type": "string"},
+                                "values___age": {"type": "number"},
+                                "values___email": {"type": "string"},
                             },
                         },
                     },
@@ -425,11 +425,11 @@ async def test_mixed_regular_and_dynamic_fields():
     assert properties["regular_field"]["description"] == "A regular field"
 
     # Dynamic fields should have generated descriptions
-    assert "values_#_key1" in properties
-    assert "Dictionary field" in properties["values_#_key1"]["description"]
+    assert "values___key1" in properties
+    assert "Dictionary field" in properties["values___key1"]["description"]
 
-    assert "values_#_key2" in properties
-    assert "Dictionary field" in properties["values_#_key2"]["description"]
+    assert "values___key2" in properties
+    assert "Dictionary field" in properties["values___key2"]["description"]
 
 
 @pytest.mark.asyncio
