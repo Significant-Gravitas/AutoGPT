@@ -9,6 +9,8 @@ Dynamic fields allow graphs to connect complex data structures using special del
 
 from typing import Any
 
+from backend.util.mock import MockObject
+
 # Dynamic field delimiters
 LIST_SPLIT = "_$_"
 DICT_SPLIT = "_#_"
@@ -233,12 +235,11 @@ def _assign(container: Any, tokens: list[tuple[str, str]], value: Any) -> Any:
 
     # ---------- object ----------
     if delim == OBJC_SPLIT:
-        # Avoid circular import by using a simple object-like class
         if container is None:
-            container = type("DynamicObject", (), {})()
+            container = MockObject()
         elif not hasattr(container, "__dict__"):
             # If it's not an object, create a new one
-            container = type("DynamicObject", (), {})()
+            container = MockObject()
         setattr(
             container,
             ident,

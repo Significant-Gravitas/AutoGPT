@@ -346,7 +346,7 @@ async def test_smart_decision_maker_parameter_validation():
 
         # Verify error message contains details about the typo
         error_msg = str(exc_info.value)
-        assert "Tool call validation failed" in error_msg
+        assert "Tool call 'search_keywords' has parameter errors" in error_msg
         assert "Unknown parameters: ['maximum_keyword_difficulty']" in error_msg
 
         # Verify that LLM was called the expected number of times (retries)
