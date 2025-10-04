@@ -679,4 +679,15 @@ class SmartDecisionMakerBlock(Block):
 
         # Add the successful response to conversation
         prompt.append(_convert_raw_response_to_dict(response.raw_response))
+
+        # Add tool results for each tool call to satisfy Anthropic's requirement
+        # that every tool_use must have a corresponding tool_result
+        if response.tool_calls:
+            for tool_call in response.tool_calls:
+                tool_name = tool_call.function.name
+                # Create a simple acknowledgment tool result
+                tool_result_content = f"Tool '{tool_name}' was called successfully. Arguments extracted and yielded as outputs."
+                tool_result = _create_tool_response(tool_call.id, tool_result_content)
+                prompt.append(tool_result)
+
         yield "conversations", prompt
