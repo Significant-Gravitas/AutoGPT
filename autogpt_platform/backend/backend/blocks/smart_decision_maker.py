@@ -279,11 +279,10 @@ class SmartDecisionMakerBlock(Block):
             test_output=[],
             test_credentials=llm.TEST_CREDENTIALS,
         )
-        # Store mapping of sanitized names to original names for output yielding
-        self._sanitized_to_original: dict[str, str] = {}
 
     @staticmethod
     def cleanup(s: str):
+        """Clean up block names for use as tool function names."""
         return re.sub(r"[^a-zA-Z0-9_-]", "_", s).lower()
 
     @staticmethod
@@ -313,28 +312,27 @@ class SmartDecisionMakerBlock(Block):
         properties = {}
 
         for link in links:
-            original_name = link.sink_name
-            sanitized_name = SmartDecisionMakerBlock.cleanup(original_name)
-            is_dynamic = is_dynamic_field(original_name)
+            field_name = link.sink_name
+            is_dynamic = is_dynamic_field(field_name)
 
             if is_dynamic:
                 # For dynamic fields, always use string type since the values are individual elements
                 # Even if the base field is an object/array, the dynamic fields are scalar values
-                properties[sanitized_name] = {
+                properties[field_name] = {
                     "type": "string",
-                    "description": get_dynamic_field_description(original_name),
+                    "description": get_dynamic_field_description(field_name),
                 }
             else:
                 # For regular fields, use the block's schema directly
                 try:
-                    properties[sanitized_name] = (
-                        sink_block_input_schema.get_field_schema(original_name)
+                    properties[field_name] = sink_block_input_schema.get_field_schema(
+                        field_name
                     )
                 except (KeyError, AttributeError):
                     # If field doesn't exist in schema, provide a generic one
-                    properties[sanitized_name] = {
+                    properties[field_name] = {
                         "type": "string",
-                        "description": f"Value for {original_name}",
+                        "description": f"Value for {field_name}",
                     }
 
         # Build the parameters schema using a single unified path
@@ -344,23 +342,22 @@ class SmartDecisionMakerBlock(Block):
         # Compute required fields at the leaf level:
         # - If a linked field is dynamic and its base is required in the block schema, require the leaf
         # - If a linked field is regular and is required in the block schema, require the leaf
-        required_sanitized: set[str] = set()
+        required_fields: set[str] = set()
         for link in links:
-            original_name = link.sink_name
-            sanitized_name = SmartDecisionMakerBlock.cleanup(original_name)
-            if is_dynamic_field(original_name):
-                base_name = extract_base_field_name(original_name)
+            field_name = link.sink_name
+            if is_dynamic_field(field_name):
+                base_name = extract_base_field_name(field_name)
                 if base_name in base_required:
-                    required_sanitized.add(sanitized_name)
+                    required_fields.add(field_name)
             else:
-                if original_name in base_required:
-                    required_sanitized.add(sanitized_name)
+                if field_name in base_required:
+                    required_fields.add(field_name)
 
         tool_function["parameters"] = {
             "type": "object",
             "properties": properties,
             "additionalProperties": False,
-            "required": sorted(required_sanitized),
+            "required": sorted(required_fields),
         }
 
         return {"type": "function", "function": tool_function}
@@ -406,13 +403,12 @@ class SmartDecisionMakerBlock(Block):
             sink_block_properties = sink_block_input_schema.get("properties", {}).get(
                 link.sink_name, {}
             )
-            sink_name = SmartDecisionMakerBlock.cleanup(link.sink_name)
             description = (
                 sink_block_properties["description"]
                 if "description" in sink_block_properties
                 else f"The {link.sink_name} of the tool"
             )
-            properties[sink_name] = {
+            properties[link.sink_name] = {
                 "type": "string",
                 "description": description,
                 "default": json.dumps(sink_block_properties.get("default", None)),
@@ -430,17 +426,15 @@ class SmartDecisionMakerBlock(Block):
     @staticmethod
     async def _create_function_signature(
         node_id: str,
-    ) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    ) -> list[dict[str, Any]]:
         """
-        Creates function signatures and builds sanitized-to-original field name mapping.
+        Creates function signatures for connected tools.
 
         Args:
             node_id: The node_id for which to create function signatures.
 
         Returns:
-            A tuple of:
-            - List of function signatures for tools
-            - Dictionary mapping sanitized field names to original field names
+            List of function signatures for tools
         """
         db_client = get_database_manager_async_client()
         tools = [
@@ -452,7 +446,6 @@ class SmartDecisionMakerBlock(Block):
             raise ValueError("There is no next node to execute.")
 
         return_tool_functions: list[dict[str, Any]] = []
-        all_sanitized_mappings: dict[str, str] = {}
 
         grouped_tool_links: dict[str, tuple["Node", list["Link"]]] = {}
         for link, node in tools:
@@ -472,12 +465,6 @@ class SmartDecisionMakerBlock(Block):
                     )
                 )
                 return_tool_functions.append(tool_func)
-                # Agent functions don't have dynamic fields, but build mapping anyway
-                for link in links:
-                    sanitized = SmartDecisionMakerBlock.cleanup(link.sink_name)
-                    all_sanitized_mappings[
-                        f"{tool_func['function']['name']}_~_{sanitized}"
-                    ] = link.sink_name
             else:
                 tool_func = (
                     await SmartDecisionMakerBlock._create_block_function_signature(
@@ -485,14 +472,8 @@ class SmartDecisionMakerBlock(Block):
                     )
                 )
                 return_tool_functions.append(tool_func)
-                # Build mapping for this tool's fields
-                for link in links:
-                    sanitized = SmartDecisionMakerBlock.cleanup(link.sink_name)
-                    all_sanitized_mappings[
-                        f"{tool_func['function']['name']}_~_{sanitized}"
-                    ] = link.sink_name
 
-        return return_tool_functions, all_sanitized_mappings
+        return return_tool_functions
 
     async def run(
         self,
@@ -506,14 +487,9 @@ class SmartDecisionMakerBlock(Block):
         user_id: str,
         **kwargs,
     ) -> BlockOutput:
-        # Get tool functions and build sanitized-to-original mapping
-        tool_functions, sanitized_mappings = await self._create_function_signature(
-            node_id
-        )
+        # Get tool functions
+        tool_functions = await self._create_function_signature(node_id)
         yield "tool_functions", json.dumps(tool_functions)
-
-        # Store the mapping for use in output yielding
-        self._sanitized_to_original = sanitized_mappings
 
         input_data.conversation_history = input_data.conversation_history or []
         prompt = [json.to_dict(p) for p in input_data.conversation_history if p]
@@ -578,11 +554,11 @@ class SmartDecisionMakerBlock(Block):
         # Maintain a separate prompt used only for retries to avoid polluting the final conversation
         current_prompt = list(prompt)
 
-        # Manual retry loop to ensure deterministic retry behavior for tests and production
-        attempts = 0
+        # Retry loop to ensure deterministic retry behavior for tests and production
+        max_attempts = max(1, int(input_data.retry))
         response = None
 
-        while True:
+        for attempt in range(max_attempts):
             resp = await llm.llm_call(
                 credentials=credentials,
                 llm_model=input_data.model,
@@ -659,9 +635,8 @@ class SmartDecisionMakerBlock(Block):
                     validation_errors_list.append(error_msg)
 
             if validation_errors_list:
-                attempts += 1
-                # If we've reached the retry limit, raise error
-                if attempts >= max(1, int(input_data.retry)):
+                # If this is the last attempt, raise error
+                if attempt == max_attempts - 1:
                     raise ValueError(
                         f"Tool call validation failed: {'; '.join(validation_errors_list)}"
                     )
@@ -675,7 +650,7 @@ class SmartDecisionMakerBlock(Block):
                 current_prompt = list(current_prompt) + [
                     {"role": "user", "content": error_feedback}
                 ]
-                # Loop and retry
+                # Continue to next attempt
                 continue
 
             # Validation passed
@@ -683,6 +658,8 @@ class SmartDecisionMakerBlock(Block):
             break
 
         # After loop ends, proceed with the successful response
+        if response is None:
+            raise ValueError("Failed to get valid response after all retry attempts")
 
         if not response.tool_calls:
             yield "finished", response.response
@@ -711,14 +688,13 @@ class SmartDecisionMakerBlock(Block):
             else:
                 expected_args = {arg: {} for arg in tool_args.keys()}
 
-            # Yield provided arguments, mapping back to original field names
+            # Yield provided arguments
             for arg_name in expected_args:
-                # Build the full output key to look up the original field name
-                output_key = f"{tool_name}_~_{arg_name}"
-                original_field_name = self._sanitized_to_original.get(
-                    output_key, arg_name
-                )
-                emit_key = f"tools_^_{tool_name}_~_{original_field_name}"
+                # Apply same sanitization as frontend normalizeToolName to match stored source names
+                sanitized_tool_name = self.cleanup(tool_name)
+                sanitized_arg_name = self.cleanup(arg_name)
+                emit_key = f"tools_^_{sanitized_tool_name}_~_{sanitized_arg_name}"
+
                 logger.debug(
                     "[SmartDecisionMakerBlock|geid:%s|neid:%s] emit %s",
                     graph_exec_id,

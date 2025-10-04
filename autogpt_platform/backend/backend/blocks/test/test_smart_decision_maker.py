@@ -165,7 +165,7 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
     )
     test_graph = await create_graph(server, test_graph, test_user)
 
-    tool_functions, _ = await SmartDecisionMakerBlock._create_function_signature(
+    tool_functions = await SmartDecisionMakerBlock._create_function_signature(
         test_graph.nodes[0].id
     )
     assert tool_functions is not None, "Tool functions should not be None"
@@ -226,7 +226,7 @@ async def test_smart_decision_maker_tracks_llm_stats():
         SmartDecisionMakerBlock,
         "_create_function_signature",
         new_callable=AsyncMock,
-        return_value=([], {}),
+        return_value=[],
     ):
 
         # Create test input
@@ -320,7 +320,7 @@ async def test_smart_decision_maker_parameter_validation():
         SmartDecisionMakerBlock,
         "_create_function_signature",
         new_callable=AsyncMock,
-        return_value=(mock_tool_functions, {}),
+        return_value=mock_tool_functions,
     ):
 
         input_data = SmartDecisionMakerBlock.Input(
@@ -377,7 +377,7 @@ async def test_smart_decision_maker_parameter_validation():
         SmartDecisionMakerBlock,
         "_create_function_signature",
         new_callable=AsyncMock,
-        return_value=(mock_tool_functions, {}),
+        return_value=mock_tool_functions,
     ):
 
         input_data = SmartDecisionMakerBlock.Input(
@@ -427,7 +427,7 @@ async def test_smart_decision_maker_parameter_validation():
         SmartDecisionMakerBlock,
         "_create_function_signature",
         new_callable=AsyncMock,
-        return_value=(mock_tool_functions, {}),
+        return_value=mock_tool_functions,
     ):
 
         input_data = SmartDecisionMakerBlock.Input(
@@ -481,7 +481,7 @@ async def test_smart_decision_maker_parameter_validation():
         SmartDecisionMakerBlock,
         "_create_function_signature",
         new_callable=AsyncMock,
-        return_value=(mock_tool_functions, {}),
+        return_value=mock_tool_functions,
     ):
 
         input_data = SmartDecisionMakerBlock.Input(
@@ -590,7 +590,7 @@ async def test_smart_decision_maker_raw_response_conversion():
         SmartDecisionMakerBlock,
         "_create_function_signature",
         new_callable=AsyncMock,
-        return_value=(mock_tool_functions, {}),
+        return_value=mock_tool_functions,
     ):
         # First call returns response that will trigger retry due to validation error
         # Second call returns successful response
@@ -658,7 +658,7 @@ async def test_smart_decision_maker_raw_response_conversion():
         SmartDecisionMakerBlock,
         "_create_function_signature",
         new_callable=AsyncMock,
-        return_value=([], {}),  # No tools for this test
+        return_value=[],  # No tools for this test
     ):
         input_data = SmartDecisionMakerBlock.Input(
             prompt="Simple prompt",
@@ -704,7 +704,7 @@ async def test_smart_decision_maker_raw_response_conversion():
         SmartDecisionMakerBlock,
         "_create_function_signature",
         new_callable=AsyncMock,
-        return_value=([], {}),
+        return_value=[],
     ):
         input_data = SmartDecisionMakerBlock.Input(
             prompt="Another test",

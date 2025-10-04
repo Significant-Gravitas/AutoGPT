@@ -12,7 +12,7 @@ This module provides utilities for:
 - Creating helper functions for field sanitization
 """
 
-from backend.executor.utils import DICT_SPLIT, LIST_SPLIT, OBJC_SPLIT
+from backend.data.dynamic_fields import DICT_SPLIT, LIST_SPLIT, OBJC_SPLIT
 
 # All dynamic field delimiters
 DYNAMIC_DELIMITERS = (DICT_SPLIT, LIST_SPLIT, OBJC_SPLIT)

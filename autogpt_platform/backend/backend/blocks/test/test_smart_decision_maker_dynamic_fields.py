@@ -45,23 +45,23 @@ async def test_create_block_function_signature_with_dict_fields():
     mock_node.block_id = CreateDictionaryBlock().id
     mock_node.input_default = {}
 
-    # Create mock links with dynamic dictionary fields
+    # Create mock links with dynamic dictionary fields (source sanitized, sink original)
     mock_links = [
         Mock(
-            source_name="tools_^_create_dict_~_name",
-            sink_name="values_#_name",  # Dynamic dict field
+            source_name="tools_^_create_dict_~_values___name",  # Sanitized source
+            sink_name="values_#_name",  # Original sink
             sink_id="dict_node_id",
             source_id="smart_decision_node_id",
         ),
         Mock(
-            source_name="tools_^_create_dict_~_age",
-            sink_name="values_#_age",  # Dynamic dict field
+            source_name="tools_^_create_dict_~_values___age",  # Sanitized source
+            sink_name="values_#_age",  # Original sink
             sink_id="dict_node_id",
             source_id="smart_decision_node_id",
         ),
         Mock(
-            source_name="tools_^_create_dict_~_email",
-            sink_name="values_#_email",  # Dynamic dict field
+            source_name="tools_^_create_dict_~_values___email",  # Sanitized source
+            sink_name="values_#_email",  # Original sink
             sink_id="dict_node_id",
             source_id="smart_decision_node_id",
         ),
@@ -76,24 +76,24 @@ async def test_create_block_function_signature_with_dict_fields():
     assert "parameters" in signature["function"]
     assert "properties" in signature["function"]["parameters"]
 
-    # Check that dynamic fields are handled with sanitized names
+    # Check that dynamic fields are handled with original names
     properties = signature["function"]["parameters"]["properties"]
     assert len(properties) == 3
 
-    # Check sanitized field names
-    assert "values___name" in properties
-    assert "values___age" in properties
-    assert "values___email" in properties
+    # Check original field names (no sanitization)
+    assert "values_#_name" in properties
+    assert "values_#_age" in properties
+    assert "values_#_email" in properties
 
     # Check descriptions mention they are dictionary fields
-    assert "Dictionary field" in properties["values___name"]["description"]
-    assert "values['name']" in properties["values___name"]["description"]
+    assert "Dictionary field" in properties["values_#_name"]["description"]
+    assert "values['name']" in properties["values_#_name"]["description"]
 
-    assert "Dictionary field" in properties["values___age"]["description"]
-    assert "values['age']" in properties["values___age"]["description"]
+    assert "Dictionary field" in properties["values_#_age"]["description"]
+    assert "values['age']" in properties["values_#_age"]["description"]
 
-    assert "Dictionary field" in properties["values___email"]["description"]
-    assert "values['email']" in properties["values___email"]["description"]
+    assert "Dictionary field" in properties["values_#_email"]["description"]
+    assert "values['email']" in properties["values_#_email"]["description"]
 
 
 @pytest.mark.asyncio
@@ -136,17 +136,17 @@ async def test_create_block_function_signature_with_list_fields():
     assert signature["type"] == "function"
     properties = signature["function"]["parameters"]["properties"]
 
-    # Check sanitized field names
-    assert "entries___0" in properties
-    assert "entries___1" in properties
-    assert "entries___2" in properties
+    # Check original field names (no sanitization)
+    assert "entries_$_0" in properties
+    assert "entries_$_1" in properties
+    assert "entries_$_2" in properties
 
     # Check descriptions mention they are list items
-    assert "List item 0" in properties["entries___0"]["description"]
-    assert "entries[0]" in properties["entries___0"]["description"]
+    assert "List item 0" in properties["entries_$_0"]["description"]
+    assert "entries[0]" in properties["entries_$_0"]["description"]
 
-    assert "List item 1" in properties["entries___1"]["description"]
-    assert "entries[1]" in properties["entries___1"]["description"]
+    assert "List item 1" in properties["entries_$_1"]["description"]
+    assert "entries[1]" in properties["entries_$_1"]["description"]
 
 
 @pytest.mark.asyncio
@@ -182,13 +182,13 @@ async def test_create_block_function_signature_with_object_fields():
     # Verify the signature structure
     properties = signature["function"]["parameters"]["properties"]
 
-    # Check sanitized field names
-    assert "data___user_name" in properties
-    assert "data___user_email" in properties
+    # Check original field names (no sanitization)
+    assert "data_@_user_name" in properties
+    assert "data_@_user_email" in properties
 
     # Check descriptions mention they are object attributes
-    assert "Object attribute" in properties["data___user_name"]["description"]
-    assert "data.user_name" in properties["data___user_name"]["description"]
+    assert "Object attribute" in properties["data_@_user_name"]["description"]
+    assert "data.user_name" in properties["data_@_user_name"]["description"]
 
 
 @pytest.mark.asyncio
@@ -240,24 +240,37 @@ async def test_create_function_signature():
             (list_link, mock_list_node),
         ]
 
-        # Call the method that builds signatures and mappings
-        tool_functions, mappings = await block._create_function_signature(
-            "test_node_id"
-        )
+        # Call the method that builds signatures
+        tool_functions = await block._create_function_signature("test_node_id")
 
         # Verify we got 2 tool functions (one for dict, one for list)
         assert len(tool_functions) == 2
 
-        # Verify the mappings are correct
-        # The mapping keys should be "tool_name_~_sanitized_field"
-        assert "createdictionaryblock_~_values___name" in mappings
-        assert mappings["createdictionaryblock_~_values___name"] == "values_#_name"
+        # Verify the tool functions contain the dynamic field names
+        dict_tool = next(
+            (
+                tool
+                for tool in tool_functions
+                if tool["function"]["name"] == "createdictionaryblock"
+            ),
+            None,
+        )
+        assert dict_tool is not None
+        dict_properties = dict_tool["function"]["parameters"]["properties"]
+        assert "values_#_name" in dict_properties
+        assert "values_#_age" in dict_properties
 
-        assert "createdictionaryblock_~_values___age" in mappings
-        assert mappings["createdictionaryblock_~_values___age"] == "values_#_age"
-
-        assert "addtolistblock_~_entries___0" in mappings
-        assert mappings["addtolistblock_~_entries___0"] == "entries_$_0"
+        list_tool = next(
+            (
+                tool
+                for tool in tool_functions
+                if tool["function"]["name"] == "addtolistblock"
+            ),
+            None,
+        )
+        assert list_tool is not None
+        list_properties = list_tool["function"]["parameters"]["properties"]
+        assert "entries_$_0" in list_properties
 
 
 @pytest.mark.asyncio
@@ -265,12 +278,7 @@ async def test_output_yielding_with_dynamic_fields():
     """Test that outputs are yielded correctly with dynamic field names mapped back."""
     block = SmartDecisionMakerBlock()
 
-    # Set up the sanitized to original mapping
-    block._sanitized_to_original = {
-        "createdictionaryblock_~_values___name": "values_#_name",
-        "createdictionaryblock_~_values___age": "values_#_age",
-        "createdictionaryblock_~_values___email": "values_#_email",
-    }
+    # No more sanitized mapping needed since we removed sanitization
 
     # Mock LLM response with tool calls
     mock_response = Mock()
@@ -279,9 +287,9 @@ async def test_output_yielding_with_dynamic_fields():
             function=Mock(
                 arguments=json.dumps(
                     {
-                        "values___name": "Alice",
-                        "values___age": 30,
-                        "values___email": "alice@example.com",
+                        "values_#_name": "Alice",
+                        "values_#_age": 30,
+                        "values_#_email": "alice@example.com",
                     }
                 ),
             )
@@ -304,25 +312,22 @@ async def test_output_yielding_with_dynamic_fields():
         with patch.object(
             block, "_create_function_signature", new_callable=AsyncMock
         ) as mock_sig:
-            mock_sig.return_value = (
-                [
-                    {
-                        "type": "function",
-                        "function": {
-                            "name": "createdictionaryblock",
-                            "parameters": {
-                                "type": "object",
-                                "properties": {
-                                    "values___name": {"type": "string"},
-                                    "values___age": {"type": "number"},
-                                    "values___email": {"type": "string"},
-                                },
+            mock_sig.return_value = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "createdictionaryblock",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "values_#_name": {"type": "string"},
+                                "values_#_age": {"type": "number"},
+                                "values_#_email": {"type": "string"},
                             },
                         },
-                    }
-                ],
-                block._sanitized_to_original,
-            )
+                    },
+                }
+            ]
 
             # Create input data
             from backend.blocks import llm
@@ -346,16 +351,16 @@ async def test_output_yielding_with_dynamic_fields():
             ):
                 outputs[output_name] = output_value
 
-            # Verify the outputs use the original dynamic field names
-            assert "tools_^_createdictionaryblock_~_values_#_name" in outputs
-            assert outputs["tools_^_createdictionaryblock_~_values_#_name"] == "Alice"
+            # Verify the outputs use sanitized field names (matching frontend normalizeToolName)
+            assert "tools_^_createdictionaryblock_~_values___name" in outputs
+            assert outputs["tools_^_createdictionaryblock_~_values___name"] == "Alice"
 
-            assert "tools_^_createdictionaryblock_~_values_#_age" in outputs
-            assert outputs["tools_^_createdictionaryblock_~_values_#_age"] == 30
+            assert "tools_^_createdictionaryblock_~_values___age" in outputs
+            assert outputs["tools_^_createdictionaryblock_~_values___age"] == 30
 
-            assert "tools_^_createdictionaryblock_~_values_#_email" in outputs
+            assert "tools_^_createdictionaryblock_~_values___email" in outputs
             assert (
-                outputs["tools_^_createdictionaryblock_~_values_#_email"]
+                outputs["tools_^_createdictionaryblock_~_values___email"]
                 == "alice@example.com"
             )
 
@@ -420,11 +425,11 @@ async def test_mixed_regular_and_dynamic_fields():
     assert properties["regular_field"]["description"] == "A regular field"
 
     # Dynamic fields should have generated descriptions
-    assert "values___key1" in properties
-    assert "Dictionary field" in properties["values___key1"]["description"]
+    assert "values_#_key1" in properties
+    assert "Dictionary field" in properties["values_#_key1"]["description"]
 
-    assert "values___key2" in properties
-    assert "Dictionary field" in properties["values___key2"]["description"]
+    assert "values_#_key2" in properties
+    assert "Dictionary field" in properties["values_#_key2"]["description"]
 
 
 @pytest.mark.asyncio
@@ -440,11 +445,12 @@ async def test_validation_errors_dont_pollute_conversation():
     invalid_response.tool_calls = [
         Mock(
             function=Mock(
-                name="test_tool",
                 arguments=json.dumps({"wrong_param": "value"}),  # Wrong parameter name
             )
         )
     ]
+    # Ensure function name is a real string, not a Mock name
+    invalid_response.tool_calls[0].function.name = "test_tool"
     invalid_response.reasoning = None
     invalid_response.raw_response = {"role": "assistant", "content": "invalid"}
     invalid_response.prompt_tokens = 100
@@ -453,12 +459,10 @@ async def test_validation_errors_dont_pollute_conversation():
     # Mock valid response after retry
     valid_response = Mock()
     valid_response.tool_calls = [
-        Mock(
-            function=Mock(
-                name="test_tool", arguments=json.dumps({"correct_param": "value"})
-            )
-        )
+        Mock(function=Mock(arguments=json.dumps({"correct_param": "value"})))
     ]
+    # Ensure function name is a real string, not a Mock name
+    valid_response.tool_calls[0].function.name = "test_tool"
     valid_response.reasoning = None
     valid_response.raw_response = {"role": "assistant", "content": "valid"}
     valid_response.prompt_tokens = 100
@@ -486,27 +490,24 @@ async def test_validation_errors_dont_pollute_conversation():
         with patch.object(
             block, "_create_function_signature", new_callable=AsyncMock
         ) as mock_sig:
-            mock_sig.return_value = (
-                [
-                    {
-                        "type": "function",
-                        "function": {
-                            "name": "test_tool",
-                            "parameters": {
-                                "type": "object",
-                                "properties": {
-                                    "correct_param": {
-                                        "type": "string",
-                                        "description": "The correct parameter",
-                                    }
-                                },
-                                "required": ["correct_param"],
+            mock_sig.return_value = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "test_tool",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "correct_param": {
+                                    "type": "string",
+                                    "description": "The correct parameter",
+                                }
                             },
+                            "required": ["correct_param"],
                         },
-                    }
-                ],
-                {},  # No dynamic field mappings needed
-            )
+                    },
+                }
+            ]
 
             # Create input data
             from backend.blocks import llm
