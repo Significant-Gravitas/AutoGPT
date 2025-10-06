@@ -220,7 +220,9 @@ async def list_credentials_by_provider(
     ]
 
 
-@router.get("/{provider}/credentials/{cred_id}", summary="Get Specific Credential By ID")
+@router.get(
+    "/{provider}/credentials/{cred_id}", summary="Get Specific Credential By ID"
+)
 async def get_credential(
     provider: Annotated[
         ProviderName, Path(title="The provider to retrieve credentials for")
