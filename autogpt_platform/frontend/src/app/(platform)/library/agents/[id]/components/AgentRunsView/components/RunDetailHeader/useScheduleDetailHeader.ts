@@ -39,7 +39,7 @@ export function useScheduleDetailHeader(
     deleteMutation.mutate({ scheduleId });
   }
 
-  const openInBuilderHref = `/build?flowID=${agentGraphId}&flowVersion=${agentGraphVersion}`;
+  const openInBuilderHref = `/build?flowID=${agentGraphId}`;
 
   return {
     deleteSchedule,

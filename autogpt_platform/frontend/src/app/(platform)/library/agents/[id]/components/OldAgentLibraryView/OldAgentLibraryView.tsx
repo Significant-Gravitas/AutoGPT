@@ -448,7 +448,7 @@ export function OldAgentLibraryView() {
     () => [
       {
         label: "Customize agent",
-        href: `/build?flowID=${agent?.graph_id}&flowVersion=${agent?.graph_version}`,
+        href: `/build?flowID=${agent?.graph_id}`,
         disabled: !agent?.can_access_graph,
       },
       { label: "Export agent to file", callback: downloadGraph },
