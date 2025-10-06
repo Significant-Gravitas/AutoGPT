@@ -13,8 +13,6 @@ export interface TurnstileProps {
   id?: string;
   shouldRender?: boolean;
   setWidgetId?: (id: string | null) => void;
-  // Changing this value will trigger a widget reset safely inside the component
-  resetSignal?: number | string | boolean;
 }
 
 export function Turnstile({
@@ -27,7 +25,6 @@ export function Turnstile({
   id = "cf-turnstile",
   shouldRender = true,
   setWidgetId,
-  resetSignal,
 }: TurnstileProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
@@ -43,37 +40,63 @@ export function Turnstile({
       return;
     }
 
-    // Create script element
-    const script = document.createElement("script");
-    script.src =
+    const scriptSrc =
       "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+
+    // If a script already exists, reuse it and attach listeners
+    const existingScript = Array.from(document.scripts).find(
+      (s) => s.src === scriptSrc,
+    );
+
+    if (existingScript) {
+      if (window.turnstile) {
+        setLoaded(true);
+        return;
+      }
+
+      const handleLoad: EventListener = () => {
+        setLoaded(true);
+      };
+      const handleError: EventListener = () => {
+        onError?.(new Error("Failed to load Turnstile script"));
+      };
+
+      existingScript.addEventListener("load", handleLoad);
+      existingScript.addEventListener("error", handleError);
+
+      return () => {
+        existingScript.removeEventListener("load", handleLoad);
+        existingScript.removeEventListener("error", handleError);
+      };
+    }
+
+    // Create a single script element if not present and keep it in the document
+    const script = document.createElement("script");
+    script.src = scriptSrc;
     script.async = true;
     script.defer = true;
 
-    script.onload = () => {
+    const handleLoad: EventListener = () => {
       setLoaded(true);
     };
-
-    script.onerror = () => {
+    const handleError: EventListener = () => {
       onError?.(new Error("Failed to load Turnstile script"));
     };
 
+    script.addEventListener("load", handleLoad);
+    script.addEventListener("error", handleError);
+
     document.head.appendChild(script);
 
-    // Do not remove the script on unmount to avoid race conditions with
-    // other potential widgets or future mounts.
-    return () => {};
+    return () => {
+      script.removeEventListener("load", handleLoad);
+      script.removeEventListener("error", handleError);
+    };
   }, [onError, shouldRender]);
 
   // Initialize and render the widget when script is loaded
   useEffect(() => {
-    if (
-      !loaded ||
-      !containerRef.current ||
-      !window.turnstile ||
-      !shouldRender ||
-      !siteKey
-    )
+    if (!loaded || !containerRef.current || !window.turnstile || !shouldRender)
       return;
 
     // Reset any existing widget
@@ -87,20 +110,19 @@ export function Turnstile({
 
     // Render a new widget
     if (window.turnstile) {
-      widgetIdRef.current =
-        window.turnstile.render(containerRef.current, {
-          sitekey: siteKey,
-          callback: (token: string) => {
-            onVerify(token);
-          },
-          "expired-callback": () => {
-            onExpire?.();
-          },
-          "error-callback": () => {
-            onError?.(new Error("Turnstile widget encountered an error"));
-          },
-          action,
-        }) ?? "";
+      widgetIdRef.current = window.turnstile.render(containerRef.current, {
+        sitekey: siteKey,
+        callback: (token: string) => {
+          onVerify(token);
+        },
+        "expired-callback": () => {
+          onExpire?.();
+        },
+        "error-callback": () => {
+          onError?.(new Error("Turnstile widget encountered an error"));
+        },
+        action,
+      });
 
       // Notify the hook about the widget ID
       setWidgetId?.(widgetIdRef.current);
@@ -130,20 +152,13 @@ export function Turnstile({
 
   // Method to reset the widget manually
   useEffect(() => {
-    if (
-      loaded &&
-      widgetIdRef.current &&
-      window.turnstile &&
-      shouldRender &&
-      siteKey
-    ) {
+    if (loaded && widgetIdRef.current && window.turnstile && shouldRender) {
       window.turnstile.reset(widgetIdRef.current);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded, shouldRender, resetSignal, siteKey]);
+  }, [loaded, shouldRender]);
 
   // If shouldRender is false, don't render anything
-  if (!shouldRender || !siteKey) {
+  if (!shouldRender) {
     return null;
   }
 

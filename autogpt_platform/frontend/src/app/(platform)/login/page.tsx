@@ -1,5 +1,4 @@
 "use client";
-
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Link } from "@/components/atoms/Link/Link";
@@ -7,17 +6,18 @@ import { AuthCard } from "@/components/auth/AuthCard";
 import AuthFeedback from "@/components/auth/AuthFeedback";
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
+import Turnstile from "@/components/auth/Turnstile";
 import { Form, FormField } from "@/components/__legacy__/ui/form";
 import { getBehaveAs } from "@/lib/utils";
 import { LoadingLogin } from "./components/LoadingLogin";
 import { useLoginPage } from "./useLoginPage";
-import Turnstile from "@/components/auth/Turnstile";
 
 export default function LoginPage() {
   const {
     form,
     feedback,
-    captchaToken,
+    turnstile,
+    captchaKey,
     isLoading,
     isLoggedIn,
     isCloudEnv,
@@ -28,9 +28,6 @@ export default function LoginPage() {
     handleSubmit,
     handleProviderLogin,
     handleCloseNotAllowedModal,
-    handleCaptchaVerify,
-    setCaptchaWidgetId,
-    captchaResetNonce,
   } = useLoginPage();
 
   if (isUserLoading || isLoggedIn) {
@@ -87,21 +84,17 @@ export default function LoginPage() {
               )}
             />
 
-            <div className="flex items-center justify-center">
-              <Turnstile
-                siteKey={
-                  process.env.NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY || ""
-                }
-                onVerify={handleCaptchaVerify}
-                shouldRender={Boolean(
-                  isCloudEnv &&
-                    !captchaToken &&
-                    process.env.NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY,
-                )}
-                setWidgetId={setCaptchaWidgetId}
-                resetSignal={captchaResetNonce}
-              />
-            </div>
+            {/* Turnstile CAPTCHA Component */}
+            <Turnstile
+              key={captchaKey}
+              siteKey={turnstile.siteKey}
+              onVerify={turnstile.handleVerify}
+              onExpire={turnstile.handleExpire}
+              onError={turnstile.handleError}
+              setWidgetId={turnstile.setWidgetId}
+              action="login"
+              shouldRender={turnstile.shouldRender}
+            />
 
             <Button
               variant="primary"
