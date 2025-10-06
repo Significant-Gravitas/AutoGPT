@@ -81,6 +81,7 @@ async def get_store_agents(
         where_clause["categories"] = {"has": category}
 
     if sanitized_query:
+        await log_search_term(sanitized_query)
         where_clause["OR"] = [
             {"agent_name": {"contains": sanitized_query, "mode": "insensitive"}},
             {"description": {"contains": sanitized_query, "mode": "insensitive"}},
@@ -145,6 +146,13 @@ async def get_store_agents(
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to fetch store agents"
         ) from e
+
+
+async def log_search_term(search_query: str):
+    """Log a search term to the database"""
+    await prisma.models.SearchHistory.prisma().create(
+        data=prisma.types.SearchHistoryCreateInput(searchQuery=search_query)
+    )
 
 
 async def get_store_agent_details(

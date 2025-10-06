@@ -587,6 +587,15 @@ model CreditRefundRequest {
 ////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////
 
+model SearchHistory {
+  // Not using uuid as we want to minimise table size
+  id BigInt @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  searchQuery String
+
+  @@index([createdAt])
+}
+
 model Profile {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
