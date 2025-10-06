@@ -21,7 +21,7 @@ export const SelectCredential: React.FC<SelectCredentialProps> = ({
   placeholder = "Select credential",
 }) => {
   const options = credentials.map((cred) => {
-    let details: string[] = [];
+    const details: string[] = [];
     if (cred.title && cred.title !== cred.provider) {
       details.push(cred.title);
     }

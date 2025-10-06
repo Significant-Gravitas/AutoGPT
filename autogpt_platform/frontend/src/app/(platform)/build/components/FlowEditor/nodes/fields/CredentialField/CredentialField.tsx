@@ -2,12 +2,11 @@ import React from "react";
 import { FieldProps } from "@rjsf/utils";
 import { useCredentialField } from "./useCredentialField";
 import { filterCredentialsByProvider } from "./helpers";
-import { KeyIcon, PlusIcon } from "@phosphor-icons/react";
+import { PlusIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/atoms/Button/Button";
 import { SelectCredential } from "./SelectCredential";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 
-// We need to add all the logic for the credential fields here
 export const CredentialsField = (props: FieldProps) => {
   const { formData = {}, onChange, required: _required, schema } = props;
   const { credentials, isCredentialListLoading } = useCredentialField();
