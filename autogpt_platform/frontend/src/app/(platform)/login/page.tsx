@@ -17,6 +17,7 @@ export default function LoginPage() {
   const {
     form,
     feedback,
+    captchaToken,
     isLoading,
     isLoggedIn,
     isCloudEnv,
@@ -89,6 +90,7 @@ export default function LoginPage() {
               <Turnstile2
                 onVerified={handleCaptchaVerify}
                 onReady={handleCaptchaReady}
+                visible={!captchaToken}
               />
             </div>
 
