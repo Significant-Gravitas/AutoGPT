@@ -80,19 +80,20 @@ export function Turnstile({
 
     // Render a new widget
     if (window.turnstile) {
-      widgetIdRef.current = window.turnstile.render(containerRef.current, {
-        sitekey: siteKey,
-        callback: (token: string) => {
-          onVerify(token);
-        },
-        "expired-callback": () => {
-          onExpire?.();
-        },
-        "error-callback": () => {
-          onError?.(new Error("Turnstile widget encountered an error"));
-        },
-        action,
-      });
+      widgetIdRef.current =
+        window.turnstile.render(containerRef.current, {
+          sitekey: siteKey,
+          callback: (token: string) => {
+            onVerify(token);
+          },
+          "expired-callback": () => {
+            onExpire?.();
+          },
+          "error-callback": () => {
+            onError?.(new Error("Turnstile widget encountered an error"));
+          },
+          action,
+        }) ?? "";
 
       // Notify the hook about the widget ID
       setWidgetId?.(widgetIdRef.current);
@@ -144,6 +145,7 @@ export function Turnstile({
 // Add TypeScript interface to Window to include turnstile property
 declare global {
   interface Window {
+    // @ts-expect-error - turnstile is not defined in the window object
     turnstile?: {
       render: (
         container: HTMLElement,
