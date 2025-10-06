@@ -4,6 +4,7 @@ import { Button } from "@/components/__legacy__/Button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -64,6 +65,9 @@ export default function LibraryUploadAgentDialog(): React.ReactNode {
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="mb-8 text-center">Upload Agent</DialogTitle>
+          <DialogDescription>
+            Upload your agent by providing a name, description, and JSON file.
+          </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
