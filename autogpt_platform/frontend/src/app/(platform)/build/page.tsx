@@ -5,9 +5,9 @@ import { getV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/
 export async function generateMetadata({
   searchParams,
 }: {
-  searchParams: { flowID: string; flowVersion: string };
+  searchParams: Promise<{ flowID: string; flowVersion: string }>;
 }): Promise<Metadata> {
-  const { flowID, flowVersion } = searchParams;
+  const { flowID, flowVersion } = await searchParams;
 
   if (!flowID || !flowVersion) {
     return {
