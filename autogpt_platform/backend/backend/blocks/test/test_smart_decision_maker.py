@@ -216,8 +216,17 @@ async def test_smart_decision_maker_tracks_llm_stats():
     }
 
     # Mock the _create_function_signature method to avoid database calls
-    with patch("backend.blocks.llm.llm_call", return_value=mock_response), patch.object(
-        SmartDecisionMakerBlock, "_create_function_signature", return_value=[]
+    from unittest.mock import AsyncMock
+
+    with patch(
+        "backend.blocks.llm.llm_call",
+        new_callable=AsyncMock,
+        return_value=mock_response,
+    ), patch.object(
+        SmartDecisionMakerBlock,
+        "_create_function_signature",
+        new_callable=AsyncMock,
+        return_value=[],
     ):
 
         # Create test input
@@ -301,11 +310,16 @@ async def test_smart_decision_maker_parameter_validation():
     mock_response_with_typo.reasoning = None
     mock_response_with_typo.raw_response = {"role": "assistant", "content": None}
 
+    from unittest.mock import AsyncMock
+
     with patch(
-        "backend.blocks.llm.llm_call", return_value=mock_response_with_typo
+        "backend.blocks.llm.llm_call",
+        new_callable=AsyncMock,
+        return_value=mock_response_with_typo,
     ) as mock_llm_call, patch.object(
         SmartDecisionMakerBlock,
         "_create_function_signature",
+        new_callable=AsyncMock,
         return_value=mock_tool_functions,
     ):
 
@@ -332,7 +346,7 @@ async def test_smart_decision_maker_parameter_validation():
 
         # Verify error message contains details about the typo
         error_msg = str(exc_info.value)
-        assert "Tool call validation failed" in error_msg
+        assert "Tool call 'search_keywords' has parameter errors" in error_msg
         assert "Unknown parameters: ['maximum_keyword_difficulty']" in error_msg
 
         # Verify that LLM was called the expected number of times (retries)
@@ -353,11 +367,16 @@ async def test_smart_decision_maker_parameter_validation():
     mock_response_missing_required.reasoning = None
     mock_response_missing_required.raw_response = {"role": "assistant", "content": None}
 
+    from unittest.mock import AsyncMock
+
     with patch(
-        "backend.blocks.llm.llm_call", return_value=mock_response_missing_required
+        "backend.blocks.llm.llm_call",
+        new_callable=AsyncMock,
+        return_value=mock_response_missing_required,
     ), patch.object(
         SmartDecisionMakerBlock,
         "_create_function_signature",
+        new_callable=AsyncMock,
         return_value=mock_tool_functions,
     ):
 
@@ -398,11 +417,16 @@ async def test_smart_decision_maker_parameter_validation():
     mock_response_valid.reasoning = None
     mock_response_valid.raw_response = {"role": "assistant", "content": None}
 
+    from unittest.mock import AsyncMock
+
     with patch(
-        "backend.blocks.llm.llm_call", return_value=mock_response_valid
+        "backend.blocks.llm.llm_call",
+        new_callable=AsyncMock,
+        return_value=mock_response_valid,
     ), patch.object(
         SmartDecisionMakerBlock,
         "_create_function_signature",
+        new_callable=AsyncMock,
         return_value=mock_tool_functions,
     ):
 
@@ -447,11 +471,16 @@ async def test_smart_decision_maker_parameter_validation():
     mock_response_all_params.reasoning = None
     mock_response_all_params.raw_response = {"role": "assistant", "content": None}
 
+    from unittest.mock import AsyncMock
+
     with patch(
-        "backend.blocks.llm.llm_call", return_value=mock_response_all_params
+        "backend.blocks.llm.llm_call",
+        new_callable=AsyncMock,
+        return_value=mock_response_all_params,
     ), patch.object(
         SmartDecisionMakerBlock,
         "_create_function_signature",
+        new_callable=AsyncMock,
         return_value=mock_tool_functions,
     ):
 
@@ -553,9 +582,14 @@ async def test_smart_decision_maker_raw_response_conversion():
     )
 
     # Mock llm_call to return different responses on different calls
-    with patch("backend.blocks.llm.llm_call") as mock_llm_call, patch.object(
+    from unittest.mock import AsyncMock
+
+    with patch(
+        "backend.blocks.llm.llm_call", new_callable=AsyncMock
+    ) as mock_llm_call, patch.object(
         SmartDecisionMakerBlock,
         "_create_function_signature",
+        new_callable=AsyncMock,
         return_value=mock_tool_functions,
     ):
         # First call returns response that will trigger retry due to validation error
@@ -614,11 +648,16 @@ async def test_smart_decision_maker_raw_response_conversion():
         "I'll help you with that."  # Ollama returns string
     )
 
+    from unittest.mock import AsyncMock
+
     with patch(
-        "backend.blocks.llm.llm_call", return_value=mock_response_ollama
+        "backend.blocks.llm.llm_call",
+        new_callable=AsyncMock,
+        return_value=mock_response_ollama,
     ), patch.object(
         SmartDecisionMakerBlock,
         "_create_function_signature",
+        new_callable=AsyncMock,
         return_value=[],  # No tools for this test
     ):
         input_data = SmartDecisionMakerBlock.Input(
@@ -655,11 +694,16 @@ async def test_smart_decision_maker_raw_response_conversion():
         "content": "Test response",
     }  # Dict format
 
+    from unittest.mock import AsyncMock
+
     with patch(
-        "backend.blocks.llm.llm_call", return_value=mock_response_dict
+        "backend.blocks.llm.llm_call",
+        new_callable=AsyncMock,
+        return_value=mock_response_dict,
     ), patch.object(
         SmartDecisionMakerBlock,
         "_create_function_signature",
+        new_callable=AsyncMock,
         return_value=[],
     ):
         input_data = SmartDecisionMakerBlock.Input(
