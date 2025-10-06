@@ -724,10 +724,10 @@ export default function useAgentGraph(
                   hardcodedValues: removeEmptyStringsAndNulls(
                     frontendNode.data.hardcodedValues,
                   ),
-                  status: undefined,
                   backend_id: backendNode.id,
-                  executionResults: [],
                   metadata,
+                  status: undefined,
+                  executionResults: undefined,
                 },
               } satisfies CustomNode)
             : _backendNodeToXYNode(backendNode, newSavedAgent); // fallback
@@ -735,7 +735,7 @@ export default function useAgentGraph(
         .filter((node) => node !== null),
     );
 
-    // Update edge references to use the new node IDs
+    // Reset bead count & update edge references to use the new node IDs
     setXYEdges((edges) =>
       edges.map((edge): CustomEdge => {
         const newSourceId = oldToNewNodeIDMap.get(edge.source) || edge.source;
