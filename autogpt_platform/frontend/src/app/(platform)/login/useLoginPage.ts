@@ -45,7 +45,6 @@ export function useLoginPage() {
       });
 
       setIsGoogleLoading(false);
-      captchaRef?.reset();
       return;
     }
 
@@ -54,7 +53,6 @@ export function useLoginPage() {
       if (error) throw error;
       setFeedback(null);
     } catch (error) {
-      captchaRef?.reset();
       setIsGoogleLoading(false);
       const errorString = JSON.stringify(error);
       if (errorString.includes("not_allowed")) {
@@ -74,7 +72,6 @@ export function useLoginPage() {
       });
 
       setIsLoading(false);
-      captchaRef?.reset();
       return;
     }
 
@@ -85,7 +82,6 @@ export function useLoginPage() {
       });
 
       setIsLoading(false);
-      captchaRef?.reset();
       return;
     }
 
@@ -98,7 +94,6 @@ export function useLoginPage() {
         variant: "destructive",
       });
 
-      captchaRef?.reset();
       return;
     }
     setFeedback(null);
