@@ -1,32 +1,27 @@
-import { useTurnstile } from "@/hooks/useTurnstile";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { BehaveAs, getBehaveAs } from "@/lib/utils";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 import { login, providerLogin } from "./actions";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { TurnstileInstance } from "@marsidev/react-turnstile";
 
 export function useLoginPage() {
   const { supabase, user, isUserLoading } = useSupabase();
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [captchaKey, setCaptchaKey] = useState(0);
   const router = useRouter();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaRef, setCaptchaRef] = useState<TurnstileInstance | null>(null);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
   const isCloudEnv = getBehaveAs() === BehaveAs.CLOUD;
   const isVercelPreview = process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
-
-  const turnstile = useTurnstile({
-    action: "login",
-    autoVerify: false,
-    resetOnError: true,
-  });
 
   const form = useForm<z.infer<typeof loginFormSchema>>({
     resolver: zodResolver(loginFormSchema),
@@ -36,11 +31,6 @@ export function useLoginPage() {
     },
   });
 
-  const resetCaptcha = useCallback(() => {
-    setCaptchaKey((k) => k + 1);
-    turnstile.reset();
-  }, [turnstile]);
-
   useEffect(() => {
     if (user) router.push("/");
   }, [user]);
@@ -48,14 +38,14 @@ export function useLoginPage() {
   async function handleProviderLogin(provider: LoginProvider) {
     setIsGoogleLoading(true);
 
-    if (isCloudEnv && !turnstile.verified && !isVercelPreview) {
+    if (isCloudEnv && !captchaToken && !isVercelPreview) {
       toast({
         title: "Please complete the CAPTCHA challenge.",
         variant: "info",
       });
 
       setIsGoogleLoading(false);
-      resetCaptcha();
+      captchaRef?.reset();
       return;
     }
 
@@ -64,7 +54,7 @@ export function useLoginPage() {
       if (error) throw error;
       setFeedback(null);
     } catch (error) {
-      resetCaptcha();
+      captchaRef?.reset();
       setIsGoogleLoading(false);
       const errorString = JSON.stringify(error);
       if (errorString.includes("not_allowed")) {
@@ -77,14 +67,14 @@ export function useLoginPage() {
 
   async function handleLogin(data: z.infer<typeof loginFormSchema>) {
     setIsLoading(true);
-    if (isCloudEnv && !turnstile.verified && !isVercelPreview) {
+    if (isCloudEnv && !captchaToken && !isVercelPreview) {
       toast({
         title: "Please complete the CAPTCHA challenge.",
         variant: "info",
       });
 
       setIsLoading(false);
-      resetCaptcha();
+      captchaRef?.reset();
       return;
     }
 
@@ -95,11 +85,11 @@ export function useLoginPage() {
       });
 
       setIsLoading(false);
-      resetCaptcha();
+      captchaRef?.reset();
       return;
     }
 
-    const error = await login(data, turnstile.token as string);
+    const error = await login(data, captchaToken as string);
     await supabase?.auth.refreshSession();
     setIsLoading(false);
     if (error) {
@@ -108,19 +98,24 @@ export function useLoginPage() {
         variant: "destructive",
       });
 
-      resetCaptcha();
-      // Always reset the turnstile on any error
-      turnstile.reset();
+      captchaRef?.reset();
       return;
     }
     setFeedback(null);
   }
 
+  function handleCaptchaVerify(token: string) {
+    setCaptchaToken(token);
+  }
+
+  function handleCaptchaReady(ref: TurnstileInstance) {
+    setCaptchaRef(ref);
+  }
+
   return {
     form,
     feedback,
-    turnstile,
-    captchaKey,
+    captchaRef,
     isLoggedIn: !!user,
     isLoading,
     isCloudEnv,
@@ -131,5 +126,7 @@ export function useLoginPage() {
     handleSubmit: form.handleSubmit(handleLogin),
     handleProviderLogin,
     handleCloseNotAllowedModal: () => setShowNotAllowedModal(false),
+    handleCaptchaVerify,
+    handleCaptchaReady,
   };
 }

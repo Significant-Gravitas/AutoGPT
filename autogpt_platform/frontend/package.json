@@ -27,6 +27,7 @@
   "dependencies": {
     "@faker-js/faker": "10.0.0",
     "@hookform/resolvers": "5.2.1",
+    "@marsidev/react-turnstile": "1.3.1",
     "@next/third-parties": "15.4.6",
     "@phosphor-icons/react": "2.1.10",
     "@radix-ui/react-alert-dialog": "1.1.15",
