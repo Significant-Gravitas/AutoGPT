@@ -11,7 +11,7 @@ import { Form, FormField } from "@/components/__legacy__/ui/form";
 import { getBehaveAs } from "@/lib/utils";
 import { LoadingLogin } from "./components/LoadingLogin";
 import { useLoginPage } from "./useLoginPage";
-import { Turnstile2 } from "@/components/auth/Turnstile2";
+import Turnstile from "@/components/auth/Turnstile";
 
 export default function LoginPage() {
   const {
@@ -29,7 +29,8 @@ export default function LoginPage() {
     handleProviderLogin,
     handleCloseNotAllowedModal,
     handleCaptchaVerify,
-    handleCaptchaReady,
+    setCaptchaWidgetId,
+    captchaResetNonce,
   } = useLoginPage();
 
   if (isUserLoading || isLoggedIn) {
@@ -87,10 +88,18 @@ export default function LoginPage() {
             />
 
             <div className="flex items-center justify-center">
-              <Turnstile2
-                onVerified={handleCaptchaVerify}
-                onReady={handleCaptchaReady}
-                visible={!captchaToken}
+              <Turnstile
+                siteKey={
+                  process.env.NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY || ""
+                }
+                onVerify={handleCaptchaVerify}
+                shouldRender={Boolean(
+                  isCloudEnv &&
+                    !captchaToken &&
+                    process.env.NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY,
+                )}
+                setWidgetId={setCaptchaWidgetId}
+                resetSignal={captchaResetNonce}
               />
             </div>
 

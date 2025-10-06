@@ -13,6 +13,8 @@ export interface TurnstileProps {
   id?: string;
   shouldRender?: boolean;
   setWidgetId?: (id: string | null) => void;
+  // Changing this value will trigger a widget reset safely inside the component
+  resetSignal?: number | string | boolean;
 }
 
 export function Turnstile({
@@ -25,6 +27,7 @@ export function Turnstile({
   id = "cf-turnstile",
   shouldRender = true,
   setWidgetId,
+  resetSignal,
 }: TurnstileProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
@@ -57,16 +60,20 @@ export function Turnstile({
 
     document.head.appendChild(script);
 
-    return () => {
-      if (document.head.contains(script)) {
-        document.head.removeChild(script);
-      }
-    };
+    // Do not remove the script on unmount to avoid race conditions with
+    // other potential widgets or future mounts.
+    return () => {};
   }, [onError, shouldRender]);
 
   // Initialize and render the widget when script is loaded
   useEffect(() => {
-    if (!loaded || !containerRef.current || !window.turnstile || !shouldRender)
+    if (
+      !loaded ||
+      !containerRef.current ||
+      !window.turnstile ||
+      !shouldRender ||
+      !siteKey
+    )
       return;
 
     // Reset any existing widget
@@ -123,13 +130,20 @@ export function Turnstile({
 
   // Method to reset the widget manually
   useEffect(() => {
-    if (loaded && widgetIdRef.current && window.turnstile && shouldRender) {
+    if (
+      loaded &&
+      widgetIdRef.current &&
+      window.turnstile &&
+      shouldRender &&
+      siteKey
+    ) {
       window.turnstile.reset(widgetIdRef.current);
     }
-  }, [loaded, shouldRender]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, shouldRender, resetSignal, siteKey]);
 
   // If shouldRender is false, don't render anything
-  if (!shouldRender) {
+  if (!shouldRender || !siteKey) {
     return null;
   }
 
@@ -145,7 +159,6 @@ export function Turnstile({
 // Add TypeScript interface to Window to include turnstile property
 declare global {
   interface Window {
-    // @ts-expect-error - turnstile is not defined in the window object
     turnstile?: {
       render: (
         container: HTMLElement,

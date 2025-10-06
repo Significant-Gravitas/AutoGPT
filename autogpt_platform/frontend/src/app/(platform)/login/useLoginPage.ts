@@ -8,7 +8,7 @@ import { useForm } from "react-hook-form";
 import z from "zod";
 import { login, providerLogin } from "./actions";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { TurnstileInstance } from "@marsidev/react-turnstile";
+// Captcha integration handled via widget ID reset in page
 
 export function useLoginPage() {
   const { supabase, user, isUserLoading } = useSupabase();
@@ -17,7 +17,8 @@ export function useLoginPage() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
-  const [captchaRef, setCaptchaRef] = useState<TurnstileInstance | null>(null);
+  const [captchaWidgetId, setCaptchaWidgetId] = useState<string | null>(null);
+  const [captchaResetNonce, setCaptchaResetNonce] = useState(0);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
   const isCloudEnv = getBehaveAs() === BehaveAs.CLOUD;
@@ -54,7 +55,9 @@ export function useLoginPage() {
       setFeedback(null);
     } catch (error) {
       setCaptchaToken(null);
-      captchaRef?.reset();
+      if (captchaWidgetId && window?.turnstile)
+        window.turnstile.reset(captchaWidgetId);
+      setCaptchaResetNonce((n) => n + 1);
       setIsGoogleLoading(false);
       const errorString = JSON.stringify(error);
       if (errorString.includes("not_allowed")) {
@@ -97,7 +100,9 @@ export function useLoginPage() {
       });
 
       setCaptchaToken(null);
-      captchaRef?.reset();
+      if (captchaWidgetId && window?.turnstile)
+        window.turnstile.reset(captchaWidgetId);
+      setCaptchaResetNonce((n) => n + 1);
       return;
     }
     setFeedback(null);
@@ -105,10 +110,6 @@ export function useLoginPage() {
 
   function handleCaptchaVerify(token: string) {
     setCaptchaToken(token);
-  }
-
-  function handleCaptchaReady(ref: TurnstileInstance) {
-    if (!captchaRef) setCaptchaRef(ref);
   }
 
   return {
@@ -126,6 +127,7 @@ export function useLoginPage() {
     handleProviderLogin,
     handleCloseNotAllowedModal: () => setShowNotAllowedModal(false),
     handleCaptchaVerify,
-    handleCaptchaReady,
+    setCaptchaWidgetId,
+    captchaResetNonce,
   };
 }
