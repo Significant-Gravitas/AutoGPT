@@ -629,7 +629,7 @@ export default function useAgentGraph(
       recommended_schedule_cron: agentRecommendedScheduleCron || null,
       nodes: xyNodes.map(
         (node): NodeCreatable => ({
-          id: node.id,
+          id: node.data.backend_id ?? node.id,
           block_id: node.data.block_id,
           input_default: prepareNodeInputData(node),
           metadata: {
@@ -697,10 +697,10 @@ export default function useAgentGraph(
     setSavedAgent(newSavedAgent);
 
     // Create a mapping from old frontend IDs to new backend IDs
-    const oldToNewNodeIdMap = new Map<string, string>();
+    const oldToNewNodeIDMap = new Map<string, string>();
 
-    setXYNodes((prev) => {
-      const updatedNodes = newSavedAgent.nodes
+    setXYNodes((prev) =>
+      newSavedAgent.nodes
         .map((backendNode) => {
           const key = `${backendNode.block_id}_${backendNode.metadata.position.x}_${backendNode.metadata.position.y}`;
           const oldFrontendNodeID = blockIDToNodeIDMap[key];
@@ -710,7 +710,7 @@ export default function useAgentGraph(
 
           if (frontendNode) {
             // Store the ID mapping for edge updates
-            oldToNewNodeIdMap.set(oldFrontendNodeID, backendNode.id);
+            oldToNewNodeIDMap.set(oldFrontendNodeID, backendNode.id);
           }
 
           const { position, ...metadata } = backendNode.metadata;
@@ -732,16 +732,14 @@ export default function useAgentGraph(
               } satisfies CustomNode)
             : _backendNodeToXYNode(backendNode, newSavedAgent); // fallback
         })
-        .filter((node) => node !== null);
-
-      return updatedNodes;
-    });
+        .filter((node) => node !== null),
+    );
 
     // Update edge references to use the new node IDs
-    setXYEdges((edges) => {
-      return edges.map((edge): CustomEdge => {
-        const newSourceId = oldToNewNodeIdMap.get(edge.source) || edge.source;
-        const newTargetId = oldToNewNodeIdMap.get(edge.target) || edge.target;
+    setXYEdges((edges) =>
+      edges.map((edge): CustomEdge => {
+        const newSourceId = oldToNewNodeIDMap.get(edge.source) || edge.source;
+        const newTargetId = oldToNewNodeIDMap.get(edge.target) || edge.target;
 
         return {
           ...edge,
@@ -755,8 +753,8 @@ export default function useAgentGraph(
             beadData: new Map(),
           },
         };
-      });
-    });
+      }),
+    );
     return newSavedAgent;
   }, [
     api,
