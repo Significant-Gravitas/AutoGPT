@@ -53,6 +53,8 @@ export function useLoginPage() {
       if (error) throw error;
       setFeedback(null);
     } catch (error) {
+      setCaptchaToken(null);
+      captchaRef?.reset();
       setIsGoogleLoading(false);
       const errorString = JSON.stringify(error);
       if (errorString.includes("not_allowed")) {
@@ -94,6 +96,8 @@ export function useLoginPage() {
         variant: "destructive",
       });
 
+      setCaptchaToken(null);
+      captchaRef?.reset();
       return;
     }
     setFeedback(null);
@@ -104,13 +108,13 @@ export function useLoginPage() {
   }
 
   function handleCaptchaReady(ref: TurnstileInstance) {
-    setCaptchaRef(ref);
+    if (!captchaRef) setCaptchaRef(ref);
   }
 
   return {
     form,
     feedback,
-    captchaRef,
+    captchaToken,
     isLoggedIn: !!user,
     isLoading,
     isCloudEnv,
