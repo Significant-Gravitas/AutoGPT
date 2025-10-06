@@ -42,6 +42,7 @@ Sentry.init({
   integrations: [
     Sentry.anrIntegration(),
     // NodeProfilingIntegration,
+    Sentry.extraErrorDataIntegration(),
     // Sentry.fsIntegration(),
   ],
 

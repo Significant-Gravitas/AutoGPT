@@ -1,111 +1,31 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, Check } from "lucide-react";
-import { OnboardingStep } from "@/lib/autogpt-server-api";
-import { useOnboarding } from "../../../../providers/onboarding/onboarding-provider";
+import { ChevronDown, Check, BadgeQuestionMark } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as party from "party-js";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
+import { Task, TaskGroup } from "@/components/__legacy__/Wallet";
 
-interface Task {
-  id: OnboardingStep;
-  name: string;
-  amount: number;
-  details: string;
-  video?: string;
+interface Props {
+  groups: TaskGroup[];
 }
 
-interface TaskGroup {
-  name: string;
-  tasks: Task[];
-  isOpen: boolean;
-}
-
-export function TaskGroups() {
-  const [groups, setGroups] = useState<TaskGroup[]>([
-    {
-      name: "Run your first agents",
-      isOpen: true,
-      tasks: [
-        {
-          id: "GET_RESULTS",
-          name: "Complete onboarding and see your first agent's results",
-          amount: 3,
-          details: "",
-        },
-        {
-          id: "RUN_AGENTS",
-          name: "Run 10 agents",
-          amount: 3,
-          details: "Run agents from Library or Builder 10 times",
-        },
-      ],
-    },
-    {
-      name: "Explore the Marketplace",
-      isOpen: true,
-      tasks: [
-        {
-          id: "MARKETPLACE_VISIT",
-          name: "Go to Marketplace",
-          amount: 0,
-          details: "Click Marketplace in the top navigation",
-          video: "/onboarding/marketplace-visit.mp4",
-        },
-        {
-          id: "MARKETPLACE_ADD_AGENT",
-          name: "Find an agent",
-          amount: 1,
-          details:
-            "Search for an agent in the Marketplace, like a code generator or research assistant and add it to your Library",
-          video: "/onboarding/marketplace-add.mp4",
-        },
-        {
-          id: "MARKETPLACE_RUN_AGENT",
-          name: "Try out your agent",
-          amount: 1,
-          details:
-            "Run the agent you found in the Marketplace from the Library - whether it's a writing assistant, data analyzer, or something else",
-          video: "/onboarding/marketplace-run.mp4",
-        },
-      ],
-    },
-    {
-      name: "Build your own agent",
-      isOpen: true,
-      tasks: [
-        {
-          id: "BUILDER_OPEN",
-          name: "Open the Builder",
-          amount: 0,
-          details: "Click Builder in the top navigation",
-          video: "/onboarding/builder-open.mp4",
-        },
-        {
-          id: "BUILDER_SAVE_AGENT",
-          name: "Place your first blocks and save your agent",
-          amount: 1,
-          details:
-            "Open block library on the left and add a block to the canvas then save your agent",
-          video: "/onboarding/builder-save.mp4",
-        },
-        {
-          id: "BUILDER_RUN_AGENT",
-          name: "Run your agent",
-          amount: 1,
-          details: "Run your agent from the Builder",
-          video: "/onboarding/builder-run.mp4",
-        },
-      ],
-    },
-  ]);
+export function TaskGroups({ groups }: Props) {
   const { state, updateState } = useOnboarding();
   const refs = useRef<Record<string, HTMLDivElement | null>>({});
 
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    const initialState: Record<string, boolean> = {};
+    groups.forEach((group) => {
+      initialState[group.name] = true;
+    });
+    return initialState;
+  });
+
   const toggleGroup = useCallback((name: string) => {
-    setGroups((prevGroups) =>
-      prevGroups.map((group) =>
-        group.name === name ? { ...group, isOpen: !group.isOpen } : group,
-      ),
-    );
+    setOpenGroups((prev) => ({
+      ...prev,
+      [name]: !prev[name],
+    }));
   }, []);
 
   const isTaskCompleted = useCallback(
@@ -128,6 +48,21 @@ export function TaskGroups() {
     },
     [isTaskCompleted],
   );
+
+  useEffect(() => {
+    // Close completed groups
+    setOpenGroups((prevGroups) =>
+      groups.reduce(
+        (acc, group) => {
+          acc[group.name] = isGroupCompleted(group)
+            ? false
+            : prevGroups[group.name];
+          return acc;
+        },
+        {} as Record<string, boolean>,
+      ),
+    );
+  }, [state?.completedSteps, isGroupCompleted]);
 
   const setRef = (name: string) => (el: HTMLDivElement | null) => {
     if (el) {
@@ -201,19 +136,21 @@ export function TaskGroups() {
         <div
           key={group.name}
           ref={setRef(group.name)}
-          className="mt-3 overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100"
+          className="mt-3 overflow-hidden rounded-lg border border-zinc-100 bg-zinc-50"
         >
           {/* Group Header */}
           <div
             className="flex cursor-pointer items-center justify-between p-3"
             onClick={() => toggleGroup(group.name)}
           >
-            {/* Name and completed count */}
+            {/* Name, details and completed count */}
             <div className="flex-1">
               <div className="text-sm font-medium text-zinc-900">
                 {group.name}
               </div>
               <div className="mt-1 text-xs font-normal leading-tight text-zinc-500">
+                {group.details}
+                <br />
                 {getCompletedCount(group.tasks)} of {group.tasks.length}{" "}
                 completed
               </div>
@@ -233,7 +170,7 @@ export function TaskGroups() {
                 </div>
               )}
               <ChevronDown
-                className={`h-5 w-5 text-slate-950 transition-transform duration-300 ease-in-out ${group.isOpen ? "rotate-180" : ""}`}
+                className={`h-5 w-5 text-slate-950 transition-transform duration-300 ease-in-out ${openGroups[group.name] ? "rotate-180" : ""}`}
               />
             </div>
           </div>
@@ -242,8 +179,8 @@ export function TaskGroups() {
           <div
             className={cn(
               "overflow-hidden transition-all duration-300 ease-in-out",
-              group.isOpen || !isGroupCompleted(group)
-                ? "max-h-[1000px] opacity-100"
+              openGroups[group.name] || !isGroupCompleted(group)
+                ? "max-h-[1200px] opacity-100"
                 : "max-h-0 opacity-0",
             )}
           >
@@ -251,7 +188,7 @@ export function TaskGroups() {
               <div
                 key={task.id}
                 ref={setRef(task.id)}
-                className="mx-3 border-t border-zinc-300 px-1 pb-1 pt-3"
+                className="mx-3 border-t border-zinc-200 px-1 pb-0.5 pt-3"
               >
                 <div className="mb-2 flex items-center justify-between">
                   {/* Checkmark and name */}
@@ -291,15 +228,38 @@ export function TaskGroups() {
                     </span>
                   )}
                 </div>
-
+                {/* Progress bar and counter text */}
+                {task.progress && !isTaskCompleted(task) && (
+                  <div className="mb-1 flex w-full items-center justify-between pl-6 pr-3">
+                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-100">
+                      <div
+                        className="h-full bg-violet-400 transition-all duration-500 ease-in-out"
+                        style={{
+                          width: `${Math.min(
+                            100,
+                            (task.progress.current / task.progress.target) *
+                              100,
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                    <span className="mx-1 w-8 text-right text-xs font-normal text-zinc-500">
+                      {(
+                        (task.progress.current / task.progress.target) *
+                        100
+                      ).toFixed(0)}
+                      %
+                    </span>
+                  </div>
+                )}
                 {/* Details section */}
                 {!isGroupCompleted(group) && (
                   <>
                     <div
                       className={cn(
-                        "overflow-hidden pl-6 text-xs font-normal text-zinc-500 transition-all duration-300 ease-in-out",
+                        "mt-0 overflow-hidden pl-6 pt-0 text-xs font-normal text-zinc-500 transition-all duration-300 ease-in-out",
                         isTaskCompleted(task) && "line-through",
-                        group.isOpen
+                        openGroups[group.name]
                           ? "max-h-[100px] opacity-100"
                           : "max-h-0 opacity-0",
                       )}
@@ -310,7 +270,7 @@ export function TaskGroups() {
                       <div
                         className={cn(
                           "relative mx-6 aspect-video overflow-hidden rounded-lg transition-all duration-300 ease-in-out",
-                          group.isOpen
+                          openGroups[group.name]
                             ? "my-2 max-h-[200px] opacity-100"
                             : "max-h-0 opacity-0",
                         )}
@@ -337,6 +297,46 @@ export function TaskGroups() {
           </div>
         </div>
       ))}
+      {/* Hidden Tasks group */}
+      <div className="mt-3 overflow-hidden rounded-lg border border-zinc-100 bg-zinc-50">
+        {/* Group Header */}
+        <div className="flex items-center justify-between p-3">
+          {/* Name and details */}
+          <div className="flex-1">
+            <div className="text-sm font-medium text-zinc-900">
+              Hidden Tasks
+            </div>
+            <div className="mt-1 text-xs font-normal leading-tight text-zinc-500">
+              Check back later — new tasks are on the way
+            </div>
+          </div>
+        </div>
+        {/* Tasks */}
+        <div>
+          <div className="mx-3 border-t border-zinc-200 px-1 pb-1 pt-3">
+            <div className="mb-2 flex items-center justify-between">
+              {/* Question mark and rectangle */}
+              <div className="flex items-center gap-2">
+                <div className="flex h-4 w-4 items-center justify-center">
+                  <BadgeQuestionMark />
+                </div>
+                <div className="h-4 w-64 rounded-full bg-zinc-100" />
+              </div>
+            </div>
+          </div>
+          <div className="mx-3 border-t border-zinc-200 px-1 pb-1 pt-3">
+            <div className="mb-2 flex items-center justify-between">
+              {/* Question mark and rectangle */}
+              <div className="flex items-center gap-2">
+                <div className="flex h-4 w-4 items-center justify-center">
+                  <BadgeQuestionMark />
+                </div>
+                <div className="h-4 w-64 rounded-full bg-zinc-100" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -90,7 +90,7 @@ class CodeExtractionBlock(Block):
                 for aliases in language_aliases.values()
                 for alias in aliases
             )
-            + r")\s+[\s\S]*?```"
+            + r")[ \t]*\n[\s\S]*?```"
         )
 
         remaining_text = re.sub(pattern, "", input_data.text).strip()
@@ -103,7 +103,9 @@ class CodeExtractionBlock(Block):
         # Escape special regex characters in the language string
         language = re.escape(language)
         # Extract all code blocks enclosed in ```language``` blocks
-        pattern = re.compile(rf"```{language}\s+(.*?)```", re.DOTALL | re.IGNORECASE)
+        pattern = re.compile(
+            rf"```{language}[ \t]*\n(.*?)\n```", re.DOTALL | re.IGNORECASE
+        )
         matches = pattern.finditer(text)
         # Combine all code blocks for this language with newlines between them
         code_blocks = [match.group(1).strip() for match in matches]
