@@ -1,4 +1,5 @@
 "use client";
+
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Link } from "@/components/atoms/Link/Link";
@@ -6,18 +7,16 @@ import { AuthCard } from "@/components/auth/AuthCard";
 import AuthFeedback from "@/components/auth/AuthFeedback";
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
-import Turnstile from "@/components/auth/Turnstile";
 import { Form, FormField } from "@/components/__legacy__/ui/form";
 import { getBehaveAs } from "@/lib/utils";
 import { LoadingLogin } from "./components/LoadingLogin";
 import { useLoginPage } from "./useLoginPage";
+import { Turnstile2 } from "@/components/auth/Turnstile2";
 
 export default function LoginPage() {
   const {
     form,
     feedback,
-    turnstile,
-    captchaKey,
     isLoading,
     isLoggedIn,
     isCloudEnv,
@@ -28,6 +27,8 @@ export default function LoginPage() {
     handleSubmit,
     handleProviderLogin,
     handleCloseNotAllowedModal,
+    handleCaptchaVerify,
+    handleCaptchaReady,
   } = useLoginPage();
 
   if (isUserLoading || isLoggedIn) {
@@ -84,19 +85,12 @@ export default function LoginPage() {
               )}
             />
 
-            {/* Turnstile CAPTCHA Component */}
-            {turnstile.shouldRender ? (
-              <Turnstile
-                key={captchaKey}
-                siteKey={turnstile.siteKey}
-                onVerify={turnstile.handleVerify}
-                onExpire={turnstile.handleExpire}
-                onError={turnstile.handleError}
-                setWidgetId={turnstile.setWidgetId}
-                action="login"
-                shouldRender={turnstile.shouldRender}
+            <div className="flex items-center justify-center">
+              <Turnstile2
+                onVerified={handleCaptchaVerify}
+                onReady={handleCaptchaReady}
               />
-            ) : null}
+            </div>
 
             <Button
               variant="primary"
