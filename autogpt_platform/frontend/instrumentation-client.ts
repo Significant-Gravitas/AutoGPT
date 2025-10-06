@@ -31,7 +31,7 @@ Sentry.init({
     Sentry.extraErrorDataIntegration(),
     Sentry.browserProfilingIntegration(),
     Sentry.httpClientIntegration(),
-    // Sentry.launchDarklyIntegration(),
+    Sentry.launchDarklyIntegration(),
     Sentry.replayIntegration({
       unmask: [".sentry-unmask, [data-sentry-unmask]"],
     }),
