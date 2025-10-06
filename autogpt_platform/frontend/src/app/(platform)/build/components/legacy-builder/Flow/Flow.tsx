@@ -164,13 +164,6 @@ const FlowEditor: React.FC<{
   // It stores the dimension of all nodes with position as well
   const [nodeDimensions, setNodeDimensions] = useState<NodeDimension>({});
 
-  // Set page title with or without graph name
-  useEffect(() => {
-    document.title = savedAgent
-      ? `${savedAgent.name} - Builder - AutoGPT Platform`
-      : `Builder - AutoGPT Platform`;
-  }, [savedAgent]);
-
   const graphHasWebhookNodes = useMemo(
     () =>
       nodes.some((n) =>
