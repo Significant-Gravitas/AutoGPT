@@ -1,16 +1,16 @@
-.PHONY: core-services stop-core logs-core
+.PHONY: start-core stop-core logs-core format lint
 
 # Run just Supabase + Redis + RabbitMQ
-core-services:
-	docker compose up -d kong auth db redis rabbitmq
+start-core:
+	docker compose up -d kong auth db redis rabbitmq studio
 
 # Stop core services
 stop-core:
-	docker compose stop kong auth db redis rabbitmq
+	docker compose stop kong auth db redis rabbitmq studio
 
 # View logs for core services
 logs-core:
-	docker compose logs -f kong auth db redis rabbitmq
+	docker compose logs -f kong auth db redis rabbitmq studio
 
 # Run formatting and linting for backend and frontend
 format:
