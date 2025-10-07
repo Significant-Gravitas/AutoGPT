@@ -748,8 +748,23 @@ class NotificationManager(AppService):
                                     f"Failed to send notification at index {i}: "
                                     f"Single notification exceeds email size limit "
                                     f"({len(test_message):,} chars > {MAX_EMAIL_SIZE:,} chars). "
-                                    f"Skipping this notification."
+                                    f"Removing permanently from batch - will not retry."
                                 )
+
+                                # Remove the oversized notification permanently - it will NEVER fit
+                                if chunk_ids:
+                                    try:
+                                        await get_database_manager_async_client().remove_notifications_from_batch(
+                                            event.user_id, event.type, chunk_ids
+                                        )
+                                        logger.info(
+                                            f"Removed oversized notification {chunk_ids[0]} from batch permanently"
+                                        )
+                                    except Exception as e:
+                                        logger.error(
+                                            f"Failed to remove oversized notification: {e}"
+                                        )
+
                                 failed_indices.append(i)
                                 i += 1
                                 chunk_sent = True
