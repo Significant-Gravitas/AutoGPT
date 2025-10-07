@@ -1013,7 +1013,7 @@ class ExecutionProcessor:
                 )
 
                 get_notification_manager_client().discord_system_alert(
-                    alert_message, DiscordChannel.PRODUCT
+                    alert_message, DiscordChannel.PLATFORM
                 )
             except Exception as alert_error:
                 logger.error(
