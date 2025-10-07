@@ -15,6 +15,11 @@ import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { generateHandleId } from "../../handlers/helpers";
 import { getTypeDisplayInfo } from "../helpers";
 import { ArrayEditorContext } from "../../components/ArrayEditor/ArrayEditorContext";
+import {
+  isCredentialFieldSchema,
+  toDisplayName,
+} from "../fields/CredentialField/helpers";
+import { cn } from "@/lib/utils";
 
 const FieldTemplate: React.FC<FieldTemplateProps> = ({
   id,
@@ -47,6 +52,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
   }
   const isAnyOf = Array.isArray((schema as any)?.anyOf);
   const isOneOf = Array.isArray((schema as any)?.oneOf);
+  const isCredential = isCredentialFieldSchema(schema);
   const suppressHandle = isAnyOf || isOneOf;
 
   if (!showAdvanced && schema.advanced === true && !isConnected) {
@@ -63,12 +69,17 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
     <div className="mt-4 w-[400px] space-y-1">
       {label && schema.type && (
         <label htmlFor={id} className="flex items-center gap-1">
-          {!suppressHandle && !fromAnyOf && (
+          {!suppressHandle && !fromAnyOf && !isCredential && (
             <NodeHandle id={fieldKey} isConnected={isConnected} side="left" />
           )}
           {!fromAnyOf && (
-            <Text variant="body" className="line-clamp-1">
-              {label}
+            <Text
+              variant="body"
+              className={cn("line-clamp-1", isCredential && "ml-3")}
+            >
+              {isCredential
+                ? toDisplayName(schema.credentials_provider[0]) + " credentials"
+                : label}
             </Text>
           )}
           {!fromAnyOf && (

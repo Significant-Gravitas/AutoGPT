@@ -180,7 +180,7 @@ async def callback(
     )
 
 
-@router.get("/credentials")
+@router.get("/credentials", summary="List Credentials")
 async def list_credentials(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
@@ -221,7 +221,9 @@ async def list_credentials_by_provider(
     ]
 
 
-@router.get("/{provider}/credentials/{cred_id}")
+@router.get(
+    "/{provider}/credentials/{cred_id}", summary="Get Specific Credential By ID"
+)
 async def get_credential(
     provider: Annotated[
         ProviderName, Path(title="The provider to retrieve credentials for")
@@ -242,7 +244,7 @@ async def get_credential(
     return credential
 
 
-@router.post("/{provider}/credentials", status_code=201)
+@router.post("/{provider}/credentials", status_code=201, summary="Create Credentials")
 async def create_credentials(
     user_id: Annotated[str, Security(get_user_id)],
     provider: Annotated[
