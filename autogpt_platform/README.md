@@ -44,10 +44,10 @@ You can now run the following to enable just the core services.
 
 ```
 # Run just Supabase + Redis + RabbitMQ
-core-services
+make start-core
 
 # Stop core services
-make logs-core
+make stop-core
 
 logs-core
 make logs-core
