@@ -3,7 +3,7 @@ import logging
 import os
 import threading
 from enum import Enum
-from typing import Optional, Awaitable
+from typing import Awaitable, Optional
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from apscheduler.events import (
@@ -12,14 +12,13 @@ from apscheduler.events import (
     EVENT_JOB_MAX_INSTANCES,
     EVENT_JOB_MISSED,
 )
+from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.job import Job as JobObj
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.util import ZoneInfo
-from apscheduler.executors.pool import ThreadPoolExecutor
-
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
@@ -59,6 +58,7 @@ def _extract_schema_from_url(database_url) -> tuple[str, str]:
     database_url_clean = str(urlunparse(new_parsed_url))
     return schema, database_url_clean
 
+
 logger = logging.getLogger(__name__)
 logger.addFilter(PrefixFilter("[Scheduler]"))
 apscheduler_logger = logger.getChild("apscheduler")
@@ -66,6 +66,7 @@ apscheduler_logger.addFilter(PrefixFilter("[Scheduler] [APScheduler]"))
 config = Config()
 
 SCHEDULER_OPERATION_TIMEOUT_SECONDS = 300
+
 
 class EventLoopPool:
     def __init__(self, size: int = 4):
@@ -80,7 +81,9 @@ class EventLoopPool:
             return
         for i in range(self.size):
             loop = asyncio.new_event_loop()
-            t = threading.Thread(target=loop.run_forever, daemon=True, name=f"SchedulerLoop-{i}")
+            t = threading.Thread(
+                target=loop.run_forever, daemon=True, name=f"SchedulerLoop-{i}"
+            )
             t.start()
             self._loops.append(loop)
             self._threads.append(t)
@@ -100,12 +103,18 @@ class EventLoopPool:
             self._counter += 1
             return loop
 
-    def run(self, coro: Awaitable, timeout: float | None = SCHEDULER_OPERATION_TIMEOUT_SECONDS):
+    def run(
+        self,
+        coro: Awaitable,
+        timeout: float | None = SCHEDULER_OPERATION_TIMEOUT_SECONDS,
+    ):
         loop = self._pick_loop()
         fut = asyncio.run_coroutine_threadsafe(coro, loop)
         return fut.result(timeout=timeout)
 
+
 _loop_pool: EventLoopPool | None = None
+
 
 @func_retry
 def require_pool() -> EventLoopPool:
@@ -113,12 +122,16 @@ def require_pool() -> EventLoopPool:
         raise RuntimeError("Event loop pool not initialized. Scheduler not started.")
     return _loop_pool
 
-def run_async(coro: Awaitable, timeout: float | None = SCHEDULER_OPERATION_TIMEOUT_SECONDS):
+
+def run_async(
+    coro: Awaitable, timeout: float | None = SCHEDULER_OPERATION_TIMEOUT_SECONDS
+):
     return require_pool().run(coro, timeout)
 
 
 def execute_graph(**kwargs):
     run_async(_execute_graph(**kwargs))
+
 
 async def _execute_graph(**kwargs):
     args = GraphExecutionJobArgs(**kwargs)
@@ -142,8 +155,11 @@ async def _execute_graph(**kwargs):
             )
     except Exception as e:
         elapsed = asyncio.get_event_loop().time() - start
-        logger.error(f"Error executing graph {args.graph_id} after {elapsed:.2f}s: {type(e).__name__}: {e}")
+        logger.error(
+            f"Error executing graph {args.graph_id} after {elapsed:.2f}s: {type(e).__name__}: {e}"
+        )
         raise
+
 
 def cleanup_expired_files():
     run_async(cleanup_expired_files_async())
@@ -154,6 +170,7 @@ class Jobstores(Enum):
     BATCHED_NOTIFICATIONS = "batched_notifications"
     WEEKLY_NOTIFICATIONS = "weekly_notifications"
 
+
 class GraphExecutionJobArgs(BaseModel):
     user_id: str
     graph_id: str
@@ -161,6 +178,7 @@ class GraphExecutionJobArgs(BaseModel):
     cron: str
     input_data: BlockInput
     input_credentials: dict[str, CredentialsMetaInput] = Field(default_factory=dict)
+
 
 class GraphExecutionJobInfo(BaseModel):
     id: str
@@ -175,7 +193,9 @@ class GraphExecutionJobInfo(BaseModel):
     input_credentials: dict[str, CredentialsMetaInput] = Field(default_factory=dict)
 
     @staticmethod
-    def from_db(job_args: GraphExecutionJobArgs, job_obj: JobObj) -> "GraphExecutionJobInfo":
+    def from_db(
+        job_args: GraphExecutionJobArgs, job_obj: JobObj
+    ) -> "GraphExecutionJobInfo":
         timezone_str = "UTC"
         if hasattr(job_obj.trigger, "timezone"):
             timezone_str = str(job_obj.trigger.timezone)
@@ -187,13 +207,16 @@ class GraphExecutionJobInfo(BaseModel):
             **job_args.model_dump(),
         )
 
+
 class NotificationJobInfo(NotificationJobArgs):
     id: str
     name: str
     next_run_time: str
 
     @staticmethod
-    def from_db(job_args: NotificationJobArgs, job_obj: JobObj) -> "NotificationJobInfo":
+    def from_db(
+        job_args: NotificationJobArgs, job_obj: JobObj
+    ) -> "NotificationJobInfo":
         return NotificationJobInfo(
             id=job_obj.id,
             name=job_obj.name,
@@ -207,6 +230,7 @@ class CircuitState(Enum):
     OPEN = "open"
     HALF_OPEN = "half_open"
 
+
 class CircuitBreaker:
     def __init__(self, failure_threshold: int = 5, reset_timeout: int = 30):
         self.failure_threshold = failure_threshold
@@ -219,7 +243,11 @@ class CircuitBreaker:
     def allow(self) -> bool:
         with self._lock:
             if self.state == CircuitState.OPEN:
-                if self._opened_at and (asyncio.get_event_loop().time() - self._opened_at) > self.reset_timeout:
+                if (
+                    self._opened_at
+                    and (asyncio.get_event_loop().time() - self._opened_at)
+                    > self.reset_timeout
+                ):
                     self.state = CircuitState.HALF_OPEN
                     return True
                 return False
@@ -239,6 +267,7 @@ class CircuitBreaker:
                 self._opened_at = asyncio.get_event_loop().time()
                 logger.warning("Scheduler circuit opened due to repeated failures")
 
+
 _circuit = CircuitBreaker(
     failure_threshold=max(3, getattr(config, "scheduler_circuit_failure_threshold", 5)),
     reset_timeout=getattr(config, "scheduler_circuit_reset_timeout", 30),
@@ -247,15 +276,19 @@ _circuit = CircuitBreaker(
 
 def job_listener(event):
     if event.exception:
-        logger.error(f"Job {event.job_id} failed: {type(event.exception).__name__}: {event.exception}")
+        logger.error(
+            f"Job {event.job_id} failed: {type(event.exception).__name__}: {event.exception}"
+        )
     else:
         logger.info(f"Job {event.job_id} completed successfully.")
+
 
 def job_missed_listener(event):
     logger.warning(
         f"Job {event.job_id} was missed at scheduled time {event.scheduled_run_time}. "
         f"Scheduler may be overloaded or previous executions still running."
     )
+
 
 def job_max_instances_listener(event):
     logger.warning(
@@ -397,7 +430,9 @@ class Scheduler(AppService):
         user_timezone: str | None = None,
     ) -> GraphExecutionJobInfo:
         if not _circuit.allow():
-            raise UnhealthyServiceError("Scheduler temporarily paused due to recent failures")
+            raise UnhealthyServiceError(
+                "Scheduler temporarily paused due to recent failures"
+            )
         run_async(
             execution_utils.validate_and_construct_node_execution_input(
                 graph_id=graph_id,
@@ -412,9 +447,7 @@ class Scheduler(AppService):
             logger.warning(
                 f"No timezone provided for user {user_id}, defaulting to UTC. Client should send timezone."
             )
-        logger.info(
-            f"Scheduling job for user {user_id} TZ={user_timezone} cron={cron}"
-        )
+        logger.info(f"Scheduling job for user {user_id} TZ={user_timezone} cron={cron}")
         job_args = GraphExecutionJobArgs(
             user_id=user_id,
             graph_id=graph_id,
@@ -437,13 +470,13 @@ class Scheduler(AppService):
             raise
         else:
             _circuit.on_success()
-        logger.info(
-            f"Added job {job.id} cron='{cron}' tz={user_timezone}"
-        )
+        logger.info(f"Added job {job.id} cron='{cron}' tz={user_timezone}")
         return GraphExecutionJobInfo.from_db(job_args, job)
 
     @expose
-    def delete_graph_execution_schedule(self, schedule_id: str, user_id: str) -> GraphExecutionJobInfo:
+    def delete_graph_execution_schedule(
+        self, schedule_id: str, user_id: str
+    ) -> GraphExecutionJobInfo:
         job = self.scheduler.get_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
         if not job:
             raise NotFoundError(f"Job #{schedule_id} not found.")
@@ -455,7 +488,54 @@ class Scheduler(AppService):
         return GraphExecutionJobInfo.from_db(job_args, job)
 
     @expose
-    def get_graph_execution_schedules(self, graph_id: str | None = None, user_id: str | None = None) -> list[GraphExecutionJobInfo]:
+    def get_graph_execution_schedules(
+        self, graph_id: str | None = None, user_id: str | None = None
+    ) -> list[GraphExecutionJobInfo]:
         jobs: list[JobObj] = self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value)
         schedules: list[GraphExecutionJobInfo] = []
-        for job in jobs
+        for job in jobs:
+            logger.debug(
+                f"Found job {job.id} with cron schedule {job.trigger} and args {job.kwargs}"
+            )
+            try:
+                job_args = GraphExecutionJobArgs.model_validate(job.kwargs)
+            except ValidationError:
+                continue
+            if (
+                job.next_run_time is not None
+                and (graph_id is None or job_args.graph_id == graph_id)
+                and (user_id is None or job_args.user_id == user_id)
+            ):
+                schedules.append(GraphExecutionJobInfo.from_db(job_args, job))
+        return schedules
+
+    @expose
+    def execute_process_existing_batches(self, kwargs: dict):
+        process_existing_batches(**kwargs)
+
+    @expose
+    def execute_process_weekly_summary(self):
+        process_weekly_summary()
+
+    @expose
+    def execute_report_late_executions(self):
+        return report_late_executions()
+
+    @expose
+    def execute_report_block_error_rates(self):
+        return report_block_error_rates()
+
+    @expose
+    def execute_cleanup_expired_files(self):
+        """Manually trigger cleanup of expired cloud storage files."""
+        return cleanup_expired_files()
+
+
+class SchedulerClient(AppServiceClient):
+    @classmethod
+    def get_service_type(cls):
+        return Scheduler
+
+    add_execution_schedule = endpoint_to_async(Scheduler.add_graph_execution_schedule)
+    delete_schedule = endpoint_to_async(Scheduler.delete_graph_execution_schedule)
+    get_execution_schedules = endpoint_to_async(Scheduler.get_graph_execution_schedules)
