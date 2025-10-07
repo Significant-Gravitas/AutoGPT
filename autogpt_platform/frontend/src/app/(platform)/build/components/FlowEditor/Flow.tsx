@@ -7,10 +7,8 @@ import { useMemo } from "react";
 import { CustomNode } from "./nodes/CustomNode";
 import { useCustomEdge } from "./edges/useCustomEdge";
 import CustomEdge from "./edges/CustomEdge";
-import { RightSidebar } from "../RIghtSidebar";
 
 export const Flow = () => {
-  // All these 3 are working perfectly
   const nodes = useNodeStore(useShallow((state) => state.nodes));
   const onNodesChange = useNodeStore(
     useShallow((state) => state.onNodesChange),
@@ -20,7 +18,6 @@ export const Flow = () => {
 
   return (
     <div className="flex h-full w-full dark:bg-slate-900">
-      {/* Builder area - flexible width */}
       <div className="relative flex-1">
         <ReactFlow
           nodes={nodes}
@@ -35,9 +32,6 @@ export const Flow = () => {
           <Controls />
           <NewControlPanel />
         </ReactFlow>
-      </div>
-      <div className="w-[30%]">
-        <RightSidebar />
       </div>
     </div>
   );

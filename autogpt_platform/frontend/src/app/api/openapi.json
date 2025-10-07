@@ -112,7 +112,7 @@
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "List Credentials",
-        "operationId": "getV1ListCredentials",
+        "operationId": "getV1List credentials",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -123,7 +123,7 @@
                     "$ref": "#/components/schemas/CredentialsMetaResponse"
                   },
                   "type": "array",
-                  "title": "Response Getv1Listcredentials"
+                  "title": "Response Getv1List Credentials"
                 }
               }
             }
@@ -184,7 +184,7 @@
       "post": {
         "tags": ["v1", "integrations"],
         "summary": "Create Credentials",
-        "operationId": "postV1CreateCredentials",
+        "operationId": "postV1Create credentials",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -246,7 +246,7 @@
                       "host_scoped": "#/components/schemas/HostScopedCredentials-Output"
                     }
                   },
-                  "title": "Response Postv1Createcredentials"
+                  "title": "Response Postv1Create Credentials"
                 }
               }
             }
@@ -268,8 +268,8 @@
     "/api/integrations/{provider}/credentials/{cred_id}": {
       "get": {
         "tags": ["v1", "integrations"],
-        "summary": "Get Credential",
-        "operationId": "getV1GetCredential",
+        "summary": "Get Specific Credential By ID",
+        "operationId": "getV1Get specific credential by id",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -315,7 +315,7 @@
                       "host_scoped": "#/components/schemas/HostScopedCredentials-Output"
                     }
                   },
-                  "title": "Response Getv1Getcredential"
+                  "title": "Response Getv1Get Specific Credential By Id"
                 }
               }
             }
