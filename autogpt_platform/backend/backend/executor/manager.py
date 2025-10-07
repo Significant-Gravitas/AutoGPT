@@ -992,28 +992,14 @@ class ExecutionProcessor:
 
             # Send Discord alert for unknown/unexpected errors
             try:
-                user_email = db_client.get_user_email_by_id(graph_exec.user_id)
-                metadata = db_client.get_graph_metadata(
-                    graph_exec.graph_id, graph_exec.graph_version
-                )
-                base_url = (
-                    settings.config.frontend_base_url
-                    or settings.config.platform_base_url
-                )
-
-                alert_message = (
+                get_notification_manager_client().discord_system_alert(
                     f"🚨 **Unknown Graph Execution Error**\n"
-                    f"User: {user_email or graph_exec.user_id}\n"
-                    f"Agent: {metadata.name if metadata else 'Unknown Agent'}\n"
+                    f"User: {graph_exec.user_id}\n"
                     f"Graph ID: {graph_exec.graph_id}\n"
                     f"Execution ID: {graph_exec.graph_exec_id}\n"
                     f"Error Type: {type(error).__name__}\n"
-                    f"Error: {str(error)[:200]}{'...' if len(str(error)) > 200 else ''}\n"
-                    f"[View Execution]({base_url}/monitoring?execution_id={graph_exec.graph_exec_id})"
-                )
-
-                get_notification_manager_client().discord_system_alert(
-                    alert_message, DiscordChannel.PLATFORM
+                    f"Error: {str(error)[:200]}{'...' if len(str(error)) > 200 else ''}\n",
+                    DiscordChannel.PLATFORM,
                 )
             except Exception as alert_error:
                 logger.error(
