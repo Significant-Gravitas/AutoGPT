@@ -1,7 +1,9 @@
 import React from "react";
 import { Select } from "@/components/atoms/Select/Select";
 import { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
-import { KeyIcon } from "@phosphor-icons/react";
+import { ArrowSquareOutIcon, KeyIcon } from "@phosphor-icons/react";
+import { Button } from "@/components/atoms/Button/Button";
+import Link from "next/link";
 
 type SelectCredentialProps = {
   credentials: CredentialsMetaResponse[];
@@ -44,17 +46,24 @@ export const SelectCredential: React.FC<SelectCredentialProps> = ({
   });
 
   return (
-    <Select
-      label={label}
-      id="select-credential"
-      wrapperClassName="!mb-0"
-      value={value}
-      onValueChange={onChange}
-      options={options}
-      disabled={disabled}
-      placeholder={placeholder}
-      size="small"
-      hideLabel
-    />
+    <div className="flex w-full items-center gap-2">
+      <Select
+        label={label}
+        id="select-credential"
+        wrapperClassName="!mb-0 flex-1"
+        value={value}
+        onValueChange={onChange}
+        options={options}
+        disabled={disabled}
+        placeholder={placeholder}
+        size="small"
+        hideLabel
+      />
+      <Link href={`/profile/integrations`}>
+        <Button variant="outline" size="icon" className="h-8 w-8 p-0">
+          <ArrowSquareOutIcon className="h-4 w-4" />
+        </Button>
+      </Link>
+    </div>
   );
 };
