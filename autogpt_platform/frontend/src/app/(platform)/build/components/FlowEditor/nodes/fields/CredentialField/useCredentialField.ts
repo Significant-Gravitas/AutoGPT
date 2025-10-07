@@ -1,7 +1,6 @@
 import { useGetV1ListCredentials } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
-import { useState } from "react";
 import { filterCredentialsByProvider } from "./helpers";
 
 export const useCredentialField = ({
