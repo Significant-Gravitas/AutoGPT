@@ -8,6 +8,7 @@ import { Switch } from "@/components/atoms/Switch/Switch";
 import { preprocessInputSchema } from "../processors/input-schema-pre-processor";
 import { OutputHandler } from "./OutputHandler";
 import { useNodeStore } from "../../../stores/nodeStore";
+import { cn } from "@/lib/utils";
 
 export type CustomNodeData = {
   hardcodedValues: {
@@ -22,14 +23,19 @@ export type CustomNodeData = {
 export type CustomNode = XYNode<CustomNodeData, "custom">;
 
 export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
-  ({ data, id }) => {
+  ({ data, id, selected }) => {
     const showAdvanced = useNodeStore(
       (state) => state.nodeAdvancedStates[id] || false,
     );
     const setShowAdvanced = useNodeStore((state) => state.setShowAdvanced);
 
     return (
-      <div className="rounded-xl border border-slate-200/60 bg-gradient-to-br from-white to-slate-50/30 shadow-lg shadow-slate-900/5 backdrop-blur-sm">
+      <div
+        className={cn(
+          "rounded-xl bg-gradient-to-br from-white to-slate-50/30 shadow-lg shadow-slate-900/5 ring-1 ring-slate-200/60 backdrop-blur-sm",
+          selected && "shadow-2xl ring-2 ring-slate-200",
+        )}
+      >
         {/* Header */}
         <div className="flex h-14 items-center justify-center rounded-xl border-b border-slate-200/50 bg-gradient-to-r from-slate-50/80 to-white/90">
           <Text
