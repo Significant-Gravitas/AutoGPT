@@ -38,4 +38,4 @@ class Project(BaseModel):
     description: str
     priority: int
     progress: float
-    content: str
+    content: str | None
