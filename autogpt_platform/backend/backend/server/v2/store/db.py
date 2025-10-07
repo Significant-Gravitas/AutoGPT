@@ -70,8 +70,7 @@ async def get_store_agents(
     logger.debug(
         f"Getting store agents. featured={featured}, creators={creators}, sorted_by={sorted_by}, search={search_query}, category={category}, page={page}"
     )
-    sanitized_query = sanitize_query(search_query)
-
+    search_term = sanitize_query(search_query)
     where_clause: prisma.types.StoreAgentWhereInput = {"is_available": True}
     if featured:
         where_clause["featured"] = featured
@@ -80,11 +79,10 @@ async def get_store_agents(
     if category:
         where_clause["categories"] = {"has": category}
 
-    if sanitized_query:
-        await log_search_term(sanitized_query)
+    if search_term:
         where_clause["OR"] = [
-            {"agent_name": {"contains": sanitized_query, "mode": "insensitive"}},
-            {"description": {"contains": sanitized_query, "mode": "insensitive"}},
+            {"agent_name": {"contains": search_term, "mode": "insensitive"}},
+            {"description": {"contains": search_term, "mode": "insensitive"}},
         ]
 
     order_by = []
@@ -146,12 +144,15 @@ async def get_store_agents(
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to fetch store agents"
         ) from e
+    finally:
+        if search_term:
+            await log_search_term(search_query=search_term)
 
 
 async def log_search_term(search_query: str):
     """Log a search term to the database"""
-    await prisma.models.SearchHistory.prisma().create(
-        data=prisma.types.SearchHistoryCreateInput(searchQuery=search_query)
+    await prisma.models.SearchTerms.prisma().create(
+        data=prisma.types.SearchTermsCreateInput(searchTerm=search_query)
     )
 
 
