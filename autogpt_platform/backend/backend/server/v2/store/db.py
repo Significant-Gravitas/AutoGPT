@@ -151,8 +151,14 @@ async def get_store_agents(
 
 async def log_search_term(search_query: str):
     """Log a search term to the database"""
+
+    # Anonymize the data by preventing correlation with other logs
+    date = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+
     await prisma.models.SearchTerms.prisma().create(
-        data=prisma.types.SearchTermsCreateInput(searchTerm=search_query)
+        data=prisma.types.SearchTermsCreateInput(
+            searchTerm=search_query, createdDate=date
+        )
     )
 
 
