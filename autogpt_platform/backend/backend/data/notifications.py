@@ -544,6 +544,29 @@ async def empty_user_notification_batch(
         ) from e
 
 
+async def clear_all_user_notification_batches(user_id: str) -> None:
+    """Clear ALL notification batches for a user across all types.
+
+    Used when user's email is bounced/inactive and we should stop
+    trying to send them ANY emails.
+    """
+    try:
+        async with transaction() as tx:
+            # Delete all notification events for this user
+            await tx.notificationevent.delete_many(
+                where={"UserNotificationBatch": {"is": {"userId": user_id}}}
+            )
+
+            # Delete all batches for this user
+            await tx.usernotificationbatch.delete_many(where={"userId": user_id})
+
+            logger.info(f"Cleared all notification batches for user {user_id}")
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to clear all notification batches for user {user_id}: {e}"
+        ) from e
+
+
 async def remove_notifications_from_batch(
     user_id: str, notification_type: NotificationType, notification_ids: list[str]
 ) -> None:

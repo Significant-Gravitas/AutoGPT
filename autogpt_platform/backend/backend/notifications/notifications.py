@@ -25,7 +25,11 @@ from backend.data.notifications import (
     get_summary_params_type,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
-from backend.data.user import generate_unsubscribe_link, set_user_email_verification
+from backend.data.user import (
+    disable_all_user_notifications,
+    generate_unsubscribe_link,
+    set_user_email_verification,
+)
 from backend.notifications.email import EmailSender
 from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
@@ -783,22 +787,49 @@ class NotificationManager(AppService):
                                 logger.warning(
                                     f"Failed to send notification at index {i}: "
                                     f"Recipient marked as inactive by Postmark. "
-                                    f"Error: {e}. Skipping this notification."
+                                    f"Error: {e}. Disabling ALL notifications for this user."
                                 )
-                                # Deactivate the user's email verification status
+
+                                # 1. Mark email as unverified
                                 try:
                                     await set_user_email_verification(
                                         event.user_id, False
                                     )
                                     logger.info(
-                                        f"Set email verification to false for user {event.user_id} "
-                                        f"after receiving 406 inactive recipient error"
+                                        f"Set email verification to false for user {event.user_id}"
                                     )
                                 except Exception as deactivation_error:
                                     logger.error(
                                         f"Failed to deactivate email for user {event.user_id}: "
                                         f"{deactivation_error}"
                                     )
+
+                                # 2. Disable all notification preferences
+                                try:
+                                    await disable_all_user_notifications(event.user_id)
+                                    logger.info(
+                                        f"Disabled all notification preferences for user {event.user_id}"
+                                    )
+                                except Exception as disable_error:
+                                    logger.error(
+                                        f"Failed to disable notification preferences: {disable_error}"
+                                    )
+
+                                # 3. Clear ALL notification batches for this user
+                                try:
+                                    await get_database_manager_async_client().clear_all_user_notification_batches(
+                                        event.user_id
+                                    )
+                                    logger.info(
+                                        f"Cleared ALL notification batches for user {event.user_id}"
+                                    )
+                                except Exception as remove_error:
+                                    logger.error(
+                                        f"Failed to clear batches for inactive recipient: {remove_error}"
+                                    )
+
+                                # Stop processing - we've nuked everything for this user
+                                return True
                             # Check for HTTP 422 - Malformed data
                             elif (
                                 "422" in error_message
@@ -807,8 +838,22 @@ class NotificationManager(AppService):
                                 logger.error(
                                     f"Failed to send notification at index {i}: "
                                     f"Malformed notification data rejected by Postmark. "
-                                    f"Error: {e}. Skipping this notification."
+                                    f"Error: {e}. Removing from batch permanently."
                                 )
+
+                                # Remove from batch - 422 means bad data that won't fix itself
+                                if chunk_ids:
+                                    try:
+                                        await get_database_manager_async_client().remove_notifications_from_batch(
+                                            event.user_id, event.type, chunk_ids
+                                        )
+                                        logger.info(
+                                            "Removed malformed notification from batch permanently"
+                                        )
+                                    except Exception as remove_error:
+                                        logger.error(
+                                            f"Failed to remove malformed notification: {remove_error}"
+                                        )
                             # Check if it's a ValueError for size limit
                             elif (
                                 isinstance(e, ValueError)
