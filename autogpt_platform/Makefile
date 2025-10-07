@@ -2,15 +2,15 @@
 
 # Run just Supabase + Redis + RabbitMQ
 start-core:
-	docker compose up -d kong auth db redis rabbitmq studio clamav
+	docker compose up -d deps
 
 # Stop core services
 stop-core:
-	docker compose stop kong auth db redis rabbitmq studio clamav
+	docker compose stop deps
 
 # View logs for core services
 logs-core:
-	docker compose logs -f kong auth db redis rabbitmq studio clamav
+	docker compose logs -f deps
 
 # Run formatting and linting for backend and frontend
 format:
