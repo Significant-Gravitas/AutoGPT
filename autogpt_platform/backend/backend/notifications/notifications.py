@@ -657,6 +657,7 @@ class NotificationManager(AppService):
                     get_notif_data_type(db_event.type)
                 ].model_validate(
                     {
+                        "id": db_event.id,  # Include ID from database
                         "user_id": event.user_id,
                         "type": db_event.type,
                         "data": db_event.data,
@@ -679,6 +680,9 @@ class NotificationManager(AppService):
                 chunk_sent = False
                 for attempt_size in [chunk_size, 50, 25, 10, 5, 1]:
                     chunk = batch_messages[i : i + attempt_size]
+                    chunk_ids = [
+                        msg.id for msg in chunk if msg.id
+                    ]  # Extract IDs for removal
 
                     try:
                         # Try to render the email to check its size
@@ -705,6 +709,21 @@ class NotificationManager(AppService):
                                 user_unsub_link=unsub_link,
                             )
 
+                            # Remove successfully sent notifications immediately
+                            if chunk_ids:
+                                try:
+                                    await get_database_manager_async_client().remove_notifications_from_batch(
+                                        event.user_id, event.type, chunk_ids
+                                    )
+                                    logger.info(
+                                        f"Removed {len(chunk_ids)} sent notifications from batch"
+                                    )
+                                except Exception as e:
+                                    logger.error(
+                                        f"Failed to remove sent notifications: {e}"
+                                    )
+                                    # Continue anyway - better to risk duplicates than lose emails
+
                             # Track successful sends
                             successfully_sent_count += len(chunk)
 
@@ -722,6 +741,21 @@ class NotificationManager(AppService):
                             i += len(chunk)
                             chunk_sent = True
                             break
+                        else:
+                            # Message is too large even after size reduction
+                            if attempt_size == 1:
+                                logger.error(
+                                    f"Failed to send notification at index {i}: "
+                                    f"Single notification exceeds email size limit "
+                                    f"({len(test_message):,} chars > {MAX_EMAIL_SIZE:,} chars). "
+                                    f"Skipping this notification."
+                                )
+                                failed_indices.append(i)
+                                i += 1
+                                chunk_sent = True
+                                break
+                            # Try smaller chunk size
+                            continue
                     except Exception as e:
                         # Check if it's a Postmark API error
                         if attempt_size == 1:
@@ -791,18 +825,22 @@ class NotificationManager(AppService):
                     failed_indices.append(i)
                     i += 1
 
-            # Only empty the batch if ALL notifications were sent successfully
-            if successfully_sent_count == len(batch_messages):
-                logger.info(
-                    f"Successfully sent all {successfully_sent_count} notifications, clearing batch"
-                )
-                await get_database_manager_async_client().empty_user_notification_batch(
+            # Check what remains in the batch (notifications are removed as sent)
+            remaining_batch = (
+                await get_database_manager_async_client().get_user_notification_batch(
                     event.user_id, event.type
                 )
+            )
+
+            if not remaining_batch or not remaining_batch.notifications:
+                logger.info(
+                    f"All {successfully_sent_count} notifications sent and removed from batch"
+                )
             else:
+                remaining_count = len(remaining_batch.notifications)
                 logger.warning(
-                    f"Only sent {successfully_sent_count} of {len(batch_messages)} notifications. "
-                    f"Failed indices: {failed_indices}. Batch will be retained for retry."
+                    f"Sent {successfully_sent_count} notifications. "
+                    f"{remaining_count} remain in batch for retry due to errors."
                 )
             return True
         except Exception as e:
