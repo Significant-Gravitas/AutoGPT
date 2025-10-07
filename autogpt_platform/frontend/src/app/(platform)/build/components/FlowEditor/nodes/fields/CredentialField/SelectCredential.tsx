@@ -1,9 +1,14 @@
 import React from "react";
 import { Select } from "@/components/atoms/Select/Select";
 import { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
-import { ArrowSquareOutIcon, KeyIcon } from "@phosphor-icons/react";
+import {
+  ArrowSquareOutIcon,
+  KeyholeIcon,
+  KeyIcon,
+} from "@phosphor-icons/react";
 import { Button } from "@/components/atoms/Button/Button";
 import Link from "next/link";
+import { providerIcons } from "./helpers";
 
 type SelectCredentialProps = {
   credentials: CredentialsMetaResponse[];
@@ -38,10 +43,22 @@ export const SelectCredential: React.FC<SelectCredentialProps> = ({
         ? `${cred.provider} (${details.join(" - ")})`
         : cred.provider;
 
+    const Icon = providerIcons[cred.provider];
+    const icon =
+      cred.type === "oauth2" ? (
+        Icon ? (
+          <Icon />
+        ) : (
+          <KeyholeIcon />
+        )
+      ) : (
+        <KeyIcon className="h-4 w-4" />
+      );
+
     return {
       value: cred.id,
       label,
-      icon: <KeyIcon className="h-4 w-4" />,
+      icon,
     };
   });
 
