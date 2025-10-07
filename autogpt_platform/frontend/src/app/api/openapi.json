@@ -184,7 +184,7 @@
       "post": {
         "tags": ["v1", "integrations"],
         "summary": "Create Credentials",
-        "operationId": "postV1CreateCredentials",
+        "operationId": "postV1Create credentials",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -193,8 +193,8 @@
             "required": true,
             "schema": {
               "type": "string",
-              "title": "The provider to create credentials for",
-              "description": "Provider name for integrations. Can be any string value, including custom provider names."
+              "description": "Provider name for integrations. Can be any string value, including custom provider names.",
+              "title": "Provider"
             }
           }
         ],
@@ -246,7 +246,7 @@
                       "host_scoped": "#/components/schemas/HostScopedCredentials-Output"
                     }
                   },
-                  "title": "Response Postv1Createcredentials"
+                  "title": "Response Postv1Create Credentials"
                 }
               }
             }

@@ -29,7 +29,7 @@ export const OutputHandler = ({
     <div className="flex flex-col items-end justify-between gap-2 rounded-b-xl border-t border-slate-200/50 bg-white py-3.5">
       <Button
         variant="ghost"
-        className="mr-4 p-0"
+        className="mr-4 h-fit min-w-0 p-0 hover:border-transparent hover:bg-transparent"
         onClick={() => setIsOutputVisible(!isOutputVisible)}
       >
         <Text
@@ -54,30 +54,27 @@ export const OutputHandler = ({
 
             return shouldShow ? (
               <div key={key} className="relative flex items-center gap-2">
-                <Text
-                  variant="body"
-                  className="flex items-center gap-2 font-medium text-slate-700"
-                >
-                  {property?.description && (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span
-                            style={{ marginLeft: 6, cursor: "pointer" }}
-                            aria-label="info"
-                            tabIndex={0}
-                          >
-                            <InfoIcon />
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>{property?.description}</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  )}
+                {property?.description && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span
+                          style={{ marginLeft: 6, cursor: "pointer" }}
+                          aria-label="info"
+                          tabIndex={0}
+                        >
+                          <InfoIcon />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>{property?.description}</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+                <Text variant="body" className="text-slate-700">
                   {property?.title || key}{" "}
-                  <Text variant="small" as="span" className={colorClass}>
-                    ({displayType})
-                  </Text>
+                </Text>
+                <Text variant="small" as="span" className={colorClass}>
+                  ({displayType})
                 </Text>
                 <NodeHandle id={key} isConnected={isConnected} side="right" />
               </div>
