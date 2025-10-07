@@ -594,6 +594,8 @@ async def test_smart_decision_maker_unique_tool_names_for_duplicate_blocks(
         ), f"Expected tool name format 'blockname_nodeid', got {tool_name}"
         # Node ID segment should be a hex string (first segment of UUID)
         assert len(parts[1]) == 8, f"Expected 8-char node ID segment, got {parts[1]}"
+
+
 @pytest.mark.asyncio
 async def test_smart_decision_maker_raw_response_conversion():
     """Test that SmartDecisionMaker correctly handles different raw_response types with retry mechanism."""
