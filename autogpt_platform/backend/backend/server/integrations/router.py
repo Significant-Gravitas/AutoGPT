@@ -244,7 +244,7 @@ async def get_credential(
     return credential
 
 
-@router.post("/{provider}/credentials", status_code=201)
+@router.post("/{provider}/credentials", status_code=201, summary="Create Credentials")
 async def create_credentials(
     user_id: Annotated[str, Security(get_user_id)],
     provider: Annotated[
