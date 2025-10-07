@@ -184,7 +184,7 @@
       "post": {
         "tags": ["v1", "integrations"],
         "summary": "Create Credentials",
-        "operationId": "postV1CreateCredentials",
+        "operationId": "postV1Create credentials",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -246,7 +246,7 @@
                       "host_scoped": "#/components/schemas/HostScopedCredentials-Output"
                     }
                   },
-                  "title": "Response Postv1Createcredentials"
+                  "title": "Response Postv1Create Credentials"
                 }
               }
             }
