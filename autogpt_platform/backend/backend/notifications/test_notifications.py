@@ -31,7 +31,9 @@ class TestNotificationErrorHandling:
                 return_value=("subject", "body content")
             )
             manager.email_sender.formatter.env = Mock()
-            manager.email_sender.formatter.env.globals = {"base_url": "http://example.com"}
+            manager.email_sender.formatter.env.globals = {
+                "base_url": "http://example.com"
+            }
             return manager
 
     @pytest.fixture
@@ -75,11 +77,14 @@ class TestNotificationErrorHandling:
         self, notification_manager, sample_batch_event, sample_batch_notifications
     ):
         """Test handling of Postmark 406 error for inactive recipients and email deactivation."""
-        with patch("backend.notifications.notifications.logger") as mock_logger, \
-             patch("backend.notifications.notifications.set_user_email_verification",
-                   new_callable=AsyncMock) as mock_set_verification, \
-             patch("backend.notifications.notifications.get_database_manager_async_client") as mock_db_client, \
-             patch("backend.notifications.notifications.generate_unsubscribe_link") as mock_unsub_link:
+        with patch("backend.notifications.notifications.logger") as mock_logger, patch(
+            "backend.notifications.notifications.set_user_email_verification",
+            new_callable=AsyncMock,
+        ) as mock_set_verification, patch(
+            "backend.notifications.notifications.get_database_manager_async_client"
+        ) as mock_db_client, patch(
+            "backend.notifications.notifications.generate_unsubscribe_link"
+        ) as mock_unsub_link:
 
             # Setup mocks
             mock_db = mock_db_client.return_value
@@ -105,7 +110,9 @@ class TestNotificationErrorHandling:
                     raise Exception("Recipient marked as inactive (406)")
                 raise Exception("Recipient marked as inactive (406)")
 
-            notification_manager.email_sender.send_templated.side_effect = send_side_effect
+            notification_manager.email_sender.send_templated.side_effect = (
+                send_side_effect
+            )
 
             # Create message
             message = sample_batch_event.model_dump_json()
@@ -130,9 +137,11 @@ class TestNotificationErrorHandling:
         self, notification_manager, sample_batch_event, sample_batch_notifications
     ):
         """Test handling of Postmark 422 error for malformed data."""
-        with patch("backend.notifications.notifications.logger") as mock_logger, \
-             patch("backend.notifications.notifications.get_database_manager_async_client") as mock_db_client, \
-             patch("backend.notifications.notifications.generate_unsubscribe_link") as mock_unsub_link:
+        with patch("backend.notifications.notifications.logger") as mock_logger, patch(
+            "backend.notifications.notifications.get_database_manager_async_client"
+        ) as mock_db_client, patch(
+            "backend.notifications.notifications.generate_unsubscribe_link"
+        ) as mock_unsub_link:
 
             # Setup mocks
             mock_db = mock_db_client.return_value
@@ -157,7 +166,9 @@ class TestNotificationErrorHandling:
                     raise Exception("Unprocessable entity (422): Malformed email data")
                 raise Exception("Unprocessable entity (422): Malformed email data")
 
-            notification_manager.email_sender.send_templated.side_effect = send_side_effect
+            notification_manager.email_sender.send_templated.side_effect = (
+                send_side_effect
+            )
 
             # Create message
             message = sample_batch_event.model_dump_json()
@@ -178,9 +189,11 @@ class TestNotificationErrorHandling:
         self, notification_manager, sample_batch_event, sample_batch_notifications
     ):
         """Test handling of ValueError for oversized notifications."""
-        with patch("backend.notifications.notifications.logger") as mock_logger, \
-             patch("backend.notifications.notifications.get_database_manager_async_client") as mock_db_client, \
-             patch("backend.notifications.notifications.generate_unsubscribe_link") as mock_unsub_link:
+        with patch("backend.notifications.notifications.logger") as mock_logger, patch(
+            "backend.notifications.notifications.get_database_manager_async_client"
+        ) as mock_db_client, patch(
+            "backend.notifications.notifications.generate_unsubscribe_link"
+        ) as mock_unsub_link:
 
             # Setup mocks
             mock_db = mock_db_client.return_value
@@ -202,10 +215,16 @@ class TestNotificationErrorHandling:
             def send_side_effect(*args, **kwargs):
                 data = kwargs.get("data", [])
                 if isinstance(data, list) and len(data) == 1:
-                    raise ValueError("Email body too large: 6000000 characters (limit: 5242880)")
-                raise ValueError("Email body too large: 6000000 characters (limit: 5242880)")
+                    raise ValueError(
+                        "Email body too large: 6000000 characters (limit: 5242880)"
+                    )
+                raise ValueError(
+                    "Email body too large: 6000000 characters (limit: 5242880)"
+                )
 
-            notification_manager.email_sender.send_templated.side_effect = send_side_effect
+            notification_manager.email_sender.send_templated.side_effect = (
+                send_side_effect
+            )
 
             # Create message
             message = sample_batch_event.model_dump_json()
@@ -218,17 +237,21 @@ class TestNotificationErrorHandling:
 
             # Error logs should be emitted for oversized notification
             error_calls = [call[0][0] for call in mock_logger.error.call_args_list]
-            assert any("size exceeds" in call.lower() or "too large" in call.lower()
-                      for call in error_calls)
+            assert any(
+                "size exceeds" in call.lower() or "too large" in call.lower()
+                for call in error_calls
+            )
 
     @pytest.mark.asyncio
     async def test_postmark_generic_api_error_handling(
         self, notification_manager, sample_batch_event, sample_batch_notifications
     ):
         """Test handling of generic API errors."""
-        with patch("backend.notifications.notifications.logger") as mock_logger, \
-             patch("backend.notifications.notifications.get_database_manager_async_client") as mock_db_client, \
-             patch("backend.notifications.notifications.generate_unsubscribe_link") as mock_unsub_link:
+        with patch("backend.notifications.notifications.logger") as mock_logger, patch(
+            "backend.notifications.notifications.get_database_manager_async_client"
+        ) as mock_db_client, patch(
+            "backend.notifications.notifications.generate_unsubscribe_link"
+        ) as mock_unsub_link:
 
             # Setup mocks
             mock_db = mock_db_client.return_value
@@ -253,7 +276,9 @@ class TestNotificationErrorHandling:
                     raise Exception("Some other API error")
                 raise Exception("Some other API error")
 
-            notification_manager.email_sender.send_templated.side_effect = send_side_effect
+            notification_manager.email_sender.send_templated.side_effect = (
+                send_side_effect
+            )
 
             # Create message
             message = sample_batch_event.model_dump_json()
@@ -266,19 +291,24 @@ class TestNotificationErrorHandling:
 
             # Generic error logs should be emitted
             error_calls = [call[0][0] for call in mock_logger.error.call_args_list]
-            assert any("email api error" in call.lower() or "skipping" in call.lower()
-                      for call in error_calls)
+            assert any(
+                "email api error" in call.lower() or "skipping" in call.lower()
+                for call in error_calls
+            )
 
     @pytest.mark.asyncio
     async def test_postmark_batch_processing_with_mixed_errors(
         self, notification_manager, sample_batch_event
     ):
         """Test handling of mixed error scenarios in a batch."""
-        with patch("backend.notifications.notifications.logger") as mock_logger, \
-             patch("backend.notifications.notifications.set_user_email_verification",
-                   new_callable=AsyncMock) as mock_set_verification, \
-             patch("backend.notifications.notifications.get_database_manager_async_client") as mock_db_client, \
-             patch("backend.notifications.notifications.generate_unsubscribe_link") as mock_unsub_link:
+        with patch("backend.notifications.notifications.logger") as mock_logger, patch(
+            "backend.notifications.notifications.set_user_email_verification",
+            new_callable=AsyncMock,
+        ) as mock_set_verification, patch(
+            "backend.notifications.notifications.get_database_manager_async_client"
+        ) as mock_db_client, patch(
+            "backend.notifications.notifications.generate_unsubscribe_link"
+        ) as mock_unsub_link:
 
             # Create larger batch with mixed notifications
             notifications = []
@@ -336,7 +366,9 @@ class TestNotificationErrorHandling:
                 # For batch attempts, fail to force single processing
                 raise Exception("Force single processing")
 
-            notification_manager.email_sender.send_templated.side_effect = send_side_effect
+            notification_manager.email_sender.send_templated.side_effect = (
+                send_side_effect
+            )
 
             # Create message
             message = sample_batch_event.model_dump_json()
@@ -349,7 +381,7 @@ class TestNotificationErrorHandling:
 
             # Verify mixed error handling
             assert mock_logger.warning.called  # For 406
-            assert mock_logger.error.called    # For 422, ValueError, generic
+            assert mock_logger.error.called  # For 422, ValueError, generic
             assert mock_set_verification.called  # For 406 error
 
     @pytest.mark.asyncio
@@ -357,9 +389,11 @@ class TestNotificationErrorHandling:
         self, notification_manager, sample_batch_event
     ):
         """Test that the batch continues processing after individual notification failures."""
-        with patch("backend.notifications.notifications.logger") as mock_logger, \
-             patch("backend.notifications.notifications.get_database_manager_async_client") as mock_db_client, \
-             patch("backend.notifications.notifications.generate_unsubscribe_link") as mock_unsub_link:
+        with patch("backend.notifications.notifications.logger") as mock_logger, patch(
+            "backend.notifications.notifications.get_database_manager_async_client"
+        ) as mock_db_client, patch(
+            "backend.notifications.notifications.generate_unsubscribe_link"
+        ) as mock_unsub_link:
 
             # Create larger batch
             notifications = []
@@ -415,7 +449,9 @@ class TestNotificationErrorHandling:
                 # Force single processing
                 raise Exception("Force single processing")
 
-            notification_manager.email_sender.send_templated.side_effect = send_side_effect
+            notification_manager.email_sender.send_templated.side_effect = (
+                send_side_effect
+            )
 
             # Create message
             message = sample_batch_event.model_dump_json()
