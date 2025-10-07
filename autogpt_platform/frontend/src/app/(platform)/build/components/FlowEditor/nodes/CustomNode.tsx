@@ -32,8 +32,8 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
     return (
       <div
         className={cn(
-          "rounded-xl border border-slate-200/60 bg-gradient-to-br from-white to-slate-50/30 shadow-lg shadow-slate-900/5 backdrop-blur-sm",
-          selected && "border-2 border-slate-200 shadow-2xl",
+          "rounded-xl bg-gradient-to-br from-white to-slate-50/30 shadow-lg shadow-slate-900/5 ring-1 ring-slate-200/60 backdrop-blur-sm",
+          selected && "shadow-2xl ring-2 ring-slate-200",
         )}
       >
         {/* Header */}
