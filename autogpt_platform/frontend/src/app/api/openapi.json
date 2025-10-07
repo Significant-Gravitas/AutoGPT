@@ -193,8 +193,8 @@
             "required": true,
             "schema": {
               "type": "string",
-              "description": "Provider name for integrations. Can be any string value, including custom provider names.",
-              "title": "Provider"
+              "title": "The provider to create credentials for",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
             }
           }
         ],
