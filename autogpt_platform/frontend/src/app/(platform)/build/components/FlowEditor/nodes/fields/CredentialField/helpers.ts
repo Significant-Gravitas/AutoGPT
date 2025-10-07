@@ -1,4 +1,14 @@
 import { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
+// Need to replace these icons with phosphor icons
+import {
+  FaDiscord,
+  FaMedium,
+  FaGithub,
+  FaGoogle,
+  FaHubspot,
+  FaTwitter,
+} from "react-icons/fa";
+import { GoogleLogoIcon, KeyIcon, NotionLogoIcon } from "@phosphor-icons/react";
 
 export const filterCredentialsByProvider = (
   credentials: CredentialsMetaResponse[] | undefined,
@@ -45,3 +55,47 @@ export function isCredentialFieldSchema(schema: any): boolean {
     "credentials_provider" in schema
   );
 }
+
+export const providerIcons: Partial<
+  Record<string, React.FC<{ className?: string }>>
+> = {
+  aiml_api: KeyIcon,
+  anthropic: KeyIcon,
+  apollo: KeyIcon,
+  e2b: KeyIcon,
+  github: FaGithub,
+  google: GoogleLogoIcon,
+  groq: KeyIcon,
+  http: KeyIcon,
+  notion: NotionLogoIcon,
+  nvidia: KeyIcon,
+  discord: FaDiscord,
+  d_id: KeyIcon,
+  google_maps: FaGoogle,
+  jina: KeyIcon,
+  ideogram: KeyIcon,
+  linear: KeyIcon,
+  medium: FaMedium,
+  mem0: KeyIcon,
+  ollama: KeyIcon,
+  openai: KeyIcon,
+  openweathermap: KeyIcon,
+  open_router: KeyIcon,
+  llama_api: KeyIcon,
+  pinecone: KeyIcon,
+  enrichlayer: KeyIcon,
+  slant3d: KeyIcon,
+  screenshotone: KeyIcon,
+  smtp: KeyIcon,
+  replicate: KeyIcon,
+  reddit: KeyIcon,
+  fal: KeyIcon,
+  revid: KeyIcon,
+  twitter: FaTwitter,
+  unreal_speech: KeyIcon,
+  exa: KeyIcon,
+  hubspot: FaHubspot,
+  smartlead: KeyIcon,
+  todoist: KeyIcon,
+  zerobounce: KeyIcon,
+};
