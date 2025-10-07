@@ -738,7 +738,9 @@ class NotificationManager(AppService):
                                 )
                                 # Deactivate the user's email verification status
                                 try:
-                                    await set_user_email_verification(event.user_id, False)
+                                    await set_user_email_verification(
+                                        event.user_id, False
+                                    )
                                     logger.info(
                                         f"Set email verification to false for user {event.user_id} "
                                         f"after receiving 406 inactive recipient error"
@@ -749,14 +751,20 @@ class NotificationManager(AppService):
                                         f"{deactivation_error}"
                                     )
                             # Check for HTTP 422 - Malformed data
-                            elif "422" in error_message or "unprocessable" in error_message:
+                            elif (
+                                "422" in error_message
+                                or "unprocessable" in error_message
+                            ):
                                 logger.error(
                                     f"Failed to send notification at index {i}: "
                                     f"Malformed notification data rejected by Postmark. "
                                     f"Error: {e}. Skipping this notification."
                                 )
                             # Check if it's a ValueError for size limit
-                            elif isinstance(e, ValueError) and "too large" in error_message:
+                            elif (
+                                isinstance(e, ValueError)
+                                and "too large" in error_message
+                            ):
                                 logger.error(
                                     f"Failed to send notification at index {i}: "
                                     f"Notification size exceeds email limit. "
