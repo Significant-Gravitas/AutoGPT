@@ -217,6 +217,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Generate API client
+        run: pnpm generate:api
+
       - name: Install Browser 'chromium'
         run: pnpm playwright install --with-deps chromium
 

@@ -42,7 +42,7 @@ const CustomEdge = ({
       <EdgeLabelRenderer>
         <Button
           onClick={() => removeConnection(id)}
-          className={`absolute z-10 min-w-0 p-1`}
+          className={`absolute z-10 h-fit min-w-0 p-1`}
           variant="secondary"
           style={{
             transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
