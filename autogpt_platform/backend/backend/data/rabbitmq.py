@@ -140,7 +140,7 @@ class SyncRabbitMQ(RabbitMQBase):
             socket_timeout=SOCKET_TIMEOUT,
             connection_attempts=CONNECTION_ATTEMPTS,
             retry_delay=RETRY_DELAY,
-            heartbeat=1200,  # 20 minute timeout (heartbeats sent every 10 min) - handles long graph executions
+            heartbeat=300,  # 5 minute timeout (heartbeats sent every 2.5 min)
         )
 
         self._connection = pika.BlockingConnection(parameters)
@@ -245,7 +245,7 @@ class AsyncRabbitMQ(RabbitMQBase):
             password=self.password,
             virtualhost=self.config.vhost.lstrip("/"),
             blocked_connection_timeout=BLOCKED_CONNECTION_TIMEOUT,
-            heartbeat=1200,  # 20 minute timeout (heartbeats sent every 10 min) - handles long graph executions
+            heartbeat=300,  # 5 minute timeout (heartbeats sent every 2.5 min)
         )
         self._channel = await self._connection.channel()
         await self._channel.set_qos(prefetch_count=1)
