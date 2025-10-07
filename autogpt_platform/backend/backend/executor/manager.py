@@ -25,6 +25,7 @@ from backend.data.block import (
     get_block,
 )
 from backend.data.credit import UsageTransactionMetadata
+from backend.data.dynamic_fields import parse_execution_output
 from backend.data.execution import (
     ExecutionQueue,
     ExecutionStatus,
@@ -59,7 +60,6 @@ from backend.executor.utils import (
     block_usage_cost,
     create_execution_queue_config,
     execution_usage_cost,
-    parse_execution_output,
     validate_exec,
 )
 from backend.integrations.creds_manager import IntegrationCredentialsManager
