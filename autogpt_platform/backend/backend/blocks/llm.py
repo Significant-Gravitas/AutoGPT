@@ -36,6 +36,7 @@ fmt = TextFormatter(autoescape=False)
 LLMProviderName = Literal[
     ProviderName.AIML_API,
     ProviderName.ANTHROPIC,
+    ProviderName.COMETAPI,
     ProviderName.GROQ,
     ProviderName.OLLAMA,
     ProviderName.OPENAI,
@@ -165,6 +166,41 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     V0_1_5_MD = "v0-1.5-md"
     V0_1_5_LG = "v0-1.5-lg"
     V0_1_0_MD = "v0-1.0-md"
+    # CometAPI models - GPT series
+    COMETAPI_GPT5_CHAT_LATEST = "gpt-5-chat-latest"
+    COMETAPI_GPT5_MINI = "gpt-5-mini"
+    COMETAPI_GPT5_NANO = "gpt-5-nano"
+    COMETAPI_GPT5 = "gpt-5"
+    COMETAPI_GPT41 = "gpt-4.1"
+    COMETAPI_GPT4O_MINI = "gpt-4o-mini"
+    COMETAPI_O4_MINI = "o4-mini-2025-04-16"
+    COMETAPI_O3_PRO = "o3-pro-2025-06-10"
+    COMETAPI_CHATGPT_4O_LATEST = "chatgpt-4o-latest"
+    # CometAPI models - Claude series
+    COMETAPI_CLAUDE_OPUS_4_1 = "claude-opus-4-1-20250805"
+    COMETAPI_CLAUDE_OPUS_4_1_THINKING = "claude-opus-4-1-20250805-thinking"
+    COMETAPI_CLAUDE_SONNET_4 = "claude-sonnet-4-20250514"
+    COMETAPI_CLAUDE_SONNET_4_THINKING = "claude-sonnet-4-20250514-thinking"
+    COMETAPI_CLAUDE_3_7_SONNET_LATEST = "claude-3-7-sonnet-latest"
+    COMETAPI_CLAUDE_3_5_HAIKU_LATEST = "claude-3-5-haiku-latest"
+    # CometAPI models - Gemini series
+    COMETAPI_GEMINI_2_5_PRO = "gemini-2.5-pro"
+    COMETAPI_GEMINI_2_5_FLASH = "gemini-2.5-flash"
+    COMETAPI_GEMINI_2_5_FLASH_LITE = "gemini-2.5-flash-lite"
+    COMETAPI_GEMINI_2_0_FLASH = "gemini-2.0-flash"
+    # CometAPI models - Grok series
+    COMETAPI_GROK_4_0709 = "grok-4-0709"
+    COMETAPI_GROK_4_FAST_NON_REASONING = "grok-4-fast-non-reasoning"
+    COMETAPI_GROK_4_FAST_REASONING = "grok-4-fast-reasoning"
+    # CometAPI models - DeepSeek series
+    COMETAPI_DEEPSEEK_V3_1 = "deepseek-v3.1"
+    COMETAPI_DEEPSEEK_V3 = "deepseek-v3"
+    COMETAPI_DEEPSEEK_R1_0528 = "deepseek-r1-0528"
+    COMETAPI_DEEPSEEK_CHAT = "deepseek-chat"
+    COMETAPI_DEEPSEEK_REASONER = "deepseek-reasoner"
+    # CometAPI models - Qwen series
+    COMETAPI_QWEN3_30B_A3B = "qwen3-30b-a3b"
+    COMETAPI_QWEN3_CODER_PLUS = "qwen3-coder-plus-2025-07-22"
 
     @property
     def metadata(self) -> ModelMetadata:
@@ -297,6 +333,36 @@ MODEL_METADATA = {
     LlmModel.V0_1_5_MD: ModelMetadata("v0", 128000, 64000),
     LlmModel.V0_1_5_LG: ModelMetadata("v0", 512000, 64000),
     LlmModel.V0_1_0_MD: ModelMetadata("v0", 128000, 64000),
+    # CometAPI models
+    LlmModel.COMETAPI_GPT5_CHAT_LATEST: ModelMetadata("cometapi", 400000, 16384),
+    LlmModel.COMETAPI_GPT5_MINI: ModelMetadata("cometapi", 400000, 128000),
+    LlmModel.COMETAPI_GPT5_NANO: ModelMetadata("cometapi", 400000, 128000),
+    LlmModel.COMETAPI_GPT5: ModelMetadata("cometapi", 400000, 128000),
+    LlmModel.COMETAPI_GPT41: ModelMetadata("cometapi", 1047576, 32768),
+    LlmModel.COMETAPI_GPT4O_MINI: ModelMetadata("cometapi", 128000, 16384),
+    LlmModel.COMETAPI_O4_MINI: ModelMetadata("cometapi", 200000, 100000),
+    LlmModel.COMETAPI_O3_PRO: ModelMetadata("cometapi", 200000, 100000),
+    LlmModel.COMETAPI_CHATGPT_4O_LATEST: ModelMetadata("cometapi", 128000, 16384),
+    LlmModel.COMETAPI_CLAUDE_OPUS_4_1: ModelMetadata("cometapi", 200000, 32000),
+    LlmModel.COMETAPI_CLAUDE_OPUS_4_1_THINKING: ModelMetadata("cometapi", 200000, 32000),
+    LlmModel.COMETAPI_CLAUDE_SONNET_4: ModelMetadata("cometapi", 200000, 64000),
+    LlmModel.COMETAPI_CLAUDE_SONNET_4_THINKING: ModelMetadata("cometapi", 200000, 64000),
+    LlmModel.COMETAPI_CLAUDE_3_7_SONNET_LATEST: ModelMetadata("cometapi", 200000, 64000),
+    LlmModel.COMETAPI_CLAUDE_3_5_HAIKU_LATEST: ModelMetadata("cometapi", 200000, 8192),
+    LlmModel.COMETAPI_GEMINI_2_5_PRO: ModelMetadata("cometapi", 1050000, 8192),
+    LlmModel.COMETAPI_GEMINI_2_5_FLASH: ModelMetadata("cometapi", 1048576, 65535),
+    LlmModel.COMETAPI_GEMINI_2_5_FLASH_LITE: ModelMetadata("cometapi", 1048576, 65535),
+    LlmModel.COMETAPI_GEMINI_2_0_FLASH: ModelMetadata("cometapi", 1048576, 8192),
+    LlmModel.COMETAPI_GROK_4_0709: ModelMetadata("cometapi", 256000, 256000),
+    LlmModel.COMETAPI_GROK_4_FAST_NON_REASONING: ModelMetadata("cometapi", 256000, 256000),
+    LlmModel.COMETAPI_GROK_4_FAST_REASONING: ModelMetadata("cometapi", 256000, 256000),
+    LlmModel.COMETAPI_DEEPSEEK_V3_1: ModelMetadata("cometapi", 64000, 8192),
+    LlmModel.COMETAPI_DEEPSEEK_V3: ModelMetadata("cometapi", 64000, 8192),
+    LlmModel.COMETAPI_DEEPSEEK_R1_0528: ModelMetadata("cometapi", 163840, 163840),
+    LlmModel.COMETAPI_DEEPSEEK_CHAT: ModelMetadata("cometapi", 64000, 8192),
+    LlmModel.COMETAPI_DEEPSEEK_REASONER: ModelMetadata("cometapi", 64000, 8192),
+    LlmModel.COMETAPI_QWEN3_30B_A3B: ModelMetadata("cometapi", 128000, 32768),
+    LlmModel.COMETAPI_QWEN3_CODER_PLUS: ModelMetadata("cometapi", 262144, 262144),
 }
 
 for model in LlmModel:
@@ -723,6 +789,42 @@ async def llm_call(
         tools_param = tools if tools else openai.NOT_GIVEN
         client = openai.AsyncOpenAI(
             base_url="https://api.v0.dev/v1",
+            api_key=credentials.api_key.get_secret_value(),
+        )
+
+        response_format = None
+        if force_json_output:
+            response_format = {"type": "json_object"}
+
+        parallel_tool_calls_param = get_parallel_tool_calls_param(
+            llm_model, parallel_tool_calls
+        )
+
+        response = await client.chat.completions.create(
+            model=llm_model.value,
+            messages=prompt,  # type: ignore
+            response_format=response_format,  # type: ignore
+            max_tokens=max_tokens,
+            tools=tools_param,  # type: ignore
+            parallel_tool_calls=parallel_tool_calls_param,
+        )
+
+        tool_calls = extract_openai_tool_calls(response)
+        reasoning = extract_openai_reasoning(response)
+
+        return LLMResponse(
+            raw_response=response.choices[0].message,
+            prompt=prompt,
+            response=response.choices[0].message.content or "",
+            tool_calls=tool_calls,
+            prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
+            completion_tokens=response.usage.completion_tokens if response.usage else 0,
+            reasoning=reasoning,
+        )
+    elif provider == "cometapi":
+        tools_param = tools if tools else openai.NOT_GIVEN
+        client = openai.AsyncOpenAI(
+            base_url="https://api.cometapi.com/v1/",
             api_key=credentials.api_key.get_secret_value(),
         )
 

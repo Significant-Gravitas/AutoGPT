@@ -34,6 +34,7 @@ from backend.integrations.credentials_store import (
     aiml_api_credentials,
     anthropic_credentials,
     apollo_credentials,
+    cometapi_credentials,
     did_credentials,
     enrichlayer_credentials,
     groq_credentials,
@@ -127,6 +128,41 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.V0_1_5_MD: 1,
     LlmModel.V0_1_5_LG: 2,
     LlmModel.V0_1_0_MD: 1,
+    # CometAPI models - GPT series
+    LlmModel.COMETAPI_GPT5_CHAT_LATEST: 2,
+    LlmModel.COMETAPI_GPT5_MINI: 1,
+    LlmModel.COMETAPI_GPT5_NANO: 1,
+    LlmModel.COMETAPI_GPT5: 2,
+    LlmModel.COMETAPI_GPT41: 2,
+    LlmModel.COMETAPI_GPT4O_MINI: 1,
+    LlmModel.COMETAPI_O4_MINI: 2,
+    LlmModel.COMETAPI_O3_PRO: 4,
+    LlmModel.COMETAPI_CHATGPT_4O_LATEST: 3,
+    # CometAPI models - Claude series
+    LlmModel.COMETAPI_CLAUDE_OPUS_4_1: 21,
+    LlmModel.COMETAPI_CLAUDE_OPUS_4_1_THINKING: 21,
+    LlmModel.COMETAPI_CLAUDE_SONNET_4: 5,
+    LlmModel.COMETAPI_CLAUDE_SONNET_4_THINKING: 5,
+    LlmModel.COMETAPI_CLAUDE_3_7_SONNET_LATEST: 5,
+    LlmModel.COMETAPI_CLAUDE_3_5_HAIKU_LATEST: 1,
+    # CometAPI models - Gemini series
+    LlmModel.COMETAPI_GEMINI_2_5_PRO: 4,
+    LlmModel.COMETAPI_GEMINI_2_5_FLASH: 1,
+    LlmModel.COMETAPI_GEMINI_2_5_FLASH_LITE: 1,
+    LlmModel.COMETAPI_GEMINI_2_0_FLASH: 1,
+    # CometAPI models - Grok series
+    LlmModel.COMETAPI_GROK_4_0709: 9,
+    LlmModel.COMETAPI_GROK_4_FAST_NON_REASONING: 5,
+    LlmModel.COMETAPI_GROK_4_FAST_REASONING: 7,
+    # CometAPI models - DeepSeek series
+    LlmModel.COMETAPI_DEEPSEEK_V3_1: 2,
+    LlmModel.COMETAPI_DEEPSEEK_V3: 2,
+    LlmModel.COMETAPI_DEEPSEEK_R1_0528: 1,
+    LlmModel.COMETAPI_DEEPSEEK_CHAT: 2,
+    LlmModel.COMETAPI_DEEPSEEK_REASONER: 2,
+    # CometAPI models - Qwen series
+    LlmModel.COMETAPI_QWEN3_30B_A3B: 1,
+    LlmModel.COMETAPI_QWEN3_CODER_PLUS: 9,
 }
 
 for model in LlmModel:
@@ -232,6 +268,23 @@ LLM_COST = (
         )
         for model, cost in MODEL_COST.items()
         if MODEL_METADATA[model].provider == "v0"
+    ]
+    # CometAPI Models
+    + [
+        BlockCost(
+            cost_type=BlockCostType.RUN,
+            cost_filter={
+                "model": model,
+                "credentials": {
+                    "id": cometapi_credentials.id,
+                    "provider": cometapi_credentials.provider,
+                    "type": cometapi_credentials.type,
+                },
+            },
+            cost_amount=cost,
+        )
+        for model, cost in MODEL_COST.items()
+        if MODEL_METADATA[model].provider == "cometapi"
     ]
     # AI/ML Api Models
     + [
