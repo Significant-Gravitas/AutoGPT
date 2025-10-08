@@ -238,7 +238,9 @@ class TestRetryRateLimiting:
         mock_client = Mock()
         mock_get_client.return_value = mock_client
 
-        @create_retry_decorator(max_attempts=60)  # More than EXCESSIVE_RETRY_THRESHOLD
+        @create_retry_decorator(
+            max_attempts=60, max_wait=0.1
+        )  # More than EXCESSIVE_RETRY_THRESHOLD, but fast
         def always_failing_function():
             raise ValueError("persistent failure")
 
