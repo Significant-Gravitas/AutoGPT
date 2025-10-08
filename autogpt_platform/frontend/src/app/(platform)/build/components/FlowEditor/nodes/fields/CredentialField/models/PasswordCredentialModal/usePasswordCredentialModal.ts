@@ -40,24 +40,23 @@ export const usePasswordCredentialModal = ({
     },
   });
 
-  const { mutateAsync: createCredentials, isPending: isCreatingCredentials } =
-    usePostV1CreateCredentials({
-      mutation: {
-        onSuccess: async () => {
-          form.reset();
-          setOpen(false);
-          toast({
-            title: "Success",
-            description: "Credentials created successfully",
-            variant: "default",
-          });
+  const { mutateAsync: createCredentials } = usePostV1CreateCredentials({
+    mutation: {
+      onSuccess: async () => {
+        form.reset();
+        setOpen(false);
+        toast({
+          title: "Success",
+          description: "Credentials created successfully",
+          variant: "default",
+        });
 
-          await queryClient.refetchQueries({
-            queryKey: getGetV1ListCredentialsQueryKey(),
-          });
-        },
+        await queryClient.refetchQueries({
+          queryKey: getGetV1ListCredentialsQueryKey(),
+        });
       },
-    });
+    },
+  });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     createCredentials({
