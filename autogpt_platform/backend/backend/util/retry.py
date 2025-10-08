@@ -49,11 +49,7 @@ def _send_critical_retry_alert(
 
     # Rate limit alerts to prevent spam
     if not _should_send_alert(func_name, exception, context):
-        logger.warning(
-            f"Rate-limited retry alert for {context}:{func_name} "
-            f"(attempt {attempt_number}, {type(exception).__name__}: {exception})"
-        )
-        return
+        return  # Just silently skip, no extra logging
 
     try:
         # Import here to avoid circular imports
@@ -66,14 +62,12 @@ def _send_critical_retry_alert(
             f"🚨 CRITICAL: Operation Approaching Failure Threshold: {prefix}'{func_name}'\n\n"
             f"Current attempt: {attempt_number}/{EXCESSIVE_RETRY_THRESHOLD}\n"
             f"Error: {type(exception).__name__}: {exception}\n\n"
-            f"This operation is about to fail permanently. Investigate immediately.\n"
-            f"Note: This alert is rate-limited to prevent spam (max 1 per 5 minutes per error type)."
+            f"This operation is about to fail permanently. Investigate immediately."
         )
 
         notification_client.discord_system_alert(alert_msg)
         logger.critical(
-            f"CRITICAL ALERT SENT: Operation {func_name} at attempt {attempt_number} "
-            f"- {type(exception).__name__}: {exception}"
+            f"CRITICAL ALERT SENT: Operation {func_name} at attempt {attempt_number}"
         )
 
     except Exception as alert_error:
@@ -92,14 +86,10 @@ def _create_retry_callback(context: str = ""):
         prefix = f"{context}: " if context else ""
 
         if retry_state.outcome.failed and retry_state.next_action is None:
-            # Final failure - log with full exception details
+            # Final failure - just log the error (alert was already sent at excessive threshold)
             logger.error(
                 f"{prefix}Giving up after {attempt_number} attempts for '{func_name}': "
                 f"{type(exception).__name__}: {exception}"
-            )
-            # Also log the full exception traceback for debugging
-            logger.exception(
-                f"{prefix}Full exception details for '{func_name}' final failure:"
             )
         else:
             # Retry attempt - send critical alert only once at threshold (rate limited)
@@ -107,17 +97,7 @@ def _create_retry_callback(context: str = ""):
                 _send_critical_retry_alert(
                     func_name, attempt_number, exception, context
                 )
-            elif attempt_number % 10 == 0:
-                # Log every 10th attempt with more detail to avoid spam
-                logger.warning(
-                    f"{prefix}Retry attempt {attempt_number} for '{func_name}': "
-                    f"{type(exception).__name__}: {exception}"
-                )
-                logger.exception(
-                    f"{prefix}Exception details for '{func_name}' attempt {attempt_number}:"
-                )
             else:
-                # Regular retry attempts - less verbose
                 logger.warning(
                     f"{prefix}Retry attempt {attempt_number} for '{func_name}': "
                     f"{type(exception).__name__}: {exception}"
