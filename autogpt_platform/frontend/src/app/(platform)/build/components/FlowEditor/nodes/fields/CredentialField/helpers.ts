@@ -1,4 +1,3 @@
-import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
 import {
@@ -101,10 +100,9 @@ export const providerIcons: Partial<Record<string, Icon>> = {
 };
 
 export const getCredentialProviderFromSchema = (
-  nodeId: string,
+  formData: Record<string, any>,
   schema: BlockIOCredentialsSubSchema,
 ) => {
-  const formData = useNodeStore((state) => state.getHardcodedValues(nodeId));
   const discriminator = schema.discriminator;
   const discriminatorMapping = schema.discriminator_mapping;
   const discriminatorValues = schema.discriminator_values;

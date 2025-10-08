@@ -16,9 +16,9 @@ import { generateHandleId } from "../../handlers/helpers";
 import { getTypeDisplayInfo } from "../helpers";
 import { ArrayEditorContext } from "../../components/ArrayEditor/ArrayEditorContext";
 import {
-  getCredentialProviderFromSchema,
   isCredentialFieldSchema,
   toDisplayName,
+  getCredentialProviderFromSchema,
 } from "../fields/CredentialField/helpers";
 import { cn } from "@/lib/utils";
 import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
@@ -32,7 +32,6 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
   schema,
   formContext,
   uiSchema,
-  formData,
 }) => {
   const { isInputConnected } = useEdgeStore();
   const { nodeId } = formContext;
@@ -40,6 +39,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
   const showAdvanced = useNodeStore(
     (state) => state.nodeAdvancedStates[nodeId] ?? false,
   );
+  const formData = useNodeStore((state) => state.getHardcodedValues(nodeId));
 
   const {
     isArrayItem,
@@ -71,7 +71,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
   let credentialProvider = null;
   if (isCredential) {
     credentialProvider = getCredentialProviderFromSchema(
-      nodeId,
+      formData,
       schema as BlockIOCredentialsSubSchema,
     );
   }

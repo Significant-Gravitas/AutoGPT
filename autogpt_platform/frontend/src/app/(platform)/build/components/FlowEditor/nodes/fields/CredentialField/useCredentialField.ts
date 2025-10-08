@@ -5,6 +5,7 @@ import {
   filterCredentialsByProvider,
   getCredentialProviderFromSchema,
 } from "./helpers";
+import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 
 export const useCredentialField = ({
   credentialSchema,
@@ -26,8 +27,12 @@ export const useCredentialField = ({
       },
     });
 
+  const hardcodedValues = useNodeStore((state) =>
+    state.getHardcodedValues(nodeId),
+  );
+
   const credentialProvider = getCredentialProviderFromSchema(
-    nodeId,
+    hardcodedValues,
     credentialSchema,
   );
 

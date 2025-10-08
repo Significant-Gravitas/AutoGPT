@@ -77,10 +77,7 @@ export const CredentialsField = (props: FieldProps) => {
           <OAuthCredentialModal provider={credentialProvider} />
         )}
         {supportsUserPassword && (
-          <PasswordCredentialsModal
-            schema={schema as BlockIOCredentialsSubSchema}
-            provider={credentialProvider}
-          />
+          <PasswordCredentialsModal provider={credentialProvider} />
         )}
       </div>
     </div>

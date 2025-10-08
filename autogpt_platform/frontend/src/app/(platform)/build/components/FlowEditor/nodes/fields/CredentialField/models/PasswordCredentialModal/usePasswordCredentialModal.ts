@@ -1,7 +1,5 @@
 import { useState } from "react";
-import { useCredentialField } from "../../useCredentialField";
 import z from "zod";
-import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -12,12 +10,10 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 
 type usePasswordCredentialModalType = {
-  schema: BlockIOCredentialsSubSchema;
   provider: string;
 };
 
 export const usePasswordCredentialModal = ({
-  schema,
   provider,
 }: usePasswordCredentialModalType) => {
   const [open, setOpen] = useState(false);

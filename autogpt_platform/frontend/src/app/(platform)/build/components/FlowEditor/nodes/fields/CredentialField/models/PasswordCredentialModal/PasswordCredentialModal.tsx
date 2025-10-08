@@ -2,19 +2,16 @@ import { Input } from "@/components/atoms/Input/Input";
 import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Form, FormField } from "@/components/__legacy__/ui/form";
-import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api/types";
 import { usePasswordCredentialModal } from "./usePasswordCredentialModal";
 import { toDisplayName } from "../../helpers";
 import { UserIcon } from "@phosphor-icons/react";
 
 type Props = {
-  schema: BlockIOCredentialsSubSchema;
   provider: string;
 };
 
-export function PasswordCredentialsModal({ schema, provider }: Props) {
+export function PasswordCredentialsModal({ provider }: Props) {
   const { form, onSubmit, open, setOpen } = usePasswordCredentialModal({
-    schema,
     provider,
   });
 
