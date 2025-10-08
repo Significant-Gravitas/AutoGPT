@@ -125,9 +125,10 @@ class TestRetryRateLimiting:
         assert _should_send_alert("test_func", exc, "test_context") is False
 
         # Mock time to simulate passage of rate limit window
+        current_time = time.time()
         with patch("backend.util.retry.time.time") as mock_time:
             # Simulate time passing beyond rate limit window
-            mock_time.return_value = time.time() + ALERT_RATE_LIMIT_SECONDS + 1
+            mock_time.return_value = current_time + ALERT_RATE_LIMIT_SECONDS + 1
             assert _should_send_alert("test_func", exc, "test_context") is True
 
     def test_should_send_alert_thread_safety(self):
@@ -155,7 +156,7 @@ class TestRetryRateLimiting:
         assert len([r for r in results if r is True]) == 1
         assert len([r for r in results if r is False]) == 9
 
-    @patch("backend.util.retry.get_notification_manager_client")
+    @patch("backend.util.clients.get_notification_manager_client")
     def test_send_critical_retry_alert_rate_limiting(self, mock_get_client):
         """Test that _send_critical_retry_alert respects rate limiting."""
         mock_client = Mock()
@@ -176,7 +177,7 @@ class TestRetryRateLimiting:
         _send_critical_retry_alert("spend_credits", 50, exc2, "Service communication")
         assert mock_client.discord_system_alert.call_count == 2
 
-    @patch("backend.util.retry.get_notification_manager_client")
+    @patch("backend.util.clients.get_notification_manager_client")
     def test_send_critical_retry_alert_handles_notification_failure(
         self, mock_get_client
     ):
@@ -212,7 +213,7 @@ class TestRetryRateLimiting:
 
         # First 50 attempts reach threshold - should send alert
         with patch(
-            "backend.util.retry.get_notification_manager_client"
+            "backend.util.clients.get_notification_manager_client"
         ) as mock_get_client:
             mock_client = Mock()
             mock_get_client.return_value = mock_client
@@ -231,7 +232,7 @@ class TestRetryRateLimiting:
             # Still only 1 alert sent total
             assert mock_client.discord_system_alert.call_count == 1
 
-    @patch("backend.util.retry.get_notification_manager_client")
+    @patch("backend.util.clients.get_notification_manager_client")
     def test_retry_decorator_with_excessive_failures(self, mock_get_client):
         """Test retry decorator behavior when it hits the alert threshold."""
         mock_client = Mock()
