@@ -9,6 +9,7 @@ from backend.data.execution import (
     get_execution_kv_data,
     get_graph_execution_meta,
     get_graph_executions,
+    get_graph_executions_count,
     get_latest_node_execution,
     get_node_execution,
     get_node_executions,
@@ -111,6 +112,7 @@ class DatabaseManager(AppService):
 
     # Executions
     get_graph_executions = _(get_graph_executions)
+    get_graph_executions_count = _(get_graph_executions_count)
     get_graph_execution_meta = _(get_graph_execution_meta)
     create_graph_execution = _(create_graph_execution)
     get_node_execution = _(get_node_execution)
