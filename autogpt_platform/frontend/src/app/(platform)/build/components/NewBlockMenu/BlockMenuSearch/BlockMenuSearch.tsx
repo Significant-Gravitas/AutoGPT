@@ -11,6 +11,7 @@ import { useBlockMenuStore } from "../../../stores/blockMenuStore";
 import { blockMenuContainerStyle } from "../style";
 import { cn } from "@/lib/utils";
 import { NoSearchResult } from "../NoSearchResult";
+import { useNodeStore } from "../../../stores/nodeStore";
 
 export const BlockMenuSearch = () => {
   const {
@@ -21,6 +22,7 @@ export const BlockMenuSearch = () => {
     searchLoading,
   } = useBlockMenuSearch();
   const { searchQuery } = useBlockMenuStore();
+  const addBlock = useNodeStore((state) => state.addBlock);
 
   if (searchLoading) {
     return (
@@ -51,7 +53,7 @@ export const BlockMenuSearch = () => {
       >
         {allSearchData.map((item: SearchResponseItemsItem, index: number) => {
           const { type, data } = getSearchItemType(item);
-
+          // backend give support to these 3 types only [right now] - we need to give support to integration and ai agent types in follow up PRs
           switch (type) {
             case "store_agent":
               return (
@@ -73,6 +75,7 @@ export const BlockMenuSearch = () => {
                   title={data.name}
                   highlightedText={searchQuery}
                   description={data.description}
+                  onClick={() => addBlock(data)}
                 />
               );
 
