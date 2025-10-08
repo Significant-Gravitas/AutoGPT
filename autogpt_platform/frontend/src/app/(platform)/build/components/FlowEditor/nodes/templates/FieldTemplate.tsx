@@ -16,10 +16,12 @@ import { generateHandleId } from "../../handlers/helpers";
 import { getTypeDisplayInfo } from "../helpers";
 import { ArrayEditorContext } from "../../components/ArrayEditor/ArrayEditorContext";
 import {
+  getCredentialProviderFromSchema,
   isCredentialFieldSchema,
   toDisplayName,
 } from "../fields/CredentialField/helpers";
 import { cn } from "@/lib/utils";
+import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
 
 const FieldTemplate: React.FC<FieldTemplateProps> = ({
   id,
@@ -30,6 +32,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
   schema,
   formContext,
   uiSchema,
+  formData,
 }) => {
   const { isInputConnected } = useEdgeStore();
   const { nodeId } = formContext;
@@ -65,6 +68,14 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
 
   const { displayType, colorClass } = getTypeDisplayInfo(schema);
 
+  let credentialProvider = null;
+  if (isCredential) {
+    credentialProvider = getCredentialProviderFromSchema(
+      nodeId,
+      schema as BlockIOCredentialsSubSchema,
+    );
+  }
+
   return (
     <div className="mt-4 w-[400px] space-y-1">
       {label && schema.type && (
@@ -77,8 +88,8 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
               variant="body"
               className={cn("line-clamp-1", isCredential && "ml-3")}
             >
-              {isCredential
-                ? toDisplayName(schema.credentials_provider[0]) + " credentials"
+              {isCredential && credentialProvider
+                ? toDisplayName(credentialProvider) + " credentials"
                 : label}
             </Text>
           )}

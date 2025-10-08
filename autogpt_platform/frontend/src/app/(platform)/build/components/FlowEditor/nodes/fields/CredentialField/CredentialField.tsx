@@ -9,7 +9,13 @@ import { OAuthCredentialModal } from "./models/OAuthCredentialModal/OAuthCredent
 import { PasswordCredentialsModal } from "./models/PasswordCredentialModal/PasswordCredentialModal";
 
 export const CredentialsField = (props: FieldProps) => {
-  const { formData = {}, onChange, required: _required, schema } = props;
+  const {
+    formData = {},
+    onChange,
+    required: _required,
+    schema,
+    formContext,
+  } = props;
   const {
     credentials,
     isCredentialListLoading,
@@ -17,8 +23,10 @@ export const CredentialsField = (props: FieldProps) => {
     supportsOAuth2,
     supportsUserPassword,
     credentialsExists,
+    credentialProvider,
   } = useCredentialField({
     credentialSchema: schema as BlockIOCredentialsSubSchema,
+    nodeId: formContext.nodeId,
   });
 
   const setField = (key: string, value: any) =>
@@ -41,6 +49,10 @@ export const CredentialsField = (props: FieldProps) => {
     );
   }
 
+  if (!credentialProvider) {
+    return null;
+  }
+
   return (
     <div className="flex flex-col gap-2">
       {credentialsExists && (
@@ -58,15 +70,16 @@ export const CredentialsField = (props: FieldProps) => {
         {supportsApiKey && (
           <APIKeyCredentialsModal
             schema={schema as BlockIOCredentialsSubSchema}
+            provider={credentialProvider}
           />
         )}
         {supportsOAuth2 && (
-          <OAuthCredentialModal provider={schema.credentials_provider[0]} />
+          <OAuthCredentialModal provider={credentialProvider} />
         )}
         {supportsUserPassword && (
           <PasswordCredentialsModal
             schema={schema as BlockIOCredentialsSubSchema}
-            provider={schema.credentials_provider[0]}
+            provider={credentialProvider}
           />
         )}
       </div>

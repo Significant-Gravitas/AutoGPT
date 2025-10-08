@@ -13,17 +13,10 @@ type Props = {
 };
 
 export function PasswordCredentialsModal({ schema, provider }: Props) {
-  const {
-    credentials,
-    isCredentialListLoading,
-    form,
-    onSubmit,
-    open,
-    setOpen,
-  } = usePasswordCredentialModal({ schema });
-  if (!credentials || isCredentialListLoading) {
-    return null;
-  }
+  const { form, onSubmit, open, setOpen } = usePasswordCredentialModal({
+    schema,
+    provider,
+  });
 
   return (
     <>

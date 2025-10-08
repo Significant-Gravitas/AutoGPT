@@ -13,17 +13,16 @@ import { useQueryClient } from "@tanstack/react-query";
 
 type usePasswordCredentialModalType = {
   schema: BlockIOCredentialsSubSchema;
+  provider: string;
 };
 
 export const usePasswordCredentialModal = ({
   schema,
+  provider,
 }: usePasswordCredentialModalType) => {
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { credentials, isCredentialListLoading } = useCredentialField({
-    credentialSchema: schema,
-  });
 
   const formSchema = z.object({
     username: z.string().min(1, "Username is required"),
@@ -60,9 +59,9 @@ export const usePasswordCredentialModal = ({
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     createCredentials({
-      provider: schema.credentials_provider[0],
+      provider: provider,
       data: {
-        provider: schema.credentials_provider[0],
+        provider: provider,
         type: "user_password",
         username: values.username,
         password: values.password,
@@ -73,8 +72,6 @@ export const usePasswordCredentialModal = ({
 
   return {
     form,
-    credentials,
-    isCredentialListLoading,
     onSubmit,
     open,
     setOpen,
