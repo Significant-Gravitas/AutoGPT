@@ -11,11 +11,7 @@ type StickyNoteBlockType = {
   id: string;
 };
 
-export const StickyNoteBlock = ({
-  selected,
-  data,
-  id,
-}: StickyNoteBlockType) => {
+export const StickyNoteBlock = ({ data, id }: StickyNoteBlockType) => {
   const { angle, color } = useMemo(() => {
     const hash = id.split("").reduce((acc, char) => {
       return char.charCodeAt(0) + ((acc << 5) - acc);

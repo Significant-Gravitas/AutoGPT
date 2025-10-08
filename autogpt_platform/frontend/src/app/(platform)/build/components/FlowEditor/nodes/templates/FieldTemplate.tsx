@@ -21,7 +21,6 @@ import {
 } from "../fields/CredentialField/helpers";
 import { cn } from "@/lib/utils";
 import { BlockUIType } from "@/lib/autogpt-server-api";
-import { TextInputWidget } from "../widgets/TextInputWidget";
 
 const FieldTemplate: React.FC<FieldTemplateProps> = ({
   id,
