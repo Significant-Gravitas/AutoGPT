@@ -1,9 +1,12 @@
 import { WidgetProps } from "@rjsf/utils";
 import { InputType, mapJsonSchemaTypeToInputType } from "../helpers";
 import { Input } from "@/components/atoms/Input/Input";
+import { BlockUIType } from "@/lib/autogpt-server-api/types";
 
 export const TextInputWidget = (props: WidgetProps) => {
-  const { schema } = props;
+  const { schema, formContext } = props;
+  const { uiType } = formContext as { uiType: BlockUIType };
+
   const mapped = mapJsonSchemaTypeToInputType(schema);
 
   type InputConfig = {
@@ -49,6 +52,25 @@ export const TextInputWidget = (props: WidgetProps) => {
     const v = e.target.value;
     return props.onChange(config.handleChange(v));
   };
+
+  if (uiType === BlockUIType.NOTE) {
+    return (
+      <Input
+        id={props.id}
+        hideLabel={true}
+        type={"textarea"}
+        label={""}
+        size="small"
+        wrapperClassName="mb-0"
+        value={props.value ?? ""}
+        className="!h-[230px] resize-none rounded-none border-none bg-transparent p-0 placeholder:text-black/60 focus:ring-0"
+        onChange={handleChange as any}
+        placeholder={"Write your note here..."}
+        required={props.required}
+        disabled={props.disabled}
+      />
+    );
+  }
 
   return (
     <Input

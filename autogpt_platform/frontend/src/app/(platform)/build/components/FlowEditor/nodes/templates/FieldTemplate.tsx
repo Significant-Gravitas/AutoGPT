@@ -20,6 +20,8 @@ import {
   toDisplayName,
 } from "../fields/CredentialField/helpers";
 import { cn } from "@/lib/utils";
+import { BlockUIType } from "@/lib/autogpt-server-api";
+import { TextInputWidget } from "../widgets/TextInputWidget";
 
 const FieldTemplate: React.FC<FieldTemplateProps> = ({
   id,
@@ -64,6 +66,10 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
     Boolean((formContext as any)?.fromAnyOf);
 
   const { displayType, colorClass } = getTypeDisplayInfo(schema);
+
+  if (formContext.uiType === BlockUIType.NOTE) {
+    return <div className="w-full space-y-1">{children}</div>;
+  }
 
   return (
     <div className="mt-4 w-[400px] space-y-1">
