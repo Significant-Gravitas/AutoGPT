@@ -26,7 +26,7 @@ _rate_limiter_lock = threading.Lock()
 ALERT_RATE_LIMIT_SECONDS = 300  # 5 minutes between same alerts
 
 
-def _should_send_alert(func_name: str, exception: Exception, context: str = "") -> bool:
+def should_send_alert(func_name: str, exception: Exception, context: str = "") -> bool:
     """Check if we should send an alert based on rate limiting."""
     # Create a unique key for this function+error+context combination
     error_signature = (
@@ -48,7 +48,7 @@ def _send_critical_retry_alert(
     """Send alert when a function is approaching the retry failure threshold."""
 
     # Rate limit alerts to prevent spam
-    if not _should_send_alert(func_name, exception, context):
+    if not should_send_alert(func_name, exception, context):
         return  # Just silently skip, no extra logging
 
     try:

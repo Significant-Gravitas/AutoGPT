@@ -84,7 +84,7 @@ from backend.util.file import clean_exec_files
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.metrics import DiscordChannel
 from backend.util.process import AppProcess, set_service_name
-from backend.util.retry import _should_send_alert, continuous_retry, func_retry
+from backend.util.retry import continuous_retry, func_retry, should_send_alert
 from backend.util.settings import Settings
 
 from .cluster_lock import ClusterLock
@@ -991,7 +991,7 @@ class ExecutionProcessor:
             )
 
             try:
-                if _should_send_alert("graph_execution", error, "unknown_error"):
+                if should_send_alert("graph_execution", error, "unknown_error"):
                     get_notification_manager_client().discord_system_alert(
                         f"🚨 **Unknown Graph Execution Error**\n"
                         f"User: {graph_exec.user_id}\n"
