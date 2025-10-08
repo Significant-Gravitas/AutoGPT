@@ -64,7 +64,7 @@ export const TextInputWidget = (props: WidgetProps) => {
         wrapperClassName="mb-0"
         value={props.value ?? ""}
         className="!h-[230px] resize-none rounded-none border-none bg-transparent p-0 placeholder:text-black/60 focus:ring-0"
-        onChange={handleChange as any}
+        onChange={handleChange}
         placeholder={"Write your note here..."}
         required={props.required}
         disabled={props.disabled}
@@ -81,7 +81,7 @@ export const TextInputWidget = (props: WidgetProps) => {
       size="small"
       wrapperClassName="mb-0"
       value={props.value ?? ""}
-      onChange={handleChange as any}
+      onChange={handleChange}
       placeholder={schema.placeholder || config.placeholder}
       required={props.required}
       disabled={props.disabled}
