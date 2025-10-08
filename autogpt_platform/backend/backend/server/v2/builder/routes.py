@@ -127,6 +127,7 @@ async def get_providers(
         page_size=page_size,
     )
 
+
 # Not using post method because on frontend, orval doesn't support Infinite Query with POST method.
 @router.get(
     "/search",
@@ -134,7 +135,6 @@ async def get_providers(
     tags=["store", "private"],
     response_model=builder_model.SearchResponse,
 )
-
 async def search(
     user_id: Annotated[str, fastapi.Security(get_user_id)],
     search_query: Annotated[str | None, fastapi.Query()] = None,
