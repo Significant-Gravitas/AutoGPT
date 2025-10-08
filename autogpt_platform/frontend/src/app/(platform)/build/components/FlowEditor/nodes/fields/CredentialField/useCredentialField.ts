@@ -23,6 +23,8 @@ export const useCredentialField = ({
 
   const supportsApiKey = credentialSchema.credentials_types.includes("api_key");
   const supportsOAuth2 = credentialSchema.credentials_types.includes("oauth2");
+  const supportsUserPassword =
+    credentialSchema.credentials_types.includes("user_password");
 
   const credentialProviders = credentialSchema.credentials_provider;
   const { credentials: filteredCredentials, exists: credentialsExists } =
@@ -33,6 +35,7 @@ export const useCredentialField = ({
     isCredentialListLoading,
     supportsApiKey,
     supportsOAuth2,
+    supportsUserPassword,
     credentialsExists,
   };
 };

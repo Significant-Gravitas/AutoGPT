@@ -14,11 +14,9 @@ import { Text } from "@/components/atoms/Text/Text";
 
 type Props = {
   schema: BlockIOCredentialsSubSchema;
-
-  onSuccess: (credentialId: string) => void;
 };
 
-export function APIKeyCredentialsModal({ schema, onSuccess }: Props) {
+export function APIKeyCredentialsModal({ schema }: Props) {
   const {
     form,
     isLoading,
@@ -27,7 +25,7 @@ export function APIKeyCredentialsModal({ schema, onSuccess }: Props) {
     provider,
     isOpen,
     setIsOpen,
-  } = useAPIKeyCredentialsModal({ schema, onSuccess });
+  } = useAPIKeyCredentialsModal({ schema });
 
   if (isLoading) {
     return null;
