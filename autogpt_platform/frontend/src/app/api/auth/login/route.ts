@@ -4,6 +4,7 @@ import { verifyTurnstileToken } from "@/lib/turnstile";
 import { loginFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
 import { NextResponse } from "next/server";
+import { shouldShowOnboarding } from "../../helpers";
 
 export async function POST(request: Request) {
   try {
@@ -62,12 +63,4 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
-}
-
-async function shouldShowOnboarding() {
-  const api = new BackendAPI();
-  const isEnabled = await api.isOnboardingEnabled();
-  const onboarding = await api.getUserOnboarding();
-  const isCompleted = onboarding.completedSteps.includes("CONGRATS");
-  return isEnabled && !isCompleted;
 }

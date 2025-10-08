@@ -3,7 +3,7 @@ import * as Sentry from "@sentry/nextjs";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { signupFormSchema } from "@/types/auth";
-import BackendAPI from "@/lib/autogpt-server-api";
+import { shouldShowOnboarding } from "../../helpers";
 
 export async function POST(request: Request) {
   try {
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
       await supabase.auth.setSession(data.session);
     }
 
-    const isOnboardingEnabled = await new BackendAPI().isOnboardingEnabled();
+    const isOnboardingEnabled = await shouldShowOnboarding();
     const next = isOnboardingEnabled ? "/onboarding" : "/";
 
     return NextResponse.json({ success: true, next });
