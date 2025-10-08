@@ -2,14 +2,7 @@ import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import BackendAPI from "@/lib/autogpt-server-api";
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-
-async function shouldShowOnboarding() {
-  const api = new BackendAPI();
-  return (
-    (await api.isOnboardingEnabled()) &&
-    !(await api.getUserOnboarding()).completedSteps.includes("CONGRATS")
-  );
-}
+import { shouldShowOnboarding } from "@/app/api/helpers";
 
 // Handle the callback to complete the user session login
 export async function GET(request: Request) {

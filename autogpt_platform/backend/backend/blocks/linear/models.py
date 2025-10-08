@@ -37,5 +37,5 @@ class Project(BaseModel):
     name: str
     description: str
     priority: int
-    progress: int
-    content: str
+    progress: float
+    content: str | None

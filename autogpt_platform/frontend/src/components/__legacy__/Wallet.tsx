@@ -304,6 +304,9 @@ export default function Wallet() {
     }, 300);
   }, [credits, prevCredits]);
 
+  // Do not render until we have both credits and onboarding data
+  if (credits === null || !state) return null;
+
   return (
     <Popover
       open={walletOpen}

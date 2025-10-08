@@ -20,11 +20,37 @@ logger = logging.getLogger(__name__)
 # Alert threshold for excessive retries
 EXCESSIVE_RETRY_THRESHOLD = 50
 
+# Rate limiting for alerts - track last alert time per function+error combination
+_alert_rate_limiter = {}
+_rate_limiter_lock = threading.Lock()
+ALERT_RATE_LIMIT_SECONDS = 300  # 5 minutes between same alerts
+
+
+def _should_send_alert(func_name: str, exception: Exception, context: str = "") -> bool:
+    """Check if we should send an alert based on rate limiting."""
+    # Create a unique key for this function+error+context combination
+    error_signature = (
+        f"{context}:{func_name}:{type(exception).__name__}:{str(exception)[:100]}"
+    )
+    current_time = time.time()
+
+    with _rate_limiter_lock:
+        last_alert_time = _alert_rate_limiter.get(error_signature, 0)
+        if current_time - last_alert_time >= ALERT_RATE_LIMIT_SECONDS:
+            _alert_rate_limiter[error_signature] = current_time
+            return True
+        return False
+
 
 def _send_critical_retry_alert(
     func_name: str, attempt_number: int, exception: Exception, context: str = ""
 ):
     """Send alert when a function is approaching the retry failure threshold."""
+
+    # Rate limit alerts to prevent spam
+    if not _should_send_alert(func_name, exception, context):
+        return  # Just silently skip, no extra logging
+
     try:
         # Import here to avoid circular imports
         from backend.util.clients import get_notification_manager_client
@@ -66,7 +92,7 @@ def _create_retry_callback(context: str = ""):
                 f"{type(exception).__name__}: {exception}"
             )
         else:
-            # Retry attempt - send critical alert only once at threshold
+            # Retry attempt - send critical alert only once at threshold (rate limited)
             if attempt_number == EXCESSIVE_RETRY_THRESHOLD:
                 _send_critical_retry_alert(
                     func_name, attempt_number, exception, context
