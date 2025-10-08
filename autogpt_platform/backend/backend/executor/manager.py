@@ -84,7 +84,7 @@ from backend.util.file import clean_exec_files
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.metrics import DiscordChannel
 from backend.util.process import AppProcess, set_service_name
-from backend.util.retry import continuous_retry, func_retry
+from backend.util.retry import _should_send_alert, continuous_retry, func_retry
 from backend.util.settings import Settings
 
 from .cluster_lock import ClusterLock
@@ -990,17 +990,17 @@ class ExecutionProcessor:
                 f"Failed graph execution {graph_exec.graph_exec_id}: {error}"
             )
 
-            # Send Discord alert for unknown/unexpected errors
             try:
-                get_notification_manager_client().discord_system_alert(
-                    f"🚨 **Unknown Graph Execution Error**\n"
-                    f"User: {graph_exec.user_id}\n"
-                    f"Graph ID: {graph_exec.graph_id}\n"
-                    f"Execution ID: {graph_exec.graph_exec_id}\n"
-                    f"Error Type: {type(error).__name__}\n"
-                    f"Error: {str(error)[:200]}{'...' if len(str(error)) > 200 else ''}\n",
-                    DiscordChannel.PLATFORM,
-                )
+                if _should_send_alert("graph_execution", error, "unknown_error"):
+                    get_notification_manager_client().discord_system_alert(
+                        f"🚨 **Unknown Graph Execution Error**\n"
+                        f"User: {graph_exec.user_id}\n"
+                        f"Graph ID: {graph_exec.graph_id}\n"
+                        f"Execution ID: {graph_exec.graph_exec_id}\n"
+                        f"Error Type: {type(error).__name__}\n"
+                        f"Error: {str(error)[:200]}{'...' if len(str(error)) > 200 else ''}\n",
+                        DiscordChannel.PLATFORM,
+                    )
             except Exception as alert_error:
                 logger.error(
                     f"Failed to send unknown error Discord alert: {alert_error}"

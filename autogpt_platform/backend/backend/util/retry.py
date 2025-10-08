@@ -244,8 +244,8 @@ def continuous_retry(*, retry_delay: float = 1.0):
 
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
+            counter = 0
             while True:
-                counter = 0
                 try:
                     return await func(*args, **kwargs)
                 except Exception as exc:
