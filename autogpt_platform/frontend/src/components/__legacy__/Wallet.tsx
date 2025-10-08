@@ -39,6 +39,7 @@ export interface TaskGroup {
 
 export default function Wallet() {
   const { state, updateState } = useOnboarding();
+
   const groups = useMemo<TaskGroup[]>(() => {
     return [
       {
@@ -303,6 +304,9 @@ export default function Wallet() {
     }, 300);
   }, [credits, prevCredits]);
 
+  // Do not render until we have both credits and onboarding data
+  if (credits === null || !state) return null;
+
   return (
     <Popover
       open={walletOpen}
@@ -348,10 +352,11 @@ export default function Wallet() {
         </div>
       </PopoverTrigger>
       <PopoverContent
-        className={cn(
-          "absolute -right-[7.9rem] -top-[3.2rem] z-50 w-[28.5rem] px-[0.625rem] py-2",
-          "rounded-xl border-zinc-100 bg-white shadow-[0_3px_3px] shadow-zinc-200",
-        )}
+        side="bottom"
+        align="end"
+        sideOffset={12}
+        collisionPadding={16}
+        className={cn("z-50 w-[28.5rem] px-[0.625rem] py-2")}
       >
         {/* Header */}
         <div className="mx-1 flex items-center justify-between border-b border-zinc-200 pb-3">
