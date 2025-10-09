@@ -1472,13 +1472,11 @@ class ExecutionManager(AppProcess):
 
         # Check user rate limit before processing
         try:
-            db_client = get_db_client()
             # Only check executions from the last 24 hours for performance
-            twenty_four_hours_ago = datetime.now(timezone.utc) - timedelta(hours=24)
-            current_running_count = db_client.get_graph_executions_count(
+            current_running_count = get_db_client().get_graph_executions_count(
                 user_id=user_id,
                 statuses=[ExecutionStatus.RUNNING],
-                created_time_gte=twenty_four_hours_ago,
+                created_time_gte=datetime.now(timezone.utc) - timedelta(hours=24),
             )
 
             if (
