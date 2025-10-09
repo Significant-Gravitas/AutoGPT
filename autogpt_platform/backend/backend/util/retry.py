@@ -74,14 +74,15 @@ def _send_critical_retry_alert(
     """Send alert when a function is approaching the retry failure threshold."""
 
     prefix = f"{context}: " if context else ""
-    alert_msg = (
+    if send_rate_limited_discord_alert(
+        func_name,
+        exception,
+        context,
         f"🚨 CRITICAL: Operation Approaching Failure Threshold: {prefix}'{func_name}'\n\n"
         f"Current attempt: {attempt_number}/{EXCESSIVE_RETRY_THRESHOLD}\n"
         f"Error: {type(exception).__name__}: {exception}\n\n"
-        f"This operation is about to fail permanently. Investigate immediately."
-    )
-
-    if send_rate_limited_discord_alert(func_name, exception, context, alert_msg):
+        f"This operation is about to fail permanently. Investigate immediately.",
+    ):
         logger.critical(
             f"CRITICAL ALERT SENT: Operation {func_name} at attempt {attempt_number}"
         )
