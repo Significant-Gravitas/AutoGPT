@@ -4,7 +4,12 @@ Module for generating AI-based activity status for graph executions.
 
 import json
 import logging
-from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
+
+try:
+    from typing import NotRequired
+except ImportError:
+    from typing_extensions import NotRequired
 
 from pydantic import SecretStr
 
@@ -146,17 +151,35 @@ async def generate_activity_status_for_execution(
                     "Focus on the ACTUAL TASK the user wanted done, not the internal workflow steps. "
                     "Avoid technical terms like 'workflow', 'execution', 'components', 'nodes', 'processing', etc. "
                     "Keep it to 3 sentences maximum. Be conversational and human-friendly.\n\n"
+                    "UNDERSTAND THE INTENDED PURPOSE:\n"
+                    "- FIRST: Read the graph description carefully to understand what the user wanted to accomplish\n"
+                    "- The graph name and description tell you the main goal/intention of this automation\n"
+                    "- Use this intended purpose as your PRIMARY criteria for success/failure evaluation\n"
+                    "- Ask yourself: 'Did this execution actually accomplish what the graph was designed to do?'\n\n"
+                    "CRITICAL OUTPUT ANALYSIS:\n"
+                    "- Check if blocks that should produce user-facing results actually produced outputs\n"
+                    "- Blocks with names containing 'Output', 'Post', 'Create', 'Send', 'Publish', 'Generate' are usually meant to produce final results\n"
+                    "- If these critical blocks have NO outputs (empty recent_outputs), the task likely FAILED even if status shows 'completed'\n"
+                    "- Sub-agents (AgentExecutorBlock) that produce no outputs usually indicate failed sub-tasks\n"
+                    "- Most importantly: Does the execution result match what the graph description promised to deliver?\n\n"
+                    "SUCCESS EVALUATION BASED ON INTENTION:\n"
+                    "- If the graph is meant to 'create blog posts' → check if blog content was actually created\n"
+                    "- If the graph is meant to 'send emails' → check if emails were actually sent\n"
+                    "- If the graph is meant to 'analyze data' → check if analysis results were produced\n"
+                    "- If the graph is meant to 'generate reports' → check if reports were generated\n"
+                    "- Technical completion ≠ goal achievement. Focus on whether the USER'S INTENDED OUTCOME was delivered\n\n"
                     "IMPORTANT: Be HONEST about what actually happened:\n"
                     "- If the input was invalid/nonsensical, say so directly\n"
                     "- If the task failed, explain what went wrong in simple terms\n"
                     "- If errors occurred, focus on what the user needs to know\n"
-                    "- Only claim success if the task was genuinely completed\n"
-                    "- Don't sugar-coat failures or present them as helpful feedback\n\n"
+                    "- Only claim success if the INTENDED PURPOSE was genuinely accomplished AND produced expected outputs\n"
+                    "- Don't sugar-coat failures or present them as helpful feedback\n"
+                    "- ESPECIALLY: If the graph's main purpose wasn't achieved, this is a failure regardless of 'completed' status\n\n"
                     "Understanding Errors:\n"
                     "- Node errors: Individual steps may fail but the overall task might still complete (e.g., one data source fails but others work)\n"
                     "- Graph error (in overall_status.graph_error): This means the entire execution failed and nothing was accomplished\n"
-                    "- Even if execution shows 'completed', check if critical nodes failed that would prevent the desired outcome\n"
-                    "- Focus on the end result the user wanted, not whether technical steps completed"
+                    "- Missing outputs from critical blocks: Even if no errors, this means the task failed to produce expected results\n"
+                    "- Focus on whether the graph's intended purpose was fulfilled, not whether technical steps completed"
                 ),
             },
             {
@@ -165,15 +188,28 @@ async def generate_activity_status_for_execution(
                     f"A user ran '{graph_name}' to accomplish something. Based on this execution data, "
                     f"write what they achieved in simple, user-friendly terms:\n\n"
                     f"{json.dumps(execution_data, indent=2)}\n\n"
-                    "CRITICAL: Check overall_status.graph_error FIRST - if present, the entire execution failed.\n"
-                    "Then check individual node errors to understand partial failures.\n\n"
+                    "ANALYSIS CHECKLIST:\n"
+                    "1. READ graph_info.description FIRST - this tells you what the user intended to accomplish\n"
+                    "2. Check overall_status.graph_error - if present, the entire execution failed\n"
+                    "3. Look for nodes with 'Output', 'Post', 'Create', 'Send', 'Publish', 'Generate' in their block_name\n"
+                    "4. Check if these critical blocks have empty recent_outputs arrays - this indicates failure\n"
+                    "5. Look for AgentExecutorBlock (sub-agents) with no outputs - this suggests sub-task failures\n"
+                    "6. Count how many nodes produced outputs vs total nodes - low ratio suggests problems\n"
+                    "7. MOST IMPORTANT: Does the execution outcome match what graph_info.description promised?\n\n"
+                    "INTENTION-BASED EVALUATION:\n"
+                    "- If description mentions 'blog writing' → did it create blog content?\n"
+                    "- If description mentions 'email automation' → were emails actually sent?\n"
+                    "- If description mentions 'data analysis' → were analysis results produced?\n"
+                    "- If description mentions 'content generation' → was content actually generated?\n"
+                    "- If description mentions 'social media posting' → were posts actually made?\n"
+                    "- Match the outputs to the stated intention, not just technical completion\n\n"
                     "Write 1-3 sentences about what the user accomplished, such as:\n"
                     "- 'I analyzed your resume and provided detailed feedback for the IT industry.'\n"
-                    "- 'I couldn't analyze your resume because the input was just nonsensical text.'\n"
-                    "- 'I failed to complete the task due to missing API access.'\n"
+                    "- 'I couldn't complete the task because critical steps failed to produce any results.'\n"
+                    "- 'I failed to generate the content you requested due to missing API access.'\n"
                     "- 'I extracted key information from your documents and organized it into a summary.'\n"
-                    "- 'The task failed to run due to system configuration issues.'\n\n"
-                    "Focus on what ACTUALLY happened, not what was attempted."
+                    "- 'The task failed because the blog post creation step didn't produce any output.'\n\n"
+                    "BE CRITICAL: If the graph's intended purpose (from description) wasn't achieved, report this as a failure even if status is 'completed'."
                 ),
             },
         ]
@@ -197,6 +233,7 @@ async def generate_activity_status_for_execution(
         logger.debug(
             f"Generated activity status for {graph_exec_id}: {activity_status}"
         )
+
         return activity_status
 
     except Exception as e:

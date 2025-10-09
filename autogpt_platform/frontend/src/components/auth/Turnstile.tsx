@@ -40,27 +40,57 @@ export function Turnstile({
       return;
     }
 
-    // Create script element
-    const script = document.createElement("script");
-    script.src =
+    const scriptSrc =
       "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+
+    // If a script already exists, reuse it and attach listeners
+    const existingScript = Array.from(document.scripts).find(
+      (s) => s.src === scriptSrc,
+    );
+
+    if (existingScript) {
+      if (window.turnstile) {
+        setLoaded(true);
+        return;
+      }
+
+      const handleLoad: EventListener = () => {
+        setLoaded(true);
+      };
+      const handleError: EventListener = () => {
+        onError?.(new Error("Failed to load Turnstile script"));
+      };
+
+      existingScript.addEventListener("load", handleLoad);
+      existingScript.addEventListener("error", handleError);
+
+      return () => {
+        existingScript.removeEventListener("load", handleLoad);
+        existingScript.removeEventListener("error", handleError);
+      };
+    }
+
+    // Create a single script element if not present and keep it in the document
+    const script = document.createElement("script");
+    script.src = scriptSrc;
     script.async = true;
     script.defer = true;
 
-    script.onload = () => {
+    const handleLoad: EventListener = () => {
       setLoaded(true);
     };
-
-    script.onerror = () => {
+    const handleError: EventListener = () => {
       onError?.(new Error("Failed to load Turnstile script"));
     };
+
+    script.addEventListener("load", handleLoad);
+    script.addEventListener("error", handleError);
 
     document.head.appendChild(script);
 
     return () => {
-      if (document.head.contains(script)) {
-        document.head.removeChild(script);
-      }
+      script.removeEventListener("load", handleLoad);
+      script.removeEventListener("error", handleError);
     };
   }, [onError, shouldRender]);
 

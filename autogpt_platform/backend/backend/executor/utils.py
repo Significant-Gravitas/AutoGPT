@@ -4,7 +4,7 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future
-from typing import Any, Mapping, Optional, cast
+from typing import Mapping, Optional, cast
 
 from pydantic import BaseModel, JsonValue, ValidationError
 
@@ -20,6 +20,9 @@ from backend.data.block import (
 )
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.db import prisma
+
+# Import dynamic field utilities from centralized location
+from backend.data.dynamic_fields import merge_execution_input
 from backend.data.execution import (
     ExecutionStatus,
     GraphExecutionStats,
@@ -39,7 +42,6 @@ from backend.util.clients import (
 )
 from backend.util.exceptions import GraphValidationError, NotFoundError
 from backend.util.logging import TruncatedLogger
-from backend.util.mock import MockObject
 from backend.util.settings import Config
 from backend.util.type import convert
 
@@ -186,195 +188,7 @@ def _is_cost_filter_match(cost_filter: BlockInput, input_data: BlockInput) -> bo
 
 # ============ Execution Input Helpers ============ #
 
-# --------------------------------------------------------------------------- #
-#  Delimiters
-# --------------------------------------------------------------------------- #
-
-LIST_SPLIT = "_$_"
-DICT_SPLIT = "_#_"
-OBJC_SPLIT = "_@_"
-
-_DELIMS = (LIST_SPLIT, DICT_SPLIT, OBJC_SPLIT)
-
-# --------------------------------------------------------------------------- #
-#  Tokenisation utilities
-# --------------------------------------------------------------------------- #
-
-
-def _next_delim(s: str) -> tuple[str | None, int]:
-    """
-    Return the *earliest* delimiter appearing in `s` and its index.
-
-    If none present → (None, -1).
-    """
-    first: str | None = None
-    pos = len(s)  # sentinel: larger than any real index
-    for d in _DELIMS:
-        i = s.find(d)
-        if 0 <= i < pos:
-            first, pos = d, i
-    return first, (pos if first else -1)
-
-
-def _tokenise(path: str) -> list[tuple[str, str]] | None:
-    """
-    Convert the raw path string (starting with a delimiter) into
-    [ (delimiter, identifier), … ] or None if the syntax is malformed.
-    """
-    tokens: list[tuple[str, str]] = []
-    while path:
-        # 1. Which delimiter starts this chunk?
-        delim = next((d for d in _DELIMS if path.startswith(d)), None)
-        if delim is None:
-            return None  # invalid syntax
-
-        # 2. Slice off the delimiter, then up to the next delimiter (or EOS)
-        path = path[len(delim) :]
-        nxt_delim, pos = _next_delim(path)
-        token, path = (
-            path[: pos if pos != -1 else len(path)],
-            path[pos if pos != -1 else len(path) :],
-        )
-        if token == "":
-            return None  # empty identifier is invalid
-        tokens.append((delim, token))
-    return tokens
-
-
-# --------------------------------------------------------------------------- #
-#  Public API – parsing (flattened ➜ concrete)
-# --------------------------------------------------------------------------- #
-
-
-def parse_execution_output(output: BlockOutputEntry, name: str) -> JsonValue | None:
-    """
-    Retrieve a nested value out of `output` using the flattened *name*.
-
-    On any failure (wrong name, wrong type, out-of-range, bad path)
-    returns **None**.
-    """
-    base_name, data = output
-
-    # Exact match → whole object
-    if name == base_name:
-        return data
-
-    # Must start with the expected name
-    if not name.startswith(base_name):
-        return None
-    path = name[len(base_name) :]
-    if not path:
-        return None  # nothing left to parse
-
-    tokens = _tokenise(path)
-    if tokens is None:
-        return None
-
-    cur: JsonValue = data
-    for delim, ident in tokens:
-        if delim == LIST_SPLIT:
-            # list[index]
-            try:
-                idx = int(ident)
-            except ValueError:
-                return None
-            if not isinstance(cur, list) or idx >= len(cur):
-                return None
-            cur = cur[idx]
-
-        elif delim == DICT_SPLIT:
-            if not isinstance(cur, dict) or ident not in cur:
-                return None
-            cur = cur[ident]
-
-        elif delim == OBJC_SPLIT:
-            if not hasattr(cur, ident):
-                return None
-            cur = getattr(cur, ident)
-
-        else:
-            return None  # unreachable
-
-    return cur
-
-
-def _assign(container: Any, tokens: list[tuple[str, str]], value: Any) -> Any:
-    """
-    Recursive helper that *returns* the (possibly new) container with
-    `value` assigned along the remaining `tokens` path.
-    """
-    if not tokens:
-        return value  # leaf reached
-
-    delim, ident = tokens[0]
-    rest = tokens[1:]
-
-    # ---------- list ----------
-    if delim == LIST_SPLIT:
-        try:
-            idx = int(ident)
-        except ValueError:
-            raise ValueError("index must be an integer")
-
-        if container is None:
-            container = []
-        elif not isinstance(container, list):
-            container = list(container) if hasattr(container, "__iter__") else []
-
-        while len(container) <= idx:
-            container.append(None)
-        container[idx] = _assign(container[idx], rest, value)
-        return container
-
-    # ---------- dict ----------
-    if delim == DICT_SPLIT:
-        if container is None:
-            container = {}
-        elif not isinstance(container, dict):
-            container = dict(container) if hasattr(container, "items") else {}
-        container[ident] = _assign(container.get(ident), rest, value)
-        return container
-
-    # ---------- object ----------
-    if delim == OBJC_SPLIT:
-        if container is None or not isinstance(container, MockObject):
-            container = MockObject()
-        setattr(
-            container,
-            ident,
-            _assign(getattr(container, ident, None), rest, value),
-        )
-        return container
-
-    return value  # unreachable
-
-
-def merge_execution_input(data: BlockInput) -> BlockInput:
-    """
-    Reconstruct nested objects from a *flattened* dict of key → value.
-
-    Raises ValueError on syntactically invalid list indices.
-    """
-    merged: BlockInput = {}
-
-    for key, value in data.items():
-        # Split off the base name (before the first delimiter, if any)
-        delim, pos = _next_delim(key)
-        if delim is None:
-            merged[key] = value
-            continue
-
-        base, path = key[:pos], key[pos:]
-        tokens = _tokenise(path)
-        if tokens is None:
-            # Invalid key; treat as scalar under the raw name
-            merged[key] = value
-            continue
-
-        merged[base] = _assign(merged.get(base), tokens, value)
-
-    data.update(merged)
-    return data
+# Dynamic field utilities are now imported from backend.data.dynamic_fields
 
 
 def validate_exec(
