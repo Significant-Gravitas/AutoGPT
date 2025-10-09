@@ -10,9 +10,9 @@ from backend.util.retry import (
     _alert_rate_limiter,
     _rate_limiter_lock,
     _send_critical_retry_alert,
-    _should_send_alert,
     conn_retry,
     create_retry_decorator,
+    should_send_alert,
 )
 
 
@@ -71,17 +71,17 @@ class TestRetryRateLimiting:
     def test_should_send_alert_allows_first_occurrence(self):
         """Test that the first occurrence of an error allows alert."""
         exc = ValueError("test error")
-        assert _should_send_alert("test_func", exc, "test_context") is True
+        assert should_send_alert("test_func", exc, "test_context") is True
 
     def test_should_send_alert_rate_limits_duplicate(self):
         """Test that duplicate errors are rate limited."""
         exc = ValueError("test error")
 
         # First call should be allowed
-        assert _should_send_alert("test_func", exc, "test_context") is True
+        assert should_send_alert("test_func", exc, "test_context") is True
 
         # Second call should be rate limited
-        assert _should_send_alert("test_func", exc, "test_context") is False
+        assert should_send_alert("test_func", exc, "test_context") is False
 
     def test_should_send_alert_allows_different_errors(self):
         """Test that different errors are allowed even if same function."""
@@ -89,47 +89,47 @@ class TestRetryRateLimiting:
         exc2 = ValueError("error 2")
 
         # First error should be allowed
-        assert _should_send_alert("test_func", exc1, "test_context") is True
+        assert should_send_alert("test_func", exc1, "test_context") is True
 
         # Different error should also be allowed
-        assert _should_send_alert("test_func", exc2, "test_context") is True
+        assert should_send_alert("test_func", exc2, "test_context") is True
 
     def test_should_send_alert_allows_different_contexts(self):
         """Test that same error in different contexts is allowed."""
         exc = ValueError("test error")
 
         # First context should be allowed
-        assert _should_send_alert("test_func", exc, "context1") is True
+        assert should_send_alert("test_func", exc, "context1") is True
 
         # Different context should also be allowed
-        assert _should_send_alert("test_func", exc, "context2") is True
+        assert should_send_alert("test_func", exc, "context2") is True
 
     def test_should_send_alert_allows_different_functions(self):
         """Test that same error in different functions is allowed."""
         exc = ValueError("test error")
 
         # First function should be allowed
-        assert _should_send_alert("func1", exc, "test_context") is True
+        assert should_send_alert("func1", exc, "test_context") is True
 
         # Different function should also be allowed
-        assert _should_send_alert("func2", exc, "test_context") is True
+        assert should_send_alert("func2", exc, "test_context") is True
 
     def test_should_send_alert_respects_time_window(self):
         """Test that alerts are allowed again after the rate limit window."""
         exc = ValueError("test error")
 
         # First call should be allowed
-        assert _should_send_alert("test_func", exc, "test_context") is True
+        assert should_send_alert("test_func", exc, "test_context") is True
 
         # Immediately after should be rate limited
-        assert _should_send_alert("test_func", exc, "test_context") is False
+        assert should_send_alert("test_func", exc, "test_context") is False
 
         # Mock time to simulate passage of rate limit window
         current_time = time.time()
         with patch("backend.util.retry.time.time") as mock_time:
             # Simulate time passing beyond rate limit window
             mock_time.return_value = current_time + ALERT_RATE_LIMIT_SECONDS + 1
-            assert _should_send_alert("test_func", exc, "test_context") is True
+            assert should_send_alert("test_func", exc, "test_context") is True
 
     def test_should_send_alert_thread_safety(self):
         """Test that rate limiting is thread-safe."""
@@ -137,7 +137,7 @@ class TestRetryRateLimiting:
         results = []
 
         def check_alert():
-            result = _should_send_alert("test_func", exc, "test_context")
+            result = should_send_alert("test_func", exc, "test_context")
             results.append(result)
 
         # Create multiple threads trying to send the same alert
@@ -192,7 +192,7 @@ class TestRetryRateLimiting:
         _send_critical_retry_alert("test_func", 50, exc, "test_context")
 
         # Rate limiter should still work for subsequent calls
-        assert _should_send_alert("test_func", exc, "test_context") is False
+        assert should_send_alert("test_func", exc, "test_context") is False
 
     def test_error_signature_generation(self):
         """Test that error signatures are generated correctly for rate limiting."""
@@ -201,8 +201,8 @@ class TestRetryRateLimiting:
         exc = ValueError(long_message)
 
         # Should not raise exception and should work normally
-        assert _should_send_alert("test_func", exc, "test_context") is True
-        assert _should_send_alert("test_func", exc, "test_context") is False
+        assert should_send_alert("test_func", exc, "test_context") is True
+        assert should_send_alert("test_func", exc, "test_context") is False
 
     def test_real_world_scenario_spend_credits_spam(self):
         """Test the real-world scenario that was causing spam."""
