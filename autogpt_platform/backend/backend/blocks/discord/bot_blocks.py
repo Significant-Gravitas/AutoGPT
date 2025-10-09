@@ -3,7 +3,7 @@ import io
 import mimetypes
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 import aiohttp
 import discord
@@ -1306,7 +1306,10 @@ class CreateDiscordThreadBlock(Block):
                 )
 
                 # Convert duration string to minutes for Discord API
-                duration_minutes = auto_archive_duration.to_minutes()
+                # Cast to the specific Literal type that discord.py expects
+                duration_minutes = cast(
+                    Literal[60, 1440, 4320, 10080], auto_archive_duration.to_minutes()
+                )
 
                 thread = await channel.create_thread(  # type: ignore
                     name=thread_name,
