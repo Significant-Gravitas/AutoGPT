@@ -1,18 +1,55 @@
 version = 1
 
-test_patterns = ["**/*.spec.ts","**/*_test.py","**/*_tests.py","**/test_*.py"]
+# -------------------------------------------------------
+# ✅ Test Discovery Patterns
+# -------------------------------------------------------
+test_patterns = [
+  "**/tests/**/*.py",
+  "**/*_test.py",
+  "**/*_tests.py",
+  "**/test_*.py",
+  "**/*.spec.ts"
+]
 
-exclude_patterns = ["classic/**"]
+# -------------------------------------------------------
+# ✅ Excluded Directories
+# -------------------------------------------------------
+exclude_patterns = [
+  "classic/**",
+  "build/**",
+  "dist/**",
+  "venv/**",
+  "__pycache__/**",
+  "node_modules/**",
+  "legacy/**"
+]
 
-[[analyzers]]
-name = "javascript"
-
-[analyzers.meta]
-plugins = ["react"]
-environment = ["nodejs"]
-
+# -------------------------------------------------------
+# ✅ Python Analyzer
+# -------------------------------------------------------
 [[analyzers]]
 name = "python"
 
 [analyzers.meta]
-runtime_version = "3.x.x"
+runtime_version = "3.13.x"
+type_checker = "mypy"
+test_framework = "pytest"
+dependency_file = "requirements.txt"
+linting_rules = ["flake8"]
+
+# Optional: Enable security checks
+security = true
+
+
+# -------------------------------------------------------
+# ✅ JavaScript / TypeScript Analyzer (optional)
+# -------------------------------------------------------
+[[analyzers]]
+name = "javascript"
+
+[analyzers.meta]
+plugins = ["react", "nextjs"]
+environment = ["nodejs", "browser"]
+runtime_version = "20.x.x"
+linting_rules = ["eslint", "prettier"]
+test_framework = "jest"
