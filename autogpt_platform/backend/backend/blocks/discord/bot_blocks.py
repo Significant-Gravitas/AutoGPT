@@ -1296,6 +1296,9 @@ class CreateDiscordThreadBlock(Block):
                 await client.close()
                 return
 
+            # After the hasattr check, we know channel is a TextChannel
+            channel = cast(discord.TextChannel, channel)
+
             try:
                 # Create the thread using discord.py 2.0+ API
                 # For discord.py 2.0+, using type parameter with ChannelType is the correct approach
@@ -1312,7 +1315,8 @@ class CreateDiscordThreadBlock(Block):
                 )
 
                 # The 'type' parameter exists in discord.py 2.0+ but isn't in type stubs yet
-                thread = await channel.create_thread(  # pyright: ignore[reportCallIssue]
+                # pyright: ignore[reportCallIssue]
+                thread = await channel.create_thread(
                     name=thread_name,
                     type=thread_type,
                     auto_archive_duration=duration_minutes,
