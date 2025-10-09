@@ -1311,7 +1311,8 @@ class CreateDiscordThreadBlock(Block):
                     Literal[60, 1440, 4320, 10080], auto_archive_duration.to_minutes()
                 )
 
-                thread = await channel.create_thread(  # type: ignore
+                # The 'type' parameter exists in discord.py 2.0+ but isn't in type stubs yet
+                thread = await channel.create_thread(  # type: ignore[call-arg]
                     name=thread_name,
                     type=thread_type,
                     auto_archive_duration=duration_minutes,
