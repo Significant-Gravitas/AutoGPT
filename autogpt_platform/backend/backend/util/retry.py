@@ -20,33 +20,72 @@ logger = logging.getLogger(__name__)
 # Alert threshold for excessive retries
 EXCESSIVE_RETRY_THRESHOLD = 50
 
+# Rate limiting for alerts - track last alert time per function+error combination
+_alert_rate_limiter = {}
+_rate_limiter_lock = threading.Lock()
+ALERT_RATE_LIMIT_SECONDS = 300  # 5 minutes between same alerts
+
+
+def should_send_alert(func_name: str, exception: Exception, context: str = "") -> bool:
+    """Check if we should send an alert based on rate limiting."""
+    # Create a unique key for this function+error+context combination
+    error_signature = (
+        f"{context}:{func_name}:{type(exception).__name__}:{str(exception)[:100]}"
+    )
+    current_time = time.time()
+
+    with _rate_limiter_lock:
+        last_alert_time = _alert_rate_limiter.get(error_signature, 0)
+        if current_time - last_alert_time >= ALERT_RATE_LIMIT_SECONDS:
+            _alert_rate_limiter[error_signature] = current_time
+            return True
+        return False
+
+
+def send_rate_limited_discord_alert(
+    func_name: str, exception: Exception, context: str, alert_msg: str, channel=None
+) -> bool:
+    """
+    Send a Discord alert with rate limiting.
+
+    Returns True if alert was sent, False if rate limited.
+    """
+    if not should_send_alert(func_name, exception, context):
+        return False
+
+    try:
+        from backend.util.clients import get_notification_manager_client
+        from backend.util.metrics import DiscordChannel
+
+        notification_client = get_notification_manager_client()
+        notification_client.discord_system_alert(
+            alert_msg, channel or DiscordChannel.PLATFORM
+        )
+        return True
+
+    except Exception as alert_error:
+        logger.error(f"Failed to send Discord alert: {alert_error}")
+        return False
+
 
 def _send_critical_retry_alert(
     func_name: str, attempt_number: int, exception: Exception, context: str = ""
 ):
     """Send alert when a function is approaching the retry failure threshold."""
-    try:
-        # Import here to avoid circular imports
-        from backend.util.clients import get_notification_manager_client
 
-        notification_client = get_notification_manager_client()
-
-        prefix = f"{context}: " if context else ""
-        alert_msg = (
-            f"🚨 CRITICAL: Operation Approaching Failure Threshold: {prefix}'{func_name}'\n\n"
-            f"Current attempt: {attempt_number}/{EXCESSIVE_RETRY_THRESHOLD}\n"
-            f"Error: {type(exception).__name__}: {exception}\n\n"
-            f"This operation is about to fail permanently. Investigate immediately."
-        )
-
-        notification_client.discord_system_alert(alert_msg)
+    prefix = f"{context}: " if context else ""
+    if send_rate_limited_discord_alert(
+        func_name,
+        exception,
+        context,
+        f"🚨 CRITICAL: Operation Approaching Failure Threshold: {prefix}'{func_name}'\n\n"
+        f"Current attempt: {attempt_number}/{EXCESSIVE_RETRY_THRESHOLD}\n"
+        f"Error: {type(exception).__name__}: {exception}\n\n"
+        f"This operation is about to fail permanently. Investigate immediately.",
+    ):
         logger.critical(
             f"CRITICAL ALERT SENT: Operation {func_name} at attempt {attempt_number}"
         )
-
-    except Exception as alert_error:
-        logger.error(f"Failed to send critical retry alert: {alert_error}")
-        # Don't let alerting failures break the main flow
 
 
 def _create_retry_callback(context: str = ""):
@@ -66,7 +105,7 @@ def _create_retry_callback(context: str = ""):
                 f"{type(exception).__name__}: {exception}"
             )
         else:
-            # Retry attempt - send critical alert only once at threshold
+            # Retry attempt - send critical alert only once at threshold (rate limited)
             if attempt_number == EXCESSIVE_RETRY_THRESHOLD:
                 _send_critical_retry_alert(
                     func_name, attempt_number, exception, context
@@ -131,7 +170,7 @@ def _log_prefix(resource_name: str, conn_id: str):
 def conn_retry(
     resource_name: str,
     action_name: str,
-    max_retry: int = 5,
+    max_retry: int = 100,
     max_wait: float = 30,
 ):
     conn_id = str(uuid4())
@@ -139,10 +178,29 @@ def conn_retry(
     def on_retry(retry_state):
         prefix = _log_prefix(resource_name, conn_id)
         exception = retry_state.outcome.exception()
+        attempt_number = retry_state.attempt_number
+        func_name = getattr(retry_state.fn, "__name__", "unknown")
 
         if retry_state.outcome.failed and retry_state.next_action is None:
             logger.error(f"{prefix} {action_name} failed after retries: {exception}")
         else:
+            if attempt_number == EXCESSIVE_RETRY_THRESHOLD:
+                if send_rate_limited_discord_alert(
+                    func_name,
+                    exception,
+                    f"{resource_name}_infrastructure",
+                    f"🚨 **Critical Infrastructure Connection Issue**\n"
+                    f"Resource: {resource_name}\n"
+                    f"Action: {action_name}\n"
+                    f"Function: {func_name}\n"
+                    f"Current attempt: {attempt_number}/{max_retry + 1}\n"
+                    f"Error: {type(exception).__name__}: {str(exception)[:200]}{'...' if len(str(exception)) > 200 else ''}\n\n"
+                    f"Infrastructure component is approaching failure threshold. Investigate immediately.",
+                ):
+                    logger.critical(
+                        f"INFRASTRUCTURE ALERT SENT: {resource_name} at {attempt_number} attempts"
+                    )
+
             logger.warning(
                 f"{prefix} {action_name} failed: {exception}. Retrying now..."
             )
@@ -218,8 +276,8 @@ def continuous_retry(*, retry_delay: float = 1.0):
 
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
+            counter = 0
             while True:
-                counter = 0
                 try:
                     return await func(*args, **kwargs)
                 except Exception as exc:
