@@ -2,7 +2,7 @@ import base64
 import io
 import mimetypes
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import aiohttp
 import discord
@@ -1151,15 +1151,13 @@ class CreateDiscordThreadBlock(Block):
             advanced=True,
             default="",
         )
-        thread_name: str = SchemaField(
-            description="The name of the thread to create"
-        )
+        thread_name: str = SchemaField(description="The name of the thread to create")
         is_private: bool = SchemaField(
             description="Whether to create a private thread (requires Boost Level 2+) or public thread",
             default=False,
         )
-        auto_archive_duration: int = SchemaField(
-            description="Duration in minutes before the thread is automatically archived (60, 1440, 4320, or 10080)",
+        auto_archive_duration: Literal[60, 1440, 4320, 10080] = SchemaField(
+            description="Duration before the thread is automatically archived: 60 (1 hour), 1440 (1 day), 4320 (3 days), or 10080 (1 week)",
             advanced=True,
             default=60,
         )
@@ -1284,10 +1282,15 @@ class CreateDiscordThreadBlock(Block):
                     60: "1 hour",
                     1440: "1 day (24 hours)",
                     4320: "3 days (72 hours)",
-                    10080: "1 week (7 days)"
+                    10080: "1 week (7 days)",
                 }
                 if auto_archive_duration not in valid_durations:
-                    valid_options = ", ".join([f"{mins} minutes ({desc})" for mins, desc in valid_durations.items()])
+                    valid_options = ", ".join(
+                        [
+                            f"{mins} minutes ({desc})"
+                            for mins, desc in valid_durations.items()
+                        ]
+                    )
                     result["status"] = (
                         f"Invalid auto_archive_duration: {auto_archive_duration} minutes. "
                         f"Valid options are: {valid_options}"
