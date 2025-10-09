@@ -72,7 +72,6 @@ async def _get_credits(user_id: str) -> int:
 
 
 class DatabaseManager(AppService):
-
     def run_service(self) -> None:
         logger.info(f"[{self.service_name}] ⏳ Connecting to Database...")
         self.run_and_wait(db.connect())
@@ -181,6 +180,7 @@ class DatabaseManagerClient(AppServiceClient):
 
     # Executions
     get_graph_executions = _(d.get_graph_executions)
+    get_graph_executions_count = _(d.get_graph_executions_count)
     get_graph_execution_meta = _(d.get_graph_execution_meta)
     get_node_executions = _(d.get_node_executions)
     update_node_execution_status = _(d.update_node_execution_status)

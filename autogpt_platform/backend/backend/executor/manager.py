@@ -7,6 +7,7 @@ import uuid
 from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
 
 from pika.adapters.blocking_connection import BlockingChannel
@@ -1472,9 +1473,12 @@ class ExecutionManager(AppProcess):
         # Check user rate limit before processing
         try:
             db_client = get_db_client()
+            # Only check executions from the last 24 hours for performance
+            twenty_four_hours_ago = datetime.now(timezone.utc) - timedelta(hours=24)
             current_running_count = db_client.get_graph_executions_count(
                 user_id=user_id,
-                statuses=[ExecutionStatus.RUNNING, ExecutionStatus.QUEUED],
+                statuses=[ExecutionStatus.RUNNING],
+                created_time_gte=twenty_four_hours_ago,
             )
 
             if (
@@ -1483,7 +1487,7 @@ class ExecutionManager(AppProcess):
             ):
                 logger.warning(
                     f"[{self.service_name}] Rate limit exceeded for user {user_id}: "
-                    f"{current_running_count}/{settings.config.max_concurrent_graph_executions_per_user} concurrent executions"
+                    f"{current_running_count}/{settings.config.max_concurrent_graph_executions_per_user} running executions"
                 )
                 _ack_message(reject=True, requeue=True)
                 return
