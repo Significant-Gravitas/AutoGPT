@@ -1215,6 +1215,7 @@ class CreateDiscordThreadBlock(Block):
     ) -> dict:
         intents = discord.Intents.default()
         intents.guilds = True
+        intents.message_content = True  # Required for sending messages in threads
         client = discord.Client(intents=intents)
 
         result = {}
@@ -1222,22 +1223,47 @@ class CreateDiscordThreadBlock(Block):
         @client.event
         async def on_ready():
             channel = None
+            matching_channels = []
 
             # Try to parse as channel ID first
             try:
                 channel_id = int(channel_identifier)
-                channel = client.get_channel(channel_id)
+                # Use fetch_channel for better reliability with cached vs uncached channels
+                try:
+                    channel = await client.fetch_channel(channel_id)
+                except discord.errors.NotFound:
+                    channel = None
             except ValueError:
                 # Not an ID, treat as channel name
+                # Collect all matching channels to detect duplicates
                 for guild in client.guilds:
                     if server_name and guild.name != server_name:
                         continue
                     for ch in guild.text_channels:
                         if ch.name == channel_identifier:
-                            channel = ch
-                            break
-                    if channel:
-                        break
+                            matching_channels.append((guild, ch))
+
+                # Handle multiple matches
+                if len(matching_channels) > 1:
+                    if not server_name:
+                        guild_names = [g.name for g, _ in matching_channels]
+                        result["status"] = (
+                            f"Multiple channels named '{channel_identifier}' found in servers: {', '.join(guild_names)}. "
+                            f"Please specify server_name to disambiguate."
+                        )
+                        await client.close()
+                        return
+                    else:
+                        # Multiple matches even with server_name specified (shouldn't happen)
+                        result["status"] = (
+                            f"Multiple channels named '{channel_identifier}' found in server '{server_name}'. "
+                            f"Please use the channel ID instead."
+                        )
+                        await client.close()
+                        return
+                elif len(matching_channels) == 1:
+                    channel = matching_channels[0][1]
+                # If no matches, channel remains None
 
             if not channel:
                 result["status"] = f"Channel not found: {channel_identifier}"
@@ -1253,14 +1279,30 @@ class CreateDiscordThreadBlock(Block):
                 return
 
             try:
-                # Determine thread type
+                # Validate auto_archive_duration
+                valid_durations = {
+                    60: "1 hour",
+                    1440: "1 day (24 hours)",
+                    4320: "3 days (72 hours)",
+                    10080: "1 week (7 days)"
+                }
+                if auto_archive_duration not in valid_durations:
+                    valid_options = ", ".join([f"{mins} minutes ({desc})" for mins, desc in valid_durations.items()])
+                    result["status"] = (
+                        f"Invalid auto_archive_duration: {auto_archive_duration} minutes. "
+                        f"Valid options are: {valid_options}"
+                    )
+                    await client.close()
+                    return
+
+                # Create the thread using discord.py 2.0+ API
+                # For discord.py 2.0+, using type parameter with ChannelType is the correct approach
                 thread_type = (
                     discord.ChannelType.private_thread
                     if is_private
                     else discord.ChannelType.public_thread
                 )
 
-                # Create the thread
                 thread = await channel.create_thread(  # type: ignore
                     name=thread_name,
                     type=thread_type,
@@ -1275,9 +1317,9 @@ class CreateDiscordThreadBlock(Block):
                 result["thread_id"] = str(thread.id)
                 result["thread_name"] = thread.name
 
-            except discord.errors.Forbidden:
+            except discord.errors.Forbidden as e:
                 result["status"] = (
-                    "Bot does not have permission to create threads in this channel"
+                    f"Bot does not have permission to create threads in this channel. {str(e)}"
                 )
             except Exception as e:
                 result["status"] = f"Error creating thread: {str(e)}"
