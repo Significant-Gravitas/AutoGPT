@@ -1,14 +1,15 @@
 import React from "react";
 import { MenuItem } from "../MenuItem";
-import { DefaultStateType, useBlockMenuContext } from "../block-menu-provider";
 import { useBlockMenuSidebar } from "./useBlockMenuSidebar";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { useBlockMenuStore } from "../../../stores/blockMenuStore";
+import { DefaultStateType } from "../types";
 
 export const BlockMenuSidebar = () => {
   const { data, setDefaultState, defaultState, isLoading, isError, error } =
     useBlockMenuSidebar();
-  const { setIntegration } = useBlockMenuContext();
+  const { setIntegration } = useBlockMenuStore();
   if (isLoading) {
     return (
       <div className="w-fit space-y-2 px-4 pt-4">

@@ -1,14 +1,15 @@
 import React from "react";
 import { IntegrationChip } from "../IntegrationChip";
 import { Block } from "../Block";
-import { DefaultStateType, useBlockMenuContext } from "../block-menu-provider";
 import { useSuggestionContent } from "./useSuggestionContent";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { blockMenuContainerStyle } from "../style";
 import { useNodeStore } from "../../../stores/nodeStore";
+import { useBlockMenuStore } from "../../../stores/blockMenuStore";
+import { DefaultStateType } from "../types";
 
 export const SuggestionContent = () => {
-  const { setIntegration, setDefaultState } = useBlockMenuContext();
+  const { setIntegration, setDefaultState } = useBlockMenuStore();
   const { data, isLoading, isError, error, refetch } = useSuggestionContent();
   const addBlock = useNodeStore((state) => state.addBlock);
 
