@@ -182,26 +182,25 @@ def conn_retry(
         func_name = getattr(retry_state.fn, "__name__", "unknown")
 
         if retry_state.outcome.failed and retry_state.next_action is None:
-            # Final failure - send rate-limited alert for critical infrastructure failures
-            alert_msg = (
-                f"🚨 **Critical Infrastructure Connection Failure**\n"
-                f"Resource: {resource_name}\n"
-                f"Action: {action_name}\n"
-                f"Function: {func_name}\n"
-                f"Attempts: {attempt_number}/{max_retry + 1}\n"
-                f"Error: {type(exception).__name__}: {str(exception)[:200]}{'...' if len(str(exception)) > 200 else ''}\n\n"
-                f"This critical infrastructure component has failed permanently."
-            )
-
-            if send_rate_limited_discord_alert(
-                func_name, exception, f"{resource_name}_connection", alert_msg
-            ):
-                logger.critical(
-                    f"INFRASTRUCTURE ALERT SENT: {resource_name} connection failed permanently"
-                )
-
             logger.error(f"{prefix} {action_name} failed after retries: {exception}")
         else:
+            if attempt_number == EXCESSIVE_RETRY_THRESHOLD:
+                if send_rate_limited_discord_alert(
+                    func_name,
+                    exception,
+                    f"{resource_name}_infrastructure",
+                    f"🚨 **Critical Infrastructure Connection Issue**\n"
+                    f"Resource: {resource_name}\n"
+                    f"Action: {action_name}\n"
+                    f"Function: {func_name}\n"
+                    f"Current attempt: {attempt_number}/{max_retry + 1}\n"
+                    f"Error: {type(exception).__name__}: {str(exception)[:200]}{'...' if len(str(exception)) > 200 else ''}\n\n"
+                    f"Infrastructure component is approaching failure threshold. Investigate immediately.",
+                ):
+                    logger.critical(
+                        f"INFRASTRUCTURE ALERT SENT: {resource_name} at {attempt_number} attempts"
+                    )
+
             logger.warning(
                 f"{prefix} {action_name} failed: {exception}. Retrying now..."
             )
