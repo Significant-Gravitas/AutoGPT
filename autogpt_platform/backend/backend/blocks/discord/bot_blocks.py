@@ -1,8 +1,9 @@
 import base64
 import io
 import mimetypes
+from enum import Enum
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import aiohttp
 import discord
@@ -25,6 +26,24 @@ DiscordCredentials = DiscordBotCredentialsInput
 DiscordCredentialsField = DiscordBotCredentialsField
 TEST_CREDENTIALS = TEST_BOT_CREDENTIALS
 TEST_CREDENTIALS_INPUT = TEST_BOT_CREDENTIALS_INPUT
+
+
+class ThreadArchiveDuration(str, Enum):
+    """Discord thread auto-archive duration options"""
+    ONE_HOUR = "1 hour"
+    ONE_DAY = "1 day"
+    THREE_DAYS = "3 days"
+    ONE_WEEK = "1 week"
+
+    def to_minutes(self) -> int:
+        """Convert the duration string to minutes for Discord API"""
+        mapping = {
+            "1 hour": 60,
+            "1 day": 1440,
+            "3 days": 4320,
+            "1 week": 10080,
+        }
+        return mapping[self.value]
 
 
 class ReadDiscordMessagesBlock(Block):
@@ -1156,10 +1175,10 @@ class CreateDiscordThreadBlock(Block):
             description="Whether to create a private thread (requires Boost Level 2+) or public thread",
             default=False,
         )
-        auto_archive_duration: Literal[60, 1440, 4320, 10080] = SchemaField(
-            description="Duration before the thread is automatically archived: 60 (1 hour), 1440 (1 day), 4320 (3 days), or 10080 (1 week)",
+        auto_archive_duration: ThreadArchiveDuration = SchemaField(
+            description="Duration before the thread is automatically archived",
             advanced=True,
-            default=60,
+            default=ThreadArchiveDuration.ONE_WEEK,
         )
         message_content: str = SchemaField(
             description="Optional initial message to send in the thread",
@@ -1183,7 +1202,7 @@ class CreateDiscordThreadBlock(Block):
                 "channel_identifier": "general",
                 "thread_name": "Test Thread",
                 "is_private": False,
-                "auto_archive_duration": 60,
+                "auto_archive_duration": ThreadArchiveDuration.ONE_HOUR,
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_output=[
@@ -1208,7 +1227,7 @@ class CreateDiscordThreadBlock(Block):
         server_name: str | None,
         thread_name: str,
         is_private: bool,
-        auto_archive_duration: int,
+        auto_archive_duration: ThreadArchiveDuration,
         message_content: str,
     ) -> dict:
         intents = discord.Intents.default()
@@ -1277,27 +1296,6 @@ class CreateDiscordThreadBlock(Block):
                 return
 
             try:
-                # Validate auto_archive_duration
-                valid_durations = {
-                    60: "1 hour",
-                    1440: "1 day (24 hours)",
-                    4320: "3 days (72 hours)",
-                    10080: "1 week (7 days)",
-                }
-                if auto_archive_duration not in valid_durations:
-                    valid_options = ", ".join(
-                        [
-                            f"{mins} minutes ({desc})"
-                            for mins, desc in valid_durations.items()
-                        ]
-                    )
-                    result["status"] = (
-                        f"Invalid auto_archive_duration: {auto_archive_duration} minutes. "
-                        f"Valid options are: {valid_options}"
-                    )
-                    await client.close()
-                    return
-
                 # Create the thread using discord.py 2.0+ API
                 # For discord.py 2.0+, using type parameter with ChannelType is the correct approach
                 thread_type = (
@@ -1306,10 +1304,13 @@ class CreateDiscordThreadBlock(Block):
                     else discord.ChannelType.public_thread
                 )
 
+                # Convert duration string to minutes for Discord API
+                duration_minutes = auto_archive_duration.to_minutes()
+
                 thread = await channel.create_thread(  # type: ignore
                     name=thread_name,
                     type=thread_type,
-                    auto_archive_duration=auto_archive_duration,
+                    auto_archive_duration=duration_minutes,
                 )
 
                 # Send initial message if provided
