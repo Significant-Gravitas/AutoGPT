@@ -30,6 +30,7 @@ TEST_CREDENTIALS_INPUT = TEST_BOT_CREDENTIALS_INPUT
 
 class ThreadArchiveDuration(str, Enum):
     """Discord thread auto-archive duration options"""
+
     ONE_HOUR = "1 hour"
     ONE_DAY = "1 day"
     THREE_DAYS = "3 days"
