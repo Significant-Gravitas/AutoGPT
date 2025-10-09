@@ -9,8 +9,8 @@
     "/api/integrations/{provider}/login": {
       "get": {
         "tags": ["v1", "integrations"],
-        "summary": "Login",
-        "operationId": "getV1Login",
+        "summary": "Initiate OAuth flow",
+        "operationId": "getV1Initiate oauth flow",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -60,8 +60,8 @@
     "/api/integrations/{provider}/callback": {
       "post": {
         "tags": ["v1", "integrations"],
-        "summary": "Callback",
-        "operationId": "postV1Callback",
+        "summary": "Exchange OAuth code for tokens",
+        "operationId": "postV1Exchange oauth code for tokens",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -79,7 +79,9 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/Body_postV1Callback" }
+              "schema": {
+                "$ref": "#/components/schemas/Body_postV1Exchange_oauth_code_for_tokens"
+              }
             }
           }
         },
@@ -5110,7 +5112,7 @@
         "required": ["blocks", "pagination"],
         "title": "BlockResponse"
       },
-      "Body_postV1Callback": {
+      "Body_postV1Exchange_oauth_code_for_tokens": {
         "properties": {
           "code": {
             "type": "string",
@@ -5120,7 +5122,7 @@
         },
         "type": "object",
         "required": ["code", "state_token"],
-        "title": "Body_postV1Callback"
+        "title": "Body_postV1Exchange oauth code for tokens"
       },
       "Body_postV1Execute_graph_agent": {
         "properties": {

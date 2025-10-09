@@ -84,7 +84,11 @@ from backend.util.file import clean_exec_files
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.metrics import DiscordChannel
 from backend.util.process import AppProcess, set_service_name
-from backend.util.retry import continuous_retry, func_retry
+from backend.util.retry import (
+    continuous_retry,
+    func_retry,
+    send_rate_limited_discord_alert,
+)
 from backend.util.settings import Settings
 
 from .cluster_lock import ClusterLock
@@ -184,6 +188,7 @@ async def execute_node(
         _input_data.inputs = input_data
         if nodes_input_masks:
             _input_data.nodes_input_masks = nodes_input_masks
+        _input_data.user_id = user_id
         input_data = _input_data.model_dump()
     data.inputs = input_data
 
@@ -979,16 +984,31 @@ class ExecutionProcessor:
                 if isinstance(e, Exception)
                 else Exception(f"{e.__class__.__name__}: {e}")
             )
+            if not execution_stats.error:
+                execution_stats.error = str(error)
 
             known_errors = (InsufficientBalanceError, ModerationError)
             if isinstance(error, known_errors):
-                execution_stats.error = str(error)
                 return ExecutionStatus.FAILED
 
             execution_status = ExecutionStatus.FAILED
             log_metadata.exception(
                 f"Failed graph execution {graph_exec.graph_exec_id}: {error}"
             )
+
+            # Send rate-limited Discord alert for unknown/unexpected errors
+            send_rate_limited_discord_alert(
+                "graph_execution",
+                error,
+                "unknown_error",
+                f"🚨 **Unknown Graph Execution Error**\n"
+                f"User: {graph_exec.user_id}\n"
+                f"Graph ID: {graph_exec.graph_id}\n"
+                f"Execution ID: {graph_exec.graph_exec_id}\n"
+                f"Error Type: {type(error).__name__}\n"
+                f"Error: {str(error)[:200]}{'...' if len(str(error)) > 200 else ''}\n",
+            )
+
             raise
 
         finally:
