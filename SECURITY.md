@@ -1,48 +1,147 @@
-# Security Policy
+# 🔐 Security Policy
 
-## Reporting Security Issues
+## Overview
 
-We take the security of our project seriously. If you believe you have found a security vulnerability, please report it to us privately. **Please do not report security vulnerabilities through public GitHub issues, discussions, or pull requests.**
-
-> **Important Note**: Any code within the `classic/` folder is considered legacy, unsupported, and out of scope for security reports. We will not address security vulnerabilities in this deprecated code.
-
-Instead, please report them via:
-- [GitHub Security Advisory](https://github.com/Significant-Gravitas/AutoGPT/security/advisories/new)
-<!--- [Huntr.dev](https://huntr.com/repos/significant-gravitas/autogpt) - where you may be eligible for a bounty-->
-
-### Reporting Process
-1. **Submit Report**: Use one of the above channels to submit your report
-2. **Response Time**: Our team will acknowledge receipt of your report within 14 business days.
-3. **Collaboration**: We will collaborate with you to understand and validate the issue
-4. **Resolution**: We will work on a fix and coordinate the release process
-
-### Disclosure Policy
-- Please provide detailed reports with reproducible steps
-- Include the version/commit hash where you discovered the vulnerability
-- Allow us a 90-day security fix window before any public disclosure
-- After patch is released, allow 30 days for users to update before public disclosure (for a total of 120 days max between update time and fix time)
-- Share any potential mitigations or workarounds if known
-
-## Supported Versions
-Only the following versions are eligible for security updates:
-
-| Version | Supported |
-|---------|-----------|
-| Latest release on master branch | ✅ |
-| Development commits (pre-master) | ✅ |
-| Classic folder (deprecated) | ❌ |
-| All other versions | ❌ |
-
-## Security Best Practices
-When using this project:
-1. Always use the latest stable version
-2. Review security advisories before updating
-3. Follow our security documentation and guidelines
-4. Keep your dependencies up to date
-5. Do not use code from the `classic/` folder as it is deprecated and unsupported
-
-## Past Security Advisories
-For a list of past security advisories, please visit our [Security Advisory Page](https://github.com/Significant-Gravitas/AutoGPT/security/advisories) and [Huntr Disclosures Page](https://huntr.com/repos/significant-gravitas/autogpt).
+We take the security of this project seriously and appreciate your help in keeping it safe for everyone.  
+This document explains how to **responsibly disclose vulnerabilities**, what versions are **supported**, and how we **respond to reports**.
 
 ---
-Last updated: November 2024
+
+## 🧭 Scope
+
+Security reports apply only to **actively maintained code**.  
+> ⚠️ Code in the `classic/` folder or any directory explicitly marked as **deprecated** is **not supported** and will not receive fixes.
+
+---
+
+## 🪪 Reporting Security Issues
+
+If you believe you’ve discovered a security vulnerability, **please report it privately**.  
+Do **not** open public GitHub issues, discussions, or pull requests for security-related matters.
+
+### 📨 Reporting Channels
+
+- **Primary:** [GitHub Security Advisory](https://github.com/Significant-Gravitas/AutoGPT/security/advisories/new)  
+- **Backup Email:** security@yourdomain.com *(replace with your team’s contact)*  
+- *(Optional)* **Bounty Program:** [Huntr.dev](https://huntr.com/repos/significant-gravitas/autogpt)
+
+---
+
+## 🧩 Reporting Guidelines
+
+When submitting a security report, please include:
+
+1. A clear description of the vulnerability.  
+2. Steps to reproduce the issue.  
+3. Affected version, commit hash, or environment details.  
+4. Potential impact (e.g., data leak, privilege escalation).  
+5. Suggested mitigations (if any).
+
+We welcome reports from anyone — researchers, users, or developers.
+
+---
+
+## ⏱️ Our Response Process
+
+| Step | Action | Target Time |
+|------|---------|-------------|
+| 1️⃣ | Acknowledge report | Within **14 business days** |
+| 2️⃣ | Validate and reproduce | Within **30 business days** |
+| 3️⃣ | Develop and test fix | Within **60 business days** |
+| 4️⃣ | Release patch | Within **90 business days** |
+| 5️⃣ | Coordinate public disclosure | Within **30 days** after patch |
+
+Total responsible disclosure window: **up to 120 days**.
+
+---
+
+## 🚫 Out of Scope
+
+We will **not** accept or fix reports related to:
+
+- Legacy code in `classic/` or any deprecated folder  
+- Known issues documented in release notes  
+- Vulnerabilities in third-party dependencies (should be reported upstream)  
+- Social engineering, phishing, or denial-of-service (DoS) attacks  
+- Misconfigurations in user environments or custom forks
+
+---
+
+## 🧰 Supported Versions
+
+| Version | Supported | Notes |
+|----------|------------|-------|
+| Latest stable release (master branch) | ✅ | Receives full security updates |
+| Development builds (`pre-master`) | ✅ | Reviewed for active testing |
+| `classic/` folder (deprecated) | ❌ | Unsupported legacy code |
+| Older releases | ❌ | No longer maintained |
+
+---
+
+## 🛡️ Security Best Practices for Users
+
+When deploying or developing with this project:
+
+1. Use the **latest stable release**.  
+2. Keep all **dependencies updated** (`pip install --upgrade -r requirements.txt`).  
+3. Run in **isolated environments** (e.g., Docker, venv).  
+4. Store credentials and API keys securely — never commit them.  
+5. Follow **principle of least privilege** in API and service configurations.  
+6. Avoid using code from the `classic/` folder.  
+7. Monitor for new advisories regularly.
+
+---
+
+## 🔒 Secure Development Practices
+
+Our team follows the following security guidelines internally:
+
+- Code reviewed for injection, deserialization, and sandbox vulnerabilities.  
+- Continuous integration includes static analysis and dependency scanning.  
+- Regular Python runtime updates (Python ≥ 3.13 recommended).  
+- Dependencies locked using `requirements.txt` or `poetry.lock`.  
+- Minimal use of system calls or unsafe file access.
+
+---
+
+## 🧬 Supply Chain & Dependency Security
+
+We use automated tools to monitor dependency vulnerabilities:
+- [Dependabot](https://github.com/dependabot)
+- [PyUp.io](https://pyup.io)
+- [Safety](https://pyup.io/safety/)
+
+If a vulnerability is discovered in a dependency:
+- We upgrade or patch within **14 days** of disclosure.
+- Major version upgrades are tested before release.
+
+---
+
+## 💰 Security Bounties *(optional)*
+
+We value the security community’s contributions.  
+If your report qualifies under our bounty program (via Huntr.dev or similar), you may be eligible for a reward.  
+Bounty amounts depend on **severity**, **impact**, and **quality of report**.
+
+---
+
+## 📬 Contact
+
+- **Security Email:** security@yourdomain.com  
+- **PGP Key:** [Download Here](https://yourdomain.com/pgp-key.asc)  
+- **Preferred Languages:** English  
+
+If you require encrypted communication, please contact us for our latest PGP key fingerprint.
+
+---
+
+## 🗓️ Change Log
+
+| Date | Update |
+|------|---------|
+| Nov 2024 | Policy introduced |
+| Oct 2025 | Expanded scope, added bounty & dependency sections |
+
+---
+
+_Last updated: October 2025_
