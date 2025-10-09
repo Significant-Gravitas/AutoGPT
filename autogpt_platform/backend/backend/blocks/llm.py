@@ -344,17 +344,25 @@ MODEL_METADATA = {
     LlmModel.COMETAPI_O3_PRO: ModelMetadata("cometapi", 200000, 100000),
     LlmModel.COMETAPI_CHATGPT_4O_LATEST: ModelMetadata("cometapi", 128000, 16384),
     LlmModel.COMETAPI_CLAUDE_OPUS_4_1: ModelMetadata("cometapi", 200000, 32000),
-    LlmModel.COMETAPI_CLAUDE_OPUS_4_1_THINKING: ModelMetadata("cometapi", 200000, 32000),
+    LlmModel.COMETAPI_CLAUDE_OPUS_4_1_THINKING: ModelMetadata(
+        "cometapi", 200000, 32000
+    ),
     LlmModel.COMETAPI_CLAUDE_SONNET_4: ModelMetadata("cometapi", 200000, 64000),
-    LlmModel.COMETAPI_CLAUDE_SONNET_4_THINKING: ModelMetadata("cometapi", 200000, 64000),
-    LlmModel.COMETAPI_CLAUDE_3_7_SONNET_LATEST: ModelMetadata("cometapi", 200000, 64000),
+    LlmModel.COMETAPI_CLAUDE_SONNET_4_THINKING: ModelMetadata(
+        "cometapi", 200000, 64000
+    ),
+    LlmModel.COMETAPI_CLAUDE_3_7_SONNET_LATEST: ModelMetadata(
+        "cometapi", 200000, 64000
+    ),
     LlmModel.COMETAPI_CLAUDE_3_5_HAIKU_LATEST: ModelMetadata("cometapi", 200000, 8192),
     LlmModel.COMETAPI_GEMINI_2_5_PRO: ModelMetadata("cometapi", 1050000, 8192),
     LlmModel.COMETAPI_GEMINI_2_5_FLASH: ModelMetadata("cometapi", 1048576, 65535),
     LlmModel.COMETAPI_GEMINI_2_5_FLASH_LITE: ModelMetadata("cometapi", 1048576, 65535),
     LlmModel.COMETAPI_GEMINI_2_0_FLASH: ModelMetadata("cometapi", 1048576, 8192),
     LlmModel.COMETAPI_GROK_4_0709: ModelMetadata("cometapi", 256000, 256000),
-    LlmModel.COMETAPI_GROK_4_FAST_NON_REASONING: ModelMetadata("cometapi", 256000, 256000),
+    LlmModel.COMETAPI_GROK_4_FAST_NON_REASONING: ModelMetadata(
+        "cometapi", 256000, 256000
+    ),
     LlmModel.COMETAPI_GROK_4_FAST_REASONING: ModelMetadata("cometapi", 256000, 256000),
     LlmModel.COMETAPI_DEEPSEEK_V3_1: ModelMetadata("cometapi", 64000, 8192),
     LlmModel.COMETAPI_DEEPSEEK_V3: ModelMetadata("cometapi", 64000, 8192),
