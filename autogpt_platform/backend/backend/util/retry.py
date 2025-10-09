@@ -201,26 +201,6 @@ def conn_retry(
 
             logger.error(f"{prefix} {action_name} failed after retries: {exception}")
         else:
-            # Send early warning alert at 75% of max retries (rate limited)
-            warning_threshold = int(max_retry * 0.75)
-            if attempt_number == warning_threshold:
-                alert_msg = (
-                    f"⚠️ **Infrastructure Connection Warning**\n"
-                    f"Resource: {resource_name}\n"
-                    f"Action: {action_name}\n"
-                    f"Function: {func_name}\n"
-                    f"Current attempt: {attempt_number}/{max_retry + 1}\n"
-                    f"Error: {type(exception).__name__}: {str(exception)[:200]}{'...' if len(str(exception)) > 200 else ''}\n\n"
-                    f"Infrastructure component is struggling. Investigate if this continues."
-                )
-
-                if send_rate_limited_discord_alert(
-                    func_name, exception, f"{resource_name}_warning", alert_msg
-                ):
-                    logger.warning(
-                        f"INFRASTRUCTURE WARNING SENT: {resource_name} at {attempt_number} attempts"
-                    )
-
             logger.warning(
                 f"{prefix} {action_name} failed: {exception}. Retrying now..."
             )
