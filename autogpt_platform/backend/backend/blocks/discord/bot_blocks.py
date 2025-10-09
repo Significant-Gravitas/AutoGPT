@@ -1163,13 +1163,8 @@ class DiscordChannelInfoBlock(Block):
 class CreateDiscordThreadBlock(Block):
     class Input(BlockSchema):
         credentials: DiscordCredentials = DiscordCredentialsField()
-        channel_identifier: str = SchemaField(
-            description="Channel ID or channel name to create the thread in"
-        )
-        server_name: str = SchemaField(
-            description="Server name (only needed if using channel name)",
-            advanced=True,
-            default="",
+        channel_id: str = SchemaField(
+            description="The Discord channel ID where the thread will be created (e.g., '123456789012345678')"
         )
         thread_name: str = SchemaField(description="The name of the thread to create")
         is_private: bool = SchemaField(
@@ -1200,7 +1195,7 @@ class CreateDiscordThreadBlock(Block):
             description="Creates a new thread in a Discord channel.",
             categories={BlockCategory.SOCIAL},
             test_input={
-                "channel_identifier": "general",
+                "channel_id": "123456789012345678",
                 "thread_name": "Test Thread",
                 "is_private": False,
                 "auto_archive_duration": ThreadArchiveDuration.ONE_HOUR,
@@ -1224,8 +1219,7 @@ class CreateDiscordThreadBlock(Block):
     async def create_thread(
         self,
         token: str,
-        channel_identifier: str,
-        server_name: str | None,
+        channel_id: str,
         thread_name: str,
         is_private: bool,
         auto_archive_duration: ThreadArchiveDuration,
@@ -1240,58 +1234,22 @@ class CreateDiscordThreadBlock(Block):
 
         @client.event
         async def on_ready():
-            channel = None
-            matching_channels = []
-
-            # Try to parse as channel ID first
+            # Fetch channel by ID
             try:
-                channel_id = int(channel_identifier)
-                # Use fetch_channel for better reliability with cached vs uncached channels
-                try:
-                    channel = await client.fetch_channel(channel_id)
-                except discord.errors.NotFound:
-                    channel = None
+                channel = await client.fetch_channel(int(channel_id))
             except ValueError:
-                # Not an ID, treat as channel name
-                # Collect all matching channels to detect duplicates
-                for guild in client.guilds:
-                    if server_name and guild.name != server_name:
-                        continue
-                    for ch in guild.text_channels:
-                        if ch.name == channel_identifier:
-                            matching_channels.append((guild, ch))
-
-                # Handle multiple matches
-                if len(matching_channels) > 1:
-                    if not server_name:
-                        guild_names = [g.name for g, _ in matching_channels]
-                        result["status"] = (
-                            f"Multiple channels named '{channel_identifier}' found in servers: {', '.join(guild_names)}. "
-                            f"Please specify server_name to disambiguate."
-                        )
-                        await client.close()
-                        return
-                    else:
-                        # Multiple matches even with server_name specified (shouldn't happen)
-                        result["status"] = (
-                            f"Multiple channels named '{channel_identifier}' found in server '{server_name}'. "
-                            f"Please use the channel ID instead."
-                        )
-                        await client.close()
-                        return
-                elif len(matching_channels) == 1:
-                    channel = matching_channels[0][1]
-                # If no matches, channel remains None
-
-            if not channel:
-                result["status"] = f"Channel not found: {channel_identifier}"
+                result["status"] = f"Invalid channel ID format: {channel_id}"
+                await client.close()
+                return
+            except discord.errors.NotFound:
+                result["status"] = f"Channel with ID {channel_id} not found"
                 await client.close()
                 return
 
             # Type check - ensure it's a text channel that can create threads
             if not hasattr(channel, "create_thread"):
                 result["status"] = (
-                    f"Channel {channel_identifier} cannot create threads (not a text channel)"
+                    f"Channel {channel_id} cannot create threads (not a text channel)"
                 )
                 await client.close()
                 return
@@ -1348,8 +1306,7 @@ class CreateDiscordThreadBlock(Block):
         try:
             result = await self.create_thread(
                 token=credentials.api_key.get_secret_value(),
-                channel_identifier=input_data.channel_identifier,
-                server_name=input_data.server_name or None,
+                channel_id=input_data.channel_id,
                 thread_name=input_data.thread_name,
                 is_private=input_data.is_private,
                 auto_archive_duration=input_data.auto_archive_duration,
