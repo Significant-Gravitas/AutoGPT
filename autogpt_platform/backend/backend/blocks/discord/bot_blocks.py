@@ -1312,7 +1312,7 @@ class CreateDiscordThreadBlock(Block):
                 )
 
                 # The 'type' parameter exists in discord.py 2.0+ but isn't in type stubs yet
-                thread = await channel.create_thread(  # type: ignore[call-arg]
+                thread = await channel.create_thread(  # pyright: ignore[reportCallIssue]
                     name=thread_name,
                     type=thread_type,
                     auto_archive_duration=duration_minutes,
