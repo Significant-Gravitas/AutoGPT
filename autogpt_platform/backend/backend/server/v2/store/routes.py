@@ -121,7 +121,6 @@ async def get_agents(
 ):
     """
     Get a paginated list of agents from the store with optional filtering and sorting.
-    Results are cached for 15 minutes.
 
     Args:
         featured (bool, optional): Filter to only show featured agents. Defaults to False.
@@ -187,7 +186,6 @@ async def get_agents(
 async def get_agent(username: str, agent_name: str):
     """
     This is only used on the AgentDetails Page.
-    Results are cached for 15 minutes.
 
     It returns the store listing agents details.
     """
@@ -218,7 +216,6 @@ async def get_agent(username: str, agent_name: str):
 async def get_graph_meta_by_store_listing_version_id(store_listing_version_id: str):
     """
     Get Agent Graph from Store Listing Version ID.
-    Results are cached for 1 hour.
     """
     try:
         graph = await backend.server.v2.store.db.get_available_graph(
@@ -243,7 +240,6 @@ async def get_graph_meta_by_store_listing_version_id(store_listing_version_id: s
 async def get_store_agent(store_listing_version_id: str):
     """
     Get Store Agent Details from Store Listing Version ID.
-    Results are cached for 1 hour.
     """
     try:
         agent = await backend.server.v2.store.db.get_store_agent_by_version_id(
@@ -327,8 +323,6 @@ async def get_creators(
     - Home Page Featured Creators
     - Search Results Page
 
-    Results are cached for 1 hour.
-
     ---
 
     To support this functionality we need:
@@ -374,7 +368,6 @@ async def get_creator(
 ):
     """
     Get the details of a creator.
-    Results are cached for 1 hour.
     - Creator Details Page
     """
     try:
@@ -410,7 +403,6 @@ async def get_my_agents(
 ):
     """
     Get user's own agents.
-    Results are cached for 5 minutes per user.
     """
     try:
         agents = await backend.server.v2.store.db.get_my_agents(
@@ -475,7 +467,6 @@ async def get_submissions(
 ):
     """
     Get a paginated list of store submissions for the authenticated user.
-    Results are cached for 1 hour per user.
 
     Args:
         user_id (str): ID of the authenticated user
