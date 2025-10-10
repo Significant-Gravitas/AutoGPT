@@ -9,8 +9,8 @@
     "/api/integrations/{provider}/login": {
       "get": {
         "tags": ["v1", "integrations"],
-        "summary": "Login",
-        "operationId": "getV1Login",
+        "summary": "Initiate OAuth flow",
+        "operationId": "getV1Initiate oauth flow",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -60,8 +60,8 @@
     "/api/integrations/{provider}/callback": {
       "post": {
         "tags": ["v1", "integrations"],
-        "summary": "Callback",
-        "operationId": "postV1Callback",
+        "summary": "Exchange OAuth code for tokens",
+        "operationId": "postV1Exchange oauth code for tokens",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -79,7 +79,9 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/Body_postV1Callback" }
+              "schema": {
+                "$ref": "#/components/schemas/Body_postV1Exchange_oauth_code_for_tokens"
+              }
             }
           }
         },
@@ -3443,19 +3445,68 @@
       }
     },
     "/api/builder/search": {
-      "post": {
+      "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Builder search",
         "description": "Search for blocks (including integrations), marketplace agents, and user library agents.",
-        "operationId": "postV2Builder search",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/SearchRequest" }
+        "operationId": "getV2Builder search",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "search_query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Search Query"
             }
           },
-          "required": true
-        },
+          {
+            "name": "filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "array", "items": { "type": "string" } },
+                { "type": "null" }
+              ],
+              "title": "Filter"
+            }
+          },
+          {
+            "name": "search_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Search Id"
+            }
+          },
+          {
+            "name": "by_creator",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "array", "items": { "type": "string" } },
+                { "type": "null" }
+              ],
+              "title": "By Creator"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 1, "title": "Page" }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 50, "title": "Page Size" }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -3476,8 +3527,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
       }
     },
     "/api/builder/counts": {
@@ -5062,7 +5112,7 @@
         "required": ["blocks", "pagination"],
         "title": "BlockResponse"
       },
-      "Body_postV1Callback": {
+      "Body_postV1Exchange_oauth_code_for_tokens": {
         "properties": {
           "code": {
             "type": "string",
@@ -5072,7 +5122,7 @@
         },
         "type": "object",
         "required": ["code", "state_token"],
-        "title": "Body_postV1Callback"
+        "title": "Body_postV1Exchange oauth code for tokens"
       },
       "Body_postV1Execute_graph_agent": {
         "properties": {
@@ -7341,53 +7391,6 @@
         "type": "object",
         "required": ["name", "cron", "inputs"],
         "title": "ScheduleCreationRequest"
-      },
-      "SearchRequest": {
-        "properties": {
-          "search_query": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Search Query"
-          },
-          "filter": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string",
-                  "enum": [
-                    "blocks",
-                    "integrations",
-                    "marketplace_agents",
-                    "my_agents"
-                  ]
-                },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Filter"
-          },
-          "by_creator": {
-            "anyOf": [
-              { "items": { "type": "string" }, "type": "array" },
-              { "type": "null" }
-            ],
-            "title": "By Creator"
-          },
-          "search_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Search Id"
-          },
-          "page": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Page"
-          },
-          "page_size": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Page Size"
-          }
-        },
-        "type": "object",
-        "title": "SearchRequest"
       },
       "SearchResponse": {
         "properties": {

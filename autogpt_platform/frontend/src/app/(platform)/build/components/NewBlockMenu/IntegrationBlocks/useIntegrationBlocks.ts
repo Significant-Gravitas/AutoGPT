@@ -1,11 +1,11 @@
 import { useGetV2GetBuilderBlocksInfinite } from "@/app/api/__generated__/endpoints/default/default";
 import { BlockResponse } from "@/app/api/__generated__/models/blockResponse";
-import { useBlockMenuContext } from "../block-menu-provider";
+import { useBlockMenuStore } from "../../../stores/blockMenuStore";
 
 const PAGE_SIZE = 10;
 
 export const useIntegrationBlocks = () => {
-  const { integration } = useBlockMenuContext();
+  const { integration } = useBlockMenuStore();
 
   const {
     data: blocks,

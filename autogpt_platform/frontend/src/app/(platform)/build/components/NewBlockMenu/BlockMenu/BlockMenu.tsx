@@ -7,7 +7,6 @@ import {
 import { BlockMenuContent } from "../BlockMenuContent/BlockMenuContent";
 import { ControlPanelButton } from "../ControlPanelButton";
 import { useBlockMenu } from "./useBlockMenu";
-import { BlockMenuStateProvider } from "../block-menu-provider";
 import { LegoIcon } from "@phosphor-icons/react";
 
 interface BlockMenuProps {
@@ -49,9 +48,7 @@ export const BlockMenu: React.FC<BlockMenuProps> = ({
         className="absolute h-[80vh] w-[46.625rem] overflow-hidden rounded-[1rem] border-none p-0 shadow-[0_2px_6px_0_rgba(0,0,0,0.05)]"
         data-id="blocks-control-popover-content"
       >
-        <BlockMenuStateProvider>
-          <BlockMenuContent />
-        </BlockMenuStateProvider>
+        <BlockMenuContent />
       </PopoverContent>
     </Popover>
   );
