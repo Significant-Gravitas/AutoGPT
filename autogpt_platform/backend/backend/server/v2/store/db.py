@@ -159,7 +159,9 @@ async def log_search_term(search_query: str):
             data={"searchTerm": search_query, "createdDate": date}
         )
     except Exception as e:
+        # Fail silently here so that logging search terms doesn't break the app
         logger.error(f"Error logging search term: {e}")
+        
 
 
 async def get_store_agent_details(
