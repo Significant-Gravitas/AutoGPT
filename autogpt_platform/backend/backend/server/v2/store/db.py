@@ -154,12 +154,12 @@ async def log_search_term(search_query: str):
 
     # Anonymize the data by preventing correlation with other logs
     date = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-
-    await prisma.models.SearchTerms.prisma().create(
-        data=prisma.types.SearchTermsCreateInput(
-            searchTerm=search_query, createdDate=date
+    try:
+        await prisma.models.SearchTerms.prisma().create(
+            data={"searchTerm": search_query, "createdDate": date}
         )
-    )
+    except Exception as e:
+        logger.error(f"Error logging search term: {e}")
 
 
 async def get_store_agent_details(
