@@ -9,6 +9,8 @@ import { preprocessInputSchema } from "../processors/input-schema-pre-processor"
 import { OutputHandler } from "./OutputHandler";
 import { useNodeStore } from "../../../stores/nodeStore";
 import { cn } from "@/lib/utils";
+import { BlockUIType } from "../../types";
+import { StickyNoteBlock } from "./StickyNoteBlock";
 
 export type CustomNodeData = {
   hardcodedValues: {
@@ -18,6 +20,7 @@ export type CustomNodeData = {
   description: string;
   inputSchema: RJSFSchema;
   outputSchema: RJSFSchema;
+  uiType: BlockUIType;
 };
 
 export type CustomNode = XYNode<CustomNodeData, "custom">;
@@ -28,6 +31,10 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
       (state) => state.nodeAdvancedStates[id] || false,
     );
     const setShowAdvanced = useNodeStore((state) => state.setShowAdvanced);
+
+    if (data.uiType === BlockUIType.NOTE) {
+      return <StickyNoteBlock selected={selected} data={data} id={id} />;
+    }
 
     return (
       <div
@@ -51,6 +58,7 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
           <FormCreator
             jsonSchema={preprocessInputSchema(data.inputSchema)}
             nodeId={id}
+            uiType={data.uiType}
           />
         </div>
 
