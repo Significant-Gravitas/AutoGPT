@@ -1806,6 +1806,27 @@ async def get_admin_listings_with_versions(
         )
 
 
+async def check_submission_already_approved(
+    store_listing_version_id: str,
+) -> bool:
+    """Check the submission status of a store listing version."""
+    try:
+        store_listing_version = (
+            await prisma.models.StoreListingVersion.prisma().find_unique(
+                where={"id": store_listing_version_id}
+            )
+        )
+        if not store_listing_version:
+            return False
+        return (
+            store_listing_version.submissionStatus
+            == prisma.enums.SubmissionStatus.APPROVED
+        )
+    except Exception as e:
+        logger.error(f"Error checking submission status: {e}")
+        return False
+
+
 async def get_agent_as_admin(
     user_id: str | None,
     store_listing_version_id: str,

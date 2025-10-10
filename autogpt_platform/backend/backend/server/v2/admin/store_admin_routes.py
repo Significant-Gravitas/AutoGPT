@@ -87,6 +87,9 @@ async def review_submission(
         StoreSubmission with updated review information
     """
     try:
+        already_approved = await backend.server.v2.store.db.check_submission_already_approved(
+            store_listing_version_id=store_listing_version_id,
+        )
         submission = await backend.server.v2.store.db.review_store_submission(
             store_listing_version_id=store_listing_version_id,
             is_approved=request.is_approved,
@@ -94,8 +97,10 @@ async def review_submission(
             internal_comments=request.internal_comments or "",
             reviewer_id=user_id,
         )
+
+        state_changed = already_approved != request.is_approved
         # Clear caches when the request is approved as it updates what is shown on the store
-        if request.is_approved:
+        if state_changed:
             store_cache.clear_all_caches()
         return submission
     except Exception as e:
