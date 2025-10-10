@@ -43,23 +43,31 @@ To run the AutoGPT Platform, follow these steps:
 You can now run the following to enable just the core services.
 
 ```
+# For help
+make help
+
 # Run just Supabase + Redis + RabbitMQ
 make start-core
 
 # Stop core services
 make stop-core
 
-logs-core
+# View logs from core services 
 make logs-core
+
+# Run formatting and linting for backend and frontend
+make format
+
+# Run migrations for backend database
+make migrate
+
+# Run backend server
+make run-backend
+
+# Run frontend development server
+make run-frontend
+
 ```
-
-Then in the backend folder you will need to run:
-
-`poetry run app`
-
-In the frontend folder you will need to run:
-
-`pnpm dev`
 
 ### Docker Compose Commands
 
