@@ -27,8 +27,7 @@ def get_challenge_from_source_uri(source_uri: str) -> type[BaseChallenge]:
     provider_map = {
         BuiltinChallenge.SOURCE_URI_PREFIX: BuiltinChallenge,
         WebArenaChallenge.SOURCE_URI_PREFIX: WebArenaChallenge,
-        # Add new providers here:
-        # MyCustomChallenge.SOURCE_URI_PREFIX: MyCustomChallenge,
+
     }
 
     provider_class = provider_map.get(provider_prefix)
