@@ -53,7 +53,7 @@ export function MobileNavBar({
         <Button
           variant="ghost"
           aria-label="Open menu"
-          className="min-w-auto flex !w-[3.75rem] items-center justify-center md:hidden"
+          className="min-w-auto flex !min-w-[3.75rem] items-center justify-center md:hidden"
           data-testid="mobile-nav-bar-trigger"
         >
           {isOpen ? (

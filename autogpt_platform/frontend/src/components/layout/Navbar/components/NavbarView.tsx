@@ -1,6 +1,6 @@
 "use client";
 import { IconAutoGPTLogo, IconType } from "@/components/__legacy__/ui/icons";
-import Wallet from "../../../__legacy__/Wallet";
+import Wallet from "../../../../app/(no-navbar)/onboarding/components/Wallet/Wallet";
 import { AccountMenu } from "./AccountMenu/AccountMenu";
 import { LoginButton } from "./LoginButton";
 import { MobileNavBar } from "./MobileNavbar/MobileNavBar";
@@ -27,7 +27,7 @@ export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
 
   return (
     <>
-      <nav className="sticky top-0 z-40 inline-flex h-16 w-full items-center border border-white/50 bg-[#f3f4f6]/20 p-3 backdrop-blur-[26px]">
+      <nav className="sticky top-0 z-40 inline-flex h-[60px] w-full items-center border border-white/50 bg-[#f3f4f6]/20 p-3 backdrop-blur-[26px]">
         {/* Left section */}
         <div className="hidden flex-1 items-center gap-3 md:flex md:gap-5">
           {isLoggedIn
@@ -40,7 +40,7 @@ export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
         </div>
 
         {/* Centered logo */}
-        <div className="absolute left-16 top-1/2 h-auto w-[5.5rem] -translate-x-1/2 -translate-y-1/2 md:left-1/2">
+        <div className="static h-auto w-[4.5rem] md:absolute md:left-1/2 md:top-1/2 md:w-[5.5rem] md:-translate-x-1/2 md:-translate-y-1/2">
           <IconAutoGPTLogo className="h-full w-full" />
         </div>
 

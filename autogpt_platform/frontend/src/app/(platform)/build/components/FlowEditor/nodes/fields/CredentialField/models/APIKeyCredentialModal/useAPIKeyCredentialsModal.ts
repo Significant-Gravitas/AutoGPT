@@ -9,7 +9,7 @@ import {
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { APIKeyCredentials } from "@/app/api/__generated__/models/aPIKeyCredentials";
 import { useQueryClient } from "@tanstack/react-query";
-import { PostV1CreateCredentials201 } from "@/app/api/__generated__/models/postV1CreateCredentials201";
+import { useState } from "react";
 
 export type APIKeyFormValues = {
   apiKey: string;
@@ -19,32 +19,29 @@ export type APIKeyFormValues = {
 
 type useAPIKeyCredentialsModalType = {
   schema: BlockIOCredentialsSubSchema;
-  onClose: () => void;
-  onSuccess: (credentialId: string) => void;
 };
 
 export function useAPIKeyCredentialsModal({
   schema,
-  onClose,
-  onSuccess,
 }: useAPIKeyCredentialsModalType): {
   form: UseFormReturn<APIKeyFormValues>;
   isLoading: boolean;
   provider: string;
   schemaDescription?: string;
   onSubmit: (values: APIKeyFormValues) => Promise<void>;
+  isOpen: boolean;
+  setIsOpen: (isOpen: boolean) => void;
 } {
   const { toast } = useToast();
+  const [isOpen, setIsOpen] = useState(false);
   const queryClient = useQueryClient();
 
   const { mutateAsync: createCredentials, isPending: isCreatingCredentials } =
     usePostV1CreateCredentials({
       mutation: {
-        onSuccess: async (response) => {
-          const credentialId = (response.data as PostV1CreateCredentials201)
-            ?.id;
-          onClose();
+        onSuccess: async () => {
           form.reset();
+          setIsOpen(false);
           toast({
             title: "Success",
             description: "Credentials created successfully",
@@ -54,10 +51,6 @@ export function useAPIKeyCredentialsModal({
           await queryClient.refetchQueries({
             queryKey: getGetV1ListCredentialsQueryKey(),
           });
-
-          if (credentialId && onSuccess) {
-            onSuccess(credentialId);
-          }
         },
         onError: () => {
           toast({
@@ -107,5 +100,7 @@ export function useAPIKeyCredentialsModal({
     provider: schema.credentials_provider[0],
     schemaDescription: schema.description,
     onSubmit,
+    isOpen,
+    setIsOpen,
   };
 }
