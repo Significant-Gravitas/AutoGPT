@@ -7,9 +7,18 @@ import { fields } from "./fields";
 import { templates } from "./templates";
 import { uiSchema } from "./uiSchema";
 import { useNodeStore } from "../../../stores/nodeStore";
+import { BlockUIType } from "../../types";
 
 export const FormCreator = React.memo(
-  ({ jsonSchema, nodeId }: { jsonSchema: RJSFSchema; nodeId: string }) => {
+  ({
+    jsonSchema,
+    nodeId,
+    uiType,
+  }: {
+    jsonSchema: RJSFSchema;
+    nodeId: string;
+    uiType: BlockUIType;
+  }) => {
     const updateNodeData = useNodeStore((state) => state.updateNodeData);
     const handleChange = ({ formData }: any) => {
       updateNodeData(nodeId, { hardcodedValues: formData });
@@ -22,7 +31,7 @@ export const FormCreator = React.memo(
         fields={fields}
         templates={templates}
         widgets={widgets}
-        formContext={{ nodeId: nodeId }}
+        formContext={{ nodeId: nodeId, uiType: uiType }}
         onChange={handleChange}
         uiSchema={uiSchema}
       />
