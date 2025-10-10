@@ -1,4 +1,4 @@
-.PHONY: start-core stop-core logs-core format lint, migrate
+.PHONY: start-core stop-core logs-core format lint migrate run-backend run-frontend
 
 # Run just Supabase + Redis + RabbitMQ
 start-core:
