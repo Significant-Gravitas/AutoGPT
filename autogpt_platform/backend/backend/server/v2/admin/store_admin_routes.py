@@ -87,8 +87,10 @@ async def review_submission(
         StoreSubmission with updated review information
     """
     try:
-        already_approved = await backend.server.v2.store.db.check_submission_already_approved(
-            store_listing_version_id=store_listing_version_id,
+        already_approved = (
+            await backend.server.v2.store.db.check_submission_already_approved(
+                store_listing_version_id=store_listing_version_id,
+            )
         )
         submission = await backend.server.v2.store.db.review_store_submission(
             store_listing_version_id=store_listing_version_id,
