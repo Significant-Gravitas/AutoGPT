@@ -1,14 +1,15 @@
 import React from "react";
-import { DefaultStateType, useBlockMenuContext } from "../block-menu-provider";
 import { AllBlocksContent } from "../AllBlocksContent/AllBlocksContent";
 import { PaginatedBlocksContent } from "../PaginatedBlocksContent/PaginatedBlocksContent";
 import { IntegrationsContent } from "../IntegrationsContent/IntegrationsContent";
 import { MarketplaceAgentsContent } from "../MarketplaceAgentsContent/MarketplaceAgentsContent";
 import { MyAgentsContent } from "../MyAgentsContent/MyAgentsContent";
 import { SuggestionContent } from "../SuggestionContent/SuggestionContent";
+import { useBlockMenuStore } from "../../../stores/blockMenuStore";
+import { DefaultStateType } from "../types";
 
 export const BlockMenuDefaultContent = () => {
-  const { defaultState } = useBlockMenuContext();
+  const { defaultState } = useBlockMenuStore();
 
   return (
     <div className="h-full flex-1 overflow-hidden">
