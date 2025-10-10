@@ -9,7 +9,6 @@ import {
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { APIKeyCredentials } from "@/app/api/__generated__/models/aPIKeyCredentials";
 import { useQueryClient } from "@tanstack/react-query";
-import { PostV1CreateCredentials201 } from "@/app/api/__generated__/models/postV1CreateCredentials201";
 import { useState } from "react";
 
 export type APIKeyFormValues = {
@@ -20,12 +19,10 @@ export type APIKeyFormValues = {
 
 type useAPIKeyCredentialsModalType = {
   schema: BlockIOCredentialsSubSchema;
-  onSuccess: (credentialId: string) => void;
 };
 
 export function useAPIKeyCredentialsModal({
   schema,
-  onSuccess,
 }: useAPIKeyCredentialsModalType): {
   form: UseFormReturn<APIKeyFormValues>;
   isLoading: boolean;
@@ -42,9 +39,7 @@ export function useAPIKeyCredentialsModal({
   const { mutateAsync: createCredentials, isPending: isCreatingCredentials } =
     usePostV1CreateCredentials({
       mutation: {
-        onSuccess: async (response) => {
-          const credentialId = (response.data as PostV1CreateCredentials201)
-            ?.id;
+        onSuccess: async () => {
           form.reset();
           setIsOpen(false);
           toast({
@@ -56,10 +51,6 @@ export function useAPIKeyCredentialsModal({
           await queryClient.refetchQueries({
             queryKey: getGetV1ListCredentialsQueryKey(),
           });
-
-          if (credentialId && onSuccess) {
-            onSuccess(credentialId);
-          }
         },
         onError: () => {
           toast({
