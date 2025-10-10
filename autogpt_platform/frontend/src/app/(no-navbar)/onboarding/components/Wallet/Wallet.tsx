@@ -9,15 +9,16 @@ import {
 import { X } from "lucide-react";
 import { Text } from "@/components/atoms/Text/Text";
 import { PopoverClose } from "@radix-ui/react-popover";
-import { TaskGroups } from "@/app/(no-navbar)/onboarding/components/WalletTaskGroups";
-import { ScrollArea } from "./ui/scroll-area";
+import { TaskGroups } from "@/app/(no-navbar)/onboarding/components/Wallet/components/WalletTaskGroups";
+import { ScrollArea } from "../../../../../components/__legacy__/ui/scroll-area";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import * as party from "party-js";
-import WalletRefill from "./WalletRefill";
+import WalletRefill from "./components/WalletRefill";
 import { OnboardingStep } from "@/lib/autogpt-server-api";
 import { storage, Key as StorageKey } from "@/services/storage/local-storage";
+import { WalletIcon } from "@phosphor-icons/react";
 
 export interface Task {
   id: OnboardingStep;
@@ -326,21 +327,24 @@ export default function Wallet() {
           <button
             ref={walletRef}
             className={cn(
-              "relative flex items-center gap-1 rounded-md bg-zinc-50 px-3 py-2 text-sm",
+              "relative flex flex-nowrap items-center gap-2 rounded-md bg-zinc-50 px-3 py-2 text-sm",
             )}
             onClick={onWalletOpen}
           >
-            Earn credits{" "}
-            <span className="text-sm font-semibold">
-              {formatCredits(credits)}
-            </span>
-            {completedCount && completedCount < totalCount && (
-              <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"></span>
-            )}
-            <div className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-white px-4 py-2 shadow-md group-hover:block">
-              <Text variant="body-medium">
-                {completedCount} of {totalCount} rewards claimed
-              </Text>
+            <WalletIcon size={20} className="inline-block md:hidden" />
+            <div>
+              <span className="mr-1 hidden md:inline-block">Earn credits </span>
+              <span className="text-sm font-semibold">
+                {formatCredits(credits)}
+              </span>
+              {completedCount && completedCount < totalCount && (
+                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"></span>
+              )}
+              <div className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-white px-4 py-2 shadow-md group-hover:block">
+                <Text variant="body-medium">
+                  {completedCount} of {totalCount} rewards claimed
+                </Text>
+              </div>
             </div>
           </button>
           <div
