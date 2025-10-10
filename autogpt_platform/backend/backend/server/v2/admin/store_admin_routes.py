@@ -7,6 +7,7 @@ import fastapi
 import fastapi.responses
 import prisma.enums
 
+import backend.server.v2.store.cache as store_cache
 import backend.server.v2.store.db
 import backend.server.v2.store.model
 import backend.util.json
@@ -93,6 +94,9 @@ async def review_submission(
             internal_comments=request.internal_comments or "",
             reviewer_id=user_id,
         )
+        # Clear caches when the request is approved as it updates what is shown on the store
+        if request.is_approved:
+            store_cache.clear_all_caches()
         return submission
     except Exception as e:
         logger.exception("Error reviewing submission: %s", e)
