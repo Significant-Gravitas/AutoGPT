@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
 import { APIKeyCredentialsModal } from "./models/APIKeyCredentialModal/APIKeyCredentialModal";
 import { OAuthCredentialModal } from "./models/OAuthCredentialModal/OAuthCredentialModal";
+import { PasswordCredentialsModal } from "./models/PasswordCredentialModal/PasswordCredentialModal";
 
 export const CredentialsField = (props: FieldProps) => {
   const { formData = {}, onChange, required: _required, schema } = props;
@@ -14,6 +15,7 @@ export const CredentialsField = (props: FieldProps) => {
     isCredentialListLoading,
     supportsApiKey,
     supportsOAuth2,
+    supportsUserPassword,
     credentialsExists,
   } = useCredentialField({
     credentialSchema: schema as BlockIOCredentialsSubSchema,
@@ -22,16 +24,13 @@ export const CredentialsField = (props: FieldProps) => {
   const setField = (key: string, value: any) =>
     onChange({ ...formData, [key]: value });
 
+  // This is to set the latest credential as the default one [currently, latest means last one in the list of credentials]
   useEffect(() => {
     if (!isCredentialListLoading && credentials.length > 0 && !formData.id) {
       const latestCredential = credentials[credentials.length - 1];
       setField("id", latestCredential.id);
     }
   }, [isCredentialListLoading, credentials, formData.id]);
-
-  const handleCredentialCreated = (credentialId: string) => {
-    setField("id", credentialId);
-  };
 
   if (isCredentialListLoading) {
     return (
@@ -59,11 +58,16 @@ export const CredentialsField = (props: FieldProps) => {
         {supportsApiKey && (
           <APIKeyCredentialsModal
             schema={schema as BlockIOCredentialsSubSchema}
-            onSuccess={handleCredentialCreated}
           />
         )}
         {supportsOAuth2 && (
           <OAuthCredentialModal provider={schema.credentials_provider[0]} />
+        )}
+        {supportsUserPassword && (
+          <PasswordCredentialsModal
+            schema={schema as BlockIOCredentialsSubSchema}
+            provider={schema.credentials_provider[0]}
+          />
         )}
       </div>
     </div>
