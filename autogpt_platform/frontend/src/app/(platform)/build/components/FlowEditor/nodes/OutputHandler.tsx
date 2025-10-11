@@ -13,6 +13,7 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { getTypeDisplayInfo } from "./helpers";
+import { generateHandleId } from "../handlers/helpers";
 
 export const OutputHandler = ({
   outputSchema,
@@ -76,7 +77,12 @@ export const OutputHandler = ({
                 <Text variant="small" as="span" className={colorClass}>
                   ({displayType})
                 </Text>
-                <NodeHandle id={key} isConnected={isConnected} side="right" />
+
+                <NodeHandle
+                  handleId={generateHandleId(key)}
+                  isConnected={isConnected}
+                  side="right"
+                />
               </div>
             ) : null;
           })}
