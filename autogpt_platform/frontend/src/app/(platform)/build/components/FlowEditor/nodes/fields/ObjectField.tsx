@@ -16,12 +16,13 @@ export const ObjectField = (props: FieldProps) => {
   const DefaultObjectField = getDefaultRegistry().fields.ObjectField;
 
   // Let the default field render for root or fixed-schema objects
-  const isFreeForm =
-    !schema.properties ||
-    Object.keys(schema.properties).length === 0 ||
-    schema.additionalProperties === true;
+  let isFreeForm = false;
+  if ("additionalProperties" in schema || !("properties" in schema)) {
+    isFreeForm = true;
+  }
 
   if (idSchema?.$id === "root" || !isFreeForm) {
+    // TODO : We need to create better one
     return <DefaultObjectField {...props} />;
   }
 
@@ -30,7 +31,7 @@ export const ObjectField = (props: FieldProps) => {
 
   return (
     <ObjectEditor
-      id={`${name}-input`}
+      id={idSchema?.$id ?? ""}
       nodeId={nodeId}
       fieldKey={fieldKey}
       value={formData}

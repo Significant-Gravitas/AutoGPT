@@ -22,7 +22,7 @@ export const ArrayEditor = ({
   onAddClick,
   disabled,
   readonly,
-  id,
+  id: fieldId,
 }: ArrayEditorProps) => {
   const { isInputConnected } = useEdgeStore();
 
@@ -31,12 +31,12 @@ export const ArrayEditor = ({
       <div className="flex items-center gap-2">
         <div className="flex-1">
           {items?.map((element) => {
-            const fieldKey = generateHandleId(
-              id,
+            const arrayFieldHandleId = generateHandleId(
+              fieldId,
               [element.index.toString()],
               HandleIdType.ARRAY,
             );
-            const isConnected = isInputConnected(nodeId, fieldKey);
+            const isConnected = isInputConnected(nodeId, fieldId);
             return (
               <div
                 key={element.key}
@@ -45,7 +45,7 @@ export const ArrayEditor = ({
                 <ArrayEditorContext.Provider
                   value={{
                     isArrayItem: true,
-                    fieldKey,
+                    arrayFieldHandleId: arrayFieldHandleId,
                     isConnected,
                   }}
                 >
@@ -75,6 +75,7 @@ export const ArrayEditor = ({
       {canAdd && !readonly && !disabled && (
         <Button
           type="button"
+          variant="secondary"
           size="small"
           onClick={onAddClick}
           className="w-full"
