@@ -117,6 +117,7 @@ def get_blocks(
         ),
     )
 
+
 def get_block_by_id(block_id: str) -> BlockInfo | None:
     """
     Get a specific block by its ID.
