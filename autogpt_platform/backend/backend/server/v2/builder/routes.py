@@ -111,6 +111,25 @@ async def get_blocks(
 
 
 @router.get(
+    "/blocks/batch",
+    summary="Get specific blocks",
+    response_model=list[builder_model.BlockInfo],
+)
+async def get_specific_blocks(
+    block_ids: Annotated[list[str], fastapi.Query()],
+) -> list[builder_model.BlockInfo]:
+    """
+    Get specific blocks by their IDs.
+    """
+    blocks = []
+    for block_id in block_ids:
+        block = builder_db.get_block_by_id(block_id)
+        if block:
+            blocks.append(block)
+    return blocks
+
+
+@router.get(
     "/providers",
     summary="Get Builder integration providers",
     response_model=builder_model.ProviderResponse,

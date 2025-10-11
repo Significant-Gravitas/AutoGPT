@@ -39,17 +39,17 @@ const sanitizeForHandleId = (str: string): string => {
 };
 
 export const generateHandleId = (
-  mainKey: string,
+  fieldKey: string,
   nestedValues: string[] = [],
   type: HandleIdType = HandleIdType.SIMPLE,
 ): string => {
-  if (!mainKey) return "";
+  if (!fieldKey) return "";
 
-  mainKey = fromRjsfId(mainKey);
-  mainKey = sanitizeForHandleId(mainKey);
+  fieldKey = fromRjsfId(fieldKey);
+  fieldKey = sanitizeForHandleId(fieldKey);
 
   if (type === HandleIdType.SIMPLE || nestedValues.length === 0) {
-    return mainKey;
+    return fieldKey;
   }
 
   const sanitizedNestedValues = nestedValues.map((value) =>
@@ -58,60 +58,31 @@ export const generateHandleId = (
 
   switch (type) {
     case HandleIdType.NESTED:
-      return [mainKey, ...sanitizedNestedValues].join(".");
+      return [fieldKey, ...sanitizedNestedValues].join(".");
 
     case HandleIdType.ARRAY:
-      return [mainKey, ...sanitizedNestedValues].join("_$_");
+      return [fieldKey, ...sanitizedNestedValues].join("_$_");
 
     case HandleIdType.KEY_VALUE:
-      return [mainKey, ...sanitizedNestedValues].join("_#_");
+      return [fieldKey, ...sanitizedNestedValues].join("_#_");
 
     default:
-      return mainKey;
+      return fieldKey;
   }
 };
 
-export const parseHandleId = (
+export const parseKeyValueHandleId = (
   handleId: string,
-): {
-  mainKey: string;
-  nestedValues: string[];
-  type: HandleIdType;
-} => {
-  if (!handleId) {
-    return { mainKey: "", nestedValues: [], type: HandleIdType.SIMPLE };
+  type: HandleIdType,
+): string => {
+  if (type === HandleIdType.KEY_VALUE) {
+    return handleId.split("_#_")[1];
+  } else if (type === HandleIdType.ARRAY) {
+    return handleId.split("_$_")[1];
+  } else if (type === HandleIdType.NESTED) {
+    return handleId.split(".")[1];
+  } else if (type === HandleIdType.SIMPLE) {
+    return handleId.split("_")[1];
   }
-
-  if (handleId.includes("_#_")) {
-    const parts = handleId.split("_#_");
-    return {
-      mainKey: parts[0],
-      nestedValues: parts.slice(1),
-      type: HandleIdType.KEY_VALUE,
-    };
-  }
-
-  if (handleId.includes("_$_")) {
-    const parts = handleId.split("_$_");
-    return {
-      mainKey: parts[0],
-      nestedValues: parts.slice(1),
-      type: HandleIdType.ARRAY,
-    };
-  }
-
-  if (handleId.includes(".")) {
-    const parts = handleId.split(".");
-    return {
-      mainKey: parts[0],
-      nestedValues: parts.slice(1),
-      type: HandleIdType.NESTED,
-    };
-  }
-
-  return {
-    mainKey: handleId,
-    nestedValues: [],
-    type: HandleIdType.SIMPLE,
-  };
+  return "";
 };
