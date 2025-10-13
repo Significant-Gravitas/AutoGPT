@@ -551,16 +551,15 @@ async def clear_all_user_notification_batches(user_id: str) -> None:
     trying to send them ANY emails.
     """
     try:
-        async with transaction() as tx:
-            # Delete all notification events for this user
-            await tx.notificationevent.delete_many(
-                where={"UserNotificationBatch": {"is": {"userId": user_id}}}
-            )
+        # Delete all notification events for this user
+        await NotificationEvent.prisma().delete_many(
+            where={"UserNotificationBatch": {"is": {"userId": user_id}}}
+        )
 
-            # Delete all batches for this user
-            await tx.usernotificationbatch.delete_many(where={"userId": user_id})
+        # Delete all batches for this user
+        await UserNotificationBatch.prisma().delete_many(where={"userId": user_id})
 
-            logger.info(f"Cleared all notification batches for user {user_id}")
+        logger.info(f"Cleared all notification batches for user {user_id}")
     except Exception as e:
         raise DatabaseError(
             f"Failed to clear all notification batches for user {user_id}: {e}"
@@ -579,40 +578,39 @@ async def remove_notifications_from_batch(
         return
 
     try:
-        async with transaction() as tx:
-            # Delete the specific notification events
-            deleted_count = await tx.notificationevent.delete_many(
-                where={
-                    "id": {"in": notification_ids},
-                    "UserNotificationBatch": {
-                        "is": {"userId": user_id, "type": notification_type}
-                    },
-                }
-            )
+        # Delete the specific notification events
+        deleted_count = await NotificationEvent.prisma().delete_many(
+            where={
+                "id": {"in": notification_ids},
+                "UserNotificationBatch": {
+                    "is": {"userId": user_id, "type": notification_type}
+                },
+            }
+        )
 
+        logger.info(
+            f"Removed {deleted_count} notifications from batch for user {user_id}"
+        )
+
+        # Check if batch is now empty and delete it if so
+        remaining = await NotificationEvent.prisma().count(
+            where={
+                "UserNotificationBatch": {
+                    "is": {"userId": user_id, "type": notification_type}
+                }
+            }
+        )
+
+        if remaining == 0:
+            await UserNotificationBatch.prisma().delete_many(
+                where=UserNotificationBatchWhereInput(
+                    userId=user_id,
+                    type=notification_type,
+                )
+            )
             logger.info(
-                f"Removed {deleted_count} notifications from batch for user {user_id}"
+                f"Deleted empty batch for user {user_id} and type {notification_type}"
             )
-
-            # Check if batch is now empty and delete it if so
-            remaining = await tx.notificationevent.count(
-                where={
-                    "UserNotificationBatch": {
-                        "is": {"userId": user_id, "type": notification_type}
-                    }
-                }
-            )
-
-            if remaining == 0:
-                await tx.usernotificationbatch.delete_many(
-                    where=UserNotificationBatchWhereInput(
-                        userId=user_id,
-                        type=notification_type,
-                    )
-                )
-                logger.info(
-                    f"Deleted empty batch for user {user_id} and type {notification_type}"
-                )
     except Exception as e:
         raise DatabaseError(
             f"Failed to remove notifications from batch for user {user_id} and type {notification_type}: {e}"
