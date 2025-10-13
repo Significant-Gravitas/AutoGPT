@@ -1,4 +1,5 @@
 import { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
+import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
 import {
   GoogleLogoIcon,
   KeyholeIcon,
@@ -12,12 +13,12 @@ import {
 
 export const filterCredentialsByProvider = (
   credentials: CredentialsMetaResponse[] | undefined,
-  provider: string[],
+  provider: string,
 ) => {
+  console.log("provider", provider);
+  console.log("credentials", credentials);
   const filtered =
-    credentials?.filter((credential) =>
-      provider.includes(credential.provider),
-    ) ?? [];
+    credentials?.filter((credential) => provider === credential.provider) ?? [];
   return {
     credentials: filtered,
     exists: filtered.length > 0,
@@ -95,4 +96,42 @@ export const providerIcons: Partial<Record<string, Icon>> = {
   smartlead: KeyholeIcon,
   todoist: KeyholeIcon,
   zerobounce: KeyholeIcon,
+};
+
+export const getCredentialProviderFromSchema = (
+  formData: Record<string, any>,
+  schema: BlockIOCredentialsSubSchema,
+) => {
+  const discriminator = schema.discriminator;
+  const discriminatorMapping = schema.discriminator_mapping;
+  const discriminatorValues = schema.discriminator_values;
+  const providers = schema.credentials_provider;
+
+  const discriminatorValue = [
+    discriminator ? formData[discriminator] : null,
+    ...(discriminatorValues || []),
+  ].find(Boolean);
+
+  const discriminatedProvider = discriminatorMapping
+    ? discriminatorMapping[discriminatorValue]
+    : null;
+
+  if (providers.length > 1) {
+    if (!discriminator) {
+      throw new Error(
+        "Multi-provider credential input requires discriminator!",
+      );
+    }
+    if (!discriminatedProvider) {
+      console.warn(
+        `Missing discriminator value from '${discriminator}': ` +
+          "hiding credentials input until it is set.",
+      );
+      return null;
+    }
+    console.log("discriminatedProvider", discriminatedProvider);
+    return discriminatedProvider;
+  } else {
+    return providers[0];
+  }
 };

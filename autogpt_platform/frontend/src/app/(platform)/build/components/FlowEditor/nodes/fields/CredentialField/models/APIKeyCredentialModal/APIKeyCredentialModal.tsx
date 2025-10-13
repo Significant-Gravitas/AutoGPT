@@ -14,22 +14,12 @@ import { Text } from "@/components/atoms/Text/Text";
 
 type Props = {
   schema: BlockIOCredentialsSubSchema;
+  provider: string;
 };
 
-export function APIKeyCredentialsModal({ schema }: Props) {
-  const {
-    form,
-    isLoading,
-    schemaDescription,
-    onSubmit,
-    provider,
-    isOpen,
-    setIsOpen,
-  } = useAPIKeyCredentialsModal({ schema });
-
-  if (isLoading) {
-    return null;
-  }
+export function APIKeyCredentialsModal({ schema, provider }: Props) {
+  const { form, schemaDescription, onSubmit, isOpen, setIsOpen } =
+    useAPIKeyCredentialsModal({ schema, provider });
 
   return (
     <>
