@@ -16,7 +16,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from autogpt_libs.utils.cache import cached, clear_thread_cache, thread_cached
+from backend.util.cache import cached, clear_thread_cache, thread_cached
 
 
 class TestThreadCached:
@@ -332,7 +332,7 @@ class TestCache:
         """Test basic sync caching functionality."""
         call_count = 0
 
-        @cached()
+        @cached(ttl_seconds=300)
         def expensive_sync_function(x: int, y: int = 0) -> int:
             nonlocal call_count
             call_count += 1
@@ -358,7 +358,7 @@ class TestCache:
         """Test basic async caching functionality."""
         call_count = 0
 
-        @cached()
+        @cached(ttl_seconds=300)
         async def expensive_async_function(x: int, y: int = 0) -> int:
             nonlocal call_count
             call_count += 1
@@ -385,7 +385,7 @@ class TestCache:
         call_count = 0
         results = []
 
-        @cached()
+        @cached(ttl_seconds=300)
         def slow_function(x: int) -> int:
             nonlocal call_count
             call_count += 1
@@ -412,7 +412,7 @@ class TestCache:
         """Test that concurrent async calls don't cause thundering herd."""
         call_count = 0
 
-        @cached()
+        @cached(ttl_seconds=300)
         async def slow_async_function(x: int) -> int:
             nonlocal call_count
             call_count += 1
@@ -508,7 +508,7 @@ class TestCache:
         """Test cache clearing functionality."""
         call_count = 0
 
-        @cached()
+        @cached(ttl_seconds=300)
         def clearable_function(x: int) -> int:
             nonlocal call_count
             call_count += 1
@@ -537,7 +537,7 @@ class TestCache:
         """Test cache clearing functionality with async function."""
         call_count = 0
 
-        @cached()
+        @cached(ttl_seconds=300)
         async def async_clearable_function(x: int) -> int:
             nonlocal call_count
             call_count += 1
@@ -567,7 +567,7 @@ class TestCache:
         """Test that cached async functions return actual results, not coroutines."""
         call_count = 0
 
-        @cached()
+        @cached(ttl_seconds=300)
         async def async_result_function(x: int) -> str:
             nonlocal call_count
             call_count += 1
@@ -593,7 +593,7 @@ class TestCache:
         """Test selective cache deletion functionality."""
         call_count = 0
 
-        @cached()
+        @cached(ttl_seconds=300)
         def deletable_function(x: int) -> int:
             nonlocal call_count
             call_count += 1
@@ -636,7 +636,7 @@ class TestCache:
         """Test selective cache deletion functionality with async function."""
         call_count = 0
 
-        @cached()
+        @cached(ttl_seconds=300)
         async def async_deletable_function(x: int) -> int:
             nonlocal call_count
             call_count += 1
