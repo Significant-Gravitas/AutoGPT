@@ -3400,6 +3400,52 @@
         }
       }
     },
+    "/api/builder/blocks/batch": {
+      "get": {
+        "tags": ["v2"],
+        "summary": "Get specific blocks",
+        "description": "Get specific blocks by their IDs.",
+        "operationId": "getV2Get specific blocks",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "block_ids",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "array",
+              "items": { "type": "string" },
+              "title": "Block Ids"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/BlockInfo" },
+                  "title": "Response Getv2Get Specific Blocks"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
     "/api/builder/providers": {
       "get": {
         "tags": ["v2"],

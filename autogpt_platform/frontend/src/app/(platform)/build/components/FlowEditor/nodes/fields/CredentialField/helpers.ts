@@ -25,7 +25,6 @@ export const filterCredentialsByProvider = (
 };
 
 export function toDisplayName(provider: string): string {
-  console.log("provider", provider);
   // Special cases that need manual handling
   const specialCases: Record<string, string> = {
     aiml_api: "AI/ML",
