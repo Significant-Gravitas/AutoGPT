@@ -1,5 +1,4 @@
 import logging
-import uuid
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -450,21 +449,9 @@ class UserCreditBase(ABC):
         if result:
             return result[0]["balance"], result[0]["transactionKey"]
 
-        # If no result, create user with balance 0 and generate transaction
-        await User.prisma().upsert(
-            where={"id": user_id},
-            data={
-                "create": {
-                    "id": user_id,
-                    "email": f"{user_id}@example.com",
-                    "name": user_id,
-                    "balance": 0,
-                },
-                "update": {},
-            },
-        )
-        # Return 0 balance with a generated transaction key
-        return 0, transaction_key or str(uuid.uuid4())
+        # If no result, user doesn't exist - this shouldn't happen in normal flow
+        # Users should be created through proper registration flow
+        raise ValueError(f"User {user_id} not found")
 
 
 class UserCredit(UserCreditBase):
@@ -761,30 +748,46 @@ class UserCredit(UserCreditBase):
                 f"Invalid amount to deduct {format_credits_as_dollars(request.amount)} from {format_credits_as_dollars(transaction.amount)} top-up"
             )
 
-        # Atomic balance deduction (allow going negative for refunds)
-        result = await User.prisma().update(
-            where={"id": transaction.userId},
-            data={"balance": {"decrement": request.amount}},
+        # Atomic balance deduction and transaction creation (allow going negative for refunds)
+        result = await db.prisma.query_raw(
+            """
+            WITH balance_update AS (
+                UPDATE "User"
+                SET balance = balance - $1,
+                    "updatedAt" = CURRENT_TIMESTAMP
+                WHERE id = $2
+                RETURNING id, balance, "updatedAt"
+            ),
+            transaction_insert AS (
+                INSERT INTO "CreditTransaction" (
+                    "userId", "amount", "type", "runningBalance",
+                    "transactionKey", "metadata", "isActive", "createdAt"
+                )
+                SELECT 
+                    balance_update.id,
+                    -$1::int,
+                    $3::"CreditTransactionType",
+                    balance_update.balance,
+                    $4::text,
+                    $5::jsonb,
+                    true,
+                    balance_update."updatedAt"
+                FROM balance_update
+                RETURNING "runningBalance"
+            )
+            SELECT "runningBalance" as balance FROM transaction_insert;
+            """,
+            request.amount,
+            transaction.userId,
+            CreditTransactionType.REFUND.value,
+            request.id,
+            SafeJson(request),
         )
 
         if not result:
             raise ValueError(f"User {transaction.userId} not found")
 
-        # Record the refund transaction
-        await CreditTransaction.prisma().create(
-            data={
-                "userId": transaction.userId,
-                "amount": -request.amount,
-                "runningBalance": result.balance,
-                "type": CreditTransactionType.REFUND,
-                "transactionKey": request.id,
-                "metadata": SafeJson(request),
-                "isActive": True,
-                "createdAt": result.updatedAt,
-            }
-        )
-
-        balance = result.balance
+        balance = result[0]["balance"]
 
         # Update the result of the refund request if it exists.
         await CreditRefundRequest.prisma().update_many(
