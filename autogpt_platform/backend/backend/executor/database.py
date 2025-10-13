@@ -29,11 +29,13 @@ from backend.data.graph import (
     get_node,
 )
 from backend.data.notifications import (
+    clear_all_user_notification_batches,
     create_or_add_to_user_notification_batch,
     empty_user_notification_batch,
     get_all_batches_by_type,
     get_user_notification_batch,
     get_user_notification_oldest_message_in_batch,
+    remove_notifications_from_batch,
 )
 from backend.data.user import (
     get_active_user_ids_in_timerange,
@@ -148,10 +150,12 @@ class DatabaseManager(AppService):
     get_user_notification_preference = _(get_user_notification_preference)
 
     # Notifications - async
+    clear_all_user_notification_batches = _(clear_all_user_notification_batches)
     create_or_add_to_user_notification_batch = _(
         create_or_add_to_user_notification_batch
     )
     empty_user_notification_batch = _(empty_user_notification_batch)
+    remove_notifications_from_batch = _(remove_notifications_from_batch)
     get_all_batches_by_type = _(get_all_batches_by_type)
     get_user_notification_batch = _(get_user_notification_batch)
     get_user_notification_oldest_message_in_batch = _(
@@ -243,10 +247,12 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_notification_preference = d.get_user_notification_preference
 
     # Notifications
+    clear_all_user_notification_batches = d.clear_all_user_notification_batches
     create_or_add_to_user_notification_batch = (
         d.create_or_add_to_user_notification_batch
     )
     empty_user_notification_batch = d.empty_user_notification_batch
+    remove_notifications_from_batch = d.remove_notifications_from_batch
     get_all_batches_by_type = d.get_all_batches_by_type
     get_user_notification_batch = d.get_user_notification_batch
     get_user_notification_oldest_message_in_batch = (

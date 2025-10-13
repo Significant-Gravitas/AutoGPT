@@ -34,12 +34,14 @@ def get_database_manager_client() -> "DatabaseManagerClient":
 
 
 @thread_cached
-def get_database_manager_async_client() -> "DatabaseManagerAsyncClient":
+def get_database_manager_async_client(
+    should_retry: bool = True,
+) -> "DatabaseManagerAsyncClient":
     """Get a thread-cached DatabaseManagerAsyncClient with request retry enabled."""
     from backend.executor import DatabaseManagerAsyncClient
     from backend.util.service import get_service_client
 
-    return get_service_client(DatabaseManagerAsyncClient, request_retry=True)
+    return get_service_client(DatabaseManagerAsyncClient, request_retry=should_retry)
 
 
 @thread_cached
