@@ -547,6 +547,12 @@ async def create_submission(
         )
 
         return result
+    except backend.server.v2.store.exceptions.SlugAlreadyInUseError as e:
+        logger.warning("Slug already in use: %s", str(e))
+        return fastapi.responses.JSONResponse(
+            status_code=409,
+            content={"detail": str(e)},
+        )
     except Exception:
         logger.exception("Exception occurred whilst creating store submission")
         return fastapi.responses.JSONResponse(
