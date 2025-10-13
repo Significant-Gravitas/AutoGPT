@@ -7,7 +7,11 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import NodeHandle from "../../handlers/NodeHandle";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
-import { generateHandleId, HandleIdType } from "../../handlers/helpers";
+import {
+  generateHandleId,
+  HandleIdType,
+  parseKeyValueHandleId,
+} from "../../handlers/helpers";
 
 export interface ObjectEditorProps {
   id: string;
@@ -23,7 +27,7 @@ export interface ObjectEditorProps {
 export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
   (
     {
-      id,
+      id: parentFieldId,
       value = {},
       onChange,
       placeholder = "Enter value",
@@ -34,6 +38,9 @@ export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
     },
     ref,
   ) => {
+    const getAllHandleIdsOfANode = useEdgeStore(
+      (state) => state.getAllHandleIdsOfANode,
+    );
     const setProperty = (key: string, propertyValue: any) => {
       if (!onChange) return;
 
@@ -72,44 +79,47 @@ export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
 
     const { isInputConnected } = useEdgeStore();
 
+    const allHandleIdsOfANode = getAllHandleIdsOfANode(nodeId);
+    const allKeyValueHandleIdsOfANode = allHandleIdsOfANode.filter((handleId) =>
+      handleId.includes("_#_"),
+    );
+    allKeyValueHandleIdsOfANode.forEach((handleId) => {
+      const key = parseKeyValueHandleId(handleId, HandleIdType.KEY_VALUE);
+      if (!value[key]) {
+        value[key] = null;
+      }
+    });
+
     return (
       <div
         ref={ref}
         className={`flex flex-col gap-2 ${className || ""}`}
-        id={id}
+        id={parentFieldId}
       >
         {Object.entries(value).map(([key, propertyValue], idx) => {
-          const dynamicHandleId = generateHandleId(
-            fieldKey,
+          const isDynamicPropertyConnected = isInputConnected(nodeId, fieldKey);
+          const handleId = generateHandleId(
+            parentFieldId,
             [key],
             HandleIdType.KEY_VALUE,
           );
-          const isDynamicPropertyConnected = isInputConnected(
-            nodeId,
-            dynamicHandleId,
-          );
-
-          console.log("dynamicHandleId", dynamicHandleId);
-          console.log("key", key);
-          console.log("fieldKey", fieldKey);
 
           return (
             <div key={idx} className="flex flex-col gap-2">
               <div className="-ml-2 flex items-center gap-1">
                 <NodeHandle
-                  id={dynamicHandleId}
                   isConnected={isDynamicPropertyConnected}
+                  handleId={handleId}
                   side="left"
                 />
-
-                <Text variant="small" className="text-gray-600">
+                <Text variant="small" className="!text-gray-500">
                   #{key.trim() === "" ? "" : key}
                 </Text>
                 <Text variant="small" className="!text-green-500">
                   (string)
                 </Text>
               </div>
-              {!isDynamicPropertyConnected && (
+              {!isDynamicPropertyConnected && propertyValue !== null && (
                 <div className="flex items-center gap-2">
                   <Input
                     hideLabel={true}
@@ -150,12 +160,13 @@ export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
 
         <Button
           type="button"
+          variant="secondary"
           size="small"
           onClick={addProperty}
-          className="w-full"
+          className="w-fit"
           disabled={hasEmptyKeys || disabled}
         >
-          <Plus className="mr-2 h-4 w-4" />
+          <Plus className="h-4 w-4" />
           Add Property
         </Button>
       </div>

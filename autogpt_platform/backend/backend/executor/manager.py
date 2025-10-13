@@ -7,6 +7,7 @@ import uuid
 from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
 
 from pika.adapters.blocking_connection import BlockingChannel
@@ -84,7 +85,11 @@ from backend.util.file import clean_exec_files
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.metrics import DiscordChannel
 from backend.util.process import AppProcess, set_service_name
-from backend.util.retry import continuous_retry, func_retry
+from backend.util.retry import (
+    continuous_retry,
+    func_retry,
+    send_rate_limited_discord_alert,
+)
 from backend.util.settings import Settings
 
 from .cluster_lock import ClusterLock
@@ -184,6 +189,7 @@ async def execute_node(
         _input_data.inputs = input_data
         if nodes_input_masks:
             _input_data.nodes_input_masks = nodes_input_masks
+        _input_data.user_id = user_id
         input_data = _input_data.model_dump()
     data.inputs = input_data
 
@@ -979,16 +985,31 @@ class ExecutionProcessor:
                 if isinstance(e, Exception)
                 else Exception(f"{e.__class__.__name__}: {e}")
             )
+            if not execution_stats.error:
+                execution_stats.error = str(error)
 
             known_errors = (InsufficientBalanceError, ModerationError)
             if isinstance(error, known_errors):
-                execution_stats.error = str(error)
                 return ExecutionStatus.FAILED
 
             execution_status = ExecutionStatus.FAILED
             log_metadata.exception(
                 f"Failed graph execution {graph_exec.graph_exec_id}: {error}"
             )
+
+            # Send rate-limited Discord alert for unknown/unexpected errors
+            send_rate_limited_discord_alert(
+                "graph_execution",
+                error,
+                "unknown_error",
+                f"🚨 **Unknown Graph Execution Error**\n"
+                f"User: {graph_exec.user_id}\n"
+                f"Graph ID: {graph_exec.graph_id}\n"
+                f"Execution ID: {graph_exec.graph_exec_id}\n"
+                f"Error Type: {type(error).__name__}\n"
+                f"Error: {str(error)[:200]}{'...' if len(str(error)) > 200 else ''}\n",
+            )
+
             raise
 
         finally:
@@ -1163,9 +1184,9 @@ class ExecutionProcessor:
                 f"❌ **Insufficient Funds Alert**\n"
                 f"User: {user_email or user_id}\n"
                 f"Agent: {metadata.name if metadata else 'Unknown Agent'}\n"
-                f"Current balance: ${e.balance/100:.2f}\n"
-                f"Attempted cost: ${abs(e.amount)/100:.2f}\n"
-                f"Shortfall: ${abs(shortfall)/100:.2f}\n"
+                f"Current balance: ${e.balance / 100:.2f}\n"
+                f"Attempted cost: ${abs(e.amount) / 100:.2f}\n"
+                f"Shortfall: ${abs(shortfall) / 100:.2f}\n"
                 f"[View User Details]({base_url}/admin/spending?search={user_email})"
             )
 
@@ -1212,9 +1233,9 @@ class ExecutionProcessor:
                 alert_message = (
                     f"⚠️ **Low Balance Alert**\n"
                     f"User: {user_email or user_id}\n"
-                    f"Balance dropped below ${LOW_BALANCE_THRESHOLD/100:.2f}\n"
-                    f"Current balance: ${current_balance/100:.2f}\n"
-                    f"Transaction cost: ${transaction_cost/100:.2f}\n"
+                    f"Balance dropped below ${LOW_BALANCE_THRESHOLD / 100:.2f}\n"
+                    f"Current balance: ${current_balance / 100:.2f}\n"
+                    f"Transaction cost: ${transaction_cost / 100:.2f}\n"
                     f"[View User Details]({base_url}/admin/spending?search={user_email})"
                 )
                 get_notification_manager_client().discord_system_alert(
@@ -1445,9 +1466,36 @@ class ExecutionManager(AppProcess):
             return
 
         graph_exec_id = graph_exec_entry.graph_exec_id
+        user_id = graph_exec_entry.user_id
         logger.info(
-            f"[{self.service_name}] Received RUN for graph_exec_id={graph_exec_id}"
+            f"[{self.service_name}] Received RUN for graph_exec_id={graph_exec_id}, user_id={user_id}"
         )
+
+        # Check user rate limit before processing
+        try:
+            # Only check executions from the last 24 hours for performance
+            current_running_count = get_db_client().get_graph_executions_count(
+                user_id=user_id,
+                statuses=[ExecutionStatus.RUNNING],
+                created_time_gte=datetime.now(timezone.utc) - timedelta(hours=24),
+            )
+
+            if (
+                current_running_count
+                >= settings.config.max_concurrent_graph_executions_per_user
+            ):
+                logger.warning(
+                    f"[{self.service_name}] Rate limit exceeded for user {user_id}: "
+                    f"{current_running_count}/{settings.config.max_concurrent_graph_executions_per_user} running executions"
+                )
+                _ack_message(reject=True, requeue=True)
+                return
+
+        except Exception as e:
+            logger.error(
+                f"[{self.service_name}] Failed to check rate limit for user {user_id}: {e}, proceeding with execution"
+            )
+            # If rate limit check fails, proceed to avoid blocking executions
 
         # Check for local duplicate execution first
         if graph_exec_id in self.active_graph_runs:

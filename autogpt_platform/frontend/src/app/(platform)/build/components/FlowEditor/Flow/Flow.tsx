@@ -1,12 +1,12 @@
 import { ReactFlow, Background, Controls } from "@xyflow/react";
-import { useNodeStore } from "../../stores/nodeStore";
-
-import NewControlPanel from "../NewBlockMenu/NewControlPanel/NewControlPanel";
+import NewControlPanel from "../../NewBlockMenu/NewControlPanel/NewControlPanel";
+import CustomEdge from "../edges/CustomEdge";
+import { useFlow } from "./useFlow";
 import { useShallow } from "zustand/react/shallow";
+import { useNodeStore } from "../../../stores/nodeStore";
 import { useMemo } from "react";
-import { CustomNode } from "./nodes/CustomNode";
-import { useCustomEdge } from "./edges/useCustomEdge";
-import CustomEdge from "./edges/CustomEdge";
+import { CustomNode } from "../nodes/CustomNode";
+import { useCustomEdge } from "../edges/useCustomEdge";
 
 export const Flow = () => {
   const nodes = useNodeStore(useShallow((state) => state.nodes));
@@ -15,6 +15,9 @@ export const Flow = () => {
   );
   const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
   const { edges, onConnect, onEdgesChange } = useCustomEdge();
+
+  // We use this hook to load the graph and convert them into custom nodes and edges.
+  useFlow();
 
   return (
     <div className="flex h-full w-full dark:bg-slate-900">
@@ -27,6 +30,8 @@ export const Flow = () => {
           onConnect={onConnect}
           onEdgesChange={onEdgesChange}
           edgeTypes={{ custom: CustomEdge }}
+          maxZoom={2}
+          minZoom={0.1}
         >
           <Background />
           <Controls />

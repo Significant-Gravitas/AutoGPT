@@ -20,9 +20,10 @@ import {
   toDisplayName,
 } from "../fields/CredentialField/helpers";
 import { cn } from "@/lib/utils";
+import { BlockUIType } from "@/lib/autogpt-server-api";
 
 const FieldTemplate: React.FC<FieldTemplateProps> = ({
-  id,
+  id: fieldId,
   label,
   required,
   description,
@@ -38,22 +39,21 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
     (state) => state.nodeAdvancedStates[nodeId] ?? false,
   );
 
-  const {
-    isArrayItem,
-    fieldKey: arrayFieldKey,
-    isConnected: isArrayItemConnected,
-  } = useContext(ArrayEditorContext);
+  const { isArrayItem, arrayFieldHandleId } = useContext(ArrayEditorContext);
 
-  let fieldKey = generateHandleId(id);
-  let isConnected = isInputConnected(nodeId, fieldKey);
-  if (isArrayItem) {
-    fieldKey = arrayFieldKey;
-    isConnected = isArrayItemConnected;
-  }
   const isAnyOf = Array.isArray((schema as any)?.anyOf);
   const isOneOf = Array.isArray((schema as any)?.oneOf);
   const isCredential = isCredentialFieldSchema(schema);
   const suppressHandle = isAnyOf || isOneOf;
+
+  let handleId = null;
+  if (!isArrayItem) {
+    handleId = generateHandleId(fieldId);
+  } else {
+    handleId = arrayFieldHandleId;
+  }
+
+  const isConnected = isInputConnected(nodeId, handleId);
 
   if (!showAdvanced && schema.advanced === true && !isConnected) {
     return null;
@@ -65,12 +65,20 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
 
   const { displayType, colorClass } = getTypeDisplayInfo(schema);
 
+  if (formContext.uiType === BlockUIType.NOTE) {
+    return <div className="w-full space-y-1">{children}</div>;
+  }
+
   return (
-    <div className="mt-4 w-[400px] space-y-1">
+    <div className="mt-4 w-[350px] space-y-1">
       {label && schema.type && (
-        <label htmlFor={id} className="flex items-center gap-1">
+        <label htmlFor={fieldId} className="flex items-center gap-1">
           {!suppressHandle && !fromAnyOf && !isCredential && (
-            <NodeHandle id={fieldKey} isConnected={isConnected} side="left" />
+            <NodeHandle
+              handleId={handleId}
+              isConnected={isConnected}
+              side="left"
+            />
           )}
           {!fromAnyOf && (
             <Text
