@@ -696,36 +696,31 @@ export default function useAgentGraph(
     // Update the node IDs on the frontend
     setSavedAgent(newSavedAgent);
 
-    // Create a mapping from old frontend IDs to new backend IDs
-    const oldToNewNodeIDMap = new Map<string, string>();
-
     setXYNodes((prev) =>
       newSavedAgent.nodes
         .map((backendNode) => {
           const key = `${backendNode.block_id}_${backendNode.metadata.position.x}_${backendNode.metadata.position.y}`;
-          const oldFrontendNodeID = blockIDToNodeIDMap[key];
-          const frontendNode = prev.find(
-            (node) => node.id === oldFrontendNodeID,
-          );
-
-          if (frontendNode) {
-            // Store the ID mapping for edge updates
-            oldToNewNodeIDMap.set(oldFrontendNodeID, backendNode.id);
-          }
+          const frontendNodeID = blockIDToNodeIDMap[key];
+          const frontendNode = prev.find((node) => node.id === frontendNodeID);
 
           const { position, ...metadata } = backendNode.metadata;
           return frontendNode
             ? ({
                 ...frontendNode,
-                id: backendNode.id, // Update the actual node ID to match backend
                 position,
                 data: {
                   ...frontendNode.data,
                   hardcodedValues: removeEmptyStringsAndNulls(
                     frontendNode.data.hardcodedValues,
                   ),
+                  // NOTE: we don't update `node.id` because it would also require
+                  //  updating many references in other places. Instead, we keep the
+                  //  backend node ID in `node.data.backend_id`.
                   backend_id: backendNode.id,
                   metadata,
+
+                  // Reset & close node output
+                  isOutputOpen: false,
                   status: undefined,
                   executionResults: undefined,
                 },
@@ -735,16 +730,11 @@ export default function useAgentGraph(
         .filter((node) => node !== null),
     );
 
-    // Reset bead count & update edge references to use the new node IDs
+    // Reset bead count
     setXYEdges((edges) =>
-      edges.map((edge): CustomEdge => {
-        const newSourceId = oldToNewNodeIDMap.get(edge.source) || edge.source;
-        const newTargetId = oldToNewNodeIDMap.get(edge.target) || edge.target;
-
-        return {
+      edges.map(
+        (edge): CustomEdge => ({
           ...edge,
-          source: newSourceId,
-          target: newTargetId,
           data: {
             ...edge.data,
             edgeColor: edge.data?.edgeColor ?? "grey",
@@ -752,8 +742,8 @@ export default function useAgentGraph(
             beadDown: 0,
             beadData: new Map(),
           },
-        };
-      }),
+        }),
+      ),
     );
     return newSavedAgent;
   }, [

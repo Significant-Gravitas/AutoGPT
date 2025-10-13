@@ -857,7 +857,9 @@ export const CustomNode = React.memo(
                   </button>
                 )}
               </div>
-              <span className="text-xs text-gray-500">#{id.split("-")[0]}</span>
+              <span className="text-xs text-gray-500">
+                #{(data.backend_id || id).split("-")[0]}
+              </span>
 
               <div className="w-auto grow" />
 
