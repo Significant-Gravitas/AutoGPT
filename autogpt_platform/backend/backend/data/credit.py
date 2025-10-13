@@ -70,6 +70,169 @@ class UsageTransactionMetadata(BaseModel):
 
 
 class UserCreditBase(ABC):
+
+    async def _execute_atomic_transaction_basic(
+        self,
+        user_id: str,
+        amount: int,
+        transaction_type: CreditTransactionType,
+        transaction_key: str | None = None,
+        is_active: bool = True,
+        metadata: dict | None = None,
+        balance_check: bool = True,
+    ) -> tuple[int, str]:
+        """Execute basic atomic transaction with balance check."""
+        metadata_dict = metadata or {}
+        metadata_json = SafeJson(metadata_dict)
+
+        if balance_check and amount < 0:
+            # For spending with balance check
+            query = """
+                WITH balance_update AS (
+                    UPDATE "User" 
+                    SET balance = balance + $1,
+                        "updatedAt" = CURRENT_TIMESTAMP
+                    WHERE id = $2 AND balance + $1 >= 0
+                    RETURNING id, balance, "updatedAt"
+                ),
+                transaction_insert AS (
+                    INSERT INTO "CreditTransaction" (
+                        "transactionKey", "userId", "amount", "type",
+                        "runningBalance", "isActive", "metadata", "createdAt"
+                    )
+                    SELECT 
+                        COALESCE($3, gen_random_uuid()::text),
+                        balance_update.id,
+                        $1::int,
+                        $4::"CreditTransactionType",
+                        balance_update.balance,
+                        $5::boolean,
+                        $6::jsonb,
+                        balance_update."updatedAt"
+                    FROM balance_update
+                    RETURNING "runningBalance", "transactionKey"
+                )
+                SELECT "runningBalance" as balance, "transactionKey" FROM transaction_insert;
+            """
+        else:
+            # For adding credits or no balance check
+            query = """
+                WITH balance_update AS (
+                    UPDATE "User" 
+                    SET balance = balance + $1,
+                        "updatedAt" = CURRENT_TIMESTAMP
+                    WHERE id = $2
+                    RETURNING id, balance, "updatedAt"
+                ),
+                transaction_insert AS (
+                    INSERT INTO "CreditTransaction" (
+                        "transactionKey", "userId", "amount", "type",
+                        "runningBalance", "isActive", "metadata", "createdAt"
+                    )
+                    SELECT 
+                        COALESCE($3, gen_random_uuid()::text),
+                        balance_update.id,
+                        $1::int,
+                        $4::"CreditTransactionType",
+                        balance_update.balance,
+                        $5::boolean,
+                        $6::jsonb,
+                        balance_update."updatedAt"
+                    FROM balance_update
+                    RETURNING "runningBalance", "transactionKey"
+                )
+                SELECT "runningBalance" as balance, "transactionKey" FROM transaction_insert;
+            """
+
+        result = await db.prisma.query_raw(
+            query,
+            amount,
+            user_id,
+            transaction_key,
+            transaction_type.value,
+            is_active,
+            metadata_json,
+        )
+
+        if not result:
+            if balance_check and amount < 0:
+                # Get current balance for error message
+                user = await User.prisma().find_unique(where={"id": user_id})
+                if not user:
+                    raise ValueError(f"User {user_id} not found")
+                raise InsufficientBalanceError(
+                    message=f"Insufficient balance of {format_credits_as_dollars(user.balance)}, where this will cost {format_credits_as_dollars(abs(amount))}",
+                    user_id=user_id,
+                    balance=user.balance,
+                    amount=amount,
+                )
+            else:
+                raise ValueError(f"User {user_id} not found")
+
+        return result[0]["balance"], result[0]["transactionKey"]
+
+    async def _execute_atomic_transaction_with_ceiling(
+        self,
+        user_id: str,
+        amount: int,
+        transaction_type: CreditTransactionType,
+        ceiling_balance: int,
+        transaction_key: str | None = None,
+        is_active: bool = True,
+        metadata: dict | None = None,
+    ) -> tuple[int, str]:
+        """Execute atomic transaction with balance ceiling (for top-ups)."""
+        metadata_dict = metadata or {}
+        metadata_json = SafeJson(metadata_dict)
+
+        # Use parameterized query with ceiling as parameter
+        query = """
+            WITH balance_update AS (
+                UPDATE "User" 
+                SET balance = CASE 
+                    WHEN balance > $7::int - $1 THEN $7::int
+                    ELSE balance + $1
+                END,
+                "updatedAt" = CURRENT_TIMESTAMP
+                WHERE id = $2
+                RETURNING id, balance, "updatedAt"
+            ),
+            transaction_insert AS (
+                INSERT INTO "CreditTransaction" (
+                    "transactionKey", "userId", "amount", "type",
+                    "runningBalance", "isActive", "metadata", "createdAt"
+                )
+                SELECT 
+                    COALESCE($3, gen_random_uuid()::text),
+                    balance_update.id,
+                    $1::int,
+                    $4::"CreditTransactionType",
+                    balance_update.balance,
+                    $5::boolean,
+                    $6::jsonb,
+                    balance_update."updatedAt"
+                FROM balance_update
+                RETURNING "runningBalance", "transactionKey"
+            )
+            SELECT "runningBalance" as balance, "transactionKey" FROM transaction_insert;
+        """
+
+        result = await db.prisma.query_raw(
+            query,
+            amount,
+            user_id,
+            transaction_key,
+            transaction_type.value,
+            is_active,
+            metadata_json,
+            ceiling_balance,
+        )
+
+        if not result:
+            raise ValueError(f"User {user_id} not found")
+
+        return result[0]["balance"], result[0]["transactionKey"]
+
     @abstractmethod
     async def get_credits(self, user_id: str) -> int:
         """
@@ -136,25 +299,34 @@ class UserCreditBase(ABC):
         pass
 
     @abstractmethod
-    async def top_up_credits(self, user_id: str, amount: int):
+    async def top_up_credits(self, user_id: str, amount: int) -> int:
         """
         Top up the credits for the user.
 
         Args:
             user_id (str): The user ID.
             amount (int): The amount to top up.
+
+        Returns:
+            int: The new balance after top-up.
         """
         pass
 
     @abstractmethod
-    async def onboarding_reward(self, user_id: str, credits: int, step: OnboardingStep):
+    async def onboarding_reward(
+        self, user_id: str, credits: int, step: OnboardingStep
+    ) -> int | None:
         """
         Reward the user with credits for completing an onboarding step.
         Won't reward if the user has already received credits for the step.
 
         Args:
             user_id (str): The user ID.
+            credits (int): The amount of credits to reward.
             step (OnboardingStep): The onboarding step.
+
+        Returns:
+            int | None: The new balance if successful, None if already rewarded.
         """
         pass
 
@@ -364,94 +536,30 @@ class UserCreditBase(ABC):
                     f"You already have enough balance of {format_credits_as_dollars(user.balance)}, top-up is not required when you already have at least {format_credits_as_dollars(ceiling_balance)}"
                 )
 
-        # For spending, check balance and use atomic operation
-        if amount < 0 and fail_insufficient_credits:
-            # Use atomic spend operation to prevent race conditions
-            result = await db.prisma.query_raw(
-                """
-                WITH balance_update AS (
-                    UPDATE "User" 
-                    SET balance = balance + $1,
-                        "updatedAt" = CURRENT_TIMESTAMP
-                    WHERE id = $2 AND balance + $1 >= 0
-                    RETURNING id, balance, "updatedAt"
-                ),
-                transaction_insert AS (
-                    INSERT INTO "CreditTransaction" (
-                        "transactionKey", "userId", "amount", "type",
-                        "runningBalance", "isActive", "metadata", "createdAt"
-                    )
-                    SELECT 
-                        COALESCE($3, gen_random_uuid()::text),
-                        balance_update.id,
-                        $1::int,
-                        $4::"CreditTransactionType",
-                        balance_update.balance,
-                        $5::boolean,
-                        $6::jsonb,
-                        balance_update."updatedAt"
-                    FROM balance_update
-                    RETURNING "runningBalance", "transactionKey"
-                )
-                SELECT "runningBalance" as balance, "transactionKey" FROM transaction_insert;
-                """,
-                amount,
-                user_id,
-                transaction_key,
-                transaction_type.value,
-                is_active,
-                metadata,
+        # Convert SafeJson to dict for the unified function
+        metadata_dict = metadata if isinstance(metadata, dict) else {}
+
+        # Use the appropriate atomic transaction function
+        if ceiling_balance and amount > 0:
+            return await self._execute_atomic_transaction_with_ceiling(
+                user_id=user_id,
+                amount=amount,
+                transaction_type=transaction_type,
+                ceiling_balance=ceiling_balance,
+                transaction_key=transaction_key,
+                is_active=is_active,
+                metadata=metadata_dict,
             )
-
-            if not result:
-                user = await User.prisma().find_unique(where={"id": user_id})
-                if not user:
-                    raise ValueError(f"User {user_id} not found")
-                raise InsufficientBalanceError(
-                    message=f"Insufficient balance of {format_credits_as_dollars(user.balance)}, where this will cost {format_credits_as_dollars(abs(amount))}",
-                    user_id=user_id,
-                    balance=user.balance,
-                    amount=amount,
-                )
-
-            return result[0]["balance"], result[0]["transactionKey"]
-
-        # For non-spending operations (top-ups, grants), use atomic operation
-        result = await db.prisma.query_raw(
-            """
-            WITH balance_update AS (
-                UPDATE "User"
-                SET balance = balance + $2, "updatedAt" = CURRENT_TIMESTAMP
-                WHERE id = $1
-                RETURNING balance, "updatedAt"
-            ),
-            transaction_insert AS (
-                INSERT INTO "CreditTransaction" (
-                    "userId", "amount", "type", "runningBalance", 
-                    "metadata", "isActive", "createdAt", "transactionKey"
-                )
-                SELECT 
-                    $1, $2, $3::"CreditTransactionType", bu.balance, 
-                    $4::jsonb, $5, bu."updatedAt", COALESCE($6, gen_random_uuid()::text)
-                FROM balance_update bu
-                RETURNING "runningBalance", "transactionKey"
+        else:
+            return await self._execute_atomic_transaction_basic(
+                user_id=user_id,
+                amount=amount,
+                transaction_type=transaction_type,
+                transaction_key=transaction_key,
+                is_active=is_active,
+                metadata=metadata_dict,
+                balance_check=fail_insufficient_credits if amount < 0 else False,
             )
-            SELECT "runningBalance" as balance, "transactionKey" FROM transaction_insert;
-            """,
-            user_id,
-            amount,
-            transaction_type.value,
-            metadata,
-            is_active,
-            transaction_key,
-        )
-
-        if result:
-            return result[0]["balance"], result[0]["transactionKey"]
-
-        # If no result, user doesn't exist - this shouldn't happen in normal flow
-        # Users should be created through proper registration flow
-        raise ValueError(f"User {user_id} not found")
 
 
 class UserCredit(UserCreditBase):
@@ -482,58 +590,16 @@ class UserCredit(UserCreditBase):
         if cost < 0 or cost > POSTGRES_INT_MAX:
             raise ValueError(f"Invalid cost amount: {cost}")
 
-        # CRITICAL: Use a single atomic operation to update balance and create transaction
-        # This prevents any possibility of partial updates
-        # Use db module's connection to avoid connection pool issues
-        result = await db.prisma.query_raw(
-            """
-            WITH balance_update AS (
-                UPDATE "User" 
-                SET balance = balance - $1, 
-                    "updatedAt" = CURRENT_TIMESTAMP
-                WHERE id = $2 AND balance >= $1
-                RETURNING id, balance, "updatedAt"
-            ),
-            transaction_insert AS (
-                INSERT INTO "CreditTransaction" (
-                    "transactionKey", "userId", "amount", "type",
-                    "runningBalance", "isActive", "metadata", "createdAt"
-                )
-                SELECT 
-                    gen_random_uuid()::text,
-                    balance_update.id,
-                    -$1::int,
-                    $3::"CreditTransactionType",
-                    balance_update.balance,
-                    true,
-                    $4::jsonb,
-                    balance_update."updatedAt"
-                FROM balance_update
-                RETURNING "runningBalance"
-            )
-            SELECT "runningBalance" as balance FROM transaction_insert;
-            """,
-            cost,
-            user_id,
-            CreditTransactionType.USAGE.value,
-            SafeJson(metadata.model_dump()),
+        # Use atomic transaction function with balance check
+        new_balance, _ = await self._execute_atomic_transaction_basic(
+            user_id=user_id,
+            amount=-cost,  # Negative for spending
+            transaction_type=CreditTransactionType.USAGE,
+            transaction_key=None,  # Let it generate UUID
+            is_active=True,
+            metadata=metadata.model_dump(),
+            balance_check=True,  # Check for insufficient balance
         )
-
-        if not result:
-            # Either user doesn't exist or insufficient balance
-            user = await User.prisma().find_unique(where={"id": user_id})
-
-            if not user:
-                raise ValueError(f"User {user_id} not found")
-
-            raise InsufficientBalanceError(
-                message=f"Insufficient balance of {format_credits_as_dollars(user.balance)}, where this will cost {format_credits_as_dollars(cost)}",
-                user_id=user_id,
-                balance=user.balance,
-                amount=-cost,
-            )
-
-        new_balance = result[0]["balance"]
 
         # Auto top-up if balance is below threshold.
         auto_top_up = await get_auto_top_up(user_id)
@@ -565,55 +631,21 @@ class UserCredit(UserCreditBase):
         if amount <= 0 or amount > POSTGRES_INT_MAX:
             raise ValueError(f"Invalid top-up amount: {amount}")
 
-        # Use single atomic operation for consistency
-        result = await db.prisma.query_raw(
-            """
-            WITH balance_update AS (
-                UPDATE "User" 
-                SET balance = CASE 
-                    WHEN balance > $5 - $2::int THEN $5
-                    ELSE balance + $2::int
-                END,
-                "updatedAt" = CURRENT_TIMESTAMP
-                WHERE id = $1
-                RETURNING id, balance, "updatedAt"
-            ),
-            transaction_insert AS (
-                INSERT INTO "CreditTransaction" (
-                    "transactionKey", "userId", "amount", "type",
-                    "runningBalance", "isActive", "metadata", "createdAt"
-                )
-                SELECT 
-                    gen_random_uuid()::text,
-                    balance_update.id,
-                    $2::int,
-                    $3::"CreditTransactionType",
-                    balance_update.balance,
-                    true,
-                    $4::jsonb,
-                    balance_update."updatedAt"
-                FROM balance_update
-                RETURNING "runningBalance"
-            )
-            SELECT "runningBalance" as balance FROM transaction_insert;
-            """,
-            user_id,
-            amount,
-            CreditTransactionType.TOP_UP.value,
-            SafeJson(
-                {
-                    "reason": f"Manual top up credits for {user_id}",
-                    "type": top_up_type.value,
-                }
-            ),
-            POSTGRES_INT_MAX,
-            POSTGRES_INT_MAX,
+        # Use atomic transaction function with ceiling for top-ups
+        new_balance, _ = await self._execute_atomic_transaction_with_ceiling(
+            user_id=user_id,
+            amount=amount,
+            transaction_type=CreditTransactionType.TOP_UP,
+            ceiling_balance=POSTGRES_INT_MAX,  # Use max ceiling for manual top-ups
+            transaction_key=None,  # Let it generate UUID
+            is_active=True,
+            metadata={
+                "reason": f"Manual top up credits for {user_id}",
+                "type": top_up_type.value,
+            },
         )
 
-        if not result:
-            raise ValueError(f"User {user_id} not found")
-
-        return result[0]["balance"]
+        return new_balance
 
     async def onboarding_reward(self, user_id: str, credits: int, step: OnboardingStep):
         # Validate input to prevent integer overflow
@@ -622,52 +654,40 @@ class UserCredit(UserCreditBase):
 
         transaction_key = f"REWARD-{user_id}-{step.value}"
 
-        # Single atomic operation that creates transaction and updates balance
-        # Uses INSERT ON CONFLICT to handle duplicates atomically
-        result = await db.prisma.query_raw(
-            """
-            WITH reward_insert AS (
-                INSERT INTO "CreditTransaction" (
-                    "transactionKey", "userId", "amount", "type",
-                    "runningBalance", "isActive", "metadata", "createdAt"
-                )
-                SELECT 
-                    $1, $2, $3, $4::"CreditTransactionType",
-                    u.balance + $3, true, $5::jsonb, CURRENT_TIMESTAMP
-                FROM "User" u
-                WHERE u.id = $2
-                ON CONFLICT ("transactionKey", "userId") DO NOTHING
-                RETURNING "userId", "runningBalance"
-            ),
-            balance_update AS (
-                UPDATE "User"
-                SET 
-                    balance = CASE
-                        WHEN balance + $3 > 2147483647 THEN 2147483647
-                        ELSE balance + $3
-                    END,
-                    "updatedAt" = CURRENT_TIMESTAMP
-                WHERE id = $2 
-                    AND EXISTS (SELECT 1 FROM reward_insert)
-                RETURNING balance
-            )
-            SELECT 
-                COALESCE(bu.balance, ri."runningBalance") as balance
-            FROM reward_insert ri
-            FULL OUTER JOIN balance_update bu ON true
-            LIMIT 1;
-            """,
-            transaction_key,
-            user_id,
-            credits,
-            CreditTransactionType.GRANT.value,
-            SafeJson(
-                {"reason": f"Reward for completing {step.value} onboarding step."}
-            ),
+        # Check if already rewarded (for idempotency)
+        existing = await CreditTransaction.prisma().find_first(
+            where={
+                "transactionKey": transaction_key,
+                "userId": user_id,
+            }
         )
+        if existing:
+            # Already rewarded, return None to indicate duplicate
+            return None
 
-        # Result will be empty if duplicate (already rewarded)
-        return result[0]["balance"] if result else None
+        # Use unified atomic transaction function with ceiling
+        try:
+            new_balance, _ = await self._execute_atomic_transaction_with_ceiling(
+                user_id=user_id,
+                amount=credits,
+                transaction_type=CreditTransactionType.GRANT,
+                ceiling_balance=POSTGRES_INT_MAX,
+                transaction_key=transaction_key,
+                is_active=True,
+                metadata={
+                    "reason": f"Reward for completing {step.value} onboarding step."
+                },
+            )
+            return new_balance
+        except Exception:
+            # If transaction fails (e.g. due to race condition), check if it was created by another request
+            existing = await CreditTransaction.prisma().find_first(
+                where={
+                    "transactionKey": transaction_key,
+                    "userId": user_id,
+                }
+            )
+            return None if existing else None
 
     async def top_up_refund(
         self, user_id: str, transaction_key: str, metadata: dict[str, str]
@@ -748,46 +768,34 @@ class UserCredit(UserCreditBase):
                 f"Invalid amount to deduct {format_credits_as_dollars(request.amount)} from {format_credits_as_dollars(transaction.amount)} top-up"
             )
 
-        # Atomic balance deduction and transaction creation (allow going negative for refunds)
-        result = await db.prisma.query_raw(
-            """
-            WITH balance_update AS (
-                UPDATE "User"
-                SET balance = balance - $1,
-                    "updatedAt" = CURRENT_TIMESTAMP
-                WHERE id = $2
-                RETURNING id, balance, "updatedAt"
-            ),
-            transaction_insert AS (
-                INSERT INTO "CreditTransaction" (
-                    "userId", "amount", "type", "runningBalance",
-                    "transactionKey", "metadata", "isActive", "createdAt"
-                )
-                SELECT 
-                    balance_update.id,
-                    -$1::int,
-                    $3::"CreditTransactionType",
-                    balance_update.balance,
-                    $4::text,
-                    $5::jsonb,
-                    true,
-                    balance_update."updatedAt"
-                FROM balance_update
-                RETURNING "runningBalance"
-            )
-            SELECT "runningBalance" as balance FROM transaction_insert;
-            """,
-            request.amount,
-            transaction.userId,
-            CreditTransactionType.REFUND.value,
-            request.id,
-            SafeJson(request),
+        # Use unified atomic transaction function (allow going negative for refunds)
+        # Create serializable metadata from request
+        try:
+            # Try to extract basic attributes for Stripe objects
+            request_metadata = {
+                "id": getattr(request, "id", None),
+                "amount": getattr(request, "amount", None),
+                "status": getattr(request, "status", None),
+                "payment_intent": getattr(request, "payment_intent", None),
+                "reason": getattr(request, "reason", None),
+                "created": getattr(request, "created", None),
+            }
+            # Remove None values
+            request_metadata = {
+                k: v for k, v in request_metadata.items() if v is not None
+            }
+        except Exception:
+            request_metadata = {"error": "Could not serialize request metadata"}
+
+        balance, _ = await self._execute_atomic_transaction_basic(
+            user_id=transaction.userId,
+            amount=-request.amount,  # Negative for deduction
+            transaction_type=CreditTransactionType.REFUND,
+            transaction_key=request.id,
+            is_active=True,
+            metadata=request_metadata,
+            balance_check=False,  # Allow negative balance for refunds
         )
-
-        if not result:
-            raise ValueError(f"User {transaction.userId} not found")
-
-        balance = result[0]["balance"]
 
         # Update the result of the refund request if it exists.
         await CreditRefundRequest.prisma().update_many(
@@ -1236,11 +1244,11 @@ class DisabledUserCredit(UserCreditBase):
     async def spend_credits(self, *_args, **_kwargs) -> int:
         return 0
 
-    async def top_up_credits(self, *_args, **_kwargs):
-        pass
+    async def top_up_credits(self, *_args, **_kwargs) -> int:
+        return 0
 
-    async def onboarding_reward(self, *_args, **_kwargs):
-        pass
+    async def onboarding_reward(self, *_args, **_kwargs) -> int | None:
+        return None
 
     async def top_up_intent(self, *_args, **_kwargs) -> str:
         return ""
