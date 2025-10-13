@@ -1,5 +1,5 @@
 import { ReactFlow, Background, Controls } from "@xyflow/react";
-import NewControlPanel from "../../NewBlockMenu/NewControlPanel/NewControlPanel";
+import NewControlPanel from "../../NewControlPanel/NewControlPanel";
 import CustomEdge from "../edges/CustomEdge";
 import { useFlow } from "./useFlow";
 import { useShallow } from "zustand/react/shallow";

@@ -17,6 +17,7 @@ export type CustomNodeData = {
     [key: string]: any;
   };
   title: string;
+  block_id: string;
   description: string;
   inputSchema: RJSFSchema;
   outputSchema: RJSFSchema;
