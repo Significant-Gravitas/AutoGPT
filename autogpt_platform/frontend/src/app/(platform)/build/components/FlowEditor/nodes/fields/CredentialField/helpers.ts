@@ -26,7 +26,6 @@ export const filterCredentialsByProvider = (
 };
 
 export function toDisplayName(provider: string): string {
-  console.log("provider", provider);
   // Special cases that need manual handling
   const specialCases: Record<string, string> = {
     aiml_api: "AI/ML",
@@ -107,7 +106,6 @@ export const getCredentialProviderFromSchema = (
   const discriminatorMapping = schema.discriminator_mapping;
   const discriminatorValues = schema.discriminator_values;
   const providers = schema.credentials_provider;
-  console.log("formData", formData);
 
   const discriminatorValue = [
     discriminator ? formData[discriminator] : null,

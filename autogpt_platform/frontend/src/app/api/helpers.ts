@@ -1,3 +1,5 @@
+import BackendAPI from "@/lib/autogpt-server-api";
+
 /**
  * Narrow an orval response to its success payload if and only if it is a `200` status with OK shape.
  *
@@ -22,4 +24,12 @@ export function okData<T>(res: unknown): T | undefined {
   if (!("data" in (res as Record<string, unknown>))) return undefined;
 
   return (res as { data: T }).data;
+}
+
+export async function shouldShowOnboarding() {
+  const api = new BackendAPI();
+  const isEnabled = await api.isOnboardingEnabled();
+  const onboarding = await api.getUserOnboarding();
+  const isCompleted = onboarding.completedSteps.includes("CONGRATS");
+  return isEnabled && !isCompleted;
 }

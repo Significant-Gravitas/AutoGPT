@@ -65,7 +65,6 @@ export const useOAuthCredentialModal = ({
   } = usePostV1ExchangeOauthCodeForTokens({
     mutation: {
       onSuccess: (data) => {
-        console.log("OAuth callback successful", data);
         queryClient.invalidateQueries({
           queryKey: getGetV1ListCredentialsQueryKey(),
         });
@@ -116,7 +115,6 @@ export const useOAuthCredentialModal = ({
     };
 
     const handleMessage = async (e: MessageEvent<OAuthPopupResultMessage>) => {
-      console.log("inside handleMessage");
       console.debug("Message received:", e.data);
       if (
         typeof e.data != "object" ||

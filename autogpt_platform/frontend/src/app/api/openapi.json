@@ -3400,6 +3400,52 @@
         }
       }
     },
+    "/api/builder/blocks/batch": {
+      "get": {
+        "tags": ["v2"],
+        "summary": "Get specific blocks",
+        "description": "Get specific blocks by their IDs.",
+        "operationId": "getV2Get specific blocks",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "block_ids",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "array",
+              "items": { "type": "string" },
+              "title": "Block Ids"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/BlockInfo" },
+                  "title": "Response Getv2Get Specific Blocks"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
     "/api/builder/providers": {
       "get": {
         "tags": ["v2"],
@@ -3445,19 +3491,68 @@
       }
     },
     "/api/builder/search": {
-      "post": {
+      "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Builder search",
         "description": "Search for blocks (including integrations), marketplace agents, and user library agents.",
-        "operationId": "postV2Builder search",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/SearchRequest" }
+        "operationId": "getV2Builder search",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "search_query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Search Query"
             }
           },
-          "required": true
-        },
+          {
+            "name": "filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "array", "items": { "type": "string" } },
+                { "type": "null" }
+              ],
+              "title": "Filter"
+            }
+          },
+          {
+            "name": "search_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Search Id"
+            }
+          },
+          {
+            "name": "by_creator",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "array", "items": { "type": "string" } },
+                { "type": "null" }
+              ],
+              "title": "By Creator"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 1, "title": "Page" }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 50, "title": "Page Size" }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -3478,8 +3573,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
       }
     },
     "/api/builder/counts": {
@@ -7343,53 +7437,6 @@
         "type": "object",
         "required": ["name", "cron", "inputs"],
         "title": "ScheduleCreationRequest"
-      },
-      "SearchRequest": {
-        "properties": {
-          "search_query": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Search Query"
-          },
-          "filter": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string",
-                  "enum": [
-                    "blocks",
-                    "integrations",
-                    "marketplace_agents",
-                    "my_agents"
-                  ]
-                },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Filter"
-          },
-          "by_creator": {
-            "anyOf": [
-              { "items": { "type": "string" }, "type": "array" },
-              { "type": "null" }
-            ],
-            "title": "By Creator"
-          },
-          "search_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Search Id"
-          },
-          "page": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Page"
-          },
-          "page_size": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Page Size"
-          }
-        },
-        "type": "object",
-        "title": "SearchRequest"
       },
       "SearchResponse": {
         "properties": {

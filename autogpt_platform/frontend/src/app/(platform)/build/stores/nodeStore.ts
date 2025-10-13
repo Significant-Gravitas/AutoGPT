@@ -17,7 +17,8 @@ type NodeStore = {
   toggleAdvanced: (nodeId: string) => void;
   setShowAdvanced: (nodeId: string, show: boolean) => void;
   getShowAdvanced: (nodeId: string) => boolean;
-  getHardcodedValues: (nodeId: string) => Record<string, any>;
+  addNodes: (nodes: CustomNode[]) => void;
+  getHardCodedValues: (nodeId: string) => Record<string, any>;
 };
 
 export const useNodeStore = create<NodeStore>((set, get) => ({
@@ -73,6 +74,14 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     })),
   getShowAdvanced: (nodeId: string) =>
     get().nodeAdvancedStates[nodeId] || false,
-  getHardcodedValues: (nodeId: string) =>
-    get().nodes.find((n) => n.id === nodeId)?.data?.hardcodedValues || {},
+  addNodes: (nodes: CustomNode[]) => {
+    nodes.forEach((node) => {
+      get().addNode(node);
+    });
+  },
+  getHardCodedValues: (nodeId: string) => {
+    return (
+      get().nodes.find((n) => n.id === nodeId)?.data?.hardcodedValues || {}
+    );
+  },
 }));
