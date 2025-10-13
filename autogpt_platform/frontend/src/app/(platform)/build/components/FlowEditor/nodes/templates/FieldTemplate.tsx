@@ -40,7 +40,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
   const showAdvanced = useNodeStore(
     (state) => state.nodeAdvancedStates[nodeId] ?? false,
   );
-  const formData = useNodeStore((state) => state.getHardcodedValues(nodeId));
+  const formData = useNodeStore((state) => state.getHardCodedValues(nodeId));
 
   const { isArrayItem, arrayFieldHandleId } = useContext(ArrayEditorContext);
 
@@ -74,6 +74,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
       formData,
       schema as BlockIOCredentialsSubSchema,
     );
+  }
   if (formContext.uiType === BlockUIType.NOTE) {
     return <div className="w-full space-y-1">{children}</div>;
   }

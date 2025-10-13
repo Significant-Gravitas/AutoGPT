@@ -28,7 +28,7 @@ export const useCredentialField = ({
     });
 
   const hardcodedValues = useNodeStore((state) =>
-    state.getHardcodedValues(nodeId),
+    state.getHardCodedValues(nodeId),
   );
 
   const credentialProvider = getCredentialProviderFromSchema(

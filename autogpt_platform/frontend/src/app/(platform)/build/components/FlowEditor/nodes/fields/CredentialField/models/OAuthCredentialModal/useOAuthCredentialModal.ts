@@ -64,7 +64,7 @@ export const useOAuthCredentialModal = ({
     error: oAuthCallbackError,
   } = usePostV1ExchangeOauthCodeForTokens({
     mutation: {
-      onSuccess: (data) => {
+      onSuccess: () => {
         queryClient.invalidateQueries({
           queryKey: getGetV1ListCredentialsQueryKey(),
         });
