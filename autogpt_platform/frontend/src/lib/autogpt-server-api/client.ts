@@ -1152,8 +1152,10 @@ export default class BackendAPI {
           console.info(
             "[BackendAPI] Skipping WebSocket connect: no auth token available",
           );
-          this.wsConnecting = null;
+          // Resolve first, then clear wsConnecting to avoid races for awaiters
           resolve();
+          this.wsConnecting = null;
+          this.webSocket = null;
           return;
         }
 
@@ -1193,6 +1195,9 @@ export default class BackendAPI {
           if (!wasIntentional) {
             this.wsOnDisconnectHandlers.forEach((handler) => handler());
             setTimeout(() => this.connectWebSocket().then(resolve), 1000);
+          } else {
+            // Ensure pending connect calls settle on intentional close
+            resolve();
           }
         };
 
