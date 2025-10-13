@@ -354,6 +354,36 @@ async def set_user_email_verification(user_id: str, verified: bool) -> None:
         ) from e
 
 
+async def disable_all_user_notifications(user_id: str) -> None:
+    """Disable all notification preferences for a user.
+
+    Used when user's email bounces/is inactive to prevent any future notifications.
+    """
+    try:
+        await PrismaUser.prisma().update(
+            where={"id": user_id},
+            data={
+                "notifyOnAgentRun": False,
+                "notifyOnZeroBalance": False,
+                "notifyOnLowBalance": False,
+                "notifyOnBlockExecutionFailed": False,
+                "notifyOnContinuousAgentError": False,
+                "notifyOnDailySummary": False,
+                "notifyOnWeeklySummary": False,
+                "notifyOnMonthlySummary": False,
+                "notifyOnAgentApproved": False,
+                "notifyOnAgentRejected": False,
+            },
+        )
+        # Invalidate cache for this user
+        get_user_by_id.cache_delete(user_id)
+        logger.info(f"Disabled all notification preferences for user {user_id}")
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to disable notifications for user {user_id}: {e}"
+        ) from e
+
+
 async def get_user_email_verification(user_id: str) -> bool:
     """Get the email verification status for a user."""
     try:

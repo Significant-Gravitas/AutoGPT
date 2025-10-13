@@ -235,6 +235,7 @@ class BaseEventModel(BaseModel):
 
 
 class NotificationEventModel(BaseEventModel, Generic[NotificationDataType_co]):
+    id: Optional[str] = None  # None when creating, populated when reading from DB
     data: NotificationDataType_co
 
     @property
@@ -378,6 +379,7 @@ class NotificationPreference(BaseModel):
 
 
 class UserNotificationEventDTO(BaseModel):
+    id: str  # Added to track notifications for removal
     type: NotificationType
     data: dict
     created_at: datetime
@@ -386,6 +388,7 @@ class UserNotificationEventDTO(BaseModel):
     @staticmethod
     def from_db(model: NotificationEvent) -> "UserNotificationEventDTO":
         return UserNotificationEventDTO(
+            id=model.id,
             type=model.type,
             data=dict(model.data),
             created_at=model.createdAt,
@@ -538,6 +541,79 @@ async def empty_user_notification_batch(
     except Exception as e:
         raise DatabaseError(
             f"Failed to empty user notification batch for user {user_id} and type {notification_type}: {e}"
+        ) from e
+
+
+async def clear_all_user_notification_batches(user_id: str) -> None:
+    """Clear ALL notification batches for a user across all types.
+
+    Used when user's email is bounced/inactive and we should stop
+    trying to send them ANY emails.
+    """
+    try:
+        # Delete all notification events for this user
+        await NotificationEvent.prisma().delete_many(
+            where={"UserNotificationBatch": {"is": {"userId": user_id}}}
+        )
+
+        # Delete all batches for this user
+        await UserNotificationBatch.prisma().delete_many(where={"userId": user_id})
+
+        logger.info(f"Cleared all notification batches for user {user_id}")
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to clear all notification batches for user {user_id}: {e}"
+        ) from e
+
+
+async def remove_notifications_from_batch(
+    user_id: str, notification_type: NotificationType, notification_ids: list[str]
+) -> None:
+    """Remove specific notifications from a user's batch by their IDs.
+
+    This is used after successful sending to remove only the
+    sent notifications, preventing duplicates on retry.
+    """
+    if not notification_ids:
+        return
+
+    try:
+        # Delete the specific notification events
+        deleted_count = await NotificationEvent.prisma().delete_many(
+            where={
+                "id": {"in": notification_ids},
+                "UserNotificationBatch": {
+                    "is": {"userId": user_id, "type": notification_type}
+                },
+            }
+        )
+
+        logger.info(
+            f"Removed {deleted_count} notifications from batch for user {user_id}"
+        )
+
+        # Check if batch is now empty and delete it if so
+        remaining = await NotificationEvent.prisma().count(
+            where={
+                "UserNotificationBatch": {
+                    "is": {"userId": user_id, "type": notification_type}
+                }
+            }
+        )
+
+        if remaining == 0:
+            await UserNotificationBatch.prisma().delete_many(
+                where=UserNotificationBatchWhereInput(
+                    userId=user_id,
+                    type=notification_type,
+                )
+            )
+            logger.info(
+                f"Deleted empty batch for user {user_id} and type {notification_type}"
+            )
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to remove notifications from batch for user {user_id} and type {notification_type}: {e}"
         ) from e
 
 
