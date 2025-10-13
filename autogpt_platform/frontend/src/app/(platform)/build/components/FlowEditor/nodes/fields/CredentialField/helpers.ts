@@ -1,4 +1,14 @@
 import { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
+import {
+  GoogleLogoIcon,
+  KeyholeIcon,
+  NotionLogoIcon,
+  DiscordLogoIcon,
+  MediumLogoIcon,
+  GithubLogoIcon,
+  TwitterLogoIcon,
+  Icon,
+} from "@phosphor-icons/react";
 
 export const filterCredentialsByProvider = (
   credentials: CredentialsMetaResponse[] | undefined,
@@ -15,7 +25,6 @@ export const filterCredentialsByProvider = (
 };
 
 export function toDisplayName(provider: string): string {
-  console.log("provider", provider);
   // Special cases that need manual handling
   const specialCases: Record<string, string> = {
     aiml_api: "AI/ML",
@@ -45,3 +54,45 @@ export function isCredentialFieldSchema(schema: any): boolean {
     "credentials_provider" in schema
   );
 }
+
+export const providerIcons: Partial<Record<string, Icon>> = {
+  aiml_api: KeyholeIcon,
+  anthropic: KeyholeIcon,
+  apollo: KeyholeIcon,
+  e2b: KeyholeIcon,
+  github: GithubLogoIcon,
+  google: GoogleLogoIcon,
+  groq: KeyholeIcon,
+  http: KeyholeIcon,
+  notion: NotionLogoIcon,
+  nvidia: KeyholeIcon,
+  discord: DiscordLogoIcon,
+  d_id: KeyholeIcon,
+  google_maps: GoogleLogoIcon,
+  jina: KeyholeIcon,
+  ideogram: KeyholeIcon,
+  linear: KeyholeIcon,
+  medium: MediumLogoIcon,
+  mem0: KeyholeIcon,
+  ollama: KeyholeIcon,
+  openai: KeyholeIcon,
+  openweathermap: KeyholeIcon,
+  open_router: KeyholeIcon,
+  llama_api: KeyholeIcon,
+  pinecone: KeyholeIcon,
+  enrichlayer: KeyholeIcon,
+  slant3d: KeyholeIcon,
+  screenshotone: KeyholeIcon,
+  smtp: KeyholeIcon,
+  replicate: KeyholeIcon,
+  reddit: KeyholeIcon,
+  fal: KeyholeIcon,
+  revid: KeyholeIcon,
+  twitter: TwitterLogoIcon,
+  unreal_speech: KeyholeIcon,
+  exa: KeyholeIcon,
+  hubspot: KeyholeIcon,
+  smartlead: KeyholeIcon,
+  todoist: KeyholeIcon,
+  zerobounce: KeyholeIcon,
+};

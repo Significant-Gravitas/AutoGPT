@@ -1,12 +1,12 @@
 import React from "react";
-import { useBlockMenuContext } from "../block-menu-provider";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { IntegrationBlocks } from "../IntegrationBlocks/IntegrationBlocks";
 import { PaginatedIntegrationList } from "../PaginatedIntegrationList/PaginatedIntegrationList";
 import { cn } from "@/lib/utils";
+import { useBlockMenuStore } from "../../../stores/blockMenuStore";
 
 export const IntegrationsContent = () => {
-  const { integration } = useBlockMenuContext();
+  const { integration } = useBlockMenuStore();
 
   if (!integration) {
     return <PaginatedIntegrationList />;

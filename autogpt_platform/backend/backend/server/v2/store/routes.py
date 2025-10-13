@@ -6,9 +6,9 @@ import urllib.parse
 import autogpt_libs.auth
 import fastapi
 import fastapi.responses
-from autogpt_libs.utils.cache import cached
 
 import backend.data.graph
+import backend.server.v2.store.cache as store_cache
 import backend.server.v2.store.db
 import backend.server.v2.store.exceptions
 import backend.server.v2.store.image_gen
@@ -19,117 +19,6 @@ import backend.util.json
 logger = logging.getLogger(__name__)
 
 router = fastapi.APIRouter()
-
-
-##############################################
-############### Caches #######################
-##############################################
-
-
-# Cache user profiles for 1 hour per user
-@cached(maxsize=1000, ttl_seconds=3600)
-async def _get_cached_user_profile(user_id: str):
-    """Cached helper to get user profile."""
-    return await backend.server.v2.store.db.get_user_profile(user_id)
-
-
-# Cache store agents list for 15 minutes
-# Different cache entries for different query combinations
-@cached(maxsize=5000, ttl_seconds=900)
-async def _get_cached_store_agents(
-    featured: bool,
-    creator: str | None,
-    sorted_by: str | None,
-    search_query: str | None,
-    category: str | None,
-    page: int,
-    page_size: int,
-):
-    """Cached helper to get store agents."""
-    return await backend.server.v2.store.db.get_store_agents(
-        featured=featured,
-        creators=[creator] if creator else None,
-        sorted_by=sorted_by,
-        search_query=search_query,
-        category=category,
-        page=page,
-        page_size=page_size,
-    )
-
-
-# Cache individual agent details for 15 minutes
-@cached(maxsize=200, ttl_seconds=900)
-async def _get_cached_agent_details(username: str, agent_name: str):
-    """Cached helper to get agent details."""
-    return await backend.server.v2.store.db.get_store_agent_details(
-        username=username, agent_name=agent_name
-    )
-
-
-# Cache agent graphs for 1 hour
-@cached(maxsize=200, ttl_seconds=3600)
-async def _get_cached_agent_graph(store_listing_version_id: str):
-    """Cached helper to get agent graph."""
-    return await backend.server.v2.store.db.get_available_graph(
-        store_listing_version_id
-    )
-
-
-# Cache agent by version for 1 hour
-@cached(maxsize=200, ttl_seconds=3600)
-async def _get_cached_store_agent_by_version(store_listing_version_id: str):
-    """Cached helper to get store agent by version ID."""
-    return await backend.server.v2.store.db.get_store_agent_by_version_id(
-        store_listing_version_id
-    )
-
-
-# Cache creators list for 1 hour
-@cached(maxsize=200, ttl_seconds=3600)
-async def _get_cached_store_creators(
-    featured: bool,
-    search_query: str | None,
-    sorted_by: str | None,
-    page: int,
-    page_size: int,
-):
-    """Cached helper to get store creators."""
-    return await backend.server.v2.store.db.get_store_creators(
-        featured=featured,
-        search_query=search_query,
-        sorted_by=sorted_by,
-        page=page,
-        page_size=page_size,
-    )
-
-
-# Cache individual creator details for 1 hour
-@cached(maxsize=100, ttl_seconds=3600)
-async def _get_cached_creator_details(username: str):
-    """Cached helper to get creator details."""
-    return await backend.server.v2.store.db.get_store_creator_details(
-        username=username.lower()
-    )
-
-
-# Cache user's own agents for 5 mins (shorter TTL as this changes more frequently)
-@cached(maxsize=500, ttl_seconds=300)
-async def _get_cached_my_agents(user_id: str, page: int, page_size: int):
-    """Cached helper to get user's agents."""
-    return await backend.server.v2.store.db.get_my_agents(
-        user_id, page=page, page_size=page_size
-    )
-
-
-# Cache user's submissions for 1 hour (shorter TTL as this changes frequently)
-@cached(maxsize=500, ttl_seconds=3600)
-async def _get_cached_submissions(user_id: str, page: int, page_size: int):
-    """Cached helper to get user's submissions."""
-    return await backend.server.v2.store.db.get_store_submissions(
-        user_id=user_id,
-        page=page,
-        page_size=page_size,
-    )
 
 
 ##############################################
@@ -152,7 +41,7 @@ async def get_profile(
     Cached for 1 hour per user.
     """
     try:
-        profile = await _get_cached_user_profile(user_id)
+        profile = await backend.server.v2.store.db.get_user_profile(user_id)
         if profile is None:
             return fastapi.responses.JSONResponse(
                 status_code=404,
@@ -198,8 +87,6 @@ async def update_or_create_profile(
         updated_profile = await backend.server.v2.store.db.update_profile(
             user_id=user_id, profile=profile
         )
-        # Clear the cache for this user after profile update
-        _get_cached_user_profile.cache_delete(user_id)
         return updated_profile
     except Exception as e:
         logger.exception("Failed to update profile for user %s: %s", user_id, e)
@@ -234,7 +121,6 @@ async def get_agents(
 ):
     """
     Get a paginated list of agents from the store with optional filtering and sorting.
-    Results are cached for 15 minutes.
 
     Args:
         featured (bool, optional): Filter to only show featured agents. Defaults to False.
@@ -270,7 +156,7 @@ async def get_agents(
         )
 
     try:
-        agents = await _get_cached_store_agents(
+        agents = await store_cache._get_cached_store_agents(
             featured=featured,
             creator=creator,
             sorted_by=sorted_by,
@@ -300,7 +186,6 @@ async def get_agents(
 async def get_agent(username: str, agent_name: str):
     """
     This is only used on the AgentDetails Page.
-    Results are cached for 15 minutes.
 
     It returns the store listing agents details.
     """
@@ -308,7 +193,7 @@ async def get_agent(username: str, agent_name: str):
         username = urllib.parse.unquote(username).lower()
         # URL decode the agent name since it comes from the URL path
         agent_name = urllib.parse.unquote(agent_name).lower()
-        agent = await _get_cached_agent_details(
+        agent = await store_cache._get_cached_agent_details(
             username=username, agent_name=agent_name
         )
         return agent
@@ -331,10 +216,11 @@ async def get_agent(username: str, agent_name: str):
 async def get_graph_meta_by_store_listing_version_id(store_listing_version_id: str):
     """
     Get Agent Graph from Store Listing Version ID.
-    Results are cached for 1 hour.
     """
     try:
-        graph = await _get_cached_agent_graph(store_listing_version_id)
+        graph = await backend.server.v2.store.db.get_available_graph(
+            store_listing_version_id
+        )
         return graph
     except Exception:
         logger.exception("Exception occurred whilst getting agent graph")
@@ -354,10 +240,12 @@ async def get_graph_meta_by_store_listing_version_id(store_listing_version_id: s
 async def get_store_agent(store_listing_version_id: str):
     """
     Get Store Agent Details from Store Listing Version ID.
-    Results are cached for 1 hour.
     """
     try:
-        agent = await _get_cached_store_agent_by_version(store_listing_version_id)
+        agent = await backend.server.v2.store.db.get_store_agent_by_version_id(
+            store_listing_version_id
+        )
+
         return agent
     except Exception:
         logger.exception("Exception occurred whilst getting store agent")
@@ -435,8 +323,6 @@ async def get_creators(
     - Home Page Featured Creators
     - Search Results Page
 
-    Results are cached for 1 hour.
-
     ---
 
     To support this functionality we need:
@@ -455,7 +341,7 @@ async def get_creators(
         )
 
     try:
-        creators = await _get_cached_store_creators(
+        creators = await store_cache._get_cached_store_creators(
             featured=featured,
             search_query=search_query,
             sorted_by=sorted_by,
@@ -482,12 +368,11 @@ async def get_creator(
 ):
     """
     Get the details of a creator.
-    Results are cached for 1 hour.
     - Creator Details Page
     """
     try:
         username = urllib.parse.unquote(username).lower()
-        creator = await _get_cached_creator_details(username=username)
+        creator = await store_cache._get_cached_creator_details(username=username)
         return creator
     except Exception:
         logger.exception("Exception occurred whilst getting creator details")
@@ -518,10 +403,11 @@ async def get_my_agents(
 ):
     """
     Get user's own agents.
-    Results are cached for 5 minutes per user.
     """
     try:
-        agents = await _get_cached_my_agents(user_id, page=page, page_size=page_size)
+        agents = await backend.server.v2.store.db.get_my_agents(
+            user_id, page=page, page_size=page_size
+        )
         return agents
     except Exception:
         logger.exception("Exception occurred whilst getting my agents")
@@ -558,13 +444,6 @@ async def delete_submission(
             submission_id=submission_id,
         )
 
-        # Clear submissions cache for this specific user after deletion
-        if result:
-            # Clear user's own agents cache - we don't know all page/size combinations
-            for page in range(1, 20):
-                # Clear user's submissions cache for common defaults
-                _get_cached_submissions.cache_delete(user_id, page=page, page_size=20)
-
         return result
     except Exception:
         logger.exception("Exception occurred whilst deleting store submission")
@@ -588,7 +467,6 @@ async def get_submissions(
 ):
     """
     Get a paginated list of store submissions for the authenticated user.
-    Results are cached for 1 hour per user.
 
     Args:
         user_id (str): ID of the authenticated user
@@ -611,8 +489,10 @@ async def get_submissions(
             status_code=422, detail="Page size must be greater than 0"
         )
     try:
-        listings = await _get_cached_submissions(
-            user_id, page=page, page_size=page_size
+        listings = await backend.server.v2.store.db.get_store_submissions(
+            user_id=user_id,
+            page=page,
+            page_size=page_size,
         )
         return listings
     except Exception:
@@ -666,11 +546,6 @@ async def create_submission(
             recommended_schedule_cron=submission_request.recommended_schedule_cron,
         )
 
-        # Clear user's own agents cache - we don't know all page/size combinations
-        for page in range(1, 20):
-            # Clear user's submissions cache for common defaults
-            _get_cached_submissions.cache_delete(user_id, page=page, page_size=20)
-
         return result
     except Exception:
         logger.exception("Exception occurred whilst creating store submission")
@@ -719,11 +594,6 @@ async def edit_submission(
         changes_summary=submission_request.changes_summary,
         recommended_schedule_cron=submission_request.recommended_schedule_cron,
     )
-
-    # Clear user's own agents cache - we don't know all page/size combinations
-    for page in range(1, 20):
-        # Clear user's submissions cache for common defaults
-        _get_cached_submissions.cache_delete(user_id, page=page, page_size=20)
 
     return result
 
@@ -917,15 +787,10 @@ async def get_cache_metrics():
         )
 
     # Add metrics for each cache
-    add_cache_metrics("user_profile", _get_cached_user_profile)
-    add_cache_metrics("store_agents", _get_cached_store_agents)
-    add_cache_metrics("agent_details", _get_cached_agent_details)
-    add_cache_metrics("agent_graph", _get_cached_agent_graph)
-    add_cache_metrics("agent_by_version", _get_cached_store_agent_by_version)
-    add_cache_metrics("store_creators", _get_cached_store_creators)
-    add_cache_metrics("creator_details", _get_cached_creator_details)
-    add_cache_metrics("my_agents", _get_cached_my_agents)
-    add_cache_metrics("submissions", _get_cached_submissions)
+    add_cache_metrics("store_agents", store_cache._get_cached_store_agents)
+    add_cache_metrics("agent_details", store_cache._get_cached_agent_details)
+    add_cache_metrics("store_creators", store_cache._get_cached_store_creators)
+    add_cache_metrics("creator_details", store_cache._get_cached_creator_details)
 
     # Add metadata/help text at the beginning
     prometheus_output = [

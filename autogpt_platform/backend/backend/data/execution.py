@@ -478,6 +478,41 @@ async def get_graph_executions(
     return [GraphExecutionMeta.from_db(execution) for execution in executions]
 
 
+async def get_graph_executions_count(
+    user_id: str,
+    statuses: Optional[list[ExecutionStatus]] = None,
+    created_time_gte: Optional[datetime] = None,
+    created_time_lte: Optional[datetime] = None,
+) -> int:
+    """
+    Get count of graph executions for a user with optional filters.
+
+    Args:
+        user_id: The user ID to filter by
+        statuses: Optional list of execution statuses to filter by
+        created_time_gte: Optional minimum creation time
+        created_time_lte: Optional maximum creation time
+
+    Returns:
+        Count of matching graph executions
+    """
+    where_filter: AgentGraphExecutionWhereInput = {
+        "isDeleted": False,
+        "userId": user_id,
+    }
+
+    if created_time_gte or created_time_lte:
+        where_filter["createdAt"] = {
+            "gte": created_time_gte or datetime.min.replace(tzinfo=timezone.utc),
+            "lte": created_time_lte or datetime.max.replace(tzinfo=timezone.utc),
+        }
+    if statuses:
+        where_filter["OR"] = [{"executionStatus": status} for status in statuses]
+
+    count = await AgentGraphExecution.prisma().count(where=where_filter)
+    return count
+
+
 class GraphExecutionsPaginated(BaseModel):
     """Response schema for paginated graph executions."""
 

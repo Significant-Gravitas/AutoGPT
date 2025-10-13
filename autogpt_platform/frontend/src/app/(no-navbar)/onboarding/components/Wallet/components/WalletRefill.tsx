@@ -16,9 +16,12 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/__legacy__/ui/form";
-import { Input } from "./ui/input";
+import { Input } from "../../../../../../components/__legacy__/ui/input";
 import Link from "next/link";
-import { useToast, useToastOnFail } from "../molecules/Toast/use-toast";
+import {
+  useToast,
+  useToastOnFail,
+} from "../../../../../../components/molecules/Toast/use-toast";
 import useCredits from "@/hooks/useCredits";
 import { useCallback, useEffect, useState } from "react";
 

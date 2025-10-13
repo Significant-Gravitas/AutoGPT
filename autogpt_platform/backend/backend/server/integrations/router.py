@@ -64,7 +64,7 @@ class LoginResponse(BaseModel):
     state_token: str
 
 
-@router.get("/{provider}/login")
+@router.get("/{provider}/login", summary="Initiate OAuth flow")
 async def login(
     provider: Annotated[
         ProviderName, Path(title="The provider to initiate an OAuth flow for")
@@ -102,7 +102,7 @@ class CredentialsMetaResponse(BaseModel):
     )
 
 
-@router.post("/{provider}/callback")
+@router.post("/{provider}/callback", summary="Exchange OAuth code for tokens")
 async def callback(
     provider: Annotated[
         ProviderName, Path(title="The target provider for this OAuth exchange")
@@ -244,7 +244,7 @@ async def get_credential(
     return credential
 
 
-@router.post("/{provider}/credentials", status_code=201)
+@router.post("/{provider}/credentials", status_code=201, summary="Create Credentials")
 async def create_credentials(
     user_id: Annotated[str, Security(get_user_id)],
     provider: Annotated[
