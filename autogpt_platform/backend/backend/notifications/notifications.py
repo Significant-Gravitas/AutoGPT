@@ -230,7 +230,9 @@ class NotificationManager(AppService):
             logger.info(
                 f"Querying for active users between {start_time} and {current_time}"
             )
-            users = await get_database_manager_async_client().get_active_user_ids_in_timerange(
+            users = await get_database_manager_async_client(
+                should_retry=False
+            ).get_active_user_ids_in_timerange(
                 end_time=current_time.isoformat(),
                 start_time=start_time.isoformat(),
             )
@@ -270,15 +272,15 @@ class NotificationManager(AppService):
 
             for notification_type in notification_types:
                 # Get all batches for this notification type
-                batches = (
-                    await get_database_manager_async_client().get_all_batches_by_type(
-                        notification_type
-                    )
-                )
+                batches = await get_database_manager_async_client(
+                    should_retry=False
+                ).get_all_batches_by_type(notification_type)
 
                 for batch in batches:
                     # Check if batch has aged out
-                    oldest_message = await get_database_manager_async_client().get_user_notification_oldest_message_in_batch(
+                    oldest_message = await get_database_manager_async_client(
+                        should_retry=False
+                    ).get_user_notification_oldest_message_in_batch(
                         batch.user_id, notification_type
                     )
 
@@ -293,9 +295,9 @@ class NotificationManager(AppService):
 
                     # If batch has aged out, process it
                     if oldest_message.created_at + max_delay < current_time:
-                        recipient_email = await get_database_manager_async_client().get_user_email_by_id(
-                            batch.user_id
-                        )
+                        recipient_email = await get_database_manager_async_client(
+                            should_retry=False
+                        ).get_user_email_by_id(batch.user_id)
 
                         if not recipient_email:
                             logger.error(
@@ -312,21 +314,25 @@ class NotificationManager(AppService):
                                 f"User {batch.user_id} does not want to receive {notification_type} notifications"
                             )
                             # Clear the batch
-                            await get_database_manager_async_client().empty_user_notification_batch(
+                            await get_database_manager_async_client(
+                                should_retry=False
+                            ).empty_user_notification_batch(
                                 batch.user_id, notification_type
                             )
                             continue
 
-                        batch_data = await get_database_manager_async_client().get_user_notification_batch(
-                            batch.user_id, notification_type
-                        )
+                        batch_data = await get_database_manager_async_client(
+                            should_retry=False
+                        ).get_user_notification_batch(batch.user_id, notification_type)
 
                         if not batch_data or not batch_data.notifications:
                             logger.error(
                                 f"Batch data not found for user {batch.user_id}"
                             )
                             # Clear the batch
-                            await get_database_manager_async_client().empty_user_notification_batch(
+                            await get_database_manager_async_client(
+                                should_retry=False
+                            ).empty_user_notification_batch(
                                 batch.user_id, notification_type
                             )
                             continue
@@ -362,7 +368,9 @@ class NotificationManager(AppService):
                         )
 
                         # Clear the batch
-                        await get_database_manager_async_client().empty_user_notification_batch(
+                        await get_database_manager_async_client(
+                            should_retry=False
+                        ).empty_user_notification_batch(
                             batch.user_id, notification_type
                         )
 
@@ -417,15 +425,13 @@ class NotificationManager(AppService):
         self, user_id: str, event_type: NotificationType
     ) -> bool:
         """Check if a user wants to receive a notification based on their preferences and email verification status"""
-        validated_email = (
-            await get_database_manager_async_client().get_user_email_verification(
-                user_id
-            )
-        )
+        validated_email = await get_database_manager_async_client(
+            should_retry=False
+        ).get_user_email_verification(user_id)
         preference = (
-            await get_database_manager_async_client().get_user_notification_preference(
-                user_id
-            )
+            await get_database_manager_async_client(
+                should_retry=False
+            ).get_user_notification_preference(user_id)
         ).preferences.get(event_type, True)
         # only if both are true, should we email this person
         return validated_email and preference
@@ -441,7 +447,9 @@ class NotificationManager(AppService):
 
         try:
             # Get summary data from the database
-            summary_data = await get_database_manager_async_client().get_user_execution_summary_data(
+            summary_data = await get_database_manager_async_client(
+                should_retry=False
+            ).get_user_execution_summary_data(
                 user_id=user_id,
                 start_time=params.start_date,
                 end_time=params.end_date,
@@ -528,13 +536,13 @@ class NotificationManager(AppService):
         self, user_id: str, event_type: NotificationType, event: NotificationEventModel
     ) -> bool:
 
-        await get_database_manager_async_client().create_or_add_to_user_notification_batch(
-            user_id, event_type, event
-        )
+        await get_database_manager_async_client(
+            should_retry=False
+        ).create_or_add_to_user_notification_batch(user_id, event_type, event)
 
-        oldest_message = await get_database_manager_async_client().get_user_notification_oldest_message_in_batch(
-            user_id, event_type
-        )
+        oldest_message = await get_database_manager_async_client(
+            should_retry=False
+        ).get_user_notification_oldest_message_in_batch(user_id, event_type)
         if not oldest_message:
             logger.error(
                 f"Batch for user {user_id} and type {event_type} has no oldest message whichshould never happen!!!!!!!!!!!!!!!!"
@@ -584,11 +592,9 @@ class NotificationManager(AppService):
                 return False
             logger.debug(f"Processing immediate notification: {event}")
 
-            recipient_email = (
-                await get_database_manager_async_client().get_user_email_by_id(
-                    event.user_id
-                )
-            )
+            recipient_email = await get_database_manager_async_client(
+                should_retry=False
+            ).get_user_email_by_id(event.user_id)
             if not recipient_email:
                 logger.error(f"User email not found for user {event.user_id}")
                 return False
@@ -623,11 +629,9 @@ class NotificationManager(AppService):
                 return False
             logger.info(f"Processing batch notification: {event}")
 
-            recipient_email = (
-                await get_database_manager_async_client().get_user_email_by_id(
-                    event.user_id
-                )
-            )
+            recipient_email = await get_database_manager_async_client(
+                should_retry=False
+            ).get_user_email_by_id(event.user_id)
             if not recipient_email:
                 logger.error(f"User email not found for user {event.user_id}")
                 return False
@@ -646,11 +650,9 @@ class NotificationManager(AppService):
             if not should_send:
                 logger.info("Batch not old enough to send")
                 return False
-            batch = (
-                await get_database_manager_async_client().get_user_notification_batch(
-                    event.user_id, event.type
-                )
-            )
+            batch = await get_database_manager_async_client(
+                should_retry=False
+            ).get_user_notification_batch(event.user_id, event.type)
             if not batch or not batch.notifications:
                 logger.error(f"Batch not found for user {event.user_id}")
                 return False
@@ -716,7 +718,9 @@ class NotificationManager(AppService):
                             # Remove successfully sent notifications immediately
                             if chunk_ids:
                                 try:
-                                    await get_database_manager_async_client().remove_notifications_from_batch(
+                                    await get_database_manager_async_client(
+                                        should_retry=False
+                                    ).remove_notifications_from_batch(
                                         event.user_id, event.type, chunk_ids
                                     )
                                     logger.info(
@@ -758,7 +762,9 @@ class NotificationManager(AppService):
                                 # Remove the oversized notification permanently - it will NEVER fit
                                 if chunk_ids:
                                     try:
-                                        await get_database_manager_async_client().remove_notifications_from_batch(
+                                        await get_database_manager_async_client(
+                                            should_retry=False
+                                        ).remove_notifications_from_batch(
                                             event.user_id, event.type, chunk_ids
                                         )
                                         logger.info(
@@ -817,9 +823,9 @@ class NotificationManager(AppService):
 
                                 # 3. Clear ALL notification batches for this user
                                 try:
-                                    await get_database_manager_async_client().clear_all_user_notification_batches(
-                                        event.user_id
-                                    )
+                                    await get_database_manager_async_client(
+                                        should_retry=False
+                                    ).clear_all_user_notification_batches(event.user_id)
                                     logger.info(
                                         f"Cleared ALL notification batches for user {event.user_id}"
                                     )
@@ -844,7 +850,9 @@ class NotificationManager(AppService):
                                 # Remove from batch - 422 means bad data that won't fix itself
                                 if chunk_ids:
                                     try:
-                                        await get_database_manager_async_client().remove_notifications_from_batch(
+                                        await get_database_manager_async_client(
+                                            should_retry=False
+                                        ).remove_notifications_from_batch(
                                             event.user_id, event.type, chunk_ids
                                         )
                                         logger.info(
@@ -886,11 +894,9 @@ class NotificationManager(AppService):
                     i += 1
 
             # Check what remains in the batch (notifications are removed as sent)
-            remaining_batch = (
-                await get_database_manager_async_client().get_user_notification_batch(
-                    event.user_id, event.type
-                )
-            )
+            remaining_batch = await get_database_manager_async_client(
+                should_retry=False
+            ).get_user_notification_batch(event.user_id, event.type)
 
             if not remaining_batch or not remaining_batch.notifications:
                 logger.info(
@@ -918,11 +924,9 @@ class NotificationManager(AppService):
 
             logger.info(f"Processing summary notification: {model}")
 
-            recipient_email = (
-                await get_database_manager_async_client().get_user_email_by_id(
-                    event.user_id
-                )
-            )
+            recipient_email = await get_database_manager_async_client(
+                should_retry=False
+            ).get_user_email_by_id(event.user_id)
             if not recipient_email:
                 logger.error(f"User email not found for user {event.user_id}")
                 return False
