@@ -11,7 +11,6 @@ from datetime import datetime
 
 import prisma.enums
 import pytest
-from prisma.errors import RawQueryError
 from prisma.models import CreditTransaction, User
 
 from backend.data.credit import POSTGRES_INT_MAX, UsageTransactionMetadata, UserCredit
@@ -295,7 +294,7 @@ async def test_onboarding_reward_idempotency(server: SpinTestServer):
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_integer_overflow_protection(server: SpinTestServer):
-    """Test that integer overflow is prevented."""
+    """Test that integer overflow is prevented by clamping to POSTGRES_INT_MAX."""
     user_id = f"overflow-test-{datetime.now().timestamp()}"
     await create_test_user(user_id)
 
@@ -308,16 +307,27 @@ async def test_integer_overflow_protection(server: SpinTestServer):
             where={"id": user_id}, data={"balance": max_int - 100}
         )
 
-        # Try to add more than possible - should raise database error
-        with pytest.raises(RawQueryError, match="integer out of range"):
-            await credit_system.top_up_credits(user_id, 200)
+        # Try to add more than possible - should clamp to POSTGRES_INT_MAX
+        await credit_system.top_up_credits(user_id, 200)
 
-        # Balance should not have overflowed
+        # Balance should be clamped to max_int, not overflowed
         final_balance = await credit_system.get_credits(user_id)
-        assert final_balance <= max_int, f"Balance overflowed: {final_balance}"
         assert (
-            final_balance == max_int - 100
-        ), f"Balance should be unchanged: {final_balance}"
+            final_balance == max_int
+        ), f"Balance should be clamped to {max_int}, got {final_balance}"
+
+        # Verify transaction was created with clamped amount
+        transactions = await CreditTransaction.prisma().find_many(
+            where={
+                "userId": user_id,
+                "type": prisma.enums.CreditTransactionType.TOP_UP,
+            },
+            order={"createdAt": "desc"},
+        )
+        assert len(transactions) > 0, "Transaction should be created"
+        assert (
+            transactions[0].runningBalance == max_int
+        ), "Transaction should show clamped balance"
 
     finally:
         await cleanup_test_user(user_id)

@@ -296,7 +296,7 @@ class UserCreditBase(ABC):
                 UPDATE "User"
                 SET 
                     balance = CASE 
-                        WHEN balance + tx_activate.amount > $5 THEN $5
+                        WHEN tx_activate.amount > 0 AND balance > $5 - tx_activate.amount THEN $5
                         ELSE balance + tx_activate.amount
                     END,
                     "updatedAt" = CURRENT_TIMESTAMP
@@ -581,16 +581,10 @@ class UserCredit(UserCreditBase):
         # Use single atomic operation for consistency
         result = await db.prisma.query_raw(
             """
-            WITH balance_check AS (
-                SELECT id, balance
-                FROM "User"
-                WHERE id = $1
-                FOR UPDATE
-            ),
-            balance_update AS (
+            WITH balance_update AS (
                 UPDATE "User" 
                 SET balance = CASE 
-                    WHEN balance + $2::int > $5 THEN $5
+                    WHEN balance > $5 - $2::int THEN $5
                     ELSE balance + $2::int
                 END,
                 "updatedAt" = CURRENT_TIMESTAMP
@@ -922,7 +916,7 @@ class UserCredit(UserCreditBase):
             "type": transaction_type,
             "metadata": SafeJson(metadata),
             "isActive": False,
-            "createdAt": self.time_now(),
+            # Let database set createdAt with CURRENT_TIMESTAMP via @default(now())
         }
         if key:
             transaction_data["transactionKey"] = key
@@ -1045,7 +1039,7 @@ class UserCredit(UserCreditBase):
                 "transactionKey": checkout_session.id,
                 "isActive": False,
                 "metadata": SafeJson(checkout_session),
-                "createdAt": self.time_now(),
+                # Let database set createdAt with CURRENT_TIMESTAMP via @default(now())
             }
         )
 
@@ -1227,37 +1221,37 @@ class BetaUserCredit(UserCredit):
 
 
 class DisabledUserCredit(UserCreditBase):
-    async def get_credits(self, *args, **kwargs) -> int:
+    async def get_credits(self, *_args, **_kwargs) -> int:
         return 100
 
-    async def get_transaction_history(self, *args, **kwargs) -> TransactionHistory:
+    async def get_transaction_history(self, *_args, **_kwargs) -> TransactionHistory:
         return TransactionHistory(transactions=[], next_transaction_time=None)
 
-    async def get_refund_requests(self, *args, **kwargs) -> list[RefundRequest]:
+    async def get_refund_requests(self, *_args, **_kwargs) -> list[RefundRequest]:
         return []
 
-    async def spend_credits(self, *args, **kwargs) -> int:
+    async def spend_credits(self, *_args, **_kwargs) -> int:
         return 0
 
-    async def top_up_credits(self, *args, **kwargs):
+    async def top_up_credits(self, *_args, **_kwargs):
         pass
 
-    async def onboarding_reward(self, *args, **kwargs):
+    async def onboarding_reward(self, *_args, **_kwargs):
         pass
 
-    async def top_up_intent(self, *args, **kwargs) -> str:
+    async def top_up_intent(self, *_args, **_kwargs) -> str:
         return ""
 
-    async def top_up_refund(self, *args, **kwargs) -> int:
+    async def top_up_refund(self, *_args, **_kwargs) -> int:
         return 0
 
-    async def deduct_credits(self, *args, **kwargs):
+    async def deduct_credits(self, *_args, **_kwargs):
         pass
 
-    async def handle_dispute(self, *args, **kwargs):
+    async def handle_dispute(self, *_args, **_kwargs):
         pass
 
-    async def fulfill_checkout(self, *args, **kwargs):
+    async def fulfill_checkout(self, *_args, **_kwargs):
         pass
 
 
@@ -1358,7 +1352,7 @@ async def admin_get_user_history(
             )
             reason = metadata.get("reason", "No reason provided")
 
-        balance, last_update = await get_user_credit_model()._get_credits(tx.userId)
+        balance, _ = await get_user_credit_model()._get_credits(tx.userId)
 
         history.append(
             UserTransaction(
