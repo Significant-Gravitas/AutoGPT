@@ -19,14 +19,14 @@ export type APIKeyFormValues = {
 
 type useAPIKeyCredentialsModalType = {
   schema: BlockIOCredentialsSubSchema;
+  provider: string;
 };
 
 export function useAPIKeyCredentialsModal({
   schema,
+  provider,
 }: useAPIKeyCredentialsModalType): {
   form: UseFormReturn<APIKeyFormValues>;
-  isLoading: boolean;
-  provider: string;
   schemaDescription?: string;
   onSubmit: (values: APIKeyFormValues) => Promise<void>;
   isOpen: boolean;
@@ -36,31 +36,30 @@ export function useAPIKeyCredentialsModal({
   const [isOpen, setIsOpen] = useState(false);
   const queryClient = useQueryClient();
 
-  const { mutateAsync: createCredentials, isPending: isCreatingCredentials } =
-    usePostV1CreateCredentials({
-      mutation: {
-        onSuccess: async () => {
-          form.reset();
-          setIsOpen(false);
-          toast({
-            title: "Success",
-            description: "Credentials created successfully",
-            variant: "default",
-          });
+  const { mutateAsync: createCredentials } = usePostV1CreateCredentials({
+    mutation: {
+      onSuccess: async () => {
+        form.reset();
+        setIsOpen(false);
+        toast({
+          title: "Success",
+          description: "Credentials created successfully",
+          variant: "default",
+        });
 
-          await queryClient.refetchQueries({
-            queryKey: getGetV1ListCredentialsQueryKey(),
-          });
-        },
-        onError: () => {
-          toast({
-            title: "Error",
-            description: "Failed to create credentials.",
-            variant: "destructive",
-          });
-        },
+        await queryClient.refetchQueries({
+          queryKey: getGetV1ListCredentialsQueryKey(),
+        });
       },
-    });
+      onError: () => {
+        toast({
+          title: "Error",
+          description: "Failed to create credentials.",
+          variant: "destructive",
+        });
+      },
+    },
+  });
 
   const formSchema = z.object({
     apiKey: z.string().min(1, "API Key is required"),
@@ -83,9 +82,9 @@ export function useAPIKeyCredentialsModal({
       : undefined;
 
     createCredentials({
-      provider: schema.credentials_provider[0],
+      provider: provider,
       data: {
-        provider: schema.credentials_provider[0],
+        provider: provider,
         type: "api_key",
         api_key: values.apiKey,
         title: values.title,
@@ -96,8 +95,6 @@ export function useAPIKeyCredentialsModal({
 
   return {
     form,
-    isLoading: isCreatingCredentials,
-    provider: schema.credentials_provider[0],
     schemaDescription: schema.description,
     onSubmit,
     isOpen,
