@@ -23,6 +23,7 @@ model User {
   integrations     String   @default("")
   stripeCustomerId String?
   topUpConfig      Json?
+  balance          Int     @default(0)
 
   maxEmailsPerDay              Int     @default(3)
   notifyOnAgentRun             Boolean @default(true)
