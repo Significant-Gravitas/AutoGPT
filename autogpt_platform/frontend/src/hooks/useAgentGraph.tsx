@@ -607,6 +607,7 @@ export default function useAgentGraph(
     const links = xyEdges.map((edge): LinkCreatable => {
       let sourceName = edge.sourceHandle || "";
       const sourceNode = xyNodes.find((node) => node.id === edge.source);
+      const sinkNode = xyNodes.find((node) => node.id === edge.target);
 
       // Special case for SmartDecisionMakerBlock
       if (
@@ -616,8 +617,8 @@ export default function useAgentGraph(
         sourceName = `tools_^_${normalizeToolName(getToolFuncName(edge.target))}_~_${normalizeToolName(edge.targetHandle || "")}`;
       }
       return {
-        source_id: edge.source,
-        sink_id: edge.target,
+        source_id: sourceNode?.data.backend_id ?? edge.source,
+        sink_id: sinkNode?.data.backend_id ?? edge.target,
         source_name: sourceName,
         sink_name: edge.targetHandle || "",
       };
