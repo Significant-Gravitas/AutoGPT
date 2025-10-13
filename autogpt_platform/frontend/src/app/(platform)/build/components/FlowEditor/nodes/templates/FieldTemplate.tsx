@@ -18,8 +18,10 @@ import { ArrayEditorContext } from "../../components/ArrayEditor/ArrayEditorCont
 import {
   isCredentialFieldSchema,
   toDisplayName,
+  getCredentialProviderFromSchema,
 } from "../fields/CredentialField/helpers";
 import { cn } from "@/lib/utils";
+import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
 import { BlockUIType } from "@/lib/autogpt-server-api";
 
 const FieldTemplate: React.FC<FieldTemplateProps> = ({
@@ -38,6 +40,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
   const showAdvanced = useNodeStore(
     (state) => state.nodeAdvancedStates[nodeId] ?? false,
   );
+  const formData = useNodeStore((state) => state.getHardCodedValues(nodeId));
 
   const { isArrayItem, arrayFieldHandleId } = useContext(ArrayEditorContext);
 
@@ -65,6 +68,13 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
 
   const { displayType, colorClass } = getTypeDisplayInfo(schema);
 
+  let credentialProvider = null;
+  if (isCredential) {
+    credentialProvider = getCredentialProviderFromSchema(
+      formData,
+      schema as BlockIOCredentialsSubSchema,
+    );
+  }
   if (formContext.uiType === BlockUIType.NOTE) {
     return <div className="w-full space-y-1">{children}</div>;
   }
@@ -85,8 +95,8 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
               variant="body"
               className={cn("line-clamp-1", isCredential && "ml-3")}
             >
-              {isCredential
-                ? toDisplayName(schema.credentials_provider[0]) + " credentials"
+              {isCredential && credentialProvider
+                ? toDisplayName(credentialProvider) + " credentials"
                 : label}
             </Text>
           )}
