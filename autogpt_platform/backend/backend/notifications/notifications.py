@@ -42,7 +42,7 @@ from backend.util.service import (
     endpoint_to_sync,
     expose,
 )
-from backend.util.settings import Settings
+from backend.util.settings import AppEnvironment, Settings
 
 logger = TruncatedLogger(logging.getLogger(__name__), "[NotificationManager]")
 settings = Settings()
@@ -128,6 +128,12 @@ def get_routing_key(event_type: NotificationType) -> str:
 
 def queue_notification(event: NotificationEventModel) -> NotificationResult:
     """Queue a notification - exposed method for other services to call"""
+    # Disable in production
+    if settings.config.app_env == AppEnvironment.PRODUCTION:
+        return NotificationResult(
+            success=True,
+            message="Queueing notifications is disabled in production",
+        )
     try:
         logger.debug(f"Received Request to queue {event=}")
 
@@ -155,6 +161,12 @@ def queue_notification(event: NotificationEventModel) -> NotificationResult:
 
 async def queue_notification_async(event: NotificationEventModel) -> NotificationResult:
     """Queue a notification - exposed method for other services to call"""
+    # Disable in production
+    if settings.config.app_env == AppEnvironment.PRODUCTION:
+        return NotificationResult(
+            success=True,
+            message="Queueing notifications is disabled in production",
+        )
     try:
         logger.debug(f"Received Request to queue {event=}")
 
@@ -217,6 +229,9 @@ class NotificationManager(AppService):
 
     @expose
     async def queue_weekly_summary(self):
+        # disable in prod
+        if settings.config.app_env == AppEnvironment.PRODUCTION:
+            return
         # Use the existing event loop instead of creating a new one with asyncio.run()
         asyncio.create_task(self._queue_weekly_summary())
 
@@ -259,6 +274,9 @@ class NotificationManager(AppService):
     async def process_existing_batches(
         self, notification_types: list[NotificationType]
     ):
+        # disable in prod
+        if settings.config.app_env == AppEnvironment.PRODUCTION:
+            return
         # Use the existing event loop instead of creating a new process
         asyncio.create_task(self._process_existing_batches(notification_types))
 
