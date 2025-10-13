@@ -101,9 +101,12 @@ export const customMutator = async <
   // 3. The client-side will send the request again via the proxy. If it fails again, the error will be handled on the client side.
   // 4. If the request succeeds on the server side, the data will be cached, and the client will use it instead of sending a request to the proxy.
 
-  if (!response.ok && isServerSide()) {
+  if (!response.ok) {
     console.error("Request failed on server side", response, fullUrl);
-    throw new Error(`Request failed with status ${response.status}`);
+    if (!isServerSide()) {
+      const response_data = await getBody<any>(response);
+      throw response_data;
+    }
   }
 
   const response_data = await getBody<T["data"]>(response);

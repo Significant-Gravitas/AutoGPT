@@ -14,7 +14,6 @@ import {
 import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 import { useNodeStore } from "../../../stores/nodeStore";
 import { useEdgeStore } from "../../../stores/edgeStore";
-import { useShallow } from "zustand/react/shallow";
 import { Graph } from "@/app/api/__generated__/models/graph";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
 
@@ -65,11 +64,9 @@ export const useNewSaveControl = () => {
           });
         },
         onError: (error) => {
-          console.error("error creating new graph", error);
           toast({
-            title: "Error creating new graph",
-            description:
-              (error.detail as string) || "An unexpected error occurred.",
+            title: (error.detail as string) ?? "An unexpected error occurred.",
+            description: "An unexpected error occurred.",
             variant: "destructive",
           });
         },
@@ -95,6 +92,13 @@ export const useNewSaveControl = () => {
           });
           queryClient.invalidateQueries({
             queryKey: getGetV1GetSpecificGraphQueryKey(data.id),
+          });
+        },
+        onError: (error) => {
+          toast({
+            title: (error.detail as string) ?? "An unexpected error occurred.",
+            description: "An unexpected error occurred.",
+            variant: "destructive",
           });
         },
       },
@@ -124,14 +128,22 @@ export const useNewSaveControl = () => {
     };
   }, [form]);
 
+  useEffect(() => {
+    if (graph) {
+      form.reset({
+        name: graph.name ?? "",
+        description: graph.description ?? "",
+      });
+    }
+  }, [graph, form]);
+
   const onSubmit = async (values: SaveableGraphFormValues) => {
     const graphNodes = useNodeStore.getState().getBackendNodes();
     const graphLinks = useEdgeStore.getState().getBackendLinks();
 
-    const hardCodedValues = graphNodes.map((node) => node.input_default);
-    console.log("hardCodedValues", hardCodedValues);
     if (graph && graph.id) {
       const data: Graph = {
+        id: graph.id,
         name: values.name,
         description: values.description,
         nodes: graphNodes,
@@ -145,7 +157,6 @@ export const useNewSaveControl = () => {
         nodes: graphNodes,
         links: graphLinks,
       };
-      console.log("we are sending create data", data);
       await createNewGraph({ data: { graph: data } });
     }
   };

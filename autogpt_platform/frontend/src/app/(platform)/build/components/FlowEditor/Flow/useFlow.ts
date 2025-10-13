@@ -18,7 +18,7 @@ export const useFlow = () => {
     flowVersion: parseAsInteger,
   });
 
-  const { data: graph } = useGetV1GetSpecificGraph(
+  const { data: graph, isLoading: isGraphLoading } = useGetV1GetSpecificGraph(
     flowID ?? "",
     flowVersion !== null ? { version: flowVersion } : {},
     {
@@ -32,15 +32,16 @@ export const useFlow = () => {
   const nodes = graph?.nodes;
   const blockIds = nodes?.map((node) => node.block_id);
 
-  const { data: blocks } = useGetV2GetSpecificBlocks(
-    { block_ids: blockIds ?? [] },
-    {
-      query: {
-        select: (res) => res.data as BlockInfo[],
-        enabled: !!flowID && !!blockIds,
+  const { data: blocks, isLoading: isBlocksLoading } =
+    useGetV2GetSpecificBlocks(
+      { block_ids: blockIds ?? [] },
+      {
+        query: {
+          select: (res) => res.data as BlockInfo[],
+          enabled: !!flowID && !!blockIds,
+        },
       },
-    },
-  );
+    );
 
   const customNodes = useMemo(() => {
     if (!nodes || !blocks) return [];
@@ -57,13 +58,22 @@ export const useFlow = () => {
 
   useEffect(() => {
     if (customNodes.length > 0) {
+      useNodeStore.getState().setNodes([]);
       addNodes(customNodes);
     }
 
     if (graph?.links) {
+      useEdgeStore.getState().setConnections([]);
       addLinks(graph.links);
     }
   }, [customNodes, addNodes, graph?.links]);
 
-  return {};
+  useEffect(() => {
+    return () => {
+      useNodeStore.getState().setNodes([]);
+      useEdgeStore.getState().setConnections([]);
+    };
+  }, []);
+
+  return { isFlowContentLoading: isGraphLoading || isBlocksLoading };
 };
