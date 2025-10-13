@@ -144,9 +144,10 @@ async def get_store_agents(
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to fetch store agents"
         ) from e
-    finally:
-        if search_term:
-            await log_search_term(search_query=search_term)
+    # TODO: commenting this out as we concerned about potential db load issues
+    # finally:
+    #     if search_term:
+    #         await log_search_term(search_query=search_term)
 
 
 async def log_search_term(search_query: str):
