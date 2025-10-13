@@ -16,6 +16,7 @@ import { useNodeStore } from "../../../stores/nodeStore";
 import { useEdgeStore } from "../../../stores/edgeStore";
 import { Graph } from "@/app/api/__generated__/models/graph";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
+import { graphsEquivalent } from "./helpers";
 
 const formSchema = z.object({
   name: z.string().min(1, "Name is required").max(100),
@@ -149,6 +150,14 @@ export const useNewSaveControl = () => {
         nodes: graphNodes,
         links: graphLinks,
       };
+      if (graphsEquivalent(graph, data)) {
+        toast({
+          title: "No changes to save",
+          description: "The graph is the same as the saved version.",
+          variant: "default",
+        });
+        return;
+      }
       await updateGraph({ graphId: graph.id, data: data });
     } else {
       const data: Graph = {
