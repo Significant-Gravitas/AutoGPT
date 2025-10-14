@@ -296,15 +296,17 @@ class UserCreditBase(ABC):
                 RETURNING amount, "userId", COALESCE($1, "transactionKey") as new_key
             ),
             balance_update AS (
-                UPDATE "User"
-                SET 
+                INSERT INTO "UserBalance" ("id", "userId", "balance", "updatedAt")
+                SELECT gen_random_uuid()::text, tx_activate."userId", 0, CURRENT_TIMESTAMP
+                FROM tx_activate
+                ON CONFLICT ("userId") DO UPDATE SET
                     balance = CASE 
-                        WHEN tx_activate.amount > 0 AND balance > $5 - tx_activate.amount THEN $5
-                        ELSE balance + tx_activate.amount
+                        WHEN tx_activate.amount > 0 AND "UserBalance".balance > $5 - tx_activate.amount THEN $5
+                        ELSE "UserBalance".balance + tx_activate.amount
                     END,
                     "updatedAt" = CURRENT_TIMESTAMP
                 FROM tx_activate
-                WHERE "User".id = tx_activate."userId"
+                WHERE "UserBalance"."userId" = tx_activate."userId"
                 RETURNING balance, "updatedAt", tx_activate.new_key
             ),
             transaction_update AS (
@@ -377,13 +379,20 @@ class UserCreditBase(ABC):
             """
             WITH balance_upsert AS (
                 INSERT INTO "UserBalance" ("id", "userId", "balance", "updatedAt")
-                VALUES (gen_random_uuid()::text, $1, 0, CURRENT_TIMESTAMP)
+                VALUES (gen_random_uuid()::text, $1, 
+                    CASE
+                        -- For new users, apply the amount directly (with overflow protection)
+                        WHEN $2 > $6::int THEN $6::int
+                        WHEN $2 > 0 AND $7::int IS NOT NULL AND $2 > $7::int THEN $7::int
+                        ELSE GREATEST(0, $2)  -- Don't allow negative initial balance
+                    END, 
+                    CURRENT_TIMESTAMP)
                 ON CONFLICT ("userId") DO UPDATE SET
                     balance = CASE 
                         -- For spending (amount < 0): Check sufficient balance
                         WHEN $2 < 0 AND $8::boolean = true AND "UserBalance".balance + $2 < 0 THEN "UserBalance".balance  -- No change if insufficient
-                        -- For ceiling balance (amount > 0): Apply ceiling
-                        WHEN $2 > 0 AND $7::int IS NOT NULL AND "UserBalance".balance > $7::int - $2 THEN $7::int
+                        -- For ceiling balance (amount > 0): Apply ceiling (clamp to maximum)
+                        WHEN $2 > 0 AND $7::int IS NOT NULL AND "UserBalance".balance + $2 > $7::int THEN $7::int
                         -- For regular operations: Apply with overflow protection  
                         WHEN "UserBalance".balance + $2 > $6::int THEN $6::int
                         ELSE "UserBalance".balance + $2
