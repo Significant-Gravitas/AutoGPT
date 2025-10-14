@@ -41,6 +41,7 @@ async def cleanup_test_user(user_id: str) -> None:
     """Clean up test user and their transactions."""
     try:
         await CreditTransaction.prisma().delete_many(where={"userId": user_id})
+        await UserBalance.prisma().delete_many(where={"userId": user_id})
         await User.prisma().delete_many(where={"id": user_id})
     except Exception as e:
         # Log cleanup failures but don't fail the test
@@ -100,16 +101,9 @@ async def test_debug_underflow_step_by_step(server: SpinTestServer):
         print(f"Actual result: {balance_result}")
 
         # Check if underflow protection worked
-        if balance_result == POSTGRES_INT_MIN:
-            print("✅ Underflow protection is working!")
-        elif balance_result == expected_without_protection:
-            print(
-                f"❌ No underflow protection applied. Got expected calculation: {expected_without_protection}"
-            )
-        else:
-            print(
-                f"❌ Unexpected result. Expected {POSTGRES_INT_MIN} or {expected_without_protection}, got {balance_result}"
-            )
+        assert (
+            balance_result == POSTGRES_INT_MIN
+        ), f"Expected underflow protection to clamp balance to {POSTGRES_INT_MIN}, got {balance_result}"
 
         # Test 3: Edge case - exactly at POSTGRES_INT_MIN
         print("\n=== Test 3: Testing exact POSTGRES_INT_MIN boundary ===")
@@ -134,12 +128,9 @@ async def test_debug_underflow_step_by_step(server: SpinTestServer):
         )
         print(f"After subtracting 1: {edge_result}")
 
-        if edge_result == POSTGRES_INT_MIN:
-            print("✅ Edge case protection working - stayed at POSTGRES_INT_MIN")
-        else:
-            print(
-                f"❌ Edge case failed. Expected {POSTGRES_INT_MIN}, got {edge_result}"
-            )
+        assert (
+            edge_result == POSTGRES_INT_MIN
+        ), f"Expected balance to remain clamped at {POSTGRES_INT_MIN}, got {edge_result}"
 
     finally:
         await cleanup_test_user(user_id)
