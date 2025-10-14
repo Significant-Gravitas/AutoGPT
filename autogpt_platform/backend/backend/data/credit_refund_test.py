@@ -6,7 +6,7 @@ are atomic and maintain data consistency.
 """
 
 from datetime import datetime, timezone
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 import stripe
@@ -148,77 +148,104 @@ async def test_deduct_credits_user_not_found(server: SpinTestServer):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_handle_dispute_lost(server: SpinTestServer):
-    """Test handling of lost dispute (chargeback)."""
+@patch("backend.data.credit.settings")
+@patch("stripe.Dispute.modify")
+@patch("backend.data.credit.get_user_by_id")
+async def test_handle_dispute_with_sufficient_balance(
+    mock_get_user, mock_stripe_modify, mock_settings, server: SpinTestServer
+):
+    """Test handling dispute when user has sufficient balance (dispute gets closed)."""
     topup_tx = await setup_test_user_with_topup()
 
     try:
-        # Create a mock dispute object
+        # Mock settings to have a low tolerance threshold
+        mock_settings.config.refund_credit_tolerance_threshold = 0
+
+        # Mock the user lookup
+        mock_user = MagicMock()
+        mock_user.email = f"{REFUND_TEST_USER_ID}@example.com"
+        mock_get_user.return_value = mock_user
+
+        # Create a mock dispute object for small amount (user has 1000, disputing 100)
         dispute = MagicMock(spec=stripe.Dispute)
         dispute.id = "dp_test_dispute_123"
         dispute.payment_intent = topup_tx.transactionKey
-        dispute.amount = 1000  # Full chargeback of $10
-        dispute.status = "lost"
+        dispute.amount = 100  # Small dispute amount
+        dispute.status = "pending"
         dispute.reason = "fraudulent"
         dispute.created = int(datetime.now(timezone.utc).timestamp())
+
+        # Mock the close method to prevent real API calls
+        dispute.close = MagicMock()
 
         # Handle the dispute
         await credit_system.handle_dispute(dispute)
 
-        # Verify the user's balance was deducted
+        # Verify dispute.close() was called (since user has sufficient balance)
+        dispute.close.assert_called_once()
+
+        # Verify no stripe evidence was added since dispute was closed
+        mock_stripe_modify.assert_not_called()
+
+        # Verify the user's balance was NOT deducted (dispute was closed)
         user = await User.prisma().find_unique(where={"id": REFUND_TEST_USER_ID})
         assert user is not None
-        assert (
-            user.balance == 0
-        ), f"Expected balance 0 after chargeback, got {user.balance}"
-
-        # Verify dispute transaction was created
-        dispute_tx = await CreditTransaction.prisma().find_first(
-            where={
-                "userId": REFUND_TEST_USER_ID,
-                "type": CreditTransactionType.REFUND,
-                "transactionKey": dispute.id,
-            }
-        )
-        assert dispute_tx is not None
-        assert dispute_tx.amount == -1000
-        assert dispute_tx.runningBalance == 0
+        assert user.balance == 1000, f"Balance should remain 1000, got {user.balance}"
 
     finally:
         await cleanup_test_user()
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_handle_dispute_not_lost(server: SpinTestServer):
-    """Test that disputes not marked as 'lost' are ignored."""
+@patch("backend.data.credit.settings")
+@patch("stripe.Dispute.modify")
+@patch("backend.data.credit.get_user_by_id")
+async def test_handle_dispute_with_insufficient_balance(
+    mock_get_user, mock_stripe_modify, mock_settings, server: SpinTestServer
+):
+    """Test handling dispute when user has insufficient balance (evidence gets added)."""
     topup_tx = await setup_test_user_with_topup()
 
     try:
-        # Create a mock dispute object with status != "lost"
+        # Mock settings to have a high tolerance threshold so dispute isn't closed
+        mock_settings.config.refund_credit_tolerance_threshold = 2000
+
+        # Mock the user lookup
+        mock_user = MagicMock()
+        mock_user.email = f"{REFUND_TEST_USER_ID}@example.com"
+        mock_get_user.return_value = mock_user
+
+        # Mock the transaction history method to return an async result
+        from unittest.mock import AsyncMock
+
+        mock_history = MagicMock()
+        mock_history.transactions = []
+        credit_system.get_transaction_history = AsyncMock(return_value=mock_history)
+
+        # Create a mock dispute object for full amount (user has 1000, disputing 1000)
         dispute = MagicMock(spec=stripe.Dispute)
         dispute.id = "dp_test_dispute_pending"
         dispute.payment_intent = topup_tx.transactionKey
         dispute.amount = 1000
-        dispute.status = "warning_needs_response"  # Not lost yet
+        dispute.status = "warning_needs_response"
         dispute.created = int(datetime.now(timezone.utc).timestamp())
 
-        # Handle the dispute (should be skipped)
+        # Mock the close method to prevent real API calls
+        dispute.close = MagicMock()
+
+        # Handle the dispute (evidence should be added)
         await credit_system.handle_dispute(dispute)
 
-        # Verify the user's balance was NOT deducted
+        # Verify dispute.close() was NOT called (insufficient balance after tolerance)
+        dispute.close.assert_not_called()
+
+        # Verify stripe evidence was added since dispute wasn't closed
+        mock_stripe_modify.assert_called_once()
+
+        # Verify the user's balance was NOT deducted (handle_dispute doesn't deduct credits)
         user = await User.prisma().find_unique(where={"id": REFUND_TEST_USER_ID})
         assert user is not None
-        assert user.balance == 1000, "Balance should not change for non-lost dispute"
-
-        # Verify no dispute transaction was created
-        dispute_tx = await CreditTransaction.prisma().find_first(
-            where={
-                "userId": REFUND_TEST_USER_ID,
-                "type": CreditTransactionType.REFUND,
-                "transactionKey": dispute.id,
-            }
-        )
-        assert dispute_tx is None
+        assert user.balance == 1000, "Balance should remain unchanged"
 
     finally:
         await cleanup_test_user()
