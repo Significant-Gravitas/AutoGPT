@@ -498,24 +498,63 @@ async def test_concurrent_multiple_spends_sufficient_balance(server: SpinTestSer
             where={"userId": user_id, "type": prisma.enums.CreditTransactionType.USAGE},
             order={"createdAt": "asc"},
         )
-        print("\nDatabase transaction order:")
+        print("\nDatabase transaction order (by createdAt):")
         for i, tx in enumerate(transactions):
             print(
                 f"  {i+1}. Amount {tx.amount}, Running balance: {tx.runningBalance}, Created: {tx.createdAt}"
             )
 
-        # Verify running balances show correct serial execution
+        # Verify running balances are chronologically consistent (ordered by createdAt)
         actual_balances = [
             tx.runningBalance for tx in transactions if tx.runningBalance is not None
         ]
         print(f"Running balances: {actual_balances}")
 
-        # The balances should be in descending order regardless of which spend executed first
-        assert sorted(actual_balances, reverse=True) == [
-            140,
-            120,
+        # The balances should be valid intermediate states regardless of execution order
+        # Starting balance: 150, spending 10+20+30=60, so final should be 90
+        # The intermediate balances depend on execution order but should all be valid
+        expected_possible_balances = {
+            # If order is 10, 20, 30: [140, 120, 90]
+            # If order is 10, 30, 20: [140, 110, 90]
+            # If order is 20, 10, 30: [130, 120, 90]
+            # If order is 20, 30, 10: [130, 100, 90]
+            # If order is 30, 10, 20: [120, 110, 90]
+            # If order is 30, 20, 10: [120, 100, 90]
             90,
-        ], f"Expected descending balances [140, 120, 90], got {actual_balances}"
+            100,
+            110,
+            120,
+            130,
+            140,  # All possible intermediate balances
+        }
+
+        # Verify all balances are valid intermediate states
+        for balance in actual_balances:
+            assert (
+                balance in expected_possible_balances
+            ), f"Invalid balance {balance}, expected one of {expected_possible_balances}"
+
+        # Final balance should always be 90 (150 - 60)
+        assert (
+            min(actual_balances) == 90
+        ), f"Final balance should be 90, got {min(actual_balances)}"
+
+        # The final transaction should always have balance 90
+        # The other transactions should have valid intermediate balances
+        assert (
+            90 in actual_balances
+        ), f"Final balance 90 should be in actual_balances: {actual_balances}"
+
+        # All balances should be >= 90 (the final state)
+        assert all(
+            balance >= 90 for balance in actual_balances
+        ), f"All balances should be >= 90, got {actual_balances}"
+
+        # CRITICAL: Transactions should now be chronologically ordered by createdAt
+        # Since we fixed the timestamp issue, balances should be in descending order by createdAt
+        assert actual_balances == sorted(
+            actual_balances, reverse=True
+        ), f"Balances should be in descending chronological order, got {actual_balances}. This indicates transactions are not completing in chronological order!"
 
     finally:
         await cleanup_test_user(user_id)
