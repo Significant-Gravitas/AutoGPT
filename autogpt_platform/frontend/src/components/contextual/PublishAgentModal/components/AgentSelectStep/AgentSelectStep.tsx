@@ -72,10 +72,7 @@ export function AgentSelectStep({
           >
             Log in
           </Button>
-          <Button
-            onClick={() => router.push("/login?signup=true")}
-            variant="secondary"
-          >
+          <Button onClick={() => router.push("/signup")} variant="secondary">
             Create account
           </Button>
         </div>
