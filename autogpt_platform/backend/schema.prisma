@@ -23,7 +23,6 @@ model User {
   integrations     String   @default("")
   stripeCustomerId String?
   topUpConfig      Json?
-  balance          Int     @default(0)
 
   maxEmailsPerDay              Int     @default(3)
   notifyOnAgentRun             Boolean @default(true)
@@ -46,6 +45,7 @@ model User {
   AnalyticsDetails     AnalyticsDetails[]
   AnalyticsMetrics     AnalyticsMetrics[]
   CreditTransactions   CreditTransaction[]
+  UserBalance          UserBalance?
 
   AgentPresets  AgentPreset[]
   LibraryAgents LibraryAgent[]
@@ -886,6 +886,17 @@ model APIKey {
 
   @@index([head, name])
   @@index([userId, status])
+}
+
+model UserBalance {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  balance   Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 enum APIKeyStatus {

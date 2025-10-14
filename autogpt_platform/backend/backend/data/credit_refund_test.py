@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import stripe
 from prisma.enums import CreditTransactionType
-from prisma.models import CreditRefundRequest, CreditTransaction, User
+from prisma.models import CreditRefundRequest, CreditTransaction, User, UserBalance
 
 from backend.data.credit import UserCredit
 from backend.util.json import SafeJson
@@ -32,12 +32,19 @@ async def setup_test_user_with_topup():
     await CreditTransaction.prisma().delete_many(where={"userId": REFUND_TEST_USER_ID})
     await User.prisma().delete_many(where={"id": REFUND_TEST_USER_ID})
 
-    # Create user with balance
+    # Create user
     await User.prisma().create(
         data={
             "id": REFUND_TEST_USER_ID,
             "email": f"{REFUND_TEST_USER_ID}@example.com",
             "name": "Refund Test User",
+        }
+    )
+
+    # Create user balance
+    await UserBalance.prisma().create(
+        data={
+            "userId": REFUND_TEST_USER_ID,
             "balance": 1000,  # $10
         }
     )
@@ -96,9 +103,13 @@ async def test_deduct_credits_atomic(server: SpinTestServer):
         await credit_system.deduct_credits(refund)
 
         # Verify the user's balance was deducted
-        user = await User.prisma().find_unique(where={"id": REFUND_TEST_USER_ID})
-        assert user is not None
-        assert user.balance == 500, f"Expected balance 500, got {user.balance}"
+        user_balance = await UserBalance.prisma().find_unique(
+            where={"userId": REFUND_TEST_USER_ID}
+        )
+        assert user_balance is not None
+        assert (
+            user_balance.balance == 500
+        ), f"Expected balance 500, got {user_balance.balance}"
 
         # Verify refund transaction was created
         refund_tx = await CreditTransaction.prisma().find_first(
@@ -188,9 +199,13 @@ async def test_handle_dispute_with_sufficient_balance(
         mock_stripe_modify.assert_not_called()
 
         # Verify the user's balance was NOT deducted (dispute was closed)
-        user = await User.prisma().find_unique(where={"id": REFUND_TEST_USER_ID})
-        assert user is not None
-        assert user.balance == 1000, f"Balance should remain 1000, got {user.balance}"
+        user_balance = await UserBalance.prisma().find_unique(
+            where={"userId": REFUND_TEST_USER_ID}
+        )
+        assert user_balance is not None
+        assert (
+            user_balance.balance == 1000
+        ), f"Balance should remain 1000, got {user_balance.balance}"
 
     finally:
         await cleanup_test_user()
@@ -246,9 +261,11 @@ async def test_handle_dispute_with_insufficient_balance(
         mock_stripe_modify.assert_called_once()
 
         # Verify the user's balance was NOT deducted (handle_dispute doesn't deduct credits)
-        user = await User.prisma().find_unique(where={"id": REFUND_TEST_USER_ID})
-        assert user is not None
-        assert user.balance == 1000, "Balance should remain unchanged"
+        user_balance = await UserBalance.prisma().find_unique(
+            where={"userId": REFUND_TEST_USER_ID}
+        )
+        assert user_balance is not None
+        assert user_balance.balance == 1000, "Balance should remain unchanged"
 
     finally:
         credit_system.get_transaction_history = original_get_history
@@ -301,10 +318,13 @@ async def test_concurrent_refunds(server: SpinTestServer):
         assert all(r == "success" for r in results), f"Some refunds failed: {results}"
 
         # Verify final balance is correct (1000 - 500 = 500)
-        user = await User.prisma().find_unique(where={"id": REFUND_TEST_USER_ID})
+        user_balance = await UserBalance.prisma().find_unique(
+            where={"userId": REFUND_TEST_USER_ID}
+        )
+        assert user_balance is not None
         assert (
-            user and user.balance == 500
-        ), f"Expected balance 500, got {user.balance if user else 'None'}"
+            user_balance.balance == 500
+        ), f"Expected balance 500, got {user_balance.balance}"
 
         # Verify all refund transactions exist
         refund_txs = await CreditTransaction.prisma().find_many(

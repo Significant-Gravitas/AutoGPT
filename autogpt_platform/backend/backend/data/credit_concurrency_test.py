@@ -11,7 +11,7 @@ from datetime import datetime
 
 import prisma.enums
 import pytest
-from prisma.models import CreditTransaction, User
+from prisma.models import CreditTransaction, User, UserBalance
 
 from backend.data.credit import POSTGRES_INT_MAX, UsageTransactionMetadata, UserCredit
 from backend.util.exceptions import InsufficientBalanceError
@@ -29,12 +29,17 @@ async def create_test_user(user_id: str) -> None:
                 "id": user_id,
                 "email": f"test-{user_id}@example.com",
                 "name": f"Test User {user_id[:8]}",
-                "balance": 0,
             }
         )
     except Exception:
-        # User might already exist
-        await User.prisma().update(where={"id": user_id}, data={"balance": 0})
+        # User might already exist, continue
+        pass
+
+    # Ensure UserBalance record exists
+    await UserBalance.prisma().upsert(
+        where={"userId": user_id},
+        data={"create": {"userId": user_id, "balance": 0}, "update": {"balance": 0}},
+    )
 
 
 async def cleanup_test_user(user_id: str) -> None:
@@ -303,8 +308,12 @@ async def test_integer_overflow_protection(server: SpinTestServer):
         max_int = POSTGRES_INT_MAX
 
         # First, set balance near max
-        await User.prisma().update(
-            where={"id": user_id}, data={"balance": max_int - 100}
+        await UserBalance.prisma().upsert(
+            where={"userId": user_id},
+            data={
+                "create": {"userId": user_id, "balance": max_int - 100},
+                "update": {"balance": max_int - 100},
+            },
         )
 
         # Try to add more than possible - should clamp to POSTGRES_INT_MAX
@@ -385,6 +394,246 @@ async def test_high_concurrency_stress(server: SpinTestServer):
             final_balance == expected_balance
         ), f"Expected {expected_balance}, got {final_balance}"
         assert final_balance >= 0, "Balance went negative!"
+
+    finally:
+        await cleanup_test_user(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_concurrent_multiple_spends_sufficient_balance(server: SpinTestServer):
+    """Test multiple concurrent spends when there's sufficient balance for all."""
+    user_id = f"multi-spend-test-{datetime.now().timestamp()}"
+    await create_test_user(user_id)
+
+    try:
+        # Give user 150 balance ($1.50)
+        await credit_system.top_up_credits(user_id, 150)
+
+        # Track individual timing to see serialization
+        timings = {}
+
+        async def spend_with_detailed_timing(amount: int, label: str):
+            start = asyncio.get_event_loop().time()
+            try:
+                await credit_system.spend_credits(
+                    user_id,
+                    amount,
+                    UsageTransactionMetadata(
+                        graph_exec_id=f"concurrent-{label}",
+                        reason=f"Concurrent spend {label}",
+                    ),
+                )
+                end = asyncio.get_event_loop().time()
+                timings[label] = {"start": start, "end": end, "duration": end - start}
+                return f"{label}-SUCCESS"
+            except Exception as e:
+                end = asyncio.get_event_loop().time()
+                timings[label] = {
+                    "start": start,
+                    "end": end,
+                    "duration": end - start,
+                    "error": str(e),
+                }
+                return f"{label}-FAILED: {e}"
+
+        # Run concurrent spends: 10, 20, 30 (total 60, well under 150)
+        overall_start = asyncio.get_event_loop().time()
+        results = await asyncio.gather(
+            spend_with_detailed_timing(10, "spend-10"),
+            spend_with_detailed_timing(20, "spend-20"),
+            spend_with_detailed_timing(30, "spend-30"),
+            return_exceptions=True,
+        )
+        overall_end = asyncio.get_event_loop().time()
+
+        print(f"Results: {results}")
+        print(f"Overall duration: {overall_end - overall_start:.4f}s")
+
+        # Analyze timing to detect serialization vs true concurrency
+        print("\nTiming analysis:")
+        for label, timing in timings.items():
+            print(
+                f"  {label}: started at {timing['start']:.4f}, ended at {timing['end']:.4f}, duration {timing['duration']:.4f}s"
+            )
+
+        # Check if operations overlapped (true concurrency) or were serialized
+        sorted_timings = sorted(timings.items(), key=lambda x: x[1]["start"])
+        print("\nExecution order by start time:")
+        for i, (label, timing) in enumerate(sorted_timings):
+            print(f"  {i+1}. {label}: {timing['start']:.4f} -> {timing['end']:.4f}")
+
+        # Check for overlap (true concurrency) vs serialization
+        overlaps = []
+        for i in range(len(sorted_timings) - 1):
+            current = sorted_timings[i]
+            next_op = sorted_timings[i + 1]
+            if current[1]["end"] > next_op[1]["start"]:
+                overlaps.append(f"{current[0]} overlaps with {next_op[0]}")
+
+        if overlaps:
+            print(f"✅ TRUE CONCURRENCY detected: {overlaps}")
+        else:
+            print("🔒 SERIALIZATION detected: No overlapping execution times")
+
+        # Check final balance
+        final_balance = await credit_system.get_credits(user_id)
+        print(f"Final balance: {final_balance}")
+
+        # Count successes/failures
+        successful = [r for r in results if "SUCCESS" in str(r)]
+        failed = [r for r in results if "FAILED" in str(r)]
+
+        print(f"Successful: {len(successful)}, Failed: {len(failed)}")
+
+        # All should succeed since 150 - (10 + 20 + 30) = 90 > 0
+        assert (
+            len(successful) == 3
+        ), f"Expected all 3 to succeed, got {len(successful)} successes: {results}"
+        assert final_balance == 90, f"Expected balance 90, got {final_balance}"
+
+        # Check transaction timestamps to confirm database-level serialization
+        transactions = await CreditTransaction.prisma().find_many(
+            where={"userId": user_id, "type": prisma.enums.CreditTransactionType.USAGE},
+            order={"createdAt": "asc"},
+        )
+        print("\nDatabase transaction order:")
+        for i, tx in enumerate(transactions):
+            print(
+                f"  {i+1}. Amount {tx.amount}, Running balance: {tx.runningBalance}, Created: {tx.createdAt}"
+            )
+
+        # Verify running balances show correct serial execution
+        actual_balances = [
+            tx.runningBalance for tx in transactions if tx.runningBalance is not None
+        ]
+        print(f"Running balances: {actual_balances}")
+
+        # The balances should be in descending order regardless of which spend executed first
+        assert sorted(actual_balances, reverse=True) == [
+            140,
+            120,
+            90,
+        ], f"Expected descending balances [140, 120, 90], got {actual_balances}"
+
+    finally:
+        await cleanup_test_user(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_prove_database_locking_behavior(server: SpinTestServer):
+    """Definitively prove whether database locking causes waiting vs failures."""
+    user_id = f"locking-test-{datetime.now().timestamp()}"
+    await create_test_user(user_id)
+
+    try:
+        # Set balance to exact amount that can handle all spends
+        await credit_system.top_up_credits(user_id, 60)  # Exactly 10+20+30
+
+        async def spend_with_precise_timing(amount: int, label: str):
+            request_start = asyncio.get_event_loop().time()
+            db_operation_start = asyncio.get_event_loop().time()
+            try:
+                # Add a small delay to increase chance of true concurrency
+                await asyncio.sleep(0.001)
+
+                db_operation_start = asyncio.get_event_loop().time()
+                await credit_system.spend_credits(
+                    user_id,
+                    amount,
+                    UsageTransactionMetadata(
+                        graph_exec_id=f"locking-{label}",
+                        reason=f"Locking test {label}",
+                    ),
+                )
+                db_operation_end = asyncio.get_event_loop().time()
+
+                return {
+                    "label": label,
+                    "status": "SUCCESS",
+                    "request_start": request_start,
+                    "db_start": db_operation_start,
+                    "db_end": db_operation_end,
+                    "db_duration": db_operation_end - db_operation_start,
+                }
+            except Exception as e:
+                db_operation_end = asyncio.get_event_loop().time()
+                return {
+                    "label": label,
+                    "status": "FAILED",
+                    "error": str(e),
+                    "request_start": request_start,
+                    "db_start": db_operation_start,
+                    "db_end": db_operation_end,
+                    "db_duration": db_operation_end - db_operation_start,
+                }
+
+        # Launch all requests simultaneously
+        results = await asyncio.gather(
+            spend_with_precise_timing(10, "A"),
+            spend_with_precise_timing(20, "B"),
+            spend_with_precise_timing(30, "C"),
+            return_exceptions=True,
+        )
+
+        print("\n🔍 LOCKING BEHAVIOR ANALYSIS:")
+        print("=" * 50)
+
+        successful = [
+            r for r in results if isinstance(r, dict) and r.get("status") == "SUCCESS"
+        ]
+        failed = [
+            r for r in results if isinstance(r, dict) and r.get("status") == "FAILED"
+        ]
+
+        print(f"✅ Successful operations: {len(successful)}")
+        print(f"❌ Failed operations: {len(failed)}")
+
+        if len(failed) > 0:
+            print(
+                "\n🚫 CONCURRENT FAILURES - Some requests failed due to insufficient balance:"
+            )
+            for result in failed:
+                if isinstance(result, dict):
+                    print(
+                        f"   {result['label']}: {result.get('error', 'Unknown error')}"
+                    )
+
+        if len(successful) == 3:
+            print(
+                "\n🔒 SERIALIZATION CONFIRMED - All requests succeeded, indicating they were queued:"
+            )
+
+            # Sort by actual execution time to see order
+            dict_results = [r for r in results if isinstance(r, dict)]
+            sorted_results = sorted(dict_results, key=lambda x: x["db_start"])
+
+            for i, result in enumerate(sorted_results):
+                print(
+                    f"   {i+1}. {result['label']}: DB operation took {result['db_duration']:.4f}s"
+                )
+
+            # Check if any operations overlapped at the database level
+            print("\n⏱️  Database operation timeline:")
+            for result in sorted_results:
+                print(
+                    f"   {result['label']}: {result['db_start']:.4f} -> {result['db_end']:.4f}"
+                )
+
+        # Verify final state
+        final_balance = await credit_system.get_credits(user_id)
+        print(f"\n💰 Final balance: {final_balance}")
+
+        if len(successful) == 3:
+            assert (
+                final_balance == 0
+            ), f"If all succeeded, balance should be 0, got {final_balance}"
+            print(
+                "✅ CONCLUSION: Database row locking causes requests to WAIT and execute serially"
+            )
+        else:
+            print(
+                "❌ CONCLUSION: Some requests failed, indicating different concurrency behavior"
+            )
 
     finally:
         await cleanup_test_user(user_id)

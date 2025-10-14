@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from prisma.enums import CreditTransactionType
-from prisma.models import CreditTransaction, User
+from prisma.models import CreditTransaction, UserBalance
 
 from backend.blocks.llm import AITextGeneratorBlock
 from backend.data.block import get_block
@@ -21,8 +21,12 @@ async def disable_test_user_transactions():
     await CreditTransaction.prisma().delete_many(where={"userId": DEFAULT_USER_ID})
     # Also reset the balance to 0 and set updatedAt to old date to trigger monthly refill
     old_date = datetime.now(timezone.utc) - timedelta(days=35)  # More than a month ago
-    await User.prisma().update(
-        where={"id": DEFAULT_USER_ID}, data={"balance": 0, "updatedAt": old_date}
+    await UserBalance.prisma().upsert(
+        where={"userId": DEFAULT_USER_ID},
+        data={
+            "create": {"userId": DEFAULT_USER_ID, "balance": 0},
+            "update": {"balance": 0, "updatedAt": old_date},
+        },
     )
 
 
@@ -145,8 +149,12 @@ async def test_block_credit_reset(server: SpinTestServer):
         )
 
         # Update user balance to match
-        await User.prisma().update(
-            where={"id": DEFAULT_USER_ID}, data={"balance": 1100}
+        await UserBalance.prisma().upsert(
+            where={"userId": DEFAULT_USER_ID},
+            data={
+                "create": {"userId": DEFAULT_USER_ID, "balance": 1100},
+                "update": {"balance": 1100},
+            },
         )
 
         # Now test month 2 behavior
@@ -159,7 +167,9 @@ async def test_block_credit_reset(server: SpinTestServer):
 
         # Now test the refill behavior when balance is low
         # Set balance below refill threshold
-        await User.prisma().update(where={"id": DEFAULT_USER_ID}, data={"balance": 400})
+        await UserBalance.prisma().update(
+            where={"userId": DEFAULT_USER_ID}, data={"balance": 400}
+        )
 
         # Create a month 2 transaction to update the last transaction time
         await CreditTransaction.prisma().create(
