@@ -1211,7 +1211,7 @@ async def set_auto_top_up(user_id: str, config: AutoTopUpConfig):
                 await credit_system._add_transaction(
                     user_id=user_id,
                     amount=config.amount,
-                    transaction_type=CreditTransactionType.GRANT,
+                    transaction_type=CreditTransactionType.TOP_UP,
                     transaction_key=f"IMMEDIATE-AUTO-TOP-UP-{user_id}-{config.threshold}",
                     ceiling_balance=config.threshold
                     + config.amount,  # Allow full top-up
