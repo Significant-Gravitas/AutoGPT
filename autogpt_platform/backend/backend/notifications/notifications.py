@@ -25,7 +25,11 @@ from backend.data.notifications import (
     get_summary_params_type,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
-from backend.data.user import generate_unsubscribe_link
+from backend.data.user import (
+    disable_all_user_notifications,
+    generate_unsubscribe_link,
+    set_user_email_verification,
+)
 from backend.notifications.email import EmailSender
 from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
@@ -38,7 +42,7 @@ from backend.util.service import (
     endpoint_to_sync,
     expose,
 )
-from backend.util.settings import Settings
+from backend.util.settings import AppEnvironment, Settings
 
 logger = TruncatedLogger(logging.getLogger(__name__), "[NotificationManager]")
 settings = Settings()
@@ -124,6 +128,12 @@ def get_routing_key(event_type: NotificationType) -> str:
 
 def queue_notification(event: NotificationEventModel) -> NotificationResult:
     """Queue a notification - exposed method for other services to call"""
+    # Disable in production
+    if settings.config.app_env == AppEnvironment.PRODUCTION:
+        return NotificationResult(
+            success=True,
+            message="Queueing notifications is disabled in production",
+        )
     try:
         logger.debug(f"Received Request to queue {event=}")
 
@@ -151,6 +161,12 @@ def queue_notification(event: NotificationEventModel) -> NotificationResult:
 
 async def queue_notification_async(event: NotificationEventModel) -> NotificationResult:
     """Queue a notification - exposed method for other services to call"""
+    # Disable in production
+    if settings.config.app_env == AppEnvironment.PRODUCTION:
+        return NotificationResult(
+            success=True,
+            message="Queueing notifications is disabled in production",
+        )
     try:
         logger.debug(f"Received Request to queue {event=}")
 
@@ -213,6 +229,9 @@ class NotificationManager(AppService):
 
     @expose
     async def queue_weekly_summary(self):
+        # disable in prod
+        if settings.config.app_env == AppEnvironment.PRODUCTION:
+            return
         # Use the existing event loop instead of creating a new one with asyncio.run()
         asyncio.create_task(self._queue_weekly_summary())
 
@@ -226,7 +245,9 @@ class NotificationManager(AppService):
             logger.info(
                 f"Querying for active users between {start_time} and {current_time}"
             )
-            users = await get_database_manager_async_client().get_active_user_ids_in_timerange(
+            users = await get_database_manager_async_client(
+                should_retry=False
+            ).get_active_user_ids_in_timerange(
                 end_time=current_time.isoformat(),
                 start_time=start_time.isoformat(),
             )
@@ -253,6 +274,9 @@ class NotificationManager(AppService):
     async def process_existing_batches(
         self, notification_types: list[NotificationType]
     ):
+        # disable in prod
+        if settings.config.app_env == AppEnvironment.PRODUCTION:
+            return
         # Use the existing event loop instead of creating a new process
         asyncio.create_task(self._process_existing_batches(notification_types))
 
@@ -266,15 +290,15 @@ class NotificationManager(AppService):
 
             for notification_type in notification_types:
                 # Get all batches for this notification type
-                batches = (
-                    await get_database_manager_async_client().get_all_batches_by_type(
-                        notification_type
-                    )
-                )
+                batches = await get_database_manager_async_client(
+                    should_retry=False
+                ).get_all_batches_by_type(notification_type)
 
                 for batch in batches:
                     # Check if batch has aged out
-                    oldest_message = await get_database_manager_async_client().get_user_notification_oldest_message_in_batch(
+                    oldest_message = await get_database_manager_async_client(
+                        should_retry=False
+                    ).get_user_notification_oldest_message_in_batch(
                         batch.user_id, notification_type
                     )
 
@@ -289,9 +313,9 @@ class NotificationManager(AppService):
 
                     # If batch has aged out, process it
                     if oldest_message.created_at + max_delay < current_time:
-                        recipient_email = await get_database_manager_async_client().get_user_email_by_id(
-                            batch.user_id
-                        )
+                        recipient_email = await get_database_manager_async_client(
+                            should_retry=False
+                        ).get_user_email_by_id(batch.user_id)
 
                         if not recipient_email:
                             logger.error(
@@ -308,21 +332,25 @@ class NotificationManager(AppService):
                                 f"User {batch.user_id} does not want to receive {notification_type} notifications"
                             )
                             # Clear the batch
-                            await get_database_manager_async_client().empty_user_notification_batch(
+                            await get_database_manager_async_client(
+                                should_retry=False
+                            ).empty_user_notification_batch(
                                 batch.user_id, notification_type
                             )
                             continue
 
-                        batch_data = await get_database_manager_async_client().get_user_notification_batch(
-                            batch.user_id, notification_type
-                        )
+                        batch_data = await get_database_manager_async_client(
+                            should_retry=False
+                        ).get_user_notification_batch(batch.user_id, notification_type)
 
                         if not batch_data or not batch_data.notifications:
                             logger.error(
                                 f"Batch data not found for user {batch.user_id}"
                             )
                             # Clear the batch
-                            await get_database_manager_async_client().empty_user_notification_batch(
+                            await get_database_manager_async_client(
+                                should_retry=False
+                            ).empty_user_notification_batch(
                                 batch.user_id, notification_type
                             )
                             continue
@@ -358,7 +386,9 @@ class NotificationManager(AppService):
                         )
 
                         # Clear the batch
-                        await get_database_manager_async_client().empty_user_notification_batch(
+                        await get_database_manager_async_client(
+                            should_retry=False
+                        ).empty_user_notification_batch(
                             batch.user_id, notification_type
                         )
 
@@ -413,15 +443,13 @@ class NotificationManager(AppService):
         self, user_id: str, event_type: NotificationType
     ) -> bool:
         """Check if a user wants to receive a notification based on their preferences and email verification status"""
-        validated_email = (
-            await get_database_manager_async_client().get_user_email_verification(
-                user_id
-            )
-        )
+        validated_email = await get_database_manager_async_client(
+            should_retry=False
+        ).get_user_email_verification(user_id)
         preference = (
-            await get_database_manager_async_client().get_user_notification_preference(
-                user_id
-            )
+            await get_database_manager_async_client(
+                should_retry=False
+            ).get_user_notification_preference(user_id)
         ).preferences.get(event_type, True)
         # only if both are true, should we email this person
         return validated_email and preference
@@ -437,7 +465,9 @@ class NotificationManager(AppService):
 
         try:
             # Get summary data from the database
-            summary_data = await get_database_manager_async_client().get_user_execution_summary_data(
+            summary_data = await get_database_manager_async_client(
+                should_retry=False
+            ).get_user_execution_summary_data(
                 user_id=user_id,
                 start_time=params.start_date,
                 end_time=params.end_date,
@@ -524,13 +554,13 @@ class NotificationManager(AppService):
         self, user_id: str, event_type: NotificationType, event: NotificationEventModel
     ) -> bool:
 
-        await get_database_manager_async_client().create_or_add_to_user_notification_batch(
-            user_id, event_type, event
-        )
+        await get_database_manager_async_client(
+            should_retry=False
+        ).create_or_add_to_user_notification_batch(user_id, event_type, event)
 
-        oldest_message = await get_database_manager_async_client().get_user_notification_oldest_message_in_batch(
-            user_id, event_type
-        )
+        oldest_message = await get_database_manager_async_client(
+            should_retry=False
+        ).get_user_notification_oldest_message_in_batch(user_id, event_type)
         if not oldest_message:
             logger.error(
                 f"Batch for user {user_id} and type {event_type} has no oldest message whichshould never happen!!!!!!!!!!!!!!!!"
@@ -580,11 +610,9 @@ class NotificationManager(AppService):
                 return False
             logger.debug(f"Processing immediate notification: {event}")
 
-            recipient_email = (
-                await get_database_manager_async_client().get_user_email_by_id(
-                    event.user_id
-                )
-            )
+            recipient_email = await get_database_manager_async_client(
+                should_retry=False
+            ).get_user_email_by_id(event.user_id)
             if not recipient_email:
                 logger.error(f"User email not found for user {event.user_id}")
                 return False
@@ -619,11 +647,9 @@ class NotificationManager(AppService):
                 return False
             logger.info(f"Processing batch notification: {event}")
 
-            recipient_email = (
-                await get_database_manager_async_client().get_user_email_by_id(
-                    event.user_id
-                )
-            )
+            recipient_email = await get_database_manager_async_client(
+                should_retry=False
+            ).get_user_email_by_id(event.user_id)
             if not recipient_email:
                 logger.error(f"User email not found for user {event.user_id}")
                 return False
@@ -642,11 +668,9 @@ class NotificationManager(AppService):
             if not should_send:
                 logger.info("Batch not old enough to send")
                 return False
-            batch = (
-                await get_database_manager_async_client().get_user_notification_batch(
-                    event.user_id, event.type
-                )
-            )
+            batch = await get_database_manager_async_client(
+                should_retry=False
+            ).get_user_notification_batch(event.user_id, event.type)
             if not batch or not batch.notifications:
                 logger.error(f"Batch not found for user {event.user_id}")
                 return False
@@ -657,6 +681,7 @@ class NotificationManager(AppService):
                     get_notif_data_type(db_event.type)
                 ].model_validate(
                     {
+                        "id": db_event.id,  # Include ID from database
                         "user_id": event.user_id,
                         "type": db_event.type,
                         "data": db_event.data,
@@ -679,6 +704,9 @@ class NotificationManager(AppService):
                 chunk_sent = False
                 for attempt_size in [chunk_size, 50, 25, 10, 5, 1]:
                     chunk = batch_messages[i : i + attempt_size]
+                    chunk_ids = [
+                        msg.id for msg in chunk if msg.id
+                    ]  # Extract IDs for removal
 
                     try:
                         # Try to render the email to check its size
@@ -705,6 +733,23 @@ class NotificationManager(AppService):
                                 user_unsub_link=unsub_link,
                             )
 
+                            # Remove successfully sent notifications immediately
+                            if chunk_ids:
+                                try:
+                                    await get_database_manager_async_client(
+                                        should_retry=False
+                                    ).remove_notifications_from_batch(
+                                        event.user_id, event.type, chunk_ids
+                                    )
+                                    logger.info(
+                                        f"Removed {len(chunk_ids)} sent notifications from batch"
+                                    )
+                                except Exception as e:
+                                    logger.error(
+                                        f"Failed to remove sent notifications: {e}"
+                                    )
+                                    # Continue anyway - better to risk duplicates than lose emails
+
                             # Track successful sends
                             successfully_sent_count += len(chunk)
 
@@ -722,13 +767,137 @@ class NotificationManager(AppService):
                             i += len(chunk)
                             chunk_sent = True
                             break
+                        else:
+                            # Message is too large even after size reduction
+                            if attempt_size == 1:
+                                logger.error(
+                                    f"Failed to send notification at index {i}: "
+                                    f"Single notification exceeds email size limit "
+                                    f"({len(test_message):,} chars > {MAX_EMAIL_SIZE:,} chars). "
+                                    f"Removing permanently from batch - will not retry."
+                                )
+
+                                # Remove the oversized notification permanently - it will NEVER fit
+                                if chunk_ids:
+                                    try:
+                                        await get_database_manager_async_client(
+                                            should_retry=False
+                                        ).remove_notifications_from_batch(
+                                            event.user_id, event.type, chunk_ids
+                                        )
+                                        logger.info(
+                                            f"Removed oversized notification {chunk_ids[0]} from batch permanently"
+                                        )
+                                    except Exception as e:
+                                        logger.error(
+                                            f"Failed to remove oversized notification: {e}"
+                                        )
+
+                                failed_indices.append(i)
+                                i += 1
+                                chunk_sent = True
+                                break
+                            # Try smaller chunk size
+                            continue
                     except Exception as e:
+                        # Check if it's a Postmark API error
                         if attempt_size == 1:
-                            # Even single notification is too large
-                            logger.error(
-                                f"Single notification too large to send: {e}. "
-                                f"Skipping notification at index {i}"
-                            )
+                            # Single notification failed - determine the actual cause
+                            error_message = str(e).lower()
+                            error_type = type(e).__name__
+
+                            # Check for HTTP 406 - Inactive recipient (common in Postmark errors)
+                            if "406" in error_message or "inactive" in error_message:
+                                logger.warning(
+                                    f"Failed to send notification at index {i}: "
+                                    f"Recipient marked as inactive by Postmark. "
+                                    f"Error: {e}. Disabling ALL notifications for this user."
+                                )
+
+                                # 1. Mark email as unverified
+                                try:
+                                    await set_user_email_verification(
+                                        event.user_id, False
+                                    )
+                                    logger.info(
+                                        f"Set email verification to false for user {event.user_id}"
+                                    )
+                                except Exception as deactivation_error:
+                                    logger.error(
+                                        f"Failed to deactivate email for user {event.user_id}: "
+                                        f"{deactivation_error}"
+                                    )
+
+                                # 2. Disable all notification preferences
+                                try:
+                                    await disable_all_user_notifications(event.user_id)
+                                    logger.info(
+                                        f"Disabled all notification preferences for user {event.user_id}"
+                                    )
+                                except Exception as disable_error:
+                                    logger.error(
+                                        f"Failed to disable notification preferences: {disable_error}"
+                                    )
+
+                                # 3. Clear ALL notification batches for this user
+                                try:
+                                    await get_database_manager_async_client(
+                                        should_retry=False
+                                    ).clear_all_user_notification_batches(event.user_id)
+                                    logger.info(
+                                        f"Cleared ALL notification batches for user {event.user_id}"
+                                    )
+                                except Exception as remove_error:
+                                    logger.error(
+                                        f"Failed to clear batches for inactive recipient: {remove_error}"
+                                    )
+
+                                # Stop processing - we've nuked everything for this user
+                                return True
+                            # Check for HTTP 422 - Malformed data
+                            elif (
+                                "422" in error_message
+                                or "unprocessable" in error_message
+                            ):
+                                logger.error(
+                                    f"Failed to send notification at index {i}: "
+                                    f"Malformed notification data rejected by Postmark. "
+                                    f"Error: {e}. Removing from batch permanently."
+                                )
+
+                                # Remove from batch - 422 means bad data that won't fix itself
+                                if chunk_ids:
+                                    try:
+                                        await get_database_manager_async_client(
+                                            should_retry=False
+                                        ).remove_notifications_from_batch(
+                                            event.user_id, event.type, chunk_ids
+                                        )
+                                        logger.info(
+                                            "Removed malformed notification from batch permanently"
+                                        )
+                                    except Exception as remove_error:
+                                        logger.error(
+                                            f"Failed to remove malformed notification: {remove_error}"
+                                        )
+                            # Check if it's a ValueError for size limit
+                            elif (
+                                isinstance(e, ValueError)
+                                and "too large" in error_message
+                            ):
+                                logger.error(
+                                    f"Failed to send notification at index {i}: "
+                                    f"Notification size exceeds email limit. "
+                                    f"Error: {e}. Skipping this notification."
+                                )
+                            # Other API errors
+                            else:
+                                logger.error(
+                                    f"Failed to send notification at index {i}: "
+                                    f"Email API error ({error_type}): {e}. "
+                                    f"Skipping this notification."
+                                )
+
                             failed_indices.append(i)
                             i += 1
                             chunk_sent = True
@@ -742,18 +911,20 @@ class NotificationManager(AppService):
                     failed_indices.append(i)
                     i += 1
 
-            # Only empty the batch if ALL notifications were sent successfully
-            if successfully_sent_count == len(batch_messages):
+            # Check what remains in the batch (notifications are removed as sent)
+            remaining_batch = await get_database_manager_async_client(
+                should_retry=False
+            ).get_user_notification_batch(event.user_id, event.type)
+
+            if not remaining_batch or not remaining_batch.notifications:
                 logger.info(
-                    f"Successfully sent all {successfully_sent_count} notifications, clearing batch"
-                )
-                await get_database_manager_async_client().empty_user_notification_batch(
-                    event.user_id, event.type
+                    f"All {successfully_sent_count} notifications sent and removed from batch"
                 )
             else:
+                remaining_count = len(remaining_batch.notifications)
                 logger.warning(
-                    f"Only sent {successfully_sent_count} of {len(batch_messages)} notifications. "
-                    f"Failed indices: {failed_indices}. Batch will be retained for retry."
+                    f"Sent {successfully_sent_count} notifications. "
+                    f"{remaining_count} remain in batch for retry due to errors."
                 )
             return True
         except Exception as e:
@@ -771,11 +942,9 @@ class NotificationManager(AppService):
 
             logger.info(f"Processing summary notification: {model}")
 
-            recipient_email = (
-                await get_database_manager_async_client().get_user_email_by_id(
-                    event.user_id
-                )
-            )
+            recipient_email = await get_database_manager_async_client(
+                should_retry=False
+            ).get_user_email_by_id(event.user_id)
             if not recipient_email:
                 logger.error(f"User email not found for user {event.user_id}")
                 return False

@@ -2,10 +2,10 @@ import { createContext } from "react";
 
 export const ArrayEditorContext = createContext<{
   isArrayItem: boolean;
-  fieldKey: string;
+  arrayFieldHandleId: string;
   isConnected: boolean;
 }>({
   isArrayItem: false,
-  fieldKey: "",
+  arrayFieldHandleId: "",
   isConnected: false,
 });

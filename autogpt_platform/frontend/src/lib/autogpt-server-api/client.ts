@@ -1126,6 +1126,11 @@ export default class BackendAPI {
   }
 
   async connectWebSocket(): Promise<void> {
+    // Do not attempt to connect if a disconnect intent is present (e.g., during logout)
+    if (this._hasDisconnectIntent()) {
+      return;
+    }
+
     this.isIntentionallyDisconnected = false;
     return (this.wsConnecting ??= new Promise(async (resolve, reject) => {
       try {
@@ -1139,7 +1144,19 @@ export default class BackendAPI {
           }
         } catch (error) {
           console.warn("Failed to get token for WebSocket connection:", error);
-          // Continue with empty token, connection might still work
+          // Intentionally fall through; we'll bail out below if no token is available
+        }
+
+        // If we don't have a token, skip attempting a connection.
+        if (!token) {
+          console.info(
+            "[BackendAPI] Skipping WebSocket connect: no auth token available",
+          );
+          // Resolve first, then clear wsConnecting to avoid races for awaiters
+          resolve();
+          this.wsConnecting = null;
+          this.webSocket = null;
+          return;
         }
 
         const wsUrlWithToken = `${this.wsUrl}?token=${token}`;
@@ -1178,6 +1195,9 @@ export default class BackendAPI {
           if (!wasIntentional) {
             this.wsOnDisconnectHandlers.forEach((handler) => handler());
             setTimeout(() => this.connectWebSocket().then(resolve), 1000);
+          } else {
+            // Ensure pending connect calls settle on intentional close
+            resolve();
           }
         };
 
@@ -1197,9 +1217,14 @@ export default class BackendAPI {
   disconnectWebSocket() {
     this.isIntentionallyDisconnected = true;
     this._stopWSHeartbeat(); // Stop heartbeat when disconnecting
-    if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
+    if (
+      this.webSocket &&
+      (this.webSocket.readyState === WebSocket.OPEN ||
+        this.webSocket.readyState === WebSocket.CONNECTING)
+    ) {
       this.webSocket.close();
     }
+    this.wsConnecting = null;
   }
 
   private _hasDisconnectIntent(): boolean {

@@ -118,6 +118,17 @@ def get_blocks(
     )
 
 
+def get_block_by_id(block_id: str) -> BlockInfo | None:
+    """
+    Get a specific block by its ID.
+    """
+    for block_type in load_all_blocks().values():
+        block: Block[BlockSchema, BlockSchema] = block_type()
+        if block.id == block_id:
+            return block.get_info()
+    return None
+
+
 def search_blocks(
     include_blocks: bool = True,
     include_integrations: bool = True,
