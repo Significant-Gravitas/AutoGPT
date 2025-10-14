@@ -3,6 +3,14 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
+export const DEFAULT_SEARCH_TERMS = [
+  "Marketing",
+  "SEO",
+  "Content Creation",
+  "Automation",
+  "Fun",
+];
+
 export const useHeroSection = () => {
   const router = useRouter();
   const { completeStep } = useOnboarding();

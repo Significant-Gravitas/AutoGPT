@@ -1,5 +1,6 @@
 "use client";
 
+import { DEFAULT_SEARCH_TERMS } from "@/app/(platform)/marketplace/components/HeroSection/useHeroSection";
 import { BehaveAs, getBehaveAs } from "@/lib/utils";
 import { useFlags } from "launchdarkly-react-client-sdk";
 
@@ -41,13 +42,7 @@ const mockFlags = {
   [Flag.BUILDER_VIEW_SWITCH]: false,
   [Flag.SHARE_EXECUTION_RESULTS]: false,
   [Flag.AGENT_FAVORITING]: false,
-  [Flag.MARKETPLACE_SEARCH_TERMS]: [
-    "Marketing",
-    "SEO",
-    "Content Creation",
-    "Automation",
-    "Fun",
-  ],
+  [Flag.MARKETPLACE_SEARCH_TERMS]: DEFAULT_SEARCH_TERMS,
 };
 
 export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] | null {
