@@ -661,7 +661,7 @@ class UserCredit(UserCreditBase):
     ):
         # init metadata, without sharing it with the world
         metadata = metadata or {}
-        if not metadata["reason"]:
+        if not metadata.get("reason"):
             match top_up_type:
                 case TopUpType.MANUAL:
                     metadata["reason"] = {"reason": f"Top up credits for {user_id}"}
