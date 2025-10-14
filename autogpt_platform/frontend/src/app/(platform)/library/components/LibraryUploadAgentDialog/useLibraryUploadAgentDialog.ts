@@ -86,6 +86,39 @@ export const useLibraryUploadAgentDialog = () => {
           );
         }
         const agent = obj as Graph;
+
+        // Validate Input/Output nodes have required 'name' field
+        // These are the IO block IDs that require a 'name' in input_default
+        const IO_BLOCK_IDS = [
+          "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b", // AgentInputBlock
+          "363ae599-353e-4804-937e-b2ee3cef3da4", // AgentOutputBlock
+          "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158", // AgentShortTextInputBlock
+          "90a56ffb-7024-4b2b-ab50-e26c5e5ab8ba", // AgentLongTextInputBlock
+          "96dae2bb-97a2-41c2-bd2f-13a3b5a8ea98", // AgentNumberInputBlock
+          "7e198b09-4994-47db-8b4d-952d98241817", // AgentDateInputBlock
+          "2a1c757e-86cf-4c7e-aacf-060dc382e434", // AgentTimeInputBlock
+          "95ead23f-8283-4654-aef3-10c053b74a31", // AgentFileInputBlock
+          "655d6fdf-a334-421c-b733-520549c07cd1", // AgentDropdownInputBlock
+          "cbf36ab5-df4a-43b6-8a7f-f7ed8652116e", // AgentToggleInputBlock
+          "5603b273-f41e-4020-af7d-fbc9c6a8d928", // AgentTableInputBlock
+        ];
+
+        for (const node of agent.nodes || []) {
+          if (IO_BLOCK_IDS.includes(node.block_id)) {
+            if (
+              !node.input_default ||
+              typeof node.input_default !== "object" ||
+              !("name" in node.input_default) ||
+              !node.input_default.name
+            ) {
+              throw new Error(
+                `Invalid Input/Output node (ID: ${node.id}): missing required 'name' field in input_default. ` +
+                  `All Input and Output blocks must have a 'name' field.`,
+              );
+            }
+          }
+        }
+
         sanitizeImportedGraph(agent);
         setAgentObject(agent);
         if (!form.getValues("agentName")) {
@@ -96,6 +129,15 @@ export const useLibraryUploadAgentDialog = () => {
         }
       } catch (error) {
         console.error("Error loading agent file:", error);
+        toast({
+          title: "Invalid Agent File",
+          description:
+            error instanceof Error
+              ? error.message
+              : "The uploaded file is not a valid agent configuration.",
+          variant: "destructive",
+        });
+        form.setValue("agentFile", undefined as any);
       }
     };
     reader.readAsText(file);
