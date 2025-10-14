@@ -1,5 +1,4 @@
 import {
-  ApiError,
   createRequestHeaders,
   getServerAuthToken,
 } from "@/lib/autogpt-server-api/helpers";
@@ -94,18 +93,9 @@ export const customMutator = async <
     body: data,
   });
 
-  if (!response.ok) {
-    const response_data = await getBody<any>(response);
-
-    const errorMessage =
-      response_data?.detail || response_data?.message || response.statusText;
-
-    console.error(
-      `Request failed ${isServerSide() ? "on server" : "on client"}`,
-      { status: response.status, url: fullUrl, data: response_data },
-    );
-
-    throw new ApiError(errorMessage, response.status, response_data);
+  if (!response.ok && isServerSide()) {
+    console.error("Request failed on server side", response, fullUrl);
+    throw new Error(`Request failed with status ${response.status}`);
   }
 
   const response_data = await getBody<T["data"]>(response);
