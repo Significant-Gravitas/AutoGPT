@@ -531,11 +531,15 @@ async def configure_user_auto_top_up(
     request: AutoTopUpConfig, user_id: Annotated[str, Security(get_user_id)]
 ) -> str:
     if request.threshold < 0:
-        raise ValueError("Threshold must be greater than 0")
+        raise HTTPException(status_code=422, detail="Threshold must be greater than 0")
     if request.amount < 500 and request.amount != 0:
-        raise ValueError("Amount must be greater than or equal to 500")
-    if request.amount < request.threshold:
-        raise ValueError("Amount must be greater than or equal to threshold")
+        raise HTTPException(
+            status_code=422, detail="Amount must be greater than or equal to 500"
+        )
+    if request.amount != 0 and request.amount < request.threshold:
+        raise HTTPException(
+            status_code=422, detail="Amount must be greater than or equal to threshold"
+        )
 
     current_balance = await _user_credit_model.get_credits(user_id)
 
