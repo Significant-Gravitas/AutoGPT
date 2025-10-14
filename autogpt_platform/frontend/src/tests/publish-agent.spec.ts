@@ -82,7 +82,9 @@ test("should display appropriate content in agent creation modal when user is lo
   await getButton("Become a creator").click();
 
   await isVisible(
-    getText("Uh-oh.. It seems like you don't have any agents in your library."),
+    getText(
+      "Log in or create an account to publish your agents to the marketplace and join a community of creators",
+    ),
   );
 });
 

@@ -9,6 +9,8 @@ import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { useAgentSelectStep } from "./useAgentSelectStep";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useRouter } from "next/navigation";
 
 interface Props {
   onSelect: (agentId: string, agentVersion: number) => void;
@@ -45,6 +47,41 @@ export function AgentSelectStep({
     // Computed
     isNextDisabled,
   } = useAgentSelectStep({ onSelect, onNext });
+
+  const { user } = useSupabase();
+  const router = useRouter();
+  if (!user) {
+    return (
+      <div className="mx-auto inline-flex h-[370px] w-full flex-col items-center justify-center gap-6 px-4 py-5 sm:px-6">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <Text variant="h3" className="font-semibold">
+            Share your AI creations
+          </Text>
+          <Text
+            variant="lead"
+            className="max-w-[80%] text-neutral-600 dark:text-neutral-400"
+          >
+            Log in or create an account to publish your agents to the
+            marketplace and join a community of creators
+          </Text>
+        </div>
+        <div className="flex flex-col items-center gap-3 sm:flex-row">
+          <Button
+            onClick={() => router.push("/login")}
+            className="bg-neutral-800 text-white hover:bg-neutral-900"
+          >
+            Log in
+          </Button>
+          <Button
+            onClick={() => router.push("/login?signup=true")}
+            variant="secondary"
+          >
+            Create account
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
