@@ -1,5 +1,6 @@
 "use client";
 
+import { DEFAULT_SEARCH_TERMS } from "@/app/(platform)/marketplace/components/HeroSection/helpers";
 import { BehaveAs, getBehaveAs } from "@/lib/utils";
 import { useFlags } from "launchdarkly-react-client-sdk";
 
@@ -13,6 +14,7 @@ export enum Flag {
   BUILDER_VIEW_SWITCH = "builder-view-switch",
   SHARE_EXECUTION_RESULTS = "share-execution-results",
   AGENT_FAVORITING = "agent-favoriting",
+  MARKETPLACE_SEARCH_TERMS = "marketplace-search-terms",
 }
 
 export type FlagValues = {
@@ -25,6 +27,7 @@ export type FlagValues = {
   [Flag.BUILDER_VIEW_SWITCH]: boolean;
   [Flag.SHARE_EXECUTION_RESULTS]: boolean;
   [Flag.AGENT_FAVORITING]: boolean;
+  [Flag.MARKETPLACE_SEARCH_TERMS]: string[];
 };
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -39,6 +42,7 @@ const mockFlags = {
   [Flag.BUILDER_VIEW_SWITCH]: false,
   [Flag.SHARE_EXECUTION_RESULTS]: false,
   [Flag.AGENT_FAVORITING]: false,
+  [Flag.MARKETPLACE_SEARCH_TERMS]: DEFAULT_SEARCH_TERMS,
 };
 
 export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] | null {
