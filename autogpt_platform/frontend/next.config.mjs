@@ -2,6 +2,7 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  productionBrowserSourceMaps: true,
   images: {
     domains: [
       "images.unsplash.com",
@@ -12,7 +13,6 @@ const nextConfig = {
       "ideogram.ai", // for generated images
       "picsum.photos", // for placeholder images
     ],
-    productionBrowserSourceMaps: true,
     remotePatterns: [
       {
         protocol: "https",
