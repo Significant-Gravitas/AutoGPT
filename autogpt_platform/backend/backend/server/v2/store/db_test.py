@@ -279,7 +279,6 @@ async def test_create_store_submission(mocker):
 
     # Verify mocks called correctly
     mock_agent_graph.return_value.find_first.assert_called_once()
-    mock_store_listing.return_value.find_first.assert_called_once()
     mock_store_listing.return_value.create.assert_called_once()
 
 

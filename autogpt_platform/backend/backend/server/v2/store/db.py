@@ -742,7 +742,21 @@ async def create_store_submission(
             store_listing_version_id=store_listing_version_id,
             changes_summary=changes_summary,
         )
-
+    except prisma.errors.UniqueViolationError as exc:
+        # Attempt to check if the error was due to the slug field being unique
+        error_str = str(exc)
+        if "slug" in error_str.lower():
+            logger.debug(
+                f"Slug '{slug}' is already in use by another agent (agent_id: {agent_id}) for user {user_id}"
+            )
+            raise backend.server.v2.store.exceptions.SlugAlreadyInUseError(
+                f"The URL slug '{slug}' is already in use by another one of your agents. Please choose a different slug."
+            ) from exc
+        else:
+            # Reraise as a generic database error for other unique violations
+            raise backend.server.v2.store.exceptions.DatabaseError(
+                f"Unique constraint violated (not slug): {error_str}"
+            ) from exc
     except (
         backend.server.v2.store.exceptions.AgentNotFoundError,
         backend.server.v2.store.exceptions.ListingExistsError,
