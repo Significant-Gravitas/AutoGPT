@@ -339,7 +339,7 @@ class UserCreditBase(ABC):
                     "isActive" = true,
                     "runningBalance" = balance_update.balance,
                     "createdAt" = balance_update."updatedAt",
-                    "metadata" = $3
+                    "metadata" = $3::jsonb
                 FROM balance_update, transaction_check
                 WHERE {schema_prefix}"CreditTransaction"."transactionKey" = transaction_check."transactionKey"
                   AND {schema_prefix}"CreditTransaction"."userId" = transaction_check."userId"

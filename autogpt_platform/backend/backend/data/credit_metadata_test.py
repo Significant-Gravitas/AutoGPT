@@ -34,6 +34,7 @@ async def setup_test_user():
     await UserBalance.prisma().delete_many(where={"userId": user_id})
 
 
+@pytest.mark.asyncio(loop_scope="session")
 async def test_metadata_json_serialization(setup_test_user):
     """Test that metadata is properly serialized for JSONB column in raw SQL."""
     user_id = setup_test_user
@@ -85,6 +86,7 @@ async def test_metadata_json_serialization(setup_test_user):
     )
 
 
+@pytest.mark.asyncio(loop_scope="session")
 async def test_enable_transaction_metadata_serialization(setup_test_user):
     """Test that _enable_transaction also handles metadata JSON serialization correctly."""
     user_id = setup_test_user
