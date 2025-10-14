@@ -9,6 +9,7 @@ from backend.data.execution import (
     get_execution_kv_data,
     get_graph_execution_meta,
     get_graph_executions,
+    get_graph_executions_count,
     get_latest_node_execution,
     get_node_execution,
     get_node_executions,
@@ -28,11 +29,13 @@ from backend.data.graph import (
     get_node,
 )
 from backend.data.notifications import (
+    clear_all_user_notification_batches,
     create_or_add_to_user_notification_batch,
     empty_user_notification_batch,
     get_all_batches_by_type,
     get_user_notification_batch,
     get_user_notification_oldest_message_in_batch,
+    remove_notifications_from_batch,
 )
 from backend.data.user import (
     get_active_user_ids_in_timerange,
@@ -71,7 +74,6 @@ async def _get_credits(user_id: str) -> int:
 
 
 class DatabaseManager(AppService):
-
     def run_service(self) -> None:
         logger.info(f"[{self.service_name}] ⏳ Connecting to Database...")
         self.run_and_wait(db.connect())
@@ -111,6 +113,7 @@ class DatabaseManager(AppService):
 
     # Executions
     get_graph_executions = _(get_graph_executions)
+    get_graph_executions_count = _(get_graph_executions_count)
     get_graph_execution_meta = _(get_graph_execution_meta)
     create_graph_execution = _(create_graph_execution)
     get_node_execution = _(get_node_execution)
@@ -147,10 +150,12 @@ class DatabaseManager(AppService):
     get_user_notification_preference = _(get_user_notification_preference)
 
     # Notifications - async
+    clear_all_user_notification_batches = _(clear_all_user_notification_batches)
     create_or_add_to_user_notification_batch = _(
         create_or_add_to_user_notification_batch
     )
     empty_user_notification_batch = _(empty_user_notification_batch)
+    remove_notifications_from_batch = _(remove_notifications_from_batch)
     get_all_batches_by_type = _(get_all_batches_by_type)
     get_user_notification_batch = _(get_user_notification_batch)
     get_user_notification_oldest_message_in_batch = _(
@@ -179,6 +184,7 @@ class DatabaseManagerClient(AppServiceClient):
 
     # Executions
     get_graph_executions = _(d.get_graph_executions)
+    get_graph_executions_count = _(d.get_graph_executions_count)
     get_graph_execution_meta = _(d.get_graph_execution_meta)
     get_node_executions = _(d.get_node_executions)
     update_node_execution_status = _(d.update_node_execution_status)
@@ -241,10 +247,12 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_notification_preference = d.get_user_notification_preference
 
     # Notifications
+    clear_all_user_notification_batches = d.clear_all_user_notification_batches
     create_or_add_to_user_notification_batch = (
         d.create_or_add_to_user_notification_batch
     )
     empty_user_notification_batch = d.empty_user_notification_batch
+    remove_notifications_from_batch = d.remove_notifications_from_batch
     get_all_batches_by_type = d.get_all_batches_by_type
     get_user_notification_batch = d.get_user_notification_batch
     get_user_notification_oldest_message_in_batch = (

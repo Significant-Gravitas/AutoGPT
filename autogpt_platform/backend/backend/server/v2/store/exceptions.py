@@ -106,3 +106,9 @@ class UnauthorizedError(StoreError):
     """Raised when a user is not authorized to perform an action"""
 
     pass
+
+
+class SlugAlreadyInUseError(StoreError):
+    """Raised when a slug is already in use by another agent owned by the user"""
+
+    pass

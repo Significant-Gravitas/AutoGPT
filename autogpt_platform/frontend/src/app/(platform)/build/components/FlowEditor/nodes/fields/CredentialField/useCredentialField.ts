@@ -1,12 +1,18 @@
 import { useGetV1ListCredentials } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
-import { filterCredentialsByProvider } from "./helpers";
+import {
+  filterCredentialsByProvider,
+  getCredentialProviderFromSchema,
+} from "./helpers";
+import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 
 export const useCredentialField = ({
   credentialSchema,
+  nodeId,
 }: {
   credentialSchema: BlockIOCredentialsSubSchema; // Here we are using manual typing, we need to fix it with automatic one
+  nodeId: string;
 }) => {
   // Fetch all the credentials from the backend
   // We will save it in cache for 10 min, if user edits the credential, we will invalidate the cache
@@ -21,18 +27,30 @@ export const useCredentialField = ({
       },
     });
 
+  const hardcodedValues = useNodeStore((state) =>
+    state.getHardCodedValues(nodeId),
+  );
+
+  const credentialProvider = getCredentialProviderFromSchema(
+    hardcodedValues,
+    credentialSchema,
+  );
+
   const supportsApiKey = credentialSchema.credentials_types.includes("api_key");
   const supportsOAuth2 = credentialSchema.credentials_types.includes("oauth2");
+  const supportsUserPassword =
+    credentialSchema.credentials_types.includes("user_password");
 
-  const credentialProviders = credentialSchema.credentials_provider;
   const { credentials: filteredCredentials, exists: credentialsExists } =
-    filterCredentialsByProvider(credentials, credentialProviders);
+    filterCredentialsByProvider(credentials, credentialProvider ?? "");
 
   return {
     credentials: filteredCredentials,
     isCredentialListLoading,
     supportsApiKey,
     supportsOAuth2,
+    supportsUserPassword,
     credentialsExists,
+    credentialProvider,
   };
 };
