@@ -295,7 +295,7 @@ class AgentServer(backend.util.service.AppProcess):
             app=app,
             allow_origins=settings.config.backend_cors_allow_origins,
             allow_origin_regex=(
-                r"^https://.*\.vercel\.app$"
+                r"^https://.*-significant-gravitas\.vercel\.app$"
                 if settings.config.app_env == backend.util.settings.AppEnvironment.DEVELOPMENT
                 else None
             ),
