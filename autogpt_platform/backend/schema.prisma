@@ -667,6 +667,7 @@ view StoreAgent {
   rating           Float
   versions         String[]
   is_available     Boolean  @default(true)
+  useForOnboarding Boolean  @default(false)
 
   // Materialized views used (refreshed every 15 minutes via pg_cron):
   // - mv_agent_run_counts - Pre-aggregated agent execution counts by agentGraphId
@@ -743,6 +744,9 @@ model StoreListing {
 
   // URL-friendly identifier for this agent (moved from StoreListingVersion)
   slug String
+
+  // Allow this agent to be used during onboarding
+  useForOnboarding   Boolean @default(false)
 
   // The currently active version that should be shown to users
   activeVersionId String?              @unique
