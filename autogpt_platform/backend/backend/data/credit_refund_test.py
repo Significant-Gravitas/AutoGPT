@@ -313,14 +313,14 @@ async def test_concurrent_refunds(server: SpinTestServer):
             len(refund_txs) == 5
         ), f"Expected 5 refund transactions, got {len(refund_txs)}"
 
-        # Verify running balances are consistent
-        sorted_txs = sorted(refund_txs, key=lambda x: x.createdAt)
-        expected_balance = 1000
-        for tx in sorted_txs:
-            expected_balance += tx.amount  # amount is negative for refunds
-            assert (
-                tx.runningBalance == expected_balance
-            ), f"Running balance mismatch: expected {expected_balance}, got {tx.runningBalance}"
+        # Verify running balances are consistent with final state
+        # Note: In concurrent scenarios, createdAt order may not match execution order
+        # but all runningBalance values should be valid states between initial and final balance
+        running_balances = {tx.runningBalance for tx in refund_txs}
+        expected_balances = {900, 800, 700, 600, 500}  # Valid intermediate states
+        assert (
+            running_balances == expected_balances
+        ), f"Expected balances {expected_balances}, got {running_balances}"
 
     finally:
         await cleanup_test_user()

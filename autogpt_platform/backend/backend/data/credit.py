@@ -379,22 +379,26 @@ class UserCreditBase(ABC):
         # Single unified atomic operation for all transaction types
         result = await db.prisma.query_raw(
             """
-            WITH balance_update AS (
+            WITH user_lock AS (
+                SELECT id, balance FROM "User" WHERE id = $1 FOR UPDATE
+            ),
+            balance_update AS (
                 UPDATE "User" 
                 SET balance = CASE 
                     -- For spending (amount < 0): Check sufficient balance
-                    WHEN $2 < 0 AND $8::boolean = true AND balance + $2 < 0 THEN balance  -- No change if insufficient
+                    WHEN $2 < 0 AND $8::boolean = true AND user_lock.balance + $2 < 0 THEN user_lock.balance  -- No change if insufficient
                     -- For ceiling balance (amount > 0): Apply ceiling
-                    WHEN $2 > 0 AND $7::int IS NOT NULL AND balance > $7::int - $2 THEN $7::int
+                    WHEN $2 > 0 AND $7::int IS NOT NULL AND user_lock.balance > $7::int - $2 THEN $7::int
                     -- For regular operations: Apply with overflow protection  
-                    WHEN balance + $2 > $6::int THEN $6::int
-                    ELSE balance + $2
+                    WHEN user_lock.balance + $2 > $6::int THEN $6::int
+                    ELSE user_lock.balance + $2
                 END,
                 "updatedAt" = CURRENT_TIMESTAMP
-                WHERE id = $1 
+                FROM user_lock
+                WHERE "User".id = user_lock.id 
                   -- Only proceed if spending check passes or not a spending operation
-                  AND ($2 >= 0 OR $8::boolean = false OR balance + $2 >= 0)
-                RETURNING id, balance, "updatedAt"
+                  AND ($2 >= 0 OR $8::boolean = false OR user_lock.balance + $2 >= 0)
+                RETURNING "User".id, "User".balance, "User"."updatedAt"
             ),
             transaction_insert AS (
                 INSERT INTO "CreditTransaction" (
