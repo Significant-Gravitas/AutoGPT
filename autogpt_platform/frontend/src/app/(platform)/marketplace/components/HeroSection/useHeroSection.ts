@@ -1,10 +1,12 @@
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 export const useHeroSection = () => {
   const router = useRouter();
   const { completeStep } = useOnboarding();
+  const searchTerms = useGetFlag(Flag.MARKETPLACE_SEARCH_TERMS);
 
   // Mark marketplace visit task as completed
   useEffect(() => {
@@ -18,5 +20,6 @@ export const useHeroSection = () => {
 
   return {
     onFilterChange,
+    searchTerms,
   };
 };
