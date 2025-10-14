@@ -81,13 +81,9 @@ export const useLibraryUploadAgentDialog = () => {
             (key) => key in obj && obj[key] != null,
           )
         ) {
-          toast({
-            title: "Invalid Agent File",
-            description:
-              "Please upload a valid agent.json file that has been previously exported from the AutoGPT platform. The file must contain the required fields: name, description, nodes, and links.",
-            duration: 5000,
-            variant: "destructive",
-          });
+          throw new Error(
+            "Invalid agent file. Please upload a valid agent.json file that has been previously exported from the AutoGPT platform. The file must contain the required fields: name, description, nodes, and links.",
+          );
         }
         const agent = obj as Graph;
         sanitizeImportedGraph(agent);
@@ -100,11 +96,12 @@ export const useLibraryUploadAgentDialog = () => {
         }
       } catch (error) {
         console.error("Error loading agent file:", error);
-        form.setError("root", {
-          message:
-            error instanceof Error
-              ? error.message
-              : "Failed to load agent file. Please ensure it is a valid JSON file exported from AutoGPT.",
+        toast({
+          title: "Invalid Agent File",
+          description:
+            "Please upload a valid agent.json file that has been previously exported from the AutoGPT platform. The file must contain the required fields: name, description, nodes, and links.",
+          duration: 5000,
+          variant: "destructive",
         });
         // Clear the invalid file
         form.setValue("agentFile", undefined as any);
