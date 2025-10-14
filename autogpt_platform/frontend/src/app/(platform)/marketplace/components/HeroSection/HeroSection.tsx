@@ -2,7 +2,7 @@
 
 import { FilterChips } from "../FilterChips/FilterChips";
 import { SearchBar } from "../SearchBar/SearchBar";
-import { DEFAULT_SEARCH_TERMS, useHeroSection } from "./useHeroSection";
+import { useHeroSection } from "./useHeroSection";
 
 export const HeroSection = () => {
   const { onFilterChange, searchTerms } = useHeroSection();
@@ -35,7 +35,7 @@ export const HeroSection = () => {
         <div>
           <div className="flex justify-center">
             <FilterChips
-              badges={searchTerms || DEFAULT_SEARCH_TERMS}
+              badges={searchTerms}
               onFilterChange={onFilterChange}
               multiSelect={false}
             />

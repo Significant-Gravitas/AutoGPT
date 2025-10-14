@@ -2,14 +2,7 @@ import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-
-export const DEFAULT_SEARCH_TERMS = [
-  "Marketing",
-  "SEO",
-  "Content Creation",
-  "Automation",
-  "Fun",
-];
+import { DEFAULT_SEARCH_TERMS } from "./helpers";
 
 export const useHeroSection = () => {
   const router = useRouter();
@@ -28,6 +21,6 @@ export const useHeroSection = () => {
 
   return {
     onFilterChange,
-    searchTerms,
+    searchTerms: searchTerms || DEFAULT_SEARCH_TERMS,
   };
 };

@@ -1,6 +1,6 @@
 "use client";
 
-import { DEFAULT_SEARCH_TERMS } from "@/app/(platform)/marketplace/components/HeroSection/useHeroSection";
+import { DEFAULT_SEARCH_TERMS } from "@/app/(platform)/marketplace/components/HeroSection/helpers";
 import { BehaveAs, getBehaveAs } from "@/lib/utils";
 import { useFlags } from "launchdarkly-react-client-sdk";
 
