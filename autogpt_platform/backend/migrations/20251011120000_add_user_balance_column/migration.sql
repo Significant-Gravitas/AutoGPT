@@ -1,27 +1,27 @@
 -- Create UserBalance table for atomic credit operations
 -- This replaces the need for User.balance column and provides better separation of concerns
 
--- Create UserBalance table
+-- CreateTable
 CREATE TABLE "UserBalance" (
-  "id" TEXT NOT NULL,
-  "userId" TEXT NOT NULL,
-  "balance" INTEGER NOT NULL DEFAULT 0,
-  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  
-  CONSTRAINT "UserBalance_pkey" PRIMARY KEY ("id"),
-  CONSTRAINT "UserBalance_userId_key" UNIQUE ("userId"),
-  CONSTRAINT "UserBalance_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "userId" TEXT NOT NULL,
+    "balance" INTEGER NOT NULL DEFAULT 0,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "UserBalance_pkey" PRIMARY KEY ("userId")
 );
 
--- Create index for efficient lookups
+-- CreateIndex
 CREATE INDEX "UserBalance_userId_idx" ON "UserBalance"("userId");
+
+-- AddForeignKey
+ALTER TABLE "UserBalance" ADD CONSTRAINT "UserBalance_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
 
 -- Migrate existing user balances from transaction history
 -- Users with transactions: use their latest runningBalance
 -- Users without transactions: create with balance 0
-INSERT INTO "UserBalance" ("id", "userId", "balance", "updatedAt")
+INSERT INTO "UserBalance" ("userId", "balance", "updatedAt")
 SELECT 
-    gen_random_uuid()::text as id,
     u.id as "userId",
     COALESCE(latest_balances.latest_running_balance, 0) as balance,
     COALESCE(latest_balances.last_transaction_time, u."updatedAt") as "updatedAt"

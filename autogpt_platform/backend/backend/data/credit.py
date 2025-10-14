@@ -139,14 +139,20 @@ class UserCreditBase(ABC):
         pass
 
     @abstractmethod
-    async def onboarding_reward(self, user_id: str, credits: int, step: OnboardingStep):
+    async def onboarding_reward(
+        self, user_id: str, credits: int, step: OnboardingStep
+    ) -> bool:
         """
         Reward the user with credits for completing an onboarding step.
         Won't reward if the user has already received credits for the step.
 
         Args:
             user_id (str): The user ID.
+            credits (int): The amount to reward.
             step (OnboardingStep): The onboarding step.
+
+        Returns:
+            bool: True if rewarded, False if already rewarded.
         """
         pass
 
@@ -543,9 +549,13 @@ class UserCredit(UserCreditBase):
                     {"reason": f"Reward for completing {step.value} onboarding step."}
                 ),
             )
-        except UniqueViolationError:
-            # Already rewarded for this step
-            pass
+            return True
+        except Exception as e:
+            # Already rewarded for this step - catch all exceptions from concurrent calls
+            if "already exists" in str(e):
+                return False
+            # Re-raise unexpected exceptions
+            raise
 
     async def top_up_refund(
         self, user_id: str, transaction_key: str, metadata: dict[str, str]
@@ -1064,8 +1074,8 @@ class DisabledUserCredit(UserCreditBase):
     async def top_up_credits(self, *args, **kwargs):
         pass
 
-    async def onboarding_reward(self, *args, **kwargs):
-        pass
+    async def onboarding_reward(self, *args, **kwargs) -> bool:
+        return True
 
     async def top_up_intent(self, *args, **kwargs) -> str:
         return ""

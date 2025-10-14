@@ -11,11 +11,13 @@ from uuid import uuid4
 
 import prisma.enums
 import pytest
+from prisma.enums import CreditTransactionType
 from prisma.errors import UniqueViolationError
 from prisma.models import CreditTransaction, User, UserBalance
 
 from backend.data.credit import POSTGRES_INT_MAX, UsageTransactionMetadata, UserCredit
 from backend.util.exceptions import InsufficientBalanceError
+from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
 
 # Test with both UserCredit and BetaUserCredit if needed
@@ -60,8 +62,13 @@ async def test_concurrent_spends_same_user(server: SpinTestServer):
     await create_test_user(user_id)
 
     try:
-        # Give user initial balance
-        await credit_system.top_up_credits(user_id, 1000)  # $10
+        # Give user initial balance using internal method (bypasses Stripe)
+        await credit_system._add_transaction(
+            user_id=user_id,
+            amount=1000,
+            transaction_type=CreditTransactionType.TOP_UP,
+            metadata=SafeJson({"test": "initial_balance"}),
+        )
 
         # Try to spend 10 x $1 concurrently
         async def spend_one_dollar(idx: int):
@@ -115,8 +122,13 @@ async def test_concurrent_spends_insufficient_balance(server: SpinTestServer):
     await create_test_user(user_id)
 
     try:
-        # Give user limited balance
-        await credit_system.top_up_credits(user_id, 500)  # $5
+        # Give user limited balance using internal method (bypasses Stripe)
+        await credit_system._add_transaction(
+            user_id=user_id,
+            amount=500,
+            transaction_type=CreditTransactionType.TOP_UP,
+            metadata=SafeJson({"test": "limited_balance"}),
+        )
 
         # Try to spend 10 x $1 concurrently (but only have $5)
         async def spend_one_dollar(idx: int):
@@ -164,8 +176,13 @@ async def test_concurrent_mixed_operations(server: SpinTestServer):
     await create_test_user(user_id)
 
     try:
-        # Initial balance
-        await credit_system.top_up_credits(user_id, 1000)  # $10
+        # Initial balance using internal method (bypasses Stripe)
+        await credit_system._add_transaction(
+            user_id=user_id,
+            amount=1000,
+            transaction_type=CreditTransactionType.TOP_UP,
+            metadata=SafeJson({"test": "initial_balance"}),
+        )
 
         # Mix of operations
         async def mixed_operations():
@@ -181,9 +198,16 @@ async def test_concurrent_mixed_operations(server: SpinTestServer):
                     )
                 )
 
-            # 3 top-ups of $2 each
+            # 3 top-ups of $2 each using internal method
             for i in range(3):
-                operations.append(credit_system.top_up_credits(user_id, 200))
+                operations.append(
+                    credit_system._add_transaction(
+                        user_id=user_id,
+                        amount=200,
+                        transaction_type=CreditTransactionType.TOP_UP,
+                        metadata=SafeJson({"test": f"concurrent_topup_{i}"}),
+                    )
+                )
 
             # 10 balance checks
             for i in range(10):
@@ -216,8 +240,13 @@ async def test_race_condition_exact_balance(server: SpinTestServer):
     await create_test_user(user_id)
 
     try:
-        # Give exact amount
-        await credit_system.top_up_credits(user_id, 100)  # $1
+        # Give exact amount using internal method (bypasses Stripe)
+        await credit_system._add_transaction(
+            user_id=user_id,
+            amount=100,
+            transaction_type=CreditTransactionType.TOP_UP,
+            metadata=SafeJson({"test": "exact_amount"}),
+        )
 
         # Try to spend $1 twice concurrently
         async def spend_exact():
@@ -319,7 +348,12 @@ async def test_integer_overflow_protection(server: SpinTestServer):
         )
 
         # Try to add more than possible - should clamp to POSTGRES_INT_MAX
-        await credit_system.top_up_credits(user_id, 200)
+        await credit_system._add_transaction(
+            user_id=user_id,
+            amount=200,
+            transaction_type=CreditTransactionType.TOP_UP,
+            metadata=SafeJson({"test": "overflow_protection"}),
+        )
 
         # Balance should be clamped to max_int, not overflowed
         final_balance = await credit_system.get_credits(user_id)
@@ -351,9 +385,14 @@ async def test_high_concurrency_stress(server: SpinTestServer):
     await create_test_user(user_id)
 
     try:
-        # Initial balance
+        # Initial balance using internal method (bypasses Stripe)
         initial_balance = 10000  # $100
-        await credit_system.top_up_credits(user_id, initial_balance)
+        await credit_system._add_transaction(
+            user_id=user_id,
+            amount=initial_balance,
+            transaction_type=CreditTransactionType.TOP_UP,
+            metadata=SafeJson({"test": "stress_test_balance"}),
+        )
 
         # Run many concurrent operations
         async def random_operation(idx: int):
@@ -408,8 +447,13 @@ async def test_concurrent_multiple_spends_sufficient_balance(server: SpinTestSer
     await create_test_user(user_id)
 
     try:
-        # Give user 150 balance ($1.50)
-        await credit_system.top_up_credits(user_id, 150)
+        # Give user 150 balance ($1.50) using internal method (bypasses Stripe)
+        await credit_system._add_transaction(
+            user_id=user_id,
+            amount=150,
+            transaction_type=CreditTransactionType.TOP_UP,
+            metadata=SafeJson({"test": "sufficient_balance"}),
+        )
 
         # Track individual timing to see serialization
         timings = {}
@@ -574,8 +618,13 @@ async def test_prove_database_locking_behavior(server: SpinTestServer):
     await create_test_user(user_id)
 
     try:
-        # Set balance to exact amount that can handle all spends
-        await credit_system.top_up_credits(user_id, 60)  # Exactly 10+20+30
+        # Set balance to exact amount that can handle all spends using internal method (bypasses Stripe)
+        await credit_system._add_transaction(
+            user_id=user_id,
+            amount=60,  # Exactly 10+20+30
+            transaction_type=CreditTransactionType.TOP_UP,
+            metadata=SafeJson({"test": "exact_amount_test"}),
+        )
 
         async def spend_with_precise_timing(amount: int, label: str):
             request_start = asyncio.get_event_loop().time()
