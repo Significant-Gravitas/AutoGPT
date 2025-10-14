@@ -13,6 +13,7 @@ from backend.data.credit import (
     AutoTopUpConfig,
     BetaUserCredit,
     UsageTransactionMetadata,
+    get_auto_top_up,
     set_auto_top_up,
 )
 from backend.data.user import DEFAULT_USER_ID
@@ -109,15 +110,13 @@ async def test_auto_top_up_integration(cleanup_test_user, monkeypatch):
     )
     assert balance == 50
 
-    # Configure auto top-up - this should immediately trigger since 50 < 100
+    # Configure auto top-up with threshold above current balance
     config = AutoTopUpConfig(threshold=100, amount=500)
     await set_auto_top_up(user_id, config)
 
-    # After auto top-up configuration, balance should be at least the threshold (immediate auto-top-up)
+    # Verify configuration was saved but no immediate top-up occurred
     current_balance = await credit_system.get_credits(user_id)
-    assert (
-        current_balance >= config.threshold
-    ), f"Expected balance >= {config.threshold}, got {current_balance}"
+    assert current_balance == 50  # Balance should be unchanged
 
     # Simulate spending credits that would trigger auto top-up
     # This involves multiple SQL operations with enum casting
@@ -131,13 +130,16 @@ async def test_auto_top_up_integration(cleanup_test_user, monkeypatch):
             where={"userId": user_id}, order={"createdAt": "desc"}
         )
 
-        # Should have at least: GRANT (initial), USAGE (spend), and potentially TOP_UP (auto)
-        assert len(transactions) >= 2
+        # Should have at least: GRANT (initial), USAGE (spend), and TOP_UP (auto top-up)
+        assert len(transactions) >= 3
 
         # Verify different transaction types exist and enum casting worked
         transaction_types = {t.type for t in transactions}
         assert CreditTransactionType.GRANT in transaction_types
         assert CreditTransactionType.USAGE in transaction_types
+        assert (
+            CreditTransactionType.TOP_UP in transaction_types
+        )  # Auto top-up should have triggered
 
     except Exception as e:
         # If this fails with enum casting error, the test successfully caught the bug
@@ -208,12 +210,13 @@ async def test_enable_transaction_enum_casting_integration(cleanup_test_user):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_immediate_auto_top_up_on_configuration(cleanup_test_user, monkeypatch):
+async def test_auto_top_up_configuration_storage(cleanup_test_user, monkeypatch):
     """
-    Test that auto-top-up immediately triggers when configured with balance below threshold.
+    Test that auto-top-up configuration is properly stored and retrieved.
 
-    This addresses the issue where users with low balance don't get topped up until
-    they spend money first.
+    The immediate top-up logic is handled by the API routes, not the core
+    set_auto_top_up function. This test verifies the configuration is correctly
+    saved and can be retrieved.
     """
     # Enable credits for this test
     from backend.data.credit import settings
@@ -225,45 +228,34 @@ async def test_immediate_auto_top_up_on_configuration(cleanup_test_user, monkeyp
     user_id = cleanup_test_user
     credit_system = BetaUserCredit(1000)
 
-    # Set initial balance below what we'll configure as threshold
+    # Set initial balance
     balance, _ = await credit_system._add_transaction(
         user_id=user_id,
-        amount=50,  # Low balance
+        amount=50,
         transaction_type=CreditTransactionType.GRANT,
-        metadata=SafeJson({"reason": "Initial low balance for immediate top-up test"}),
+        metadata=SafeJson({"reason": "Initial balance for config test"}),
     )
 
     assert balance == 50
 
-    # Configure auto top-up with threshold higher than current balance
+    # Configure auto top-up
     config = AutoTopUpConfig(threshold=100, amount=200)
     await set_auto_top_up(user_id, config)
 
-    # Verify that auto top-up was immediately triggered
+    # Verify the configuration was saved
+    retrieved_config = await get_auto_top_up(user_id)
+    assert retrieved_config.threshold == config.threshold
+    assert retrieved_config.amount == config.amount
+
+    # Verify balance is unchanged (no immediate top-up from set_auto_top_up)
     final_balance = await credit_system.get_credits(user_id)
-    print(f"DEBUG: final_balance={final_balance}, expected >= {config.threshold}")
+    assert final_balance == 50  # Should be unchanged
 
-    # Should have been topped up: 50 (initial) + 200 (auto top-up) = 250
-    # BUT the ceiling_balance=threshold logic might limit it to just reach the threshold
-    assert final_balance >= config.threshold  # At least reached the threshold
-
-    # Verify the immediate auto top-up transaction was created
+    # Verify no immediate auto-top-up transaction was created by set_auto_top_up
     transactions = await CreditTransaction.prisma().find_many(
         where={"userId": user_id}, order={"createdAt": "desc"}
     )
 
-    # Should have: initial GRANT + auto TOP_UP
-    assert len(transactions) >= 2
-
-    # Find the immediate auto top-up transaction
-    auto_topup_tx = None
-    for tx in transactions:
-        if tx.transactionKey and "IMMEDIATE-AUTO-TOP-UP" in tx.transactionKey:
-            auto_topup_tx = tx
-            break
-
-    assert auto_topup_tx is not None
-    assert auto_topup_tx.type == CreditTransactionType.TOP_UP
-    assert auto_topup_tx.amount == config.amount
-    assert auto_topup_tx.metadata is not None
-    assert "Immediate auto top-up after configuration" in str(auto_topup_tx.metadata)
+    # Should only have the initial GRANT transaction
+    assert len(transactions) == 1
+    assert transactions[0].type == CreditTransactionType.GRANT
