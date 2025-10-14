@@ -496,7 +496,6 @@ class UserCredit(UserCreditBase):
         if cost < 0 or cost > POSTGRES_INT_MAX:
             raise ValueError(f"Invalid cost amount: {cost}")
 
-        # Use _add_transaction directly as suggested by Swifty
         new_balance, _ = await self._add_transaction(
             user_id=user_id,
             amount=-cost,  # Negative for spending
@@ -538,7 +537,6 @@ class UserCredit(UserCreditBase):
         if amount <= 0 or amount > POSTGRES_INT_MAX:
             raise ValueError(f"Invalid top-up amount: {amount}")
 
-        # Use _add_transaction directly as suggested by Swifty
         new_balance, _ = await self._add_transaction(
             user_id=user_id,
             amount=amount,
@@ -577,7 +575,6 @@ class UserCredit(UserCreditBase):
             # Already rewarded, return None to indicate duplicate
             return None
 
-        # Use _add_transaction directly as suggested by Swifty
         try:
             new_balance, _ = await self._add_transaction(
                 user_id=user_id,
