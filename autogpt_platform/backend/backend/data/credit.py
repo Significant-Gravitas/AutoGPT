@@ -480,7 +480,7 @@ class UserCreditBase(ABC):
                 SELECT 
                     $1::text,
                     $2::int,
-                    $3::"CreditTransactionType",
+                    $3::{schema_prefix}"CreditTransactionType",
                     CASE 
                         -- For inactive transactions: Set runningBalance to original balance (don't apply the change yet)
                         WHEN $5::boolean = false THEN user_balance_lock.balance
@@ -1196,6 +1196,34 @@ async def set_auto_top_up(user_id: str, config: AutoTopUpConfig):
         where={"id": user_id},
         data={"topUpConfig": SafeJson(config.model_dump())},
     )
+
+    # Immediately trigger auto top-up if current balance is below the new threshold
+    if config.threshold > 0 and config.amount > 0:
+        credit_system = get_user_credit_model()
+        # Use _get_credits to get the raw balance without monthly refill logic
+        # This ensures we check the actual user balance before any auto-refills happen
+        current_balance, _ = await credit_system._get_credits(user_id)
+
+        if current_balance < config.threshold:
+            try:
+                # Use direct transaction instead of _top_up_credits to avoid Stripe dependencies
+                # Set ceiling_balance higher to allow the full auto top-up amount
+                await credit_system._add_transaction(
+                    user_id=user_id,
+                    amount=config.amount,
+                    transaction_type=CreditTransactionType.GRANT,
+                    transaction_key=f"IMMEDIATE-AUTO-TOP-UP-{user_id}-{config.threshold}",
+                    ceiling_balance=config.threshold
+                    + config.amount,  # Allow full top-up
+                    metadata=SafeJson(
+                        {"reason": "Immediate auto top-up after configuration"}
+                    ),
+                )
+            except Exception as e:
+                # Don't fail the configuration if auto top-up fails
+                # Just log it as we do in other auto top-up scenarios
+                logger.error(f"Immediate auto top-up failed for user {user_id}: {e}")
+                pass
 
 
 async def get_auto_top_up(user_id: str) -> AutoTopUpConfig:

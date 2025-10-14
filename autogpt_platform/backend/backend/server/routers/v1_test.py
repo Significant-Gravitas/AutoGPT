@@ -261,6 +261,67 @@ def test_get_auto_top_up(
     )
 
 
+def test_configure_auto_top_up(
+    mocker: pytest_mock.MockFixture,
+    snapshot: Snapshot,
+) -> None:
+    """Test configure auto top-up endpoint - this test would have caught the enum casting bug"""
+    # Mock the set_auto_top_up function to avoid database calls
+    mock_set_auto_top_up = mocker.patch(
+        "backend.server.routers.v1.set_auto_top_up",
+        return_value=None,
+    )
+
+    # Test data
+    request_data = {
+        "threshold": 100,
+        "amount": 500,
+    }
+
+    response = client.post("/credits/auto-top-up", json=request_data)
+
+    # This should succeed with our fix, but would have failed before with the enum casting error
+    assert response.status_code == 200
+    assert response.json() == "Auto top-up settings updated"
+
+    # Verify the function was called with correct parameters
+    mock_set_auto_top_up.assert_called_once()
+    call_args = mock_set_auto_top_up.call_args
+
+    # Check user_id (from mock auth)
+    assert call_args[0][0] == "test-user-id"
+
+    # Check AutoTopUpConfig object
+    config_arg = call_args[0][1]
+    assert isinstance(config_arg, AutoTopUpConfig)
+    assert config_arg.threshold == 100
+    assert config_arg.amount == 500
+
+
+def test_configure_auto_top_up_validation_errors(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test configure auto top-up endpoint validation"""
+    # Mock to avoid database calls
+    mocker.patch("backend.server.routers.v1.set_auto_top_up")
+
+    # Test negative threshold
+    response = client.post(
+        "/credits/auto-top-up", json={"threshold": -1, "amount": 500}
+    )
+    assert response.status_code == 422  # Validation error
+
+    # Test amount too small (but not 0)
+    response = client.post(
+        "/credits/auto-top-up", json={"threshold": 100, "amount": 100}
+    )
+    assert response.status_code == 422  # Validation error
+
+    # Test amount = 0 (should be allowed)
+    response = client.post("/credits/auto-top-up", json={"threshold": 100, "amount": 0})
+    assert response.status_code == 200  # Should succeed
+
+
 # Graphs endpoints tests
 def test_get_graphs(
     mocker: pytest_mock.MockFixture,
