@@ -7,10 +7,11 @@ without race conditions, deadlocks, or inconsistent state.
 
 import asyncio
 import random
-from datetime import datetime
+from uuid import uuid4
 
 import prisma.enums
 import pytest
+from prisma.errors import UniqueViolationError
 from prisma.models import CreditTransaction, User, UserBalance
 
 from backend.data.credit import POSTGRES_INT_MAX, UsageTransactionMetadata, UserCredit
@@ -31,8 +32,8 @@ async def create_test_user(user_id: str) -> None:
                 "name": f"Test User {user_id[:8]}",
             }
         )
-    except Exception:
-        # User might already exist, continue
+    except UniqueViolationError:
+        # User already exists, continue
         pass
 
     # Ensure UserBalance record exists
@@ -47,14 +48,15 @@ async def cleanup_test_user(user_id: str) -> None:
     try:
         await CreditTransaction.prisma().delete_many(where={"userId": user_id})
         await User.prisma().delete_many(where={"id": user_id})
-    except Exception:
-        pass  # Ignore cleanup errors
+    except Exception as e:
+        # Log cleanup failures but don't fail the test
+        print(f"Warning: Failed to cleanup test user {user_id}: {e}")
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_concurrent_spends_same_user(server: SpinTestServer):
     """Test multiple concurrent spends from the same user don't cause race conditions."""
-    user_id = f"concurrent-test-{datetime.now().timestamp()}"
+    user_id = f"concurrent-test-{uuid4()}"
     await create_test_user(user_id)
 
     try:
@@ -109,7 +111,7 @@ async def test_concurrent_spends_same_user(server: SpinTestServer):
 @pytest.mark.asyncio(loop_scope="session")
 async def test_concurrent_spends_insufficient_balance(server: SpinTestServer):
     """Test that concurrent spends correctly enforce balance limits."""
-    user_id = f"insufficient-test-{datetime.now().timestamp()}"
+    user_id = f"insufficient-test-{uuid4()}"
     await create_test_user(user_id)
 
     try:
@@ -158,7 +160,7 @@ async def test_concurrent_spends_insufficient_balance(server: SpinTestServer):
 @pytest.mark.asyncio(loop_scope="session")
 async def test_concurrent_mixed_operations(server: SpinTestServer):
     """Test concurrent mix of spends, top-ups, and balance checks."""
-    user_id = f"mixed-test-{datetime.now().timestamp()}"
+    user_id = f"mixed-test-{uuid4()}"
     await create_test_user(user_id)
 
     try:
@@ -210,7 +212,7 @@ async def test_concurrent_mixed_operations(server: SpinTestServer):
 @pytest.mark.asyncio(loop_scope="session")
 async def test_race_condition_exact_balance(server: SpinTestServer):
     """Test spending exact balance amount concurrently doesn't go negative."""
-    user_id = f"exact-balance-{datetime.now().timestamp()}"
+    user_id = f"exact-balance-{uuid4()}"
     await create_test_user(user_id)
 
     try:
@@ -250,7 +252,7 @@ async def test_race_condition_exact_balance(server: SpinTestServer):
 @pytest.mark.asyncio(loop_scope="session")
 async def test_onboarding_reward_idempotency(server: SpinTestServer):
     """Test that onboarding rewards are idempotent (can't be claimed twice)."""
-    user_id = f"onboarding-test-{datetime.now().timestamp()}"
+    user_id = f"onboarding-test-{uuid4()}"
     await create_test_user(user_id)
 
     try:
@@ -300,7 +302,7 @@ async def test_onboarding_reward_idempotency(server: SpinTestServer):
 @pytest.mark.asyncio(loop_scope="session")
 async def test_integer_overflow_protection(server: SpinTestServer):
     """Test that integer overflow is prevented by clamping to POSTGRES_INT_MAX."""
-    user_id = f"overflow-test-{datetime.now().timestamp()}"
+    user_id = f"overflow-test-{uuid4()}"
     await create_test_user(user_id)
 
     try:
@@ -345,7 +347,7 @@ async def test_integer_overflow_protection(server: SpinTestServer):
 @pytest.mark.asyncio(loop_scope="session")
 async def test_high_concurrency_stress(server: SpinTestServer):
     """Stress test with many concurrent operations."""
-    user_id = f"stress-test-{datetime.now().timestamp()}"
+    user_id = f"stress-test-{uuid4()}"
     await create_test_user(user_id)
 
     try:
@@ -402,7 +404,7 @@ async def test_high_concurrency_stress(server: SpinTestServer):
 @pytest.mark.asyncio(loop_scope="session")
 async def test_concurrent_multiple_spends_sufficient_balance(server: SpinTestServer):
     """Test multiple concurrent spends when there's sufficient balance for all."""
-    user_id = f"multi-spend-test-{datetime.now().timestamp()}"
+    user_id = f"multi-spend-test-{uuid4()}"
     await create_test_user(user_id)
 
     try:
@@ -522,7 +524,7 @@ async def test_concurrent_multiple_spends_sufficient_balance(server: SpinTestSer
 @pytest.mark.asyncio(loop_scope="session")
 async def test_prove_database_locking_behavior(server: SpinTestServer):
     """Definitively prove whether database locking causes waiting vs failures."""
-    user_id = f"locking-test-{datetime.now().timestamp()}"
+    user_id = f"locking-test-{uuid4()}"
     await create_test_user(user_id)
 
     try:

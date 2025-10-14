@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, cast
+from uuid import uuid4
 
 import stripe
 from prisma import Json
@@ -32,7 +33,7 @@ from backend.data.model import (
     UserTransaction,
 )
 from backend.data.notifications import NotificationEventModel, RefundRequestData
-from backend.data.user import get_user_by_id, get_user_email_by_id
+from backend.data.user import get_user_by_id
 from backend.notifications.notifications import queue_notification_async
 from backend.server.v2.admin.model import UserHistoryResponse
 from backend.util.exceptions import InsufficientBalanceError
@@ -51,6 +52,9 @@ base_url = settings.config.frontend_base_url or settings.config.platform_base_ur
 
 # PostgreSQL INT type maximum value
 POSTGRES_INT_MAX = 2147483647
+
+# PostgreSQL INT type minimum value
+POSTGRES_INT_MIN = -2147483648
 
 
 def format_credits_as_dollars(credits: int) -> str:
@@ -389,16 +393,16 @@ class UserCreditBase(ABC):
                     CURRENT_TIMESTAMP)
                 ON CONFLICT ("userId") DO UPDATE SET
                     balance = CASE 
-                        -- For spending (amount < 0): Check sufficient balance
-                        WHEN $2 < 0 AND $8::boolean = true AND "UserBalance".balance + $2 < 0 THEN "UserBalance".balance  -- No change if insufficient
                         -- For ceiling balance (amount > 0): Apply ceiling (clamp to maximum)
-                        WHEN $2 > 0 AND $7::int IS NOT NULL AND "UserBalance".balance + $2 > $7::int THEN $7::int
+                        WHEN $2 > 0 AND $7::int IS NOT NULL AND "UserBalance".balance > $7::int - $2 THEN $7::int
                         -- For regular operations: Apply with overflow protection  
-                        WHEN "UserBalance".balance + $2 > $6::int THEN $6::int
+                        WHEN $2 > 0 AND "UserBalance".balance > $6::int - $2 THEN $6::int
+                        -- For negative amounts: Apply with underflow protection
+                        WHEN $2 < 0 AND "UserBalance".balance + $2 < $10::int THEN $10::int
                         ELSE "UserBalance".balance + $2
                     END,
                     "updatedAt" = CURRENT_TIMESTAMP
-                WHERE ($2 >= 0 OR $8::boolean = false OR "UserBalance".balance + $2 >= 0)
+                WHERE NOT ($2 < 0 AND $8::boolean = true AND "UserBalance".balance + $2 < 0)
                 RETURNING "UserBalance"."userId", "UserBalance".balance, "UserBalance"."updatedAt"
             ),
             transaction_insert AS (
@@ -429,6 +433,7 @@ class UserCreditBase(ABC):
             ceiling_balance,  # $7 - ceiling balance (nullable)
             fail_insufficient_credits,  # $8 - check balance for spending
             transaction_key,  # $9 - transaction key (nullable)
+            POSTGRES_INT_MIN,  # $10 - underflow protection
         )
 
         if result:
@@ -444,17 +449,27 @@ class UserCreditBase(ABC):
                     "balance": 0,
                 }
             )
-            # If this was a spending operation, it should fail
-            if amount < 0 and fail_insufficient_credits:
-                raise InsufficientBalanceError(
-                    message=f"Insufficient balance of {format_credits_as_dollars(0)}, where this will cost {format_credits_as_dollars(abs(amount))}",
-                    user_id=user_id,
-                    balance=0,
-                    amount=amount,
-                )
 
-        # Must be insufficient balance for spending operation
-        if amount < 0 and fail_insufficient_credits:
+        # For spending operations with insufficient balance, still create the transaction record
+        # but mark it as failed or don't update the balance
+        if (
+            amount < 0
+            and fail_insufficient_credits
+            and user_balance.balance + amount < 0
+        ):
+            # Create transaction record for audit trail before failing
+            tx_key = transaction_key or str(uuid4())
+            await CreditTransaction.prisma().create(
+                data={
+                    "userId": user_id,
+                    "amount": amount,
+                    "type": transaction_type,
+                    "runningBalance": user_balance.balance,  # Balance unchanged due to insufficient funds
+                    "metadata": metadata,
+                    "isActive": is_active,
+                    "transactionKey": tx_key,
+                }
+            )
             raise InsufficientBalanceError(
                 message=f"Insufficient balance of {format_credits_as_dollars(user_balance.balance)}, where this will cost {format_credits_as_dollars(abs(amount))}",
                 user_id=user_id,
@@ -462,8 +477,38 @@ class UserCreditBase(ABC):
                 amount=amount,
             )
 
-        # Unexpected case
-        raise ValueError(f"Transaction failed for user {user_id}, amount {amount}")
+        # For non-spending operations or when fail_insufficient_credits=False, process the transaction
+        # This handles cases where atomic operation failed but we should still create the transaction
+        new_balance = (
+            max(user_balance.balance + amount, POSTGRES_INT_MIN)
+            if amount < 0
+            else min(user_balance.balance + amount, POSTGRES_INT_MAX)
+        )
+
+        # Apply ceiling balance logic for positive amounts
+        if ceiling_balance and amount > 0 and new_balance > ceiling_balance:
+            new_balance = ceiling_balance
+
+        # Update balance and create transaction
+        await UserBalance.prisma().update(
+            where={"userId": user_id}, data={"balance": new_balance}
+        )
+
+        tx_key = transaction_key or str(uuid4())
+        await CreditTransaction.prisma().create(
+            data={
+                "userId": user_id,
+                "amount": amount,
+                "type": transaction_type,
+                "runningBalance": new_balance,
+                "metadata": metadata,
+                "isActive": is_active,
+                "transactionKey": tx_key,
+                "createdAt": self.time_now(),
+            }
+        )
+
+        return new_balance, tx_key
 
 
 class UserCredit(UserCreditBase):
@@ -505,23 +550,24 @@ class UserCredit(UserCreditBase):
             metadata=SafeJson(metadata.model_dump()),
         )
 
-        # Auto top-up if balance is below threshold.
-        auto_top_up = await get_auto_top_up(user_id)
-        if auto_top_up.threshold and new_balance < auto_top_up.threshold:
-            try:
-                await self._top_up_credits(
-                    user_id=user_id,
-                    amount=auto_top_up.amount,
-                    # Avoid multiple auto top-ups within the same graph execution.
-                    key=f"AUTO-TOP-UP-{user_id}-{metadata.graph_exec_id}",
-                    ceiling_balance=auto_top_up.threshold,
-                    top_up_type=TopUpType.AUTO,
-                )
-            except Exception as e:
-                # Failed top-up is not critical, we can move on.
-                logger.error(
-                    f"Auto top-up failed for user {user_id}, balance: {new_balance}, amount: {auto_top_up.amount}, error: {e}"
-                )
+        # Auto top-up if balance is below threshold and this is during graph execution
+        if metadata.graph_exec_id:  # Only auto-top-up during graph execution
+            auto_top_up = await get_auto_top_up(user_id)
+            if auto_top_up.threshold and new_balance < auto_top_up.threshold:
+                try:
+                    await self._top_up_credits(
+                        user_id=user_id,
+                        amount=auto_top_up.amount,
+                        # Avoid multiple auto top-ups within the same graph execution
+                        key=f"AUTO-TOP-UP-{user_id}-{metadata.graph_exec_id or 'no-graph'}",
+                        ceiling_balance=auto_top_up.threshold,
+                        top_up_type=TopUpType.AUTO,
+                    )
+                except Exception as e:
+                    # Failed top-up is not critical, we can move on.
+                    logger.error(
+                        f"Auto top-up failed for user {user_id}, balance: {new_balance}, amount: {auto_top_up.amount}, error: {e}"
+                    )
 
         return new_balance
 
@@ -679,7 +725,7 @@ class UserCredit(UserCreditBase):
             }
         )
         if request.amount <= 0 or request.amount > transaction.amount:
-            raise AssertionError(
+            raise ValueError(
                 f"Invalid amount to deduct {format_credits_as_dollars(request.amount)} from {format_credits_as_dollars(transaction.amount)} top-up"
             )
 
@@ -899,7 +945,12 @@ class UserCredit(UserCreditBase):
                     },
                 )
                 if setup_intent.status == "succeeded":
-                    successful_transaction = SafeJson({"setup_intent": setup_intent})
+                    successful_transaction = SafeJson(
+                        {
+                            "setup_intent_id": setup_intent.id,
+                            "status": setup_intent.status,
+                        }
+                    )
                     new_transaction_key = setup_intent.id
                     break
             else:
@@ -918,7 +969,11 @@ class UserCredit(UserCreditBase):
                 )
                 if payment_intent.status == "succeeded":
                     successful_transaction = SafeJson(
-                        {"payment_intent": payment_intent}
+                        {
+                            "payment_intent_id": payment_intent.id,
+                            "status": payment_intent.status,
+                            "amount": payment_intent.amount,
+                        }
                     )
                     new_transaction_key = payment_intent.id
                     break
@@ -1032,7 +1087,10 @@ class UserCredit(UserCreditBase):
         # to determine if fulfillment should be performed
         if checkout_session.payment_status in ["paid", "no_payment_required"]:
             if payment_intent := checkout_session.payment_intent:
-                assert isinstance(payment_intent, stripe.PaymentIntent)
+                if not isinstance(payment_intent, stripe.PaymentIntent):
+                    raise ValueError(
+                        "Expected PaymentIntent object from Stripe checkout session"
+                    )
                 new_transaction_key = payment_intent.id
             else:
                 new_transaction_key = None
@@ -1046,9 +1104,7 @@ class UserCredit(UserCreditBase):
                         "session_id": checkout_session.id,
                         "amount": checkout_session.amount_total,
                         "status": checkout_session.payment_status,
-                        "payment_intent": getattr(
-                            checkout_session, "payment_intent", None
-                        ),
+                        "payment_intent_id": new_transaction_key,
                     }
                 ),
             )
@@ -1315,10 +1371,15 @@ async def admin_get_user_history(
 
     # Batch fetch admin emails
     admin_email_map = {}
-    for admin_id in unique_admin_ids:
-        if admin_id:
-            email = await get_user_email_by_id(admin_id)
-            admin_email_map[admin_id] = email or f"Unknown Admin: {admin_id}"
+    if unique_admin_ids:
+        admin_users = await User.prisma().find_many(
+            where={"id": {"in": [aid for aid in unique_admin_ids if aid]}},
+        )
+        admin_email_map = {user.id: user.email for user in admin_users}
+        # Add fallback for any missing admins
+        for admin_id in unique_admin_ids:
+            if admin_id and admin_id not in admin_email_map:
+                admin_email_map[admin_id] = f"Unknown Admin: {admin_id}"
 
     # Batch fetch user balances in one query
     user_balance_map = {}
@@ -1338,7 +1399,7 @@ async def admin_get_user_history(
 
         if metadata:
             admin_id = metadata.get("admin_id")
-            admin_email = admin_email_map.get(admin_id, "")
+            admin_email = admin_email_map.get(admin_id, "") if admin_id else ""
             reason = metadata.get("reason", "No reason provided")
 
         balance = user_balance_map.get(tx.userId, 0)

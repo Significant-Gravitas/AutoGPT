@@ -11,6 +11,7 @@ import asyncio
 from datetime import datetime
 
 import pytest
+from prisma.errors import UniqueViolationError
 from prisma.models import CreditTransaction, User, UserBalance
 
 from backend.data.credit import UsageTransactionMetadata, UserCredit
@@ -27,7 +28,8 @@ async def create_test_user(user_id: str) -> None:
                 "name": f"Test User {user_id[:8]}",
             }
         )
-    except Exception:
+    except UniqueViolationError:
+        # User already exists, continue
         pass
 
 
@@ -37,8 +39,9 @@ async def cleanup_test_user(user_id: str) -> None:
         await CreditTransaction.prisma().delete_many(where={"userId": user_id})
         await UserBalance.prisma().delete_many(where={"userId": user_id})
         await User.prisma().delete_many(where={"id": user_id})
-    except Exception:
-        pass
+    except Exception as e:
+        # Log cleanup failures but don't fail the test
+        print(f"Warning: Failed to cleanup test user {user_id}: {e}")
 
 
 @pytest.mark.asyncio(loop_scope="session")

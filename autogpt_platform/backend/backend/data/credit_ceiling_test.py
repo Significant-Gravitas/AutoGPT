@@ -5,10 +5,11 @@ This test was added to cover a previously untested code path that could lead to
 incorrect balance capping behavior.
 """
 
-from datetime import datetime
+from uuid import uuid4
 
 import pytest
 from prisma.enums import CreditTransactionType
+from prisma.errors import UniqueViolationError
 from prisma.models import CreditTransaction, User, UserBalance
 
 from backend.data.credit import UserCredit
@@ -25,7 +26,8 @@ async def create_test_user(user_id: str) -> None:
                 "name": f"Test User {user_id[:8]}",
             }
         )
-    except Exception:
+    except UniqueViolationError:
+        # User already exists, continue
         pass
 
     await UserBalance.prisma().upsert(
@@ -39,15 +41,16 @@ async def cleanup_test_user(user_id: str) -> None:
     try:
         await CreditTransaction.prisma().delete_many(where={"userId": user_id})
         await User.prisma().delete_many(where={"id": user_id})
-    except Exception:
-        pass
+    except Exception as e:
+        # Log cleanup failures but don't fail the test
+        print(f"Warning: Failed to cleanup test user {user_id}: {e}")
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_ceiling_balance_rejects_when_above_threshold(server: SpinTestServer):
     """Test that ceiling balance correctly rejects top-ups when balance is above threshold."""
     credit_system = UserCredit()
-    user_id = f"ceiling-test-{datetime.now().timestamp()}"
+    user_id = f"ceiling-test-{uuid4()}"
     await create_test_user(user_id)
 
     try:
@@ -77,7 +80,7 @@ async def test_ceiling_balance_rejects_when_above_threshold(server: SpinTestServ
 async def test_ceiling_balance_clamps_when_would_exceed(server: SpinTestServer):
     """Test that ceiling balance correctly clamps amounts that would exceed the ceiling."""
     credit_system = UserCredit()
-    user_id = f"ceiling-clamp-test-{datetime.now().timestamp()}"
+    user_id = f"ceiling-clamp-test-{uuid4()}"
     await create_test_user(user_id)
 
     try:
@@ -125,7 +128,7 @@ async def test_ceiling_balance_clamps_when_would_exceed(server: SpinTestServer):
 async def test_ceiling_balance_allows_when_under_threshold(server: SpinTestServer):
     """Test that ceiling balance allows top-ups when balance is under threshold."""
     credit_system = UserCredit()
-    user_id = f"ceiling-under-test-{datetime.now().timestamp()}"
+    user_id = f"ceiling-under-test-{uuid4()}"
     await create_test_user(user_id)
 
     try:
