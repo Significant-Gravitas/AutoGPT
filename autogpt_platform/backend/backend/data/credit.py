@@ -21,7 +21,6 @@ from prisma.types import (
 )
 from pydantic import BaseModel
 
-from backend.data import db
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.includes import MAX_CREDIT_REFUND_REQUESTS_FETCH
 from backend.data.model import (
@@ -32,7 +31,7 @@ from backend.data.model import (
     UserTransaction,
 )
 from backend.data.notifications import NotificationEventModel, RefundRequestData
-from backend.data.user import get_user_by_id
+from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications.notifications import queue_notification_async
 from backend.server.v2.admin.model import UserHistoryResponse
 from backend.util.exceptions import InsufficientBalanceError
@@ -49,16 +48,9 @@ stripe.api_key = settings.secrets.stripe_api_key
 logger = logging.getLogger(__name__)
 base_url = settings.config.frontend_base_url or settings.config.platform_base_url
 
-# PostgreSQL INT type maximum value
+# Constants for test compatibility
 POSTGRES_INT_MAX = 2147483647
-
-# PostgreSQL INT type minimum value
 POSTGRES_INT_MIN = -2147483648
-
-
-def format_credits_as_dollars(credits: int) -> str:
-    """Format credits (stored as cents) as dollar amount string."""
-    return f"${credits/100:.2f}"
 
 
 class UsageTransactionMetadata(BaseModel):
@@ -73,7 +65,6 @@ class UsageTransactionMetadata(BaseModel):
 
 
 class UserCreditBase(ABC):
-
     @abstractmethod
     async def get_credits(self, user_id: str) -> int:
         """
@@ -140,40 +131,25 @@ class UserCreditBase(ABC):
         pass
 
     @abstractmethod
-    async def top_up_credits(
-        self,
-        user_id: str,
-        amount: int,
-        top_up_type: TopUpType = TopUpType.UNCATEGORIZED,
-    ) -> int:
+    async def top_up_credits(self, user_id: str, amount: int):
         """
         Top up the credits for the user.
 
         Args:
             user_id (str): The user ID.
             amount (int): The amount to top up.
-            top_up_type (TopUpType): The type of top-up (default: UNCATEGORIZED).
-
-        Returns:
-            int: The new balance after top-up.
         """
         pass
 
     @abstractmethod
-    async def onboarding_reward(
-        self, user_id: str, credits: int, step: OnboardingStep
-    ) -> int | None:
+    async def onboarding_reward(self, user_id: str, credits: int, step: OnboardingStep):
         """
         Reward the user with credits for completing an onboarding step.
         Won't reward if the user has already received credits for the step.
 
         Args:
             user_id (str): The user ID.
-            credits (int): The amount of credits to reward.
             step (OnboardingStep): The onboarding step.
-
-        Returns:
-            int | None: The new balance if successful, None if already rewarded.
         """
         pass
 
@@ -261,14 +237,55 @@ class UserCreditBase(ABC):
 
     async def _get_credits(self, user_id: str) -> tuple[int, datetime]:
         """
-        Returns the current balance of the user & the latest balance update time.
-        Uses UserBalance table for atomic operations and better performance.
+        Returns the current balance of the user & the latest balance snapshot time.
         """
+        # Check UserBalance first for efficiency and consistency
         user_balance = await UserBalance.prisma().find_unique(where={"userId": user_id})
-        if not user_balance:
-            return 0, datetime.min.replace(tzinfo=timezone.utc)
+        if user_balance:
+            return user_balance.balance, user_balance.updatedAt
 
-        return user_balance.balance, user_balance.updatedAt
+        # Fallback to transaction history computation if UserBalance doesn't exist
+        top_time = self.time_now()
+        snapshot = await CreditTransaction.prisma().find_first(
+            where={
+                "userId": user_id,
+                "createdAt": {"lte": top_time},
+                "isActive": True,
+                "NOT": [{"runningBalance": None}],
+            },
+            order={"createdAt": "desc"},
+        )
+        datetime_min = datetime.min.replace(tzinfo=timezone.utc)
+        snapshot_balance = snapshot.runningBalance or 0 if snapshot else 0
+        snapshot_time = snapshot.createdAt if snapshot else datetime_min
+
+        # Get transactions after the snapshot, this should not exist, but just in case.
+        transactions = await CreditTransaction.prisma().group_by(
+            by=["userId"],
+            sum={"amount": True},
+            max={"createdAt": True},
+            where={
+                "userId": user_id,
+                "createdAt": {
+                    "gt": snapshot_time,
+                    "lte": top_time,
+                },
+                "isActive": True,
+            },
+        )
+        transaction_balance = (
+            int(transactions[0].get("_sum", {}).get("amount", 0) + snapshot_balance)
+            if transactions
+            else snapshot_balance
+        )
+        transaction_time = (
+            datetime.fromisoformat(
+                str(transactions[0].get("_max", {}).get("createdAt", datetime_min))
+            )
+            if transactions
+            else snapshot_time
+        )
+        return transaction_balance, transaction_time
 
     @func_retry
     async def _enable_transaction(
@@ -278,79 +295,30 @@ class UserCreditBase(ABC):
         metadata: Json,
         new_transaction_key: str | None = None,
     ):
-        """Enable a transaction and update user balance atomically.
+        transaction = await CreditTransaction.prisma().find_first_or_raise(
+            where={"transactionKey": transaction_key, "userId": user_id}
+        )
+        if transaction.isActive:
+            return
 
-        Used for Stripe payment processing to activate transactions after successful payment.
-        Returns the transaction key if successful, raises error otherwise.
-        """
-        result = await db.prisma.query_raw(
-            """
-            WITH tx_activate AS (
-                UPDATE "CreditTransaction"
-                SET 
-                    "isActive" = true,
-                    "transactionKey" = COALESCE($1, "transactionKey"),
-                    "metadata" = $2,
-                    "createdAt" = CURRENT_TIMESTAMP
-                WHERE 
-                    "transactionKey" = $3
-                    AND "userId" = $4
-                    AND "isActive" = false
-                RETURNING amount, "userId", COALESCE($1, "transactionKey") as new_key
-            ),
-            balance_update AS (
-                INSERT INTO "UserBalance" ("id", "userId", "balance", "updatedAt")
-                SELECT gen_random_uuid()::text, tx_activate."userId", 0, CURRENT_TIMESTAMP
-                FROM tx_activate
-                ON CONFLICT ("userId") DO UPDATE SET
-                    balance = CASE 
-                        WHEN tx_activate.amount > 0 AND "UserBalance".balance > $5 - tx_activate.amount THEN $5
-                        ELSE "UserBalance".balance + tx_activate.amount
-                    END,
-                    "updatedAt" = CURRENT_TIMESTAMP
-                FROM tx_activate
-                WHERE "UserBalance"."userId" = tx_activate."userId"
-                RETURNING balance, "updatedAt", tx_activate.new_key
-            ),
-            transaction_update AS (
-                UPDATE "CreditTransaction"
-                SET 
-                    "runningBalance" = balance_update.balance,
-                    "createdAt" = balance_update."updatedAt"
-                FROM balance_update
-                WHERE 
-                    "CreditTransaction"."transactionKey" = balance_update.new_key
-                    AND "CreditTransaction"."userId" = $4
-                RETURNING "CreditTransaction"."transactionKey"
-            )
-            SELECT "transactionKey" FROM transaction_update;
-            """,
-            new_transaction_key,
-            metadata,
-            transaction_key,
-            user_id,
-            POSTGRES_INT_MAX,
+        # Get current balance and update atomically - no more advisory locks!
+        user_balance, _ = await self._get_credits(user_id)
+        await CreditTransaction.prisma().update(
+            where={
+                "creditTransactionIdentifier": {
+                    "transactionKey": transaction_key,
+                    "userId": user_id,
+                }
+            },
+            data={
+                "transactionKey": new_transaction_key or transaction_key,
+                "isActive": True,
+                "runningBalance": user_balance + transaction.amount,
+                "createdAt": self.time_now(),
+                "metadata": metadata,
+            },
         )
 
-        if not result:
-            # Check if transaction exists and its status
-            tx = await CreditTransaction.prisma().find_first(
-                where={"transactionKey": transaction_key, "userId": user_id}
-            )
-            if not tx:
-                raise ValueError(
-                    f"Transaction {transaction_key} not found for user {user_id}"
-                )
-            elif tx.isActive:
-                logger.warning(f"Transaction {transaction_key} is already active")
-                return tx.transactionKey
-            else:
-                raise ValueError(f"Failed to activate transaction {transaction_key}")
-
-        return result[0]["transactionKey"]
-
-    # Used by BetaUserCredit for monthly credit refills
-    # Also provides compatibility for legacy code paths
     async def _add_transaction(
         self,
         user_id: str,
@@ -362,110 +330,72 @@ class UserCreditBase(ABC):
         fail_insufficient_credits: bool = True,
         metadata: Json = SafeJson({}),
     ) -> tuple[int, str]:
-        """Unified atomic transaction method that handles all credit operations."""
-        # Validate input
-        if amount > POSTGRES_INT_MAX or amount < -POSTGRES_INT_MAX:
-            raise ValueError(f"Invalid amount: {amount}")
+        """
+        Add a new transaction for the user.
+        This is the only method that should be used to add a new transaction.
 
-        # Check ceiling balance if specified
-        if ceiling_balance and amount > 0:
-            user_balance = await UserBalance.prisma().find_unique(
-                where={"userId": user_id}
+        Args:
+            user_id (str): The user ID.
+            amount (int): The amount of credits to add.
+            transaction_type (CreditTransactionType): The type of transaction.
+            is_active (bool): Whether the transaction is active or needs to be manually activated through _enable_transaction.
+            transaction_key (str | None): The transaction key. Avoids adding transaction if the key already exists.
+            ceiling_balance (int | None): The ceiling balance. Avoids adding more credits if the balance is already above the ceiling.
+            fail_insufficient_credits (bool): Whether to fail if the user has insufficient credits.
+            metadata (Json): The metadata of the transaction.
+
+        Returns:
+            tuple[int, str]: The new balance & the transaction key.
+        """
+        # Get latest balance snapshot first for validation
+        user_balance, _ = await self._get_credits(user_id)
+
+        if ceiling_balance and amount > 0 and user_balance >= ceiling_balance:
+            raise ValueError(
+                f"You already have enough balance of ${user_balance/100}, top-up is not required when you already have at least ${ceiling_balance/100}"
             )
-            if user_balance and user_balance.balance >= ceiling_balance:
-                raise ValueError(
-                    f"You already have enough balance of {format_credits_as_dollars(user_balance.balance)}, top-up is not required when you already have at least {format_credits_as_dollars(ceiling_balance)}"
+
+        if amount < 0 and user_balance + amount < 0:
+            if fail_insufficient_credits:
+                raise InsufficientBalanceError(
+                    message=f"Insufficient balance of ${user_balance/100}, where this will cost ${abs(amount)/100}",
+                    user_id=user_id,
+                    balance=user_balance,
+                    amount=amount,
                 )
 
-        # Single atomic query without transactions to avoid lock contention
-        result = await db.prisma.query_raw(
-            """
-            WITH balance_update AS (
-                INSERT INTO "UserBalance" ("id", "userId", "balance", "updatedAt")
-                VALUES (gen_random_uuid()::text, $1, 
-                    CASE
-                        WHEN $2 > $6::int THEN $6::int  -- Overflow protection
-                        WHEN $2 > 0 AND $7::int IS NOT NULL AND $2 > $7::int THEN $7::int  -- Ceiling
-                        ELSE GREATEST(0, $2)  -- No negative initial balance
-                    END, 
-                    CURRENT_TIMESTAMP)
-                ON CONFLICT ("userId") DO UPDATE SET
-                    balance = CASE
-                        -- Reject if insufficient balance (spending operation) - keep original balance
-                        WHEN $2 < 0 AND $8::boolean = true AND "UserBalance".balance + $2 < 0 THEN "UserBalance".balance
-                        -- Apply ceiling for positive amounts
-                        WHEN $2 > 0 AND $7::int IS NOT NULL AND "UserBalance".balance + $2 > $7::int THEN $7::int
-                        -- Apply overflow protection
-                        WHEN $2 > 0 AND "UserBalance".balance + $2 > $6::int THEN $6::int
-                        -- Apply underflow protection
-                        WHEN $2 < 0 AND "UserBalance".balance + $2 < $9::int THEN $9::int
-                        -- Normal case
-                        ELSE "UserBalance".balance + $2
-                    END,
-                    "updatedAt" = CURRENT_TIMESTAMP
-                WHERE NOT ($2 < 0 AND $8::boolean = true AND "UserBalance".balance + $2 < 0)
-                RETURNING "userId", balance, "updatedAt"
-            ),
-            transaction_insert AS (
-                INSERT INTO "CreditTransaction" (
-                    "userId", "amount", "type", "runningBalance", 
-                    "metadata", "isActive", "createdAt", "transactionKey"
-                )
-                SELECT 
-                    balance_update."userId",
-                    $2::int,
-                    $3::"CreditTransactionType",
-                    balance_update.balance,
-                    $4::jsonb,
-                    $5::boolean,
-                    balance_update."updatedAt",
-                    COALESCE($10, gen_random_uuid()::text)
-                FROM balance_update
-                RETURNING "runningBalance", "transactionKey"
-            )
-            SELECT "runningBalance" as balance, "transactionKey" FROM transaction_insert;
-            """,
-            user_id,  # $1
-            amount,  # $2
-            transaction_type.value,  # $3
-            metadata,  # $4
-            is_active,  # $5
-            POSTGRES_INT_MAX,  # $6 - overflow protection
-            ceiling_balance,  # $7 - ceiling balance (nullable)
-            fail_insufficient_credits,  # $8 - check balance for spending
-            POSTGRES_INT_MIN,  # $9 - underflow protection
-            transaction_key,  # $10 - transaction key (nullable)
+            # For refunds and disputes, allow underflow but protect against going below POSTGRES_INT_MIN
+            if user_balance + amount < POSTGRES_INT_MIN:
+                amount = POSTGRES_INT_MIN - user_balance
+            # Otherwise, for normal operations, prevent going negative
+            elif user_balance + amount < 0:
+                amount = min(-user_balance, 0)
+
+        # Create the transaction atomically with underflow protection
+        new_balance = max(user_balance + amount, POSTGRES_INT_MIN)
+        transaction_data: CreditTransactionCreateInput = {
+            "userId": user_id,
+            "amount": amount,
+            "runningBalance": new_balance,
+            "type": transaction_type,
+            "metadata": metadata,
+            "isActive": is_active,
+            "createdAt": self.time_now(),
+        }
+        if transaction_key:
+            transaction_data["transactionKey"] = transaction_key
+        tx = await CreditTransaction.prisma().create(data=transaction_data)
+
+        # Update UserBalance to keep it synchronized
+        await UserBalance.prisma().upsert(
+            where={"userId": user_id},
+            data={
+                "create": {"userId": user_id, "balance": new_balance},
+                "update": {"balance": new_balance},
+            },
         )
 
-        # Handle insufficient balance case (no result returned due to WHERE clause)
-        if not result:
-            if amount < 0 and fail_insufficient_credits:
-                # Get current balance for error message
-                current_user_balance = await UserBalance.prisma().find_unique(
-                    where={"userId": user_id}
-                )
-                if current_user_balance:
-                    raise InsufficientBalanceError(
-                        message=f"Insufficient balance of {format_credits_as_dollars(current_user_balance.balance)}, where this will cost {format_credits_as_dollars(abs(amount))}",
-                        user_id=user_id,
-                        balance=current_user_balance.balance,
-                        amount=amount,
-                    )
-                else:
-                    raise InsufficientBalanceError(
-                        message=f"Insufficient balance of $0.00, where this will cost {format_credits_as_dollars(abs(amount))}",
-                        user_id=user_id,
-                        balance=0,
-                        amount=amount,
-                    )
-            else:
-                raise RuntimeError("Atomic operation failed unexpectedly")
-
-        result_data = result[0]
-        balance = result_data["balance"]
-        transaction_key_result = result_data["transactionKey"]
-
-        return balance, transaction_key_result
+        return new_balance, tx.transactionKey
 
 
 class UserCredit(UserCreditBase):
@@ -490,119 +420,59 @@ class UserCredit(UserCreditBase):
         metadata: UsageTransactionMetadata,
     ) -> int:
         if cost == 0:
-            return await self.get_credits(user_id)
+            return 0
 
-        # Validate input to prevent integer overflow
-        if cost < 0 or cost > POSTGRES_INT_MAX:
-            raise ValueError(f"Invalid cost amount: {cost}")
-
-        new_balance, _ = await self._add_transaction(
+        balance, _ = await self._add_transaction(
             user_id=user_id,
-            amount=-cost,  # Negative for spending
+            amount=-cost,
             transaction_type=CreditTransactionType.USAGE,
-            is_active=True,
-            transaction_key=None,  # Let it generate UUID
-            fail_insufficient_credits=True,  # Check for insufficient balance
             metadata=SafeJson(metadata.model_dump()),
         )
 
-        # Auto top-up if balance is below threshold and this is during graph execution
-        if metadata.graph_exec_id:  # Only auto-top-up during graph execution
-            auto_top_up = await get_auto_top_up(user_id)
-            if auto_top_up.threshold and new_balance < auto_top_up.threshold:
-                try:
-                    await self._top_up_credits(
-                        user_id=user_id,
-                        amount=auto_top_up.amount,
-                        # Avoid multiple auto top-ups within the same graph execution
-                        key=f"AUTO-TOP-UP-{user_id}-{metadata.graph_exec_id or 'no-graph'}",
-                        ceiling_balance=auto_top_up.threshold,
-                        top_up_type=TopUpType.AUTO,
-                    )
-                except Exception as e:
-                    # Failed top-up is not critical, we can move on.
-                    logger.error(
-                        f"Auto top-up failed for user {user_id}, balance: {new_balance}, amount: {auto_top_up.amount}, error: {e}"
-                    )
+        # Auto top-up if balance is below threshold.
+        auto_top_up = await get_auto_top_up(user_id)
+        if auto_top_up.threshold and balance < auto_top_up.threshold:
+            try:
+                await self._top_up_credits(
+                    user_id=user_id,
+                    amount=auto_top_up.amount,
+                    # Avoid multiple auto top-ups within the same graph execution.
+                    key=f"AUTO-TOP-UP-{user_id}-{metadata.graph_exec_id}",
+                    ceiling_balance=auto_top_up.threshold,
+                    top_up_type=TopUpType.AUTO,
+                )
+            except Exception as e:
+                # Failed top-up is not critical, we can move on.
+                logger.error(
+                    f"Auto top-up failed for user {user_id}, balance: {balance}, amount: {auto_top_up.amount}, error: {e}"
+                )
 
-        return new_balance
+        return balance
 
     async def top_up_credits(
         self,
         user_id: str,
         amount: int,
         top_up_type: TopUpType = TopUpType.UNCATEGORIZED,
-    ) -> int:
-        # Validate input to prevent integer overflow
-        if amount <= 0 or amount > POSTGRES_INT_MAX:
-            raise ValueError(f"Invalid top-up amount: {amount}")
-
-        new_balance, _ = await self._add_transaction(
-            user_id=user_id,
-            amount=amount,
-            transaction_type=CreditTransactionType.TOP_UP,
-            is_active=True,
-            transaction_key=None,  # Let it generate UUID
-            ceiling_balance=POSTGRES_INT_MAX,  # Use max ceiling for manual top-ups
-            fail_insufficient_credits=False,  # No need to check balance when adding credits
-            metadata=SafeJson(
-                {
-                    "reason": f"Manual top up credits for {user_id}",
-                    "type": top_up_type.value,
-                }
-            ),
+    ):
+        await self._top_up_credits(
+            user_id=user_id, amount=amount, top_up_type=top_up_type
         )
 
-        return new_balance
-
-    async def onboarding_reward(
-        self, user_id: str, credits: int, step: OnboardingStep
-    ) -> int | None:
-        # Validate input to prevent integer overflow
-        if credits <= 0 or credits > POSTGRES_INT_MAX:
-            raise ValueError(f"Invalid reward amount: {credits}")
-
-        transaction_key = f"REWARD-{user_id}-{step.value}"
-
-        # Check if already rewarded (for idempotency)
-        existing = await CreditTransaction.prisma().find_first(
-            where={
-                "transactionKey": transaction_key,
-                "userId": user_id,
-            }
-        )
-        if existing:
-            # Already rewarded, return None to indicate duplicate
-            return None
-
+    async def onboarding_reward(self, user_id: str, credits: int, step: OnboardingStep):
         try:
-            new_balance, _ = await self._add_transaction(
+            await self._add_transaction(
                 user_id=user_id,
                 amount=credits,
                 transaction_type=CreditTransactionType.GRANT,
-                is_active=True,
-                transaction_key=transaction_key,
-                ceiling_balance=POSTGRES_INT_MAX,
-                fail_insufficient_credits=False,  # No need to check balance when adding credits
+                transaction_key=f"REWARD-{user_id}-{step.value}",
                 metadata=SafeJson(
                     {"reason": f"Reward for completing {step.value} onboarding step."}
                 ),
             )
-            return new_balance
-        except Exception as e:
-            # If transaction fails, check if it was due to race condition (another request created it)
-            existing = await CreditTransaction.prisma().find_first(
-                where={
-                    "transactionKey": transaction_key,
-                    "userId": user_id,
-                }
-            )
-            if existing:
-                # Race condition detected - another request already created this reward
-                return None
-            else:
-                # Real error occurred, re-raise the original exception
-                raise e
+        except UniqueViolationError:
+            # Already rewarded for this step
+            pass
 
     async def top_up_refund(
         self, user_id: str, transaction_key: str, metadata: dict[str, str]
@@ -679,49 +549,18 @@ class UserCredit(UserCreditBase):
             }
         )
         if request.amount <= 0 or request.amount > transaction.amount:
-            raise ValueError(
-                f"Invalid amount to deduct {format_credits_as_dollars(request.amount)} from {format_credits_as_dollars(transaction.amount)} top-up"
+            raise AssertionError(
+                f"Invalid amount to deduct ${request.amount/100} from ${transaction.amount/100} top-up"
             )
 
-        # Use unified atomic transaction function (allow going negative for refunds)
-        # Create serializable metadata from request
-        try:
-            # Try to extract basic attributes for Stripe objects
-            request_metadata = {
-                "id": getattr(request, "id", None),
-                "amount": getattr(request, "amount", None),
-                "status": getattr(request, "status", None),
-                "payment_intent": getattr(request, "payment_intent", None),
-                "reason": getattr(request, "reason", None),
-                "created": getattr(request, "created", None),
-            }
-            # Remove None values
-            request_metadata = {
-                k: v for k, v in request_metadata.items() if v is not None
-            }
-        except Exception:
-            request_metadata = {"error": "Could not serialize request metadata"}
-
-        try:
-            balance, _ = await self._add_transaction(
-                user_id=transaction.userId,
-                amount=-request.amount,  # Negative for deduction
-                transaction_type=CreditTransactionType.REFUND,
-                is_active=True,
-                transaction_key=request.id,
-                fail_insufficient_credits=False,  # Allow negative balance for refunds
-                metadata=SafeJson(request_metadata),
-            )
-        except UniqueViolationError:
-            # Idempotent retry: fetch existing transaction and continue
-            existing = await CreditTransaction.prisma().find_first(
-                where={"transactionKey": request.id, "userId": transaction.userId}
-            )
-            balance = (
-                existing.runningBalance
-                if existing and existing.runningBalance is not None
-                else await self.get_credits(transaction.userId)
-            )
+        balance, _ = await self._add_transaction(
+            user_id=transaction.userId,
+            amount=-request.amount,
+            transaction_type=CreditTransactionType.REFUND,
+            transaction_key=request.id,
+            metadata=SafeJson(request),
+            fail_insufficient_credits=False,
+        )
 
         # Update the result of the refund request if it exists.
         await CreditRefundRequest.prisma().update_many(
@@ -765,14 +604,12 @@ class UserCredit(UserCreditBase):
 
         # If the user has enough balance, just let them win the dispute.
         if balance - amount >= settings.config.refund_credit_tolerance_threshold:
-            logger.warning(
-                f"Accepting dispute from {user_id} for {format_credits_as_dollars(amount)}"
-            )
+            logger.warning(f"Accepting dispute from {user_id} for ${amount/100}")
             dispute.close()
             return
 
         logger.warning(
-            f"Adding extra info for dispute from {user_id} for {format_credits_as_dollars(amount)}"
+            f"Adding extra info for dispute from {user_id} for ${amount/100}"
         )
         # Retrieve recent transaction history to support our evidence.
         # This provides a concise timeline that shows service usage and proper credit application.
@@ -822,13 +659,9 @@ class UserCredit(UserCreditBase):
         top_up_type: TopUpType = TopUpType.UNCATEGORIZED,
         metadata: dict | None = None,
     ):
-        # Validate amount to prevent integer overflow
-        if amount < 0 or amount > POSTGRES_INT_MAX:
-            raise ValueError(f"Invalid top up amount: {amount}")
-
         # init metadata, without sharing it with the world
         metadata = metadata or {}
-        if not metadata.get("reason"):
+        if not metadata["reason"]:
             match top_up_type:
                 case TopUpType.MANUAL:
                     metadata["reason"] = {"reason": f"Top up credits for {user_id}"}
@@ -841,47 +674,35 @@ class UserCredit(UserCreditBase):
                         "reason": f"Top up reason unknown for {user_id}"
                     }
 
+        if amount < 0:
+            raise ValueError(f"Top up amount must not be negative: {amount}")
+
+        if key is not None and (
+            await CreditTransaction.prisma().find_first(
+                where={"transactionKey": key, "userId": user_id}
+            )
+        ):
+            raise ValueError(f"Transaction key {key} already exists for user {user_id}")
+
         if amount == 0:
             transaction_type = CreditTransactionType.CARD_CHECK
         else:
             transaction_type = CreditTransactionType.TOP_UP
 
-        # Create inactive transaction record for Stripe processing
-        transaction_data: CreditTransactionCreateInput = {
-            "userId": user_id,
-            "amount": amount,
-            "type": transaction_type,
-            "metadata": SafeJson(metadata),
-            "isActive": False,
-            # Let database set createdAt with CURRENT_TIMESTAMP via @default(now())
-        }
-        if key:
-            transaction_data["transactionKey"] = key
-
-        # Check for duplicate key
-        if key and await CreditTransaction.prisma().find_first(
-            where={"transactionKey": key, "userId": user_id}
-        ):
-            raise ValueError(f"Transaction key {key} already exists for user {user_id}")
-
-        # Check ceiling balance if specified
-        if ceiling_balance and amount > 0:
-            user_balance = await UserBalance.prisma().find_unique(
-                where={"userId": user_id}
-            )
-            current_balance = user_balance.balance if user_balance else 0
-            if current_balance >= ceiling_balance:
-                raise ValueError(
-                    f"You already have enough balance of {format_credits_as_dollars(current_balance)}, top-up is not required when you already have at least {format_credits_as_dollars(ceiling_balance)}"
-                )
-
-        tx = await CreditTransaction.prisma().create(data=transaction_data)
-        transaction_key = tx.transactionKey
+        _, transaction_key = await self._add_transaction(
+            user_id=user_id,
+            amount=amount,
+            transaction_type=transaction_type,
+            is_active=False,
+            transaction_key=key,
+            ceiling_balance=ceiling_balance,
+            metadata=(SafeJson(metadata)),
+        )
 
         customer_id = await get_stripe_customer_id(user_id)
 
         payment_methods = stripe.PaymentMethod.list(customer=customer_id, type="card")
-        if not getattr(payment_methods, "data", None):
+        if not payment_methods:
             raise ValueError("No payment method found, please add it on the platform.")
 
         successful_transaction = None
@@ -899,12 +720,7 @@ class UserCredit(UserCreditBase):
                     },
                 )
                 if setup_intent.status == "succeeded":
-                    successful_transaction = SafeJson(
-                        {
-                            "setup_intent_id": setup_intent.id,
-                            "status": setup_intent.status,
-                        }
-                    )
+                    successful_transaction = SafeJson({"setup_intent": setup_intent})
                     new_transaction_key = setup_intent.id
                     break
             else:
@@ -923,11 +739,7 @@ class UserCredit(UserCreditBase):
                 )
                 if payment_intent.status == "succeeded":
                     successful_transaction = SafeJson(
-                        {
-                            "payment_intent_id": payment_intent.id,
-                            "status": payment_intent.status,
-                            "amount": payment_intent.amount,
-                        }
+                        {"payment_intent": payment_intent}
                     )
                     new_transaction_key = payment_intent.id
                     break
@@ -977,24 +789,13 @@ class UserCredit(UserCreditBase):
             allow_promotion_codes=True,
         )
 
-        # Create inactive transaction for Stripe checkout
-        # This will be activated later when payment succeeds
-        await CreditTransaction.prisma().create(
-            data={
-                "userId": user_id,
-                "amount": amount,
-                "type": CreditTransactionType.TOP_UP,
-                "transactionKey": checkout_session.id,
-                "isActive": False,
-                "metadata": SafeJson(
-                    {
-                        "id": checkout_session.id,
-                        "amount": amount,
-                        "status": checkout_session.status,
-                    }
-                ),
-                # Let database set createdAt with CURRENT_TIMESTAMP via @default(now())
-            }
+        await self._add_transaction(
+            user_id=user_id,
+            amount=amount,
+            transaction_type=CreditTransactionType.TOP_UP,
+            transaction_key=checkout_session.id,
+            is_active=False,
+            metadata=SafeJson(checkout_session),
         )
 
         return checkout_session.url or ""
@@ -1041,10 +842,7 @@ class UserCredit(UserCreditBase):
         # to determine if fulfillment should be performed
         if checkout_session.payment_status in ["paid", "no_payment_required"]:
             if payment_intent := checkout_session.payment_intent:
-                if not isinstance(payment_intent, stripe.PaymentIntent):
-                    raise ValueError(
-                        "Expected PaymentIntent object from Stripe checkout session"
-                    )
+                assert isinstance(payment_intent, stripe.PaymentIntent)
                 new_transaction_key = payment_intent.id
             else:
                 new_transaction_key = None
@@ -1053,19 +851,12 @@ class UserCredit(UserCreditBase):
                 transaction_key=credit_transaction.transactionKey,
                 new_transaction_key=new_transaction_key,
                 user_id=credit_transaction.userId,
-                metadata=SafeJson(
-                    {
-                        "session_id": checkout_session.id,
-                        "amount": checkout_session.amount_total,
-                        "status": checkout_session.payment_status,
-                        "payment_intent_id": new_transaction_key,
-                    }
-                ),
+                metadata=SafeJson(checkout_session),
             )
 
     async def get_credits(self, user_id: str) -> int:
-        user_balance = await UserBalance.prisma().find_unique(where={"userId": user_id})
-        return user_balance.balance if user_balance else 0
+        balance, _ = await self._get_credits(user_id)
+        return balance
 
     async def get_transaction_history(
         self,
@@ -1185,53 +976,37 @@ class BetaUserCredit(UserCredit):
 
 
 class DisabledUserCredit(UserCreditBase):
-    async def get_credits(self, *_args, **_kwargs) -> int:
-        del _args, _kwargs  # Suppress unused parameter warnings
+    async def get_credits(self, *args, **kwargs) -> int:
         return 100
 
-    async def get_transaction_history(self, *_args, **_kwargs) -> TransactionHistory:
-        del _args, _kwargs  # Suppress unused parameter warnings
+    async def get_transaction_history(self, *args, **kwargs) -> TransactionHistory:
         return TransactionHistory(transactions=[], next_transaction_time=None)
 
-    async def get_refund_requests(self, *_args, **_kwargs) -> list[RefundRequest]:
-        del _args, _kwargs  # Suppress unused parameter warnings
+    async def get_refund_requests(self, *args, **kwargs) -> list[RefundRequest]:
         return []
 
-    async def spend_credits(self, *_args, **_kwargs) -> int:
-        del _args, _kwargs  # Suppress unused parameter warnings
+    async def spend_credits(self, *args, **kwargs) -> int:
         return 0
 
-    async def top_up_credits(
-        self,
-        user_id: str,
-        amount: int,
-        top_up_type: TopUpType = TopUpType.UNCATEGORIZED,
-    ) -> int:
-        del user_id, amount, top_up_type  # Suppress unused parameter warnings
-        return 0
+    async def top_up_credits(self, *args, **kwargs):
+        pass
 
-    async def onboarding_reward(self, *_args, **_kwargs) -> int | None:
-        del _args, _kwargs  # Suppress unused parameter warnings
-        return None
+    async def onboarding_reward(self, *args, **kwargs):
+        pass
 
-    async def top_up_intent(self, *_args, **_kwargs) -> str:
-        del _args, _kwargs  # Suppress unused parameter warnings
+    async def top_up_intent(self, *args, **kwargs) -> str:
         return ""
 
-    async def top_up_refund(self, *_args, **_kwargs) -> int:
-        del _args, _kwargs  # Suppress unused parameter warnings
+    async def top_up_refund(self, *args, **kwargs) -> int:
         return 0
 
-    async def deduct_credits(self, *_args, **_kwargs):
-        del _args, _kwargs  # Suppress unused parameter warnings
+    async def deduct_credits(self, *args, **kwargs):
         pass
 
-    async def handle_dispute(self, *_args, **_kwargs):
-        del _args, _kwargs  # Suppress unused parameter warnings
+    async def handle_dispute(self, *args, **kwargs):
         pass
 
-    async def fulfill_checkout(self, *_args, **_kwargs):
-        del _args, _kwargs  # Suppress unused parameter warnings
+    async def fulfill_checkout(self, *args, **kwargs):
         pass
 
 
@@ -1315,34 +1090,6 @@ async def admin_get_user_history(
     total = await CreditTransaction.prisma().count(where=where_clause)
     total_pages = (total + page_size - 1) // page_size
 
-    # Pre-fetch all unique admin IDs and user balances to avoid N+1 queries
-    unique_admin_ids = {
-        cast(dict, tx.metadata or {}).get("admin_id")
-        for tx in transactions
-        if cast(dict, tx.metadata or {}).get("admin_id")
-    }
-    unique_user_ids = {tx.userId for tx in transactions}
-
-    # Batch fetch admin emails
-    admin_email_map = {}
-    if unique_admin_ids:
-        admin_users = await User.prisma().find_many(
-            where={"id": {"in": [aid for aid in unique_admin_ids if aid]}},
-        )
-        admin_email_map = {user.id: user.email for user in admin_users}
-        # Add fallback for any missing admins
-        for admin_id in unique_admin_ids:
-            if admin_id and admin_id not in admin_email_map:
-                admin_email_map[admin_id] = f"Unknown Admin: {admin_id}"
-
-    # Batch fetch user balances in one query
-    user_balance_map = {}
-    if unique_user_ids:
-        user_balances = await UserBalance.prisma().find_many(
-            where={"userId": {"in": list(unique_user_ids)}}
-        )
-        user_balance_map = {ub.userId: ub.balance for ub in user_balances}
-
     history = []
     for tx in transactions:
         admin_id = ""
@@ -1353,10 +1100,14 @@ async def admin_get_user_history(
 
         if metadata:
             admin_id = metadata.get("admin_id")
-            admin_email = admin_email_map.get(admin_id, "") if admin_id else ""
+            admin_email = (
+                (await get_user_email_by_id(admin_id) or f"Unknown Admin: {admin_id}")
+                if admin_id
+                else ""
+            )
             reason = metadata.get("reason", "No reason provided")
 
-        balance = user_balance_map.get(tx.userId, 0)
+        balance, last_update = await get_user_credit_model()._get_credits(tx.userId)
 
         history.append(
             UserTransaction(
