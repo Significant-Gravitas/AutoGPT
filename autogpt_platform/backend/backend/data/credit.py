@@ -18,7 +18,7 @@ from prisma.types import CreditRefundRequestCreateInput, CreditTransactionWhereI
 from pydantic import BaseModel
 
 from backend.data.block_cost_config import BLOCK_COSTS
-from backend.data.db import prisma
+from backend.data.db import query_raw_with_schema
 from backend.data.includes import MAX_CREDIT_REFUND_REQUESTS_FETCH
 from backend.data.model import (
     AutoTopUpConfig,
@@ -311,19 +311,19 @@ class UserCreditBase(ABC):
             return None
 
         # Atomic operation to enable transaction and update user balance using UserBalance
-        result = await prisma.query_raw(
+        result = await query_raw_with_schema(
             """
             WITH user_balance_lock AS (
                 SELECT 
                     $2::text as userId, 
-                    COALESCE((SELECT balance FROM "UserBalance" WHERE "userId" = $2 FOR UPDATE), 0) as balance
+                    COALESCE((SELECT balance FROM {schema_prefix}"UserBalance" WHERE "userId" = $2 FOR UPDATE), 0) as balance
             ),
             transaction_check AS (
-                SELECT * FROM "CreditTransaction" 
+                SELECT * FROM {schema_prefix}"CreditTransaction" 
                 WHERE "transactionKey" = $1 AND "userId" = $2 AND "isActive" = false
             ),
             balance_update AS (
-                INSERT INTO "UserBalance" ("userId", "balance", "updatedAt")
+                INSERT INTO {schema_prefix}"UserBalance" ("userId", "balance", "updatedAt")
                 SELECT 
                     $2::text,
                     user_balance_lock.balance + transaction_check.amount,
@@ -335,16 +335,16 @@ class UserCreditBase(ABC):
                 RETURNING "balance", "updatedAt"
             ),
             transaction_update AS (
-                UPDATE "CreditTransaction"
+                UPDATE {schema_prefix}"CreditTransaction"
                 SET "transactionKey" = COALESCE($4, $1),
                     "isActive" = true,
                     "runningBalance" = balance_update.balance,
                     "createdAt" = balance_update."updatedAt",
                     "metadata" = $3
                 FROM balance_update, transaction_check
-                WHERE "CreditTransaction"."transactionKey" = transaction_check."transactionKey"
-                  AND "CreditTransaction"."userId" = transaction_check."userId"
-                RETURNING "CreditTransaction"."runningBalance"
+                WHERE {schema_prefix}"CreditTransaction"."transactionKey" = transaction_check."transactionKey"
+                  AND {schema_prefix}"CreditTransaction"."userId" = transaction_check."userId"
+                RETURNING {schema_prefix}"CreditTransaction"."runningBalance"
             )
             SELECT "runningBalance" as balance FROM transaction_update;
             """,
@@ -437,17 +437,17 @@ class UserCreditBase(ABC):
                 )
 
         # Single unified atomic operation for all transaction types using UserBalance
-        result = await prisma.query_raw(
+        result = await query_raw_with_schema(
             """
             WITH user_balance_lock AS (
                 SELECT 
                     $1::text as userId, 
                     -- CRITICAL: FOR UPDATE lock prevents concurrent modifications to the same user's balance
                     -- This ensures atomic read-modify-write operations and prevents race conditions
-                    COALESCE((SELECT balance FROM "UserBalance" WHERE "userId" = $1 FOR UPDATE), 0) as balance
+                    COALESCE((SELECT balance FROM {schema_prefix}"UserBalance" WHERE "userId" = $1 FOR UPDATE), 0) as balance
             ),
             balance_update AS (
-                INSERT INTO "UserBalance" ("userId", "balance", "updatedAt")
+                INSERT INTO {schema_prefix}"UserBalance" ("userId", "balance", "updatedAt")
                 SELECT 
                     $1::text,
                     CASE 
@@ -474,7 +474,7 @@ class UserCreditBase(ABC):
                 RETURNING "balance", "updatedAt"
             ),
             transaction_insert AS (
-                INSERT INTO "CreditTransaction" (
+                INSERT INTO {schema_prefix}"CreditTransaction" (
                     "userId", "amount", "type", "runningBalance", 
                     "metadata", "isActive", "createdAt", "transactionKey"
                 )
