@@ -12,6 +12,7 @@ const nextConfig = {
       "ideogram.ai", // for generated images
       "picsum.photos", // for placeholder images
     ],
+    productionBrowserSourceMaps: true,
     remotePatterns: [
       {
         protocol: "https",
@@ -73,9 +74,6 @@ export default isDevelopmentBuild
       // No need to hide source maps from generated client bundles
       // since the source is public anyway :)
       hideSourceMaps: false,
-
-      // Enable source maps for browser builds so errors make sense on Sentry
-      productionBrowserSourceMaps: true,
 
       // This helps Sentry with sourcemaps... https://docs.sentry.io/platforms/javascript/guides/nextjs/sourcemaps/
       sourcemaps: {
