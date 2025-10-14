@@ -41,7 +41,7 @@ async def cleanup_test_user(user_id: str) -> None:
     """Clean up test user and their transactions."""
     try:
         await CreditTransaction.prisma().delete_many(where={"userId": user_id})
-        await User.prisma().delete(where={"id": user_id})
+        await User.prisma().delete_many(where={"id": user_id})
     except Exception:
         pass  # Ignore cleanup errors
 

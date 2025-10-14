@@ -1,8 +1,8 @@
 -- Add balance column to User table for atomic credit operations
 -- This replaces the need for advisory locks and expensive transaction aggregations
 
--- Add balance column with default 0 for new users
-ALTER TABLE "User" ADD COLUMN balance INT DEFAULT 0;
+-- Add balance column with default 0 for new users (NOT NULL with DEFAULT)
+ALTER TABLE "User" ADD COLUMN balance INT NOT NULL DEFAULT 0;
 
 -- Backfill ALL user balances from transaction history
 -- Users with transactions: use their latest runningBalance

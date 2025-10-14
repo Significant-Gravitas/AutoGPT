@@ -137,13 +137,19 @@ class UserCreditBase(ABC):
         pass
 
     @abstractmethod
-    async def top_up_credits(self, user_id: str, amount: int) -> int:
+    async def top_up_credits(
+        self,
+        user_id: str,
+        amount: int,
+        top_up_type: TopUpType = TopUpType.UNCATEGORIZED,
+    ) -> int:
         """
         Top up the credits for the user.
 
         Args:
             user_id (str): The user ID.
             amount (int): The amount to top up.
+            top_up_type (TopUpType): The type of top-up (default: UNCATEGORIZED).
 
         Returns:
             int: The new balance after top-up.
@@ -473,7 +479,7 @@ class UserCredit(UserCreditBase):
         metadata: UsageTransactionMetadata,
     ) -> int:
         if cost == 0:
-            return 0
+            return await self.get_credits(user_id)
 
         # Validate input to prevent integer overflow
         if cost < 0 or cost > POSTGRES_INT_MAX:
@@ -685,15 +691,26 @@ class UserCredit(UserCreditBase):
         except Exception:
             request_metadata = {"error": "Could not serialize request metadata"}
 
-        balance, _ = await self._add_transaction(
-            user_id=transaction.userId,
-            amount=-request.amount,  # Negative for deduction
-            transaction_type=CreditTransactionType.REFUND,
-            is_active=True,
-            transaction_key=request.id,
-            fail_insufficient_credits=False,  # Allow negative balance for refunds
-            metadata=SafeJson(request_metadata),
-        )
+        try:
+            balance, _ = await self._add_transaction(
+                user_id=transaction.userId,
+                amount=-request.amount,  # Negative for deduction
+                transaction_type=CreditTransactionType.REFUND,
+                is_active=True,
+                transaction_key=request.id,
+                fail_insufficient_credits=False,  # Allow negative balance for refunds
+                metadata=SafeJson(request_metadata),
+            )
+        except UniqueViolationError:
+            # Idempotent retry: fetch existing transaction and continue
+            existing = await CreditTransaction.prisma().find_first(
+                where={"transactionKey": request.id, "userId": transaction.userId}
+            )
+            balance = (
+                existing.runningBalance
+                if existing and existing.runningBalance is not None
+                else await self.get_credits(transaction.userId)
+            )
 
         # Update the result of the refund request if it exists.
         await CreditRefundRequest.prisma().update_many(
@@ -851,7 +868,7 @@ class UserCredit(UserCreditBase):
         customer_id = await get_stripe_customer_id(user_id)
 
         payment_methods = stripe.PaymentMethod.list(customer=customer_id, type="card")
-        if not payment_methods:
+        if not getattr(payment_methods, "data", None):
             raise ValueError("No payment method found, please add it on the platform.")
 
         successful_transaction = None
@@ -1005,7 +1022,16 @@ class UserCredit(UserCreditBase):
                 transaction_key=credit_transaction.transactionKey,
                 new_transaction_key=new_transaction_key,
                 user_id=credit_transaction.userId,
-                metadata=SafeJson(checkout_session),
+                metadata=SafeJson(
+                    {
+                        "session_id": checkout_session.id,
+                        "amount": checkout_session.amount_total,
+                        "status": checkout_session.payment_status,
+                        "payment_intent": getattr(
+                            checkout_session, "payment_intent", None
+                        ),
+                    }
+                ),
             )
 
     async def get_credits(self, user_id: str) -> int:
@@ -1131,36 +1157,52 @@ class BetaUserCredit(UserCredit):
 
 class DisabledUserCredit(UserCreditBase):
     async def get_credits(self, *_args, **_kwargs) -> int:
+        del _args, _kwargs  # Suppress unused parameter warnings
         return 100
 
     async def get_transaction_history(self, *_args, **_kwargs) -> TransactionHistory:
+        del _args, _kwargs  # Suppress unused parameter warnings
         return TransactionHistory(transactions=[], next_transaction_time=None)
 
     async def get_refund_requests(self, *_args, **_kwargs) -> list[RefundRequest]:
+        del _args, _kwargs  # Suppress unused parameter warnings
         return []
 
     async def spend_credits(self, *_args, **_kwargs) -> int:
+        del _args, _kwargs  # Suppress unused parameter warnings
         return 0
 
-    async def top_up_credits(self, *_args, **_kwargs) -> int:
+    async def top_up_credits(
+        self,
+        user_id: str,
+        amount: int,
+        top_up_type: TopUpType = TopUpType.UNCATEGORIZED,
+    ) -> int:
+        del user_id, amount, top_up_type  # Suppress unused parameter warnings
         return 0
 
     async def onboarding_reward(self, *_args, **_kwargs) -> int | None:
+        del _args, _kwargs  # Suppress unused parameter warnings
         return None
 
     async def top_up_intent(self, *_args, **_kwargs) -> str:
+        del _args, _kwargs  # Suppress unused parameter warnings
         return ""
 
     async def top_up_refund(self, *_args, **_kwargs) -> int:
+        del _args, _kwargs  # Suppress unused parameter warnings
         return 0
 
     async def deduct_credits(self, *_args, **_kwargs):
+        del _args, _kwargs  # Suppress unused parameter warnings
         pass
 
     async def handle_dispute(self, *_args, **_kwargs):
+        del _args, _kwargs  # Suppress unused parameter warnings
         pass
 
     async def fulfill_checkout(self, *_args, **_kwargs):
+        del _args, _kwargs  # Suppress unused parameter warnings
         pass
 
 
@@ -1244,6 +1286,28 @@ async def admin_get_user_history(
     total = await CreditTransaction.prisma().count(where=where_clause)
     total_pages = (total + page_size - 1) // page_size
 
+    # Pre-fetch all unique admin IDs and user balances to avoid N+1 queries
+    unique_admin_ids = {
+        cast(dict, tx.metadata or {}).get("admin_id")
+        for tx in transactions
+        if cast(dict, tx.metadata or {}).get("admin_id")
+    }
+    unique_user_ids = {tx.userId for tx in transactions}
+
+    # Batch fetch admin emails
+    admin_email_map = {}
+    for admin_id in unique_admin_ids:
+        if admin_id:
+            email = await get_user_email_by_id(admin_id)
+            admin_email_map[admin_id] = email or f"Unknown Admin: {admin_id}"
+
+    # Batch fetch user balances
+    user_balance_map = {}
+    credit_model = get_user_credit_model()
+    for user_id in unique_user_ids:
+        balance, _ = await credit_model._get_credits(user_id)
+        user_balance_map[user_id] = balance
+
     history = []
     for tx in transactions:
         admin_id = ""
@@ -1254,14 +1318,10 @@ async def admin_get_user_history(
 
         if metadata:
             admin_id = metadata.get("admin_id")
-            admin_email = (
-                (await get_user_email_by_id(admin_id) or f"Unknown Admin: {admin_id}")
-                if admin_id
-                else ""
-            )
+            admin_email = admin_email_map.get(admin_id, "")
             reason = metadata.get("reason", "No reason provided")
 
-        balance, _ = await get_user_credit_model()._get_credits(tx.userId)
+        balance = user_balance_map.get(tx.userId, 0)
 
         history.append(
             UserTransaction(
