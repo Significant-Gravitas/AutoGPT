@@ -964,7 +964,13 @@ class UserCredit(UserCreditBase):
                 "type": CreditTransactionType.TOP_UP,
                 "transactionKey": checkout_session.id,
                 "isActive": False,
-                "metadata": SafeJson(checkout_session),
+                "metadata": SafeJson(
+                    {
+                        "id": checkout_session.id,
+                        "amount": amount,
+                        "status": checkout_session.status,
+                    }
+                ),
                 # Let database set createdAt with CURRENT_TIMESTAMP via @default(now())
             }
         )
@@ -1301,12 +1307,13 @@ async def admin_get_user_history(
             email = await get_user_email_by_id(admin_id)
             admin_email_map[admin_id] = email or f"Unknown Admin: {admin_id}"
 
-    # Batch fetch user balances
+    # Batch fetch user balances in one query
     user_balance_map = {}
-    credit_model = get_user_credit_model()
-    for user_id in unique_user_ids:
-        balance, _ = await credit_model._get_credits(user_id)
-        user_balance_map[user_id] = balance
+    if unique_user_ids:
+        users = await User.prisma().find_many(
+            where={"id": {"in": list(unique_user_ids)}}
+        )
+        user_balance_map = {user.id: user.balance or 0 for user in users}
 
     history = []
     for tx in transactions:
