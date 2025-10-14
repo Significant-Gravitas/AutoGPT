@@ -83,13 +83,20 @@ async def test_credit_transaction_enum_casting_integration(cleanup_test_user):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_auto_top_up_integration(cleanup_test_user):
+async def test_auto_top_up_integration(cleanup_test_user, monkeypatch):
     """
     Integration test for auto-top-up functionality that triggers enum casting.
 
     This tests the complete auto-top-up flow which involves SQL queries with
     CreditTransactionType enums, ensuring enum casting works end-to-end.
     """
+    # Enable credits for this test
+    from backend.data.credit import settings
+
+    monkeypatch.setattr(settings.config, "enable_credit", True)
+    monkeypatch.setattr(settings.config, "enable_beta_monthly_credit", True)
+    monkeypatch.setattr(settings.config, "num_user_credits_refill", 1000)
+
     user_id = cleanup_test_user
     credit_system = BetaUserCredit(1000)
 
@@ -201,13 +208,20 @@ async def test_enable_transaction_enum_casting_integration(cleanup_test_user):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_immediate_auto_top_up_on_configuration(cleanup_test_user):
+async def test_immediate_auto_top_up_on_configuration(cleanup_test_user, monkeypatch):
     """
     Test that auto-top-up immediately triggers when configured with balance below threshold.
 
     This addresses the issue where users with low balance don't get topped up until
     they spend money first.
     """
+    # Enable credits for this test
+    from backend.data.credit import settings
+
+    monkeypatch.setattr(settings.config, "enable_credit", True)
+    monkeypatch.setattr(settings.config, "enable_beta_monthly_credit", True)
+    monkeypatch.setattr(settings.config, "num_user_credits_refill", 1000)
+
     user_id = cleanup_test_user
     credit_system = BetaUserCredit(1000)
 
@@ -249,7 +263,7 @@ async def test_immediate_auto_top_up_on_configuration(cleanup_test_user):
             break
 
     assert auto_topup_tx is not None
-    assert auto_topup_tx.type == CreditTransactionType.GRANT
+    assert auto_topup_tx.type == CreditTransactionType.TOP_UP
     assert auto_topup_tx.amount == config.amount
     assert auto_topup_tx.metadata is not None
     assert "Immediate auto top-up after configuration" in str(auto_topup_tx.metadata)

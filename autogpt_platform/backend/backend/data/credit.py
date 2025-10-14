@@ -480,7 +480,7 @@ class UserCreditBase(ABC):
                 SELECT 
                     $1::text,
                     $2::int,
-                    $3::{schema_prefix}"CreditTransactionType",
+                    $3::text::{schema_prefix}"CreditTransactionType",
                     CASE 
                         -- For inactive transactions: Set runningBalance to original balance (don't apply the change yet)
                         WHEN $5::boolean = false THEN user_balance_lock.balance
