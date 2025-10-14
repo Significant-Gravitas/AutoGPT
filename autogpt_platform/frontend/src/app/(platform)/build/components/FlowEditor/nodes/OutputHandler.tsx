@@ -24,7 +24,7 @@ export const OutputHandler = ({
 }) => {
   const { isOutputConnected } = useEdgeStore();
   const properties = outputSchema?.properties || {};
-  const [isOutputVisible, setIsOutputVisible] = useState(false);
+  const [isOutputVisible, setIsOutputVisible] = useState(true);
 
   return (
     <div className="flex flex-col items-end justify-between gap-2 rounded-b-xl border-t border-slate-200/50 bg-white py-3.5">
