@@ -312,16 +312,19 @@ class UserCreditBase(ABC):
                 FROM tx_activate
                 WHERE "User".id = tx_activate."userId"
                 RETURNING balance, "updatedAt", tx_activate.new_key
+            ),
+            transaction_update AS (
+                UPDATE "CreditTransaction"
+                SET 
+                    "runningBalance" = balance_update.balance,
+                    "createdAt" = balance_update."updatedAt"
+                FROM balance_update
+                WHERE 
+                    "CreditTransaction"."transactionKey" = balance_update.new_key
+                    AND "CreditTransaction"."userId" = $4
+                RETURNING "CreditTransaction"."transactionKey"
             )
-            UPDATE "CreditTransaction"
-            SET 
-                "runningBalance" = balance_update.balance,
-                "createdAt" = balance_update."updatedAt"
-            FROM balance_update
-            WHERE 
-                "CreditTransaction"."transactionKey" = balance_update.new_key
-                AND "CreditTransaction"."userId" = $4
-            RETURNING "CreditTransaction"."transactionKey";
+            SELECT "transactionKey" FROM transaction_update;
             """,
             new_transaction_key,
             metadata,
@@ -565,15 +568,20 @@ class UserCredit(UserCreditBase):
                 ),
             )
             return new_balance
-        except Exception:
-            # If transaction fails (e.g. due to race condition), check if it was created by another request
+        except Exception as e:
+            # If transaction fails, check if it was due to race condition (another request created it)
             existing = await CreditTransaction.prisma().find_first(
                 where={
                     "transactionKey": transaction_key,
                     "userId": user_id,
                 }
             )
-            return None if existing else None
+            if existing:
+                # Race condition detected - another request already created this reward
+                return None
+            else:
+                # Real error occurred, re-raise the original exception
+                raise e
 
     async def top_up_refund(
         self, user_id: str, transaction_key: str, metadata: dict[str, str]
