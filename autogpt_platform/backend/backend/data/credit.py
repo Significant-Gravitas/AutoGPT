@@ -14,14 +14,11 @@ from prisma.enums import (
 )
 from prisma.errors import UniqueViolationError
 from prisma.models import CreditRefundRequest, CreditTransaction, User, UserBalance
-from prisma.types import (
-    CreditRefundRequestCreateInput,
-    CreditTransactionCreateInput,
-    CreditTransactionWhereInput,
-)
+from prisma.types import CreditRefundRequestCreateInput, CreditTransactionWhereInput
 from pydantic import BaseModel
 
 from backend.data.block_cost_config import BLOCK_COSTS
+from backend.data.db import prisma
 from backend.data.includes import MAX_CREDIT_REFUND_REQUESTS_FETCH
 from backend.data.model import (
     AutoTopUpConfig,
@@ -295,29 +292,53 @@ class UserCreditBase(ABC):
         metadata: Json,
         new_transaction_key: str | None = None,
     ):
-        transaction = await CreditTransaction.prisma().find_first_or_raise(
-            where={"transactionKey": transaction_key, "userId": user_id}
+        # Atomic operation to enable transaction and update user balance using UserBalance
+        result = await prisma.query_raw(
+            """
+            WITH user_balance_lock AS (
+                SELECT 
+                    $2::text as userId, 
+                    COALESCE((SELECT balance FROM "UserBalance" WHERE "userId" = $2 FOR UPDATE), 0) as balance
+            ),
+            transaction_check AS (
+                SELECT * FROM "CreditTransaction" 
+                WHERE "transactionKey" = $1 AND "userId" = $2 AND "isActive" = false
+            ),
+            balance_update AS (
+                INSERT INTO "UserBalance" ("userId", "balance", "updatedAt")
+                SELECT 
+                    $2::text,
+                    user_balance_lock.balance + transaction_check.amount,
+                    CURRENT_TIMESTAMP
+                FROM user_balance_lock, transaction_check
+                ON CONFLICT ("userId") DO UPDATE SET
+                    "balance" = EXCLUDED."balance",
+                    "updatedAt" = EXCLUDED."updatedAt"
+                RETURNING "balance", "updatedAt"
+            ),
+            transaction_update AS (
+                UPDATE "CreditTransaction"
+                SET "transactionKey" = COALESCE($4, $1),
+                    "isActive" = true,
+                    "runningBalance" = balance_update.balance,
+                    "createdAt" = balance_update."updatedAt",
+                    "metadata" = $3
+                FROM balance_update, transaction_check
+                WHERE "CreditTransaction"."transactionKey" = transaction_check."transactionKey"
+                  AND "CreditTransaction"."userId" = transaction_check."userId"
+                RETURNING "CreditTransaction"."runningBalance"
+            )
+            SELECT "runningBalance" as balance FROM transaction_update;
+            """,
+            transaction_key,  # $1
+            user_id,  # $2
+            metadata,  # $3
+            new_transaction_key,  # $4
         )
-        if transaction.isActive:
-            return
 
-        # Get current balance and update atomically - no more advisory locks!
-        user_balance, _ = await self._get_credits(user_id)
-        await CreditTransaction.prisma().update(
-            where={
-                "creditTransactionIdentifier": {
-                    "transactionKey": transaction_key,
-                    "userId": user_id,
-                }
-            },
-            data={
-                "transactionKey": new_transaction_key or transaction_key,
-                "isActive": True,
-                "runningBalance": user_balance + transaction.amount,
-                "createdAt": self.time_now(),
-                "metadata": metadata,
-            },
-        )
+        if result:
+            # UserBalance is already updated by the CTE
+            return result[0]["balance"]
 
     async def _add_transaction(
         self,
@@ -347,55 +368,107 @@ class UserCreditBase(ABC):
         Returns:
             tuple[int, str]: The new balance & the transaction key.
         """
-        # Get latest balance snapshot first for validation
-        user_balance, _ = await self._get_credits(user_id)
-
-        if ceiling_balance and amount > 0 and user_balance >= ceiling_balance:
-            raise ValueError(
-                f"You already have enough balance of ${user_balance/100}, top-up is not required when you already have at least ${ceiling_balance/100}"
+        # Quick validation for ceiling balance to avoid unnecessary database operations
+        if ceiling_balance and amount > 0:
+            user_balance_record = await UserBalance.prisma().find_unique(
+                where={"userId": user_id}
             )
-
-        if amount < 0 and user_balance + amount < 0:
-            if fail_insufficient_credits:
-                raise InsufficientBalanceError(
-                    message=f"Insufficient balance of ${user_balance/100}, where this will cost ${abs(amount)/100}",
-                    user_id=user_id,
-                    balance=user_balance,
-                    amount=amount,
+            current_balance = user_balance_record.balance if user_balance_record else 0
+            if current_balance >= ceiling_balance:
+                raise ValueError(
+                    f"You already have enough balance of ${current_balance/100}, top-up is not required when you already have at least ${ceiling_balance/100}"
                 )
 
-            # For refunds and disputes, allow underflow but protect against going below POSTGRES_INT_MIN
-            if user_balance + amount < POSTGRES_INT_MIN:
-                amount = POSTGRES_INT_MIN - user_balance
-            # Otherwise, for normal operations, prevent going negative
-            elif user_balance + amount < 0:
-                amount = min(-user_balance, 0)
-
-        # Create the transaction atomically with underflow protection
-        new_balance = max(user_balance + amount, POSTGRES_INT_MIN)
-        transaction_data: CreditTransactionCreateInput = {
-            "userId": user_id,
-            "amount": amount,
-            "runningBalance": new_balance,
-            "type": transaction_type,
-            "metadata": metadata,
-            "isActive": is_active,
-            "createdAt": self.time_now(),
-        }
-        if transaction_key:
-            transaction_data["transactionKey"] = transaction_key
-        tx = await CreditTransaction.prisma().create(data=transaction_data)
-
-        # Update UserBalance to keep it synchronized
-        await UserBalance.prisma().upsert(
-            where={"userId": user_id},
-            data={
-                "create": {"userId": user_id, "balance": new_balance},
-                "update": {"balance": new_balance},
-            },
+        # Single unified atomic operation for all transaction types using UserBalance
+        result = await prisma.query_raw(
+            """
+            WITH user_balance_lock AS (
+                SELECT 
+                    $1::text as userId, 
+                    COALESCE((SELECT balance FROM "UserBalance" WHERE "userId" = $1 FOR UPDATE), 0) as balance
+            ),
+            balance_update AS (
+                INSERT INTO "UserBalance" ("userId", "balance", "updatedAt")
+                SELECT 
+                    $1::text,
+                    CASE 
+                        -- For inactive transactions: Don't update balance
+                        WHEN $5::boolean = false THEN user_balance_lock.balance
+                        -- For spending (amount < 0): Check sufficient balance
+                        WHEN $2 < 0 AND $8::boolean = true AND user_balance_lock.balance + $2 < 0 THEN user_balance_lock.balance  -- No change if insufficient
+                        -- For ceiling balance (amount > 0): Apply ceiling
+                        WHEN $2 > 0 AND $7::int IS NOT NULL AND user_balance_lock.balance > $7::int - $2 THEN $7::int
+                        -- For regular operations: Apply with overflow protection  
+                        WHEN user_balance_lock.balance + $2 > $6::int THEN $6::int
+                        ELSE user_balance_lock.balance + $2
+                    END,
+                    CURRENT_TIMESTAMP
+                FROM user_balance_lock
+                WHERE ($5::boolean = false OR $2 >= 0 OR $8::boolean = false OR user_balance_lock.balance + $2 >= 0)
+                ON CONFLICT ("userId") DO UPDATE SET
+                    "balance" = EXCLUDED."balance",
+                    "updatedAt" = EXCLUDED."updatedAt"
+                RETURNING "balance", "updatedAt"
+            ),
+            transaction_insert AS (
+                INSERT INTO "CreditTransaction" (
+                    "userId", "amount", "type", "runningBalance", 
+                    "metadata", "isActive", "createdAt", "transactionKey"
+                )
+                SELECT 
+                    $1::text,
+                    $2::int,
+                    $3::"CreditTransactionType",
+                    CASE 
+                        -- For inactive transactions: Set runningBalance to original balance (don't apply the change yet)
+                        WHEN $5::boolean = false THEN user_balance_lock.balance
+                        ELSE balance_update.balance
+                    END,
+                    $4::jsonb,
+                    $5::boolean,
+                    balance_update."updatedAt",
+                    COALESCE($9, gen_random_uuid()::text)
+                FROM balance_update, user_balance_lock
+                RETURNING "runningBalance", "transactionKey"
+            )
+            SELECT "runningBalance" as balance, "transactionKey" FROM transaction_insert;
+            """,
+            user_id,  # $1
+            amount,  # $2
+            transaction_type.value,  # $3
+            metadata,  # $4
+            is_active,  # $5
+            POSTGRES_INT_MAX,  # $6 - overflow protection
+            ceiling_balance,  # $7 - ceiling balance (nullable)
+            fail_insufficient_credits,  # $8 - check balance for spending
+            transaction_key,  # $9 - transaction key (nullable)
         )
 
-        return new_balance, tx.transactionKey
+        if result:
+            new_balance, tx_key = result[0]["balance"], result[0]["transactionKey"]
+            # UserBalance is already updated by the CTE
+            return new_balance, tx_key
+
+        # If no result, either user doesn't exist or insufficient balance
+        user = await User.prisma().find_unique(where={"id": user_id})
+        if not user:
+            raise ValueError(f"User {user_id} not found")
+
+        # Must be insufficient balance for spending operation
+        if amount < 0 and fail_insufficient_credits:
+            user_balance_record = await UserBalance.prisma().find_unique(
+                where={"userId": user_id}
+            )
+            current_balance = user_balance_record.balance if user_balance_record else 0
+            raise InsufficientBalanceError(
+                message=f"Insufficient balance of ${current_balance/100}, where this will cost ${abs(amount)/100}",
+                user_id=user_id,
+                balance=current_balance,
+                amount=amount,
+            )
+
+        # Unexpected case
+        raise ValueError(f"Transaction failed for user {user_id}, amount {amount}")
 
 
 class UserCredit(UserCreditBase):

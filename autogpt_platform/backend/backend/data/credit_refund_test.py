@@ -329,11 +329,10 @@ async def test_concurrent_refunds(server: SpinTestServer):
         # With current non-atomic implementation, this will likely be wrong due to race conditions
         print(f"DEBUG: Final balance = {user_balance.balance}, expected = 500")
 
-        # For now, just document what we observe - this test demonstrates the race condition
-        # TODO: After atomic implementation, change this back to assert balance == 500
+        # With atomic implementation, all 5 refunds should process correctly
         assert (
-            user_balance.balance != 500
-        ), f"Race condition test failed - got correct balance {user_balance.balance} when we expected race condition to cause incorrect balance"
+            user_balance.balance == 500
+        ), f"Expected balance 500 after 5 refunds of 100 each, got {user_balance.balance}"
 
         # Verify all refund transactions exist
         refund_txs = await CreditTransaction.prisma().find_many(
