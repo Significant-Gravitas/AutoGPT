@@ -206,6 +206,9 @@ async def test_handle_dispute_with_insufficient_balance(
     """Test handling dispute when user has insufficient balance (evidence gets added)."""
     topup_tx = await setup_test_user_with_topup()
 
+    # Save original method for restoration before any try blocks
+    original_get_history = credit_system.get_transaction_history
+
     try:
         # Mock settings to have a high tolerance threshold so dispute isn't closed
         mock_settings.config.refund_credit_tolerance_threshold = 2000
@@ -248,6 +251,7 @@ async def test_handle_dispute_with_insufficient_balance(
         assert user.balance == 1000, "Balance should remain unchanged"
 
     finally:
+        credit_system.get_transaction_history = original_get_history
         await cleanup_test_user()
 
 

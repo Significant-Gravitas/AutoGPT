@@ -521,7 +521,7 @@ class UserCredit(UserCreditBase):
         user_id: str,
         amount: int,
         top_up_type: TopUpType = TopUpType.UNCATEGORIZED,
-    ):
+    ) -> int:
         # Validate input to prevent integer overflow
         if amount <= 0 or amount > POSTGRES_INT_MAX:
             raise ValueError(f"Invalid top-up amount: {amount}")
@@ -545,7 +545,9 @@ class UserCredit(UserCreditBase):
 
         return new_balance
 
-    async def onboarding_reward(self, user_id: str, credits: int, step: OnboardingStep):
+    async def onboarding_reward(
+        self, user_id: str, credits: int, step: OnboardingStep
+    ) -> int | None:
         # Validate input to prevent integer overflow
         if credits <= 0 or credits > POSTGRES_INT_MAX:
             raise ValueError(f"Invalid reward amount: {credits}")
