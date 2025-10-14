@@ -318,6 +318,11 @@ class WebsocketServer(AppProcess):
         server_app = CORSMiddleware(
             app=app,
             allow_origins=settings.config.backend_cors_allow_origins,
+            allow_origin_regex=(
+                r"^https://.*\.vercel\.app$"
+                if settings.config.app_env == AppEnvironment.DEVELOPMENT
+                else None
+            ),
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],

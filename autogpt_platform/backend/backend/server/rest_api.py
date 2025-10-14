@@ -294,6 +294,11 @@ class AgentServer(backend.util.service.AppProcess):
         server_app = starlette.middleware.cors.CORSMiddleware(
             app=app,
             allow_origins=settings.config.backend_cors_allow_origins,
+            allow_origin_regex=(
+                r"^https://.*\.vercel\.app$"
+                if settings.config.app_env == backend.util.settings.AppEnvironment.DEVELOPMENT
+                else None
+            ),
             allow_credentials=True,
             allow_methods=["*"],  # Allows all methods
             allow_headers=["*"],  # Allows all headers
