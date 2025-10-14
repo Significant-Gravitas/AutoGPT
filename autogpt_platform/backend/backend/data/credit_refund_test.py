@@ -30,6 +30,7 @@ async def setup_test_user_with_topup():
         where={"userId": REFUND_TEST_USER_ID}
     )
     await CreditTransaction.prisma().delete_many(where={"userId": REFUND_TEST_USER_ID})
+    await UserBalance.prisma().delete_many(where={"userId": REFUND_TEST_USER_ID})
     await User.prisma().delete_many(where={"id": REFUND_TEST_USER_ID})
 
     # Create user
@@ -71,6 +72,7 @@ async def cleanup_test_user():
         where={"userId": REFUND_TEST_USER_ID}
     )
     await CreditTransaction.prisma().delete_many(where={"userId": REFUND_TEST_USER_ID})
+    await UserBalance.prisma().delete_many(where={"userId": REFUND_TEST_USER_ID})
     await User.prisma().delete_many(where={"id": REFUND_TEST_USER_ID})
 
 
