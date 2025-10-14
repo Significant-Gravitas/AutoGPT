@@ -5,7 +5,7 @@ import { SearchBar } from "../SearchBar/SearchBar";
 import { useHeroSection } from "./useHeroSection";
 
 export const HeroSection = () => {
-  const { onFilterChange } = useHeroSection();
+  const { onFilterChange, searchTerms } = useHeroSection();
   return (
     <div className="mb-2 mt-8 flex flex-col items-center justify-center px-4 sm:mb-4 sm:mt-12 sm:px-6 md:mb-6 md:mt-16 lg:my-24 lg:px-8 xl:my-16">
       <div className="w-full max-w-3xl lg:max-w-4xl xl:max-w-5xl">
@@ -35,13 +35,7 @@ export const HeroSection = () => {
         <div>
           <div className="flex justify-center">
             <FilterChips
-              badges={[
-                "Marketing",
-                "SEO",
-                "Content Creation",
-                "Automation",
-                "Fun",
-              ]}
+              badges={searchTerms}
               onFilterChange={onFilterChange}
               multiSelect={false}
             />
