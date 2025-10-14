@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, cast
 
 import stripe
-from prisma import Json
 from prisma.enums import (
     CreditRefundRequestStatus,
     CreditTransactionType,
@@ -295,7 +294,7 @@ class UserCreditBase(ABC):
         self,
         transaction_key: str,
         user_id: str,
-        metadata: Json,
+        metadata: SafeJson,
         new_transaction_key: str | None = None,
     ):
         # First check if transaction exists and is inactive (safety check)
@@ -350,7 +349,7 @@ class UserCreditBase(ABC):
             """,
             transaction_key,  # $1
             user_id,  # $2
-            metadata,  # $3
+            metadata.json_string,  # $3 - use pre-serialized JSON string for JSONB
             new_transaction_key,  # $4
         )
 
@@ -367,7 +366,7 @@ class UserCreditBase(ABC):
         transaction_key: str | None = None,
         ceiling_balance: int | None = None,
         fail_insufficient_credits: bool = True,
-        metadata: Json = SafeJson({}),
+        metadata: SafeJson = SafeJson({}),
     ) -> tuple[int, str]:
         """
         Add a new transaction for the user.
@@ -499,7 +498,7 @@ class UserCreditBase(ABC):
             user_id,  # $1
             amount,  # $2
             transaction_type.value,  # $3
-            metadata,  # $4
+            metadata.json_string,  # $4 - use pre-serialized JSON string for JSONB
             is_active,  # $5
             POSTGRES_INT_MAX,  # $6 - overflow protection
             ceiling_balance,  # $7 - ceiling balance (nullable)

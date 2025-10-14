@@ -123,20 +123,28 @@ def convert_pydantic_to_json(output_data: Any) -> Any:
     return output_data
 
 
-def SafeJson(data: Any) -> Json:
+class SafeJson(Json):
     """
-    Safely serialize data and return Prisma's Json type.
+    Enhanced Json class that safely serializes data and stores the JSON string.
     Sanitizes null bytes to prevent PostgreSQL 22P05 errors.
+    Provides access to both the parsed data (.data) and serialized string (.json_string).
     """
-    if isinstance(data, BaseModel):
-        json_string = data.model_dump_json(
-            warnings="error",
-            exclude_none=True,
-            fallback=lambda v: None,
-        )
-    else:
-        json_string = dumps(data, default=lambda v: None)
 
-    # Remove PostgreSQL-incompatible control characters in single regex operation
-    sanitized_json = POSTGRES_CONTROL_CHARS.sub("", json_string)
-    return Json(json.loads(sanitized_json))
+    def __init__(self, data: Any):
+        if isinstance(data, BaseModel):
+            json_string = data.model_dump_json(
+                warnings="error",
+                exclude_none=True,
+                fallback=lambda v: None,
+            )
+        else:
+            json_string = dumps(data, default=lambda v: None)
+
+        # Remove PostgreSQL-incompatible control characters in single regex operation
+        sanitized_json = POSTGRES_CONTROL_CHARS.sub("", json_string)
+
+        # Store the serialized string for efficient reuse
+        self.json_string = sanitized_json
+
+        # Initialize the parent Json class with parsed data
+        super().__init__(json.loads(sanitized_json))
