@@ -328,7 +328,6 @@ class UserCreditBase(ABC):
             transaction_key,
             user_id,
             POSTGRES_INT_MAX,
-            POSTGRES_INT_MAX,
         )
 
         if not result:
