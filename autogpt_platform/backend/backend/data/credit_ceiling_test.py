@@ -13,6 +13,7 @@ from prisma.errors import UniqueViolationError
 from prisma.models import CreditTransaction, User, UserBalance
 
 from backend.data.credit import UserCredit
+from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
 
 
@@ -54,8 +55,13 @@ async def test_ceiling_balance_rejects_when_above_threshold(server: SpinTestServ
     await create_test_user(user_id)
 
     try:
-        # Give user balance of 1000 ($10)
-        await credit_system.top_up_credits(user_id, 1000)
+        # Give user balance of 1000 ($10) using internal method (bypasses Stripe)
+        await credit_system._add_transaction(
+            user_id=user_id,
+            amount=1000,
+            transaction_type=CreditTransactionType.TOP_UP,
+            metadata=SafeJson({"test": "initial_balance"}),
+        )
         current_balance = await credit_system.get_credits(user_id)
         assert current_balance == 1000
 
@@ -84,8 +90,13 @@ async def test_ceiling_balance_clamps_when_would_exceed(server: SpinTestServer):
     await create_test_user(user_id)
 
     try:
-        # Give user balance of 500 ($5)
-        await credit_system.top_up_credits(user_id, 500)
+        # Give user balance of 500 ($5) using internal method (bypasses Stripe)
+        await credit_system._add_transaction(
+            user_id=user_id,
+            amount=500,
+            transaction_type=CreditTransactionType.TOP_UP,
+            metadata=SafeJson({"test": "initial_balance"}),
+        )
 
         # Add 800 more with ceiling of 1000 (should clamp to 1000, not reach 1300)
         final_balance, _ = await credit_system._add_transaction(
@@ -132,8 +143,13 @@ async def test_ceiling_balance_allows_when_under_threshold(server: SpinTestServe
     await create_test_user(user_id)
 
     try:
-        # Give user balance of 300 ($3)
-        await credit_system.top_up_credits(user_id, 300)
+        # Give user balance of 300 ($3) using internal method (bypasses Stripe)
+        await credit_system._add_transaction(
+            user_id=user_id,
+            amount=300,
+            transaction_type=CreditTransactionType.TOP_UP,
+            metadata=SafeJson({"test": "initial_balance"}),
+        )
 
         # Add 200 more with ceiling of 1000 (should succeed: 300 + 200 = 500 < 1000)
         final_balance, _ = await credit_system._add_transaction(

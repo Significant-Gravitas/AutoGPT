@@ -298,6 +298,18 @@ class UserCreditBase(ABC):
         metadata: Json,
         new_transaction_key: str | None = None,
     ):
+        # First check if transaction exists and is inactive (safety check)
+        transaction = await CreditTransaction.prisma().find_first(
+            where={
+                "transactionKey": transaction_key,
+                "userId": user_id,
+                "isActive": False,
+            }
+        )
+        if not transaction:
+            # Transaction doesn't exist or is already active, return early
+            return None
+
         # Atomic operation to enable transaction and update user balance using UserBalance
         result = await prisma.query_raw(
             """
@@ -376,10 +388,7 @@ class UserCreditBase(ABC):
         """
         # Quick validation for ceiling balance to avoid unnecessary database operations
         if ceiling_balance and amount > 0:
-            user_balance_record = await UserBalance.prisma().find_unique(
-                where={"userId": user_id}
-            )
-            current_balance = user_balance_record.balance if user_balance_record else 0
+            current_balance, _ = await self._get_credits(user_id)
             if current_balance >= ceiling_balance:
                 raise ValueError(
                     f"You already have enough balance of ${current_balance/100}, top-up is not required when you already have at least ${ceiling_balance/100}"
@@ -404,8 +413,9 @@ class UserCreditBase(ABC):
                         WHEN $2 < 0 AND $8::boolean = true AND user_balance_lock.balance + $2 < 0 THEN user_balance_lock.balance  -- No change if insufficient
                         -- For ceiling balance (amount > 0): Apply ceiling
                         WHEN $2 > 0 AND $7::int IS NOT NULL AND user_balance_lock.balance > $7::int - $2 THEN $7::int
-                        -- For regular operations: Apply with overflow protection  
+                        -- For regular operations: Apply with overflow/underflow protection  
                         WHEN user_balance_lock.balance + $2 > $6::int THEN $6::int
+                        WHEN user_balance_lock.balance + $2 < $10::int THEN $10::int
                         ELSE user_balance_lock.balance + $2
                     END,
                     CURRENT_TIMESTAMP
@@ -448,6 +458,7 @@ class UserCreditBase(ABC):
             ceiling_balance,  # $7 - ceiling balance (nullable)
             fail_insufficient_credits,  # $8 - check balance for spending
             transaction_key,  # $9 - transaction key (nullable)
+            POSTGRES_INT_MIN,  # $10 - underflow protection
         )
 
         if result:
@@ -551,10 +562,16 @@ class UserCredit(UserCreditBase):
             )
             return True
         except Exception as e:
-            # Already rewarded for this step - catch all exceptions from concurrent calls
-            if "already exists" in str(e):
+            # Handle both Prisma UniqueViolationError and raw SQL unique constraint violations
+            # Raw SQL raises different exception types than Prisma ORM
+            error_str = str(e).lower()
+            if (
+                isinstance(e, UniqueViolationError)
+                or "already exists" in error_str
+                or "duplicate key" in error_str
+            ):
                 return False
-            # Re-raise unexpected exceptions
+            # For any other error, re-raise
             raise
 
     async def top_up_refund(

@@ -11,10 +11,12 @@ import asyncio
 from datetime import datetime
 
 import pytest
+from prisma.enums import CreditTransactionType
 from prisma.errors import UniqueViolationError
 from prisma.models import CreditTransaction, User, UserBalance
 
 from backend.data.credit import UsageTransactionMetadata, UserCredit
+from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
 
 
@@ -62,8 +64,13 @@ async def test_user_balance_migration_complete(server: SpinTestServer):
                 user_balance_attr == 0 or user_balance_attr is None
             ), f"User.balance should be 0 or None, got {user_balance_attr}"
 
-        # 2. Perform various credit operations
-        await credit_system.top_up_credits(user_id, 1000)  # Add $10
+        # 2. Perform various credit operations using internal method (bypasses Stripe)
+        await credit_system._add_transaction(
+            user_id=user_id,
+            amount=1000,
+            transaction_type=CreditTransactionType.TOP_UP,
+            metadata=SafeJson({"test": "migration_test"}),
+        )
         balance1 = await credit_system.get_credits(user_id)
         assert balance1 == 1000
 
@@ -123,8 +130,13 @@ async def test_detect_stale_user_balance_queries(server: SpinTestServer):
             balance == 5000
         ), f"Expected get_credits to return 5000 from UserBalance, got {balance}"
 
-        # Verify all operations use UserBalance
-        await credit_system.top_up_credits(user_id, 1000)  # Should be 6000 now
+        # Verify all operations use UserBalance using internal method (bypasses Stripe)
+        await credit_system._add_transaction(
+            user_id=user_id,
+            amount=1000,
+            transaction_type=CreditTransactionType.TOP_UP,
+            metadata=SafeJson({"test": "final_verification"}),
+        )
         final_balance = await credit_system.get_credits(user_id)
         assert final_balance == 6000, f"Expected 6000, got {final_balance}"
 

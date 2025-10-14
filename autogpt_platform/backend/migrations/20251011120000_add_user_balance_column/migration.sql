@@ -14,7 +14,7 @@ CREATE TABLE "UserBalance" (
 CREATE INDEX "UserBalance_userId_idx" ON "UserBalance"("userId");
 
 -- AddForeignKey
-ALTER TABLE "UserBalance" ADD CONSTRAINT "UserBalance_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "UserBalance" ADD CONSTRAINT "UserBalance_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 
 -- Migrate existing user balances from transaction history
