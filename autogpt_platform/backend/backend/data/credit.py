@@ -360,7 +360,7 @@ class UserCreditBase(ABC):
         fail_insufficient_credits: bool = True,
         metadata: Json = SafeJson({}),
     ) -> tuple[int, str]:
-        """Used by BetaUserCredit for monthly credit refills and legacy compatibility."""
+        """Unified atomic transaction method that handles all credit operations."""
         # Validate input
         if amount > POSTGRES_INT_MAX or amount < -POSTGRES_INT_MAX:
             raise ValueError(f"Invalid amount: {amount}")
@@ -373,137 +373,75 @@ class UserCreditBase(ABC):
                     f"You already have enough balance of {format_credits_as_dollars(user.balance)}, top-up is not required when you already have at least {format_credits_as_dollars(ceiling_balance)}"
                 )
 
-        # For spending, check balance and use atomic operation
-        if amount < 0 and fail_insufficient_credits:
-            # Use atomic spend operation to prevent race conditions
-            result = await db.prisma.query_raw(
-                """
-                WITH balance_update AS (
-                    UPDATE "User" 
-                    SET balance = balance + $1,
-                        "updatedAt" = CURRENT_TIMESTAMP
-                    WHERE id = $2 AND balance + $1 >= 0
-                    RETURNING id, balance, "updatedAt"
-                ),
-                transaction_insert AS (
-                    INSERT INTO "CreditTransaction" (
-                        "transactionKey", "userId", "amount", "type",
-                        "runningBalance", "isActive", "metadata", "createdAt"
-                    )
-                    SELECT 
-                        COALESCE($3, gen_random_uuid()::text),
-                        balance_update.id,
-                        $1::int,
-                        $4::"CreditTransactionType",
-                        balance_update.balance,
-                        $5::boolean,
-                        $6::jsonb,
-                        balance_update."updatedAt"
-                    FROM balance_update
-                    RETURNING "runningBalance", "transactionKey"
+        # Single unified atomic operation for all transaction types
+        result = await db.prisma.query_raw(
+            """
+            WITH balance_update AS (
+                UPDATE "User" 
+                SET balance = CASE 
+                    -- For spending (amount < 0): Check sufficient balance
+                    WHEN $2 < 0 AND $8::boolean = true AND balance + $2 < 0 THEN balance  -- No change if insufficient
+                    -- For ceiling balance (amount > 0): Apply ceiling
+                    WHEN $2 > 0 AND $7::int IS NOT NULL AND balance > $7::int - $2 THEN $7::int
+                    -- For regular operations: Apply with overflow protection  
+                    WHEN balance + $2 > $6::int THEN $6::int
+                    ELSE balance + $2
+                END,
+                "updatedAt" = CURRENT_TIMESTAMP
+                WHERE id = $1 
+                  -- Only proceed if spending check passes or not a spending operation
+                  AND ($2 >= 0 OR $8::boolean = false OR balance + $2 >= 0)
+                RETURNING id, balance, "updatedAt"
+            ),
+            transaction_insert AS (
+                INSERT INTO "CreditTransaction" (
+                    "userId", "amount", "type", "runningBalance", 
+                    "metadata", "isActive", "createdAt", "transactionKey"
                 )
-                SELECT "runningBalance" as balance, "transactionKey" FROM transaction_insert;
-                """,
-                amount,
-                user_id,
-                transaction_key,
-                transaction_type.value,
-                is_active,
-                metadata,
+                SELECT 
+                    balance_update.id,
+                    $2::int,
+                    $3::"CreditTransactionType",
+                    balance_update.balance,
+                    $4::jsonb,
+                    $5::boolean,
+                    balance_update."updatedAt",
+                    COALESCE($9, gen_random_uuid()::text)
+                FROM balance_update
+                RETURNING "runningBalance", "transactionKey"
             )
-
-            if not result:
-                user = await User.prisma().find_unique(where={"id": user_id})
-                if not user:
-                    raise ValueError(f"User {user_id} not found")
-                raise InsufficientBalanceError(
-                    message=f"Insufficient balance of {format_credits_as_dollars(user.balance)}, where this will cost {format_credits_as_dollars(abs(amount))}",
-                    user_id=user_id,
-                    balance=user.balance,
-                    amount=amount,
-                )
-
-            return result[0]["balance"], result[0]["transactionKey"]
-
-        # For non-spending operations (top-ups, grants), use atomic operation with optional ceiling
-        if ceiling_balance and amount > 0:
-            # Use ceiling balance for top-ups
-            result = await db.prisma.query_raw(
-                """
-                WITH balance_update AS (
-                    UPDATE "User" 
-                    SET balance = CASE 
-                        WHEN balance > $7::int - $2 THEN $7::int
-                        ELSE balance + $2
-                    END,
-                    "updatedAt" = CURRENT_TIMESTAMP
-                    WHERE id = $1
-                    RETURNING id, balance, "updatedAt"
-                ),
-                transaction_insert AS (
-                    INSERT INTO "CreditTransaction" (
-                        "transactionKey", "userId", "amount", "type",
-                        "runningBalance", "isActive", "metadata", "createdAt"
-                    )
-                    SELECT 
-                        COALESCE($6, gen_random_uuid()::text),
-                        balance_update.id,
-                        $2::int,
-                        $3::"CreditTransactionType",
-                        balance_update.balance,
-                        $5::boolean,
-                        $4::jsonb,
-                        balance_update."updatedAt"
-                    FROM balance_update
-                    RETURNING "runningBalance", "transactionKey"
-                )
-                SELECT "runningBalance" as balance, "transactionKey" FROM transaction_insert;
-                """,
-                user_id,
-                amount,
-                transaction_type.value,
-                metadata,
-                is_active,
-                transaction_key,
-                ceiling_balance,
-            )
-        else:
-            # Regular add operation without ceiling
-            result = await db.prisma.query_raw(
-                """
-                WITH balance_update AS (
-                    UPDATE "User"
-                    SET balance = balance + $2, "updatedAt" = CURRENT_TIMESTAMP
-                    WHERE id = $1
-                    RETURNING balance, "updatedAt"
-                ),
-                transaction_insert AS (
-                    INSERT INTO "CreditTransaction" (
-                        "userId", "amount", "type", "runningBalance", 
-                        "metadata", "isActive", "createdAt", "transactionKey"
-                    )
-                    SELECT 
-                        $1, $2, $3::"CreditTransactionType", bu.balance, 
-                        $4::jsonb, $5, bu."updatedAt", COALESCE($6, gen_random_uuid()::text)
-                    FROM balance_update bu
-                    RETURNING "runningBalance", "transactionKey"
-                )
-                SELECT "runningBalance" as balance, "transactionKey" FROM transaction_insert;
-                """,
-                user_id,
-                amount,
-                transaction_type.value,
-                metadata,
-                is_active,
-                transaction_key,
-            )
+            SELECT "runningBalance" as balance, "transactionKey" FROM transaction_insert;
+            """,
+            user_id,  # $1
+            amount,  # $2
+            transaction_type.value,  # $3
+            metadata,  # $4
+            is_active,  # $5
+            POSTGRES_INT_MAX,  # $6 - overflow protection
+            ceiling_balance,  # $7 - ceiling balance (nullable)
+            fail_insufficient_credits,  # $8 - check balance for spending
+            transaction_key,  # $9 - transaction key (nullable)
+        )
 
         if result:
             return result[0]["balance"], result[0]["transactionKey"]
 
-        # If no result, user doesn't exist - this shouldn't happen in normal flow
-        # Users should be created through proper registration flow
-        raise ValueError(f"User {user_id} not found")
+        # If no result, either user doesn't exist or insufficient balance
+        user = await User.prisma().find_unique(where={"id": user_id})
+        if not user:
+            raise ValueError(f"User {user_id} not found")
+
+        # Must be insufficient balance for spending operation
+        if amount < 0 and fail_insufficient_credits:
+            raise InsufficientBalanceError(
+                message=f"Insufficient balance of {format_credits_as_dollars(user.balance)}, where this will cost {format_credits_as_dollars(abs(amount))}",
+                user_id=user_id,
+                balance=user.balance,
+                amount=amount,
+            )
+
+        # Unexpected case
+        raise ValueError(f"Transaction failed for user {user_id}, amount {amount}")
 
 
 class UserCredit(UserCreditBase):
