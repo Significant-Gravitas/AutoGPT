@@ -94,7 +94,7 @@ export const customMutator = async <
     body: data,
   });
 
-  if (!response.ok && isServerSide()) {
+  if (!response.ok) {
     const response_data = await getBody<any>(response);
     const errorMessage =
       response_data?.detail || response_data?.message || response.statusText;
