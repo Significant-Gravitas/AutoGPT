@@ -21,11 +21,7 @@ import {
   Node,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import {
-  deepEquals,
-  getTypeColor,
-  removeEmptyStringsAndNulls,
-} from "@/lib/utils";
+import { deepEquals, getTypeColor, pruneEmptyValues } from "@/lib/utils";
 import { MarkerType } from "@xyflow/react";
 import { default as NextLink } from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -598,7 +594,10 @@ export default function useAgentGraph(
         return {};
       }
 
-      return rebuildObjectUsingSchema(blockSchema, node.data.hardcodedValues);
+      return rebuildObjectUsingSchema(
+        blockSchema,
+        pruneEmptyValues(node.data.hardcodedValues),
+      );
     },
     [availableBlocks],
   );
@@ -711,9 +710,6 @@ export default function useAgentGraph(
                 position,
                 data: {
                   ...frontendNode.data,
-                  hardcodedValues: removeEmptyStringsAndNulls(
-                    frontendNode.data.hardcodedValues,
-                  ),
                   // NOTE: we don't update `node.id` because it would also require
                   //  updating many references in other places. Instead, we keep the
                   //  backend node ID in `node.data.backend_id`.
