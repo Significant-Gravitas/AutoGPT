@@ -40,6 +40,7 @@ settings = Settings()
 # Create a dedicated Redis connection pool for caching (binary mode for pickle)
 _cache_pool: ConnectionPool | None = None
 
+
 @conn_retry("Redis", "Acquiring cache connection pool")
 def _get_cache_pool() -> ConnectionPool:
     """Get or create a connection pool for cache operations."""
@@ -62,7 +63,9 @@ def _get_redis_client() -> Redis:
     """Get a Redis client from the connection pool."""
     return Redis(connection_pool=_get_cache_pool())
 
+
 redis = _get_redis_client()
+
 
 @dataclass
 class CachedValue:
@@ -333,7 +336,9 @@ def cached(
             if shared_cache:
                 if pattern:
                     # Clear entries matching pattern
-                    keys = list(redis.scan_iter(f"cache:{target_func.__name__}:{pattern}"))
+                    keys = list(
+                        redis.scan_iter(f"cache:{target_func.__name__}:{pattern}")
+                    )
                 else:
                     # Clear all cache keys
                     keys = list(redis.scan_iter(f"cache:{target_func.__name__}:*"))
