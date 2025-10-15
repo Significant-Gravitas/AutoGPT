@@ -1,5 +1,7 @@
-from typing import List, TypedDict
+from typing import List
 from urllib.parse import quote
+
+from typing_extensions import TypedDict
 
 from backend.blocks.jina._auth import (
     JinaCredentials,
