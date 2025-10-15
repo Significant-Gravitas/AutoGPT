@@ -15,8 +15,6 @@ export const filterCredentialsByProvider = (
   credentials: CredentialsMetaResponse[] | undefined,
   provider: string,
 ) => {
-  console.log("provider", provider);
-  console.log("credentials", credentials);
   const filtered =
     credentials?.filter((credential) => provider === credential.provider) ?? [];
   return {
@@ -129,7 +127,6 @@ export const getCredentialProviderFromSchema = (
       );
       return null;
     }
-    console.log("discriminatedProvider", discriminatedProvider);
     return discriminatedProvider;
   } else {
     return providers[0];
