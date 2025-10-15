@@ -8,7 +8,7 @@ import { GraphExecutionID } from "@/lib/autogpt-server-api";
 // import { ControlPanelButton } from "../ControlPanelButton";
 import { ArrowUUpLeftIcon, ArrowUUpRightIcon } from "@phosphor-icons/react";
 // import { GraphSearchMenu } from "../GraphMenu/GraphMenu";
-import { CustomNode } from "../FlowEditor/nodes/CustomNode";
+import { CustomNode } from "../../FlowEditor/nodes/CustomNode/CustomNode";
 import { history } from "@/app/(platform)/build/components/legacy-builder/history";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { Separator } from "@/components/__legacy__/ui/separator";
