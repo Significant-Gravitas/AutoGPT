@@ -479,16 +479,18 @@ async def get_graph_executions(
 
 
 async def get_graph_executions_count(
-    user_id: str,
+    user_id: Optional[str] = None,
+    graph_id: Optional[str] = None,
     statuses: Optional[list[ExecutionStatus]] = None,
     created_time_gte: Optional[datetime] = None,
     created_time_lte: Optional[datetime] = None,
 ) -> int:
     """
-    Get count of graph executions for a user with optional filters.
+    Get count of graph executions with optional filters.
 
     Args:
-        user_id: The user ID to filter by
+        user_id: Optional user ID to filter by
+        graph_id: Optional graph ID to filter by
         statuses: Optional list of execution statuses to filter by
         created_time_gte: Optional minimum creation time
         created_time_lte: Optional maximum creation time
@@ -498,8 +500,13 @@ async def get_graph_executions_count(
     """
     where_filter: AgentGraphExecutionWhereInput = {
         "isDeleted": False,
-        "userId": user_id,
     }
+
+    if user_id:
+        where_filter["userId"] = user_id
+
+    if graph_id:
+        where_filter["agentGraphId"] = graph_id
 
     if created_time_gte or created_time_lte:
         where_filter["createdAt"] = {
