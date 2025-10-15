@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
 
+import sentry_sdk
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
 from prometheus_client import Gauge, start_http_server
@@ -224,6 +225,25 @@ async def execute_node(
         extra_exec_kwargs[field_name] = credentials
 
     output_size = 0
+
+    # sentry tracking nonsense to get user counts for blocks because isolation scopes don't work :(
+    scope = sentry_sdk.get_current_scope()
+
+    # save the tags
+    original_user = scope._user
+    original_tags = dict(scope._tags) if scope._tags else {}
+    # Set user ID for error tracking
+    scope.set_user({"id": user_id})
+
+    scope.set_tag("graph_id", graph_id)
+    scope.set_tag("node_id", node_id)
+    scope.set_tag("block_name", node_block.name)
+    scope.set_tag("block_id", node_block.id)
+    scope.set_tag("node_exec_id", node_exec_id)
+    scope.set_tag("graph_exec_id", graph_exec_id)
+    for k, v in (data.user_context or {}).model_dump().items():
+        scope.set_tag(f"user_context.{k}", v)
+
     try:
         async for output_name, output_data in node_block.execute(
             input_data, **extra_exec_kwargs
@@ -232,6 +252,12 @@ async def execute_node(
             output_size += len(json.dumps(output_data))
             log_metadata.debug("Node produced output", **{output_name: output_data})
             yield output_name, output_data
+    except Exception:
+        # Capture exception WITH context still set before restoring scope
+        sentry_sdk.capture_exception(scope=scope)
+        sentry_sdk.flush()  # Ensure it's sent before we restore scope
+        # Re-raise to maintain normal error flow
+        raise
     finally:
         # Ensure credentials are released even if execution fails
         if creds_lock and (await creds_lock.locked()) and (await creds_lock.owned()):
@@ -245,6 +271,10 @@ async def execute_node(
             execution_stats += node_block.execution_stats
             execution_stats.input_size = input_size
             execution_stats.output_size = output_size
+
+        # Restore scope AFTER error has been captured
+        scope._user = original_user
+        scope._tags = original_tags
 
 
 async def _enqueue_next_nodes(
@@ -570,7 +600,6 @@ class ExecutionProcessor:
                 await persist_output(
                     "error", str(stats.error) or type(stats.error).__name__
                 )
-
         return status
 
     @func_retry
