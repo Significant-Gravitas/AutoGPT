@@ -9,8 +9,8 @@
     "/api/integrations/{provider}/login": {
       "get": {
         "tags": ["v1", "integrations"],
-        "summary": "Login",
-        "operationId": "getV1Login",
+        "summary": "Initiate OAuth flow",
+        "operationId": "getV1Initiate oauth flow",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -60,8 +60,8 @@
     "/api/integrations/{provider}/callback": {
       "post": {
         "tags": ["v1", "integrations"],
-        "summary": "Callback",
-        "operationId": "postV1Callback",
+        "summary": "Exchange OAuth code for tokens",
+        "operationId": "postV1Exchange oauth code for tokens",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -79,7 +79,9 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/Body_postV1Callback" }
+              "schema": {
+                "$ref": "#/components/schemas/Body_postV1Exchange_oauth_code_for_tokens"
+              }
             }
           }
         },
@@ -2551,7 +2553,7 @@
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "List store agents",
-        "description": "Get a paginated list of agents from the store with optional filtering and sorting.\nResults are cached for 15 minutes.\n\nArgs:\n    featured (bool, optional): Filter to only show featured agents. Defaults to False.\n    creator (str | None, optional): Filter agents by creator username. Defaults to None.\n    sorted_by (str | None, optional): Sort agents by \"runs\" or \"rating\". Defaults to None.\n    search_query (str | None, optional): Search agents by name, subheading and description. Defaults to None.\n    category (str | None, optional): Filter agents by category. Defaults to None.\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of agents per page. Defaults to 20.\n\nReturns:\n    StoreAgentsResponse: Paginated list of agents matching the filters\n\nRaises:\n    HTTPException: If page or page_size are less than 1\n\nUsed for:\n- Home Page Featured Agents\n- Home Page Top Agents\n- Search Results\n- Agent Details - Other Agents By Creator\n- Agent Details - Similar Agents\n- Creator Details - Agents By Creator",
+        "description": "Get a paginated list of agents from the store with optional filtering and sorting.\n\nArgs:\n    featured (bool, optional): Filter to only show featured agents. Defaults to False.\n    creator (str | None, optional): Filter agents by creator username. Defaults to None.\n    sorted_by (str | None, optional): Sort agents by \"runs\" or \"rating\". Defaults to None.\n    search_query (str | None, optional): Search agents by name, subheading and description. Defaults to None.\n    category (str | None, optional): Filter agents by category. Defaults to None.\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of agents per page. Defaults to 20.\n\nReturns:\n    StoreAgentsResponse: Paginated list of agents matching the filters\n\nRaises:\n    HTTPException: If page or page_size are less than 1\n\nUsed for:\n- Home Page Featured Agents\n- Home Page Top Agents\n- Search Results\n- Agent Details - Other Agents By Creator\n- Agent Details - Similar Agents\n- Creator Details - Agents By Creator",
         "operationId": "getV2List store agents",
         "parameters": [
           {
@@ -2637,7 +2639,7 @@
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "Get specific agent",
-        "description": "This is only used on the AgentDetails Page.\nResults are cached for 15 minutes.\n\nIt returns the store listing agents details.",
+        "description": "This is only used on the AgentDetails Page.\n\nIt returns the store listing agents details.",
         "operationId": "getV2Get specific agent",
         "parameters": [
           {
@@ -2677,7 +2679,7 @@
       "get": {
         "tags": ["v2", "store"],
         "summary": "Get agent graph",
-        "description": "Get Agent Graph from Store Listing Version ID.\nResults are cached for 1 hour.",
+        "description": "Get Agent Graph from Store Listing Version ID.",
         "operationId": "getV2Get agent graph",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -2711,7 +2713,7 @@
       "get": {
         "tags": ["v2", "store"],
         "summary": "Get agent by version",
-        "description": "Get Store Agent Details from Store Listing Version ID.\nResults are cached for 1 hour.",
+        "description": "Get Store Agent Details from Store Listing Version ID.",
         "operationId": "getV2Get agent by version",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -2801,7 +2803,7 @@
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "List store creators",
-        "description": "This is needed for:\n- Home Page Featured Creators\n- Search Results Page\n\nResults are cached for 1 hour.\n\n---\n\nTo support this functionality we need:\n- featured: bool - to limit the list to just featured agents\n- search_query: str - vector search based on the creators profile description.\n- sorted_by: [agent_rating, agent_runs] -",
+        "description": "This is needed for:\n- Home Page Featured Creators\n- Search Results Page\n\n---\n\nTo support this functionality we need:\n- featured: bool - to limit the list to just featured agents\n- search_query: str - vector search based on the creators profile description.\n- sorted_by: [agent_rating, agent_runs] -",
         "operationId": "getV2List store creators",
         "parameters": [
           {
@@ -2869,7 +2871,7 @@
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "Get creator details",
-        "description": "Get the details of a creator.\nResults are cached for 1 hour.\n- Creator Details Page",
+        "description": "Get the details of a creator.\n- Creator Details Page",
         "operationId": "getV2Get creator details",
         "parameters": [
           {
@@ -2903,7 +2905,7 @@
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Get my agents",
-        "description": "Get user's own agents.\nResults are cached for 5 minutes per user.",
+        "description": "Get user's own agents.",
         "operationId": "getV2Get my agents",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -2998,7 +3000,7 @@
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "List my submissions",
-        "description": "Get a paginated list of store submissions for the authenticated user.\nResults are cached for 1 hour per user.\n\nArgs:\n    user_id (str): ID of the authenticated user\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of submissions per page. Defaults to 20.\n\nReturns:\n    StoreListingsResponse: Paginated list of store submissions\n\nRaises:\n    HTTPException: If page or page_size are less than 1",
+        "description": "Get a paginated list of store submissions for the authenticated user.\n\nArgs:\n    user_id (str): ID of the authenticated user\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of submissions per page. Defaults to 20.\n\nReturns:\n    StoreListingsResponse: Paginated list of store submissions\n\nRaises:\n    HTTPException: If page or page_size are less than 1",
         "operationId": "getV2List my submissions",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -3398,6 +3400,52 @@
         }
       }
     },
+    "/api/builder/blocks/batch": {
+      "get": {
+        "tags": ["v2"],
+        "summary": "Get specific blocks",
+        "description": "Get specific blocks by their IDs.",
+        "operationId": "getV2Get specific blocks",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "block_ids",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "array",
+              "items": { "type": "string" },
+              "title": "Block Ids"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/BlockInfo" },
+                  "title": "Response Getv2Get Specific Blocks"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
     "/api/builder/providers": {
       "get": {
         "tags": ["v2"],
@@ -3443,19 +3491,68 @@
       }
     },
     "/api/builder/search": {
-      "post": {
+      "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Builder search",
         "description": "Search for blocks (including integrations), marketplace agents, and user library agents.",
-        "operationId": "postV2Builder search",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/SearchRequest" }
+        "operationId": "getV2Builder search",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "search_query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Search Query"
             }
           },
-          "required": true
-        },
+          {
+            "name": "filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "array", "items": { "type": "string" } },
+                { "type": "null" }
+              ],
+              "title": "Filter"
+            }
+          },
+          {
+            "name": "search_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Search Id"
+            }
+          },
+          {
+            "name": "by_creator",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "array", "items": { "type": "string" } },
+                { "type": "null" }
+              ],
+              "title": "By Creator"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 1, "title": "Page" }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 50, "title": "Page Size" }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -3476,8 +3573,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
       }
     },
     "/api/builder/counts": {
@@ -5062,7 +5158,7 @@
         "required": ["blocks", "pagination"],
         "title": "BlockResponse"
       },
-      "Body_postV1Callback": {
+      "Body_postV1Exchange_oauth_code_for_tokens": {
         "properties": {
           "code": {
             "type": "string",
@@ -5072,7 +5168,7 @@
         },
         "type": "object",
         "required": ["code", "state_token"],
-        "title": "Body_postV1Callback"
+        "title": "Body_postV1Exchange oauth code for tokens"
       },
       "Body_postV1Execute_graph_agent": {
         "properties": {
@@ -7341,53 +7437,6 @@
         "type": "object",
         "required": ["name", "cron", "inputs"],
         "title": "ScheduleCreationRequest"
-      },
-      "SearchRequest": {
-        "properties": {
-          "search_query": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Search Query"
-          },
-          "filter": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string",
-                  "enum": [
-                    "blocks",
-                    "integrations",
-                    "marketplace_agents",
-                    "my_agents"
-                  ]
-                },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Filter"
-          },
-          "by_creator": {
-            "anyOf": [
-              { "items": { "type": "string" }, "type": "array" },
-              { "type": "null" }
-            ],
-            "title": "By Creator"
-          },
-          "search_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Search Id"
-          },
-          "page": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Page"
-          },
-          "page_size": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Page Size"
-          }
-        },
-        "type": "object",
-        "title": "SearchRequest"
       },
       "SearchResponse": {
         "properties": {

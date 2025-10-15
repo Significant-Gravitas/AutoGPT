@@ -70,8 +70,7 @@ async def get_store_agents(
     logger.debug(
         f"Getting store agents. featured={featured}, creators={creators}, sorted_by={sorted_by}, search={search_query}, category={category}, page={page}"
     )
-    sanitized_query = sanitize_query(search_query)
-
+    search_term = sanitize_query(search_query)
     where_clause: prisma.types.StoreAgentWhereInput = {"is_available": True}
     if featured:
         where_clause["featured"] = featured
@@ -80,10 +79,10 @@ async def get_store_agents(
     if category:
         where_clause["categories"] = {"has": category}
 
-    if sanitized_query:
+    if search_term:
         where_clause["OR"] = [
-            {"agent_name": {"contains": sanitized_query, "mode": "insensitive"}},
-            {"description": {"contains": sanitized_query, "mode": "insensitive"}},
+            {"agent_name": {"contains": search_term, "mode": "insensitive"}},
+            {"description": {"contains": search_term, "mode": "insensitive"}},
         ]
 
     order_by = []
@@ -145,6 +144,24 @@ async def get_store_agents(
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to fetch store agents"
         ) from e
+    # TODO: commenting this out as we concerned about potential db load issues
+    # finally:
+    #     if search_term:
+    #         await log_search_term(search_query=search_term)
+
+
+async def log_search_term(search_query: str):
+    """Log a search term to the database"""
+
+    # Anonymize the data by preventing correlation with other logs
+    date = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    try:
+        await prisma.models.SearchTerms.prisma().create(
+            data={"searchTerm": search_query, "createdDate": date}
+        )
+    except Exception as e:
+        # Fail silently here so that logging search terms doesn't break the app
+        logger.error(f"Error logging search term: {e}")
 
 
 async def get_store_agent_details(
@@ -725,7 +742,21 @@ async def create_store_submission(
             store_listing_version_id=store_listing_version_id,
             changes_summary=changes_summary,
         )
-
+    except prisma.errors.UniqueViolationError as exc:
+        # Attempt to check if the error was due to the slug field being unique
+        error_str = str(exc)
+        if "slug" in error_str.lower():
+            logger.debug(
+                f"Slug '{slug}' is already in use by another agent (agent_id: {agent_id}) for user {user_id}"
+            )
+            raise backend.server.v2.store.exceptions.SlugAlreadyInUseError(
+                f"The URL slug '{slug}' is already in use by another one of your agents. Please choose a different slug."
+            ) from exc
+        else:
+            # Reraise as a generic database error for other unique violations
+            raise backend.server.v2.store.exceptions.DatabaseError(
+                f"Unique constraint violated (not slug): {error_str}"
+            ) from exc
     except (
         backend.server.v2.store.exceptions.AgentNotFoundError,
         backend.server.v2.store.exceptions.ListingExistsError,
@@ -1788,6 +1819,27 @@ async def get_admin_listings_with_versions(
                 page_size=page_size,
             ),
         )
+
+
+async def check_submission_already_approved(
+    store_listing_version_id: str,
+) -> bool:
+    """Check the submission status of a store listing version."""
+    try:
+        store_listing_version = (
+            await prisma.models.StoreListingVersion.prisma().find_unique(
+                where={"id": store_listing_version_id}
+            )
+        )
+        if not store_listing_version:
+            return False
+        return (
+            store_listing_version.submissionStatus
+            == prisma.enums.SubmissionStatus.APPROVED
+        )
+    except Exception as e:
+        logger.error(f"Error checking submission status: {e}")
+        return False
 
 
 async def get_agent_as_admin(

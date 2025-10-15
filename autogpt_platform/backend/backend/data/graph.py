@@ -129,17 +129,20 @@ class NodeModel(Node):
         Returns a copy of the node model, stripped of any non-transferable properties
         """
         stripped_node = self.model_copy(deep=True)
-        # Remove credentials from node input
+
+        # Remove credentials and other (possible) secrets from node input
         if stripped_node.input_default:
             stripped_node.input_default = NodeModel._filter_secrets_from_node_input(
                 stripped_node.input_default, self.block.input_schema.jsonschema()
             )
 
+        # Remove default secret value from secret input nodes
         if (
             stripped_node.block.block_type == BlockType.INPUT
+            and stripped_node.input_default.get("secret", False) is True
             and "value" in stripped_node.input_default
         ):
-            stripped_node.input_default["value"] = ""
+            del stripped_node.input_default["value"]
 
         # Remove webhook info
         stripped_node.webhook_id = None
@@ -156,8 +159,10 @@ class NodeModel(Node):
         result = {}
         for key, value in input_data.items():
             field_schema: dict | None = field_schemas.get(key)
-            if (field_schema and field_schema.get("secret", False)) or any(
-                sensitive_key in key.lower() for sensitive_key in sensitive_keys
+            if (field_schema and field_schema.get("secret", False)) or (
+                any(sensitive_key in key.lower() for sensitive_key in sensitive_keys)
+                # Prevent removing `secret` flag on input nodes
+                and type(value) is not bool
             ):
                 # This is a secret value -> filter this key-value pair out
                 continue

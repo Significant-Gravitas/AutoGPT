@@ -3,7 +3,10 @@ import { ChevronDown, Check, BadgeQuestionMark } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as party from "party-js";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
-import { Task, TaskGroup } from "@/components/__legacy__/Wallet";
+import {
+  Task,
+  TaskGroup,
+} from "@/app/(no-navbar)/onboarding/components/Wallet/Wallet";
 
 interface Props {
   groups: TaskGroup[];

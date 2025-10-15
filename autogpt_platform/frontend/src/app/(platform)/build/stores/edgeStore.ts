@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { convertConnectionsToBackendLinks } from "../components/FlowEditor/edges/helpers";
+import { Link } from "@/app/api/__generated__/models/link";
 
 export type Connection = {
   edge_id: string;
@@ -22,6 +23,9 @@ type EdgeStore = {
   getNodeConnections: (nodeId: string) => Connection[];
   isInputConnected: (nodeId: string, handle: string) => boolean;
   isOutputConnected: (nodeId: string, handle: string) => boolean;
+  addLinks: (links: Link[]) => void;
+
+  getAllHandleIdsOfANode: (nodeId: string) => string[];
 };
 
 function makeEdgeId(conn: Omit<Connection, "edge_id">) {
@@ -79,4 +83,20 @@ export const useEdgeStore = create<EdgeStore>((set, get) => ({
       (c) => c.source === nodeId && c.sourceHandle === handle,
     ),
   getBackendLinks: () => convertConnectionsToBackendLinks(get().connections),
+
+  addLinks: (links) =>
+    links.forEach((link) => {
+      get().addConnection({
+        edge_id: link.id ?? "",
+        source: link.source_id,
+        target: link.sink_id,
+        sourceHandle: link.source_name,
+        targetHandle: link.sink_name,
+      });
+    }),
+
+  getAllHandleIdsOfANode: (nodeId) =>
+    get()
+      .connections.filter((c) => c.target === nodeId)
+      .map((c) => c.targetHandle),
 }));

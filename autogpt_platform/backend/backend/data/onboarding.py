@@ -11,7 +11,6 @@ from prisma.types import UserOnboardingCreateInput, UserOnboardingUpdateInput
 
 from backend.data.block import get_blocks
 from backend.data.credit import get_user_credit_model
-from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
 from backend.server.v2.store.model import StoreAgentDetails
 from backend.util.json import SafeJson
@@ -278,8 +277,14 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
         for word in user_onboarding.integrations
     ]
 
+    where_clause["is_available"] = True
+
+    # Try to take only agents that are available and allowed for onboarding
     storeAgents = await prisma.models.StoreAgent.prisma().find_many(
-        where=prisma.types.StoreAgentWhereInput(**where_clause),
+        where={
+            "is_available": True,
+            "useForOnboarding": True,
+        },
         order=[
             {"featured": "desc"},
             {"runs": "desc"},
@@ -288,59 +293,16 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
         take=100,
     )
 
-    agentListings = await prisma.models.StoreListingVersion.prisma().find_many(
-        where={
-            "id": {"in": [agent.storeListingVersionId for agent in storeAgents]},
-        },
-        include={"AgentGraph": True},
-    )
-
-    for listing in agentListings:
-        agent = listing.AgentGraph
-        if agent is None:
-            continue
-        graph = GraphModel.from_db(agent)
-        # Remove agents with empty input schema
-        if not graph.input_schema:
-            storeAgents = [
-                a for a in storeAgents if a.storeListingVersionId != listing.id
-            ]
-            continue
-
-        # Remove agents with empty credentials
-        # Get nodes from this agent that have credentials
-        nodes = await prisma.models.AgentNode.prisma().find_many(
-            where={
-                "agentGraphId": agent.id,
-                "agentBlockId": {"in": list(CREDENTIALS_FIELDS.keys())},
-            },
-        )
-        for node in nodes:
-            block_id = node.agentBlockId
-            field_name = CREDENTIALS_FIELDS[block_id]
-            # If there are no credentials or they are empty, remove the agent
-            # FIXME ignores default values
-            if (
-                field_name not in node.constantInput
-                or node.constantInput[field_name] is None
-            ):
-                storeAgents = [
-                    a for a in storeAgents if a.storeListingVersionId != listing.id
-                ]
-                break
-
-    # If there are less than 2 agents, add more agents to the list
+    # If not enough agents found, relax the useForOnboarding filter
     if len(storeAgents) < 2:
-        storeAgents += await prisma.models.StoreAgent.prisma().find_many(
-            where={
-                "listing_id": {"not_in": [agent.listing_id for agent in storeAgents]},
-            },
+        storeAgents = await prisma.models.StoreAgent.prisma().find_many(
+            where=prisma.types.StoreAgentWhereInput(**where_clause),
             order=[
                 {"featured": "desc"},
                 {"runs": "desc"},
                 {"rating": "desc"},
             ],
-            take=2 - len(storeAgents),
+            take=100,
         )
 
     # Calculate points for the first X agents and choose the top 2

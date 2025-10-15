@@ -14,6 +14,13 @@ from .type import type_match
 # Removes \u0000-\u0008, \u000B-\u000C, \u000E-\u001F, \u007F (keeps tab \u0009, newline \u000A, carriage return \u000D)
 POSTGRES_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]")
 
+# Comprehensive regex to remove all PostgreSQL-incompatible control character sequences in JSON
+# Handles both Unicode escapes (\\u0000-\\u0008, \\u000B-\\u000C, \\u000E-\\u001F, \\u007F)
+# and JSON single-char escapes (\\b, \\f) while preserving legitimate file paths
+POSTGRES_JSON_ESCAPES = re.compile(
+    r"\\u000[0-8]|\\u000[bB]|\\u000[cC]|\\u00[0-1][0-9a-fA-F]|\\u007[fF]|(?<!\\)\\[bf](?!\\)"
+)
+
 
 def to_dict(data) -> dict:
     if isinstance(data, BaseModel):
@@ -137,6 +144,10 @@ def SafeJson(data: Any) -> Json:
     else:
         json_string = dumps(data, default=lambda v: None)
 
-    # Remove PostgreSQL-incompatible control characters in single regex operation
-    sanitized_json = POSTGRES_CONTROL_CHARS.sub("", json_string)
+    # Remove PostgreSQL-incompatible control characters in JSON string
+    # Single comprehensive regex handles all control character sequences
+    sanitized_json = POSTGRES_JSON_ESCAPES.sub("", json_string)
+
+    # Remove any remaining raw control characters (fallback safety net)
+    sanitized_json = POSTGRES_CONTROL_CHARS.sub("", sanitized_json)
     return Json(json.loads(sanitized_json))
