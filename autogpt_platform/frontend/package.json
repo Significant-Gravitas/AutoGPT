@@ -146,7 +146,8 @@
     "require-in-the-middle": "7.5.2",
     "storybook": "9.1.5",
     "tailwindcss": "3.4.17",
-    "typescript": "5.9.2"
+    "typescript": "5.9.2",
+    "@types/google.picker": "0.0.52"
   },
   "msw": {
     "workerDirectory": [
