@@ -1,4 +1,7 @@
+from typing import List
 from urllib.parse import quote
+
+from typing_extensions import TypedDict
 
 from backend.blocks.jina._auth import (
     JinaCredentials,
@@ -8,6 +11,12 @@ from backend.blocks.jina._auth import (
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 from backend.util.request import Requests
+
+
+class Reference(TypedDict):
+    url: str
+    keyQuote: str
+    isSupportive: bool
 
 
 class FactCheckerBlock(Block):
@@ -23,6 +32,10 @@ class FactCheckerBlock(Block):
         )
         result: bool = SchemaField(description="The result of the factuality check")
         reason: str = SchemaField(description="The reason for the factuality result")
+        references: List[Reference] = SchemaField(
+            description="List of references supporting or contradicting the statement",
+            default=[],
+        )
         error: str = SchemaField(description="Error message if the check fails")
 
     def __init__(self):
@@ -53,5 +66,11 @@ class FactCheckerBlock(Block):
             yield "factuality", data["factuality"]
             yield "result", data["result"]
             yield "reason", data["reason"]
+
+            # Yield references if present in the response
+            if "references" in data:
+                yield "references", data["references"]
+            else:
+                yield "references", []
         else:
             raise RuntimeError(f"Expected 'data' key not found in response: {data}")
