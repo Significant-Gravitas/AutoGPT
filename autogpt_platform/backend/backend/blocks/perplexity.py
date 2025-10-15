@@ -1,7 +1,7 @@
 # flake8: noqa: E501
 import logging
 from enum import Enum
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 import openai
 from pydantic import SecretStr
@@ -15,7 +15,6 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
-from backend.util import json
 from backend.util.logging import TruncatedLogger
 
 logger = TruncatedLogger(logging.getLogger(__name__), "[Perplexity-Block]")
@@ -23,6 +22,7 @@ logger = TruncatedLogger(logging.getLogger(__name__), "[Perplexity-Block]")
 
 class PerplexityModel(str, Enum):
     """Perplexity sonar models available via OpenRouter"""
+
     SONAR = "perplexity/sonar"
     SONAR_PRO = "perplexity/sonar-pro"
     SONAR_DEEP_RESEARCH = "perplexity/sonar-deep-research"
@@ -85,9 +85,7 @@ class PerplexityBlock(Block):
         annotations: list[dict[str, Any]] = SchemaField(
             description="List of URL citations and annotations from the response."
         )
-        error: str = SchemaField(
-            description="Error message if the API call failed."
-        )
+        error: str = SchemaField(description="Error message if the API call failed.")
 
     def __init__(self):
         super().__init__(
@@ -114,10 +112,10 @@ class PerplexityBlock(Block):
                             "type": "url_citation",
                             "url_citation": {
                                 "title": "weather.com",
-                                "url": "https://weather.com"
-                            }
+                                "url": "https://weather.com",
+                            },
                         }
-                    ]
+                    ],
                 }
             },
         )
@@ -161,45 +159,44 @@ class PerplexityBlock(Block):
 
             # Extract annotations if present in the message
             annotations = []
-            if hasattr(response.choices[0].message, 'annotations'):
+            if hasattr(response.choices[0].message, "annotations"):
                 # If annotations are directly available
                 annotations = response.choices[0].message.annotations
-            elif hasattr(response.choices[0].message, '_raw_response'):
+            elif hasattr(response.choices[0].message, "_raw_response"):
                 # Check if there's a raw response with annotations
                 raw = response.choices[0].message._raw_response
-                if isinstance(raw, dict) and 'annotations' in raw:
-                    annotations = raw['annotations']
-            elif hasattr(response, 'model_extra'):
+                if isinstance(raw, dict) and "annotations" in raw:
+                    annotations = raw["annotations"]
+            elif hasattr(response, "model_extra"):
                 # Check model_extra for annotations
                 model_extra = response.model_extra
                 if isinstance(model_extra, dict):
                     # Check in choices
-                    if 'choices' in model_extra and len(model_extra['choices']) > 0:
-                        choice = model_extra['choices'][0]
-                        if 'message' in choice and 'annotations' in choice['message']:
-                            annotations = choice['message']['annotations']
+                    if "choices" in model_extra and len(model_extra["choices"]) > 0:
+                        choice = model_extra["choices"][0]
+                        if "message" in choice and "annotations" in choice["message"]:
+                            annotations = choice["message"]["annotations"]
 
             # Also check the raw response object for annotations
-            if not annotations and hasattr(response, '_raw_response'):
+            if not annotations and hasattr(response, "_raw_response"):
                 raw = response._raw_response
                 if isinstance(raw, dict):
                     # Check various possible locations for annotations
-                    if 'annotations' in raw:
-                        annotations = raw['annotations']
-                    elif 'choices' in raw and len(raw['choices']) > 0:
-                        choice = raw['choices'][0]
-                        if 'message' in choice and 'annotations' in choice['message']:
-                            annotations = choice['message']['annotations']
+                    if "annotations" in raw:
+                        annotations = raw["annotations"]
+                    elif "choices" in raw and len(raw["choices"]) > 0:
+                        choice = raw["choices"][0]
+                        if "message" in choice and "annotations" in choice["message"]:
+                            annotations = choice["message"]["annotations"]
 
             # Update execution stats
             if response.usage:
                 self.execution_stats.input_token_count = response.usage.prompt_tokens
-                self.execution_stats.output_token_count = response.usage.completion_tokens
+                self.execution_stats.output_token_count = (
+                    response.usage.completion_tokens
+                )
 
-            return {
-                "response": response_content,
-                "annotations": annotations or []
-            }
+            return {"response": response_content, "annotations": annotations or []}
 
         except Exception as e:
             logger.error(f"Error calling Perplexity: {e}")
