@@ -239,7 +239,7 @@ async def execute_node(
     scope.set_tag("node_id", node_id)
     scope.set_tag("block_name", node_block.name)
     scope.set_tag("block_id", node_block.id)
-    for k, v in (data.user_context or {}).model_dump().items():
+    for k, v in (data.user_context or UserContext(timezone="UTC")).model_dump().items():
         scope.set_tag(f"user_context.{k}", v)
 
     try:
