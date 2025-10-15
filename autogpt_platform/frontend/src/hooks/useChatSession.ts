@@ -35,29 +35,25 @@ export function useChatSession(
     urlSessionIdRef.current = urlSessionId;
   }, [urlSessionId]);
 
+  const createSession = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
 
-  const createSession = useCallback(
-    async () => {
-      setIsLoading(true);
-      setError(null);
+    try {
+      const newSession = await chatAPI.createSession({});
 
-      try {
-        const newSession = await chatAPI.createSession({});
+      setSession(newSession);
+      setMessages(newSession.messages || []);
 
-        setSession(newSession);
-        setMessages(newSession.messages || []);
-
-        // Store session ID in localStorage
-        localStorage.setItem("chat_session_id", newSession.id);
-      } catch (err) {
-        setError(err as Error);
-        console.error("Failed to create chat session:", err);
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [chatAPI],
-  );
+      // Store session ID in localStorage
+      localStorage.setItem("chat_session_id", newSession.id);
+    } catch (err) {
+      setError(err as Error);
+      console.error("Failed to create chat session:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [chatAPI]);
 
   const loadSession = useCallback(
     async (sessionId: string, retryOnFailure = true) => {

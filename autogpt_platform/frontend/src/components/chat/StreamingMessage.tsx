@@ -41,17 +41,17 @@ export function StreamingMessage({
   const isAssistant = role === "ASSISTANT";
   const isSystem = role === "SYSTEM";
   const isTool = role === "TOOL";
-  
+
   // Helper function to parse text with ** markers for bold
   const parseTextWithBold = (text: string): React.ReactNode[] => {
     const parts: React.ReactNode[] = [];
     let currentIndex = 0;
     let isInBold = false;
     let boldStartIndex = -1;
-    
+
     while (currentIndex < text.length) {
-      const nextMarkerIndex = text.indexOf('**', currentIndex);
-      
+      const nextMarkerIndex = text.indexOf("**", currentIndex);
+
       if (nextMarkerIndex === -1) {
         // No more markers, add the rest of the text
         if (isInBold && boldStartIndex !== -1) {
@@ -62,7 +62,7 @@ export function StreamingMessage({
         }
         break;
       }
-      
+
       if (isInBold) {
         // This is a closing marker
         const boldText = text.substring(currentIndex, nextMarkerIndex);
@@ -81,7 +81,7 @@ export function StreamingMessage({
         currentIndex = nextMarkerIndex + 2;
       }
     }
-    
+
     return parts;
   };
 
@@ -208,16 +208,25 @@ export function StreamingMessage({
               agentInfo={{
                 id: credentialsData.agent_id || credentialsData.agent?.id,
                 name: credentialsData.agent_name || credentialsData.agent?.name,
-                graph_id: credentialsData.graph_id || credentialsData.agent?.graph_id,
+                graph_id:
+                  credentialsData.graph_id || credentialsData.agent?.graph_id,
               }}
-              credentialsSchema={credentialsData.credentials_schema || credentialsData.credentials || {}}
-              onCredentialsSubmit={async (credentials) => {
+              credentialsSchema={
+                credentialsData.credentials_schema ||
+                credentialsData.credentials ||
+                {}
+              }
+              onCredentialsSubmit={async (_credentials) => {
                 // After credentials are set up, retry the agent setup
-                const agentInfo = credentialsData.agent_info || credentialsData.agent;
+                const agentInfo =
+                  credentialsData.agent_info || credentialsData.agent;
                 if (agentInfo && onSelectAgent) {
                   // Send a message to retry setting up the agent now that credentials are configured
                   const message = `The credentials have been configured. Now set up the agent "${agentInfo.name || agentInfo.agent_id}" (ID: ${agentInfo.graph_id || agentInfo.agent_id})`;
-                  console.log("Retrying agent setup after credentials:", message);
+                  console.log(
+                    "Retrying agent setup after credentials:",
+                    message,
+                  );
                   // Trigger the onSelectAgent callback which should send the appropriate message
                   onSelectAgent(agentInfo);
                 }

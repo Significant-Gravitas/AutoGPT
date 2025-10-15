@@ -163,16 +163,16 @@ async function handler(
   const contentType = req.headers.get("Content-Type");
 
   // Special handling for SSE streaming endpoints
-  const isStreamingEndpoint = path.some(segment => segment === "stream");
+  const isStreamingEndpoint = path.some((segment) => segment === "stream");
   if (isStreamingEndpoint && method === "GET") {
     try {
       const token = await getServerAuthToken();
       const headers: HeadersInit = {};
-      
+
       if (token && token !== "no-token-found") {
         headers["Authorization"] = `Bearer ${token}`;
       }
-      
+
       // Forward the request to the backend
       const response = await fetch(backendUrl, {
         method: "GET",
@@ -183,7 +183,7 @@ async function handler(
         const error = await response.text();
         return NextResponse.json(
           { error: `Failed to stream: ${error}` },
-          { status: response.status }
+          { status: response.status },
         );
       }
 
@@ -192,7 +192,7 @@ async function handler(
       if (!stream) {
         return NextResponse.json(
           { error: "No stream available" },
-          { status: 502 }
+          { status: 502 },
         );
       }
 
@@ -202,7 +202,7 @@ async function handler(
         headers: {
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache",
-          "Connection": "keep-alive",
+          Connection: "keep-alive",
         },
       });
     } catch (error) {

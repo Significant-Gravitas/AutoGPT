@@ -61,7 +61,9 @@ export function AgentCarousel({
     if (!isAutoScrolling || uniqueAgents.length <= 3) return;
 
     const timer = setInterval(() => {
-      setCurrentIndex((prev) => (prev + 1) % Math.max(1, uniqueAgents.length - 2));
+      setCurrentIndex(
+        (prev) => (prev + 1) % Math.max(1, uniqueAgents.length - 2),
+      );
     }, 5000);
 
     return () => clearInterval(timer);

@@ -121,15 +121,12 @@ export class ChatAPI {
     const headers: HeadersInit = {
       "Content-Type": "application/json",
     };
-    
-    const response = await fetch(
-      `/api/proxy/api/v2/chat/sessions`,
-      {
-        method: "POST",
-        headers,
-        body: JSON.stringify(request || {}),
-      },
-    );
+
+    const response = await fetch(`/api/proxy/api/v2/chat/sessions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(request || {}),
+    });
 
     if (!response.ok) {
       const error = await response.text();
@@ -207,13 +204,10 @@ export class ChatAPI {
       include_last_message: includeLastMessage.toString(),
     });
 
-    const response = await fetch(
-      `/api/proxy/api/v2/chat/sessions?${params}`,
-      {
-        method: "GET",
-        headers,
-      },
-    );
+    const response = await fetch(`/api/proxy/api/v2/chat/sessions?${params}`, {
+      method: "GET",
+      headers,
+    });
 
     if (!response.ok) {
       const error = await response.text();
@@ -292,7 +286,7 @@ export class ChatAPI {
       // Use the proxy endpoint for authentication
       // The proxy will handle adding the auth token from the server session
       const proxyUrl = `/api/proxy/api/v2/chat/sessions/${sessionId}/stream?${params}`;
-      
+
       const response = await fetch(proxyUrl, {
         method: "GET",
         // No need to set headers here - the proxy handles authentication

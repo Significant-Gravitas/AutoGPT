@@ -2,7 +2,14 @@
 
 import React from "react";
 import { Button } from "@/components/atoms/Button/Button";
-import { Play, ExternalLink, Clock, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import {
+  Play,
+  ExternalLink,
+  Clock,
+  CheckCircle,
+  XCircle,
+  Loader2,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 
@@ -167,7 +174,8 @@ export function AgentRunCard({
         {timeoutReached && (
           <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/50">
             <p className="text-sm text-amber-700 dark:text-amber-300">
-              <strong>Note:</strong> Execution timed out after 30 seconds. The agent may still be running in the background.
+              <strong>Note:</strong> Execution timed out after 30 seconds. The
+              agent may still be running in the background.
             </p>
           </div>
         )}
@@ -175,7 +183,10 @@ export function AgentRunCard({
         {/* Status Bar */}
         <div className="flex items-center justify-between text-xs">
           <span className="font-medium text-neutral-600 dark:text-neutral-400">
-            Status: <span className="text-neutral-900 dark:text-neutral-100">{status}</span>
+            Status:{" "}
+            <span className="text-neutral-900 dark:text-neutral-100">
+              {status}
+            </span>
           </span>
           {endedAt && (
             <span className="text-neutral-500 dark:text-neutral-500">

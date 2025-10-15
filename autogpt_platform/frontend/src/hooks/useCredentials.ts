@@ -55,19 +55,21 @@ export default function useCredentials(
     : null;
 
   let providerName: CredentialsProviderName;
-  
+
   // Handle cases where credentials_provider might be undefined or not an array
-  const credentialsProviders = Array.isArray(credsInputSchema.credentials_provider) 
-    ? credsInputSchema.credentials_provider 
-    : credsInputSchema.credentials_provider 
+  const credentialsProviders = Array.isArray(
+    credsInputSchema.credentials_provider,
+  )
+    ? credsInputSchema.credentials_provider
+    : credsInputSchema.credentials_provider
       ? [credsInputSchema.credentials_provider]
       : [];
-  
+
   if (credentialsProviders.length === 0) {
     console.warn("No credentials provider specified in schema");
     return null;
   }
-  
+
   if (credentialsProviders.length > 1) {
     if (!credsInputSchema.discriminator) {
       throw new Error(

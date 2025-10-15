@@ -5,7 +5,10 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Key, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
-import { BlockIOCredentialsSubSchema, CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
+import {
+  BlockIOCredentialsSubSchema,
+  CredentialsMetaInput,
+} from "@/lib/autogpt-server-api/types";
 
 interface CredentialsSetupWidgetProps {
   agentInfo: {
@@ -14,26 +17,12 @@ interface CredentialsSetupWidgetProps {
     graph_id?: string;
   };
   credentialsSchema: any; // This will be the credentials_input_schema from the agent
-  onCredentialsSubmit?: (credentials: Record<string, CredentialsMetaInput>) => void;
+  onCredentialsSubmit?: (
+    credentials: Record<string, CredentialsMetaInput>,
+  ) => void;
   onSkip?: () => void;
   className?: string;
 }
-
-const PROVIDER_INFO: Record<
-  string,
-  { name: string; icon?: string; color: string }
-> = {
-  github: { name: "GitHub", color: "bg-gray-800" },
-  google: { name: "Google", color: "bg-blue-500" },
-  slack: { name: "Slack", color: "bg-purple-600" },
-  notion: { name: "Notion", color: "bg-black" },
-  discord: { name: "Discord", color: "bg-indigo-600" },
-  openai: { name: "OpenAI", color: "bg-green-600" },
-  anthropic: { name: "Anthropic", color: "bg-orange-600" },
-  twitter: { name: "Twitter", color: "bg-sky-500" },
-  linkedin: { name: "LinkedIn", color: "bg-blue-700" },
-  default: { name: "API Key", color: "bg-neutral-600" },
-};
 
 export function CredentialsSetupWidget({
   agentInfo,
@@ -42,21 +31,29 @@ export function CredentialsSetupWidget({
   onSkip,
   className,
 }: CredentialsSetupWidgetProps) {
-  const [selectedCredentials, setSelectedCredentials] = useState<Record<string, CredentialsMetaInput>>({});
+  const [selectedCredentials, setSelectedCredentials] = useState<
+    Record<string, CredentialsMetaInput>
+  >({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Parse the credentials schema to extract individual credential requirements
   // Handle both nested (with properties) and flat schema structures
-  const schemaProperties = credentialsSchema?.properties || credentialsSchema || {};
+  const schemaProperties =
+    credentialsSchema?.properties || credentialsSchema || {};
   const credentialKeys = Object.keys(schemaProperties);
-  const allCredentialsSelected = credentialKeys.every(key => selectedCredentials[key]);
+  const allCredentialsSelected = credentialKeys.every(
+    (key) => selectedCredentials[key],
+  );
 
-  const handleCredentialSelect = (key: string, credential?: CredentialsMetaInput) => {
+  const handleCredentialSelect = (
+    key: string,
+    credential?: CredentialsMetaInput,
+  ) => {
     if (credential) {
-      setSelectedCredentials(prev => ({
+      setSelectedCredentials((prev) => ({
         ...prev,
-        [key]: credential
+        [key]: credential,
       }));
       setError(null);
     }
@@ -76,7 +73,9 @@ export function CredentialsSetupWidget({
         await onCredentialsSubmit(selectedCredentials);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to set up credentials");
+      setError(
+        err instanceof Error ? err.message : "Failed to set up credentials",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -101,7 +100,8 @@ export function CredentialsSetupWidget({
               Credentials Required
             </h3>
             <p className="text-sm text-neutral-600 dark:text-neutral-400">
-              The agent "{agentInfo.name}" requires credentials to run. Please provide the following:
+              The agent &quot;{agentInfo.name}&quot; requires credentials to
+              run. Please provide the following:
             </p>
           </div>
         </div>
@@ -111,17 +111,25 @@ export function CredentialsSetupWidget({
           {credentialKeys.map((key) => {
             const schema = schemaProperties[key] as BlockIOCredentialsSubSchema;
             const isSelected = !!selectedCredentials[key];
-            
+
             return (
-              <div key={key} className={cn("relative p-4 rounded-lg bg-white/50 dark:bg-neutral-900/50", isSelected && "bg-green-50 dark:bg-green-950/30")}>
+              <div
+                key={key}
+                className={cn(
+                  "relative rounded-lg bg-white/50 p-4 dark:bg-neutral-900/50",
+                  isSelected && "bg-green-50 dark:bg-green-950/30",
+                )}
+              >
                 <CredentialsInput
                   schema={schema}
                   selectedCredentials={selectedCredentials[key]}
-                  onSelectCredentials={(cred) => handleCredentialSelect(key, cred)}
+                  onSelectCredentials={(cred) =>
+                    handleCredentialSelect(key, cred)
+                  }
                   hideIfSingleCredentialAvailable={false}
                 />
                 {isSelected && (
-                  <div className="absolute top-4 right-4">
+                  <div className="absolute right-4 top-4">
                     <CheckCircle className="h-5 w-5 text-green-600" />
                   </div>
                 )}
@@ -131,7 +139,7 @@ export function CredentialsSetupWidget({
         </div>
 
         {error && (
-          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm dark:bg-red-950/30 dark:border-red-800 dark:text-red-300">
+          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
             {error}
           </div>
         )}
@@ -152,11 +160,7 @@ export function CredentialsSetupWidget({
             )}
           </Button>
           {onSkip && (
-            <Button
-              variant="outline"
-              onClick={onSkip}
-              disabled={isSubmitting}
-            >
+            <Button variant="outline" onClick={onSkip} disabled={isSubmitting}>
               Skip for now
             </Button>
           )}
@@ -166,7 +170,8 @@ export function CredentialsSetupWidget({
           <div className="mt-4 flex items-center gap-2 rounded-md bg-amber-100 p-3 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
             <Key className="h-4 w-4 flex-shrink-0" />
             <span>
-              You need to configure all required credentials before this agent can be set up.
+              You need to configure all required credentials before this agent
+              can be set up.
             </span>
           </div>
         )}

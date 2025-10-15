@@ -58,7 +58,7 @@ export function ChatInterface({
   systemPrompt,
   sessionId,
 }: ChatInterfaceProps) {
-  const { session, messages, isLoading, error, createSession, refreshSession } =
+  const { session, messages, isLoading, error, createSession } =
     useChatSession(sessionId);
   const { isStreaming, sendMessage, stopStreaming } = useChatStream();
   const { user } = useSupabase();
@@ -88,12 +88,14 @@ export function ChatInterface({
   // Sync messages and parse segments from loaded messages
   useEffect(() => {
     console.log("🔄 Syncing messages, count:", messages.length);
-    
+
     // Check for duplicate message IDs which could cause React key warnings
-    const messageIds = messages.filter(m => m.id).map(m => m.id);
+    const messageIds = messages.filter((m) => m.id).map((m) => m.id);
     const uniqueIds = new Set(messageIds);
     if (messageIds.length !== uniqueIds.size) {
-      const duplicates = messageIds.filter((id, index) => messageIds.indexOf(id) !== index);
+      const duplicates = messageIds.filter(
+        (id, index) => messageIds.indexOf(id) !== index,
+      );
       console.warn("⚠️ Duplicate message IDs detected:", duplicates);
     }
 
@@ -112,18 +114,26 @@ export function ChatInterface({
         // Handle TOOL messages containing agent carousel or other structured data
         try {
           const trimmedContent = message.content.trim();
-          if (trimmedContent.startsWith("{") && trimmedContent.includes('"type"')) {
+          if (
+            trimmedContent.startsWith("{") &&
+            trimmedContent.includes('"type"')
+          ) {
             const data = JSON.parse(trimmedContent);
-            
+
             if (data.type === "agent_carousel" && data.agents) {
               console.log(`  🎠 Found carousel in TOOL message:`, data);
-              const segments: ContentSegment[] = [{
-                type: "carousel",
-                content: data,
-                id: `carousel-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-              }];
+              const segments: ContentSegment[] = [
+                {
+                  type: "carousel",
+                  content: data,
+                  id: `carousel-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                },
+              ];
               newSegments.set(index, segments);
-            } else if (data.type === "agent_details_need_login" || data.type === "need_login") {
+            } else if (
+              data.type === "agent_details_need_login" ||
+              data.type === "need_login"
+            ) {
               // Handle login required responses
               console.log(`  🔐 Found login required in TOOL message:`, data);
               // Only set auth prompt if user is not logged in
@@ -136,14 +146,16 @@ export function ChatInterface({
                 });
               } else {
                 // User is already logged in, retry the agent action
-                console.log("  ✅ User already logged in, should retry agent action");
+                console.log(
+                  "  ✅ User already logged in, should retry agent action",
+                );
                 // Will be handled by the auth prompt retry logic
               }
               // Don't display this as a regular message
               // Skip adding segments for this message
             }
           }
-        } catch (e) {
+        } catch (_e) {
           // If not JSON or failed to parse, skip
           console.log(`  📄 TOOL message not JSON structured data`);
         }
@@ -207,7 +219,7 @@ export function ChatInterface({
                 });
               }
             }
-          } catch (e) {
+          } catch (_e) {
             // Not a valid JSON carousel, try pattern matching
             try {
               const jsonMatch = message.content.match(
@@ -282,8 +294,14 @@ export function ChatInterface({
       segments.forEach((segment) => {
         if (segment.type === "auth_required" && segment.content) {
           const authData = segment.content;
-          if (authData.type === "agent_details_need_login" || authData.type === "need_login") {
-            console.log("  🔐 Found auth_required segment, setting auth prompt:", authData);
+          if (
+            authData.type === "agent_details_need_login" ||
+            authData.type === "need_login"
+          ) {
+            console.log(
+              "  🔐 Found auth_required segment, setting auth prompt:",
+              authData,
+            );
             setAuthPrompt({
               message: authData.message,
               sessionId: authData.session_id || session?.id,
@@ -333,8 +351,8 @@ export function ChatInterface({
             return [];
           }
         }
-      } catch (e) {
-        console.error("Failed to parse auth response:", e);
+      } catch (_e) {
+        console.error("Failed to parse auth response:", _e);
       }
     }
 
@@ -355,8 +373,8 @@ export function ChatInterface({
           if (toolBody?.textContent) {
             try {
               parameters = JSON.parse(toolBody.textContent);
-            } catch (e) {
-              console.error("Failed to parse tool parameters:", e);
+            } catch (_e) {
+              console.error("Failed to parse tool parameters:", _e);
             }
           }
 
@@ -386,7 +404,7 @@ export function ChatInterface({
                   });
                   skipToolSegment = true;
                 }
-              } catch (e) {
+              } catch (_e) {
                 // Not JSON or failed to parse, treat as regular result
               }
             }
@@ -423,8 +441,8 @@ export function ChatInterface({
             id: `carousel-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           });
         }
-      } catch (e) {
-        console.error("Failed to parse carousel:", e);
+      } catch (_e) {
+        console.error("Failed to parse carousel:", _e);
       }
     });
 
@@ -457,7 +475,7 @@ export function ChatInterface({
                 });
               }
             }
-          } catch (e) {
+          } catch (_e) {
             // Not valid JSON, skip
           }
         }
@@ -612,14 +630,19 @@ export function ChatInterface({
               chunk.result.type === "need_credentials"
             ) {
               // Handle auth/credentials needed
-              if (chunk.result.type === "need_login" || chunk.result.type === "agent_details_need_login") {
+              if (
+                chunk.result.type === "need_login" ||
+                chunk.result.type === "agent_details_need_login"
+              ) {
                 // Always set auth prompt for agent_details_need_login (platform auth required)
                 // Only set for need_login if user not logged in
                 if (chunk.result.type === "agent_details_need_login" || !user) {
                   setAuthPrompt({
                     message: chunk.result.message || chunk.message,
                     sessionId:
-                      chunk.result.session_id || chunk.session_id || session?.id,
+                      chunk.result.session_id ||
+                      chunk.session_id ||
+                      session?.id,
                     agentInfo: chunk.result.agent_info || chunk.agent_info,
                   });
                 }
@@ -633,7 +656,7 @@ export function ChatInterface({
                   });
                   currentStreamingText.current = "";
                 }
-                
+
                 // Add credentials setup segment with the full response data
                 const credSegment: ContentSegment = {
                   type: "credentials_setup",
@@ -646,21 +669,25 @@ export function ChatInterface({
                   id: `creds-${Date.now()}`,
                 };
                 collectedSegments.push(credSegment);
-                
+
                 // Update segments properly without duplicating text
                 setStreamingSegments((prev) => {
                   // Filter out any temporary text segments
-                  const filtered = prev.filter(s => s.id !== "current-text");
-                  return [...filtered, ...collectedSegments.filter(seg => 
-                    !filtered.some(existing => existing.id === seg.id)
-                  )];
+                  const filtered = prev.filter((s) => s.id !== "current-text");
+                  return [
+                    ...filtered,
+                    ...collectedSegments.filter(
+                      (seg) =>
+                        !filtered.some((existing) => existing.id === seg.id),
+                    ),
+                  ];
                 });
               }
             } else if (chunk.result.type === "got_agent_details") {
               // Just update the tool result, no special UI
               // First, update the tool in collectedSegments if it exists there
               const toolIndex = collectedSegments.findIndex(
-                seg => seg.type === "tool" && seg.id === chunk.tool_id
+                (seg) => seg.type === "tool" && seg.id === chunk.tool_id,
               );
               if (toolIndex >= 0) {
                 collectedSegments[toolIndex] = {
@@ -705,17 +732,20 @@ export function ChatInterface({
                 });
                 currentStreamingText.current = "";
               }
-              
+
               // Try to find the corresponding tool call to get the inputs
               let inputs = chunk.result.inputs || {};
               const toolCallSegment = collectedSegments.find(
-                seg => seg.type === "tool" && seg.id === chunk.tool_id
+                (seg) => seg.type === "tool" && seg.id === chunk.tool_id,
               );
-              if (toolCallSegment && toolCallSegment.content.name === "run_agent") {
+              if (
+                toolCallSegment &&
+                toolCallSegment.content.name === "run_agent"
+              ) {
                 // Use the inputs from the tool call parameters
                 inputs = toolCallSegment.content.parameters?.inputs || inputs;
               }
-              
+
               // Agent execution started
               const runSegment: ContentSegment = {
                 type: "agent_run",
@@ -733,14 +763,18 @@ export function ChatInterface({
                 id: `run-${chunk.result.execution_id}`,
               };
               collectedSegments.push(runSegment);
-              
+
               // Update segments properly without duplicating text
               setStreamingSegments((prev) => {
                 // Filter out any temporary text segments
-                const filtered = prev.filter(s => s.id !== "current-text");
-                return [...filtered, ...collectedSegments.filter(seg => 
-                  !filtered.some(existing => existing.id === seg.id)
-                )];
+                const filtered = prev.filter((s) => s.id !== "current-text");
+                return [
+                  ...filtered,
+                  ...collectedSegments.filter(
+                    (seg) =>
+                      !filtered.some((existing) => existing.id === seg.id),
+                  ),
+                ];
               });
             } else if (
               chunk.result.status === "success" &&
@@ -755,7 +789,7 @@ export function ChatInterface({
                 });
                 currentStreamingText.current = "";
               }
-              
+
               // Agent setup successful
               const setupSegment: ContentSegment = {
                 type: "agent_setup",
@@ -763,20 +797,24 @@ export function ChatInterface({
                 id: `setup-${Date.now()}`,
               };
               collectedSegments.push(setupSegment);
-              
+
               // Update segments properly without duplicating text
               setStreamingSegments((prev) => {
                 // Filter out any temporary text segments
-                const filtered = prev.filter(s => s.id !== "current-text");
-                return [...filtered, ...collectedSegments.filter(seg => 
-                  !filtered.some(existing => existing.id === seg.id)
-                )];
+                const filtered = prev.filter((s) => s.id !== "current-text");
+                return [
+                  ...filtered,
+                  ...collectedSegments.filter(
+                    (seg) =>
+                      !filtered.some((existing) => existing.id === seg.id),
+                  ),
+                ];
               });
             } else {
               // Update tool with generic result
               // First, update the tool in collectedSegments if it exists there
               const toolIndex = collectedSegments.findIndex(
-                seg => seg.type === "tool" && seg.id === chunk.tool_id
+                (seg) => seg.type === "tool" && seg.id === chunk.tool_id,
               );
               if (toolIndex >= 0) {
                 collectedSegments[toolIndex] = {
@@ -822,7 +860,7 @@ export function ChatInterface({
             // Update tool with text result
             // First, update the tool in collectedSegments if it exists there
             const toolIndex = collectedSegments.findIndex(
-              seg => seg.type === "tool" && seg.id === chunk.tool_id
+              (seg) => seg.type === "tool" && seg.id === chunk.tool_id,
             );
             if (toolIndex >= 0) {
               collectedSegments[toolIndex] = {
@@ -952,10 +990,13 @@ export function ChatInterface({
             // Update segments properly without duplicating text
             setStreamingSegments((prev) => {
               // Filter out any temporary text segments
-              const filtered = prev.filter(s => s.id !== "current-text");
-              return [...filtered, ...collectedSegments.filter(seg => 
-                !filtered.some(existing => existing.id === seg.id)
-              )];
+              const filtered = prev.filter((s) => s.id !== "current-text");
+              return [
+                ...filtered,
+                ...collectedSegments.filter(
+                  (seg) => !filtered.some((existing) => existing.id === seg.id),
+                ),
+              ];
             });
           }
         } else if (chunk.type === "error") {
@@ -974,7 +1015,8 @@ export function ChatInterface({
           };
           // Check if this text isn't already in collected segments
           const hasTextAlready = collectedSegments.some(
-            s => s.type === "text" && s.content === currentStreamingText.current
+            (s) =>
+              s.type === "text" && s.content === currentStreamingText.current,
           );
           if (!hasTextAlready) {
             collectedSegments.push(textSegment);
@@ -982,19 +1024,26 @@ export function ChatInterface({
         }
 
         // Deduplicate segments before finalizing
-        const deduplicatedSegments = collectedSegments.reduce((acc, segment) => {
-          // Check if we already have this segment (by ID or by content for text segments)
-          const isDuplicate = acc.some(existing => {
-            if (segment.id && existing.id === segment.id) return true;
-            if (segment.type === "text" && existing.type === "text" && 
-                segment.content === existing.content) return true;
-            return false;
-          });
-          if (!isDuplicate) {
-            acc.push(segment);
-          }
-          return acc;
-        }, [] as ContentSegment[]);
+        const deduplicatedSegments = collectedSegments.reduce(
+          (acc, segment) => {
+            // Check if we already have this segment (by ID or by content for text segments)
+            const isDuplicate = acc.some((existing) => {
+              if (segment.id && existing.id === segment.id) return true;
+              if (
+                segment.type === "text" &&
+                existing.type === "text" &&
+                segment.content === existing.content
+              )
+                return true;
+              return false;
+            });
+            if (!isDuplicate) {
+              acc.push(segment);
+            }
+            return acc;
+          },
+          [] as ContentSegment[],
+        );
 
         // Extract text content for the message
         const textContent = deduplicatedSegments
@@ -1025,13 +1074,7 @@ export function ChatInterface({
         // No need to refresh session - we already have the messages locally
       }
     },
-    [
-      session,
-      sendMessage,
-      createSession,
-      systemPrompt,
-      localMessages,
-    ],
+    [session, sendMessage, createSession, systemPrompt, localMessages],
   );
 
   // Clear auth prompt when user logs in and retry the agent action
@@ -1040,7 +1083,7 @@ export function ChatInterface({
       console.log(
         "User logged in, clearing auth prompt and retrying agent action",
       );
-      
+
       // Clear the auth prompt first
       const agentInfo = authPrompt.agentInfo;
       setAuthPrompt(null);
@@ -1048,10 +1091,10 @@ export function ChatInterface({
       // Retry the agent action now that the user is logged in
       if (session && agentInfo) {
         // Send a message to retry getting agent details or setting up the agent
-        const retryMessage = agentInfo.name 
+        const retryMessage = agentInfo.name
           ? `Show me details for the "${agentInfo.name}" agent`
           : `Show me details for agent ${agentInfo.agent_id || agentInfo.id}`;
-        
+
         // Use handleSendMessage to properly send the retry request
         setTimeout(() => {
           handleSendMessage(retryMessage);
@@ -1059,7 +1102,6 @@ export function ChatInterface({
       }
     }
   }, [user, authPrompt, session, handleSendMessage]);
-
 
   const handleHtmlContent = (
     html: string,
@@ -1243,8 +1285,10 @@ export function ChatInterface({
             const segments = messageSegments.get(index);
             // Create a unique key using both ID and index to avoid collisions even with duplicate IDs
             // This handles cases where the backend might send duplicate message IDs
-            const messageKey = message.id ? `${message.id}-${index}` : `msg-${index}`;
-            
+            const messageKey = message.id
+              ? `${message.id}-${index}`
+              : `msg-${index}`;
+
             if (segments && segments.length > 0) {
               // Use StreamingMessage for messages with segments
               return (
