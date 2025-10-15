@@ -162,12 +162,13 @@ class PerplexityBlock(Block):
             if hasattr(response.choices[0].message, "annotations"):
                 # If annotations are directly available
                 annotations = response.choices[0].message.annotations
-            elif hasattr(response.choices[0].message, "_raw_response"):
+            else:
                 # Check if there's a raw response with annotations
-                raw = response.choices[0].message._raw_response
+                raw = getattr(response.choices[0].message, "_raw_response", None)
                 if isinstance(raw, dict) and "annotations" in raw:
                     annotations = raw["annotations"]
-            elif hasattr(response, "model_extra"):
+
+            if not annotations and hasattr(response, "model_extra"):
                 # Check model_extra for annotations
                 model_extra = response.model_extra
                 if isinstance(model_extra, dict):
@@ -178,8 +179,8 @@ class PerplexityBlock(Block):
                             annotations = choice["message"]["annotations"]
 
             # Also check the raw response object for annotations
-            if not annotations and hasattr(response, "_raw_response"):
-                raw = response._raw_response
+            if not annotations:
+                raw = getattr(response, "_raw_response", None)
                 if isinstance(raw, dict):
                     # Check various possible locations for annotations
                     if "annotations" in raw:
