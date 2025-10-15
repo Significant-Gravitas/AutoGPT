@@ -12,6 +12,7 @@ Provides decorators for caching function results with support for:
 import asyncio
 import inspect
 import logging
+import pickle
 import threading
 import time
 from dataclasses import dataclass
@@ -39,7 +40,6 @@ settings = Settings()
 # Create a dedicated Redis connection pool for caching (binary mode for pickle)
 _cache_pool: ConnectionPool | None = None
 
-
 @conn_retry("Redis", "Acquiring cache connection pool")
 def _get_cache_pool() -> ConnectionPool:
     """Get or create a connection pool for cache operations."""
@@ -62,6 +62,7 @@ def _get_redis_client() -> Redis:
     """Get a Redis client from the connection pool."""
     return Redis(connection_pool=_get_cache_pool())
 
+redis = _get_redis_client()
 
 @dataclass
 class CachedValue:
@@ -177,9 +178,6 @@ def cached(
         def _get_from_redis(redis_key: str) -> Any | None:
             """Get value from Redis, optionally refreshing TTL."""
             try:
-                import pickle
-
-                redis = _get_redis_client()
                 if refresh_ttl_on_get:
                     # Use GETEX to get value and refresh expiry atomically
                     cached_bytes = redis.getex(redis_key, ex=ttl_seconds)
@@ -197,9 +195,6 @@ def cached(
         def _set_to_redis(redis_key: str, value: Any) -> None:
             """Set value in Redis with TTL."""
             try:
-                import pickle
-
-                redis = _get_redis_client()
                 pickled_value = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
                 redis.setex(redis_key, ttl_seconds, pickled_value)
             except Exception as e:
@@ -239,7 +234,7 @@ def cached(
                     loop = None
 
                 if loop not in _event_loop_locks:
-                    _event_loop_locks[loop] = asyncio.Lock()
+                    return _event_loop_locks.setdefault(loop, asyncio.Lock())
                 return _event_loop_locks[loop]
 
             @wraps(target_func)
@@ -336,13 +331,12 @@ def cached(
         def cache_clear(pattern: str | None = None) -> None:
             """Clear cache entries. If pattern provided, clear matching entries."""
             if shared_cache:
-                redis = _get_redis_client()
                 if pattern:
                     # Clear entries matching pattern
-                    keys = list(redis.scan_iter(f"cache:{pattern}", count=100))
+                    keys = list(redis.scan_iter(f"cache:{target_func.__name__}:{pattern}"))
                 else:
                     # Clear all cache keys
-                    keys = list(redis.scan_iter("cache:*", count=100))
+                    keys = list(redis.scan_iter(f"cache:{target_func.__name__}:*"))
 
                 if keys:
                     pipeline = redis.pipeline()
@@ -360,8 +354,7 @@ def cached(
 
         def cache_info() -> dict[str, int | None]:
             if shared_cache:
-                redis = _get_redis_client()
-                cache_keys = list(redis.scan_iter("cache:*"))
+                cache_keys = list(redis.scan_iter(f"cache:{target_func.__name__}:*"))
                 return {
                     "size": len(cache_keys),
                     "maxsize": None,  # Redis manages its own size
@@ -378,7 +371,6 @@ def cached(
             """Delete a specific cache entry. Returns True if entry existed."""
             key = _make_hashable_key(args, kwargs)
             if shared_cache:
-                redis = _get_redis_client()
                 redis_key = _make_redis_key(key, target_func.__name__)
                 if redis.exists(redis_key):
                     redis.delete(redis_key)
