@@ -96,6 +96,7 @@ export const useLibraryUploadAgentDialog = () => {
         }
       } catch (error) {
         console.error("Error loading agent file:", error);
+
         toast({
           title: "Invalid Agent File",
           description:
@@ -103,8 +104,8 @@ export const useLibraryUploadAgentDialog = () => {
           duration: 5000,
           variant: "destructive",
         });
-        // Clear the invalid file
-        form.setValue("agentFile", undefined as any);
+
+        form.resetField("agentFile");
         setAgentObject(null);
       }
     };
