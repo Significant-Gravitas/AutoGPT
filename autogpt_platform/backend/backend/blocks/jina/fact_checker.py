@@ -32,7 +32,7 @@ class FactCheckerBlock(Block):
         reason: str = SchemaField(description="The reason for the factuality result")
         references: List[Reference] = SchemaField(
             description="List of references supporting or contradicting the statement",
-            default=[]
+            default=[],
         )
         error: str = SchemaField(description="Error message if the check fails")
 
