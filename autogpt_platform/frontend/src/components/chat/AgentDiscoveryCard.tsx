@@ -109,7 +109,7 @@ export function AgentDiscoveryCard({
                 <Button
                   onClick={() => onGetDetails(agent)}
                   variant="secondary"
-                  size="sm"
+                  size="small"
                   className="flex-1"
                 >
                   <Info className="mr-1 h-3 w-3" />
@@ -118,7 +118,7 @@ export function AgentDiscoveryCard({
                 <Button
                   onClick={() => onSelectAgent(agent)}
                   variant="primary"
-                  size="sm"
+                  size="small"
                   className="flex-1"
                 >
                   Set Up
