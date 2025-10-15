@@ -149,10 +149,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Time in seconds for how far back to check for the late executions.",
     )
     max_concurrent_graph_executions_per_user: int = Field(
-        default=50,
+        default=25,
         ge=1,
         le=1000,
-        description="Maximum number of concurrent graph executions allowed per user.",
+        description="Maximum number of concurrent graph executions allowed per user per graph.",
     )
 
     block_error_rate_threshold: float = Field(

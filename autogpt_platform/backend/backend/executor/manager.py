@@ -1494,6 +1494,7 @@ class ExecutionManager(AppProcess):
 
         graph_exec_id = graph_exec_entry.graph_exec_id
         user_id = graph_exec_entry.user_id
+        graph_id = graph_exec_entry.graph_id
         logger.info(
             f"[{self.service_name}] Received RUN for graph_exec_id={graph_exec_id}, user_id={user_id}"
         )
@@ -1503,6 +1504,7 @@ class ExecutionManager(AppProcess):
             # Only check executions from the last 24 hours for performance
             current_running_count = get_db_client().get_graph_executions_count(
                 user_id=user_id,
+                graph_id=graph_id,
                 statuses=[ExecutionStatus.RUNNING],
                 created_time_gte=datetime.now(timezone.utc) - timedelta(hours=24),
             )
@@ -1512,7 +1514,7 @@ class ExecutionManager(AppProcess):
                 >= settings.config.max_concurrent_graph_executions_per_user
             ):
                 logger.warning(
-                    f"[{self.service_name}] Rate limit exceeded for user {user_id}: "
+                    f"[{self.service_name}] Rate limit exceeded for user {user_id} on graph {graph_id}: "
                     f"{current_running_count}/{settings.config.max_concurrent_graph_executions_per_user} running executions"
                 )
                 _ack_message(reject=True, requeue=True)
