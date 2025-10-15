@@ -117,10 +117,7 @@ export function useChatSession(
           // Create a new session instead
           console.log("Session not found, creating a new one...");
           try {
-            const newSession = await chatAPI.createSession({
-              system_prompt:
-                "You are a helpful assistant that helps users discover and set up AI agents from the AutoGPT marketplace. Be conversational, friendly, and guide users through finding the right agent for their needs.",
-            });
+            const newSession = await chatAPI.createSession();
 
             setSession(newSession);
             setMessages(newSession.messages || []);

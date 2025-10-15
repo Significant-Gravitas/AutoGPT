@@ -100,7 +100,7 @@ export function ChatInput({
             <Button
               onClick={onStopStreaming}
               variant="secondary"
-              size="md"
+              size="small"
               className="mb-[2px]"
             >
               <X className="mr-1 h-4 w-4" />
@@ -111,7 +111,7 @@ export function ChatInput({
               onClick={handleSubmit}
               disabled={!message.trim() || isDisabled}
               variant="primary"
-              size="md"
+              size="small"
               className="mb-[2px]"
             >
               <Send className="mr-1 h-4 w-4" />

@@ -103,7 +103,7 @@ export function AuthPromptWidget({
           <Button
             onClick={handleSignIn}
             variant="primary"
-            size="md"
+            size="small"
             className="flex-1"
           >
             <LogIn className="mr-2 h-4 w-4" />
@@ -112,7 +112,7 @@ export function AuthPromptWidget({
           <Button
             onClick={handleSignUp}
             variant="secondary"
-            size="md"
+            size="small"
             className="flex-1"
           >
             <UserPlus className="mr-2 h-4 w-4" />

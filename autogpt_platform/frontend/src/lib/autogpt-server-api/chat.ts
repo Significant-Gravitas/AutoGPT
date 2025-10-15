@@ -150,6 +150,10 @@ export class ChatAPI {
     sessionId: string,
     includeMessages = true,
   ): Promise<ChatSession> {
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+    };
+
     const response = await fetch(
       `/api/proxy/api/v2/chat/sessions/${sessionId}?include_messages=${includeMessages}`,
       {
@@ -198,6 +202,10 @@ export class ChatAPI {
     limit: number;
     offset: number;
   }> {
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+    };
+
     const params = new URLSearchParams({
       limit: limit.toString(),
       offset: offset.toString(),
@@ -222,6 +230,10 @@ export class ChatAPI {
   }
 
   async deleteSessionOld(sessionId: string): Promise<void> {
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+    };
+
     const response = await fetch(
       `/api/proxy/api/v2/chat/sessions/${sessionId}`,
       {
@@ -252,6 +264,10 @@ export class ChatAPI {
     sessionId: string,
     request: SendMessageRequest,
   ): Promise<ChatMessage> {
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+    };
+
     const response = await fetch(
       `/api/proxy/api/v2/chat/sessions/${sessionId}/messages`,
       {
