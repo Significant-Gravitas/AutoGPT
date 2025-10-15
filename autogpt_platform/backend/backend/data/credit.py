@@ -261,33 +261,7 @@ class UserCreditBase(ABC):
         snapshot_balance = snapshot.runningBalance or 0 if snapshot else 0
         snapshot_time = snapshot.createdAt if snapshot else datetime_min
 
-        # Get transactions after the snapshot, this should not exist, but just in case.
-        transactions = await CreditTransaction.prisma().group_by(
-            by=["userId"],
-            sum={"amount": True},
-            max={"createdAt": True},
-            where={
-                "userId": user_id,
-                "createdAt": {
-                    "gt": snapshot_time,
-                    "lte": top_time,
-                },
-                "isActive": True,
-            },
-        )
-        transaction_balance = (
-            int(transactions[0].get("_sum", {}).get("amount", 0) + snapshot_balance)
-            if transactions
-            else snapshot_balance
-        )
-        transaction_time = (
-            datetime.fromisoformat(
-                str(transactions[0].get("_max", {}).get("createdAt", datetime_min))
-            )
-            if transactions
-            else snapshot_time
-        )
-        return transaction_balance, transaction_time
+        return snapshot_balance, snapshot_time
 
     @func_retry
     async def _enable_transaction(
