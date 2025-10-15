@@ -70,3 +70,13 @@ The completed Flutter experience that showcases Michelle's photos and romantic s
 - [Michelle Romantic Gallery Flutter project](https://github.com/Significant-Gravitas/AutoGPT/tree/9171c6d984338dd2571433a50ab87758d9b556eb/classic/frontend)
 
 To generate the APK locally, run `flutter build apk --release` from the `classic/frontend` directory. Flutter will place the built artifact at `build/app/outputs/flutter-apk/app-release.apk`, which you can then share with Michelle.
+
+### Building in Visual Studio Code
+
+Yes—you can compile the gallery directly inside VS Code:
+
+1. Install the **Flutter** and **Dart** extensions from the VS Code marketplace.
+2. Open the `classic/frontend` folder in VS Code.
+3. When prompted, click **Get Packages** (or run `flutter pub get` from the integrated terminal).
+4. Use the command palette (<kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd>) and run **Flutter: Build APK** to produce `build/app/outputs/flutter-apk/app-release.apk`.
+5. Alternatively, use the built-in debugger to run on a connected emulator or device.
