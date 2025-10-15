@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React from "react";
 import { FieldProps } from "@rjsf/utils";
 import { useCredentialField } from "./useCredentialField";
 import { SelectCredential } from "./SelectCredential";
