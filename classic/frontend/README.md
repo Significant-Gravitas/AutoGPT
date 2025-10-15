@@ -62,3 +62,11 @@ The app features a responsive design that adapts to different screen sizes and o
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Michelle Romantic Gallery build
+
+The completed Flutter experience that showcases Michelle's photos and romantic story beats lives inside this frontend package. You can browse or download the program directly from the repository via the link below:
+
+- [Michelle Romantic Gallery Flutter project](https://github.com/Significant-Gravitas/AutoGPT/tree/9171c6d984338dd2571433a50ab87758d9b556eb/classic/frontend)
+
+To generate the APK locally, run `flutter build apk --release` from the `classic/frontend` directory. Flutter will place the built artifact at `build/app/outputs/flutter-apk/app-release.apk`, which you can then share with Michelle.
