@@ -3,7 +3,7 @@ import logging
 import os
 import threading
 from enum import Enum
-from typing import Awaitable, Optional
+from typing import Any, Coroutine, Optional
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from apscheduler.events import (
@@ -105,7 +105,7 @@ class EventLoopPool:
 
     def run(
         self,
-        coro: Awaitable,
+        coro: Coroutine[Any, Any, Any],
         timeout: float | None = SCHEDULER_OPERATION_TIMEOUT_SECONDS,
     ):
         loop = self._pick_loop()
@@ -124,7 +124,8 @@ def require_pool() -> EventLoopPool:
 
 
 def run_async(
-    coro: Awaitable, timeout: float | None = SCHEDULER_OPERATION_TIMEOUT_SECONDS
+    coro: Coroutine[Any, Any, Any],
+    timeout: float | None = SCHEDULER_OPERATION_TIMEOUT_SECONDS,
 ):
     return require_pool().run(coro, timeout)
 
