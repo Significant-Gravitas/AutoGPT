@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React from "react";
 import { FieldProps } from "@rjsf/utils";
 import { useCredentialField } from "./useCredentialField";
 import { SelectCredential } from "./SelectCredential";
@@ -24,21 +24,13 @@ export const CredentialsField = (props: FieldProps) => {
     supportsUserPassword,
     credentialsExists,
     credentialProvider,
+    setCredential,
   } = useCredentialField({
     credentialSchema: schema as BlockIOCredentialsSubSchema,
+    formData,
     nodeId: formContext.nodeId,
+    onChange,
   });
-
-  const setField = (key: string, value: any) =>
-    onChange({ ...formData, [key]: value });
-
-  // This is to set the latest credential as the default one [currently, latest means last one in the list of credentials]
-  useEffect(() => {
-    if (!isCredentialListLoading && credentials.length > 0 && !formData.id) {
-      const latestCredential = credentials[credentials.length - 1];
-      setField("id", latestCredential.id);
-    }
-  }, [isCredentialListLoading, credentials, formData.id]);
 
   if (isCredentialListLoading) {
     return (
@@ -58,8 +50,8 @@ export const CredentialsField = (props: FieldProps) => {
       {credentialsExists && (
         <SelectCredential
           credentials={credentials}
-          value={formData.id}
-          onChange={(value) => setField("id", value)}
+          value={formData.id || ""}
+          onChange={setCredential}
           disabled={false}
           label="Credential"
           placeholder="Select credential"
