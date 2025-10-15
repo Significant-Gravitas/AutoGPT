@@ -7,7 +7,7 @@ which would have caught the CreditTransactionType enum casting bug.
 
 import pytest
 from prisma.enums import CreditTransactionType
-from prisma.models import CreditTransaction, UserBalance
+from prisma.models import CreditTransaction, User, UserBalance
 
 from backend.data.credit import (
     AutoTopUpConfig,
@@ -16,24 +16,40 @@ from backend.data.credit import (
     get_auto_top_up,
     set_auto_top_up,
 )
-from backend.data.user import DEFAULT_USER_ID
 from backend.util.json import SafeJson
 
 
 @pytest.fixture
 async def cleanup_test_user():
     """Clean up test user data before and after tests."""
-    user_id = DEFAULT_USER_ID
+    import uuid
 
-    # Cleanup before test
-    await CreditTransaction.prisma().delete_many(where={"userId": user_id})
-    await UserBalance.prisma().delete_many(where={"userId": user_id})
+    user_id = str(uuid.uuid4())  # Use unique user ID for each test
+
+    # Create the user first
+    try:
+        await User.prisma().create(
+            data={
+                "id": user_id,
+                "email": f"test-{user_id}@example.com",
+                "topUpConfig": SafeJson({}),
+                "timezone": "UTC",
+            }
+        )
+    except Exception:
+        # User might already exist, that's fine
+        pass
 
     yield user_id
 
     # Cleanup after test
     await CreditTransaction.prisma().delete_many(where={"userId": user_id})
     await UserBalance.prisma().delete_many(where={"userId": user_id})
+    # Clear auto-top-up config before deleting user
+    await User.prisma().update(
+        where={"id": user_id}, data={"topUpConfig": SafeJson({})}
+    )
+    await User.prisma().delete(where={"id": user_id})
 
 
 @pytest.mark.asyncio(loop_scope="session")
