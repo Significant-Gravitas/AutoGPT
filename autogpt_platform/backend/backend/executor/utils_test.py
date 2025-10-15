@@ -3,7 +3,7 @@ from typing import cast
 import pytest
 from pytest_mock import MockerFixture
 
-from backend.executor.utils import merge_execution_input, parse_execution_output
+from backend.data.dynamic_fields import merge_execution_input, parse_execution_output
 from backend.util.mock import MockObject
 
 

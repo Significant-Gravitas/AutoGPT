@@ -1,13 +1,13 @@
 import React from "react";
 import { Integration } from "../Integration";
-import { useBlockMenuContext } from "../block-menu-provider";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
 import { usePaginatedIntegrationList } from "./usePaginatedIntegrationList";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { blockMenuContainerStyle } from "../style";
+import { useBlockMenuStore } from "../../../stores/blockMenuStore";
 
 export const PaginatedIntegrationList = () => {
-  const { setIntegration } = useBlockMenuContext();
+  const { setIntegration } = useBlockMenuStore();
   const {
     allProviders: providers,
     providersLoading,
