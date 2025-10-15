@@ -135,12 +135,6 @@ class NodeModel(Node):
                 stripped_node.input_default, self.block.input_schema.jsonschema()
             )
 
-        if (
-            stripped_node.block.block_type == BlockType.INPUT
-            and "value" in stripped_node.input_default
-        ):
-            stripped_node.input_default["value"] = ""
-
         # Remove webhook info
         stripped_node.webhook_id = None
         stripped_node.webhook = None
