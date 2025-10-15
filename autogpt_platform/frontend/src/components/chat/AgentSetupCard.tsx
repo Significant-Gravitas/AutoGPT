@@ -215,7 +215,7 @@ export function AgentSetupCard({
             <Button
               onClick={handleViewInLibrary}
               variant="primary"
-              size="sm"
+              size="small"
               className="flex-1"
             >
               <Library className="mr-2 h-4 w-4" />
@@ -225,7 +225,7 @@ export function AgentSetupCard({
               <Button
                 onClick={handleViewRuns}
                 variant="secondary"
-                size="sm"
+                size="small"
                 className="flex-1"
               >
                 <PlayCircle className="mr-2 h-4 w-4" />
