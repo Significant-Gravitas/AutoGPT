@@ -231,6 +231,14 @@ class TestSafeJson:
         result = SafeJson(problematic_data)
         assert isinstance(result, Json)
 
+        # Verify that dangerous control characters are actually removed
+        result_data = result.data
+        assert "\x00" not in str(result_data)  # null byte removed
+        assert "\x07" not in str(result_data)  # bell removed
+        assert "\x0C" not in str(result_data)  # form feed removed
+        assert "\x1B" not in str(result_data)  # escape removed
+        assert "\x7F" not in str(result_data)  # delete removed
+
         # Test that safe whitespace characters are preserved
         safe_data = {
             "with_tab": "text with \t tab",
@@ -241,3 +249,151 @@ class TestSafeJson:
 
         safe_result = SafeJson(safe_data)
         assert isinstance(safe_result, Json)
+
+        # Verify safe characters are preserved
+        safe_result_data = safe_result.data
+        assert isinstance(safe_result_data, dict)
+        assert "\t" in str(safe_result_data["with_tab"])  # tab preserved
+        assert "\n" in str(safe_result_data["with_newline"])  # newline preserved
+        assert "\r" in str(
+            safe_result_data["with_carriage_return"]
+        )  # carriage return preserved
+
+    def test_web_scraping_content_sanitization(self):
+        """Test sanitization of typical web scraping content with null characters."""
+        # Simulate web content that might contain null bytes from SearchTheWebBlock
+        web_content = "Article title\x00Hidden null\x01Start of heading\x08Backspace\x0CForm feed content\x1FUnit separator\x7FDelete char"
+
+        result = SafeJson(web_content)
+        assert isinstance(result, Json)
+
+        # Verify all problematic characters are removed
+        sanitized_content = str(result.data)
+        assert "\x00" not in sanitized_content
+        assert "\x01" not in sanitized_content
+        assert "\x08" not in sanitized_content
+        assert "\x0C" not in sanitized_content
+        assert "\x1F" not in sanitized_content
+        assert "\x7F" not in sanitized_content
+
+        # Verify the content is still readable
+        assert "Article title" in sanitized_content
+        assert "Hidden null" in sanitized_content
+        assert "content" in sanitized_content
+
+    def test_legitimate_code_preservation(self):
+        """Test that legitimate code with backslashes and escapes is preserved."""
+        # File paths with backslashes should be preserved
+        file_paths = {
+            "windows_path": "C:\\Users\\test\\file.txt",
+            "network_path": "\\\\server\\share\\folder",
+            "escaped_backslashes": "String with \\\\ double backslashes",
+        }
+
+        result = SafeJson(file_paths)
+        result_data = result.data
+        assert isinstance(result_data, dict)
+
+        # Verify file paths are preserved correctly (JSON converts \\\\ back to \\)
+        assert "C:\\Users\\test\\file.txt" in str(result_data["windows_path"])
+        assert "\\server\\share" in str(result_data["network_path"])
+        assert "\\" in str(result_data["escaped_backslashes"])
+
+    def test_legitimate_json_escapes_preservation(self):
+        """Test that legitimate JSON escape sequences are preserved."""
+        # These should all be preserved as they're valid and useful
+        legitimate_escapes = {
+            "quotes": 'He said "Hello world!"',
+            "newlines": "Line 1\\nLine 2\\nLine 3",
+            "tabs": "Column1\\tColumn2\\tColumn3",
+            "unicode_chars": "Unicode: \u0048\u0065\u006c\u006c\u006f",  # "Hello"
+            "mixed_content": "Path: C:\\\\temp\\\\file.txt\\nSize: 1024 bytes",
+        }
+
+        result = SafeJson(legitimate_escapes)
+        result_data = result.data
+        assert isinstance(result_data, dict)
+
+        # Verify all legitimate content is preserved
+        assert '"' in str(result_data["quotes"])
+        assert "Line 1" in str(result_data["newlines"]) and "Line 2" in str(
+            result_data["newlines"]
+        )
+        assert "Column1" in str(result_data["tabs"]) and "Column2" in str(
+            result_data["tabs"]
+        )
+        assert "Hello" in str(result_data["unicode_chars"])  # Unicode should be decoded
+        assert "C:" in str(result_data["mixed_content"]) and "temp" in str(
+            result_data["mixed_content"]
+        )
+
+    def test_regex_patterns_dont_over_match(self):
+        """Test that our regex patterns don't accidentally match legitimate sequences."""
+        # Edge cases that could be problematic for regex
+        edge_cases = {
+            "file_with_b": "C:\\\\mybfile.txt",  # Contains 'bf' but not escape sequence
+            "file_with_f": "C:\\\\folder\\\\file.txt",  # Contains 'f' after backslashes
+            "json_like_string": '{"text": "\\\\bolder text"}',  # Looks like JSON escape but isn't
+            "unicode_like": "Code: \\\\u0040 (not a real escape)",  # Looks like Unicode escape
+        }
+
+        result = SafeJson(edge_cases)
+        result_data = result.data
+        assert isinstance(result_data, dict)
+
+        # Verify edge cases are handled correctly - no content should be lost
+        assert "mybfile.txt" in str(result_data["file_with_b"])
+        assert "folder" in str(result_data["file_with_f"]) and "file.txt" in str(
+            result_data["file_with_f"]
+        )
+        assert "bolder text" in str(result_data["json_like_string"])
+        assert "\\u0040" in str(result_data["unicode_like"])
+
+    def test_programming_code_preservation(self):
+        """Test that programming code with various escapes is preserved."""
+        # Common programming patterns that should be preserved
+        code_samples = {
+            "python_string": 'print("Hello\\\\nworld")',
+            "regex_pattern": "\\\\b[A-Za-z]+\\\\b",  # Word boundary regex
+            "json_string": '{"name": "test", "path": "C:\\\\\\\\folder"}',
+            "sql_escape": "WHERE name LIKE '%\\\\%%'",
+            "javascript": 'var path = "C:\\\\\\\\Users\\\\\\\\file.js";',
+        }
+
+        result = SafeJson(code_samples)
+        result_data = result.data
+        assert isinstance(result_data, dict)
+
+        # Verify programming code is preserved
+        assert "print(" in str(result_data["python_string"])
+        assert "Hello" in str(result_data["python_string"])
+        assert "[A-Za-z]+" in str(result_data["regex_pattern"])
+        assert "name" in str(result_data["json_string"])
+        assert "LIKE" in str(result_data["sql_escape"])
+        assert "var path" in str(result_data["javascript"])
+
+    def test_only_problematic_sequences_removed(self):
+        """Test that ONLY PostgreSQL-problematic sequences are removed, nothing else."""
+        # Mix of problematic and safe content (using actual control characters)
+        mixed_content = {
+            "safe_and_unsafe": "Good text\twith tab\x00NULL BYTE\nand newline\x08BACKSPACE",
+            "file_path_with_null": "C:\\temp\\file\x00.txt",
+            "json_with_controls": '{"text": "data\x01\x0C\x1F"}',
+        }
+
+        result = SafeJson(mixed_content)
+        result_data = result.data
+        assert isinstance(result_data, dict)
+
+        # Verify only problematic characters are removed
+        assert "Good text" in str(result_data["safe_and_unsafe"])
+        assert "\t" in str(result_data["safe_and_unsafe"])  # Tab preserved
+        assert "\n" in str(result_data["safe_and_unsafe"])  # Newline preserved
+        assert "\x00" not in str(result_data["safe_and_unsafe"])  # Null removed
+        assert "\x08" not in str(result_data["safe_and_unsafe"])  # Backspace removed
+
+        assert "C:\\temp\\file" in str(result_data["file_path_with_null"])
+        assert ".txt" in str(result_data["file_path_with_null"])
+        assert "\x00" not in str(
+            result_data["file_path_with_null"]
+        )  # Null removed from path
