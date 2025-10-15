@@ -259,9 +259,13 @@ class BaseGraph(BaseDbModel):
         schema_fields: list[AgentInputBlock.Input | AgentOutputBlock.Input] = []
         for type_class, input_default in props:
             try:
-                schema_fields.append(type_class.model_construct(**input_default))
+                # Use proper Pydantic validation instead of model_construct
+                # This ensures required fields like 'name' are validated
+                schema_fields.append(type_class(**input_default))
             except Exception as e:
                 logger.error(f"Invalid {type_class}: {input_default}, {e}")
+                # Skip invalid fields instead of crashing later
+                continue
 
         return {
             "type": "object",
