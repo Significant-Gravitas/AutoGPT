@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import Image from "next/image";
 import {
   ChevronLeft,
   ChevronRight,
@@ -160,10 +161,11 @@ export function AgentCarousel({
               {/* Agent Image Header */}
               <div className="relative h-32 bg-gradient-to-br from-violet-500/20 via-purple-500/20 to-indigo-500/20">
                 {agent.agent_image ? (
-                  <img
+                  <Image
                     src={agent.agent_image}
                     alt={agent.name}
-                    className="h-full w-full object-cover opacity-90"
+                    fill
+                    className="object-cover opacity-90"
                   />
                 ) : (
                   <div className="flex h-full items-center justify-center">
@@ -200,11 +202,14 @@ export function AgentCarousel({
                 {/* Creator Info */}
                 <div className="flex items-center gap-2 text-xs text-neutral-500">
                   {agent.creator_avatar ? (
-                    <img
-                      src={agent.creator_avatar}
-                      alt={agent.creator}
-                      className="h-4 w-4 rounded-full"
-                    />
+                    <div className="relative h-4 w-4">
+                      <Image
+                        src={agent.creator_avatar}
+                        alt={agent.creator}
+                        fill
+                        className="rounded-full object-cover"
+                      />
+                    </div>
                   ) : (
                     <div className="h-4 w-4 rounded-full bg-neutral-300 dark:bg-neutral-600" />
                   )}

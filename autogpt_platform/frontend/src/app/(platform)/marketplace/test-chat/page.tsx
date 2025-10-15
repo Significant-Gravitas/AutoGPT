@@ -42,9 +42,7 @@ export default function TestChatPage() {
 
       // Test chat API
       try {
-        const chatSession = await api.chat.createSession({
-          system_prompt: "Test prompt",
-        });
+        const chatSession = await api.chat.createSession();
         setResult(
           (prev) =>
             prev + `\n\nChat session created!\nSession ID: ${chatSession.id}`,
