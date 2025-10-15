@@ -9,14 +9,16 @@ import {
 import { X } from "lucide-react";
 import { Text } from "@/components/atoms/Text/Text";
 import { PopoverClose } from "@radix-ui/react-popover";
-import { TaskGroups } from "@/app/(no-navbar)/onboarding/components/WalletTaskGroups";
-import { ScrollArea } from "./ui/scroll-area";
+import { TaskGroups } from "@/app/(no-navbar)/onboarding/components/Wallet/components/WalletTaskGroups";
+import { ScrollArea } from "../../../../../components/__legacy__/ui/scroll-area";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import * as party from "party-js";
-import WalletRefill from "./WalletRefill";
+import WalletRefill from "./components/WalletRefill";
 import { OnboardingStep } from "@/lib/autogpt-server-api";
+import { storage, Key as StorageKey } from "@/services/storage/local-storage";
+import { WalletIcon } from "@phosphor-icons/react";
 
 export interface Task {
   id: OnboardingStep;
@@ -38,6 +40,7 @@ export interface TaskGroup {
 
 export default function Wallet() {
   const { state, updateState } = useOnboarding();
+
   const groups = useMemo<TaskGroup[]>(() => {
     return [
       {
@@ -164,27 +167,67 @@ export default function Wallet() {
 
   const [prevCredits, setPrevCredits] = useState<number | null>(credits);
   const [flash, setFlash] = useState(false);
-  const [walletOpen, setWalletOpen] = useState(state?.walletShown || false);
+  const [walletOpen, setWalletOpen] = useState(false);
+  const [lastSeenCredits, setLastSeenCredits] = useState<number | null>(null);
 
   const totalCount = useMemo(() => {
     return groups.reduce((acc, group) => acc + group.tasks.length, 0);
   }, [groups]);
 
   // Get total completed count for all groups
-  const completedCount = useMemo(() => {
-    return groups.reduce(
+  const [completedCount, setCompletedCount] = useState<number | null>(null);
+  // Needed to show confetti when a new step is completed
+  const [prevCompletedCount, setPrevCompletedCount] = useState<number | null>(
+    null,
+  );
+
+  const walletRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!state) {
+      return;
+    }
+    const completed = groups.reduce(
       (acc, group) =>
         acc +
         group.tasks.filter((task) => state?.completedSteps?.includes(task.id))
           .length,
       0,
     );
+    setCompletedCount(completed);
   }, [groups, state?.completedSteps]);
 
-  // Needed to show confetti when a new step is completed
-  const [stepsLength, setStepsLength] = useState(completedCount);
+  // Load last seen credits from localStorage once on mount
+  useEffect(() => {
+    const stored = storage.get(StorageKey.WALLET_LAST_SEEN_CREDITS);
+    if (stored !== undefined && stored !== null) {
+      const parsed = parseFloat(stored);
+      if (!Number.isNaN(parsed)) setLastSeenCredits(parsed);
+      else setLastSeenCredits(0);
+    } else {
+      setLastSeenCredits(0);
+    }
+  }, []);
 
-  const walletRef = useRef<HTMLButtonElement | null>(null);
+  // Auto-open once if never shown, otherwise open only when credits increase beyond last seen
+  useEffect(() => {
+    if (typeof credits !== "number") return;
+    // Open once for first-time users
+    if (state && state.walletShown === false) {
+      setWalletOpen(true);
+      // Mark as shown so it won't reopen on every reload
+      updateState({ walletShown: true });
+      return;
+    }
+    // Open if user gained more credits than last acknowledged
+    if (
+      lastSeenCredits !== null &&
+      credits > lastSeenCredits &&
+      walletOpen === false
+    ) {
+      setWalletOpen(true);
+    }
+  }, [credits, lastSeenCredits, state?.walletShown, updateState, walletOpen]);
 
   const onWalletOpen = useCallback(async () => {
     if (!state?.walletShown) {
@@ -206,19 +249,25 @@ export default function Wallet() {
 
   // Confetti effect on the wallet button
   useEffect(() => {
-    if (!state?.completedSteps) {
-      return;
-    }
     // It's enough to check completed count,
     // because the order of completed steps is not important
     // If the count is the same, we don't need to do anything
-    if (completedCount === stepsLength) {
+    if (completedCount === null || completedCount === prevCompletedCount) {
       return;
     }
-    // Otherwise, we need to set the new length
-    setStepsLength(completedCount);
+    // Otherwise, we need to set the new prevCompletedCount
+    setPrevCompletedCount(completedCount);
+    // If there was no previous count, we don't show confetti
+    if (prevCompletedCount === null) {
+      return;
+    }
     // And emit confetti
     if (walletRef.current) {
+      // Fix confetti appearing in the top left corner
+      const rect = walletRef.current.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) {
+        return;
+      }
       setTimeout(() => {
         fetchCredits();
         party.confetti(walletRef.current!, {
@@ -236,7 +285,8 @@ export default function Wallet() {
     state?.notified,
     fadeOut,
     fetchCredits,
-    stepsLength,
+    completedCount,
+    prevCompletedCount,
     walletRef,
   ]);
 
@@ -255,28 +305,46 @@ export default function Wallet() {
     }, 300);
   }, [credits, prevCredits]);
 
+  // Do not render until we have both credits and onboarding data
+  if (credits === null || !state) return null;
+
   return (
-    <Popover open={walletOpen} onOpenChange={setWalletOpen}>
+    <Popover
+      open={walletOpen}
+      onOpenChange={(open) => {
+        setWalletOpen(open);
+        if (!open) {
+          // Persist the latest acknowledged credits so we only auto-open on future gains
+          if (typeof credits === "number") {
+            storage.set(StorageKey.WALLET_LAST_SEEN_CREDITS, String(credits));
+            setLastSeenCredits(credits);
+          }
+        }
+      }}
+    >
       <PopoverTrigger asChild>
         <div className="relative inline-block">
           <button
             ref={walletRef}
             className={cn(
-              "relative flex items-center gap-1 rounded-md bg-zinc-50 px-3 py-2 text-sm",
+              "relative flex flex-nowrap items-center gap-2 rounded-md bg-zinc-50 px-3 py-2 text-sm",
             )}
             onClick={onWalletOpen}
           >
-            Earn credits{" "}
-            <span className="text-sm font-semibold">
-              {formatCredits(credits)}
-            </span>
-            {completedCount < totalCount && (
-              <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"></span>
-            )}
-            <div className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-white px-4 py-2 shadow-md group-hover:block">
-              <Text variant="body-medium">
-                {completedCount} of {totalCount} rewards claimed
-              </Text>
+            <WalletIcon size={20} className="inline-block md:hidden" />
+            <div>
+              <span className="mr-1 hidden md:inline-block">Earn credits </span>
+              <span className="text-sm font-semibold">
+                {formatCredits(credits)}
+              </span>
+              {completedCount && completedCount < totalCount && (
+                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"></span>
+              )}
+              <div className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-white px-4 py-2 shadow-md group-hover:block">
+                <Text variant="body-medium">
+                  {completedCount} of {totalCount} rewards claimed
+                </Text>
+              </div>
             </div>
           </button>
           <div
@@ -288,10 +356,11 @@ export default function Wallet() {
         </div>
       </PopoverTrigger>
       <PopoverContent
-        className={cn(
-          "absolute -right-[7.9rem] -top-[3.2rem] z-50 w-[28.5rem] px-[0.625rem] py-2",
-          "rounded-xl border-zinc-100 bg-white shadow-[0_3px_3px] shadow-zinc-200",
-        )}
+        side="bottom"
+        align="end"
+        sideOffset={12}
+        collisionPadding={16}
+        className={cn("z-50 w-[28.5rem] px-[0.625rem] py-2")}
       >
         {/* Header */}
         <div className="mx-1 flex items-center justify-between border-b border-zinc-200 pb-3">
@@ -303,7 +372,7 @@ export default function Wallet() {
               Earn credits{" "}
               <span className="font-semibold">{formatCredits(credits)}</span>
             </div>
-            <PopoverClose>
+            <PopoverClose aria-label="Close wallet">
               <X className="ml-2 h-5 w-5 text-zinc-800 hover:text-foreground" />
             </PopoverClose>
           </div>

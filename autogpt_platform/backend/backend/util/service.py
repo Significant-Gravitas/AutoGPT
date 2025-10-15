@@ -28,6 +28,7 @@ from fastapi import FastAPI, Request, responses
 from pydantic import BaseModel, TypeAdapter, create_model
 
 import backend.util.exceptions as exceptions
+from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
 from backend.util.process import AppProcess, get_service_name
@@ -282,6 +283,24 @@ class AppService(BaseAppService, ABC):
         sentry_init()
         super().run()
         self.fastapi_app = FastAPI()
+
+        # Add Prometheus instrumentation to all services
+        try:
+            instrument_fastapi(
+                self.fastapi_app,
+                service_name=self.service_name,
+                expose_endpoint=True,
+                endpoint="/metrics",
+                include_in_schema=False,
+            )
+        except ImportError:
+            logger.warning(
+                f"Prometheus instrumentation not available for {self.service_name}"
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to instrument {self.service_name} with Prometheus: {e}"
+            )
 
         # Register the exposed API routes.
         for attr_name, attr in vars(type(self)).items():

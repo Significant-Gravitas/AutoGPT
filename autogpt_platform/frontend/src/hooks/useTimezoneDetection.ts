@@ -27,8 +27,8 @@ export const useTimezoneDetection = (currentTimezone?: string) => {
         return;
       }
 
-      // Update the timezone in the backend
-      await updateTimezone.mutateAsync({
+      // Fire-and-forget timezone update - we don't need to wait for response
+      updateTimezone.mutate({
         data: { timezone: browserTimezone } as any,
       });
 

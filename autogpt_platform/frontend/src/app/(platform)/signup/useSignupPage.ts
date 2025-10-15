@@ -7,8 +7,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
-import { providerLogin } from "../login/actions";
-import { signup } from "./actions";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 
 export function useSignupPage() {
@@ -76,22 +74,36 @@ export function useSignupPage() {
       resetCaptcha();
       return;
     }
+    try {
+      const response = await fetch("/api/auth/provider", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider }),
+      });
 
-    const returnUrl = searchParams.get("returnUrl") || undefined;
-    const error = await providerLogin(
-      provider,
-      returnUrl ? decodeURIComponent(returnUrl) : undefined,
-    );
-    if (error) {
+      if (!response.ok) {
+        const { error } = await response.json();
+        setIsGoogleLoading(false);
+        resetCaptcha();
+        toast({
+          title: error || "Failed to start OAuth flow",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const { url } = await response.json();
+      if (url) window.location.href = url as string;
+      setFeedback(null);
+    } catch (error) {
       setIsGoogleLoading(false);
       resetCaptcha();
       toast({
-        title: error,
+        title:
+          error instanceof Error ? error.message : "Failed to start OAuth flow",
         variant: "destructive",
       });
-      return;
     }
-    setFeedback(null);
   }
 
   async function handleSignup(data: z.infer<typeof signupFormSchema>) {
@@ -119,31 +131,56 @@ export function useSignupPage() {
       return;
     }
 
-    const returnUrl = searchParams.get("returnUrl") || undefined;
-    const error = await signup(
-      data,
-      turnstile.token as string,
-      returnUrl ? decodeURIComponent(returnUrl) : undefined,
-    );
-    setIsLoading(false);
-    if (error) {
-      if (error === "user_already_exists") {
-        setFeedback("User with this email already exists");
-        turnstile.reset();
-        return;
-      } else if (error === "not_allowed") {
-        setShowNotAllowedModal(true);
-      } else {
+    try {
+      const response = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: data.email,
+          password: data.password,
+          confirmPassword: data.confirmPassword,
+          agreeToTerms: data.agreeToTerms,
+          turnstileToken: turnstile.token,
+        }),
+      });
+
+      const result = await response.json();
+      setIsLoading(false);
+
+      if (!response.ok) {
+        if (result?.error === "user_already_exists") {
+          setFeedback("User with this email already exists");
+          turnstile.reset();
+          return;
+        }
+        if (result?.error === "not_allowed") {
+          setShowNotAllowedModal(true);
+          return;
+        }
         toast({
-          title: error,
+          title: result?.error || "Signup failed",
           variant: "destructive",
         });
         resetCaptcha();
         turnstile.reset();
+        return;
       }
-      return;
+
+      setFeedback(null);
+      const next = (result?.next as string) || "/";
+      router.push(next);
+    } catch (error) {
+      setIsLoading(false);
+      toast({
+        title:
+          error instanceof Error
+            ? error.message
+            : "Unexpected error during signup",
+        variant: "destructive",
+      });
+      resetCaptcha();
+      turnstile.reset();
     }
-    setFeedback(null);
   }
 
   return {
