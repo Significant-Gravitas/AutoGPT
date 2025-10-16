@@ -28,6 +28,14 @@ BEFORE INSERT OR UPDATE ON "StoreListingVersion"
 FOR EACH ROW
 EXECUTE FUNCTION update_tsvector_column();
 
+UPDATE "StoreListingVersion"
+SET search = to_tsvector('english', 
+    COALESCE(name, '') || ' ' ||
+    COALESCE(description, '') || ' ' ||
+    COALESCE("subHeading", '')
+)
+WHERE search IS NULL;
+
 -- Drop and recreate the StoreAgent view with isAvailable field
 DROP VIEW IF EXISTS "StoreAgent";
 
