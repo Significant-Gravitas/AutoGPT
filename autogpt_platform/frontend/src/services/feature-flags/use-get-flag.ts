@@ -53,12 +53,7 @@ export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] | null {
   const flagValue = currentFlags[flag];
   const isCloud = getBehaveAs() === BehaveAs.CLOUD;
 
-  if (isPwMockEnabled && !isCloud) {
-    return mockFlags[flag];
-  }
-
-  // Handle case where flag doesn't exist in LaunchDarkly yet
-  if (flagValue === undefined) {
+  if ((isPwMockEnabled && !isCloud) || flagValue === undefined) {
     return mockFlags[flag];
   }
 
