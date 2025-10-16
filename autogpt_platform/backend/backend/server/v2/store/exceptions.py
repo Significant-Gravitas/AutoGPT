@@ -1,4 +1,7 @@
-class MediaUploadError(Exception):
+from backend.util.exceptions import NotFoundError
+
+
+class MediaUploadError(ValueError):
     """Base exception for media upload errors"""
 
     pass
@@ -48,19 +51,19 @@ class VirusScanError(MediaUploadError):
     pass
 
 
-class StoreError(Exception):
+class StoreError(ValueError):
     """Base exception for store-related errors"""
 
     pass
 
 
-class AgentNotFoundError(StoreError):
+class AgentNotFoundError(NotFoundError):
     """Raised when an agent is not found"""
 
     pass
 
 
-class CreatorNotFoundError(StoreError):
+class CreatorNotFoundError(NotFoundError):
     """Raised when a creator is not found"""
 
     pass
@@ -78,19 +81,19 @@ class DatabaseError(StoreError):
     pass
 
 
-class ProfileNotFoundError(StoreError):
+class ProfileNotFoundError(NotFoundError):
     """Raised when a profile is not found"""
 
     pass
 
 
-class ListingNotFoundError(StoreError):
+class ListingNotFoundError(NotFoundError):
     """Raised when a store listing is not found"""
 
     pass
 
 
-class SubmissionNotFoundError(StoreError):
+class SubmissionNotFoundError(NotFoundError):
     """Raised when a submission is not found"""
 
     pass

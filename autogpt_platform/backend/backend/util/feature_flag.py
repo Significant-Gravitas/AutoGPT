@@ -37,6 +37,11 @@ class Flag(str, Enum):
     AGENT_ACTIVITY = "agent-activity"
 
 
+def is_configured() -> bool:
+    """Check if LaunchDarkly is configured with an SDK key."""
+    return bool(settings.secrets.launch_darkly_sdk_key)
+
+
 def get_client() -> LDClient:
     """Get the LaunchDarkly client singleton."""
     if not _is_initialized:

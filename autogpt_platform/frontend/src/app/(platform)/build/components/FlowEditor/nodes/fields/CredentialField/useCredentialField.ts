@@ -7,6 +7,7 @@ import {
 } from "./helpers";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { useEffect, useRef } from "react";
+import { useShallow } from "zustand/react/shallow";
 
 export const useCredentialField = ({
   credentialSchema,
@@ -34,8 +35,8 @@ export const useCredentialField = ({
       },
     });
 
-  const hardcodedValues = useNodeStore((state) =>
-    state.getHardCodedValues(nodeId),
+  const hardcodedValues = useNodeStore(
+    useShallow((state) => state.getHardCodedValues(nodeId)),
   );
 
   const credentialProvider = getCredentialProviderFromSchema(
