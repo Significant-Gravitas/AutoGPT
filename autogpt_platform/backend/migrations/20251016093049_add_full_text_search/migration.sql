@@ -4,31 +4,29 @@ ALTER TABLE "StoreListingVersion" ADD COLUMN "search" tsvector DEFAULT ''::tsvec
 -- Add trigger to update the search column with the tsvector of the agent
 -- Function to be invoked by trigger
 
-CREATE OR REPLACE FUNCTION update_tsvector_column() RETURNS TRIGGER AS $$
-
-BEGIN
-
-NEW.search := to_tsvector('english', COALESCE(NEW.description, '')|| ' ' ||COALESCE(NEW.name, '')|| ' ' ||COALESCE(NEW.subHeading, '')|| ' ' ||COALESCE(NEW.description, ''));
-
-RETURN NEW;
-
-END;
-
-$$ LANGUAGE plpgsql SECURITY definer SET search_path = public, pg_temp;
-
--- Trigger that keeps the TSVECTOR up to date
-
+-- Drop the trigger first
 DROP TRIGGER IF EXISTS "update_tsvector" ON "StoreListingVersion";
 
+-- Drop the function completely
+DROP FUNCTION IF EXISTS update_tsvector_column();
+
+-- Now recreate it fresh
+CREATE OR REPLACE FUNCTION update_tsvector_column() RETURNS TRIGGER AS $$
+BEGIN
+  NEW.search := to_tsvector('english', 
+    COALESCE(NEW.name, '') || ' ' ||
+    COALESCE(NEW.description, '') || ' ' ||
+    COALESCE(NEW."subHeading", '')
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = platform, pg_temp;
+
+-- Recreate the trigger
 CREATE TRIGGER "update_tsvector"
-
 BEFORE INSERT OR UPDATE ON "StoreListingVersion"
-
 FOR EACH ROW
-
-EXECUTE FUNCTION update_tsvector_column ();
-
-BEGIN;
+EXECUTE FUNCTION update_tsvector_column();
 
 -- Drop and recreate the StoreAgent view with isAvailable field
 DROP VIEW IF EXISTS "StoreAgent";
@@ -68,6 +66,7 @@ SELECT
     COALESCE(ar.run_count, 0::bigint) AS runs,
     COALESCE(rs.avg_rating, 0.0)::double precision AS rating,
     COALESCE(av.versions, ARRAY[slv.version::text]) AS versions,
+    COALESCE(sl."useForOnboarding", false) AS "useForOnboarding",
     slv."isAvailable" AS is_available  -- Add isAvailable field to filter sub-agents
 FROM "StoreListing" sl
 JOIN latest_versions lv 
