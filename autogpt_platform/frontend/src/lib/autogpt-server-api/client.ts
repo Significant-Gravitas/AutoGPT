@@ -10,6 +10,7 @@ import {
   getSupabaseAnonKey,
 } from "@/lib/env-config";
 import * as Sentry from "@sentry/nextjs";
+import { ChatAPI } from "./chat";
 import type {
   AddUserCreditsResponse,
   AnalyticsDetails,
@@ -86,6 +87,7 @@ export default class BackendAPI {
   private wsOnDisconnectHandlers: Set<() => void> = new Set();
   private wsMessageHandlers: Record<string, Set<(data: any) => void>> = {};
   private isIntentionallyDisconnected: boolean = false;
+  public chat: ChatAPI;
 
   readonly HEARTBEAT_INTERVAL = 100_000; // 100 seconds
   readonly HEARTBEAT_TIMEOUT = 10_000; // 10 seconds
@@ -98,6 +100,7 @@ export default class BackendAPI {
   ) {
     this.baseUrl = baseUrl;
     this.wsUrl = wsUrl;
+    this.chat = new ChatAPI(this);
   }
 
   private async getSupabaseClient(): Promise<SupabaseClient | null> {
@@ -447,7 +450,7 @@ export default class BackendAPI {
 
   getStoreProfile(): Promise<ProfileDetails | null> {
     try {
-      const result = this._get("/store/profile");
+      const result = this._get("/v2/store/profile");
       return result;
     } catch (error) {
       console.error("Error fetching store profile:", error);
@@ -563,7 +566,7 @@ export default class BackendAPI {
   }
 
   updateStoreProfile(profile: ProfileDetails): Promise<ProfileDetails> {
-    return this._request("POST", "/store/profile", profile);
+    return this._request("POST", "/v2/store/profile", profile);
   }
 
   reviewAgent(
