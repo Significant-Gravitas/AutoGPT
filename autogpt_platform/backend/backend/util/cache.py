@@ -59,12 +59,7 @@ def _get_cache_pool() -> ConnectionPool:
     return _cache_pool
 
 
-def _get_redis_client() -> Redis:
-    """Get a Redis client from the connection pool."""
-    return Redis(connection_pool=_get_cache_pool())
-
-
-redis = _get_redis_client()
+redis = Redis(connection_pool=_get_cache_pool())
 
 
 @dataclass

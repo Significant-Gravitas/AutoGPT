@@ -15,6 +15,17 @@ from backend.util.data import get_data_path
 
 T = TypeVar("T", bound=BaseSettings)
 
+_SERVICE_NAME = "MainProcess"
+
+
+def get_service_name():
+    return _SERVICE_NAME
+
+
+def set_service_name(name: str):
+    global _SERVICE_NAME
+    _SERVICE_NAME = name
+
 
 class AppEnvironment(str, Enum):
     LOCAL = "local"
