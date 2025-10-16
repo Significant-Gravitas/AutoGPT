@@ -47,7 +47,7 @@ RUN poetry install --no-ansi --no-root
 
 # Generate Prisma client
 COPY autogpt_platform/backend/schema.prisma ./
-COPY autogpt_platform/backend/data/partial_types.py ./backend/data/partial_types.py
+COPY autogpt_platform/backend/backend/data/partial_types.py ./backend/data/partial_types.py
 RUN poetry run prisma generate
 
 FROM debian:13-slim AS server_dependencies
@@ -93,7 +93,7 @@ FROM server_dependencies AS migrate
 
 # Migration stage only needs schema and migrations - much lighter than full backend
 COPY autogpt_platform/backend/schema.prisma /app/autogpt_platform/backend/
-COPY autogpt_platform/backend/data/partial_types.py /app/autogpt_platform/backend/backend/data/partial_types.py
+COPY autogpt_platform/backend/backend/data/partial_types.py /app/autogpt_platform/backend/backend/data/partial_types.py
 COPY autogpt_platform/backend/migrations /app/autogpt_platform/backend/migrations
 
 FROM server_dependencies AS server
