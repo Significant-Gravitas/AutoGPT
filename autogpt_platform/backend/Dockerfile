@@ -47,6 +47,7 @@ RUN poetry install --no-ansi --no-root
 
 # Generate Prisma client
 COPY autogpt_platform/backend/schema.prisma ./
+COPY autogpt_platform/backend/data/partial_types.py ./backend/data/partial_types.py
 RUN poetry run prisma generate
 
 FROM debian:13-slim AS server_dependencies
