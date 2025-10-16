@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { DefaultStateType } from "../components/NewBlockMenu/types";
+import { DefaultStateType } from "../components/NewControlPanel/NewBlockMenu/types";
 
 type BlockMenuStore = {
   searchQuery: string;
