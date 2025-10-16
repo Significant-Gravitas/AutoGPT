@@ -25,6 +25,7 @@ from backend.data.notifications import (
     NotificationEventModel,
 )
 from backend.notifications.notifications import queue_notification_async
+from backend.util.exceptions import DatabaseError
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -141,9 +142,7 @@ async def get_store_agents(
         )
     except Exception as e:
         logger.error(f"Error getting store agents: {e}")
-        raise backend.server.v2.store.exceptions.DatabaseError(
-            "Failed to fetch store agents"
-        ) from e
+        raise DatabaseError("Failed to fetch store agents") from e
     # TODO: commenting this out as we concerned about potential db load issues
     # finally:
     #     if search_term:
@@ -254,9 +253,7 @@ async def get_store_agent_details(
         raise
     except Exception as e:
         logger.error(f"Error getting store agent details: {e}")
-        raise backend.server.v2.store.exceptions.DatabaseError(
-            "Failed to fetch agent details"
-        ) from e
+        raise DatabaseError("Failed to fetch agent details") from e
 
 
 async def get_available_graph(store_listing_version_id: str) -> GraphMeta:
@@ -283,9 +280,7 @@ async def get_available_graph(store_listing_version_id: str) -> GraphMeta:
 
     except Exception as e:
         logger.error(f"Error getting agent: {e}")
-        raise backend.server.v2.store.exceptions.DatabaseError(
-            "Failed to fetch agent"
-        ) from e
+        raise DatabaseError("Failed to fetch agent") from e
 
 
 async def get_store_agent_by_version_id(
@@ -325,9 +320,7 @@ async def get_store_agent_by_version_id(
         raise
     except Exception as e:
         logger.error(f"Error getting store agent details: {e}")
-        raise backend.server.v2.store.exceptions.DatabaseError(
-            "Failed to fetch agent details"
-        ) from e
+        raise DatabaseError("Failed to fetch agent details") from e
 
 
 async def get_store_creators(
@@ -353,9 +346,7 @@ async def get_store_creators(
         # Sanitize and validate search query by escaping special characters
         sanitized_query = search_query.strip()
         if not sanitized_query or len(sanitized_query) > 100:  # Reasonable length limit
-            raise backend.server.v2.store.exceptions.DatabaseError(
-                "Invalid search query"
-            )
+            raise DatabaseError("Invalid search query")
 
         # Escape special SQL characters
         sanitized_query = (
@@ -381,11 +372,9 @@ async def get_store_creators(
     try:
         # Validate pagination parameters
         if not isinstance(page, int) or page < 1:
-            raise backend.server.v2.store.exceptions.DatabaseError(
-                "Invalid page number"
-            )
+            raise DatabaseError("Invalid page number")
         if not isinstance(page_size, int) or page_size < 1 or page_size > 100:
-            raise backend.server.v2.store.exceptions.DatabaseError("Invalid page size")
+            raise DatabaseError("Invalid page size")
 
         # Get total count for pagination using sanitized where clause
         total = await prisma.models.Creator.prisma().count(
@@ -440,9 +429,7 @@ async def get_store_creators(
         )
     except Exception as e:
         logger.error(f"Error getting store creators: {e}")
-        raise backend.server.v2.store.exceptions.DatabaseError(
-            "Failed to fetch store creators"
-        ) from e
+        raise DatabaseError("Failed to fetch store creators") from e
 
 
 async def get_store_creator_details(
@@ -477,9 +464,7 @@ async def get_store_creator_details(
         raise
     except Exception as e:
         logger.error(f"Error getting store creator details: {e}")
-        raise backend.server.v2.store.exceptions.DatabaseError(
-            "Failed to fetch creator details"
-        ) from e
+        raise DatabaseError("Failed to fetch creator details") from e
 
 
 async def get_store_submissions(
@@ -754,7 +739,7 @@ async def create_store_submission(
             ) from exc
         else:
             # Reraise as a generic database error for other unique violations
-            raise backend.server.v2.store.exceptions.DatabaseError(
+            raise DatabaseError(
                 f"Unique constraint violated (not slug): {error_str}"
             ) from exc
     except (
@@ -764,9 +749,7 @@ async def create_store_submission(
         raise
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error creating store submission: {e}")
-        raise backend.server.v2.store.exceptions.DatabaseError(
-            "Failed to create store submission"
-        ) from e
+        raise DatabaseError("Failed to create store submission") from e
 
 
 async def edit_store_submission(
@@ -887,9 +870,7 @@ async def edit_store_submission(
             )
 
             if not updated_version:
-                raise backend.server.v2.store.exceptions.DatabaseError(
-                    "Failed to update store listing version"
-                )
+                raise DatabaseError("Failed to update store listing version")
             return backend.server.v2.store.model.StoreSubmission(
                 agent_id=current_version.agentGraphId,
                 agent_version=current_version.agentGraphVersion,
@@ -925,9 +906,7 @@ async def edit_store_submission(
         raise
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error editing store submission: {e}")
-        raise backend.server.v2.store.exceptions.DatabaseError(
-            "Failed to edit store submission"
-        ) from e
+        raise DatabaseError("Failed to edit store submission") from e
 
 
 async def create_store_version(
@@ -1042,9 +1021,7 @@ async def create_store_version(
         )
 
     except prisma.errors.PrismaError as e:
-        raise backend.server.v2.store.exceptions.DatabaseError(
-            "Failed to create new store version"
-        ) from e
+        raise DatabaseError("Failed to create new store version") from e
 
 
 async def create_store_review(
@@ -1084,9 +1061,7 @@ async def create_store_review(
 
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error creating store review: {e}")
-        raise backend.server.v2.store.exceptions.DatabaseError(
-            "Failed to create store review"
-        ) from e
+        raise DatabaseError("Failed to create store review") from e
 
 
 async def get_user_profile(
@@ -1110,9 +1085,7 @@ async def get_user_profile(
         )
     except Exception as e:
         logger.error(f"Error getting user profile: {e}")
-        raise backend.server.v2.store.exceptions.DatabaseError(
-            "Failed to get user profile"
-        ) from e
+        raise DatabaseError("Failed to get user profile") from e
 
 
 async def update_profile(
@@ -1149,7 +1122,7 @@ async def update_profile(
             logger.error(
                 f"Unauthorized update attempt for profile {existing_profile.id} by user {user_id}"
             )
-            raise backend.server.v2.store.exceptions.DatabaseError(
+            raise DatabaseError(
                 f"Unauthorized update attempt for profile {existing_profile.id} by user {user_id}"
             )
 
@@ -1174,9 +1147,7 @@ async def update_profile(
         )
         if updated_profile is None:
             logger.error(f"Failed to update profile for user {user_id}")
-            raise backend.server.v2.store.exceptions.DatabaseError(
-                "Failed to update profile"
-            )
+            raise DatabaseError("Failed to update profile")
 
         return backend.server.v2.store.model.CreatorDetails(
             name=updated_profile.name,
@@ -1191,9 +1162,7 @@ async def update_profile(
 
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error updating profile: {e}")
-        raise backend.server.v2.store.exceptions.DatabaseError(
-            "Failed to update profile"
-        ) from e
+        raise DatabaseError("Failed to update profile") from e
 
 
 async def get_my_agents(
@@ -1261,9 +1230,7 @@ async def get_my_agents(
         )
     except Exception as e:
         logger.error(f"Error getting my agents: {e}")
-        raise backend.server.v2.store.exceptions.DatabaseError(
-            "Failed to fetch my agents"
-        ) from e
+        raise DatabaseError("Failed to fetch my agents") from e
 
 
 async def get_agent(store_listing_version_id: str) -> GraphModel:
@@ -1525,7 +1492,7 @@ async def review_store_submission(
         )
 
         if not submission:
-            raise backend.server.v2.store.exceptions.DatabaseError(
+            raise DatabaseError(
                 f"Failed to update store listing version {store_listing_version_id}"
             )
 
@@ -1640,9 +1607,7 @@ async def review_store_submission(
 
     except Exception as e:
         logger.error(f"Could not create store submission review: {e}")
-        raise backend.server.v2.store.exceptions.DatabaseError(
-            "Failed to create store submission review"
-        ) from e
+        raise DatabaseError("Failed to create store submission review") from e
 
 
 async def get_admin_listings_with_versions(
