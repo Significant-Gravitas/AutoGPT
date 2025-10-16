@@ -105,6 +105,80 @@ export function normalizePickerResponse(data: any): NormalizedPickedFile[] {
   }));
 }
 
+export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & (
+  | {
+      success: true;
+      code: string;
+      state: string;
+    }
+  | {
+      success: false;
+      message: string;
+    }
+);
+
+export function startOAuthPopupFlow(
+  loginUrl: string,
+  expectedState: string,
+  timeoutMs: number = 5 * 60 * 1000,
+): { promise: Promise<{ code: string; state: string }>; abort: () => void } {
+  validateWindow();
+
+  const popup = window.open(loginUrl, "_blank", "popup=true");
+  if (!popup) {
+    throw new Error(
+      "Failed to open popup window. Please allow popups for this site.",
+    );
+  }
+
+  const controller = new AbortController();
+
+  const promise = new Promise<{ code: string; state: string }>(
+    (resolve, reject) => {
+      controller.signal.onabort = () => {
+        try {
+          popup.close();
+        } catch {}
+      };
+
+      function handleMessage(e: MessageEvent<OAuthPopupResultMessage>) {
+        const data = e.data;
+        if (
+          typeof data !== "object" ||
+          !data ||
+          !("message_type" in data) ||
+          data.message_type !== "oauth_popup_result"
+        )
+          return;
+
+        if (!data.success) {
+          controller.abort();
+          return reject(new Error(data.message));
+        }
+
+        if (data.state !== expectedState) {
+          controller.abort();
+          return reject(new Error("Invalid state token received"));
+        }
+
+        controller.abort();
+        resolve({ code: data.code, state: data.state });
+      }
+
+      window.addEventListener("message", handleMessage, {
+        signal: controller.signal,
+      });
+
+      setTimeout(() => {
+        controller.abort();
+        reject(new Error("OAuth flow timed out"));
+      }, timeoutMs);
+    },
+  );
+
+  return { promise, abort: () => controller.abort() };
+}
+
 function validateWindow() {
   if (typeof window === "undefined") {
     throw new Error("Google Picker cannot load on server");
