@@ -18,6 +18,7 @@ from backend.data.notifications import NotificationPreference, NotificationPrefe
 from backend.server.v2.store.exceptions import DatabaseError
 from backend.util.cache import cached
 from backend.util.encryption import JSONCryptor
+from backend.util.exceptions import DatabaseError
 from backend.util.json import SafeJson
 from backend.util.settings import Settings
 
