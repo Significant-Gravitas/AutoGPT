@@ -7,13 +7,13 @@ import {
 import { Button } from "@/components/atoms/Button/Button";
 import { MagnifyingGlassIcon } from "@radix-ui/react-icons";
 import { CustomNode } from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
-import { GraphSearchContent } from "../NewBlockMenu/GraphMenuContent/GraphContent";
+import { GraphSearchContent } from "../NewControlPanel/NewSearchGraph/GraphMenuContent/GraphContent";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { useGraphMenu } from "../NewBlockMenu/GraphMenu/useGraphMenu";
+import { useGraphMenu } from "../NewControlPanel/NewSearchGraph/GraphMenu/useGraphMenu";
 
 interface GraphSearchControlProps {
   nodes: CustomNode[];
