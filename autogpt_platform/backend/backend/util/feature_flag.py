@@ -148,15 +148,9 @@ async def get_feature_flag_value(
         # Evaluate flag
         result = client.variation(flag_key, context, default)
 
-        # Debug logging for payment flag
-        if flag_key == "enable-platform-payment":
-            logger.info(
-                f"[LaunchDarkly Debug] Feature flag {flag_key} for user {user_id}: {result} (type: {type(result).__name__}), context: {context}"
-            )
-        else:
-            logger.debug(
-                f"Feature flag {flag_key} for user {user_id}: {result} (type: {type(result).__name__})"
-            )
+        logger.debug(
+            f"Feature flag {flag_key} for user {user_id}: {result} (type: {type(result).__name__})"
+        )
         return result
 
     except Exception as e:
@@ -182,15 +176,7 @@ async def is_feature_enabled(
     Returns:
         True if feature is enabled, False otherwise
     """
-    # Debug logging for payment flag
-    if flag_key == Flag.ENABLE_PLATFORM_PAYMENT:
-        logger.info(f"[LaunchDarkly Debug] Evaluating payment flag for user {user_id}, default={default}")
-    
     result = await get_feature_flag_value(flag_key.value, user_id, default)
-
-    # Debug logging for payment flag
-    if flag_key == Flag.ENABLE_PLATFORM_PAYMENT:
-        logger.info(f"[LaunchDarkly Debug] Payment flag result: {result} (type: {type(result).__name__}) for user {user_id}")
 
     # If the result is already a boolean, return it
     if isinstance(result, bool):

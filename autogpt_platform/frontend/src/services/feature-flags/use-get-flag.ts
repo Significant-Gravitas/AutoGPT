@@ -53,24 +53,12 @@ export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] | null {
   const flagValue = currentFlags[flag];
   const isCloud = getBehaveAs() === BehaveAs.CLOUD;
 
-  // Debug logging for payment flag (can be removed once confirmed working)
-  if (flag === Flag.ENABLE_PLATFORM_PAYMENT) {
-    console.log('[LaunchDarkly Debug] Payment flag evaluation:', {
-      flag,
-      flagValue,
-      isPwMockEnabled,
-      isCloud,
-      flagExists: flagValue !== undefined
-    });
-  }
-
   if (isPwMockEnabled && !isCloud) {
     return mockFlags[flag];
   }
 
   // Handle case where flag doesn't exist in LaunchDarkly yet
   if (flagValue === undefined) {
-    console.log(`[LaunchDarkly Debug] Flag ${flag} not found in LaunchDarkly, using mock default:`, mockFlags[flag]);
     return mockFlags[flag];
   }
 
