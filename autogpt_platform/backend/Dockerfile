@@ -92,6 +92,7 @@ FROM server_dependencies AS migrate
 
 # Migration stage only needs schema and migrations - much lighter than full backend
 COPY autogpt_platform/backend/schema.prisma /app/autogpt_platform/backend/
+COPY autogpt_platform/backend/data/partial_types.py /app/autogpt_platform/backend/backend/data/partial_types.py
 COPY autogpt_platform/backend/migrations /app/autogpt_platform/backend/migrations
 
 FROM server_dependencies AS server
