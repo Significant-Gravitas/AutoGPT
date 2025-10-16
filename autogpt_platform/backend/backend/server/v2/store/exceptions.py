@@ -75,12 +75,6 @@ class ListingExistsError(StoreError):
     pass
 
 
-class DatabaseError(StoreError):
-    """Raised when there is an error interacting with the database"""
-
-    pass
-
-
 class ProfileNotFoundError(NotFoundError):
     """Raised when a profile is not found"""
 
