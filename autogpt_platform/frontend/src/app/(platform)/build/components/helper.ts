@@ -19,6 +19,7 @@ export const convertBlockInfoIntoCustomNodeData = (
     outputSchema: block.outputSchema,
     categories: block.categories,
     uiType: block.uiType as BlockUIType,
+    block_id: block.id,
     costs: block.costs,
   };
   return customNodeData;
