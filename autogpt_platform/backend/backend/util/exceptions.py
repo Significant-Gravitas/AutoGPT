@@ -86,3 +86,9 @@ class GraphValidationError(ValueError):
                 for node_id, errors in self.node_errors.items()
             ]
         )
+
+
+class DatabaseError(Exception):
+    """Raised when there is an error interacting with the database"""
+
+    pass
