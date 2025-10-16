@@ -17,7 +17,6 @@ from backend.util.text import TextFormatter
 logger = logging.getLogger(__name__)
 settings = Settings()
 
-
 # The following is a workaround to get the type checker to recognize the EmailManager type
 # This is a temporary solution and should be removed once the Postmark library is updated
 # to support type annotations.
@@ -44,72 +43,72 @@ class EmailSender:
             self.postmark = None
         self.formatter = TextFormatter()
 
-MAX_EMAIL_CHARS = 5_000_000  # ~5MB buffer
+    MAX_EMAIL_CHARS = 5_000_000  # ~5MB buffer
 
-def send_templated(
-    self,
-    notification: NotificationType,
-    user_email: str,
-    data: (
-        NotificationEventModel[NotificationDataType_co]
-        | list[NotificationEventModel[NotificationDataType_co]]
-    ),
-    user_unsub_link: str | None = None,
-):
-    if not self.postmark:
-        logger.warning("Postmark client not initialized, email not sent")
-        return
-    template = self._get_template(notification)
+    def send_templated(
+        self,
+        notification: NotificationType,
+        user_email: str,
+        data: (
+            NotificationEventModel[NotificationDataType_co]
+            | list[NotificationEventModel[NotificationDataType_co]]
+        ),
+        user_unsub_link: str | None = None,
+    ):
+        if not self.postmark:
+            logger.warning("Postmark client not initialized, email not sent")
+            return
 
-    base_url = settings.config.frontend_base_url or settings.config.platform_base_url
+        template = self._get_template(notification)
 
-    # Normalize data
-    template_data = {"notifications": data} if isinstance(data, list) else data
+        base_url = settings.config.frontend_base_url or settings.config.platform_base_url
 
-    try:
-        subject, full_message = self.formatter.format_email(
-            base_template=template.base_template,
-            subject_template=template.subject_template,
-            content_template=template.body_template,
-            data=template_data,
-            unsubscribe_link=f"{base_url}/profile/settings",
-        )
-    except Exception as e:
-        logger.error(f"Error formatting full message: {e}")
-        raise e
+        # Normalize data
+        template_data = {"notifications": data} if isinstance(data, list) else data
 
-    email_size = len(full_message)
-    if email_size > MAX_EMAIL_CHARS:
-        logger.warning(
-            f"Email size ({email_size} chars) exceeds safe limit. "
-            "Sending summary email instead."
-        )
+        try:
+            subject, full_message = self.formatter.format_email(
+                base_template=template.base_template,
+                subject_template=template.subject_template,
+                content_template=template.body_template,
+                data=template_data,
+                unsubscribe_link=f"{base_url}/profile/settings",
+            )
+        except Exception as e:
+            logger.error(f"Error formatting full message: {e}")
+            raise e
 
-        # Create lightweight summary
-        summary_message = (
-            f"⚠️ Your agent '{getattr(data, 'agent_name', 'Unknown')}' "
-            f"generated a very large output ({email_size / 1_000_000:.2f} MB).\n\n"
-            f"Execution time: {getattr(data, 'execution_time', 'N/A')}\n"
-            f"Credits used: {getattr(data, 'credits_used', 'N/A')}\n"
-            f"View full results: {base_url}/executions/{getattr(data, 'id', 'N/A')}"
-        )
+        email_size = len(full_message)
+        if email_size > self.MAX_EMAIL_CHARS:
+            logger.warning(
+                f"Email size ({email_size} chars) exceeds safe limit. "
+                "Sending summary email instead."
+            )
 
+            # Create lightweight summary
+            summary_message = (
+                f"⚠️ Your agent '{getattr(data, 'agent_name', 'Unknown')}' "
+                f"generated a very large output ({email_size / 1_000_000:.2f} MB).\n\n"
+                f"Execution time: {getattr(data, 'execution_time', 'N/A')}\n"
+                f"Credits used: {getattr(data, 'credits_used', 'N/A')}\n"
+                f"View full results: {base_url}/executions/{getattr(data, 'id', 'N/A')}"
+            )
+
+            self._send_email(
+                user_email=user_email,
+                subject=f"{subject} (Output Too Large)",
+                body=summary_message,
+                user_unsubscribe_link=user_unsub_link,
+            )
+            return  # Skip sending full email
+
+        logger.debug(f"Sending email with size: {email_size} characters")
         self._send_email(
             user_email=user_email,
-            subject=f"{subject} (Output Too Large)",
-            body=summary_message,
+            subject=subject,
+            body=full_message,
             user_unsubscribe_link=user_unsub_link,
         )
-        return  # Skip sending full email
-
-    logger.debug(f"Sending email with size: {email_size} characters")
-    self._send_email(
-        user_email=user_email,
-        subject=subject,
-        body=full_message,
-        user_unsubscribe_link=user_unsub_link,
-    )
-
 
     def _get_template(self, notification: NotificationType):
         # convert the notification type to a notification type override
@@ -146,7 +145,6 @@ def send_templated(
             To=user_email,
             Subject=subject,
             HtmlBody=body,
-            # Headers default to None internally so this is fine
             Headers=(
                 {
                     "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
