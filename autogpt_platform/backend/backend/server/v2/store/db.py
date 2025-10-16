@@ -118,41 +118,36 @@ async def get_store_agents(
 
             # Execute full-text search query
             sql_query = f"""
-            WITH query AS (
-                SELECT to_tsquery(string_agg(lexeme || ':*', ' & ' ORDER BY positions)) AS q
-                FROM unnest(to_tsvector('{search_term}'))
-            )
-            SELECT
-                slug,
-                agent_name,
-                agent_image,
-                creator_username,
-                creator_avatar,
-                sub_heading,
-                description,
-                runs,
-                rating,
-                categories,
-                featured,
-                is_available,
-                updated_at,
-                ts_rank(CAST(search AS tsvector), query.q) AS rank
-            FROM "StoreAgent", query
-            WHERE {where_filter} AND search @@ query.q
-            ORDER BY {order_by_clause}
-            LIMIT {page_size}
-            OFFSET {offset};
+                SELECT
+                    slug,
+                    agent_name,
+                    agent_image,
+                    creator_username,
+                    creator_avatar,
+                    sub_heading,
+                    description,
+                    runs,
+                    rating,
+                    categories,
+                    featured,
+                    is_available,
+                    updated_at,
+                    ts_rank_cd(search, query) AS rank
+                FROM "StoreAgent",
+                    plainto_tsquery('english', '{search_term}') AS query
+                WHERE {where_filter} 
+                    AND search @@ query
+                ORDER BY rank DESC, {order_by_clause}
+                LIMIT {page_size} OFFSET {offset}
             """
 
             # Count query for pagination
             count_query = f"""
-            WITH query AS (
-                SELECT to_tsquery(string_agg(lexeme || ':*', ' & ' ORDER BY positions)) AS q
-                FROM unnest(to_tsvector('{search_term}'))
-            )
-            SELECT COUNT(*) as count
-            FROM "StoreAgent", query
-            WHERE {where_filter} AND search @@ query.q;
+                SELECT COUNT(*) as count
+                FROM "StoreAgent",
+                    plainto_tsquery('english', '{search_term}') AS query
+                WHERE {where_filter} 
+                    AND search @@ query
             """
 
             # Execute both queries
