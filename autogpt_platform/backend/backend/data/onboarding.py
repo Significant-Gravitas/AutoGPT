@@ -26,8 +26,6 @@ REASON_MAPPING: dict[str, list[str]] = {
 POINTS_AGENT_COUNT = 50  # Number of agents to calculate points for
 MIN_AGENT_COUNT = 2  # Minimum number of marketplace agents to enable onboarding
 
-user_credit = get_user_credit_model()
-
 
 class UserOnboardingUpdate(pydantic.BaseModel):
     completedSteps: Optional[list[OnboardingStep]] = None
@@ -147,7 +145,8 @@ async def reward_user(user_id: str, step: OnboardingStep):
         return
 
     onboarding.rewardedFor.append(step)
-    await user_credit.onboarding_reward(user_id, reward, step)
+    user_credit_model = await get_user_credit_model(user_id)
+    await user_credit_model.onboarding_reward(user_id, reward, step)
     await UserOnboarding.prisma().update(
         where={"userId": user_id},
         data={

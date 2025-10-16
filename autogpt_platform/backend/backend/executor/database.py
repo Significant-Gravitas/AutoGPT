@@ -57,7 +57,6 @@ from backend.util.service import (
 from backend.util.settings import Config
 
 config = Config()
-_user_credit_model = get_user_credit_model()
 logger = logging.getLogger(__name__)
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -66,11 +65,13 @@ R = TypeVar("R")
 async def _spend_credits(
     user_id: str, cost: int, metadata: UsageTransactionMetadata
 ) -> int:
-    return await _user_credit_model.spend_credits(user_id, cost, metadata)
+    user_credit_model = await get_user_credit_model(user_id)
+    return await user_credit_model.spend_credits(user_id, cost, metadata)
 
 
 async def _get_credits(user_id: str) -> int:
-    return await _user_credit_model.get_credits(user_id)
+    user_credit_model = await get_user_credit_model(user_id)
+    return await user_credit_model.get_credits(user_id)
 
 
 class DatabaseManager(AppService):

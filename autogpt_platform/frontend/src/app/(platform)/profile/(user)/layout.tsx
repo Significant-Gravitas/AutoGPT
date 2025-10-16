@@ -8,8 +8,11 @@ import {
   IconCoin,
 } from "@/components/__legacy__/ui/icons";
 import { KeyIcon } from "lucide-react";
+import { useGetFlag, Flag } from "@/services/feature-flags/use-get-flag";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
+  const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
+
   const sidebarLinkGroups = [
     {
       links: [
@@ -18,7 +21,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           href: "/profile/dashboard",
           icon: <IconDashboardLayout className="h-6 w-6" />,
         },
-        ...(process.env.NEXT_PUBLIC_SHOW_BILLING_PAGE === "true"
+        ...(isPaymentEnabled
           ? [
               {
                 text: "Billing",
