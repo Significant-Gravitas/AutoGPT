@@ -1,3 +1,5 @@
+"use client";
+
 import * as React from "react";
 import { Sidebar } from "@/components/__legacy__/Sidebar";
 import {
