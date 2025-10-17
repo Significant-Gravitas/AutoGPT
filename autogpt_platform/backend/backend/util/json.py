@@ -1,4 +1,3 @@
-import json  # noqa: F401 - re-exported for use in other modules
 import re
 from typing import Any, Type, TypeGuard, TypeVar, overload
 
@@ -182,8 +181,5 @@ def SafeJson(data: Any) -> Json:
     if isinstance(data, BaseModel):
         data = data.model_dump(exclude_none=True)
 
-    # Sanitize the data structure by removing control characters
-    sanitized_data = _sanitize_value(data)
-
     # Return as Prisma Json type
-    return Json(sanitized_data)
+    return Json(_sanitize_value(data))
