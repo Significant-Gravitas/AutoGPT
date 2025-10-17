@@ -18,7 +18,7 @@ export function EmailNotAllowedModal({ isOpen, onClose }: Props) {
           <Text variant="h3">Join the Waitlist</Text>
           <div className="flex flex-col gap-4">
             <Text variant="large-medium" className="text-center">
-              AutoGPT Platform is currently in closed beta. Your email address
+              The AutoGPT Platform is currently in closed beta. Your email address
               isn&apos;t on our current allowlist for early access.
             </Text>
             <Text variant="body" className="text-center">
