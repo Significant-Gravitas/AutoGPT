@@ -15,8 +15,18 @@ POSTGRES_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]")
 
 
 def to_dict(data) -> dict:
-    if isinstance(data, BaseModel):
-        data = data.model_dump()
+    """
+    Convert data to a JSON-serializable dict.
+
+    Uses FastAPI's jsonable_encoder to handle Pydantic models, datetime, UUID, and other
+    special types recursively.
+
+    Args:
+        data: Input data (can be Pydantic model, dict, list, or any JSON-serializable type)
+
+    Returns:
+        Dictionary that can be passed to json.dumps()
+    """
     return jsonable_encoder(data)
 
 
@@ -108,53 +118,18 @@ def validate_with_jsonschema(
         return str(e)
 
 
-def _sanitize_value(value: Any) -> Any:
-    """
-    Recursively sanitize values by removing PostgreSQL-incompatible control characters.
-
-    This function walks through data structures and removes control characters from strings.
-    It handles:
-    - Pydantic models: Convert to dict then recursively sanitize
-    - Strings: Remove control chars directly from the string
-    - Lists: Recursively sanitize each element
-    - Dicts: Recursively sanitize keys and values
-    - Other types: Return as-is
-
-    Args:
-        value: The value to sanitize
-
-    Returns:
-        Sanitized version of the value with control characters removed
-    """
-    if isinstance(value, str):
-        # Remove control characters directly from the string
-        return POSTGRES_CONTROL_CHARS.sub("", value)
-    elif isinstance(value, BaseModel):
-        # Convert Pydantic models to dict and recursively sanitize
-        return _sanitize_value(value.model_dump(exclude_none=True))
-    elif isinstance(value, dict):
-        # Recursively sanitize dictionary keys and values
-        return {_sanitize_value(k): _sanitize_value(v) for k, v in value.items()}
-    elif isinstance(value, list):
-        # Recursively sanitize list elements
-        return [_sanitize_value(item) for item in value]
-    elif isinstance(value, tuple):
-        # Recursively sanitize tuple elements
-        return tuple(_sanitize_value(item) for item in value)
-    else:
-        # For other types (int, float, bool, None, etc.), return as-is
-        return value
-
-
 def SafeJson(data: Any) -> Json:
     """
     Safely serialize data and return Prisma's Json type.
     Sanitizes control characters to prevent PostgreSQL 22P05 errors.
 
     This function:
-    1. Converts Pydantic models to dicts (recursively)
+    1. Converts Pydantic models to dicts (recursively using jsonable_encoder)
     2. Recursively removes PostgreSQL-incompatible control characters from strings
     3. Returns a Prisma Json object safe for database storage
+
+    Uses FastAPI's jsonable_encoder with a custom encoder to handle both Pydantic
+    conversion and control character sanitization in a single tree walk.
 
     Args:
         data: Input data to sanitize and convert to Json
@@ -167,5 +142,12 @@ def SafeJson(data: Any) -> Json:
         >>> SafeJson({"path": "C:\\\\temp"})  # backslashes preserved
         >>> SafeJson({"data": "Text\\\\u0000here"})  # literal backslash-u preserved
     """
-    # _sanitize_value handles Pydantic model conversion and sanitization
-    return Json(_sanitize_value(data))
+
+    def _sanitize_string(value: str) -> str:
+        """Remove PostgreSQL-incompatible control characters from string."""
+        return POSTGRES_CONTROL_CHARS.sub("", value)
+
+    # Use jsonable_encoder with custom encoder to handle both Pydantic conversion
+    # and string sanitization in a single pass
+    result = jsonable_encoder(data, custom_encoder={str: _sanitize_string})
+    return Json(result)
