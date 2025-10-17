@@ -108,20 +108,6 @@ def validate_with_jsonschema(
         return str(e)
 
 
-def is_list_of_basemodels(value: object) -> TypeGuard[list[BaseModel]]:
-    return isinstance(value, list) and all(
-        isinstance(item, BaseModel) for item in value
-    )
-
-
-def convert_pydantic_to_json(output_data: Any) -> Any:
-    if isinstance(output_data, BaseModel):
-        return output_data.model_dump()
-    if is_list_of_basemodels(output_data):
-        return [item.model_dump() for item in output_data]
-    return output_data
-
-
 def _sanitize_value(value: Any) -> Any:
     """
     Recursively sanitize values by removing PostgreSQL-incompatible control characters.
