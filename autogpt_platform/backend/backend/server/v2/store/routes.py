@@ -40,23 +40,13 @@ async def get_profile(
     Get the profile details for the authenticated user.
     Cached for 1 hour per user.
     """
-    try:
-        profile = await backend.server.v2.store.db.get_user_profile(user_id)
-        if profile is None:
-            return fastapi.responses.JSONResponse(
-                status_code=404,
-                content={"detail": "Profile not found"},
-            )
-        return profile
-    except Exception as e:
-        logger.exception("Failed to fetch user profile for %s: %s", user_id, e)
+    profile = await backend.server.v2.store.db.get_user_profile(user_id)
+    if profile is None:
         return fastapi.responses.JSONResponse(
-            status_code=500,
-            content={
-                "detail": "Failed to retrieve user profile",
-                "hint": "Check database connection.",
-            },
+            status_code=404,
+            content={"detail": "Profile not found"},
         )
+    return profile
 
 
 @router.post(
@@ -83,20 +73,10 @@ async def update_or_create_profile(
     Raises:
         HTTPException: If there is an error updating the profile
     """
-    try:
-        updated_profile = await backend.server.v2.store.db.update_profile(
-            user_id=user_id, profile=profile
-        )
-        return updated_profile
-    except Exception as e:
-        logger.exception("Failed to update profile for user %s: %s", user_id, e)
-        return fastapi.responses.JSONResponse(
-            status_code=500,
-            content={
-                "detail": "Failed to update user profile",
-                "hint": "Validate request data.",
-            },
-        )
+    updated_profile = await backend.server.v2.store.db.update_profile(
+        user_id=user_id, profile=profile
+    )
+    return updated_profile
 
 
 ##############################################
@@ -155,26 +135,16 @@ async def get_agents(
             status_code=422, detail="Page size must be greater than 0"
         )
 
-    try:
-        agents = await store_cache._get_cached_store_agents(
-            featured=featured,
-            creator=creator,
-            sorted_by=sorted_by,
-            search_query=search_query,
-            category=category,
-            page=page,
-            page_size=page_size,
-        )
-        return agents
-    except Exception as e:
-        logger.exception("Failed to retrieve store agents: %s", e)
-        return fastapi.responses.JSONResponse(
-            status_code=500,
-            content={
-                "detail": "Failed to retrieve store agents",
-                "hint": "Check database or search parameters.",
-            },
-        )
+    agents = await store_cache._get_cached_store_agents(
+        featured=featured,
+        creator=creator,
+        sorted_by=sorted_by,
+        search_query=search_query,
+        category=category,
+        page=page,
+        page_size=page_size,
+    )
+    return agents
 
 
 @router.get(
@@ -189,22 +159,13 @@ async def get_agent(username: str, agent_name: str):
 
     It returns the store listing agents details.
     """
-    try:
-        username = urllib.parse.unquote(username).lower()
-        # URL decode the agent name since it comes from the URL path
-        agent_name = urllib.parse.unquote(agent_name).lower()
-        agent = await store_cache._get_cached_agent_details(
-            username=username, agent_name=agent_name
-        )
-        return agent
-    except Exception:
-        logger.exception("Exception occurred whilst getting store agent details")
-        return fastapi.responses.JSONResponse(
-            status_code=500,
-            content={
-                "detail": "An error occurred while retrieving the store agent details"
-            },
-        )
+    username = urllib.parse.unquote(username).lower()
+    # URL decode the agent name since it comes from the URL path
+    agent_name = urllib.parse.unquote(agent_name).lower()
+    agent = await store_cache._get_cached_agent_details(
+        username=username, agent_name=agent_name
+    )
+    return agent
 
 
 @router.get(
@@ -217,17 +178,10 @@ async def get_graph_meta_by_store_listing_version_id(store_listing_version_id: s
     """
     Get Agent Graph from Store Listing Version ID.
     """
-    try:
-        graph = await backend.server.v2.store.db.get_available_graph(
-            store_listing_version_id
-        )
-        return graph
-    except Exception:
-        logger.exception("Exception occurred whilst getting agent graph")
-        return fastapi.responses.JSONResponse(
-            status_code=500,
-            content={"detail": "An error occurred while retrieving the agent graph"},
-        )
+    graph = await backend.server.v2.store.db.get_available_graph(
+        store_listing_version_id
+    )
+    return graph
 
 
 @router.get(
@@ -241,18 +195,11 @@ async def get_store_agent(store_listing_version_id: str):
     """
     Get Store Agent Details from Store Listing Version ID.
     """
-    try:
-        agent = await backend.server.v2.store.db.get_store_agent_by_version_id(
-            store_listing_version_id
-        )
+    agent = await backend.server.v2.store.db.get_store_agent_by_version_id(
+        store_listing_version_id
+    )
 
-        return agent
-    except Exception:
-        logger.exception("Exception occurred whilst getting store agent")
-        return fastapi.responses.JSONResponse(
-            status_code=500,
-            content={"detail": "An error occurred while retrieving the store agent"},
-        )
+    return agent
 
 
 @router.post(
@@ -280,24 +227,17 @@ async def create_review(
     Returns:
         The created review
     """
-    try:
-        username = urllib.parse.unquote(username).lower()
-        agent_name = urllib.parse.unquote(agent_name).lower()
-        # Create the review
-        created_review = await backend.server.v2.store.db.create_store_review(
-            user_id=user_id,
-            store_listing_version_id=review.store_listing_version_id,
-            score=review.score,
-            comments=review.comments,
-        )
+    username = urllib.parse.unquote(username).lower()
+    agent_name = urllib.parse.unquote(agent_name).lower()
+    # Create the review
+    created_review = await backend.server.v2.store.db.create_store_review(
+        user_id=user_id,
+        store_listing_version_id=review.store_listing_version_id,
+        score=review.score,
+        comments=review.comments,
+    )
 
-        return created_review
-    except Exception:
-        logger.exception("Exception occurred whilst creating store review")
-        return fastapi.responses.JSONResponse(
-            status_code=500,
-            content={"detail": "An error occurred while creating the store review"},
-        )
+    return created_review
 
 
 ##############################################
@@ -340,21 +280,14 @@ async def get_creators(
             status_code=422, detail="Page size must be greater than 0"
         )
 
-    try:
-        creators = await store_cache._get_cached_store_creators(
-            featured=featured,
-            search_query=search_query,
-            sorted_by=sorted_by,
-            page=page,
-            page_size=page_size,
-        )
-        return creators
-    except Exception:
-        logger.exception("Exception occurred whilst getting store creators")
-        return fastapi.responses.JSONResponse(
-            status_code=500,
-            content={"detail": "An error occurred while retrieving the store creators"},
-        )
+    creators = await store_cache._get_cached_store_creators(
+        featured=featured,
+        search_query=search_query,
+        sorted_by=sorted_by,
+        page=page,
+        page_size=page_size,
+    )
+    return creators
 
 
 @router.get(
@@ -370,18 +303,9 @@ async def get_creator(
     Get the details of a creator.
     - Creator Details Page
     """
-    try:
-        username = urllib.parse.unquote(username).lower()
-        creator = await store_cache._get_cached_creator_details(username=username)
-        return creator
-    except Exception:
-        logger.exception("Exception occurred whilst getting creator details")
-        return fastapi.responses.JSONResponse(
-            status_code=500,
-            content={
-                "detail": "An error occurred while retrieving the creator details"
-            },
-        )
+    username = urllib.parse.unquote(username).lower()
+    creator = await store_cache._get_cached_creator_details(username=username)
+    return creator
 
 
 ############################################
@@ -404,17 +328,10 @@ async def get_my_agents(
     """
     Get user's own agents.
     """
-    try:
-        agents = await backend.server.v2.store.db.get_my_agents(
-            user_id, page=page, page_size=page_size
-        )
-        return agents
-    except Exception:
-        logger.exception("Exception occurred whilst getting my agents")
-        return fastapi.responses.JSONResponse(
-            status_code=500,
-            content={"detail": "An error occurred while retrieving the my agents"},
-        )
+    agents = await backend.server.v2.store.db.get_my_agents(
+        user_id, page=page, page_size=page_size
+    )
+    return agents
 
 
 @router.delete(
@@ -438,19 +355,12 @@ async def delete_submission(
     Returns:
         bool: True if the submission was successfully deleted, False otherwise
     """
-    try:
-        result = await backend.server.v2.store.db.delete_store_submission(
-            user_id=user_id,
-            submission_id=submission_id,
-        )
+    result = await backend.server.v2.store.db.delete_store_submission(
+        user_id=user_id,
+        submission_id=submission_id,
+    )
 
-        return result
-    except Exception:
-        logger.exception("Exception occurred whilst deleting store submission")
-        return fastapi.responses.JSONResponse(
-            status_code=500,
-            content={"detail": "An error occurred while deleting the store submission"},
-        )
+    return result
 
 
 @router.get(
@@ -488,21 +398,12 @@ async def get_submissions(
         raise fastapi.HTTPException(
             status_code=422, detail="Page size must be greater than 0"
         )
-    try:
-        listings = await backend.server.v2.store.db.get_store_submissions(
-            user_id=user_id,
-            page=page,
-            page_size=page_size,
-        )
-        return listings
-    except Exception:
-        logger.exception("Exception occurred whilst getting store submissions")
-        return fastapi.responses.JSONResponse(
-            status_code=500,
-            content={
-                "detail": "An error occurred while retrieving the store submissions"
-            },
-        )
+    listings = await backend.server.v2.store.db.get_store_submissions(
+        user_id=user_id,
+        page=page,
+        page_size=page_size,
+    )
+    return listings
 
 
 @router.post(
@@ -529,36 +430,23 @@ async def create_submission(
     Raises:
         HTTPException: If there is an error creating the submission
     """
-    try:
-        result = await backend.server.v2.store.db.create_store_submission(
-            user_id=user_id,
-            agent_id=submission_request.agent_id,
-            agent_version=submission_request.agent_version,
-            slug=submission_request.slug,
-            name=submission_request.name,
-            video_url=submission_request.video_url,
-            image_urls=submission_request.image_urls,
-            description=submission_request.description,
-            instructions=submission_request.instructions,
-            sub_heading=submission_request.sub_heading,
-            categories=submission_request.categories,
-            changes_summary=submission_request.changes_summary or "Initial Submission",
-            recommended_schedule_cron=submission_request.recommended_schedule_cron,
-        )
+    result = await backend.server.v2.store.db.create_store_submission(
+        user_id=user_id,
+        agent_id=submission_request.agent_id,
+        agent_version=submission_request.agent_version,
+        slug=submission_request.slug,
+        name=submission_request.name,
+        video_url=submission_request.video_url,
+        image_urls=submission_request.image_urls,
+        description=submission_request.description,
+        instructions=submission_request.instructions,
+        sub_heading=submission_request.sub_heading,
+        categories=submission_request.categories,
+        changes_summary=submission_request.changes_summary or "Initial Submission",
+        recommended_schedule_cron=submission_request.recommended_schedule_cron,
+    )
 
-        return result
-    except backend.server.v2.store.exceptions.SlugAlreadyInUseError as e:
-        logger.warning("Slug already in use: %s", str(e))
-        return fastapi.responses.JSONResponse(
-            status_code=409,
-            content={"detail": str(e)},
-        )
-    except Exception:
-        logger.exception("Exception occurred whilst creating store submission")
-        return fastapi.responses.JSONResponse(
-            status_code=500,
-            content={"detail": "An error occurred while creating the store submission"},
-        )
+    return result
 
 
 @router.put(
@@ -627,36 +515,10 @@ async def upload_submission_media(
     Raises:
         HTTPException: If there is an error uploading the media
     """
-    try:
-        media_url = await backend.server.v2.store.media.upload_media(
-            user_id=user_id, file=file
-        )
-        return media_url
-    except backend.server.v2.store.exceptions.VirusDetectedError as e:
-        logger.warning(f"Virus detected in uploaded file: {e.threat_name}")
-        return fastapi.responses.JSONResponse(
-            status_code=400,
-            content={
-                "detail": f"File rejected due to virus detection: {e.threat_name}",
-                "error_type": "virus_detected",
-                "threat_name": e.threat_name,
-            },
-        )
-    except backend.server.v2.store.exceptions.VirusScanError as e:
-        logger.error(f"Virus scanning failed: {str(e)}")
-        return fastapi.responses.JSONResponse(
-            status_code=503,
-            content={
-                "detail": "Virus scanning service unavailable. Please try again later.",
-                "error_type": "virus_scan_failed",
-            },
-        )
-    except Exception:
-        logger.exception("Exception occurred whilst uploading submission media")
-        return fastapi.responses.JSONResponse(
-            status_code=500,
-            content={"detail": "An error occurred while uploading the media file"},
-        )
+    media_url = await backend.server.v2.store.media.upload_media(
+        user_id=user_id, file=file
+    )
+    return media_url
 
 
 @router.post(
@@ -679,44 +541,35 @@ async def generate_image(
     Returns:
         JSONResponse: JSON containing the URL of the generated image
     """
-    try:
-        agent = await backend.data.graph.get_graph(agent_id, user_id=user_id)
+    agent = await backend.data.graph.get_graph(agent_id, user_id=user_id)
 
-        if not agent:
-            raise fastapi.HTTPException(
-                status_code=404, detail=f"Agent with ID {agent_id} not found"
-            )
-        # Use .jpeg here since we are generating JPEG images
-        filename = f"agent_{agent_id}.jpeg"
+    if not agent:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f"Agent with ID {agent_id} not found"
+        )
+    # Use .jpeg here since we are generating JPEG images
+    filename = f"agent_{agent_id}.jpeg"
 
-        existing_url = await backend.server.v2.store.media.check_media_exists(
-            user_id, filename
-        )
-        if existing_url:
-            logger.info(f"Using existing image for agent {agent_id}")
-            return fastapi.responses.JSONResponse(content={"image_url": existing_url})
-        # Generate agent image as JPEG
-        image = await backend.server.v2.store.image_gen.generate_agent_image(
-            agent=agent
-        )
+    existing_url = await backend.server.v2.store.media.check_media_exists(
+        user_id, filename
+    )
+    if existing_url:
+        logger.info(f"Using existing image for agent {agent_id}")
+        return fastapi.responses.JSONResponse(content={"image_url": existing_url})
+    # Generate agent image as JPEG
+    image = await backend.server.v2.store.image_gen.generate_agent_image(agent=agent)
 
-        # Create UploadFile with the correct filename and content_type
-        image_file = fastapi.UploadFile(
-            file=image,
-            filename=filename,
-        )
+    # Create UploadFile with the correct filename and content_type
+    image_file = fastapi.UploadFile(
+        file=image,
+        filename=filename,
+    )
 
-        image_url = await backend.server.v2.store.media.upload_media(
-            user_id=user_id, file=image_file, use_file_name=True
-        )
+    image_url = await backend.server.v2.store.media.upload_media(
+        user_id=user_id, file=image_file, use_file_name=True
+    )
 
-        return fastapi.responses.JSONResponse(content={"image_url": image_url})
-    except Exception:
-        logger.exception("Exception occurred whilst generating submission image")
-        return fastapi.responses.JSONResponse(
-            status_code=500,
-            content={"detail": "An error occurred while generating the image"},
-        )
+    return fastapi.responses.JSONResponse(content={"image_url": image_url})
 
 
 @router.get(
