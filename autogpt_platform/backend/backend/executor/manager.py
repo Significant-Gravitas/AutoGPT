@@ -1548,11 +1548,12 @@ class ExecutionManager(AppProcess):
                 logger.warning(
                     f"[{self.service_name}] Graph {graph_exec_id} already running on pod {current_owner}"
                 )
+                _ack_message(reject=True, requeue=False)
             else:
                 logger.warning(
                     f"[{self.service_name}] Could not acquire lock for {graph_exec_id} - Redis unavailable"
                 )
-            _ack_message(reject=True, requeue=True)
+                _ack_message(reject=True, requeue=True)
             return
         self._execution_locks[graph_exec_id] = cluster_lock
 
