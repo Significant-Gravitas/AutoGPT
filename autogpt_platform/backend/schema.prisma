@@ -74,6 +74,18 @@ model ProviderRegistry {
   with_user_password Boolean @default(false)
   username_env_var String?
   password_env_var String?
+  updatedAt DateTime @updatedAt
+
+  @@index([updatedAt])
+}
+
+model BlocksRegistry {
+  id String @id @default(uuid())
+  name String
+  definition Json
+  updatedAt DateTime @updatedAt
+
+  @@index([updatedAt])
 }
 
 enum OnboardingStep {

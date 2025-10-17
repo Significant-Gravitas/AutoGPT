@@ -523,13 +523,13 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
         if hasattr(model_class, "allowed_providers") and hasattr(
             model_class, "allowed_cred_types"
         ):
-            allowed_providers = model_class.allowed_providers()
+            allowed_providers = sorted(model_class.allowed_providers())
             # If no specific providers (None), allow any string
             if allowed_providers is None:
                 schema["credentials_provider"] = ["string"]  # Allow any string provider
             else:
                 schema["credentials_provider"] = allowed_providers
-            schema["credentials_types"] = model_class.allowed_cred_types()
+            schema["credentials_types"] = sorted(model_class.allowed_cred_types())
         # Do not return anything, just mutate schema in place
 
     model_config = ConfigDict(
