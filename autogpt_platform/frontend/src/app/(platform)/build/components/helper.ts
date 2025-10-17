@@ -1,5 +1,8 @@
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
-import { CustomNode, CustomNodeData } from "./FlowEditor/nodes/CustomNode";
+import {
+  CustomNode,
+  CustomNodeData,
+} from "./FlowEditor/nodes/CustomNode/CustomNode";
 import { BlockUIType } from "./types";
 import { NodeModel } from "@/app/api/__generated__/models/nodeModel";
 import { NodeModelMetadata } from "@/app/api/__generated__/models/nodeModelMetadata";
@@ -14,7 +17,10 @@ export const convertBlockInfoIntoCustomNodeData = (
     description: block.description,
     inputSchema: block.inputSchema,
     outputSchema: block.outputSchema,
+    categories: block.categories,
     uiType: block.uiType as BlockUIType,
+    block_id: block.id,
+    costs: block.costs,
   };
   return customNodeData;
 };
@@ -49,4 +55,39 @@ export const convertNodesPlusBlockInfoIntoCustomNodes = (
     },
   };
   return customNode;
+};
+
+export enum BlockCategory {
+  AI = "AI",
+  SOCIAL = "SOCIAL",
+  TEXT = "TEXT",
+  SEARCH = "SEARCH",
+  BASIC = "BASIC",
+  INPUT = "INPUT",
+  OUTPUT = "OUTPUT",
+  LOGIC = "LOGIC",
+  COMMUNICATION = "COMMUNICATION",
+  DEVELOPER_TOOLS = "DEVELOPER_TOOLS",
+  DATA = "DATA",
+  HARDWARE = "HARDWARE",
+  AGENT = "AGENT",
+  CRM = "CRM",
+  SAFETY = "SAFETY",
+  PRODUCTIVITY = "PRODUCTIVITY",
+  ISSUE_TRACKING = "ISSUE_TRACKING",
+  MULTIMEDIA = "MULTIMEDIA",
+  MARKETING = "MARKETING",
+}
+
+// Cost related helpers
+export const isCostFilterMatch = (
+  costFilter: any,
+  inputValues: any,
+): boolean => {
+  return typeof costFilter === "object" && typeof inputValues === "object"
+    ? Object.entries(costFilter).every(
+        ([k, v]) =>
+          (!v && !inputValues[k]) || isCostFilterMatch(v, inputValues[k]),
+      )
+    : costFilter === inputValues;
 };

@@ -40,7 +40,6 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
   const showAdvanced = useNodeStore(
     (state) => state.nodeAdvancedStates[nodeId] ?? false,
   );
-  const formData = useNodeStore((state) => state.getHardCodedValues(nodeId));
 
   const { isArrayItem, arrayFieldHandleId } = useContext(ArrayEditorContext);
 
@@ -71,7 +70,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
   let credentialProvider = null;
   if (isCredential) {
     credentialProvider = getCredentialProviderFromSchema(
-      formData,
+      useNodeStore.getState().getHardCodedValues(nodeId),
       schema as BlockIOCredentialsSubSchema,
     );
   }

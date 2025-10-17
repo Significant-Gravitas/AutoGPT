@@ -43,7 +43,7 @@ The block uses a Discord bot to log into a server, locate the specified channel,
 |-------|-------------|
 | Discord Bot Token | A secret token used to authenticate the bot with Discord |
 | Message Content | The text content of the message to be sent |
-| Channel Name | The name of the Discord channel where the message should be sent |
+| Channel Name | Channel ID or channel name to send the message to |
 
 ### Outputs
 | Output | Description |

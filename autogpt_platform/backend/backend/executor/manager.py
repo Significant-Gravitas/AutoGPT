@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
 
+import sentry_sdk
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
 from prometheus_client import Gauge, start_http_server
@@ -224,14 +225,37 @@ async def execute_node(
         extra_exec_kwargs[field_name] = credentials
 
     output_size = 0
+
+    # sentry tracking nonsense to get user counts for blocks because isolation scopes don't work :(
+    scope = sentry_sdk.get_current_scope()
+
+    # save the tags
+    original_user = scope._user
+    original_tags = dict(scope._tags) if scope._tags else {}
+    # Set user ID for error tracking
+    scope.set_user({"id": user_id})
+
+    scope.set_tag("graph_id", graph_id)
+    scope.set_tag("node_id", node_id)
+    scope.set_tag("block_name", node_block.name)
+    scope.set_tag("block_id", node_block.id)
+    for k, v in (data.user_context or UserContext(timezone="UTC")).model_dump().items():
+        scope.set_tag(f"user_context.{k}", v)
+
     try:
         async for output_name, output_data in node_block.execute(
             input_data, **extra_exec_kwargs
         ):
-            output_data = json.convert_pydantic_to_json(output_data)
+            output_data = json.to_dict(output_data)
             output_size += len(json.dumps(output_data))
             log_metadata.debug("Node produced output", **{output_name: output_data})
             yield output_name, output_data
+    except Exception:
+        # Capture exception WITH context still set before restoring scope
+        sentry_sdk.capture_exception(scope=scope)
+        sentry_sdk.flush()  # Ensure it's sent before we restore scope
+        # Re-raise to maintain normal error flow
+        raise
     finally:
         # Ensure credentials are released even if execution fails
         if creds_lock and (await creds_lock.locked()) and (await creds_lock.owned()):
@@ -245,6 +269,10 @@ async def execute_node(
             execution_stats += node_block.execution_stats
             execution_stats.input_size = input_size
             execution_stats.output_size = output_size
+
+        # Restore scope AFTER error has been captured
+        scope._user = original_user
+        scope._tags = original_tags
 
 
 async def _enqueue_next_nodes(
@@ -570,7 +598,6 @@ class ExecutionProcessor:
                 await persist_output(
                     "error", str(stats.error) or type(stats.error).__name__
                 )
-
         return status
 
     @func_retry
@@ -1467,6 +1494,7 @@ class ExecutionManager(AppProcess):
 
         graph_exec_id = graph_exec_entry.graph_exec_id
         user_id = graph_exec_entry.user_id
+        graph_id = graph_exec_entry.graph_id
         logger.info(
             f"[{self.service_name}] Received RUN for graph_exec_id={graph_exec_id}, user_id={user_id}"
         )
@@ -1476,6 +1504,7 @@ class ExecutionManager(AppProcess):
             # Only check executions from the last 24 hours for performance
             current_running_count = get_db_client().get_graph_executions_count(
                 user_id=user_id,
+                graph_id=graph_id,
                 statuses=[ExecutionStatus.RUNNING],
                 created_time_gte=datetime.now(timezone.utc) - timedelta(hours=24),
             )
@@ -1485,7 +1514,7 @@ class ExecutionManager(AppProcess):
                 >= settings.config.max_concurrent_graph_executions_per_user
             ):
                 logger.warning(
-                    f"[{self.service_name}] Rate limit exceeded for user {user_id}: "
+                    f"[{self.service_name}] Rate limit exceeded for user {user_id} on graph {graph_id}: "
                     f"{current_running_count}/{settings.config.max_concurrent_graph_executions_per_user} running executions"
                 )
                 _ack_message(reject=True, requeue=True)
@@ -1519,11 +1548,12 @@ class ExecutionManager(AppProcess):
                 logger.warning(
                     f"[{self.service_name}] Graph {graph_exec_id} already running on pod {current_owner}"
                 )
+                _ack_message(reject=True, requeue=False)
             else:
                 logger.warning(
                     f"[{self.service_name}] Could not acquire lock for {graph_exec_id} - Redis unavailable"
                 )
-            _ack_message(reject=True, requeue=True)
+                _ack_message(reject=True, requeue=True)
             return
         self._execution_locks[graph_exec_id] = cluster_lock
 
