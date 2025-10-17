@@ -4,7 +4,7 @@ from typing import Any, Type, TypeVar, overload
 
 import jsonschema
 import orjson
-from fastapi.encoders import jsonable_encoder
+from fastapi.encoders import jsonable_encoder as to_dict
 from prisma import Json
 
 from .type import type_match
@@ -14,22 +14,6 @@ logger = logging.getLogger(__name__)
 # Precompiled regex to remove PostgreSQL-incompatible control characters
 # Removes \u0000-\u0008, \u000B-\u000C, \u000E-\u001F, \u007F (keeps tab \u0009, newline \u000A, carriage return \u000D)
 POSTGRES_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]")
-
-
-def to_dict(data) -> dict:
-    """
-    Convert data to a JSON-serializable dict.
-
-    Uses FastAPI's jsonable_encoder to handle Pydantic models, datetime, UUID, and other
-    special types recursively.
-
-    Args:
-        data: Input data (can be Pydantic model, dict, list, or any JSON-serializable type)
-
-    Returns:
-        Dictionary that can be passed to json.dumps()
-    """
-    return jsonable_encoder(data)
 
 
 def dumps(
@@ -126,12 +110,12 @@ def SafeJson(data: Any) -> Json:
     Sanitizes control characters to prevent PostgreSQL 22P05 errors.
 
     This function:
-    1. Converts Pydantic models to dicts (recursively using jsonable_encoder)
+    1. Converts Pydantic models to dicts (recursively using to_dict)
     2. Recursively removes PostgreSQL-incompatible control characters from strings
     3. Returns a Prisma Json object safe for database storage
 
-    Uses FastAPI's jsonable_encoder with a custom encoder to handle both Pydantic
-    conversion and control character sanitization in a single tree walk.
+    Uses to_dict (jsonable_encoder) with a custom encoder to handle both Pydantic
+    conversion and control character sanitization in a two-pass approach.
 
     Args:
         data: Input data to sanitize and convert to Json
@@ -153,10 +137,8 @@ def SafeJson(data: Any) -> Json:
         # Use two-pass approach for consistent string sanitization:
         # 1. First convert to basic JSON-serializable types (handles Pydantic models)
         # 2. Then sanitize strings in the result
-        basic_result = jsonable_encoder(data)
-        sanitized_result = jsonable_encoder(
-            basic_result, custom_encoder={str: _sanitize_string}
-        )
+        basic_result = to_dict(data)
+        sanitized_result = to_dict(basic_result, custom_encoder={str: _sanitize_string})
         return Json(sanitized_result)
     except Exception as e:
         # Log the failure and fall back to string representation
