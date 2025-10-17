@@ -56,6 +56,7 @@ class EmailSender:
         ),
         user_unsub_link: str | None = None,
     ):
+        """Send an email to a user using a template pulled from the notification type, or fallback"""
         if not self.postmark:
             logger.warning("Postmark client not initialized, email not sent")
             return
@@ -81,6 +82,7 @@ class EmailSender:
             logger.error(f"Error formatting full message: {e}")
             raise e
 
+        # Check email size & send summary if too large
         email_size = len(full_message)
         if email_size > self.MAX_EMAIL_CHARS:
             logger.warning(
