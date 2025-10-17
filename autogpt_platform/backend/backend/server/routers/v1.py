@@ -11,7 +11,6 @@ import pydantic
 import stripe
 from autogpt_libs.auth import get_user_id, requires_user
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
-from autogpt_libs.utils.cache import cached
 from fastapi import (
     APIRouter,
     Body,
@@ -85,6 +84,7 @@ from backend.server.model import (
     UpdateTimezoneRequest,
     UploadFileResponse,
 )
+from backend.util.cache import cached
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.exceptions import GraphValidationError, NotFoundError
@@ -289,7 +289,7 @@ def _compute_blocks_sync() -> str:
     return dumps(result)
 
 
-@cached()
+@cached(ttl_seconds=3600)
 async def _get_cached_blocks() -> str:
     """
     Async cached function with thundering herd protection.
