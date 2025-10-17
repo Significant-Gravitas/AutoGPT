@@ -110,6 +110,28 @@ def _sanitize_string(value: str) -> str:
     return POSTGRES_CONTROL_CHARS.sub("", value)
 
 
+def sanitize_json(data: Any) -> Any:
+    try:
+        # Use two-pass approach for consistent string sanitization:
+        # 1. First convert to basic JSON-serializable types (handles Pydantic models)
+        # 2. Then sanitize strings in the result
+        basic_result = to_dict(data)
+        return to_dict(basic_result, custom_encoder={str: _sanitize_string})
+    except Exception as e:
+        # Log the failure and fall back to string representation
+        logger.error(
+            "SafeJson fallback to string representation due to serialization error: %s (%s). "
+            "Data type: %s, Data preview: %s",
+            type(e).__name__,
+            truncate(str(e), 200),
+            type(data).__name__,
+            truncate(str(data), 100),
+        )
+
+        # Ultimate fallback: convert to string representation and sanitize
+        return _sanitize_string(str(data))
+
+
 class SafeJson(Json):
     """
     Safely serialize data and return Prisma's Json type.
@@ -136,26 +158,4 @@ class SafeJson(Json):
     """
 
     def __init__(self, data: Any):
-        try:
-            # Use two-pass approach for consistent string sanitization:
-            # 1. First convert to basic JSON-serializable types (handles Pydantic models)
-            # 2. Then sanitize strings in the result
-            basic_result = to_dict(data)
-            sanitized_result = to_dict(
-                basic_result, custom_encoder={str: _sanitize_string}
-            )
-        except Exception as e:
-            # Log the failure and fall back to string representation
-            logger.error(
-                "SafeJson fallback to string representation due to serialization error: %s (%s). "
-                "Data type: %s, Data preview: %s",
-                type(e).__name__,
-                truncate(str(e), 200),
-                type(data).__name__,
-                truncate(str(data), 100),
-            )
-
-            # Ultimate fallback: convert to string representation and sanitize
-            sanitized_result = _sanitize_string(str(data))
-
-        super().__init__(sanitized_result)
+        super().__init__(sanitize_json(data))
