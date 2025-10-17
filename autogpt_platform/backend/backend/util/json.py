@@ -1,23 +1,20 @@
+import logging
 import re
-from typing import Any, Type, TypeGuard, TypeVar, overload
+from typing import Any, Type, TypeVar, overload
 
 import jsonschema
 import orjson
-from fastapi.encoders import jsonable_encoder
+from fastapi.encoders import jsonable_encoder as to_dict
 from prisma import Json
-from pydantic import BaseModel
 
+from .truncate import truncate
 from .type import type_match
+
+logger = logging.getLogger(__name__)
 
 # Precompiled regex to remove PostgreSQL-incompatible control characters
 # Removes \u0000-\u0008, \u000B-\u000C, \u000E-\u001F, \u007F (keeps tab \u0009, newline \u000A, carriage return \u000D)
 POSTGRES_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]")
-
-
-def to_dict(data) -> dict:
-    if isinstance(data, BaseModel):
-        data = data.model_dump()
-    return jsonable_encoder(data)
 
 
 def dumps(
@@ -108,52 +105,9 @@ def validate_with_jsonschema(
         return str(e)
 
 
-def is_list_of_basemodels(value: object) -> TypeGuard[list[BaseModel]]:
-    return isinstance(value, list) and all(
-        isinstance(item, BaseModel) for item in value
-    )
-
-
-def convert_pydantic_to_json(output_data: Any) -> Any:
-    if isinstance(output_data, BaseModel):
-        return output_data.model_dump()
-    if is_list_of_basemodels(output_data):
-        return [item.model_dump() for item in output_data]
-    return output_data
-
-
-def _sanitize_value(value: Any) -> Any:
-    """
-    Recursively sanitize values by removing PostgreSQL-incompatible control characters.
-
-    This function walks through data structures and removes control characters from strings.
-    It handles:
-    - Strings: Remove control chars directly from the string
-    - Lists: Recursively sanitize each element
-    - Dicts: Recursively sanitize keys and values
-    - Other types: Return as-is
-
-    Args:
-        value: The value to sanitize
-
-    Returns:
-        Sanitized version of the value with control characters removed
-    """
-    if isinstance(value, str):
-        # Remove control characters directly from the string
-        return POSTGRES_CONTROL_CHARS.sub("", value)
-    elif isinstance(value, dict):
-        # Recursively sanitize dictionary keys and values
-        return {_sanitize_value(k): _sanitize_value(v) for k, v in value.items()}
-    elif isinstance(value, list):
-        # Recursively sanitize list elements
-        return [_sanitize_value(item) for item in value]
-    elif isinstance(value, tuple):
-        # Recursively sanitize tuple elements
-        return tuple(_sanitize_value(item) for item in value)
-    else:
-        # For other types (int, float, bool, None, etc.), return as-is
-        return value
+def _sanitize_string(value: str) -> str:
+    """Remove PostgreSQL-incompatible control characters from string."""
+    return POSTGRES_CONTROL_CHARS.sub("", value)
 
 
 class SafeJson(Json):
@@ -162,9 +116,12 @@ class SafeJson(Json):
     Sanitizes control characters to prevent PostgreSQL 22P05 errors.
 
     This function:
-    1. Converts Pydantic models to dicts
+    1. Converts Pydantic models to dicts (recursively using to_dict)
     2. Recursively removes PostgreSQL-incompatible control characters from strings
     3. Returns a Prisma Json object safe for database storage
+
+    Uses to_dict (jsonable_encoder) with a custom encoder to handle both Pydantic
+    conversion and control character sanitization in a two-pass approach.
 
     Args:
         data: Input data to sanitize and convert to Json
@@ -179,9 +136,26 @@ class SafeJson(Json):
     """
 
     def __init__(self, data: Any):
-        # Convert Pydantic models to dict first
-        if isinstance(data, BaseModel):
-            data = data.model_dump(exclude_none=True)
+        try:
+            # Use two-pass approach for consistent string sanitization:
+            # 1. First convert to basic JSON-serializable types (handles Pydantic models)
+            # 2. Then sanitize strings in the result
+            basic_result = to_dict(data)
+            sanitized_result = to_dict(
+                basic_result, custom_encoder={str: _sanitize_string}
+            )
+        except Exception as e:
+            # Log the failure and fall back to string representation
+            logger.error(
+                "SafeJson fallback to string representation due to serialization error: %s (%s). "
+                "Data type: %s, Data preview: %s",
+                type(e).__name__,
+                truncate(str(e), 200),
+                type(data).__name__,
+                truncate(str(data), 100),
+            )
 
-        # Initialize the parent Json class with parsed data
-        super().__init__(_sanitize_value(data))
+            # Ultimate fallback: convert to string representation and sanitize
+            sanitized_result = _sanitize_string(str(data))
+
+        super().__init__(sanitized_result)
