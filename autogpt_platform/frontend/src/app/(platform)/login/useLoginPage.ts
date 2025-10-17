@@ -67,7 +67,7 @@ export function useLoginPage() {
 
       if (!response.ok) {
         const { error } = await response.json();
-        if (typeof error === "string" && error.includes("not_allowed")) {
+        if (error === "not_allowed") {
           setShowNotAllowedModal(true);
         } else {
           setFeedback(error || "Failed to start OAuth flow");
