@@ -19,7 +19,7 @@ images: {
 import asyncio
 import random
 from datetime import datetime
-
+import pytest
 import prisma.enums
 from autogpt_libs.api_key.keysmith import APIKeySmith
 from faker import Faker
@@ -498,9 +498,6 @@ async def main():
                         if store_listing_versions and random.random() < 0.5
                         else None
                     ),
-                    "agentInput": (
-                        Json({"test": "data"}) if random.random() < 0.3 else None
-                    ),
                     "onboardingAgentExecutionId": (
                         random.choice(agent_graph_executions).id
                         if agent_graph_executions and random.random() < 0.3
@@ -569,6 +566,15 @@ async def main():
     await db.disconnect()
     print("Test data creation completed successfully!")
 
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_main_function_runs_without_errors():
+    try:
+        await main()
+    except Exception as e:
+        assert False, f"main() raised an exception: {e}"
+    
 
 if __name__ == "__main__":
     asyncio.run(main())

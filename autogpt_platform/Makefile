@@ -35,6 +35,9 @@ run-backend:
 run-frontend:
 	cd frontend && pnpm dev
 
+test-data:
+	cd backend && poetry run python test/test_data_creator.py
+	
 help:
 	@echo "Usage: make <target>"
 	@echo "Targets:"
