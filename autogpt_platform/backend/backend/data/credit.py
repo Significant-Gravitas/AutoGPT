@@ -31,6 +31,7 @@ from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications.notifications import queue_notification_async
 from backend.server.v2.admin.model import UserHistoryResponse
 from backend.util.exceptions import InsufficientBalanceError
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.json import SafeJson, dumps
 from backend.util.models import Pagination
 from backend.util.retry import func_retry
@@ -1130,14 +1131,31 @@ class DisabledUserCredit(UserCreditBase):
         pass
 
 
-def get_user_credit_model() -> UserCreditBase:
+async def get_user_credit_model(user_id: str) -> UserCreditBase:
+    """
+    Get the credit model for a user, considering LaunchDarkly flags.
+
+    Args:
+        user_id (str): The user ID to check flags for.
+
+    Returns:
+        UserCreditBase: The appropriate credit model for the user
+    """
     if not settings.config.enable_credit:
         return DisabledUserCredit()
 
-    if settings.config.enable_beta_monthly_credit:
-        return BetaUserCredit(settings.config.num_user_credits_refill)
+    # Check LaunchDarkly flag for payment pilot users
+    # Default to False (beta monthly credit behavior) to maintain current behavior
+    is_payment_enabled = await is_feature_enabled(
+        Flag.ENABLE_PLATFORM_PAYMENT, user_id, default=False
+    )
 
-    return UserCredit()
+    if is_payment_enabled:
+        # Payment enabled users get UserCredit (no monthly refills, enable payments)
+        return UserCredit()
+    else:
+        # Default behavior: users get beta monthly credits
+        return BetaUserCredit(settings.config.num_user_credits_refill)
 
 
 def get_block_costs() -> dict[str, list["BlockCost"]]:
@@ -1227,7 +1245,8 @@ async def admin_get_user_history(
             )
             reason = metadata.get("reason", "No reason provided")
 
-        balance, last_update = await get_user_credit_model()._get_credits(tx.userId)
+        user_credit_model = await get_user_credit_model(tx.userId)
+        balance, _ = await user_credit_model._get_credits(tx.userId)
 
         history.append(
             UserTransaction(

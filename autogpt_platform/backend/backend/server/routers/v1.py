@@ -40,6 +40,7 @@ from backend.data.credit import (
     AutoTopUpConfig,
     RefundRequest,
     TransactionHistory,
+    UserCredit,
     get_auto_top_up,
     get_user_credit_model,
     set_auto_top_up,
@@ -106,9 +107,6 @@ def _create_file_size_error(size_bytes: int, max_size_mb: int) -> HTTPException:
 
 settings = Settings()
 logger = logging.getLogger(__name__)
-
-
-_user_credit_model = get_user_credit_model()
 
 # Define the API routes
 v1_router = APIRouter()
@@ -478,7 +476,8 @@ async def upload_file(
 async def get_user_credits(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> dict[str, int]:
-    return {"credits": await _user_credit_model.get_credits(user_id)}
+    user_credit_model = await get_user_credit_model(user_id)
+    return {"credits": await user_credit_model.get_credits(user_id)}
 
 
 @v1_router.post(
@@ -490,9 +489,8 @@ async def get_user_credits(
 async def request_top_up(
     request: RequestTopUp, user_id: Annotated[str, Security(get_user_id)]
 ):
-    checkout_url = await _user_credit_model.top_up_intent(
-        user_id, request.credit_amount
-    )
+    user_credit_model = await get_user_credit_model(user_id)
+    checkout_url = await user_credit_model.top_up_intent(user_id, request.credit_amount)
     return {"checkout_url": checkout_url}
 
 
@@ -507,7 +505,8 @@ async def refund_top_up(
     transaction_key: str,
     metadata: dict[str, str],
 ) -> int:
-    return await _user_credit_model.top_up_refund(user_id, transaction_key, metadata)
+    user_credit_model = await get_user_credit_model(user_id)
+    return await user_credit_model.top_up_refund(user_id, transaction_key, metadata)
 
 
 @v1_router.patch(
@@ -517,7 +516,8 @@ async def refund_top_up(
     dependencies=[Security(requires_user)],
 )
 async def fulfill_checkout(user_id: Annotated[str, Security(get_user_id)]):
-    await _user_credit_model.fulfill_checkout(user_id=user_id)
+    user_credit_model = await get_user_credit_model(user_id)
+    await user_credit_model.fulfill_checkout(user_id=user_id)
     return Response(status_code=200)
 
 
@@ -541,12 +541,13 @@ async def configure_user_auto_top_up(
             status_code=422, detail="Amount must be greater than or equal to threshold"
         )
 
-    current_balance = await _user_credit_model.get_credits(user_id)
+    user_credit_model = await get_user_credit_model(user_id)
+    current_balance = await user_credit_model.get_credits(user_id)
 
     if current_balance < request.threshold:
-        await _user_credit_model.top_up_credits(user_id, request.amount)
+        await user_credit_model.top_up_credits(user_id, request.amount)
     else:
-        await _user_credit_model.top_up_credits(user_id, 0)
+        await user_credit_model.top_up_credits(user_id, 0)
 
     await set_auto_top_up(
         user_id, AutoTopUpConfig(threshold=request.threshold, amount=request.amount)
@@ -594,15 +595,13 @@ async def stripe_webhook(request: Request):
         event["type"] == "checkout.session.completed"
         or event["type"] == "checkout.session.async_payment_succeeded"
     ):
-        await _user_credit_model.fulfill_checkout(
-            session_id=event["data"]["object"]["id"]
-        )
+        await UserCredit().fulfill_checkout(session_id=event["data"]["object"]["id"])
 
     if event["type"] == "charge.dispute.created":
-        await _user_credit_model.handle_dispute(event["data"]["object"])
+        await UserCredit().handle_dispute(event["data"]["object"])
 
     if event["type"] == "refund.created" or event["type"] == "charge.dispute.closed":
-        await _user_credit_model.deduct_credits(event["data"]["object"])
+        await UserCredit().deduct_credits(event["data"]["object"])
 
     return Response(status_code=200)
 
@@ -616,7 +615,8 @@ async def stripe_webhook(request: Request):
 async def manage_payment_method(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> dict[str, str]:
-    return {"url": await _user_credit_model.create_billing_portal_session(user_id)}
+    user_credit_model = await get_user_credit_model(user_id)
+    return {"url": await user_credit_model.create_billing_portal_session(user_id)}
 
 
 @v1_router.get(
@@ -634,7 +634,8 @@ async def get_credit_history(
     if transaction_count_limit < 1 or transaction_count_limit > 1000:
         raise ValueError("Transaction count limit must be between 1 and 1000")
 
-    return await _user_credit_model.get_transaction_history(
+    user_credit_model = await get_user_credit_model(user_id)
+    return await user_credit_model.get_transaction_history(
         user_id=user_id,
         transaction_time_ceiling=transaction_time,
         transaction_count_limit=transaction_count_limit,
@@ -651,7 +652,8 @@ async def get_credit_history(
 async def get_refund_requests(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[RefundRequest]:
-    return await _user_credit_model.get_refund_requests(user_id)
+    user_credit_model = await get_user_credit_model(user_id)
+    return await user_credit_model.get_refund_requests(user_id)
 
 
 ########################################################
@@ -873,7 +875,8 @@ async def execute_graph(
     graph_version: Optional[int] = None,
     preset_id: Optional[str] = None,
 ) -> execution_db.GraphExecutionMeta:
-    current_balance = await _user_credit_model.get_credits(user_id)
+    user_credit_model = await get_user_credit_model(user_id)
+    current_balance = await user_credit_model.get_credits(user_id)
     if current_balance <= 0:
         raise HTTPException(
             status_code=402,

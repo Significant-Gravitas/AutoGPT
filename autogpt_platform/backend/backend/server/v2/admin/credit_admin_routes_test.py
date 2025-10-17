@@ -1,5 +1,5 @@
 import json
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import fastapi
 import fastapi.testclient
@@ -37,11 +37,13 @@ def test_add_user_credits_success(
 ) -> None:
     """Test successful credit addition by admin"""
     # Mock the credit model
-    mock_credit_model = mocker.patch(
-        "backend.server.v2.admin.credit_admin_routes._user_credit_model"
-    )
+    mock_credit_model = Mock()
     mock_credit_model._add_transaction = AsyncMock(
         return_value=(1500, "transaction-123-uuid")
+    )
+    mocker.patch(
+        "backend.server.v2.admin.credit_admin_routes.get_user_credit_model",
+        return_value=mock_credit_model,
     )
 
     request_data = {
@@ -87,11 +89,13 @@ def test_add_user_credits_negative_amount(
 ) -> None:
     """Test credit deduction by admin (negative amount)"""
     # Mock the credit model
-    mock_credit_model = mocker.patch(
-        "backend.server.v2.admin.credit_admin_routes._user_credit_model"
-    )
+    mock_credit_model = Mock()
     mock_credit_model._add_transaction = AsyncMock(
         return_value=(200, "transaction-456-uuid")
+    )
+    mocker.patch(
+        "backend.server.v2.admin.credit_admin_routes.get_user_credit_model",
+        return_value=mock_credit_model,
     )
 
     request_data = {
