@@ -571,10 +571,7 @@ async def main():
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_main_function_runs_without_errors():
-    try:
-        await main()
-    except Exception as e:
-        assert False, f"main() raised an exception: {e}"
+    await main()
 
 
 if __name__ == "__main__":
