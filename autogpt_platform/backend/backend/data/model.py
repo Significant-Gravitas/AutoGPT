@@ -344,8 +344,9 @@ class APIKeyCredentials(_BaseCredentials):
         default=None,
         description="Unix timestamp (seconds) indicating when the API key expires (if at all)",
     )
-    api_key_env_var: Optional[str] = None
     """Unix timestamp (seconds) indicating when the API key expires (if at all)"""
+
+    api_key_env_var: Optional[str] = Field(default=None, exclude=True)
 
     def auth_header(self) -> str:
         return f"Bearer {self.api_key.get_secret_value()}"
