@@ -16,6 +16,7 @@ export type CustomNodeData = {
   inputSchema: RJSFSchema;
   outputSchema: RJSFSchema;
   uiType: BlockUIType;
+  block_id: string;
   // TODO : We need better type safety for the following backend fields.
   costs: BlockCost[];
   categories: BlockInfoCategoriesItem[];
