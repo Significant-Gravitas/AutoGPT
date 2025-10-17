@@ -1,3 +1,4 @@
+import logging
 import re
 from typing import Any, Type, TypeVar, overload
 
@@ -7,6 +8,8 @@ from fastapi.encoders import jsonable_encoder
 from prisma import Json
 
 from .type import type_match
+
+logger = logging.getLogger(__name__)
 
 # Precompiled regex to remove PostgreSQL-incompatible control characters
 # Removes \u0000-\u0008, \u000B-\u000C, \u000E-\u001F, \u007F (keeps tab \u0009, newline \u000A, carriage return \u000D)
@@ -146,7 +149,26 @@ def SafeJson(data: Any) -> Json:
         """Remove PostgreSQL-incompatible control characters from string."""
         return POSTGRES_CONTROL_CHARS.sub("", value)
 
-    # Use jsonable_encoder with custom encoder to handle both Pydantic conversion
-    # and string sanitization in a single pass
-    result = jsonable_encoder(data, custom_encoder={str: _sanitize_string})
-    return Json(result)
+    try:
+        # Use two-pass approach for consistent string sanitization:
+        # 1. First convert to basic JSON-serializable types (handles Pydantic models)
+        # 2. Then sanitize strings in the result
+        basic_result = jsonable_encoder(data)
+        sanitized_result = jsonable_encoder(
+            basic_result, custom_encoder={str: _sanitize_string}
+        )
+        return Json(sanitized_result)
+    except Exception as e:
+        # Log the failure and fall back to string representation
+        logger.error(
+            "SafeJson fallback to string representation due to serialization error: %s (%s). "
+            "Data type: %s, Data preview: %s",
+            type(e).__name__,
+            str(e)[:200],  # Limit error message length
+            type(data).__name__,
+            str(data)[:100] + "..." if len(str(data)) > 100 else str(data),
+        )
+
+        # Ultimate fallback: convert to string representation and sanitize
+        sanitized = _sanitize_string(str(data))
+        return Json(sanitized)
