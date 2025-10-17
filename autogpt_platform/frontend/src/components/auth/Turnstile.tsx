@@ -113,13 +113,38 @@ export function Turnstile({
       widgetIdRef.current = window.turnstile.render(containerRef.current, {
         sitekey: siteKey,
         callback: (token: string) => {
+          console.log("[Turnstile] Verification successful");
           onVerify(token);
         },
         "expired-callback": () => {
+          console.warn("[Turnstile] Token expired");
           onExpire?.();
         },
-        "error-callback": () => {
-          onError?.(new Error("Turnstile widget encountered an error"));
+        "error-callback": (errorCode: string) => {
+          // Capture the actual Cloudflare error code for debugging
+          console.error("[Turnstile] Error occurred:", errorCode);
+
+          // Map Cloudflare error codes to user-friendly messages
+          const errorMessages: Record<string, string> = {
+            "110100": "Invalid site configuration. Please contact support.",
+            "110200": "Domain not allowed for this CAPTCHA.",
+            "110201": "Hostname mismatch. Please try refreshing the page.",
+            "110400": "Invalid verification action.",
+            "110500": "Invalid custom data.",
+            "110600": "JavaScript execution error.",
+            "300010": "Session timeout. Please try again.",
+            "300020": "Network error. Please check your connection.",
+            "300030": "Challenge closed by user.",
+            "600010": "Verification timeout. Please try again.",
+            "600020": "Internal error. Please try again later.",
+          };
+
+          const errorMessage = errorMessages[errorCode] ||
+            `Verification failed (Error: ${errorCode}). Please try again.`;
+
+          const error = new Error(errorMessage);
+          (error as any).errorCode = errorCode;
+          onError?.(error);
         },
         action,
       });
@@ -181,12 +206,13 @@ declare global {
           sitekey: string;
           callback: (token: string) => void;
           "expired-callback"?: () => void;
-          "error-callback"?: () => void;
+          "error-callback"?: (errorCode: string) => void;
           action?: string;
         },
       ) => string;
       reset: (widgetId: string) => void;
       remove: (widgetId: string) => void;
+      getResponse: (widgetId: string) => string | undefined;
     };
   }
 }
