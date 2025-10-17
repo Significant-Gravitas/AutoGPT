@@ -1,51 +1,130 @@
-from typing import Optional
+from enum import Enum
+from typing import Optional, Union
 
 from backend.sdk import BaseModel, SchemaField
 
 
+class LivecrawlTypes(str, Enum):
+    NEVER = "never"
+    FALLBACK = "fallback"
+    ALWAYS = "always"
+    PREFERRED = "preferred"
+
+
 class TextSettings(BaseModel):
-    max_characters: int = SchemaField(
-        default=1000,
+    max_characters: Optional[int] = SchemaField(
+        default=None,
         description="Maximum number of characters to return",
         placeholder="1000",
     )
     include_html_tags: bool = SchemaField(
         default=False,
-        description="Whether to include HTML tags in the text",
+        description="Include HTML tags in the response, helps LLMs understand text structure",
         placeholder="False",
     )
 
 
 class HighlightSettings(BaseModel):
     num_sentences: int = SchemaField(
-        default=3,
+        default=1,
         description="Number of sentences per highlight",
-        placeholder="3",
+        placeholder="1",
+        ge=1,
     )
     highlights_per_url: int = SchemaField(
-        default=3,
+        default=1,
         description="Number of highlights per URL",
-        placeholder="3",
+        placeholder="1",
+        ge=1,
+    )
+    query: Optional[str] = SchemaField(
+        default=None,
+        description="Custom query to direct the LLM's selection of highlights",
+        placeholder="Key advancements",
     )
 
 
 class SummarySettings(BaseModel):
     query: Optional[str] = SchemaField(
-        default="",
-        description="Query string for summarization",
-        placeholder="Enter query",
+        default=None,
+        description="Custom query for the LLM-generated summary",
+        placeholder="Main developments",
+    )
+    schema: Optional[dict] = SchemaField(  # type: ignore
+        default=None,
+        description="JSON schema for structured output from summary",
+        advanced=True,
+    )
+
+
+class ExtrasSettings(BaseModel):
+    links: int = SchemaField(
+        default=0,
+        description="Number of URLs to return from each webpage",
+        placeholder="1",
+        ge=0,
+    )
+    image_links: int = SchemaField(
+        default=0,
+        description="Number of images to return for each result",
+        placeholder="1",
+        ge=0,
+    )
+
+
+class ContextSettings(BaseModel):
+    max_characters: Optional[int] = SchemaField(
+        default=None,
+        description="Maximum character limit for context string",
+        placeholder="10000",
     )
 
 
 class ContentSettings(BaseModel):
-    text: TextSettings = SchemaField(
-        default=TextSettings(),
+    text: Optional[Union[bool, TextSettings]] = SchemaField(
+        default=None,
+        description="Text content retrieval. Boolean for simple enable/disable or object for advanced settings",
     )
-    highlights: HighlightSettings = SchemaField(
-        default=HighlightSettings(),
+    highlights: Optional[HighlightSettings] = SchemaField(
+        default=None,
+        description="Text snippets most relevant from each page",
     )
-    summary: SummarySettings = SchemaField(
-        default=SummarySettings(),
+    summary: Optional[SummarySettings] = SchemaField(
+        default=None,
+        description="LLM-generated summary of the webpage",
+    )
+    livecrawl: Optional[LivecrawlTypes] = SchemaField(
+        default=None,
+        description="Livecrawling options: never, fallback, always, preferred",
+        advanced=True,
+    )
+    livecrawl_timeout: Optional[int] = SchemaField(
+        default=None,
+        description="Timeout for livecrawling in milliseconds",
+        placeholder="10000",
+        advanced=True,
+    )
+    subpages: Optional[int] = SchemaField(
+        default=None,
+        description="Number of subpages to crawl",
+        placeholder="0",
+        ge=0,
+        advanced=True,
+    )
+    subpage_target: Optional[Union[str, list[str]]] = SchemaField(
+        default=None,
+        description="Keyword(s) to find specific subpages of search results",
+        advanced=True,
+    )
+    extras: Optional[ExtrasSettings] = SchemaField(
+        default=None,
+        description="Extra parameters for additional content",
+        advanced=True,
+    )
+    context: Optional[Union[bool, ContextSettings]] = SchemaField(
+        default=None,
+        description="Format search results into a context string for LLMs",
+        advanced=True,
     )
 
 
