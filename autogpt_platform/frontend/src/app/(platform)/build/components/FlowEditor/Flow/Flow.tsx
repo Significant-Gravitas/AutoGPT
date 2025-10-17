@@ -5,7 +5,7 @@ import { useFlow } from "./useFlow";
 import { useShallow } from "zustand/react/shallow";
 import { useNodeStore } from "../../../stores/nodeStore";
 import { useMemo } from "react";
-import { CustomNode } from "../nodes/CustomNode";
+import { CustomNode } from "../nodes/CustomNode/CustomNode";
 import { useCustomEdge } from "../edges/useCustomEdge";
 import { GraphLoadingBox } from "./GraphLoadingBox";
 

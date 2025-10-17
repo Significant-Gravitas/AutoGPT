@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { NodeChange, applyNodeChanges } from "@xyflow/react";
-import { CustomNode } from "../components/FlowEditor/nodes/CustomNode";
+import { CustomNode } from "../components/FlowEditor/nodes/CustomNode/CustomNode";
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import { convertBlockInfoIntoCustomNodeData } from "../components/helper";
 import { Node } from "@/app/api/__generated__/models/node";
