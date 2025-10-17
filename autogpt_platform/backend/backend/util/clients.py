@@ -4,8 +4,7 @@ Centralized service client helpers with thread caching.
 
 from typing import TYPE_CHECKING
 
-from autogpt_libs.utils.cache import cached, thread_cached
-
+from backend.util.cache import cached, thread_cached
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -120,7 +119,7 @@ def get_integration_credentials_store() -> "IntegrationCredentialsStore":
 # ============ Supabase Clients ============ #
 
 
-@cached()
+@cached(ttl_seconds=3600)
 def get_supabase() -> "Client":
     """Get a process-cached synchronous Supabase client instance."""
     from supabase import create_client
@@ -130,7 +129,7 @@ def get_supabase() -> "Client":
     )
 
 
-@cached()
+@cached(ttl_seconds=3600)
 async def get_async_supabase() -> "AClient":
     """Get a process-cached asynchronous Supabase client instance."""
     from supabase import create_async_client
