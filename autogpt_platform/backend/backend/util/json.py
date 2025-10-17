@@ -1,4 +1,3 @@
-import json
 import re
 from typing import Any, Type, TypeGuard, TypeVar, overload
 
@@ -13,13 +12,6 @@ from .type import type_match
 # Precompiled regex to remove PostgreSQL-incompatible control characters
 # Removes \u0000-\u0008, \u000B-\u000C, \u000E-\u001F, \u007F (keeps tab \u0009, newline \u000A, carriage return \u000D)
 POSTGRES_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]")
-
-# Comprehensive regex to remove all PostgreSQL-incompatible control character sequences in JSON
-# Handles both Unicode escapes (\\u0000-\\u0008, \\u000B-\\u000C, \\u000E-\\u001F, \\u007F)
-# and JSON single-char escapes (\\b, \\f) while preserving legitimate file paths
-POSTGRES_JSON_ESCAPES = re.compile(
-    r"\\u000[0-8]|\\u000[bB]|\\u000[cC]|\\u00[0-1][0-9a-fA-F]|\\u007[fF]|(?<!\\)\\[bf](?!\\)"
-)
 
 
 def to_dict(data) -> dict:
@@ -130,32 +122,66 @@ def convert_pydantic_to_json(output_data: Any) -> Any:
     return output_data
 
 
+def _sanitize_value(value: Any) -> Any:
+    """
+    Recursively sanitize values by removing PostgreSQL-incompatible control characters.
+
+    This function walks through data structures and removes control characters from strings.
+    It handles:
+    - Strings: Remove control chars directly from the string
+    - Lists: Recursively sanitize each element
+    - Dicts: Recursively sanitize keys and values
+    - Other types: Return as-is
+
+    Args:
+        value: The value to sanitize
+
+    Returns:
+        Sanitized version of the value with control characters removed
+    """
+    if isinstance(value, str):
+        # Remove control characters directly from the string
+        return POSTGRES_CONTROL_CHARS.sub("", value)
+    elif isinstance(value, dict):
+        # Recursively sanitize dictionary keys and values
+        return {_sanitize_value(k): _sanitize_value(v) for k, v in value.items()}
+    elif isinstance(value, list):
+        # Recursively sanitize list elements
+        return [_sanitize_value(item) for item in value]
+    elif isinstance(value, tuple):
+        # Recursively sanitize tuple elements
+        return tuple(_sanitize_value(item) for item in value)
+    else:
+        # For other types (int, float, bool, None, etc.), return as-is
+        return value
+
+
 class SafeJson(Json):
     """
-    Enhanced Json class that safely serializes data and stores the JSON string.
-    Sanitizes null bytes to prevent PostgreSQL 22P05 errors.
-    Provides access to both the parsed data (.data) and serialized string (.json_string).
+    Safely serialize data and return Prisma's Json type.
+    Sanitizes control characters to prevent PostgreSQL 22P05 errors.
+
+    This function:
+    1. Converts Pydantic models to dicts
+    2. Recursively removes PostgreSQL-incompatible control characters from strings
+    3. Returns a Prisma Json object safe for database storage
+
+    Args:
+        data: Input data to sanitize and convert to Json
+
+    Returns:
+        Prisma Json object with control characters removed
+
+    Examples:
+        >>> SafeJson({"text": "Hello\\x00World"})  # null char removed
+        >>> SafeJson({"path": "C:\\\\temp"})  # backslashes preserved
+        >>> SafeJson({"data": "Text\\\\u0000here"})  # literal backslash-u preserved
     """
 
     def __init__(self, data: Any):
+        # Convert Pydantic models to dict first
         if isinstance(data, BaseModel):
-            json_string = data.model_dump_json(
-                warnings="error",
-                exclude_none=True,
-                fallback=lambda v: None,
-            )
-        else:
-            json_string = dumps(data, default=lambda v: None)
-
-        # Remove PostgreSQL-incompatible control characters in JSON string
-        # Single comprehensive regex handles all control character sequences
-        sanitized_json = POSTGRES_JSON_ESCAPES.sub("", json_string)
-
-        # Remove any remaining raw control characters (fallback safety net)
-        sanitized_json = POSTGRES_CONTROL_CHARS.sub("", sanitized_json)
-
-        # Store the serialized string for efficient reuse
-        self.json_string = sanitized_json
+            data = data.model_dump(exclude_none=True)
 
         # Initialize the parent Json class with parsed data
-        super().__init__(json.loads(sanitized_json))
+        super().__init__(_sanitize_value(data))

@@ -16,8 +16,8 @@ from prisma.types import JsonFilter, UserCreateInput, UserUpdateInput
 from backend.data.db import prisma
 from backend.data.model import User, UserIntegrations, UserMetadata
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
-from backend.server.v2.store.exceptions import DatabaseError
 from backend.util.encryption import JSONCryptor
+from backend.util.exceptions import DatabaseError
 from backend.util.json import SafeJson
 from backend.util.settings import Settings
 

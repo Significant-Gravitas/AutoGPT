@@ -31,7 +31,7 @@ from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications.notifications import queue_notification_async
 from backend.server.v2.admin.model import UserHistoryResponse
 from backend.util.exceptions import InsufficientBalanceError
-from backend.util.json import SafeJson
+from backend.util.json import SafeJson, dumps
 from backend.util.models import Pagination
 from backend.util.retry import func_retry
 from backend.util.settings import Settings
@@ -323,7 +323,7 @@ class UserCreditBase(ABC):
             """,
             transaction_key,  # $1
             user_id,  # $2
-            metadata.json_string,  # $3 - use pre-serialized JSON string for JSONB
+            dumps(metadata.data),  # $3 - use pre-serialized JSON string for JSONB
             new_transaction_key,  # $4
         )
 
@@ -472,7 +472,7 @@ class UserCreditBase(ABC):
             user_id,  # $1
             amount,  # $2
             transaction_type.value,  # $3
-            metadata.json_string,  # $4 - use pre-serialized JSON string for JSONB
+            dumps(metadata.data),  # $4 - use pre-serialized JSON string for JSONB
             is_active,  # $5
             POSTGRES_INT_MAX,  # $6 - overflow protection
             ceiling_balance,  # $7 - ceiling balance (nullable)
