@@ -6,6 +6,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Card } from "@/components/atoms/Card/Card";
 import { WaitlistErrorContent } from "@/components/auth/WaitlistErrorContent";
+import { isWaitlistErrorFromParams } from "@/app/api/auth/utils";
 import { useRouter } from "next/navigation";
 
 export default function AuthErrorPage() {
@@ -37,11 +38,7 @@ export default function AuthErrorPage() {
   }
 
   // Check if this is a waitlist/not allowed error
-  const isWaitlistError =
-    errorCode === "403" ||
-    errorDescription?.toLowerCase().includes("not allowed") ||
-    errorDescription?.toLowerCase().includes("waitlist") ||
-    errorDescription?.toLowerCase().includes("allowlist");
+  const isWaitlistError = isWaitlistErrorFromParams(errorCode, errorDescription);
 
   if (isWaitlistError) {
     return (

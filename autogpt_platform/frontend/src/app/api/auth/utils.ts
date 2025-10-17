@@ -18,6 +18,32 @@ export function isWaitlistError(error: any): boolean {
 }
 
 /**
+ * Checks if OAuth callback URL parameters indicate a waitlist error
+ *
+ * This is for the auth-code-error page which receives errors via URL hash params
+ * from Supabase OAuth redirects
+ *
+ * @param errorCode - The error_code parameter from the URL
+ * @param errorDescription - The error_description parameter from the URL
+ * @returns true if this appears to be a waitlist/allowlist error
+ */
+export function isWaitlistErrorFromParams(
+  errorCode?: string | null,
+  errorDescription?: string | null
+): boolean {
+  if (!errorDescription) return false;
+
+  const description = errorDescription.toLowerCase();
+  return (
+    description.includes("p0001") || // PostgreSQL error code might be in description
+    description.includes("not allowed") ||
+    description.includes("waitlist") ||
+    description.includes("allowlist") ||
+    description.includes("allowed_users")
+  );
+}
+
+/**
  * Logs a waitlist error for debugging purposes
  * Does not expose user email in logs for privacy
  *
