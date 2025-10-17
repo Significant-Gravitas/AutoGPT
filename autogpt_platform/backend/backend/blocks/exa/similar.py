@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Optional
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -13,7 +13,14 @@ from backend.sdk import (
 )
 
 from ._config import exa
-from .helpers import ContentSettings
+from .helpers import (
+    ContentSettings,
+    CostDollars,
+    ExaSearchResults,
+    add_optional_fields,
+    format_date_fields,
+    process_contents_settings,
+)
 
 
 class ExaFindSimilarBlock(Block):
@@ -28,7 +35,7 @@ class ExaFindSimilarBlock(Block):
             description="Number of results to return", default=10, advanced=True
         )
         include_domains: list[str] = SchemaField(
-            description="Domains to include in search",
+            description="List of domains to include in the search. If specified, results will only come from these domains.",
             default_factory=list,
             advanced=True,
         )
@@ -37,17 +44,17 @@ class ExaFindSimilarBlock(Block):
             default_factory=list,
             advanced=True,
         )
-        start_crawl_date: datetime = SchemaField(
-            description="Start date for crawled content"
+        start_crawl_date: Optional[datetime] = SchemaField(
+            description="Start date for crawled content", advanced=True, default=None
         )
-        end_crawl_date: datetime = SchemaField(
-            description="End date for crawled content"
+        end_crawl_date: Optional[datetime] = SchemaField(
+            description="End date for crawled content", advanced=True, default=None
         )
-        start_published_date: datetime = SchemaField(
-            description="Start date for published content"
+        start_published_date: Optional[datetime] = SchemaField(
+            description="Start date for published content", advanced=True, default=None
         )
-        end_published_date: datetime = SchemaField(
-            description="End date for published content"
+        end_published_date: Optional[datetime] = SchemaField(
+            description="End date for published content", advanced=True, default=None
         )
         include_text: list[str] = SchemaField(
             description="Text patterns to include (max 1 string, up to 5 words)",
@@ -64,14 +71,28 @@ class ExaFindSimilarBlock(Block):
             default=ContentSettings(),
             advanced=True,
         )
+        moderation: bool = SchemaField(
+            description="Enable content moderation to filter unsafe content from search results",
+            default=False,
+            advanced=True,
+        )
 
     class Output(BlockSchema):
-        results: list[Any] = SchemaField(
-            description="List of similar documents with title, URL, published date, author, and score",
-            default_factory=list,
+        results: list[ExaSearchResults] = SchemaField(
+            description="List of similar documents with metadata and content"
+        )
+        result: ExaSearchResults = SchemaField(
+            description="Single similar document result",
+        )
+        context: str = SchemaField(
+            description="A formatted string of the results ready for LLMs.",
+        )
+        request_id: str = SchemaField(description="Unique identifier for the request")
+        cost_dollars: Optional[CostDollars] = SchemaField(
+            description="Cost breakdown for the request", default=None
         )
         error: str = SchemaField(
-            description="Error message if the request failed", default=""
+            description="Error message if the request failed",
         )
 
     def __init__(self):
@@ -95,38 +116,58 @@ class ExaFindSimilarBlock(Block):
         payload = {
             "url": input_data.url,
             "numResults": input_data.number_of_results,
-            "contents": input_data.contents.model_dump(),
         }
 
-        optional_field_mapping = {
-            "include_domains": "includeDomains",
-            "exclude_domains": "excludeDomains",
-            "include_text": "includeText",
-            "exclude_text": "excludeText",
-        }
+        # Handle contents field with helper function
+        content_settings = process_contents_settings(input_data.contents)
+        if content_settings:
+            payload["contents"] = content_settings
 
-        # Add optional fields if they have values
-        for input_field, api_field in optional_field_mapping.items():
-            value = getattr(input_data, input_field)
-            if value:  # Only add non-empty values
-                payload[api_field] = value
-
+        # Handle date fields with helper function
         date_field_mapping = {
             "start_crawl_date": "startCrawlDate",
             "end_crawl_date": "endCrawlDate",
             "start_published_date": "startPublishedDate",
             "end_published_date": "endPublishedDate",
         }
+        payload.update(format_date_fields(input_data, date_field_mapping))
 
-        # Add dates if they exist
-        for input_field, api_field in date_field_mapping.items():
-            value = getattr(input_data, input_field, None)
-            if value:
-                payload[api_field] = value.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        # Handle other optional fields
+        optional_field_mapping = {
+            "include_domains": "includeDomains",
+            "exclude_domains": "excludeDomains",
+            "include_text": "includeText",
+            "exclude_text": "excludeText",
+        }
+        add_optional_fields(input_data, optional_field_mapping, payload)
+
+        # Add moderation field
+        if input_data.moderation:
+            payload["moderation"] = input_data.moderation
+
+        # Always enable context for LLM-ready output
+        payload["context"] = True
 
         try:
             response = await Requests().post(url, headers=headers, json=payload)
             data = response.json()
+
+            # Extract all response fields
             yield "results", data.get("results", [])
+            for result in data.get("results", []):
+                yield "result", result
+
+            # Yield context if present
+            if "context" in data:
+                yield "context", data["context"]
+
+            # Yield request ID if present
+            if "requestId" in data:
+                yield "request_id", data["requestId"]
+
+            # Yield cost information if present
+            if "costDollars" in data:
+                yield "cost_dollars", data["costDollars"]
+
         except Exception as e:
             yield "error", str(e)

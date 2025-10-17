@@ -16,14 +16,13 @@ from backend.sdk import (
 
 from ._config import exa
 from .helpers import (
-    ContextSettings,
+    CostDollars,
+    ExaSearchResults,
     ExtrasSettings,
     HighlightSettings,
     LivecrawlTypes,
     SummarySettings,
-    TextSettings,
 )
-from .search import CostDollars, ExaSearchResults
 
 
 class ContentStatusTag(str, Enum):
@@ -58,29 +57,27 @@ class ExaContentsBlock(Block):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
-        urls: Optional[list[str]] = SchemaField(
+        urls: list[str] = SchemaField(
             description="Array of URLs to crawl (preferred over 'ids')",
-            default=None,
+            default_factory=list,
             advanced=False,
         )
-        ids: Optional[list[str]] = SchemaField(
+        ids: list[str] = SchemaField(
             description="[DEPRECATED - use 'urls' instead] Array of document IDs obtained from searches",
-            default=None,
+            default_factory=list,
             advanced=True,
         )
-        text: Optional[bool | TextSettings] = SchemaField(
-            description="Text content retrieval. Boolean for simple enable/disable or object for advanced settings",
+        text: bool = SchemaField(
+            description="Retrieve text content from pages",
             default=True,
         )
-        highlights: Optional[HighlightSettings] = SchemaField(
+        highlights: HighlightSettings = SchemaField(
             description="Text snippets most relevant from each page",
-            default=None,
-            advanced=True,
+            default=HighlightSettings(),
         )
-        summary: Optional[SummarySettings] = SchemaField(
+        summary: SummarySettings = SchemaField(
             description="LLM-generated summary of the webpage",
-            default=None,
-            advanced=True,
+            default=SummarySettings(),
         )
         livecrawl: Optional[LivecrawlTypes] = SchemaField(
             description="Livecrawling options: never, fallback (default), always, preferred",
@@ -100,14 +97,9 @@ class ExaContentsBlock(Block):
             default=None,
             advanced=True,
         )
-        extras: Optional[ExtrasSettings] = SchemaField(
+        extras: ExtrasSettings = SchemaField(
             description="Extra parameters for additional content",
-            default=None,
-            advanced=True,
-        )
-        context: Optional[bool | ContextSettings] = SchemaField(
-            description="Format search results into a context string for LLMs",
-            default=False,
+            default=ExtrasSettings(),
             advanced=True,
         )
 
@@ -165,20 +157,16 @@ class ExaContentsBlock(Block):
             yield "error", "Either 'urls' or 'ids' must be provided"
             return
 
-        # Handle text field (can be boolean or object)
-        if input_data.text is not None:
-            if isinstance(input_data.text, bool):
-                payload["text"] = input_data.text
-            else:
-                text_dict = {}
-                if input_data.text.max_characters:
-                    text_dict["maxCharacters"] = input_data.text.max_characters
-                if input_data.text.include_html_tags:
-                    text_dict["includeHtmlTags"] = input_data.text.include_html_tags
-                payload["text"] = text_dict
+        # Handle text field - when true, include HTML tags for better LLM understanding
+        if input_data.text:
+            payload["text"] = {"includeHtmlTags": True}
 
-        # Handle highlights
-        if input_data.highlights:
+        # Handle highlights - only include if modified from defaults
+        if input_data.highlights and (
+            input_data.highlights.num_sentences != 1
+            or input_data.highlights.highlights_per_url != 1
+            or input_data.highlights.query is not None
+        ):
             highlights_dict = {}
             highlights_dict["numSentences"] = input_data.highlights.num_sentences
             highlights_dict["highlightsPerUrl"] = (
@@ -188,8 +176,11 @@ class ExaContentsBlock(Block):
                 highlights_dict["query"] = input_data.highlights.query
             payload["highlights"] = highlights_dict
 
-        # Handle summary
-        if input_data.summary:
+        # Handle summary - only include if modified from defaults
+        if input_data.summary and (
+            input_data.summary.query is not None
+            or input_data.summary.schema is not None
+        ):
             summary_dict = {}
             if input_data.summary.query:
                 summary_dict["query"] = input_data.summary.query
@@ -213,8 +204,10 @@ class ExaContentsBlock(Block):
         if input_data.subpage_target:
             payload["subpageTarget"] = input_data.subpage_target
 
-        # Handle extras
-        if input_data.extras:
+        # Handle extras - only include if modified from defaults
+        if input_data.extras and (
+            input_data.extras.links > 0 or input_data.extras.image_links > 0
+        ):
             extras_dict = {}
             if input_data.extras.links:
                 extras_dict["links"] = input_data.extras.links
@@ -222,15 +215,8 @@ class ExaContentsBlock(Block):
                 extras_dict["imageLinks"] = input_data.extras.image_links
             payload["extras"] = extras_dict
 
-        # Handle context
-        if input_data.context is not None:
-            if isinstance(input_data.context, bool):
-                payload["context"] = input_data.context
-            else:
-                context_dict = {}
-                if input_data.context.max_characters:
-                    context_dict["maxCharacters"] = input_data.context.max_characters
-                payload["context"] = context_dict
+        # Always enable context for LLM-ready output
+        payload["context"] = True
 
         try:
             response = await Requests().post(url, headers=headers, json=payload)
