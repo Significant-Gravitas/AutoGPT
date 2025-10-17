@@ -13,7 +13,7 @@ from backend.data.model import Credentials
 from backend.integrations.oauth.base import BaseOAuthHandler
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks._base import BaseWebhooksManager
-from backend.sdk.db import upsert_providers_bulk
+from backend.sdk.db import upsert_providers_change_bulk
 from backend.sdk.provider import ProviderRegister
 
 if TYPE_CHECKING:
@@ -282,7 +282,7 @@ class AutoRegistry:
 
                     cls._provider_registry[item.provider] = new_cred
 
-            await upsert_providers_bulk(providers=cls._provider_registry)
+            await upsert_providers_change_bulk(providers=cls._provider_registry)
 
             if hasattr(creds_store, "IntegrationCredentialsStore"):
                 store_class = creds_store.IntegrationCredentialsStore
