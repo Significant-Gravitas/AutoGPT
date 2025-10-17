@@ -66,6 +66,7 @@ class AddToDictionaryBlock(Block):
         dictionary: dict[Any, Any] = SchemaField(
             default_factory=dict,
             description="The dictionary to add the entry to. If not provided, a new dictionary will be created.",
+            advanced=False,
         )
         key: str = SchemaField(
             default="",

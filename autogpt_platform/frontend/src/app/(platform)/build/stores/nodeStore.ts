@@ -3,6 +3,7 @@ import { NodeChange, applyNodeChanges } from "@xyflow/react";
 import { CustomNode } from "../components/FlowEditor/nodes/CustomNode";
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import { convertBlockInfoIntoCustomNodeData } from "../components/helper";
+import { Node } from "@/app/api/__generated__/models/node";
 
 type NodeStore = {
   nodes: CustomNode[];
@@ -17,6 +18,10 @@ type NodeStore = {
   toggleAdvanced: (nodeId: string) => void;
   setShowAdvanced: (nodeId: string, show: boolean) => void;
   getShowAdvanced: (nodeId: string) => boolean;
+  addNodes: (nodes: CustomNode[]) => void;
+  getHardCodedValues: (nodeId: string) => Record<string, any>;
+  convertCustomNodeToBackendNode: (node: CustomNode) => Node;
+  getBackendNodes: () => Node[];
 };
 
 export const useNodeStore = create<NodeStore>((set, get) => ({
@@ -72,4 +77,30 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     })),
   getShowAdvanced: (nodeId: string) =>
     get().nodeAdvancedStates[nodeId] || false,
+  addNodes: (nodes: CustomNode[]) => {
+    nodes.forEach((node) => {
+      get().addNode(node);
+    });
+  },
+  getHardCodedValues: (nodeId: string) => {
+    return (
+      get().nodes.find((n) => n.id === nodeId)?.data?.hardcodedValues || {}
+    );
+  },
+  convertCustomNodeToBackendNode: (node: CustomNode) => {
+    return {
+      id: node.id,
+      block_id: node.data.block_id,
+      input_default: node.data.hardcodedValues,
+      metadata: {
+        // TODO: Add more metadata
+        position: node.position,
+      },
+    };
+  },
+  getBackendNodes: () => {
+    return get().nodes.map((node) =>
+      get().convertCustomNodeToBackendNode(node),
+    );
+  },
 }));

@@ -118,9 +118,9 @@ model AgentGraph {
   createdAt DateTime  @default(now())
   updatedAt DateTime? @updatedAt
 
-  name        String?
-  description String?
-  instructions String?
+  name                    String?
+  description             String?
+  instructions            String?
   recommendedScheduleCron String?
 
   isActive Boolean @default(true)
@@ -382,9 +382,9 @@ model AgentGraphExecution {
   stats Json?
 
   // Sharing fields
-  isShared    Boolean   @default(false)
-  shareToken  String?   @unique
-  sharedAt    DateTime?
+  isShared   Boolean   @default(false)
+  shareToken String?   @unique
+  sharedAt   DateTime?
 
   @@index([agentGraphId, agentGraphVersion])
   @@index([userId, isDeleted, createdAt])
@@ -545,7 +545,7 @@ model CreditTransaction {
   createdAt      DateTime @default(now())
 
   userId String
-  User   User?   @relation(fields: [userId], references: [id], onDelete: NoAction)
+  User   User?  @relation(fields: [userId], references: [id], onDelete: NoAction)
 
   amount Int
   type   CreditTransactionType
@@ -586,6 +586,16 @@ model CreditRefundRequest {
 //////////////   Store TABLES    ///////////////////////////
 ////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////
+
+model SearchTerms {
+  // User ID not being logged as this is anonymous analytics data
+  // Not using uuid as we want to minimise table size
+  id          BigInt   @id @default(autoincrement())
+  createdDate DateTime
+  searchTerm  String
+
+  @@index([createdDate])
+}
 
 model Profile {
   id        String   @id @default(uuid())
@@ -657,6 +667,7 @@ view StoreAgent {
   rating           Float
   versions         String[]
   is_available     Boolean  @default(true)
+  useForOnboarding Boolean  @default(false)
 
   // Materialized views used (refreshed every 15 minutes via pg_cron):
   // - mv_agent_run_counts - Pre-aggregated agent execution counts by agentGraphId
@@ -734,6 +745,9 @@ model StoreListing {
   // URL-friendly identifier for this agent (moved from StoreListingVersion)
   slug String
 
+  // Allow this agent to be used during onboarding
+  useForOnboarding   Boolean @default(false)
+
   // The currently active version that should be shown to users
   activeVersionId String?              @unique
   ActiveVersion   StoreListingVersion? @relation("ActiveVersion", fields: [activeVersionId], references: [id])
@@ -769,13 +783,13 @@ model StoreListingVersion {
   AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version])
 
   // Content fields
-  name        String
-  subHeading  String
-  videoUrl    String?
-  imageUrls   String[]
-  description String
+  name         String
+  subHeading   String
+  videoUrl     String?
+  imageUrls    String[]
+  description  String
   instructions String?
-  categories  String[]
+  categories   String[]
 
   isFeatured Boolean @default(false)
 

@@ -85,7 +85,7 @@ export default function LoginPage() {
             />
 
             {/* Turnstile CAPTCHA Component */}
-            {isCloudEnv && !turnstile.verified ? (
+            {turnstile.shouldRender ? (
               <Turnstile
                 key={captchaKey}
                 siteKey={turnstile.siteKey}

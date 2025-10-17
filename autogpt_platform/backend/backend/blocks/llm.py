@@ -102,6 +102,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     CLAUDE_4_OPUS = "claude-opus-4-20250514"
     CLAUDE_4_SONNET = "claude-sonnet-4-20250514"
     CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"
+    CLAUDE_4_5_HAIKU = "claude-haiku-4-5-20251001"
     CLAUDE_3_7_SONNET = "claude-3-7-sonnet-20250219"
     CLAUDE_3_5_SONNET = "claude-3-5-sonnet-latest"
     CLAUDE_3_5_HAIKU = "claude-3-5-haiku-latest"
@@ -217,6 +218,9 @@ MODEL_METADATA = {
     LlmModel.CLAUDE_4_5_SONNET: ModelMetadata(
         "anthropic", 200000, 64000
     ),  # claude-sonnet-4-5-20250929
+    LlmModel.CLAUDE_4_5_HAIKU: ModelMetadata(
+        "anthropic", 200000, 64000
+    ),  # claude-haiku-4-5-20251001
     LlmModel.CLAUDE_3_7_SONNET: ModelMetadata(
         "anthropic", 200000, 64000
     ),  # claude-3-7-sonnet-20250219
@@ -1404,11 +1408,27 @@ class AITextSummarizerBlock(AIBlockBase):
 
     @staticmethod
     def _split_text(text: str, max_tokens: int, overlap: int) -> list[str]:
+        # Security fix: Add validation to prevent DoS attacks
+        # Limit text size to prevent memory exhaustion
+        MAX_TEXT_LENGTH = 1_000_000  # 1MB character limit
+        MAX_CHUNKS = 100  # Maximum number of chunks to prevent excessive memory use
+
+        if len(text) > MAX_TEXT_LENGTH:
+            text = text[:MAX_TEXT_LENGTH]
+
+        # Ensure chunk_size is at least 1 to prevent infinite loops
+        chunk_size = max(1, max_tokens - overlap)
+
+        # Ensure overlap is less than max_tokens to prevent invalid configurations
+        if overlap >= max_tokens:
+            overlap = max(0, max_tokens - 1)
+
         words = text.split()
         chunks = []
-        chunk_size = max_tokens - overlap
 
         for i in range(0, len(words), chunk_size):
+            if len(chunks) >= MAX_CHUNKS:
+                break  # Limit the number of chunks to prevent memory exhaustion
             chunk = " ".join(words[i : i + max_tokens])
             chunks.append(chunk)
 

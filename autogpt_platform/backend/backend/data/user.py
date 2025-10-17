@@ -16,8 +16,8 @@ from prisma.types import JsonFilter, UserCreateInput, UserUpdateInput
 from backend.data.db import prisma
 from backend.data.model import User, UserIntegrations, UserMetadata
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
-from backend.server.v2.store.exceptions import DatabaseError
 from backend.util.encryption import JSONCryptor
+from backend.util.exceptions import DatabaseError
 from backend.util.json import SafeJson
 from backend.util.settings import Settings
 
@@ -351,6 +351,36 @@ async def set_user_email_verification(user_id: str, verified: bool) -> None:
     except Exception as e:
         raise DatabaseError(
             f"Failed to set email verification status for user {user_id}: {e}"
+        ) from e
+
+
+async def disable_all_user_notifications(user_id: str) -> None:
+    """Disable all notification preferences for a user.
+
+    Used when user's email bounces/is inactive to prevent any future notifications.
+    """
+    try:
+        await PrismaUser.prisma().update(
+            where={"id": user_id},
+            data={
+                "notifyOnAgentRun": False,
+                "notifyOnZeroBalance": False,
+                "notifyOnLowBalance": False,
+                "notifyOnBlockExecutionFailed": False,
+                "notifyOnContinuousAgentError": False,
+                "notifyOnDailySummary": False,
+                "notifyOnWeeklySummary": False,
+                "notifyOnMonthlySummary": False,
+                "notifyOnAgentApproved": False,
+                "notifyOnAgentRejected": False,
+            },
+        )
+        # Invalidate cache for this user
+        get_user_by_id.cache_delete(user_id)
+        logger.info(f"Disabled all notification preferences for user {user_id}")
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to disable notifications for user {user_id}: {e}"
         ) from e
 
 
