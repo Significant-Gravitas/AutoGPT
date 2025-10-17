@@ -290,7 +290,18 @@ class UserCreditBase(ABC):
             WITH user_balance_lock AS (
                 SELECT 
                     $2::text as userId, 
-                    COALESCE((SELECT balance FROM {schema_prefix}"UserBalance" WHERE "userId" = $2 FOR UPDATE), 0) as balance
+                    COALESCE(
+                        (SELECT balance FROM {schema_prefix}"UserBalance" WHERE "userId" = $2 FOR UPDATE),
+                        -- Fallback: compute balance from transaction history if UserBalance doesn't exist
+                        (SELECT COALESCE(ct."runningBalance", 0) 
+                         FROM {schema_prefix}"CreditTransaction" ct 
+                         WHERE ct."userId" = $2 
+                           AND ct."isActive" = true 
+                           AND ct."runningBalance" IS NOT NULL 
+                         ORDER BY ct."createdAt" DESC 
+                         LIMIT 1),
+                        0
+                    ) as balance
             ),
             transaction_check AS (
                 SELECT * FROM {schema_prefix}"CreditTransaction" 
@@ -411,76 +422,108 @@ class UserCreditBase(ABC):
                 )
 
         # Single unified atomic operation for all transaction types using UserBalance
-        result = await query_raw_with_schema(
-            """
-            WITH user_balance_lock AS (
-                SELECT 
-                    $1::text as userId, 
-                    -- CRITICAL: FOR UPDATE lock prevents concurrent modifications to the same user's balance
-                    -- This ensures atomic read-modify-write operations and prevents race conditions
-                    COALESCE((SELECT balance FROM {schema_prefix}"UserBalance" WHERE "userId" = $1 FOR UPDATE), 0) as balance
-            ),
-            balance_update AS (
-                INSERT INTO {schema_prefix}"UserBalance" ("userId", "balance", "updatedAt")
-                SELECT 
-                    $1::text,
-                    CASE 
-                        -- For inactive transactions: Don't update balance
-                        WHEN $5::boolean = false THEN user_balance_lock.balance
-                        -- For ceiling balance (amount > 0): Apply ceiling
-                        WHEN $2 > 0 AND $7::int IS NOT NULL AND user_balance_lock.balance > $7::int - $2 THEN $7::int
-                        -- For regular operations: Apply with overflow/underflow protection  
-                        WHEN user_balance_lock.balance + $2 > $6::int THEN $6::int
-                        WHEN user_balance_lock.balance + $2 < $10::int THEN $10::int
-                        ELSE user_balance_lock.balance + $2
-                    END,
-                    CURRENT_TIMESTAMP
-                FROM user_balance_lock
-                WHERE (
-                    $5::boolean = false OR  -- Allow inactive transactions
-                    $2 >= 0 OR              -- Allow positive amounts (top-ups, grants)
-                    $8::boolean = false OR  -- Allow when insufficient balance check is disabled
-                    user_balance_lock.balance + $2 >= 0  -- Allow spending only when sufficient balance
+        try:
+            result = await query_raw_with_schema(
+                """
+                WITH user_balance_lock AS (
+                    SELECT 
+                        $1::text as userId, 
+                        -- CRITICAL: FOR UPDATE lock prevents concurrent modifications to the same user's balance
+                        -- This ensures atomic read-modify-write operations and prevents race conditions
+                        COALESCE(
+                            (SELECT balance FROM {schema_prefix}"UserBalance" WHERE "userId" = $1 FOR UPDATE),
+                            -- Fallback: compute balance from transaction history if UserBalance doesn't exist
+                            (SELECT COALESCE(ct."runningBalance", 0) 
+                             FROM {schema_prefix}"CreditTransaction" ct 
+                             WHERE ct."userId" = $1 
+                               AND ct."isActive" = true 
+                               AND ct."runningBalance" IS NOT NULL 
+                             ORDER BY ct."createdAt" DESC 
+                             LIMIT 1),
+                            0
+                        ) as balance
+                ),
+                balance_update AS (
+                    INSERT INTO {schema_prefix}"UserBalance" ("userId", "balance", "updatedAt")
+                    SELECT 
+                        $1::text,
+                        CASE 
+                            -- For inactive transactions: Don't update balance
+                            WHEN $5::boolean = false THEN user_balance_lock.balance
+                            -- For ceiling balance (amount > 0): Apply ceiling
+                            WHEN $2 > 0 AND $7::int IS NOT NULL AND user_balance_lock.balance > $7::int - $2 THEN $7::int
+                            -- For regular operations: Apply with overflow/underflow protection  
+                            WHEN user_balance_lock.balance + $2 > $6::int THEN $6::int
+                            WHEN user_balance_lock.balance + $2 < $10::int THEN $10::int
+                            ELSE user_balance_lock.balance + $2
+                        END,
+                        CURRENT_TIMESTAMP
+                    FROM user_balance_lock
+                    WHERE (
+                        $5::boolean = false OR  -- Allow inactive transactions
+                        $2 >= 0 OR              -- Allow positive amounts (top-ups, grants)
+                        $8::boolean = false OR  -- Allow when insufficient balance check is disabled
+                        user_balance_lock.balance + $2 >= 0  -- Allow spending only when sufficient balance
+                    )
+                    ON CONFLICT ("userId") DO UPDATE SET
+                        "balance" = EXCLUDED."balance",
+                        "updatedAt" = EXCLUDED."updatedAt"
+                    RETURNING "balance", "updatedAt"
+                ),
+                transaction_insert AS (
+                    INSERT INTO {schema_prefix}"CreditTransaction" (
+                        "userId", "amount", "type", "runningBalance", 
+                        "metadata", "isActive", "createdAt", "transactionKey"
+                    )
+                    SELECT 
+                        $1::text,
+                        $2::int,
+                        $3::text::{schema_prefix}"CreditTransactionType",
+                        CASE 
+                            -- For inactive transactions: Set runningBalance to original balance (don't apply the change yet)
+                            WHEN $5::boolean = false THEN user_balance_lock.balance
+                            ELSE COALESCE(balance_update.balance, user_balance_lock.balance)
+                        END,
+                        $4::jsonb,
+                        $5::boolean,
+                        COALESCE(balance_update."updatedAt", CURRENT_TIMESTAMP),
+                        COALESCE($9, gen_random_uuid()::text)
+                    FROM user_balance_lock
+                    LEFT JOIN balance_update ON true
+                    WHERE (
+                        $5::boolean = false OR  -- Allow inactive transactions
+                        $2 >= 0 OR              -- Allow positive amounts (top-ups, grants)
+                        $8::boolean = false OR  -- Allow when insufficient balance check is disabled
+                        user_balance_lock.balance + $2 >= 0  -- Allow spending only when sufficient balance
+                    )
+                    RETURNING "runningBalance", "transactionKey"
                 )
-                ON CONFLICT ("userId") DO UPDATE SET
-                    "balance" = EXCLUDED."balance",
-                    "updatedAt" = EXCLUDED."updatedAt"
-                RETURNING "balance", "updatedAt"
-            ),
-            transaction_insert AS (
-                INSERT INTO {schema_prefix}"CreditTransaction" (
-                    "userId", "amount", "type", "runningBalance", 
-                    "metadata", "isActive", "createdAt", "transactionKey"
-                )
-                SELECT 
-                    $1::text,
-                    $2::int,
-                    $3::text::{schema_prefix}"CreditTransactionType",
-                    CASE 
-                        -- For inactive transactions: Set runningBalance to original balance (don't apply the change yet)
-                        WHEN $5::boolean = false THEN user_balance_lock.balance
-                        ELSE balance_update.balance
-                    END,
-                    $4::jsonb,
-                    $5::boolean,
-                    balance_update."updatedAt",
-                    COALESCE($9, gen_random_uuid()::text)
-                FROM balance_update, user_balance_lock
-                RETURNING "runningBalance", "transactionKey"
+                SELECT "runningBalance" as balance, "transactionKey" FROM transaction_insert;
+                """,
+                user_id,  # $1
+                amount,  # $2
+                transaction_type.value,  # $3
+                dumps(metadata.data),  # $4 - use pre-serialized JSON string for JSONB
+                is_active,  # $5
+                POSTGRES_INT_MAX,  # $6 - overflow protection
+                ceiling_balance,  # $7 - ceiling balance (nullable)
+                fail_insufficient_credits,  # $8 - check balance for spending
+                transaction_key,  # $9 - transaction key (nullable)
+                POSTGRES_INT_MIN,  # $10 - underflow protection
             )
-            SELECT "runningBalance" as balance, "transactionKey" FROM transaction_insert;
-            """,
-            user_id,  # $1
-            amount,  # $2
-            transaction_type.value,  # $3
-            dumps(metadata.data),  # $4 - use pre-serialized JSON string for JSONB
-            is_active,  # $5
-            POSTGRES_INT_MAX,  # $6 - overflow protection
-            ceiling_balance,  # $7 - ceiling balance (nullable)
-            fail_insufficient_credits,  # $8 - check balance for spending
-            transaction_key,  # $9 - transaction key (nullable)
-            POSTGRES_INT_MIN,  # $10 - underflow protection
-        )
+        except Exception as e:
+            # Convert raw SQL unique constraint violations to UniqueViolationError
+            # for consistent exception handling throughout the codebase
+            error_str = str(e).lower()
+            if (
+                "already exists" in error_str
+                or "duplicate key" in error_str
+                or "unique constraint" in error_str
+            ):
+                # Extract table and constraint info for better error messages
+                raise UniqueViolationError(str(e))
+            # For any other error, re-raise as-is
+            raise
 
         if result:
             new_balance, tx_key = result[0]["balance"], result[0]["transactionKey"]
@@ -494,10 +537,7 @@ class UserCreditBase(ABC):
 
         # Must be insufficient balance for spending operation
         if amount < 0 and fail_insufficient_credits:
-            user_balance_record = await UserBalance.prisma().find_unique(
-                where={"userId": user_id}
-            )
-            current_balance = user_balance_record.balance if user_balance_record else 0
+            current_balance, _ = await self._get_credits(user_id)
             raise InsufficientBalanceError(
                 message=f"Insufficient balance of ${current_balance/100}, where this will cost ${abs(amount)/100}",
                 user_id=user_id,
@@ -582,18 +622,9 @@ class UserCredit(UserCreditBase):
                 ),
             )
             return True
-        except Exception as e:
-            # Handle both Prisma UniqueViolationError and raw SQL unique constraint violations
-            # Raw SQL raises different exception types than Prisma ORM
-            error_str = str(e).lower()
-            if (
-                isinstance(e, UniqueViolationError)
-                or "already exists" in error_str
-                or "duplicate key" in error_str
-            ):
-                return False
-            # For any other error, re-raise
-            raise
+        except UniqueViolationError:
+            # User already received this reward
+            return False
 
     async def top_up_refund(
         self, user_id: str, transaction_key: str, metadata: dict[str, str]
