@@ -139,7 +139,8 @@ export function Turnstile({
             "600020": "Internal error. Please try again later.",
           };
 
-          const errorMessage = errorMessages[errorCode] ||
+          const errorMessage =
+            errorMessages[errorCode] ||
             `Verification failed (Error: ${errorCode}). Please try again.`;
 
           const error = new Error(errorMessage);
