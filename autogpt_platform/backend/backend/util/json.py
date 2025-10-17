@@ -7,6 +7,7 @@ import orjson
 from fastapi.encoders import jsonable_encoder as to_dict
 from prisma import Json
 
+from .truncate import truncate
 from .type import type_match
 
 logger = logging.getLogger(__name__)
@@ -146,9 +147,9 @@ def SafeJson(data: Any) -> Json:
             "SafeJson fallback to string representation due to serialization error: %s (%s). "
             "Data type: %s, Data preview: %s",
             type(e).__name__,
-            str(e)[:200],  # Limit error message length
+            truncate(str(e), 200),
             type(data).__name__,
-            str(data)[:100] + "..." if len(str(data)) > 100 else str(data),
+            truncate(str(data), 100),
         )
 
         # Ultimate fallback: convert to string representation and sanitize
