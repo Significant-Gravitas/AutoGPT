@@ -4,7 +4,6 @@ from typing import Any, Optional
 
 import prisma
 import pydantic
-from autogpt_libs.utils.cache import cached
 from prisma.enums import OnboardingStep
 from prisma.models import UserOnboarding
 from prisma.types import UserOnboardingCreateInput, UserOnboardingUpdateInput
@@ -13,6 +12,7 @@ from backend.data.block import get_blocks
 from backend.data.credit import get_user_credit_model
 from backend.data.model import CredentialsMetaInput
 from backend.server.v2.store.model import StoreAgentDetails
+from backend.util.cache import cached
 from backend.util.json import SafeJson
 
 # Mapping from user reason id to categories to search for when choosing agent to show
