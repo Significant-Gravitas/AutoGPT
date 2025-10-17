@@ -1,11 +1,10 @@
 import re
-from typing import Any, Type, TypeGuard, TypeVar, overload
+from typing import Any, Type, TypeVar, overload
 
 import jsonschema
 import orjson
 from fastapi.encoders import jsonable_encoder
 from prisma import Json
-from pydantic import BaseModel
 
 from .type import type_match
 
