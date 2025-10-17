@@ -128,6 +128,7 @@ def _sanitize_value(value: Any) -> Any:
 
     This function walks through data structures and removes control characters from strings.
     It handles:
+    - Pydantic models: Convert to dict then recursively sanitize
     - Strings: Remove control chars directly from the string
     - Lists: Recursively sanitize each element
     - Dicts: Recursively sanitize keys and values
@@ -142,6 +143,9 @@ def _sanitize_value(value: Any) -> Any:
     if isinstance(value, str):
         # Remove control characters directly from the string
         return POSTGRES_CONTROL_CHARS.sub("", value)
+    elif isinstance(value, BaseModel):
+        # Convert Pydantic models to dict and recursively sanitize
+        return _sanitize_value(value.model_dump(exclude_none=True))
     elif isinstance(value, dict):
         # Recursively sanitize dictionary keys and values
         return {_sanitize_value(k): _sanitize_value(v) for k, v in value.items()}

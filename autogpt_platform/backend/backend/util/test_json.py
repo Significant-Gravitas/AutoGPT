@@ -479,3 +479,142 @@ class TestSafeJson:
         # And can be parsed back
         parsed_back = json.loads(json_string)
         assert isinstance(parsed_back, dict)
+
+    def test_dict_containing_pydantic_models(self):
+        """Test that dicts containing Pydantic models are properly serialized."""
+        # This reproduces the bug from PR #11187 where credential_inputs failed
+        model1 = SamplePydanticModel(name="Alice", age=30)
+        model2 = SamplePydanticModel(name="Bob", age=25)
+
+        data = {
+            "user1": model1,
+            "user2": model2,
+            "regular_data": "test",
+        }
+
+        result = SafeJson(data)
+        assert isinstance(result, Json)
+
+        # Verify it can be JSON serialized (this was the bug)
+        import json
+
+        json_string = json.dumps(result.data)
+        assert "Alice" in json_string
+        assert "Bob" in json_string
+
+    def test_nested_pydantic_in_dict(self):
+        """Test deeply nested Pydantic models in dicts."""
+        inner_model = SamplePydanticModel(name="Inner", age=20)
+        middle_model = SamplePydanticModel(
+            name="Middle", age=30, metadata={"inner": inner_model}
+        )
+
+        data = {
+            "level1": {
+                "level2": {
+                    "model": middle_model,
+                    "other": "data",
+                }
+            }
+        }
+
+        result = SafeJson(data)
+        assert isinstance(result, Json)
+
+        import json
+
+        json_string = json.dumps(result.data)
+        assert "Middle" in json_string
+        assert "Inner" in json_string
+
+    def test_list_containing_pydantic_models_in_dict(self):
+        """Test list of Pydantic models inside a dict."""
+        models = [SamplePydanticModel(name=f"User{i}", age=20 + i) for i in range(5)]
+
+        data = {
+            "users": models,
+            "count": len(models),
+        }
+
+        result = SafeJson(data)
+        assert isinstance(result, Json)
+
+        import json
+
+        json_string = json.dumps(result.data)
+        assert "User0" in json_string
+        assert "User4" in json_string
+
+    def test_credentials_meta_input_scenario(self):
+        """Test the exact scenario from create_graph_execution that was failing."""
+
+        # Simulate CredentialsMetaInput structure
+        class MockCredentialsMetaInput(BaseModel):
+            id: str
+            title: Optional[str] = None
+            provider: str
+            type: str
+
+        cred_input = MockCredentialsMetaInput(
+            id="test-123", title="Test Credentials", provider="github", type="oauth2"
+        )
+
+        # This is how credential_inputs is structured in create_graph_execution
+        credential_inputs = {"github_creds": cred_input}
+
+        # This should work without TypeError
+        result = SafeJson(credential_inputs)
+        assert isinstance(result, Json)
+
+        # Verify it can be JSON serialized
+        import json
+
+        json_string = json.dumps(result.data)
+        assert "test-123" in json_string
+        assert "github" in json_string
+        assert "oauth2" in json_string
+
+    def test_mixed_pydantic_and_primitives(self):
+        """Test complex mix of Pydantic models and primitive types."""
+        model = SamplePydanticModel(name="Test", age=25)
+
+        data = {
+            "models": [model, {"plain": "dict"}, "string", 123],
+            "nested": {
+                "model": model,
+                "list": [1, 2, model, 4],
+                "plain": "text",
+            },
+            "plain_list": [1, 2, 3],
+        }
+
+        result = SafeJson(data)
+        assert isinstance(result, Json)
+
+        import json
+
+        json_string = json.dumps(result.data)
+        assert "Test" in json_string
+        assert "plain" in json_string
+
+    def test_pydantic_model_with_control_chars_in_dict(self):
+        """Test Pydantic model with control chars when nested in dict."""
+        model = SamplePydanticModel(
+            name="Test\x00User",  # Has null byte
+            age=30,
+            metadata={"info": "data\x08with\x0Ccontrols"},
+        )
+
+        data = {"credential": model}
+
+        result = SafeJson(data)
+        assert isinstance(result, Json)
+
+        # Verify control characters are removed
+        import json
+
+        json_string = json.dumps(result.data)
+        assert "\x00" not in json_string
+        assert "\x08" not in json_string
+        assert "\x0C" not in json_string
+        assert "TestUser" in json_string  # Name preserved minus null byte
