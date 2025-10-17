@@ -11,6 +11,7 @@ import { useNodeStore } from "../../../stores/nodeStore";
 import { cn } from "@/lib/utils";
 import { BlockUIType } from "../../types";
 import { StickyNoteBlock } from "./StickyNoteBlock";
+import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 
 export type CustomNodeData = {
   hardcodedValues: {
@@ -21,6 +22,7 @@ export type CustomNodeData = {
   inputSchema: RJSFSchema;
   outputSchema: RJSFSchema;
   uiType: BlockUIType;
+  status?: AgentExecutionStatus;
 };
 
 export type CustomNode = XYNode<CustomNodeData, "custom">;
