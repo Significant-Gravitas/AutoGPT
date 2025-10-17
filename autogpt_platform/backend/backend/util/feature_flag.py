@@ -35,6 +35,7 @@ class Flag(str, Enum):
     AI_ACTIVITY_STATUS = "ai-agent-execution-summary"
     BETA_BLOCKS = "beta-blocks"
     AGENT_ACTIVITY = "agent-activity"
+    ENABLE_PLATFORM_PAYMENT = "enable-platform-payment"
 
 
 def is_configured() -> bool:

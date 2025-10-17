@@ -194,8 +194,12 @@ def test_get_user_credits(
     snapshot: Snapshot,
 ) -> None:
     """Test get user credits endpoint"""
-    mock_credit_model = mocker.patch("backend.server.routers.v1._user_credit_model")
+    mock_credit_model = Mock()
     mock_credit_model.get_credits = AsyncMock(return_value=1000)
+    mocker.patch(
+        "backend.server.routers.v1.get_user_credit_model",
+        return_value=mock_credit_model,
+    )
 
     response = client.get("/credits")
 
@@ -215,9 +219,13 @@ def test_request_top_up(
     snapshot: Snapshot,
 ) -> None:
     """Test request top up endpoint"""
-    mock_credit_model = mocker.patch("backend.server.routers.v1._user_credit_model")
+    mock_credit_model = Mock()
     mock_credit_model.top_up_intent = AsyncMock(
         return_value="https://checkout.example.com/session123"
+    )
+    mocker.patch(
+        "backend.server.routers.v1.get_user_credit_model",
+        return_value=mock_credit_model,
     )
 
     request_data = {"credit_amount": 500}
