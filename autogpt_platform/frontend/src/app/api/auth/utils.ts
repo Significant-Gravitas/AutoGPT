@@ -28,7 +28,7 @@ export function logWaitlistError(context: string, errorMessage: string): void {
   // Only log the error code and general message, not the email
   const sanitizedMessage = errorMessage.replace(
     /"[^"]+@[^"]+"/g, // Matches email addresses in quotes
-    '"[email]"'
+    '"[email]"',
   );
   console.log(`[${context}] Waitlist check failed:`, sanitizedMessage);
 }

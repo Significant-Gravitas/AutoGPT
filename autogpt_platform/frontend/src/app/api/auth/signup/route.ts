@@ -4,7 +4,7 @@ import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { signupFormSchema } from "@/types/auth";
 import { shouldShowOnboarding } from "../../helpers";
-import { isWaitlistError, logWaitlistError } from "./utils";
+import { isWaitlistError, logWaitlistError } from "../utils";
 
 export async function POST(request: Request) {
   try {
