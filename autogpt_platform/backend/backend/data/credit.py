@@ -521,7 +521,9 @@ class UserCreditBase(ABC):
                 or "unique constraint" in error_str
             ):
                 # Extract table and constraint info for better error messages
-                raise UniqueViolationError(str(e))
+                # Re-raise as a UniqueViolationError but with proper format
+                # Create a minimal data structure that the error constructor expects
+                raise UniqueViolationError({"error": str(e), "user_facing_error": {}})
             # For any other error, re-raise as-is
             raise
 
