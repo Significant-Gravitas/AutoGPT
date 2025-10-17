@@ -166,7 +166,7 @@ def SafeJson(data: Any) -> Json:
     Sanitizes control characters to prevent PostgreSQL 22P05 errors.
 
     This function:
-    1. Converts Pydantic models to dicts
+    1. Converts Pydantic models to dicts (recursively)
     2. Recursively removes PostgreSQL-incompatible control characters from strings
     3. Returns a Prisma Json object safe for database storage
 
@@ -181,9 +181,5 @@ def SafeJson(data: Any) -> Json:
         >>> SafeJson({"path": "C:\\\\temp"})  # backslashes preserved
         >>> SafeJson({"data": "Text\\\\u0000here"})  # literal backslash-u preserved
     """
-    # Convert Pydantic models to dict first
-    if isinstance(data, BaseModel):
-        data = data.model_dump(exclude_none=True)
-
-    # Return as Prisma Json type
+    # _sanitize_value handles Pydantic model conversion and sanitization
     return Json(_sanitize_value(data))
