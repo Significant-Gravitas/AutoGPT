@@ -246,7 +246,7 @@ async def execute_node(
         async for output_name, output_data in node_block.execute(
             input_data, **extra_exec_kwargs
         ):
-            output_data = json.convert_pydantic_to_json(output_data)
+            output_data = json.to_dict(output_data)
             output_size += len(json.dumps(output_data))
             log_metadata.debug("Node produced output", **{output_name: output_data})
             yield output_name, output_data
