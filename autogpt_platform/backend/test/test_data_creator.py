@@ -19,8 +19,9 @@ images: {
 import asyncio
 import random
 from datetime import datetime
-import pytest
+
 import prisma.enums
+import pytest
 from autogpt_libs.api_key.keysmith import APIKeySmith
 from faker import Faker
 from prisma import Json, Prisma
@@ -574,7 +575,7 @@ async def test_main_function_runs_without_errors():
         await main()
     except Exception as e:
         assert False, f"main() raised an exception: {e}"
-    
+
 
 if __name__ == "__main__":
     asyncio.run(main())
