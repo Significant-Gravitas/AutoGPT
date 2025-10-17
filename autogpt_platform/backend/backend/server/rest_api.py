@@ -95,7 +95,7 @@ async def lifespan_context(app: fastapi.FastAPI):
     # Ensure SDK auto-registration is patched before initializing blocks
     from backend.sdk.registry import AutoRegistry
 
-    AutoRegistry.patch_integrations()
+    await AutoRegistry.patch_integrations()
 
     await backend.data.block.initialize_blocks()
 

@@ -60,6 +60,22 @@ model User {
   NotificationBatches   UserNotificationBatch[]
 }
 
+// This model describes the providers that are available to the user.
+model ProviderRegistry {
+  name String @id
+
+  with_oauth Boolean @default(false)
+  client_id_env_var String?
+  client_secret_env_var String?
+
+  with_api_key Boolean @default(false)
+  api_key_env_var String?
+
+  with_user_password Boolean @default(false)
+  username_env_var String?
+  password_env_var String?
+}
+
 enum OnboardingStep {
   // Introductory onboarding (Library)
   WELCOME
