@@ -59,29 +59,29 @@ async def test_recursive_json_compare():
 
 @pytest.mark.asyncio
 async def test_check_block_same():
-    local_block = PrintToConsoleBlock()
+    local_block_instance = PrintToConsoleBlock()
     db_block = BlocksRegistry(
         id="f3b1c1b2-4c4f-4f0d-8d2f-4c4f0d8d2f4c",
-        name=local_block.__class__.__name__,
-        definition=json.dumps(local_block.to_dict()),  # type: ignore To much type magic going on here
+        name=local_block_instance.__class__.__name__,
+        definition=json.dumps(local_block_instance.to_dict()),  # type: ignore To much type magic going on here
         updatedAt=datetime.now(),
     )
-    assert check_block_same(db_block, local_block)
+    assert check_block_same(db_block, PrintToConsoleBlock)  # type: ignore
 
 
 @pytest.mark.asyncio
 async def test_check_block_not_same():
-    local_block = PrintToConsoleBlock()
-    local_block_data = local_block.to_dict()
+    local_block_instance = PrintToConsoleBlock()
+    local_block_data = local_block_instance.to_dict()
     local_block_data["description"] = "Hello, World!"
 
     db_block = BlocksRegistry(
         id="f3b1c1b2-4c4f-4f0d-8d2f-4c4f0d8d2f4c",
-        name=local_block.__class__.__name__,
+        name=local_block_instance.__class__.__name__,
         definition=json.dumps(local_block_data),  # type: ignore To much type magic going on here
         updatedAt=datetime.now(),
     )
-    assert not check_block_same(db_block, local_block)
+    assert not check_block_same(db_block, PrintToConsoleBlock)  # type: ignore
 
 
 @pytest.mark.asyncio
@@ -89,10 +89,10 @@ async def test_find_delta_blocks():
     now = datetime.now()
     store_value_block = StoreValueBlock()
     local_blocks = {
-        PrintToConsoleBlock().id: PrintToConsoleBlock(),
-        ReverseListOrderBlock().id: ReverseListOrderBlock(),
-        FileStoreBlock().id: FileStoreBlock(),
-        store_value_block.id: store_value_block,
+        PrintToConsoleBlock().id: PrintToConsoleBlock,
+        ReverseListOrderBlock().id: ReverseListOrderBlock,
+        FileStoreBlock().id: FileStoreBlock,
+        store_value_block.id: StoreValueBlock,
     }
     db_blocks = {
         PrintToConsoleBlock().id: BlocksRegistry(
@@ -117,7 +117,7 @@ async def test_find_delta_blocks():
     delta_blocks = find_delta_blocks(db_blocks, local_blocks)
     assert len(delta_blocks) == 1
     assert store_value_block.id in delta_blocks.keys()
-    assert delta_blocks[store_value_block.id] == store_value_block
+    assert delta_blocks[store_value_block.id] == StoreValueBlock
 
 
 @pytest.mark.asyncio
@@ -127,10 +127,10 @@ async def test_find_delta_blocks_block_updated():
     print_to_console_block_definition = PrintToConsoleBlock().to_dict()
     print_to_console_block_definition["description"] = "Hello, World!"
     local_blocks = {
-        PrintToConsoleBlock().id: PrintToConsoleBlock(),
-        ReverseListOrderBlock().id: ReverseListOrderBlock(),
-        FileStoreBlock().id: FileStoreBlock(),
-        store_value_block.id: store_value_block,
+        PrintToConsoleBlock().id: PrintToConsoleBlock,
+        ReverseListOrderBlock().id: ReverseListOrderBlock,
+        FileStoreBlock().id: FileStoreBlock,
+        store_value_block.id: StoreValueBlock,
     }
     db_blocks = {
         PrintToConsoleBlock().id: BlocksRegistry(
@@ -155,7 +155,7 @@ async def test_find_delta_blocks_block_updated():
     delta_blocks = find_delta_blocks(db_blocks, local_blocks)
     assert len(delta_blocks) == 2
     assert store_value_block.id in delta_blocks.keys()
-    assert delta_blocks[store_value_block.id] == store_value_block
+    assert delta_blocks[store_value_block.id] == StoreValueBlock
     assert PrintToConsoleBlock().id in delta_blocks.keys()
 
 
@@ -163,9 +163,9 @@ async def test_find_delta_blocks_block_updated():
 async def test_find_delta_block_no_diff():
     now = datetime.now()
     local_blocks = {
-        PrintToConsoleBlock().id: PrintToConsoleBlock(),
-        ReverseListOrderBlock().id: ReverseListOrderBlock(),
-        FileStoreBlock().id: FileStoreBlock(),
+        PrintToConsoleBlock().id: PrintToConsoleBlock,
+        ReverseListOrderBlock().id: ReverseListOrderBlock,
+        FileStoreBlock().id: FileStoreBlock,
     }
     db_blocks = {
         PrintToConsoleBlock().id: BlocksRegistry(

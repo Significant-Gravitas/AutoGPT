@@ -834,9 +834,6 @@ def check_block_same(db_block: BlocksRegistry, local_block: Block) -> bool:
     local_block_instance = local_block()  # type: ignore
     local_block_definition = local_block_instance.to_dict()
     db_block_definition = db_block.definition
-    logger.info(
-        f"Checking if block {local_block_instance.name} is the same as the database block {db_block.name}"
-    )
     is_same = recursive_json_compare(db_block_definition, local_block_definition)
     return is_same
 
@@ -879,7 +876,6 @@ async def upsert_blocks_change_bulk(blocks: Dict[str, Block]):
     """
     db_blocks = await get_block_registry()
     block_update = find_delta_blocks(db_blocks, blocks)
-    logger.error(f"Upserting {len(block_update)} blocks of {len(blocks)} total blocks")
     for block_id, block in block_update.items():
         await BlocksRegistry.prisma().upsert(
             where={"id": block_id},
