@@ -17,6 +17,7 @@ from backend.util.text import TextFormatter
 logger = logging.getLogger(__name__)
 settings = Settings()
 
+
 # The following is a workaround to get the type checker to recognize the EmailManager type
 # This is a temporary solution and should be removed once the Postmark library is updated
 # to support type annotations.
@@ -61,7 +62,9 @@ class EmailSender:
 
         template = self._get_template(notification)
 
-        base_url = settings.config.frontend_base_url or settings.config.platform_base_url
+        base_url = (
+            settings.config.frontend_base_url or settings.config.platform_base_url
+        )
 
         # Normalize data
         template_data = {"notifications": data} if isinstance(data, list) else data
