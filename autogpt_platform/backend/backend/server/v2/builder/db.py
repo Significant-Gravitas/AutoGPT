@@ -2,7 +2,6 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 import prisma
-from autogpt_libs.utils.cache import cached
 
 import backend.data.block
 from backend.blocks import load_all_blocks
@@ -18,6 +17,7 @@ from backend.server.v2.builder.model import (
     ProviderResponse,
     SearchBlocksResponse,
 )
+from backend.util.cache import cached
 from backend.util.models import Pagination
 
 logger = logging.getLogger(__name__)
@@ -307,7 +307,7 @@ def _matches_llm_model(schema_cls: type[BlockSchema], query: str) -> bool:
     return False
 
 
-@cached()
+@cached(ttl_seconds=3600)
 def _get_all_providers() -> dict[ProviderName, Provider]:
     providers: dict[ProviderName, Provider] = {}
 
