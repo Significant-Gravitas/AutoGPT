@@ -38,7 +38,10 @@ export default function AuthErrorPage() {
   }
 
   // Check if this is a waitlist/not allowed error
-  const isWaitlistError = isWaitlistErrorFromParams(errorCode, errorDescription);
+  const isWaitlistError = isWaitlistErrorFromParams(
+    errorCode,
+    errorDescription,
+  );
 
   if (isWaitlistError) {
     return (

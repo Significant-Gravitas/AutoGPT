@@ -29,7 +29,7 @@ export function isWaitlistError(error: any): boolean {
  */
 export function isWaitlistErrorFromParams(
   errorCode?: string | null,
-  errorDescription?: string | null
+  errorDescription?: string | null,
 ): boolean {
   if (!errorDescription) return false;
 
