@@ -4,6 +4,7 @@ import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { signupFormSchema } from "@/types/auth";
 import { shouldShowOnboarding } from "../../helpers";
+import { isWaitlistError, logWaitlistError } from "../utils";
 
 export async function POST(request: Request) {
   try {
@@ -47,16 +48,19 @@ export async function POST(request: Request) {
     const { data, error } = await supabase.auth.signUp(parsed.data);
 
     if (error) {
-      // FIXME: supabase doesn't return the correct error message for this case
-      if (error.message.includes("P0001")) {
+      // Check for waitlist/allowlist error
+      if (isWaitlistError(error)) {
+        logWaitlistError("Signup", error.message);
         return NextResponse.json({ error: "not_allowed" }, { status: 403 });
       }
+
       if ((error as any).code === "user_already_exists") {
         return NextResponse.json(
           { error: "user_already_exists" },
           { status: 409 },
         );
       }
+
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
