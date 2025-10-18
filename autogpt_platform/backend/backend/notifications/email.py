@@ -44,6 +44,8 @@ class EmailSender:
             self.postmark = None
         self.formatter = TextFormatter()
 
+    MAX_EMAIL_CHARS = 5_000_000  # ~5MB buffer
+
     def send_templated(
         self,
         notification: NotificationType,
@@ -54,21 +56,19 @@ class EmailSender:
         ),
         user_unsub_link: str | None = None,
     ):
-        """Send an email to a user using a template pulled from the notification type"""
+        """Send an email to a user using a template pulled from the notification type, or fallback"""
         if not self.postmark:
             logger.warning("Postmark client not initialized, email not sent")
             return
+
         template = self._get_template(notification)
 
         base_url = (
             settings.config.frontend_base_url or settings.config.platform_base_url
         )
 
-        # Handle the case when data is a list
-        template_data = data
-        if isinstance(data, list):
-            # Create a dictionary with a 'notifications' key containing the list
-            template_data = {"notifications": data}
+        # Normalize data
+        template_data = {"notifications": data} if isinstance(data, list) else data
 
         try:
             subject, full_message = self.formatter.format_email(
@@ -82,24 +82,37 @@ class EmailSender:
             logger.error(f"Error formatting full message: {e}")
             raise e
 
-        # Check email size (Postmark limit is 5MB = 5,242,880 characters)
+        # Check email size & send summary if too large
         email_size = len(full_message)
-        if email_size > 5_000_000:  # Leave some buffer
+        if email_size > self.MAX_EMAIL_CHARS:
             logger.warning(
                 f"Email size ({email_size} chars) exceeds safe limit. "
-                f"This should have been chunked before calling send_templated."
+                "Sending summary email instead."
             )
-            raise ValueError(
-                f"Email body too large: {email_size} characters (limit: 5,242,880)"
+
+            # Create lightweight summary
+            summary_message = (
+                f"⚠️ Your agent '{getattr(data, 'agent_name', 'Unknown')}' "
+                f"generated a very large output ({email_size / 1_000_000:.2f} MB).\n\n"
+                f"Execution time: {getattr(data, 'execution_time', 'N/A')}\n"
+                f"Credits used: {getattr(data, 'credits_used', 'N/A')}\n"
+                f"View full results: {base_url}/executions/{getattr(data, 'id', 'N/A')}"
             )
+
+            self._send_email(
+                user_email=user_email,
+                subject=f"{subject} (Output Too Large)",
+                body=summary_message,
+                user_unsubscribe_link=user_unsub_link,
+            )
+            return  # Skip sending full email
 
         logger.debug(f"Sending email with size: {email_size} characters")
-
         self._send_email(
             user_email=user_email,
-            user_unsubscribe_link=user_unsub_link,
             subject=subject,
             body=full_message,
+            user_unsubscribe_link=user_unsub_link,
         )
 
     def _get_template(self, notification: NotificationType):
@@ -137,7 +150,6 @@ class EmailSender:
             To=user_email,
             Subject=subject,
             HtmlBody=body,
-            # Headers default to None internally so this is fine
             Headers=(
                 {
                     "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
