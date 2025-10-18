@@ -20,14 +20,9 @@ export async function GET(request: Request) {
 
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
+    // Keep minimal error logging for OAuth debugging if needed
     if (error) {
-      console.log("=== OAUTH CODE EXCHANGE ERROR ===");
-      console.log("Error exchanging code for session:", {
-        message: error.message,
-        name: error.name,
-        status: (error as any).status,
-        code: (error as any).code,
-      });
+      console.error("OAuth code exchange failed:", error.message);
     }
 
     if (!error) {
@@ -96,11 +91,6 @@ export async function GET(request: Request) {
       }
     }
   }
-
-  // OAuth error - log it before redirecting
-  console.log("=== OAUTH CALLBACK ERROR ===");
-  console.log("No code received, redirecting to error page");
-  console.log("Search params:", searchParams.toString());
 
   // return the user to an error page with instructions
   return NextResponse.redirect(`${origin}/auth/auth-code-error`);

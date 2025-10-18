@@ -29,7 +29,6 @@ export function isWaitlistError(
     code === "unexpected_failure" &&
     message === "Database error saving new user"
   ) {
-    console.log("Detected generic database error - treating as waitlist error");
     return true;
   }
 
