@@ -98,42 +98,6 @@ async def transaction(timeout: int = TRANSACTION_TIMEOUT):
         yield tx
 
 
-@asynccontextmanager
-async def locked_transaction(key: str, timeout: int = TRANSACTION_TIMEOUT):
-    """
-    Create a transaction and take a per-key advisory *transaction* lock.
-
-    - Uses a 64-bit lock id via hashtextextended(key, 0) to avoid 32-bit collisions.
-    - Bound by lock_timeout and statement_timeout so it won't block indefinitely.
-    - Lock is held for the duration of the transaction and auto-released on commit/rollback.
-
-    Args:
-        key: String lock key (e.g., "usr_trx_<uuid>").
-        timeout: Transaction/lock/statement timeout in milliseconds.
-    """
-    async with transaction(timeout=timeout) as tx:
-        # Ensure we don't wait longer than desired
-        # Note: SET LOCAL doesn't support parameterized queries, must use string interpolation
-        await tx.execute_raw(f"SET LOCAL statement_timeout = '{int(timeout)}ms'")  # type: ignore[arg-type]
-        await tx.execute_raw(f"SET LOCAL lock_timeout = '{int(timeout)}ms'")  # type: ignore[arg-type]
-
-        # Block until acquired or lock_timeout hits
-        try:
-            await tx.execute_raw(
-                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-                key,
-            )
-        except Exception as e:
-            # Normalize PG's lock timeout error to TimeoutError for callers
-            if "lock timeout" in str(e).lower():
-                raise TimeoutError(
-                    f"Could not acquire lock for key={key!r} within {timeout}ms"
-                ) from e
-            raise
-
-        yield tx
-
-
 def get_database_schema() -> str:
     """Extract database schema from DATABASE_URL."""
     parsed_url = urlparse(DATABASE_URL)

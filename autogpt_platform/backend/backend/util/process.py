@@ -8,18 +8,9 @@ from typing import Optional
 
 from backend.util.logging import configure_logging
 from backend.util.metrics import sentry_init
+from backend.util.settings import set_service_name
 
 logger = logging.getLogger(__name__)
-_SERVICE_NAME = "MainProcess"
-
-
-def get_service_name():
-    return _SERVICE_NAME
-
-
-def set_service_name(name: str):
-    global _SERVICE_NAME
-    _SERVICE_NAME = name
 
 
 class AppProcess(ABC):

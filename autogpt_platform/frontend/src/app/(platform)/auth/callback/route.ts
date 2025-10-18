@@ -20,6 +20,11 @@ export async function GET(request: Request) {
 
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
+    // Keep minimal error logging for OAuth debugging if needed
+    if (error) {
+      console.error("OAuth code exchange failed:", error.message);
+    }
+
     if (!error) {
       try {
         const api = new BackendAPI();

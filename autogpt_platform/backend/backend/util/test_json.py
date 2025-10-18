@@ -411,3 +411,346 @@ class TestSafeJson:
         assert "C:\\temp\\file" in str(file_path_with_null)
         assert ".txt" in str(file_path_with_null)
         assert "\x00" not in str(file_path_with_null)  # Null removed from path
+
+    def test_invalid_escape_error_prevention(self):
+        """Test that SafeJson prevents 'Invalid \\escape' errors that occurred in upsert_execution_output."""
+        # This reproduces the exact scenario that was causing the error:
+        # POST /upsert_execution_output failed: Invalid \escape: line 1 column 36404 (char 36403)
+
+        # Create data with various problematic escape sequences that could cause JSON parsing errors
+        problematic_output_data = {
+            "web_content": "Article text\x00with null\x01and control\x08chars\x0C\x1F\x7F",
+            "file_path": "C:\\Users\\test\\file\x00.txt",
+            "json_like_string": '{"text": "data\x00\x08\x1F"}',
+            "escaped_sequences": "Text with \\u0000 and \\u0008 sequences",
+            "mixed_content": "Normal text\tproperly\nformatted\rwith\x00invalid\x08chars\x1Fmixed",
+            "large_text": "A" * 35000
+            + "\x00\x08\x1F"
+            + "B" * 5000,  # Large text like in the error
+        }
+
+        # This should not raise any JSON parsing errors
+        result = SafeJson(problematic_output_data)
+        assert isinstance(result, Json)
+
+        # Verify the result is a valid Json object that can be safely stored in PostgreSQL
+        result_data = cast(dict[str, Any], result.data)
+        assert isinstance(result_data, dict)
+
+        # Verify problematic characters are removed but safe content preserved
+        web_content = result_data.get("web_content", "")
+        file_path = result_data.get("file_path", "")
+        large_text = result_data.get("large_text", "")
+
+        # Check that control characters are removed
+        assert "\x00" not in str(web_content)
+        assert "\x01" not in str(web_content)
+        assert "\x08" not in str(web_content)
+        assert "\x0C" not in str(web_content)
+        assert "\x1F" not in str(web_content)
+        assert "\x7F" not in str(web_content)
+
+        # Check that legitimate content is preserved
+        assert "Article text" in str(web_content)
+        assert "with null" in str(web_content)
+        assert "and control" in str(web_content)
+        assert "chars" in str(web_content)
+
+        # Check file path handling
+        assert "C:\\Users\\test\\file" in str(file_path)
+        assert ".txt" in str(file_path)
+        assert "\x00" not in str(file_path)
+
+        # Check large text handling (the scenario from the error at char 36403)
+        assert len(str(large_text)) > 35000  # Content preserved
+        assert "A" * 1000 in str(large_text)  # A's preserved
+        assert "B" * 1000 in str(large_text)  # B's preserved
+        assert "\x00" not in str(large_text)  # Control chars removed
+        assert "\x08" not in str(large_text)
+        assert "\x1F" not in str(large_text)
+
+        # Most importantly: ensure the result can be JSON-serialized without errors
+        # This would have failed with the old approach
+        import json
+
+        json_string = json.dumps(result.data)  # Should not raise "Invalid \escape"
+        assert len(json_string) > 0
+
+        # And can be parsed back
+        parsed_back = json.loads(json_string)
+        assert isinstance(parsed_back, dict)
+
+    def test_dict_containing_pydantic_models(self):
+        """Test that dicts containing Pydantic models are properly serialized."""
+        # This reproduces the bug from PR #11187 where credential_inputs failed
+        model1 = SamplePydanticModel(name="Alice", age=30)
+        model2 = SamplePydanticModel(name="Bob", age=25)
+
+        data = {
+            "user1": model1,
+            "user2": model2,
+            "regular_data": "test",
+        }
+
+        result = SafeJson(data)
+        assert isinstance(result, Json)
+
+        # Verify it can be JSON serialized (this was the bug)
+        import json
+
+        json_string = json.dumps(result.data)
+        assert "Alice" in json_string
+        assert "Bob" in json_string
+
+    def test_nested_pydantic_in_dict(self):
+        """Test deeply nested Pydantic models in dicts."""
+        inner_model = SamplePydanticModel(name="Inner", age=20)
+        middle_model = SamplePydanticModel(
+            name="Middle", age=30, metadata={"inner": inner_model}
+        )
+
+        data = {
+            "level1": {
+                "level2": {
+                    "model": middle_model,
+                    "other": "data",
+                }
+            }
+        }
+
+        result = SafeJson(data)
+        assert isinstance(result, Json)
+
+        import json
+
+        json_string = json.dumps(result.data)
+        assert "Middle" in json_string
+        assert "Inner" in json_string
+
+    def test_list_containing_pydantic_models_in_dict(self):
+        """Test list of Pydantic models inside a dict."""
+        models = [SamplePydanticModel(name=f"User{i}", age=20 + i) for i in range(5)]
+
+        data = {
+            "users": models,
+            "count": len(models),
+        }
+
+        result = SafeJson(data)
+        assert isinstance(result, Json)
+
+        import json
+
+        json_string = json.dumps(result.data)
+        assert "User0" in json_string
+        assert "User4" in json_string
+
+    def test_credentials_meta_input_scenario(self):
+        """Test the exact scenario from create_graph_execution that was failing."""
+
+        # Simulate CredentialsMetaInput structure
+        class MockCredentialsMetaInput(BaseModel):
+            id: str
+            title: Optional[str] = None
+            provider: str
+            type: str
+
+        cred_input = MockCredentialsMetaInput(
+            id="test-123", title="Test Credentials", provider="github", type="oauth2"
+        )
+
+        # This is how credential_inputs is structured in create_graph_execution
+        credential_inputs = {"github_creds": cred_input}
+
+        # This should work without TypeError
+        result = SafeJson(credential_inputs)
+        assert isinstance(result, Json)
+
+        # Verify it can be JSON serialized
+        import json
+
+        json_string = json.dumps(result.data)
+        assert "test-123" in json_string
+        assert "github" in json_string
+        assert "oauth2" in json_string
+
+    def test_mixed_pydantic_and_primitives(self):
+        """Test complex mix of Pydantic models and primitive types."""
+        model = SamplePydanticModel(name="Test", age=25)
+
+        data = {
+            "models": [model, {"plain": "dict"}, "string", 123],
+            "nested": {
+                "model": model,
+                "list": [1, 2, model, 4],
+                "plain": "text",
+            },
+            "plain_list": [1, 2, 3],
+        }
+
+        result = SafeJson(data)
+        assert isinstance(result, Json)
+
+        import json
+
+        json_string = json.dumps(result.data)
+        assert "Test" in json_string
+        assert "plain" in json_string
+
+    def test_pydantic_model_with_control_chars_in_dict(self):
+        """Test Pydantic model with control chars when nested in dict."""
+        model = SamplePydanticModel(
+            name="Test\x00User",  # Has null byte
+            age=30,
+            metadata={"info": "data\x08with\x0Ccontrols"},
+        )
+
+        data = {"credential": model}
+
+        result = SafeJson(data)
+        assert isinstance(result, Json)
+
+        # Verify control characters are removed
+        import json
+
+        json_string = json.dumps(result.data)
+        assert "\x00" not in json_string
+        assert "\x08" not in json_string
+        assert "\x0C" not in json_string
+        assert "TestUser" in json_string  # Name preserved minus null byte
+
+    def test_deeply_nested_pydantic_models_control_char_sanitization(self):
+        """Test that control characters are sanitized in deeply nested Pydantic models."""
+
+        # Create nested Pydantic models with control characters at different levels
+        class InnerModel(BaseModel):
+            deep_string: str
+            value: int = 42
+            metadata: dict = {}
+
+        class MiddleModel(BaseModel):
+            middle_string: str
+            inner: InnerModel
+            data: str
+
+        class OuterModel(BaseModel):
+            outer_string: str
+            middle: MiddleModel
+
+        # Create test data with control characters at every nesting level
+        inner = InnerModel(
+            deep_string="Deepest\x00Level\x08Control\x0CChars",  # Multiple control chars at deepest level
+            metadata={
+                "nested_key": "Nested\x1FValue\x7FDelete"
+            },  # Control chars in nested dict
+        )
+
+        middle = MiddleModel(
+            middle_string="Middle\x01StartOfHeading\x1FUnitSeparator",
+            inner=inner,
+            data="Some\x0BVerticalTab\x0EShiftOut",
+        )
+
+        outer = OuterModel(outer_string="Outer\x00Null\x07Bell", middle=middle)
+
+        # Wrap in a dict with additional control characters
+        data = {
+            "top_level": "Top\x00Level\x08Backspace",
+            "nested_model": outer,
+            "list_with_strings": [
+                "List\x00Item1",
+                "List\x0CItem2\x1F",
+                {"dict_in_list": "Dict\x08Value"},
+            ],
+        }
+
+        # Process with SafeJson
+        result = SafeJson(data)
+        assert isinstance(result, Json)
+
+        # Verify all control characters are removed at every level
+        import json
+
+        json_string = json.dumps(result.data)
+
+        # Check that NO control characters remain anywhere
+        control_chars = [
+            "\x00",
+            "\x01",
+            "\x02",
+            "\x03",
+            "\x04",
+            "\x05",
+            "\x06",
+            "\x07",
+            "\x08",
+            "\x0B",
+            "\x0C",
+            "\x0E",
+            "\x0F",
+            "\x10",
+            "\x11",
+            "\x12",
+            "\x13",
+            "\x14",
+            "\x15",
+            "\x16",
+            "\x17",
+            "\x18",
+            "\x19",
+            "\x1A",
+            "\x1B",
+            "\x1C",
+            "\x1D",
+            "\x1E",
+            "\x1F",
+            "\x7F",
+        ]
+
+        for char in control_chars:
+            assert (
+                char not in json_string
+            ), f"Control character {repr(char)} found in result"
+
+        # Verify specific sanitized content is present (control chars removed but text preserved)
+        result_data = cast(dict[str, Any], result.data)
+
+        # Top level
+        assert "TopLevelBackspace" in json_string
+
+        # Outer model level
+        assert "OuterNullBell" in json_string
+
+        # Middle model level
+        assert "MiddleStartOfHeadingUnitSeparator" in json_string
+        assert "SomeVerticalTabShiftOut" in json_string
+
+        # Inner model level (deepest nesting)
+        assert "DeepestLevelControlChars" in json_string
+
+        # Nested dict in model
+        assert "NestedValueDelete" in json_string
+
+        # List items
+        assert "ListItem1" in json_string
+        assert "ListItem2" in json_string
+        assert "DictValue" in json_string
+
+        # Verify structure is preserved (not just converted to string)
+        assert isinstance(result_data, dict)
+        assert isinstance(result_data["nested_model"], dict)
+        assert isinstance(result_data["nested_model"]["middle"], dict)
+        assert isinstance(result_data["nested_model"]["middle"]["inner"], dict)
+        assert isinstance(result_data["list_with_strings"], list)
+
+        # Verify specific deep values are accessible and sanitized
+        nested_model = cast(dict[str, Any], result_data["nested_model"])
+        middle = cast(dict[str, Any], nested_model["middle"])
+        inner = cast(dict[str, Any], middle["inner"])
+
+        deep_string = inner["deep_string"]
+        assert deep_string == "DeepestLevelControlChars"
+
+        metadata = cast(dict[str, Any], inner["metadata"])
+        nested_metadata = metadata["nested_key"]
+        assert nested_metadata == "NestedValueDelete"

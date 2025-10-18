@@ -2,7 +2,7 @@ from typing import Any
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from backend.util.json import json
+from backend.util.json import loads
 
 
 class StepThroughItemsBlock(Block):
@@ -68,7 +68,7 @@ class StepThroughItemsBlock(Block):
                     raise ValueError(
                         f"Input too large: {len(data)} bytes > {MAX_ITEM_SIZE} bytes"
                     )
-                items = json.loads(data)
+                items = loads(data)
             else:
                 items = data
 

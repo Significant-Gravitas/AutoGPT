@@ -31,9 +31,9 @@ import backend.util.exceptions as exceptions
 from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
-from backend.util.process import AppProcess, get_service_name
+from backend.util.process import AppProcess
 from backend.util.retry import conn_retry, create_retry_decorator
-from backend.util.settings import Config
+from backend.util.settings import Config, get_service_name
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")

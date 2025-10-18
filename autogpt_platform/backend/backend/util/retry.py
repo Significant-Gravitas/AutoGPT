@@ -13,7 +13,7 @@ from tenacity import (
     wait_exponential_jitter,
 )
 
-from backend.util.process import get_service_name
+from backend.util.settings import get_service_name
 
 logger = logging.getLogger(__name__)
 
