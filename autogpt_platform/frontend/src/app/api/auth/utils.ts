@@ -35,6 +35,8 @@ export function isWaitlistErrorFromParams(
 ): boolean {
   if (!errorDescription) return false;
 
+  if (errorCode === "P0001") return true;
+
   const description = errorDescription.toLowerCase();
   return (
     description.includes("p0001") || // PostgreSQL error code might be in description
