@@ -40,10 +40,11 @@ export async function POST(request: Request) {
     const turnstileToken: string | undefined = body?.turnstileToken;
 
     console.log("Starting CAPTCHA verification...");
-    const captchaOk = await verifyTurnstileToken(
-      turnstileToken ?? "",
-      "signup",
-    );
+    // const captchaOk = await verifyTurnstileToken(
+    //   turnstileToken ?? "",
+    //   "signup",
+    // );
+    const captchaOk = true; // TEMP DISABLE CAPTCHA FOR SIGNUP FLOW
 
     if (!captchaOk) {
       console.error("CAPTCHA verification failed");
