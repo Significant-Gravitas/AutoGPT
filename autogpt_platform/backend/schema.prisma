@@ -45,6 +45,7 @@ model User {
   AnalyticsDetails     AnalyticsDetails[]
   AnalyticsMetrics     AnalyticsMetrics[]
   CreditTransactions   CreditTransaction[]
+  UserBalance          UserBalance?
 
   AgentPresets  AgentPreset[]
   LibraryAgents LibraryAgent[]
@@ -885,6 +886,16 @@ model APIKey {
 
   @@index([head, name])
   @@index([userId, status])
+}
+
+model UserBalance {
+  userId    String   @id
+  balance   Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 enum APIKeyStatus {
