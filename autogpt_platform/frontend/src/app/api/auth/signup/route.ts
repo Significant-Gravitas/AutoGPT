@@ -60,7 +60,7 @@ export async function POST(request: Request) {
           { status: 409 },
         );
       }
-
+      console.log("Signup error:", error);
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
