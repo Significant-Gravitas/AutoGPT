@@ -70,6 +70,13 @@ export function useSignupPage() {
         const { error } = await response.json();
         setIsGoogleLoading(false);
         resetCaptcha();
+
+        // Check for waitlist error
+        if (error === "not_allowed") {
+          setShowNotAllowedModal(true);
+          return;
+        }
+
         toast({
           title: error || "Failed to start OAuth flow",
           variant: "destructive",
