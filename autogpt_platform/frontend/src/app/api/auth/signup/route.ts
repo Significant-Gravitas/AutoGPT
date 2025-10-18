@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
-import { verifyTurnstileToken } from "@/lib/turnstile";
+// import { verifyTurnstileToken } from "@/lib/turnstile";
 import { signupFormSchema } from "@/types/auth";
 import { shouldShowOnboarding } from "../../helpers";
 import { isWaitlistError, logWaitlistError } from "../utils";
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
 
     console.log("Schema validation passed for email:", parsed.data.email);
 
-    const turnstileToken: string | undefined = body?.turnstileToken;
+    // const turnstileToken: string | undefined = body?.turnstileToken;
 
     console.log("Starting CAPTCHA verification...");
     // const captchaOk = await verifyTurnstileToken(
