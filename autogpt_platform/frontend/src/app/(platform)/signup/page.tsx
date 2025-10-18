@@ -162,7 +162,7 @@ export default function SignupPage() {
             />
 
             {/* Turnstile CAPTCHA Component */}
-            {isCloudEnv && !turnstile.verified ? (
+            {isCloudEnv ? (
               <Turnstile
                 key={captchaKey}
                 siteKey={turnstile.siteKey}
