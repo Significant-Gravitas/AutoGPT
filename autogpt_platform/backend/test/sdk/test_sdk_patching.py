@@ -52,7 +52,8 @@ class TestWebhookPatching:
         """Clear registry."""
         AutoRegistry.clear()
 
-    def test_webhook_manager_patching(self):
+    @pytest.mark.asyncio
+    async def test_webhook_manager_patching(self):
         """Test that webhook managers are correctly patched."""
 
         # Mock the original load_webhook_managers function
@@ -75,7 +76,7 @@ class TestWebhookPatching:
         with patch.dict(
             "sys.modules", {"backend.integrations.webhooks": mock_webhooks_module}
         ):
-            AutoRegistry.patch_integrations()
+            await AutoRegistry.patch_integrations()
 
             # Call the patched function
             result = mock_webhooks_module.load_webhook_managers()
@@ -87,7 +88,8 @@ class TestWebhookPatching:
             assert "webhook_provider" in result
             assert result["webhook_provider"] == MockWebhookManager
 
-    def test_webhook_patching_no_original_function(self):
+    @pytest.mark.asyncio
+    async def test_webhook_patching_no_original_function(self):
         """Test webhook patching when load_webhook_managers doesn't exist."""
         # Mock webhooks module without load_webhook_managers
         mock_webhooks_module = MagicMock(spec=[])
@@ -103,7 +105,7 @@ class TestWebhookPatching:
             "sys.modules", {"backend.integrations.webhooks": mock_webhooks_module}
         ):
             # Should not raise an error
-            AutoRegistry.patch_integrations()
+            await AutoRegistry.patch_integrations()
 
             # Function should not be added if it didn't exist
             assert not hasattr(mock_webhooks_module, "load_webhook_managers")
@@ -116,7 +118,8 @@ class TestPatchingIntegration:
         """Clear registry."""
         AutoRegistry.clear()
 
-    def test_complete_provider_registration_and_patching(self):
+    @pytest.mark.asyncio
+    async def test_complete_provider_registration_and_patching(self):
         """Test the complete flow from provider registration to patching."""
         # Mock webhooks module
         mock_webhooks = MagicMock()
@@ -138,7 +141,7 @@ class TestPatchingIntegration:
                 "backend.integrations.webhooks": mock_webhooks,
             },
         ):
-            AutoRegistry.patch_integrations()
+            await AutoRegistry.patch_integrations()
 
             # Verify webhook patching
             webhook_result = mock_webhooks.load_webhook_managers()

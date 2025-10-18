@@ -7,7 +7,7 @@ import {
   usePostV1CreateCredentials,
 } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { APIKeyCredentials } from "@/app/api/__generated__/models/aPIKeyCredentials";
+import type { PostV1CreateCredentialsBody } from "@/app/api/__generated__/models/postV1CreateCredentialsBody";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -89,7 +89,7 @@ export function useAPIKeyCredentialsModal({
         api_key: values.apiKey,
         title: values.title,
         expires_at: expiresAt,
-      } as APIKeyCredentials,
+      } as PostV1CreateCredentialsBody,
     });
   }
 
