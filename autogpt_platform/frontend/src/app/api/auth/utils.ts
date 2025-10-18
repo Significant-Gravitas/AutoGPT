@@ -10,6 +10,8 @@
 export function isWaitlistError(error: any): boolean {
   if (!error?.message) return false;
 
+  if (error?.code === "P0001") return true;
+
   return (
     error.message.includes("P0001") || // PostgreSQL custom error code
     error.message.includes("not allowed to register") || // Trigger message
