@@ -6,7 +6,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Card } from "@/components/atoms/Card/Card";
 import { WaitlistErrorContent } from "@/components/auth/WaitlistErrorContent";
-import { isWaitlistErrorFromParams } from "@/app/api/auth/utils";
+import { isWaitlistError } from "@/app/api/auth/utils";
 import { useRouter } from "next/navigation";
 
 export default function AuthErrorPage() {
@@ -38,12 +38,9 @@ export default function AuthErrorPage() {
   }
 
   // Check if this is a waitlist/not allowed error
-  const isWaitlistError = isWaitlistErrorFromParams(
-    errorCode,
-    errorDescription,
-  );
+  const isWaitlistErr = isWaitlistError(errorCode, errorDescription);
 
-  if (isWaitlistError) {
+  if (isWaitlistErr) {
     return (
       <div className="flex h-screen items-center justify-center">
         <Card className="w-full max-w-md p-8">

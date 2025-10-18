@@ -1,49 +1,46 @@
 /**
- * Checks if a Supabase auth error is related to the waitlist/allowlist
+ * Checks if an error is related to the waitlist/allowlist
+ *
+ * Can be used with either:
+ * - Error objects from Supabase auth operations: `isWaitlistError(error?.code, error?.message)`
+ * - URL parameters from OAuth callbacks: `isWaitlistError(errorCode, errorDescription)`
  *
  * The PostgreSQL trigger raises P0001 with message format:
  * "The email address "email" is not allowed to register. Please contact support for assistance."
  *
- * @param error - The error object from Supabase auth operations
- * @returns true if this is a waitlist/allowlist error
- */
-export function isWaitlistError(error: any): boolean {
-  if (!error?.message) return false;
-
-  if (error?.code === "P0001") return true;
-
-  return (
-    error.message.includes("P0001") || // PostgreSQL custom error code
-    error.message.includes("not allowed to register") || // Trigger message
-    error.message.toLowerCase().includes("allowed_users") // Table reference
-  );
-}
-
-/**
- * Checks if OAuth callback URL parameters indicate a waitlist error
- *
- * This is for the auth-code-error page which receives errors via URL hash params
- * from Supabase OAuth redirects
- *
- * @param errorCode - The error_code parameter from the URL
- * @param errorDescription - The error_description parameter from the URL
+ * @param code - Error code (e.g., "P0001", "unexpected_failure") or null
+ * @param message - Error message/description or null
  * @returns true if this appears to be a waitlist/allowlist error
  */
-export function isWaitlistErrorFromParams(
-  errorCode?: string | null,
-  errorDescription?: string | null,
+export function isWaitlistError(
+  code?: string | null,
+  message?: string | null,
 ): boolean {
-  if (!errorDescription) return false;
+  // Check for explicit PostgreSQL trigger error code
+  if (code === "P0001") return true;
 
-  if (errorCode === "P0001") return true;
+  if (!message) return false;
 
-  const description = errorDescription.toLowerCase();
+  const lowerMessage = message.toLowerCase();
+
+  // Check for the generic database error that occurs during waitlist check
+  // This happens when Supabase wraps the PostgreSQL trigger error
+  if (
+    code === "unexpected_failure" &&
+    message === "Database error saving new user"
+  ) {
+    console.log("Detected generic database error - treating as waitlist error");
+    return true;
+  }
+
+  // Check for various waitlist-related patterns in the message
   return (
-    description.includes("p0001") || // PostgreSQL error code might be in description
-    description.includes("not allowed") ||
-    description.includes("waitlist") ||
-    description.includes("allowlist") ||
-    description.includes("allowed_users")
+    lowerMessage.includes("p0001") || // PostgreSQL error code in message
+    lowerMessage.includes("not allowed") || // Common waitlist message
+    lowerMessage.includes("waitlist") || // Explicit waitlist mention
+    lowerMessage.includes("allowlist") || // Explicit allowlist mention
+    lowerMessage.includes("allowed_users") || // Database table reference
+    lowerMessage.includes("not allowed to register") // Full trigger message
   );
 }
 

@@ -86,7 +86,7 @@ export async function POST(request: Request) {
       });
 
       // Check for waitlist/allowlist error
-      const isWaitlist = isWaitlistError(error);
+      const isWaitlist = isWaitlistError(error?.code, error?.message);
       console.log("Is waitlist error?", isWaitlist);
 
       if (isWaitlist) {
