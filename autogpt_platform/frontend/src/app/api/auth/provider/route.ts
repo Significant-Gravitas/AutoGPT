@@ -1,6 +1,7 @@
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { NextResponse } from "next/server";
 import { LoginProvider } from "@/types/auth";
+import { isWaitlistError, logWaitlistError } from "../utils";
 
 export async function POST(request: Request) {
   try {
@@ -31,8 +32,9 @@ export async function POST(request: Request) {
     });
 
     if (error) {
-      // FIXME: supabase doesn't return the correct error message for this case
-      if (error.message.includes("P0001")) {
+      // Check for waitlist/allowlist error
+      if (isWaitlistError(error?.code, error?.message)) {
+        logWaitlistError("OAuth Provider", error.message);
         return NextResponse.json({ error: "not_allowed" }, { status: 403 });
       }
 
