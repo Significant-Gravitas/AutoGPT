@@ -5,8 +5,8 @@ This module provides blocks for creating and managing searches within websets,
 including adding new searches, checking status, and canceling operations.
 """
 
-from typing import Any, Dict, List, Optional
 from enum import Enum
+from typing import Optional
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -24,9 +24,10 @@ from ._config import exa
 
 class SearchBehavior(str, Enum):
     """Behavior for how new search results interact with existing items."""
+
     OVERRIDE = "override"  # Replace existing items
-    APPEND = "append"      # Add to existing items
-    MERGE = "merge"        # Merge with existing items
+    APPEND = "append"  # Add to existing items
+    MERGE = "merge"  # Merge with existing items
 
 
 class SearchEntityType(str, Enum):
@@ -147,15 +148,9 @@ class ExaCreateWebsetSearchBlock(Block):
         search_id: str = SchemaField(
             description="The unique identifier for the created search"
         )
-        webset_id: str = SchemaField(
-            description="The webset this search belongs to"
-        )
-        status: str = SchemaField(
-            description="Current status of the search"
-        )
-        query: str = SchemaField(
-            description="The search query"
-        )
+        webset_id: str = SchemaField(description="The webset this search belongs to")
+        status: str = SchemaField(description="Current status of the search")
+        query: str = SchemaField(description="The search query")
         expected_results: dict = SchemaField(
             description="Recall estimation of expected results",
             default_factory=dict,
@@ -186,7 +181,6 @@ class ExaCreateWebsetSearchBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         import time
-        import asyncio
 
         url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/searches"
         headers = {
@@ -205,7 +199,10 @@ class ExaCreateWebsetSearchBlock(Block):
         # Add entity configuration
         if input_data.entity_type != SearchEntityType.AUTO:
             entity = {"type": input_data.entity_type.value}
-            if input_data.entity_type == SearchEntityType.CUSTOM and input_data.entity_description:
+            if (
+                input_data.entity_type == SearchEntityType.CUSTOM
+                and input_data.entity_description
+            ):
                 entity["description"] = input_data.entity_description
             payload["entity"] = entity
 
@@ -218,7 +215,9 @@ class ExaCreateWebsetSearchBlock(Block):
             exclude_list = []
             for idx, src_id in enumerate(input_data.exclude_source_ids):
                 src_type = "import"
-                if input_data.exclude_source_types and idx < len(input_data.exclude_source_types):
+                if input_data.exclude_source_types and idx < len(
+                    input_data.exclude_source_types
+                ):
                     src_type = input_data.exclude_source_types[idx]
                 exclude_list.append({"source": src_type, "id": src_id})
             payload["exclude"] = exclude_list
@@ -229,14 +228,22 @@ class ExaCreateWebsetSearchBlock(Block):
             for idx, src_id in enumerate(input_data.scope_source_ids):
                 scope_item = {"source": "import", "id": src_id}
 
-                if input_data.scope_source_types and idx < len(input_data.scope_source_types):
+                if input_data.scope_source_types and idx < len(
+                    input_data.scope_source_types
+                ):
                     scope_item["source"] = input_data.scope_source_types[idx]
 
                 # Add relationship if provided
-                if input_data.scope_relationships and idx < len(input_data.scope_relationships):
+                if input_data.scope_relationships and idx < len(
+                    input_data.scope_relationships
+                ):
                     relationship = {"definition": input_data.scope_relationships[idx]}
-                    if input_data.scope_relationship_limits and idx < len(input_data.scope_relationship_limits):
-                        relationship["limit"] = input_data.scope_relationship_limits[idx]
+                    if input_data.scope_relationship_limits and idx < len(
+                        input_data.scope_relationship_limits
+                    ):
+                        relationship["limit"] = input_data.scope_relationship_limits[
+                            idx
+                        ]
                     scope_item["relationship"] = relationship
 
                 scope_list.append(scope_item)
@@ -275,7 +282,7 @@ class ExaCreateWebsetSearchBlock(Block):
                     input_data.webset_id,
                     search_id,
                     credentials.api_key.get_secret_value(),
-                    input_data.polling_timeout
+                    input_data.polling_timeout,
                 )
                 completion_time = time.time() - start_time
 
@@ -305,8 +312,8 @@ class ExaCreateWebsetSearchBlock(Block):
         self, webset_id: str, search_id: str, api_key: str, timeout: int
     ) -> int:
         """Poll search status until it completes or times out."""
-        import time
         import asyncio
+        import time
 
         start_time = time.time()
         interval = 5
@@ -352,18 +359,10 @@ class ExaGetWebsetSearchBlock(Block):
         )
 
     class Output(BlockSchema):
-        search_id: str = SchemaField(
-            description="The unique identifier for the search"
-        )
-        status: str = SchemaField(
-            description="Current status of the search"
-        )
-        query: str = SchemaField(
-            description="The search query"
-        )
-        entity_type: str = SchemaField(
-            description="Type of entity being searched"
-        )
+        search_id: str = SchemaField(description="The unique identifier for the search")
+        status: str = SchemaField(description="Current status of the search")
+        query: str = SchemaField(description="The search query")
+        entity_type: str = SchemaField(description="Type of entity being searched")
         criteria: list[dict] = SchemaField(
             description="Criteria used for verification",
             default_factory=list,
@@ -376,12 +375,8 @@ class ExaGetWebsetSearchBlock(Block):
             description="Recall estimation information",
             default_factory=dict,
         )
-        created_at: str = SchemaField(
-            description="When the search was created"
-        )
-        updated_at: str = SchemaField(
-            description="When the search was last updated"
-        )
+        created_at: str = SchemaField(description="When the search was created")
+        updated_at: str = SchemaField(description="When the search was last updated")
         canceled_at: Optional[str] = SchemaField(
             description="When the search was canceled (if applicable)",
             default=None,
@@ -495,12 +490,8 @@ class ExaCancelWebsetSearchBlock(Block):
         )
 
     class Output(BlockSchema):
-        search_id: str = SchemaField(
-            description="The ID of the canceled search"
-        )
-        status: str = SchemaField(
-            description="Status after cancellation"
-        )
+        search_id: str = SchemaField(description="The ID of the canceled search")
+        status: str = SchemaField(description="Status after cancellation")
         items_found_before_cancel: int = SchemaField(
             description="Number of items found before cancellation",
             default=0,
@@ -547,7 +538,9 @@ class ExaCancelWebsetSearchBlock(Block):
 
             # Get the search details to see how many items were found
             search_url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/searches/{input_data.search_id}"
-            search_response = await Requests().get(search_url, headers={"x-api-key": headers["x-api-key"]})
+            search_response = await Requests().get(
+                search_url, headers={"x-api-key": headers["x-api-key"]}
+            )
             search_data = search_response.json()
 
             progress = search_data.get("progress", {})

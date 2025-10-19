@@ -5,8 +5,8 @@ This module provides blocks for creating and managing enrichments on webset item
 allowing extraction of additional structured data from existing items.
 """
 
-from typing import Any, Dict, List, Optional
 from enum import Enum
+from typing import Optional
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -24,12 +24,13 @@ from ._config import exa
 
 class EnrichmentFormat(str, Enum):
     """Format types for enrichment responses."""
-    TEXT = "text"       # Free text response
-    DATE = "date"       # Date/datetime format
-    NUMBER = "number"   # Numeric value
-    OPTIONS = "options" # Multiple choice from provided options
-    EMAIL = "email"     # Email address format
-    PHONE = "phone"     # Phone number format
+
+    TEXT = "text"  # Free text response
+    DATE = "date"  # Date/datetime format
+    NUMBER = "number"  # Numeric value
+    OPTIONS = "options"  # Multiple choice from provided options
+    EMAIL = "email"  # Email address format
+    PHONE = "phone"  # Phone number format
 
 
 class ExaCreateEnrichmentBlock(Block):
@@ -90,18 +91,12 @@ class ExaCreateEnrichmentBlock(Block):
         webset_id: str = SchemaField(
             description="The webset this enrichment belongs to"
         )
-        status: str = SchemaField(
-            description="Current status of the enrichment"
-        )
-        title: str = SchemaField(
-            description="Title of the enrichment"
-        )
+        status: str = SchemaField(description="Current status of the enrichment")
+        title: str = SchemaField(description="Title of the enrichment")
         description: str = SchemaField(
             description="Description of what data is extracted"
         )
-        format: str = SchemaField(
-            description="Format of the extracted data"
-        )
+        format: str = SchemaField(description="Format of the extracted data")
         instructions: str = SchemaField(
             description="Generated instructions for the enrichment"
         )
@@ -131,9 +126,10 @@ class ExaCreateEnrichmentBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         import time
-        import asyncio
 
-        url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/enrichments"
+        url = (
+            f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/enrichments"
+        )
         headers = {
             "Content-Type": "application/json",
             "x-api-key": credentials.api_key.get_secret_value(),
@@ -175,7 +171,7 @@ class ExaCreateEnrichmentBlock(Block):
                     input_data.webset_id,
                     enrichment_id,
                     credentials.api_key.get_secret_value(),
-                    input_data.polling_timeout
+                    input_data.polling_timeout,
                 )
                 completion_time = time.time() - start_time
 
@@ -211,8 +207,8 @@ class ExaCreateEnrichmentBlock(Block):
         self, webset_id: str, enrichment_id: str, api_key: str, timeout: int
     ) -> int:
         """Poll enrichment status until it completes or times out."""
-        import time
         import asyncio
+        import time
 
         start_time = time.time()
         interval = 5
@@ -230,7 +226,9 @@ class ExaCreateEnrichmentBlock(Block):
 
                 if status in ["completed", "failed", "canceled"]:
                     # Try to count enriched items
-                    items_url = f"https://api.exa.ai/websets/v0/websets/{webset_id}/items"
+                    items_url = (
+                        f"https://api.exa.ai/websets/v0/websets/{webset_id}/items"
+                    )
                     items_response = await Requests().get(
                         items_url, headers=headers, params={"limit": 100}
                     )
@@ -273,18 +271,12 @@ class ExaGetEnrichmentBlock(Block):
         enrichment_id: str = SchemaField(
             description="The unique identifier for the enrichment"
         )
-        status: str = SchemaField(
-            description="Current status of the enrichment"
-        )
-        title: str = SchemaField(
-            description="Title of the enrichment"
-        )
+        status: str = SchemaField(description="Current status of the enrichment")
+        title: str = SchemaField(description="Title of the enrichment")
         description: str = SchemaField(
             description="Description of what data is extracted"
         )
-        format: str = SchemaField(
-            description="Format of the extracted data"
-        )
+        format: str = SchemaField(description="Format of the extracted data")
         options: list[str] = SchemaField(
             description="Available options (for 'options' format)",
             default_factory=list,
@@ -292,9 +284,7 @@ class ExaGetEnrichmentBlock(Block):
         instructions: str = SchemaField(
             description="Generated instructions for the enrichment"
         )
-        created_at: str = SchemaField(
-            description="When the enrichment was created"
-        )
+        created_at: str = SchemaField(description="When the enrichment was created")
         updated_at: str = SchemaField(
             description="When the enrichment was last updated"
         )
@@ -394,18 +384,10 @@ class ExaUpdateEnrichmentBlock(Block):
         enrichment_id: str = SchemaField(
             description="The unique identifier for the enrichment"
         )
-        status: str = SchemaField(
-            description="Current status of the enrichment"
-        )
-        title: str = SchemaField(
-            description="Title of the enrichment"
-        )
-        description: str = SchemaField(
-            description="Updated description"
-        )
-        format: str = SchemaField(
-            description="Updated format"
-        )
+        status: str = SchemaField(description="Current status of the enrichment")
+        title: str = SchemaField(description="Title of the enrichment")
+        description: str = SchemaField(description="Updated description")
+        format: str = SchemaField(description="Updated format")
         success: str = SchemaField(
             description="Whether the update was successful",
             default="true",
@@ -486,9 +468,7 @@ class ExaDeleteEnrichmentBlock(Block):
         )
 
     class Output(BlockSchema):
-        enrichment_id: str = SchemaField(
-            description="The ID of the deleted enrichment"
-        )
+        enrichment_id: str = SchemaField(description="The ID of the deleted enrichment")
         success: str = SchemaField(
             description="Whether the deletion was successful",
             default="true",
@@ -554,9 +534,7 @@ class ExaCancelEnrichmentBlock(Block):
         enrichment_id: str = SchemaField(
             description="The ID of the canceled enrichment"
         )
-        status: str = SchemaField(
-            description="Status after cancellation"
-        )
+        status: str = SchemaField(description="Status after cancellation")
         items_enriched_before_cancel: int = SchemaField(
             description="Approximate number of items enriched before cancellation",
             default=0,

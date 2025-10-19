@@ -1,8 +1,8 @@
+import asyncio
+import time
 from datetime import datetime
 from enum import Enum
 from typing import Annotated, Any, Dict, List, Optional
-import asyncio
-import time
 
 from exa_py import Exa
 from exa_py.websets.types import (
@@ -235,9 +235,7 @@ class ExaCreateWebsetBlock(Block):
         )
 
     class Output(BlockSchema):
-        webset: Webset = SchemaField(
-            description="The created webset with full details"
-        )
+        webset: Webset = SchemaField(description="The created webset with full details")
         initial_item_count: Optional[int] = SchemaField(
             description="Number of items found in the initial search (only if wait_for_initial_results was True)",
             default=None,
@@ -436,7 +434,7 @@ class ExaCreateWebsetBlock(Block):
                 item_count = await self._poll_for_completion(
                     webset_result.id,
                     credentials.api_key.get_secret_value(),
-                    input_data.polling_timeout
+                    input_data.polling_timeout,
                 )
                 completion_time = time.time() - start_time
 
@@ -473,8 +471,12 @@ class ExaCreateWebsetBlock(Block):
                 # Check if status is idle (search complete)
                 if status == "idle":
                     # Count items
-                    items_url = f"https://api.exa.ai/websets/v0/websets/{webset_id}/items"
-                    items_response = await Requests().get(items_url, headers=headers, params={"limit": 1})
+                    items_url = (
+                        f"https://api.exa.ai/websets/v0/websets/{webset_id}/items"
+                    )
+                    items_response = await Requests().get(
+                        items_url, headers=headers, params={"limit": 1}
+                    )
                     items_data = items_response.json()
 
                     # Get total count from pagination metadata
@@ -875,13 +877,16 @@ class ExaPreviewWebsetBlock(Block):
             description="Description of the entity type", default=None
         )
         criteria: list[dict] = SchemaField(
-            description="Generated search criteria that will be used", default_factory=list
+            description="Generated search criteria that will be used",
+            default_factory=list,
         )
         enrichment_columns: list[dict] = SchemaField(
-            description="Available enrichment columns that can be extracted", default_factory=list
+            description="Available enrichment columns that can be extracted",
+            default_factory=list,
         )
         interpretation: str = SchemaField(
-            description="Human-readable interpretation of how the query will be processed", default=""
+            description="Human-readable interpretation of how the query will be processed",
+            default="",
         )
         suggestions: list[str] = SchemaField(
             description="Suggestions for improving the query", default_factory=list
@@ -916,7 +921,10 @@ class ExaPreviewWebsetBlock(Block):
         # Add entity configuration if provided
         if input_data.entity_type:
             entity = {"type": input_data.entity_type.value}
-            if input_data.entity_type == SearchEntityType.CUSTOM and input_data.entity_description:
+            if (
+                input_data.entity_type == SearchEntityType.CUSTOM
+                and input_data.entity_description
+            ):
                 entity["description"] = input_data.entity_description
             payload["entity"] = entity
 
@@ -942,14 +950,20 @@ class ExaPreviewWebsetBlock(Block):
             if criteria:
                 interpretation += f" with {len(criteria)} criteria"
             if enrichments:
-                interpretation += f" and {len(enrichments)} available enrichment columns"
+                interpretation += (
+                    f" and {len(enrichments)} available enrichment columns"
+                )
 
             # Generate suggestions (could be enhanced based on the response)
             suggestions = []
             if not criteria:
-                suggestions.append("Consider adding specific criteria to narrow your search")
+                suggestions.append(
+                    "Consider adding specific criteria to narrow your search"
+                )
             if not enrichments:
-                suggestions.append("Consider specifying what data points you want to extract")
+                suggestions.append(
+                    "Consider specifying what data points you want to extract"
+                )
 
             yield "entity_type", entity_type
             yield "entity_description", entity_description

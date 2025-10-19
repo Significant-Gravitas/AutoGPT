@@ -7,7 +7,6 @@ to complete, with progress tracking and timeout management.
 
 import asyncio
 import time
-from typing import Any, Dict, Optional
 from enum import Enum
 
 from backend.sdk import (
@@ -73,15 +72,9 @@ class ExaWaitForWebsetBlock(Block):
         )
 
     class Output(BlockSchema):
-        webset_id: str = SchemaField(
-            description="The webset ID that was monitored"
-        )
-        final_status: str = SchemaField(
-            description="The final status of the webset"
-        )
-        elapsed_time: float = SchemaField(
-            description="Total time elapsed in seconds"
-        )
+        webset_id: str = SchemaField(description="The webset ID that was monitored")
+        final_status: str = SchemaField(description="The final status of the webset")
+        elapsed_time: float = SchemaField(description="Total time elapsed in seconds")
         item_count: int = SchemaField(
             description="Number of items found",
             default=0,
@@ -169,7 +162,7 @@ class ExaWaitForWebsetBlock(Block):
             try:
                 response = await Requests().get(
                     f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}",
-                    headers=headers
+                    headers=headers,
                 )
                 data = response.json()
                 final_status = data.get("status", "unknown")
@@ -240,9 +233,7 @@ class ExaWaitForWebsetBlock(Block):
         """Get the current item count for the webset."""
         try:
             url = f"https://api.exa.ai/websets/v0/websets/{webset_id}/items"
-            response = await Requests().get(
-                url, headers=headers, params={"limit": 1}
-            )
+            response = await Requests().get(url, headers=headers, params={"limit": 1})
             data = response.json()
 
             # Try to get total from pagination
@@ -285,12 +276,8 @@ class ExaWaitForSearchBlock(Block):
         )
 
     class Output(BlockSchema):
-        search_id: str = SchemaField(
-            description="The search ID that was monitored"
-        )
-        final_status: str = SchemaField(
-            description="The final status of the search"
-        )
+        search_id: str = SchemaField(description="The search ID that was monitored")
+        final_status: str = SchemaField(description="The final status of the search")
         items_found: int = SchemaField(
             description="Number of items found by the search",
             default=0,
@@ -303,9 +290,7 @@ class ExaWaitForSearchBlock(Block):
             description="Completion percentage (0-100)",
             default=0,
         )
-        elapsed_time: float = SchemaField(
-            description="Total time elapsed in seconds"
-        )
+        elapsed_time: float = SchemaField(description="Total time elapsed in seconds")
         recall_info: dict = SchemaField(
             description="Information about expected results and confidence",
             default_factory=dict,
@@ -461,9 +446,7 @@ class ExaWaitForEnrichmentBlock(Block):
         enrichment_title: str = SchemaField(
             description="Title/description of the enrichment"
         )
-        elapsed_time: float = SchemaField(
-            description="Total time elapsed in seconds"
-        )
+        elapsed_time: float = SchemaField(description="Total time elapsed in seconds")
         sample_data: list[dict] = SchemaField(
             description="Sample of enriched data (if requested)",
             default_factory=list,
@@ -514,16 +497,18 @@ class ExaWaitForEnrichmentBlock(Block):
                     items_enriched = 0
 
                     if input_data.sample_results and status == "completed":
-                        sample_data, items_enriched = await self._get_sample_enrichments(
-                            input_data.webset_id,
-                            input_data.enrichment_id,
-                            headers
+                        sample_data, items_enriched = (
+                            await self._get_sample_enrichments(
+                                input_data.webset_id, input_data.enrichment_id, headers
+                            )
                         )
 
                     yield "enrichment_id", input_data.enrichment_id
                     yield "final_status", status
                     yield "items_enriched", items_enriched
-                    yield "enrichment_title", data.get("title", data.get("description", ""))
+                    yield "enrichment_title", data.get(
+                        "title", data.get("description", "")
+                    )
                     yield "elapsed_time", elapsed
                     if input_data.sample_results:
                         yield "sample_data", sample_data
@@ -573,9 +558,7 @@ class ExaWaitForEnrichmentBlock(Block):
         try:
             # Get a few items to see enrichment results
             url = f"https://api.exa.ai/websets/v0/websets/{webset_id}/items"
-            response = await Requests().get(
-                url, headers=headers, params={"limit": 5}
-            )
+            response = await Requests().get(url, headers=headers, params={"limit": 5})
             data = response.json()
 
             items = data.get("data", [])
@@ -586,11 +569,13 @@ class ExaWaitForEnrichmentBlock(Block):
                 enrichments = item.get("enrichments", {})
                 if enrichment_id in enrichments:
                     enriched_count += 1
-                    sample_data.append({
-                        "item_id": item.get("id"),
-                        "item_title": item.get("title", ""),
-                        "enrichment_data": enrichments[enrichment_id],
-                    })
+                    sample_data.append(
+                        {
+                            "item_id": item.get("id"),
+                            "item_title": item.get("title", ""),
+                            "enrichment_data": enrichments[enrichment_id],
+                        }
+                    )
 
             # Get total count if available
             if "pagination" in data:

@@ -5,7 +5,7 @@ This module provides blocks for managing items within Exa websets, including
 retrieving, listing, deleting, and bulk operations on webset items.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -26,6 +26,7 @@ class WebsetItem(Dict[str, Any]):
     Represents a webset item with its properties.
     Using Dict to allow flexible schema based on entity type.
     """
+
     pass
 
 
@@ -46,18 +47,10 @@ class ExaGetWebsetItemBlock(Block):
         )
 
     class Output(BlockSchema):
-        item_id: str = SchemaField(
-            description="The unique identifier for the item"
-        )
-        url: str = SchemaField(
-            description="The URL of the original source"
-        )
-        title: str = SchemaField(
-            description="The title of the item"
-        )
-        content: str = SchemaField(
-            description="The main content of the item"
-        )
+        item_id: str = SchemaField(description="The unique identifier for the item")
+        url: str = SchemaField(description="The URL of the original source")
+        title: str = SchemaField(description="The title of the item")
+        content: str = SchemaField(description="The main content of the item")
         entity_data: dict = SchemaField(
             description="Entity-specific structured data",
             default_factory=dict,
@@ -72,9 +65,7 @@ class ExaGetWebsetItemBlock(Block):
         created_at: str = SchemaField(
             description="When the item was added to the webset"
         )
-        updated_at: str = SchemaField(
-            description="When the item was last updated"
-        )
+        updated_at: str = SchemaField(description="When the item was last updated")
         error: str = SchemaField(
             description="Error message if the request failed",
             default="",
@@ -294,9 +285,7 @@ class ExaDeleteWebsetItemBlock(Block):
         )
 
     class Output(BlockSchema):
-        item_id: str = SchemaField(
-            description="The ID of the deleted item"
-        )
+        item_id: str = SchemaField(description="The ID of the deleted item")
         success: str = SchemaField(
             description="Whether the deletion was successful",
             default="true",
@@ -452,7 +441,7 @@ class ExaBulkWebsetItemsBlock(Block):
             # Truncate if we got more than requested
             truncated = len(all_items) > input_data.max_items
             if truncated:
-                all_items = all_items[:input_data.max_items]
+                all_items = all_items[: input_data.max_items]
 
             # Get total count if available
             total_in_webset = None
@@ -500,9 +489,7 @@ class ExaWebsetItemsSummaryBlock(Block):
             description="Total number of items in the webset",
             default=0,
         )
-        entity_type: str = SchemaField(
-            description="Type of entities in the webset"
-        )
+        entity_type: str = SchemaField(description="Type of entities in the webset")
         sample_items: list[dict] = SchemaField(
             description="Sample of items from the webset",
             default_factory=list,
@@ -545,21 +532,27 @@ class ExaWebsetItemsSummaryBlock(Block):
             # Get entity type from searches
             entity_type = "unknown"
             if webset_data.get("searches"):
-                first_search = webset_data["searches"][0] if webset_data["searches"] else {}
+                first_search = (
+                    webset_data["searches"][0] if webset_data["searches"] else {}
+                )
                 entity_type = first_search.get("entity", {}).get("type", "unknown")
 
             # Get enrichment columns
             enrichment_columns = []
             if webset_data.get("enrichments"):
-                enrichment_columns = [e.get("title", e.get("description", ""))
-                                     for e in webset_data["enrichments"]]
+                enrichment_columns = [
+                    e.get("title", e.get("description", ""))
+                    for e in webset_data["enrichments"]
+                ]
 
             # Get sample items if requested
             sample_items = []
             if input_data.sample_size > 0:
                 items_url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/items"
                 params = {"limit": input_data.sample_size}
-                items_response = await Requests().get(items_url, headers=headers, params=params)
+                items_response = await Requests().get(
+                    items_url, headers=headers, params=params
+                )
                 items_data = items_response.json()
                 sample_items = items_data.get("data", [])
 
