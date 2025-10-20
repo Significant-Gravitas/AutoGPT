@@ -349,6 +349,9 @@ class APIKeyCredentials(_BaseCredentials):
     api_key_env_var: Optional[str] = Field(default=None, exclude=True)
 
     def auth_header(self) -> str:
+        # Linear API keys should not have Bearer prefix
+        if self.provider == "linear":
+            return self.api_key.get_secret_value()
         return f"Bearer {self.api_key.get_secret_value()}"
 
 
