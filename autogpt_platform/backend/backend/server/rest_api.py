@@ -16,6 +16,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.routing import APIRoute
 from prisma.errors import PrismaError
 
+import backend.blocks
 import backend.data.block
 import backend.data.db
 import backend.data.graph
@@ -95,10 +96,13 @@ async def lifespan_context(app: fastapi.FastAPI):
     # Ensure SDK auto-registration is patched before initializing blocks
     from backend.sdk.registry import AutoRegistry
 
-    AutoRegistry.patch_integrations()
+    await AutoRegistry.patch_integrations()
 
     await backend.data.block.initialize_blocks()
 
+    blocks = backend.blocks.load_all_blocks()
+
+    await backend.data.block.upsert_blocks_change_bulk(blocks)
     await backend.data.user.migrate_and_encrypt_user_integrations()
     await backend.data.graph.fix_llm_provider_credentials()
     await backend.data.graph.migrate_llm_models(LlmModel.GPT4O)

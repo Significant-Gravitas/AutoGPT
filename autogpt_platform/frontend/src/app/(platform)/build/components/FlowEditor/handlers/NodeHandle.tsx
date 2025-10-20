@@ -2,20 +2,19 @@ import { CircleIcon } from "@phosphor-icons/react";
 import { Handle, Position } from "@xyflow/react";
 
 const NodeHandle = ({
-  id,
+  handleId,
   isConnected,
   side,
 }: {
-  id: string;
+  handleId: string;
   isConnected: boolean;
   side: "left" | "right";
 }) => {
-  console.log("id", id);
   return (
     <Handle
       type={side === "left" ? "target" : "source"}
       position={side === "left" ? Position.Left : Position.Right}
-      id={id}
+      id={handleId}
       className={side === "left" ? "-ml-4 mr-2" : "-mr-2 ml-2"}
     >
       <div className="pointer-events-none">

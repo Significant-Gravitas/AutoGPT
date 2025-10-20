@@ -7,8 +7,10 @@ import uuid
 from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
 
+import sentry_sdk
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
 from prometheus_client import Gauge, start_http_server
@@ -25,6 +27,7 @@ from backend.data.block import (
     get_block,
 )
 from backend.data.credit import UsageTransactionMetadata
+from backend.data.dynamic_fields import parse_execution_output
 from backend.data.execution import (
     ExecutionQueue,
     ExecutionStatus,
@@ -59,7 +62,6 @@ from backend.executor.utils import (
     block_usage_cost,
     create_execution_queue_config,
     execution_usage_cost,
-    parse_execution_output,
     validate_exec,
 )
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -84,7 +86,11 @@ from backend.util.file import clean_exec_files
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.metrics import DiscordChannel
 from backend.util.process import AppProcess, set_service_name
-from backend.util.retry import continuous_retry, func_retry
+from backend.util.retry import (
+    continuous_retry,
+    func_retry,
+    send_rate_limited_discord_alert,
+)
 from backend.util.settings import Settings
 
 from .cluster_lock import ClusterLock
@@ -184,6 +190,7 @@ async def execute_node(
         _input_data.inputs = input_data
         if nodes_input_masks:
             _input_data.nodes_input_masks = nodes_input_masks
+        _input_data.user_id = user_id
         input_data = _input_data.model_dump()
     data.inputs = input_data
 
@@ -218,14 +225,37 @@ async def execute_node(
         extra_exec_kwargs[field_name] = credentials
 
     output_size = 0
+
+    # sentry tracking nonsense to get user counts for blocks because isolation scopes don't work :(
+    scope = sentry_sdk.get_current_scope()
+
+    # save the tags
+    original_user = scope._user
+    original_tags = dict(scope._tags) if scope._tags else {}
+    # Set user ID for error tracking
+    scope.set_user({"id": user_id})
+
+    scope.set_tag("graph_id", graph_id)
+    scope.set_tag("node_id", node_id)
+    scope.set_tag("block_name", node_block.name)
+    scope.set_tag("block_id", node_block.id)
+    for k, v in (data.user_context or UserContext(timezone="UTC")).model_dump().items():
+        scope.set_tag(f"user_context.{k}", v)
+
     try:
         async for output_name, output_data in node_block.execute(
             input_data, **extra_exec_kwargs
         ):
-            output_data = json.convert_pydantic_to_json(output_data)
+            output_data = json.to_dict(output_data)
             output_size += len(json.dumps(output_data))
             log_metadata.debug("Node produced output", **{output_name: output_data})
             yield output_name, output_data
+    except Exception:
+        # Capture exception WITH context still set before restoring scope
+        sentry_sdk.capture_exception(scope=scope)
+        sentry_sdk.flush()  # Ensure it's sent before we restore scope
+        # Re-raise to maintain normal error flow
+        raise
     finally:
         # Ensure credentials are released even if execution fails
         if creds_lock and (await creds_lock.locked()) and (await creds_lock.owned()):
@@ -239,6 +269,10 @@ async def execute_node(
             execution_stats += node_block.execution_stats
             execution_stats.input_size = input_size
             execution_stats.output_size = output_size
+
+        # Restore scope AFTER error has been captured
+        scope._user = original_user
+        scope._tags = original_tags
 
 
 async def _enqueue_next_nodes(
@@ -564,7 +598,6 @@ class ExecutionProcessor:
                 await persist_output(
                     "error", str(stats.error) or type(stats.error).__name__
                 )
-
         return status
 
     @func_retry
@@ -979,16 +1012,31 @@ class ExecutionProcessor:
                 if isinstance(e, Exception)
                 else Exception(f"{e.__class__.__name__}: {e}")
             )
+            if not execution_stats.error:
+                execution_stats.error = str(error)
 
             known_errors = (InsufficientBalanceError, ModerationError)
             if isinstance(error, known_errors):
-                execution_stats.error = str(error)
                 return ExecutionStatus.FAILED
 
             execution_status = ExecutionStatus.FAILED
             log_metadata.exception(
                 f"Failed graph execution {graph_exec.graph_exec_id}: {error}"
             )
+
+            # Send rate-limited Discord alert for unknown/unexpected errors
+            send_rate_limited_discord_alert(
+                "graph_execution",
+                error,
+                "unknown_error",
+                f"🚨 **Unknown Graph Execution Error**\n"
+                f"User: {graph_exec.user_id}\n"
+                f"Graph ID: {graph_exec.graph_id}\n"
+                f"Execution ID: {graph_exec.graph_exec_id}\n"
+                f"Error Type: {type(error).__name__}\n"
+                f"Error: {str(error)[:200]}{'...' if len(str(error)) > 200 else ''}\n",
+            )
+
             raise
 
         finally:
@@ -1163,9 +1211,9 @@ class ExecutionProcessor:
                 f"❌ **Insufficient Funds Alert**\n"
                 f"User: {user_email or user_id}\n"
                 f"Agent: {metadata.name if metadata else 'Unknown Agent'}\n"
-                f"Current balance: ${e.balance/100:.2f}\n"
-                f"Attempted cost: ${abs(e.amount)/100:.2f}\n"
-                f"Shortfall: ${abs(shortfall)/100:.2f}\n"
+                f"Current balance: ${e.balance / 100:.2f}\n"
+                f"Attempted cost: ${abs(e.amount) / 100:.2f}\n"
+                f"Shortfall: ${abs(shortfall) / 100:.2f}\n"
                 f"[View User Details]({base_url}/admin/spending?search={user_email})"
             )
 
@@ -1212,9 +1260,9 @@ class ExecutionProcessor:
                 alert_message = (
                     f"⚠️ **Low Balance Alert**\n"
                     f"User: {user_email or user_id}\n"
-                    f"Balance dropped below ${LOW_BALANCE_THRESHOLD/100:.2f}\n"
-                    f"Current balance: ${current_balance/100:.2f}\n"
-                    f"Transaction cost: ${transaction_cost/100:.2f}\n"
+                    f"Balance dropped below ${LOW_BALANCE_THRESHOLD / 100:.2f}\n"
+                    f"Current balance: ${current_balance / 100:.2f}\n"
+                    f"Transaction cost: ${transaction_cost / 100:.2f}\n"
                     f"[View User Details]({base_url}/admin/spending?search={user_email})"
                 )
                 get_notification_manager_client().discord_system_alert(
@@ -1445,9 +1493,38 @@ class ExecutionManager(AppProcess):
             return
 
         graph_exec_id = graph_exec_entry.graph_exec_id
+        user_id = graph_exec_entry.user_id
+        graph_id = graph_exec_entry.graph_id
         logger.info(
-            f"[{self.service_name}] Received RUN for graph_exec_id={graph_exec_id}"
+            f"[{self.service_name}] Received RUN for graph_exec_id={graph_exec_id}, user_id={user_id}"
         )
+
+        # Check user rate limit before processing
+        try:
+            # Only check executions from the last 24 hours for performance
+            current_running_count = get_db_client().get_graph_executions_count(
+                user_id=user_id,
+                graph_id=graph_id,
+                statuses=[ExecutionStatus.RUNNING],
+                created_time_gte=datetime.now(timezone.utc) - timedelta(hours=24),
+            )
+
+            if (
+                current_running_count
+                >= settings.config.max_concurrent_graph_executions_per_user
+            ):
+                logger.warning(
+                    f"[{self.service_name}] Rate limit exceeded for user {user_id} on graph {graph_id}: "
+                    f"{current_running_count}/{settings.config.max_concurrent_graph_executions_per_user} running executions"
+                )
+                _ack_message(reject=True, requeue=True)
+                return
+
+        except Exception as e:
+            logger.error(
+                f"[{self.service_name}] Failed to check rate limit for user {user_id}: {e}, proceeding with execution"
+            )
+            # If rate limit check fails, proceed to avoid blocking executions
 
         # Check for local duplicate execution first
         if graph_exec_id in self.active_graph_runs:
@@ -1471,11 +1548,12 @@ class ExecutionManager(AppProcess):
                 logger.warning(
                     f"[{self.service_name}] Graph {graph_exec_id} already running on pod {current_owner}"
                 )
+                _ack_message(reject=True, requeue=False)
             else:
                 logger.warning(
                     f"[{self.service_name}] Could not acquire lock for {graph_exec_id} - Redis unavailable"
                 )
-            _ack_message(reject=True, requeue=True)
+                _ack_message(reject=True, requeue=True)
             return
         self._execution_locks[graph_exec_id] = cluster_lock
 
