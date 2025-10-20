@@ -19,6 +19,95 @@ This document is your reference for contributing to the AutoGPT Frontend. It ada
 
 This is a living document. Open a pull request any time to improve it.
 
+---
+
+## 🚀 Quick Start FAQ
+
+New to the codebase? Here are shortcuts to common tasks:
+
+### I need to make a new page
+
+1. Create page in `src/app/(platform)/your-feature/page.tsx`
+2. If it has logic, create `usePage.ts` hook next to it
+3. Create sub-components in `components/` folder
+4. Use generated API hooks for data fetching
+5. If page needs auth, ensure it's in the `(platform)` route group
+
+**Example structure:**
+
+```
+app/(platform)/dashboard/
+  page.tsx
+  useDashboardPage.ts
+  components/
+    StatsPanel/
+      StatsPanel.tsx
+      useStatsPanel.ts
+```
+
+See [Component structure](#-component-structure) and [Styling](#-styling) and [Data fetching patterns](#-data-fetching-patterns) sections.
+
+### I need to update an existing component in a page
+
+1. Find the page `src/app/(platform)/your-feature/page.tsx`
+2. Check its `components/` folder
+3. If needing to update its logic, check the `use[Component].ts` hook
+4. If the update is related to rendering, check `[Component].tsx` file
+
+See [Component structure](#-component-structure) and [Styling](#-styling) sections.
+
+### I need to make a new API call and show it on the UI
+
+1. Ensure the backend endpoint exists in the OpenAPI spec
+2. Regenerate API client: `pnpm generate:api`
+3. Import the generated hook by typing the operation name (auto-import)
+4. Use the hook in your component/custom hook
+5. Handle loading, error, and success states
+
+**Example:**
+
+```tsx
+import { useGetV2ListLibraryAgents } from "@/app/api/__generated__/endpoints/library/library";
+
+export function useAgentList() {
+  const { data, isLoading, isError, error } = useGetV2ListLibraryAgents();
+
+  return {
+    agents: data?.data || [],
+    isLoading,
+    isError,
+    error,
+  };
+}
+```
+
+See [Data fetching patterns](#-data-fetching-patterns) for more examples.
+
+### I need to create a new component in the Design System
+
+1. Determine the atomic level: atom, molecule, or organism
+2. Create folder: `src/components/[level]/ComponentName/`
+3. Create `ComponentName.tsx` (render logic)
+4. If logic exists, create `useComponentName.ts`
+5. Create `ComponentName.stories.tsx` for Storybook
+6. Use Tailwind + design tokens (avoid hardcoded values)
+7. Only use Phosphor icons
+8. Test in Storybook: `pnpm storybook`
+9. Verify in Chromatic after PR
+
+**Example structure:**
+
+```
+src/components/molecules/DataCard/
+  DataCard.tsx
+  DataCard.stories.tsx
+  useDataCard.ts
+```
+
+See [Component structure](#-component-structure) and [Styling](#-styling) sections.
+
+---
+
 ## 📟 Contribution process
 
 ### 1) Branch off `dev`
