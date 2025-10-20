@@ -1,5 +1,3 @@
-import { headers } from "next/headers";
-
 export enum BehaveAs {
   CLOUD = "CLOUD",
   LOCAL = "LOCAL",
@@ -98,18 +96,12 @@ function areFeatureFlagsEnabled() {
   return process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "enabled";
 }
 
-async function areAnalyticsEnabled() {
+function areAnalyticsEnabled(host: string) {
   const withWebsiteId = getAnalyticsWebsiteId();
   if (!withWebsiteId) {
     return false;
   }
 
-  if (isClientSide()) {
-    return window.location.hostname.includes(withWebsiteId);
-  }
-
-  const headersList = await headers();
-  const host = headersList.get("host") || "";
   return host.includes("platform.agpt.co");
 }
 

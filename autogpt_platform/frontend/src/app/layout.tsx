@@ -13,6 +13,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
 import Script from "next/script";
 import { environment } from "@/services/environment";
+import { headers } from "next/headers";
 
 export const metadata: Metadata = {
   title: "AutoGPT Platform",
@@ -24,8 +25,12 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const withAnalytics = await environment.areAnalyticsEnabled();
+  const headersList = await headers();
+  const host = headersList.get("host") || "";
+
+  const withAnalytics = environment.areAnalyticsEnabled(host);
   const analyticsWebsiteId = environment.getAnalyticsWebsiteId();
+
   return (
     <html
       lang="en"
