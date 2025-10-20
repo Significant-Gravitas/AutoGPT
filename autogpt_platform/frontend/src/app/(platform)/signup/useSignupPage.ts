@@ -72,7 +72,6 @@ export function useSignupPage() {
         setIsGoogleLoading(false);
         resetCaptcha();
 
-        // Check for waitlist error
         if (error === "not_allowed") {
           setShowNotAllowedModal(true);
           return;

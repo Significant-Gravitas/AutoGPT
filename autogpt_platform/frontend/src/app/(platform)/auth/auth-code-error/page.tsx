@@ -8,6 +8,7 @@ import { Card } from "@/components/atoms/Card/Card";
 import { WaitlistErrorContent } from "@/components/auth/WaitlistErrorContent";
 import { isWaitlistError } from "@/app/api/auth/utils";
 import { useRouter } from "next/navigation";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
 export default function AuthErrorPage() {
   const [errorType, setErrorType] = useState<string | null>(null);
@@ -53,34 +54,25 @@ export default function AuthErrorPage() {
     );
   }
 
-  // Default error display for other types of errors
+  // Use ErrorCard for consistent error display
+  const errorMessage = errorDescription
+    ? `${errorDescription}. If this error persists, please contact support at contact@agpt.co`
+    : "An authentication error occurred. Please contact support at contact@agpt.co";
+
   return (
-    <div className="flex h-screen items-center justify-center">
-      <Card className="w-full max-w-md p-8">
-        <div className="flex flex-col items-center gap-6">
-          <Text variant="h3">Authentication Error</Text>
-          <div className="flex flex-col gap-2 text-center">
-            {errorType && (
-              <Text variant="body">
-                <strong>Error Type:</strong> {errorType}
-              </Text>
-            )}
-            {errorCode && (
-              <Text variant="body">
-                <strong>Error Code:</strong> {errorCode}
-              </Text>
-            )}
-            {errorDescription && (
-              <Text variant="body">
-                <strong>Description:</strong> {errorDescription}
-              </Text>
-            )}
-          </div>
-          <Button variant="primary" onClick={() => router.push("/login")}>
-            Back to Login
-          </Button>
-        </div>
-      </Card>
+    <div className="flex h-screen items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        <ErrorCard
+          responseError={{
+            message: errorMessage,
+            detail: errorCode
+              ? `Error code: ${errorCode}${errorType ? ` (${errorType})` : ""}`
+              : undefined,
+          }}
+          context="authentication"
+          onRetry={() => router.push("/login")}
+        />
+      </div>
     </div>
   );
 }
