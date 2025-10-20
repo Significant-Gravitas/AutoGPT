@@ -7,6 +7,24 @@
 
 import { isServerSide } from "./utils/is-server-side";
 
+export interface VercelConfig {
+  isVercelEnvExposed: boolean;
+  isVercelCI: boolean;
+  vercelEnvironment: "production" | "preview" | "development" | null;
+  vercelTargetEnv: "production" | "staging" | "development" | string | null;
+  // The value represents the domain name of the deployment (e.g., *.vercel.app) and does not include the protocol scheme (https://).
+  vercelUrl: string | null;
+  vercelBranchUrl: string | null;
+  vercelProjectProductionUrl: string | null;
+  vercelRegion: string | null;
+  vercelDeploymentId: string | null;
+  vercelProjectId: string | null;
+  vercelGitRepoSlug: string | null;
+  vercelGitRepoOwner: string | null;
+  vercelGitCommitRef: string | null;
+  vercelGitCommitSha: string | null;
+}
+
 /**
  * Gets the AGPT server URL with server-side priority
  * Server-side: Uses AGPT_SERVER_URL (http://rest_server:8006/api)
@@ -24,6 +42,37 @@ export function getAgptServerApiUrl(): string {
 
 export function getAgptServerBaseUrl(): string {
   return getAgptServerApiUrl().replace("/api", "");
+}
+
+export function getVercelEnv(): VercelConfig {
+  const toNullable = (v?: string) => (v && v.length > 0 ? v : null);
+
+  // Check if running on Vercel by checking the VERCEL environment variable
+  const isVercelEnvExposed = process.env.VERCEL === "1";
+  const isVercelCI = process.env.CI === "1";
+
+  const ve = process.env.VERCEL_ENV;
+  const vercelEnvironment: VercelConfig["vercelEnvironment"] =
+    ve === "production" || ve === "preview" || ve === "development" ? ve : null;
+
+  return {
+    isVercelEnvExposed,
+    isVercelCI,
+    vercelEnvironment,
+    vercelTargetEnv: toNullable(process.env.VERCEL_TARGET_ENV),
+    vercelUrl: toNullable(process.env.VERCEL_URL),
+    vercelBranchUrl: toNullable(process.env.VERCEL_BRANCH_URL),
+    vercelProjectProductionUrl: toNullable(
+      process.env.VERCEL_PROJECT_PRODUCTION_URL,
+    ),
+    vercelRegion: toNullable(process.env.VERCEL_REGION),
+    vercelDeploymentId: toNullable(process.env.VERCEL_DEPLOYMENT_ID),
+    vercelProjectId: toNullable(process.env.VERCEL_PROJECT_ID),
+    vercelGitRepoSlug: toNullable(process.env.VERCEL_GIT_REPO_SLUG),
+    vercelGitRepoOwner: toNullable(process.env.VERCEL_GIT_REPO_OWNER),
+    vercelGitCommitRef: toNullable(process.env.VERCEL_GIT_COMMIT_REF),
+    vercelGitCommitSha: toNullable(process.env.VERCEL_GIT_COMMIT_SHA),
+  };
 }
 
 /**
