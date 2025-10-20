@@ -2,7 +2,6 @@
 
 import { isServerSide } from "@/lib/utils/is-server-side";
 import { useEffect, useState } from "react";
-import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Card } from "@/components/atoms/Card/Card";
 import { WaitlistErrorContent } from "@/components/auth/WaitlistErrorContent";

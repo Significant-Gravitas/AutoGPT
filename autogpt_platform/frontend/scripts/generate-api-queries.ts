@@ -15,6 +15,9 @@ function fetchOpenApiSpec(): void {
   // TODO: get basebranch from github and use that instead to look up from our infra preview work
   if (vercelConfig.isVercelEnvExposed && vercelConfig.vercelUrl) {
     if (vercelConfig.vercelGitCommitRef?.includes("hotfix")) {
+      console.log(
+        "Detected hotfix branch, using production backend URL for OpenAPI Spec",
+      );
       baseUrl = "https://backend.agpt.co";
     }
   }
