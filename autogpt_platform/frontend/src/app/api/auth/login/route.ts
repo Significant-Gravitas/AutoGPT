@@ -1,6 +1,6 @@
 import BackendAPI from "@/lib/autogpt-server-api";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
-import { verifyTurnstileToken } from "@/lib/turnstile";
+// import { verifyTurnstileToken } from "@/lib/turnstile";
 import { loginFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
 import { NextResponse } from "next/server";
@@ -22,16 +22,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const turnstileToken: string | undefined = body?.turnstileToken;
+    // const turnstileToken: string | undefined = body?.turnstileToken;
 
-    // Verify Turnstile token if provided
-    const captchaOk = await verifyTurnstileToken(turnstileToken ?? "", "login");
-    if (!captchaOk) {
-      return NextResponse.json(
-        { error: "CAPTCHA verification failed. Please try again." },
-        { status: 400 },
-      );
-    }
+    // // Verify Turnstile token if provided
+    // const captchaOk = await verifyTurnstileToken(turnstileToken ?? "", "login");
+    // if (!captchaOk) {
+    //   return NextResponse.json(
+    //     { error: "CAPTCHA verification failed. Please try again." },
+    //     { status: 400 },
+    //   );
+    // }
 
     const supabase = await getServerSupabase();
     if (!supabase) {
