@@ -207,7 +207,7 @@
               "schema": {
                 "oneOf": [
                   { "$ref": "#/components/schemas/OAuth2Credentials" },
-                  { "$ref": "#/components/schemas/APIKeyCredentials" },
+                  { "$ref": "#/components/schemas/APIKeyCredentials-Input" },
                   { "$ref": "#/components/schemas/UserPasswordCredentials" },
                   { "$ref": "#/components/schemas/HostScopedCredentials-Input" }
                 ],
@@ -215,7 +215,7 @@
                   "propertyName": "type",
                   "mapping": {
                     "oauth2": "#/components/schemas/OAuth2Credentials",
-                    "api_key": "#/components/schemas/APIKeyCredentials",
+                    "api_key": "#/components/schemas/APIKeyCredentials-Input",
                     "user_password": "#/components/schemas/UserPasswordCredentials",
                     "host_scoped": "#/components/schemas/HostScopedCredentials-Input"
                   }
@@ -233,7 +233,7 @@
                 "schema": {
                   "oneOf": [
                     { "$ref": "#/components/schemas/OAuth2Credentials" },
-                    { "$ref": "#/components/schemas/APIKeyCredentials" },
+                    { "$ref": "#/components/schemas/APIKeyCredentials-Output" },
                     { "$ref": "#/components/schemas/UserPasswordCredentials" },
                     {
                       "$ref": "#/components/schemas/HostScopedCredentials-Output"
@@ -243,7 +243,7 @@
                     "propertyName": "type",
                     "mapping": {
                       "oauth2": "#/components/schemas/OAuth2Credentials",
-                      "api_key": "#/components/schemas/APIKeyCredentials",
+                      "api_key": "#/components/schemas/APIKeyCredentials-Output",
                       "user_password": "#/components/schemas/UserPasswordCredentials",
                       "host_scoped": "#/components/schemas/HostScopedCredentials-Output"
                     }
@@ -302,7 +302,7 @@
                 "schema": {
                   "oneOf": [
                     { "$ref": "#/components/schemas/OAuth2Credentials" },
-                    { "$ref": "#/components/schemas/APIKeyCredentials" },
+                    { "$ref": "#/components/schemas/APIKeyCredentials-Output" },
                     { "$ref": "#/components/schemas/UserPasswordCredentials" },
                     {
                       "$ref": "#/components/schemas/HostScopedCredentials-Output"
@@ -312,7 +312,7 @@
                     "propertyName": "type",
                     "mapping": {
                       "oauth2": "#/components/schemas/OAuth2Credentials",
-                      "api_key": "#/components/schemas/APIKeyCredentials",
+                      "api_key": "#/components/schemas/APIKeyCredentials-Output",
                       "user_password": "#/components/schemas/UserPasswordCredentials",
                       "host_scoped": "#/components/schemas/HostScopedCredentials-Output"
                     }
@@ -4782,7 +4782,41 @@
   },
   "components": {
     "schemas": {
-      "APIKeyCredentials": {
+      "APIKeyCredentials-Input": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "provider": { "type": "string", "title": "Provider" },
+          "title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Title"
+          },
+          "type": {
+            "type": "string",
+            "const": "api_key",
+            "title": "Type",
+            "default": "api_key"
+          },
+          "api_key": {
+            "type": "string",
+            "format": "password",
+            "title": "Api Key",
+            "writeOnly": true
+          },
+          "expires_at": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Expires At",
+            "description": "Unix timestamp (seconds) indicating when the API key expires (if at all)"
+          },
+          "api_key_env_var": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Api Key Env Var"
+          }
+        },
+        "type": "object",
+        "required": ["provider", "api_key"],
+        "title": "APIKeyCredentials"
+      },
+      "APIKeyCredentials-Output": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
           "provider": { "type": "string", "title": "Provider" },

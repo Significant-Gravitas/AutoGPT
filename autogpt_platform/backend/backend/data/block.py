@@ -1,3 +1,4 @@
+import collections
 import inspect
 import logging
 import os
@@ -9,6 +10,7 @@ from typing import (
     Any,
     Callable,
     ClassVar,
+    Dict,
     Generic,
     Optional,
     Sequence,
@@ -20,14 +22,15 @@ from typing import (
 
 import jsonref
 import jsonschema
-from autogpt_libs.utils.cache import cached
-from prisma.models import AgentBlock
+from prisma import Json
+from prisma.models import AgentBlock, BlocksRegistry
 from prisma.types import AgentBlockCreateInput
 from pydantic import BaseModel
 
 from backend.data.model import NodeExecutionStats
 from backend.integrations.providers import ProviderName
 from backend.util import json
+from backend.util.cache import cached
 from backend.util.settings import Config
 
 from .model import (
@@ -479,19 +482,50 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         return self.__class__.__name__
 
     def to_dict(self):
-        return {
-            "id": self.id,
-            "name": self.name,
-            "inputSchema": self.input_schema.jsonschema(),
-            "outputSchema": self.output_schema.jsonschema(),
-            "description": self.description,
-            "categories": [category.dict() for category in self.categories],
-            "contributors": [
-                contributor.model_dump() for contributor in self.contributors
-            ],
-            "staticOutput": self.static_output,
-            "uiType": self.block_type.value,
-        }
+        # Sort categories by their name to ensure consistent ordering
+        sorted_categories = [
+            category.dict()
+            for category in sorted(self.categories, key=lambda c: c.name)
+        ]
+
+        # Sort dictionary keys recursively for consistent ordering
+        def sort_dict(obj):
+            if isinstance(obj, dict):
+                return collections.OrderedDict(
+                    sorted((k, sort_dict(v)) for k, v in obj.items())
+                )
+            elif isinstance(obj, list):
+                # Check if all items in the list are primitive types that can be sorted
+                if obj and all(
+                    isinstance(item, (str, int, float, bool, type(None)))
+                    for item in obj
+                ):
+                    # Sort primitive lists for consistent ordering
+                    return sorted(obj, key=lambda x: (x is None, str(x)))
+                else:
+                    # For lists of complex objects, process each item but maintain order
+                    return [sort_dict(item) for item in obj]
+            return obj
+
+        return collections.OrderedDict(
+            [
+                ("id", self.id),
+                ("name", self.name),
+                ("inputSchema", sort_dict(self.input_schema.jsonschema())),
+                ("outputSchema", sort_dict(self.output_schema.jsonschema())),
+                ("description", self.description),
+                ("categories", sorted_categories),
+                (
+                    "contributors",
+                    sorted(
+                        [contributor.model_dump() for contributor in self.contributors],
+                        key=lambda c: (c.get("name", ""), c.get("username", "")),
+                    ),
+                ),
+                ("staticOutput", self.static_output),
+                ("uiType", self.block_type.value),
+            ]
+        )
 
     def get_info(self) -> BlockInfo:
         from backend.data.credit import get_block_cost
@@ -722,7 +756,7 @@ def get_block(block_id: str) -> Block[BlockSchema, BlockSchema] | None:
     return cls() if cls else None
 
 
-@cached()
+@cached(ttl_seconds=3600)
 def get_webhook_block_ids() -> Sequence[str]:
     return [
         id
@@ -731,10 +765,130 @@ def get_webhook_block_ids() -> Sequence[str]:
     ]
 
 
-@cached()
+@cached(ttl_seconds=3600)
 def get_io_block_ids() -> Sequence[str]:
     return [
         id
         for id, B in get_blocks().items()
         if B().block_type in (BlockType.INPUT, BlockType.OUTPUT)
     ]
+
+
+async def get_block_registry() -> Dict[str, BlocksRegistry]:
+    """
+    Retrieves the BlocksRegistry from the database and returns a dictionary mapping
+    block names to BlocksRegistry objects.
+
+    Returns:
+        Dict[str, BlocksRegistry]: A dictionary where each key is a block name and
+        each value is a BlocksRegistry instance.
+    """
+    blocks = await BlocksRegistry.prisma().find_many()
+    return {block.id: block for block in blocks}
+
+
+def recursive_json_compare(
+    db_block_definition: Any, local_block_definition: Any
+) -> bool:
+    """
+    Recursively compares two JSON objects for equality.
+
+    Args:
+        db_block_definition (Any): The JSON object from the database.
+        local_block_definition (Any): The local JSON object to compare against.
+
+    Returns:
+        bool: True if the objects are equal, False otherwise.
+    """
+    if isinstance(db_block_definition, dict) and isinstance(
+        local_block_definition, dict
+    ):
+        if set(db_block_definition.keys()) != set(local_block_definition.keys()):
+            logger.error(
+                f"Keys are not the same: {set(db_block_definition.keys())} != {set(local_block_definition.keys())}"
+            )
+            return False
+        return all(
+            recursive_json_compare(db_block_definition[k], local_block_definition[k])
+            for k in db_block_definition
+        )
+    values_are_same = db_block_definition == local_block_definition
+    if not values_are_same:
+        logger.error(
+            f"Values are not the same: {db_block_definition} != {local_block_definition}"
+        )
+    return values_are_same
+
+
+def check_block_same(db_block: BlocksRegistry, local_block: Block) -> bool:
+    """
+    Compares a database block with a local block.
+
+    Args:
+        db_block (BlocksRegistry): The block object from the database registry.
+        local_block (Block[BlockSchema, BlockSchema]): The local block definition.
+
+    Returns:
+        bool: True if the blocks are equal, False otherwise.
+    """
+    local_block_instance = local_block()  # type: ignore
+    local_block_definition = local_block_instance.to_dict()
+    db_block_definition = db_block.definition
+    is_same = recursive_json_compare(db_block_definition, local_block_definition)
+    return is_same
+
+
+def find_delta_blocks(
+    db_blocks: Dict[str, BlocksRegistry], local_blocks: Dict[str, Block]
+) -> Dict[str, Block]:
+    """
+    Finds the set of blocks that are new or changed compared to the database.
+
+    Args:
+        db_blocks (Dict[str, BlocksRegistry]): Existing blocks from the database, keyed by name.
+        local_blocks (Dict[str, Block]): Local block definitions, keyed by name.
+
+    Returns:
+        Dict[str, Block]: Blocks that are missing from or different than the database, keyed by name.
+    """
+    block_update: Dict[str, Block] = {}
+    for block_id, block in local_blocks.items():
+        if block_id not in db_blocks:
+            block_update[block_id] = block
+        else:
+            if not check_block_same(db_blocks[block_id], block):
+                block_update[block_id] = block
+    return block_update
+
+
+async def upsert_blocks_change_bulk(blocks: Dict[str, Block]):
+    """
+    Bulk upserts blocks into the database if changed.
+
+    - Compares the provided local blocks to those in the database via their definition.
+    - Inserts new or updated blocks.
+
+    Args:
+        blocks (Dict[str, Block]): Local block definitions to upsert.
+
+    Returns:
+        Dict[str, Block]: Blocks that were new or changed and upserted.
+    """
+    db_blocks = await get_block_registry()
+    block_update = find_delta_blocks(db_blocks, blocks)
+    for block_id, block in block_update.items():
+        await BlocksRegistry.prisma().upsert(
+            where={"id": block_id},
+            data={
+                "create": {
+                    "id": block_id,
+                    "name": block().__class__.__name__,  # type: ignore
+                    "definition": Json(block.to_dict(block())),  # type: ignore
+                },
+                "update": {
+                    "name": block().__class__.__name__,  # type: ignore
+                    "definition": Json(block.to_dict(block())),  # type: ignore
+                },
+            },
+        )
+    return block_update

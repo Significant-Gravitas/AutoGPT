@@ -246,7 +246,7 @@ async def execute_node(
         async for output_name, output_data in node_block.execute(
             input_data, **extra_exec_kwargs
         ):
-            output_data = json.convert_pydantic_to_json(output_data)
+            output_data = json.to_dict(output_data)
             output_size += len(json.dumps(output_data))
             log_metadata.debug("Node produced output", **{output_name: output_data})
             yield output_name, output_data
@@ -1548,11 +1548,12 @@ class ExecutionManager(AppProcess):
                 logger.warning(
                     f"[{self.service_name}] Graph {graph_exec_id} already running on pod {current_owner}"
                 )
+                _ack_message(reject=True, requeue=False)
             else:
                 logger.warning(
                     f"[{self.service_name}] Could not acquire lock for {graph_exec_id} - Redis unavailable"
                 )
-            _ack_message(reject=True, requeue=True)
+                _ack_message(reject=True, requeue=True)
             return
         self._execution_locks[graph_exec_id] = cluster_lock
 
