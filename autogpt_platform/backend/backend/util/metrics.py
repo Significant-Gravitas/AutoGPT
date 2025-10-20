@@ -8,7 +8,7 @@ from sentry_sdk.integrations.asyncio import AsyncioIntegration
 from sentry_sdk.integrations.launchdarkly import LaunchDarklyIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 
-from backend.util.feature_flag import get_client, is_configured
+# from backend.util.feature_flag import get_client, is_configured
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -22,8 +22,8 @@ class DiscordChannel(str, Enum):
 def sentry_init():
     sentry_dsn = settings.secrets.sentry_dsn
     integrations = []
-    if is_configured():
-        integrations.append(LaunchDarklyIntegration(get_client()))
+    # if is_configured():
+    #     integrations.append(LaunchDarklyIntegration(get_client()))
     sentry_sdk.init(
         dsn=sentry_dsn,
         traces_sample_rate=1.0,
