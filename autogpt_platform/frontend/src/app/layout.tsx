@@ -27,9 +27,7 @@ export default async function RootLayout({
 }>) {
   const headersList = await headers();
   const host = headersList.get("host") || "";
-
   const withAnalytics = environment.areAnalyticsEnabled(host);
-  const analyticsWebsiteId = environment.getAnalyticsWebsiteId();
 
   return (
     <html
@@ -44,7 +42,7 @@ export default async function RootLayout({
         {withAnalytics ? (
           <Script
             strategy="afterInteractive"
-            data-website-id={analyticsWebsiteId}
+            data-website-id="dfid_g5wtBIiHUwSkWKcGz80lu"
             data-domain="agpt.co"
             src="https://datafa.st/js/script.js"
           />

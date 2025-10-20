@@ -24,10 +24,6 @@ function getAppEnv(): AppEnv {
   return AppEnv.LOCAL;
 }
 
-function getAnalyticsWebsiteId() {
-  return process.env.NEXT_PUBLIC_ANALYTICS_WEBSITE_ID;
-}
-
 function getAGPTServerApiUrl() {
   if (environment.isServerSide() && process.env.AGPT_SERVER_URL) {
     return process.env.AGPT_SERVER_URL;
@@ -97,11 +93,6 @@ function areFeatureFlagsEnabled() {
 }
 
 function areAnalyticsEnabled(host: string) {
-  const withWebsiteId = getAnalyticsWebsiteId();
-  if (!withWebsiteId) {
-    return false;
-  }
-
   return host.includes("platform.agpt.co");
 }
 
@@ -116,7 +107,6 @@ export const environment = {
   getAGPTWsServerUrl,
   getSupabaseUrl,
   getSupabaseAnonKey,
-  getAnalyticsWebsiteId,
   // Assertions
   isServerSide,
   isClientSide,

@@ -130,7 +130,7 @@ export default function OttoChatWidget({
   };
 
   // Don't render the chat widget if we're not on the build page or in local mode
-  if (environment.isCloud()) {
+  if (environment.isLocal()) {
     return null;
   }
 
