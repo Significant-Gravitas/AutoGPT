@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { getAgptServerBaseUrl, getVercelEnv } from "@/lib/env-config";
+import { getAgptServerBaseUrl } from "@/lib/env-config";
 import { execSync } from "child_process";
 import * as path from "path";
 import * as fs from "fs";
@@ -10,17 +10,7 @@ function fetchOpenApiSpec(): void {
   const args = process.argv.slice(2);
   const forceFlag = args.includes("--force");
 
-  let baseUrl = getAgptServerBaseUrl();
-  const vercelConfig = getVercelEnv();
-  // TODO: get basebranch from github and use that instead to look up from our infra preview work
-  if (vercelConfig.isVercelEnvExposed && vercelConfig.vercelUrl) {
-    if (vercelConfig.vercelGitCommitRef?.includes("hotfix")) {
-      console.log(
-        "Detected hotfix branch, using production backend URL for OpenAPI Spec",
-      );
-      baseUrl = "https://backend.agpt.co";
-    }
-  }
+  const baseUrl = getAgptServerBaseUrl();
   const openApiUrl = `${baseUrl}/openapi.json`;
   const outputPath = path.join(
     __dirname,
