@@ -31,7 +31,7 @@ This is a living document. Open a pull request any time to improve it.
 
 If a feature will ship across multiple PRs, guard it with a flag so we can merge iteratively.
 
-- Use LaunchDarkly-based flags (see Feature Flags below)
+- Use [LaunchDarkly](https://www.launchdarkly.com) based flags (see Feature Flags below)
 - Avoid long-lived feature branches
 
 ### 3) Open PR and get reviews ✅
@@ -55,16 +55,21 @@ Before requesting review:
 ### Next.js App Router
 
 - We use the [Next.js App Router](https://nextjs.org/docs/app) in `src/app`
-- Use [route segments](https://nextjs.org/docs/app/building-your-application/routing) and server actions as needed; no `pages/`
+- Use [route segments](https://nextjs.org/docs/app/building-your-application/routing) with semantic URLs; no `pages/`
 
-### Client-first policy
+### Component good practices
 
 - Default to client components
 - Use server components only when:
   - SEO requires server-rendered HTML, or
   - Extreme first-byte performance justifies it
-- If you render server-side data, prefer server-side prefetch + client hydration (see examples below and [React Query SSR & Hydration](https://tanstack.com/query/latest/docs/framework/react/guides/ssr))
+  - If you render server-side data, prefer server-side prefetch + client hydration (see examples below and [React Query SSR & Hydration](https://tanstack.com/query/latest/docs/framework/react/guides/ssr))
 - Prefer using [Next.js API routes](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) when possible over [server actions](https://nextjs.org/docs/14/app/building-your-application/data-fetching/server-actions-and-mutations)
+- Keep components small and simple
+  - favour composition and splitting large components into smaller bits of UI
+  - [colocate state](https://kentcdodds.com/blog/state-colocation-will-make-your-react-app-faster) when possible
+  - keep render/side-effects split for [separation of concerns](https://en.wikipedia.org/wiki/Separation_of_concerns)
+  - do not over-complicate or re-invent the wheel
 
 **❓ Why a client-side first design vs server components/actions?**
 
@@ -96,7 +101,11 @@ While server components and actions are cool and cutting-edge, they introduce a 
 
 For components, separate render logic from data/behavior, and keep implementation details local.
 
-Suggested structure when a component has non-trivial logic:
+**Most components should follow this structure.** Pages are just bigger components made of smaller ones, and sub-components can have their own nested sub-components when dealing with complex features.
+
+### Basic structure
+
+When a component has non-trivial logic:
 
 ```
 FeatureX/
@@ -106,17 +115,120 @@ FeatureX/
   components/         (optional, subcomponents local to FeatureX)
 ```
 
-Guidelines:
+### Example: Page with nested components
+
+```tsx
+// Page composition
+app/(platform)/dashboard/
+  page.tsx
+  useDashboardPage.ts
+    components/ # (Sub-components the dashboard page is made of)
+      StatsPanel/
+        StatsPanel.tsx
+        useStatsPanel.ts
+        helpers.ts
+        components/ # (Sub-components belonging to StatsPanel)
+          StatCard/
+            StatCard.tsx
+      ActivityFeed/
+        ActivityFeed.tsx
+        useActivityFeed.ts
+```
+
+### Guidelines
 
 - Prefer function declarations for components and handlers
 - Only use arrow functions for small inline lambdas (e.g., in `map`)
 - Avoid barrel files and `index.ts` re-exports
 - Keep component files focused and readable; push complex logic to `helpers.ts`
 - Abstract reusable, cross-feature logic into `src/services/` or `src/lib/utils.ts` as appropriate
+- Build components encapsulated so they can be easily reused and abstracted elsewhere
+- Nest sub-components within a `components/` folder when they're local to the parent feature
+
+### Exceptions
+
+When to simplify the structure:
+
+**Small hook logic (3-4 lines)**
+
+If the hook logic is minimal, keep it inline with the render function:
+
+```tsx
+export function ActivityAlert() {
+  const [isVisible, setIsVisible] = useState(true);
+  if (!isVisible) return null;
+
+  return (
+    <Alert onClose={() => setIsVisible(false)}>New activity detected</Alert>
+  );
+}
+```
+
+**Render-only components**
+
+Components with no hook logic can be direct files in `components/` without a folder:
+
+```
+components/
+  ActivityAlert.tsx      (render-only, no folder needed)
+  StatsPanel/            (has hook logic, needs folder)
+    StatsPanel.tsx
+    useStatsPanel.ts
+```
+
+### Hook file structure
+
+When separating logic into a custom hook:
+
+```tsx
+// useStatsPanel.ts
+export function useStatsPanel() {
+  const [data, setData] = useState<Stats[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    fetchStats().then(setData);
+  }, []);
+
+  return {
+    data,
+    isLoading,
+    refresh: () => fetchStats().then(setData),
+  };
+}
+```
+
+Rules:
+
+- **Always return an object** that exposes data and methods to the view
+- **Export a single function** named after the component (e.g., `useStatsPanel` for `StatsPanel.tsx`)
+- **Abstract into helpers.ts** when hook logic grows large, so the hook file remains readable by scanning without diving into implementation details
 
 ---
 
 ## 🔄 Data fetching patterns
+
+All API hooks are generated from the backend OpenAPI specification using [Orval](https://orval.dev/). The hooks are type-safe and follow the operation names defined in the backend API.
+
+### How to discover hooks
+
+Most of the time you can rely on auto-import by typing the endpoint or operation name. Your IDE will suggest the generated hooks based on the OpenAPI operation IDs.
+
+**Examples of hook naming patterns:**
+
+- `GET /api/v1/notifications` → `useGetV1GetNotificationPreferences`
+- `POST /api/v2/store/agents` → `usePostV2CreateStoreAgent`
+- `DELETE /api/v2/store/submissions/{id}` → `useDeleteV2DeleteStoreSubmission`
+- `GET /api/v2/library/agents` → `useGetV2ListLibraryAgents`
+
+**Pattern**: `use{Method}{Version}{OperationName}`
+
+You can also explore the generated hooks by browsing `src/app/api/__generated__/endpoints/` which is organized by API tags (e.g., `auth`, `store`, `library`).
+
+**OpenAPI specs:**
+
+- Production: [https://backend.agpt.co/openapi.json](https://backend.agpt.co/openapi.json)
+- Staging: [https://dev-server.agpt.co/openapi.json](https://dev-server.agpt.co/openapi.json)
 
 ### Generated hooks (client)
 
@@ -213,6 +325,82 @@ Notes:
 
 - Do not introduce new usages of `BackendAPI` or `src/lib/autogpt-server-api/*`
 - Keep transformations and mapping logic close to the consumer (hook), not in the view
+
+---
+
+## ⚠️ Error handling
+
+The app has multiple error handling strategies depending on the type of error:
+
+### Render/runtime errors
+
+Use `<ErrorCard />` to display render or runtime errors gracefully:
+
+```tsx
+import { ErrorCard } from "@/components/molecules/ErrorCard";
+
+export function DataPanel() {
+  const { data, isLoading, isError, error } = useGetData();
+
+  if (isLoading) return <Skeleton />;
+  if (isError) return <ErrorCard error={error} />;
+
+  return <div>{data.content}</div>;
+}
+```
+
+### API mutation errors
+
+Display mutation errors using toast notifications:
+
+```tsx
+import { useToast } from "@/components/ui/use-toast";
+
+export function useUpdateSettings() {
+  const { toast } = useToast();
+  const { mutateAsync: updateSettings } = useUpdateSettingsMutation({
+    mutation: {
+      onError: (error) => {
+        toast({
+          title: "Failed to update settings",
+          description: error.message,
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  return { updateSettings };
+}
+```
+
+### Manual Sentry capture
+
+When needed, you can manually capture exceptions to Sentry:
+
+```tsx
+import * as Sentry from "@sentry/nextjs";
+
+try {
+  await riskyOperation();
+} catch (error) {
+  Sentry.captureException(error, {
+    tags: { context: "feature-x" },
+    extra: { metadata: additionalData },
+  });
+  throw error;
+}
+```
+
+### Global error boundaries
+
+The app has error boundaries already configured to:
+
+- Capture uncaught errors globally and send them to Sentry
+- Display a user-friendly error UI when something breaks
+- Prevent the entire app from crashing
+
+You don't need to wrap components in error boundaries manually unless you need custom error recovery logic.
 
 ---
 
