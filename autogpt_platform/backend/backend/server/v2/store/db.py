@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import typing
 from datetime import datetime, timezone
 
 import fastapi
@@ -71,64 +72,171 @@ async def get_store_agents(
     logger.debug(
         f"Getting store agents. featured={featured}, creators={creators}, sorted_by={sorted_by}, search={search_query}, category={category}, page={page}"
     )
-    search_term = sanitize_query(search_query)
-    where_clause: prisma.types.StoreAgentWhereInput = {"is_available": True}
-    if featured:
-        where_clause["featured"] = featured
-    if creators:
-        where_clause["creator_username"] = {"in": creators}
-    if category:
-        where_clause["categories"] = {"has": category}
-
-    if search_term:
-        where_clause["OR"] = [
-            {"agent_name": {"contains": search_term, "mode": "insensitive"}},
-            {"description": {"contains": search_term, "mode": "insensitive"}},
-        ]
-
-    order_by = []
-    if sorted_by == "rating":
-        order_by.append({"rating": "desc"})
-    elif sorted_by == "runs":
-        order_by.append({"runs": "desc"})
-    elif sorted_by == "name":
-        order_by.append({"agent_name": "asc"})
 
     try:
-        agents = await prisma.models.StoreAgent.prisma().find_many(
-            where=where_clause,
-            order=order_by,
-            skip=(page - 1) * page_size,
-            take=page_size,
-        )
-
-        total = await prisma.models.StoreAgent.prisma().count(where=where_clause)
-        total_pages = (total + page_size - 1) // page_size
-
-        store_agents: list[backend.server.v2.store.model.StoreAgent] = []
-        for agent in agents:
-            try:
-                # Create the StoreAgent object safely
-                store_agent = backend.server.v2.store.model.StoreAgent(
-                    slug=agent.slug,
-                    agent_name=agent.agent_name,
-                    agent_image=agent.agent_image[0] if agent.agent_image else "",
-                    creator=agent.creator_username or "Needs Profile",
-                    creator_avatar=agent.creator_avatar or "",
-                    sub_heading=agent.sub_heading,
-                    description=agent.description,
-                    runs=agent.runs,
-                    rating=agent.rating,
+        # If search_query is provided, use full-text search
+        if search_query:
+            search_term = sanitize_query(search_query)
+            if not search_term:
+                # Return empty results for invalid search query
+                return backend.server.v2.store.model.StoreAgentsResponse(
+                    agents=[],
+                    pagination=backend.server.v2.store.model.Pagination(
+                        current_page=page,
+                        total_items=0,
+                        total_pages=0,
+                        page_size=page_size,
+                    ),
                 )
-                # Add to the list only if creation was successful
-                store_agents.append(store_agent)
-            except Exception as e:
-                # Skip this agent if there was an error
-                # You could log the error here if needed
-                logger.error(
-                    f"Error parsing Store agent when getting store agents from db: {e}"
-                )
-                continue
+
+            offset = (page - 1) * page_size
+
+            # Build filter conditions
+            filter_conditions = []
+            filter_conditions.append("is_available = true")
+
+            if featured:
+                filter_conditions.append("featured = true")
+            if creators:
+                creator_list = "','".join(creators)
+                filter_conditions.append(f"creator_username IN ('{creator_list}')")
+            if category:
+                filter_conditions.append(f"'{category}' = ANY(categories)")
+
+            where_filter = (
+                " AND ".join(filter_conditions) if filter_conditions else "1=1"
+            )
+
+            # Build ORDER BY clause
+            if sorted_by == "rating":
+                order_by_clause = "rating DESC, rank DESC"
+            elif sorted_by == "runs":
+                order_by_clause = "runs DESC, rank DESC"
+            elif sorted_by == "name":
+                order_by_clause = "agent_name ASC, rank DESC"
+            else:
+                order_by_clause = "rank DESC, updated_at DESC"
+
+            # Execute full-text search query
+            sql_query = f"""
+                SELECT
+                    slug,
+                    agent_name,
+                    agent_image,
+                    creator_username,
+                    creator_avatar,
+                    sub_heading,
+                    description,
+                    runs,
+                    rating,
+                    categories,
+                    featured,
+                    is_available,
+                    updated_at,
+                    ts_rank_cd(search, query) AS rank
+                FROM "StoreAgent",
+                    plainto_tsquery('english', '{search_term}') AS query
+                WHERE {where_filter} 
+                    AND search @@ query
+                ORDER BY rank DESC, {order_by_clause}
+                LIMIT {page_size} OFFSET {offset}
+            """
+
+            # Count query for pagination
+            count_query = f"""
+                SELECT COUNT(*) as count
+                FROM "StoreAgent",
+                    plainto_tsquery('english', '{search_term}') AS query
+                WHERE {where_filter} 
+                    AND search @@ query
+            """
+
+            # Execute both queries
+            agents = await prisma.client.get_client().query_raw(
+                query=typing.cast(typing.LiteralString, sql_query)
+            )
+
+            count_result = await prisma.client.get_client().query_raw(
+                query=typing.cast(typing.LiteralString, count_query)
+            )
+
+            total = count_result[0]["count"] if count_result else 0
+            total_pages = (total + page_size - 1) // page_size
+
+            # Convert raw results to StoreAgent models
+            store_agents: list[backend.server.v2.store.model.StoreAgent] = []
+            for agent in agents:
+                try:
+                    store_agent = backend.server.v2.store.model.StoreAgent(
+                        slug=agent["slug"],
+                        agent_name=agent["agent_name"],
+                        agent_image=(
+                            agent["agent_image"][0] if agent["agent_image"] else ""
+                        ),
+                        creator=agent["creator_username"] or "Needs Profile",
+                        creator_avatar=agent["creator_avatar"] or "",
+                        sub_heading=agent["sub_heading"],
+                        description=agent["description"],
+                        runs=agent["runs"],
+                        rating=agent["rating"],
+                    )
+                    store_agents.append(store_agent)
+                except Exception as e:
+                    logger.error(f"Error parsing Store agent from search results: {e}")
+                    continue
+
+        else:
+            # Non-search query path (original logic)
+            where_clause: prisma.types.StoreAgentWhereInput = {"is_available": True}
+            if featured:
+                where_clause["featured"] = featured
+            if creators:
+                where_clause["creator_username"] = {"in": creators}
+            if category:
+                where_clause["categories"] = {"has": category}
+
+            order_by = []
+            if sorted_by == "rating":
+                order_by.append({"rating": "desc"})
+            elif sorted_by == "runs":
+                order_by.append({"runs": "desc"})
+            elif sorted_by == "name":
+                order_by.append({"agent_name": "asc"})
+
+            agents = await prisma.models.StoreAgent.prisma().find_many(
+                where=where_clause,
+                order=order_by,
+                skip=(page - 1) * page_size,
+                take=page_size,
+            )
+
+            total = await prisma.models.StoreAgent.prisma().count(where=where_clause)
+            total_pages = (total + page_size - 1) // page_size
+
+            store_agents: list[backend.server.v2.store.model.StoreAgent] = []
+            for agent in agents:
+                try:
+                    # Create the StoreAgent object safely
+                    store_agent = backend.server.v2.store.model.StoreAgent(
+                        slug=agent.slug,
+                        agent_name=agent.agent_name,
+                        agent_image=agent.agent_image[0] if agent.agent_image else "",
+                        creator=agent.creator_username or "Needs Profile",
+                        creator_avatar=agent.creator_avatar or "",
+                        sub_heading=agent.sub_heading,
+                        description=agent.description,
+                        runs=agent.runs,
+                        rating=agent.rating,
+                    )
+                    # Add to the list only if creation was successful
+                    store_agents.append(store_agent)
+                except Exception as e:
+                    # Skip this agent if there was an error
+                    # You could log the error here if needed
+                    logger.error(
+                        f"Error parsing Store agent when getting store agents from db: {e}"
+                    )
+                    continue
 
         logger.debug(f"Found {len(store_agents)} agents")
         return backend.server.v2.store.model.StoreAgentsResponse(

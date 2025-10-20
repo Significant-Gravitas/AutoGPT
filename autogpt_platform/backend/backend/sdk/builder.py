@@ -17,9 +17,8 @@ from backend.data.model import (
 )
 from backend.integrations.oauth.base import BaseOAuthHandler
 from backend.integrations.webhooks._base import BaseWebhooksManager
-from backend.sdk.provider import OAuthConfig, Provider
+from backend.sdk.provider import OAuthConfig, Provider, ProviderRegister
 from backend.sdk.registry import AutoRegistry
-from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +39,7 @@ class ProviderBuilder:
         self._client_id_env_var: Optional[str] = None
         self._client_secret_env_var: Optional[str] = None
         self._extra_config: dict = {}
+        self._register: ProviderRegister = ProviderRegister(name=name)
 
     def with_oauth(
         self,
@@ -48,6 +48,11 @@ class ProviderBuilder:
         client_id_env_var: Optional[str] = None,
         client_secret_env_var: Optional[str] = None,
     ) -> "ProviderBuilder":
+
+        self._register.with_oauth = True
+        self._register.client_id_env_var = client_id_env_var
+        self._register.client_secret_env_var = client_secret_env_var
+
         """Add OAuth support."""
         if not client_id_env_var or not client_secret_env_var:
             client_id_env_var = f"{self.name}_client_id".upper()
@@ -73,6 +78,8 @@ class ProviderBuilder:
 
     def with_api_key(self, env_var_name: str, title: str) -> "ProviderBuilder":
         """Add API key support with environment variable name."""
+        self._register.with_api_key = True
+        self._register.api_key_env_var = env_var_name
         self._supported_auth_types.add("api_key")
 
         # Register the API key mapping
@@ -91,30 +98,14 @@ class ProviderBuilder:
             )
         return self
 
-    def with_api_key_from_settings(
-        self, settings_attr: str, title: str
-    ) -> "ProviderBuilder":
-        """Use existing API key from settings."""
-        self._supported_auth_types.add("api_key")
-
-        # Try to get the API key from settings
-        settings = Settings()
-        api_key = getattr(settings.secrets, settings_attr, None)
-        if api_key:
-            self._default_credentials.append(
-                APIKeyCredentials(
-                    id=f"{self.name}-default",
-                    provider=self.name,
-                    api_key=api_key,
-                    title=title,
-                )
-            )
-        return self
-
     def with_user_password(
         self, username_env_var: str, password_env_var: str, title: str
     ) -> "ProviderBuilder":
         """Add username/password support with environment variable names."""
+        self._register.with_user_password = True
+        self._register.username_env_var = username_env_var
+        self._register.password_env_var = password_env_var
+
         self._supported_auth_types.add("user_password")
 
         # Check if credentials exist in environment
@@ -174,6 +165,7 @@ class ProviderBuilder:
             supported_auth_types=self._supported_auth_types,
             api_client_factory=self._api_client_factory,
             error_handler=self._error_handler,
+            register=self._register,
             **self._extra_config,
         )
 

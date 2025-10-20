@@ -5,10 +5,11 @@ datasource db {
 }
 
 generator client {
-  provider             = "prisma-client-py"
-  recursive_type_depth = -1
-  interface            = "asyncio"
-  previewFeatures      = ["views"]
+  provider               = "prisma-client-py"
+  recursive_type_depth   = -1
+  interface              = "asyncio"
+  previewFeatures        = ["views", "fullTextSearch"]
+  partial_type_generator = "backend/data/partial_types.py"
 }
 
 // User model to mirror Auth provider users
@@ -58,6 +59,34 @@ model User {
   APIKeys               APIKey[]
   IntegrationWebhooks   IntegrationWebhook[]
   NotificationBatches   UserNotificationBatch[]
+}
+
+// This model describes the providers that are available to the user.
+model ProviderRegistry {
+  name String @id
+
+  with_oauth Boolean @default(false)
+  client_id_env_var String?
+  client_secret_env_var String?
+
+  with_api_key Boolean @default(false)
+  api_key_env_var String?
+
+  with_user_password Boolean @default(false)
+  username_env_var String?
+  password_env_var String?
+  updatedAt DateTime @updatedAt
+
+  @@index([updatedAt])
+}
+
+model BlocksRegistry {
+  id String @id @default(uuid())
+  name String
+  definition Json
+  updatedAt DateTime @updatedAt
+
+  @@index([updatedAt])
 }
 
 enum OnboardingStep {
@@ -664,6 +693,7 @@ view StoreAgent {
   sub_heading      String
   description      String
   categories       String[]
+  search           Unsupported("tsvector")? @default(dbgenerated("''::tsvector"))
   runs             Int
   rating           Float
   versions         String[]
@@ -747,7 +777,7 @@ model StoreListing {
   slug String
 
   // Allow this agent to be used during onboarding
-  useForOnboarding   Boolean @default(false)
+  useForOnboarding Boolean @default(false)
 
   // The currently active version that should be shown to users
   activeVersionId String?              @unique
@@ -797,6 +827,8 @@ model StoreListingVersion {
   isDeleted   Boolean @default(false)
   // Old versions can be made unavailable by the author if desired
   isAvailable Boolean @default(true)
+
+  search Unsupported("tsvector")? @default(dbgenerated("''::tsvector"))
 
   // Version workflow state
   submissionStatus SubmissionStatus @default(DRAFT)
