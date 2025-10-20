@@ -10,6 +10,30 @@ import * as Sentry from "@sentry/nextjs";
 const clientId = process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
 const envEnabled = process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true";
 
+/**
+ * Creates a defensive wrapper around Sentry's LaunchDarkly flag handler
+ * to catch and prevent any errors from breaking the application.
+ */
+function createSafeLaunchDarklyFlagHandler() {
+  try {
+    const handler = Sentry.buildLaunchDarklyFlagUsedHandler();
+    
+    // Wrap the handler to catch any runtime errors
+    return (flagKey: string, detail: any) => {
+      try {
+        handler(flagKey, detail);
+      } catch (error) {
+        // Log the error to console but don't let it bubble up
+        console.error("Error in Sentry LaunchDarkly flag handler:", error);
+      }
+    };
+  } catch (error) {
+    // If building the handler fails, return a no-op function
+    console.error("Failed to build Sentry LaunchDarkly flag handler:", error);
+    return () => {};
+  }
+}
+
 export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
   const { user, isUserLoading } = useSupabase();
   const isCloud = getBehaveAs() === BehaveAs.CLOUD;
@@ -48,7 +72,7 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
       reactOptions={{ useCamelCaseFlagKeys: false }}
       options={{
         bootstrap: "localStorage",
-        inspectors: [Sentry.buildLaunchDarklyFlagUsedHandler()],
+        inspectors: [createSafeLaunchDarklyFlagHandler()],
       }}
     >
       {children}
