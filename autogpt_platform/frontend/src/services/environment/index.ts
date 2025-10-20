@@ -1,3 +1,5 @@
+import { headers } from "next/headers";
+
 export enum BehaveAs {
   CLOUD = "CLOUD",
   LOCAL = "LOCAL",
@@ -24,32 +26,8 @@ function getAppEnv(): AppEnv {
   return AppEnv.LOCAL;
 }
 
-function isProd() {
-  return process.env.NODE_ENV === "production";
-}
-
-function isDev() {
-  return process.env.NODE_ENV === "development";
-}
-
-function isCloud() {
-  return getBehaveAs() === BehaveAs.CLOUD;
-}
-
-function isLocal() {
-  return getBehaveAs() === BehaveAs.LOCAL;
-}
-
-function getEnvironmentStr() {
-  return `app:${getAppEnv().toLowerCase()}-behave:${getBehaveAs().toLowerCase()}`;
-}
-
-function isServerSide() {
-  return typeof window === "undefined";
-}
-
-function isClientSide() {
-  return typeof window !== "undefined";
+function getAnalyticsWebsiteId() {
+  return process.env.NEXT_PUBLIC_ANALYTICS_WEBSITE_ID;
 }
 
 function getAGPTServerApiUrl() {
@@ -84,8 +62,55 @@ function getSupabaseAnonKey() {
   return process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 }
 
+function getEnvironmentStr() {
+  return `app:${getAppEnv().toLowerCase()}-behave:${getBehaveAs().toLowerCase()}`;
+}
+
+function isProd() {
+  return process.env.NODE_ENV === "production";
+}
+
+function isDev() {
+  return process.env.NODE_ENV === "development";
+}
+
+function isCloud() {
+  return getBehaveAs() === BehaveAs.CLOUD;
+}
+
+function isLocal() {
+  return getBehaveAs() === BehaveAs.LOCAL;
+}
+
+function isServerSide() {
+  return typeof window === "undefined";
+}
+
+function isClientSide() {
+  return typeof window !== "undefined";
+}
+
 function isCAPTCHAEnabled() {
   return process.env.NEXT_PUBLIC_TURNSTILE === "enabled";
+}
+
+function areFeatureFlagsEnabled() {
+  return process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "enabled";
+}
+
+async function areAnalyticsEnabled() {
+  const withWebsiteId = getAnalyticsWebsiteId();
+  if (!withWebsiteId) {
+    return false;
+  }
+
+  if (isClientSide()) {
+    return window.location.hostname.includes(withWebsiteId);
+  }
+
+  const headersList = await headers();
+  const host = headersList.get("host") || "";
+  return host.includes("platform.agpt.co");
 }
 
 export const environment = {
@@ -99,6 +124,7 @@ export const environment = {
   getAGPTWsServerUrl,
   getSupabaseUrl,
   getSupabaseAnonKey,
+  getAnalyticsWebsiteId,
   // Assertions
   isServerSide,
   isClientSide,
@@ -107,4 +133,6 @@ export const environment = {
   isCloud,
   isLocal,
   isCAPTCHAEnabled,
+  areAnalyticsEnabled,
+  areFeatureFlagsEnabled,
 };
