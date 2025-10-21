@@ -30,23 +30,6 @@ class OAuthConfig(BaseModel):
     client_secret_env_var: str
 
 
-class ProviderRegister(BaseModel):
-    """Provider log configuration for SDK providers."""
-
-    name: str
-
-    with_oauth: bool = False
-    client_id_env_var: Optional[str] = None
-    client_secret_env_var: Optional[str] = None
-
-    with_api_key: bool = False
-    api_key_env_var: Optional[str] = None
-
-    with_user_password: bool = False
-    username_env_var: Optional[str] = None
-    password_env_var: Optional[str] = None
-
-
 class Provider:
     """A configured provider that blocks can use.
 
@@ -65,7 +48,6 @@ class Provider:
     def __init__(
         self,
         name: str,
-        register: ProviderRegister,
         oauth_config: Optional[OAuthConfig] = None,
         webhook_manager: Optional[Type[BaseWebhooksManager]] = None,
         default_credentials: Optional[List[Credentials]] = None,
@@ -83,7 +65,7 @@ class Provider:
         self.supported_auth_types = supported_auth_types or set()
         self._api_client_factory = api_client_factory
         self._error_handler = error_handler
-        self.register = register
+
         # Store any additional configuration
         self._extra_config = kwargs
         self.test_credentials_uuid = uuid.uuid4()

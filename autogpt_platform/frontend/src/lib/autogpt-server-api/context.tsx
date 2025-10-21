@@ -1,6 +1,6 @@
 "use client";
 
-import { isServerSide } from "../utils/is-server-side";
+import { environment } from "@/services/environment";
 import BackendAPI from "./client";
 import React, { createContext, useMemo } from "react";
 
@@ -20,7 +20,7 @@ export function BackendAPIProvider({
 }): React.ReactNode {
   const api = useMemo(() => new BackendAPI(), []);
 
-  if (process.env.NEXT_PUBLIC_BEHAVE_AS == "LOCAL" && !isServerSide()) {
+  if (environment.isLocal() && !environment.isServerSide()) {
     window.api = api; // Expose the API globally for debugging purposes
   }
 
