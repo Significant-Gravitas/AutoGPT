@@ -111,6 +111,7 @@ export const NewSaveControl = () => {
                   data-id="save-control-save-agent"
                   data-testid="save-control-save-agent-button"
                   disabled={isLoading}
+                  loading={isLoading}
                 >
                   Save Agent
                 </Button>

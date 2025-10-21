@@ -17,17 +17,6 @@ export const useFlowRealtime = () => {
     flowID: parseAsString,
   });
 
-  const { refetch: refetchExecutionDetails } = useGetV1GetExecutionDetails(
-    flowID || "",
-    flowExecutionID || "",
-    {
-      query: {
-        select: (res) => res.data as GetV1GetExecutionDetails200,
-        enabled: !!flowID && !!flowExecutionID,
-      },
-    },
-  );
-
   useEffect(() => {
     const deregisterNodeExecutionEvent = api.onWebSocketMessage(
       "node_execution_event",
@@ -47,7 +36,7 @@ export const useFlowRealtime = () => {
               .subscribeToGraphExecution(flowExecutionID as GraphExecutionID) // TODO: We are currently using a manual type, we need to fix it in future
               .then(() => {
                 toast({
-                  title: `Subscribed to updates for execution #${flowExecutionID}`,
+                  title: `✅ Connected to the backend successfully.`,
                 });
                 console.debug(
                   `Subscribed to updates for execution #${flowExecutionID}`,
@@ -59,8 +48,6 @@ export const useFlowRealtime = () => {
                   error,
                 ),
               );
-
-            refetchExecutionDetails();
           })
         : () => {};
 
