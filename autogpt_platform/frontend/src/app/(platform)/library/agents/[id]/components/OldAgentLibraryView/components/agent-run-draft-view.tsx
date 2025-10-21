@@ -189,11 +189,6 @@ export function AgentRunDraftView({
         .executeGraph(graph.id, graph.version, inputValues, inputCredentials)
         .catch(toastOnFail("execute agent"));
 
-      analytics.sendDatafastEvent("run_agent", {
-        name: graph.name,
-        id: graph.id,
-      });
-
       if (newRun && onRun) onRun(newRun.id);
     } else {
       await api
