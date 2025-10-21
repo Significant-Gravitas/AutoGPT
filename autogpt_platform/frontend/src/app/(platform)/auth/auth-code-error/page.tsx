@@ -1,6 +1,5 @@
 "use client";
 
-import { isServerSide } from "@/lib/utils/is-server-side";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
@@ -8,6 +7,7 @@ import { Card } from "@/components/atoms/Card/Card";
 import { WaitlistErrorContent } from "@/components/auth/WaitlistErrorContent";
 import { isWaitlistErrorFromParams } from "@/app/api/auth/utils";
 import { useRouter } from "next/navigation";
+import { environment } from "@/services/environment";
 
 export default function AuthErrorPage() {
   const [errorType, setErrorType] = useState<string | null>(null);
@@ -17,7 +17,7 @@ export default function AuthErrorPage() {
 
   useEffect(() => {
     // This code only runs on the client side
-    if (!isServerSide()) {
+    if (!environment.isServerSide()) {
       const hash = window.location.hash.substring(1); // Remove the leading '#'
       const params = new URLSearchParams(hash);
 
