@@ -1061,20 +1061,6 @@ export type AddUserCreditsResponse = {
   transaction_key: string;
 };
 
-export type ExecutionDiagnosticsResponse = {
-  running_executions: number;
-  queued_executions_db: number;
-  queued_executions_rabbitmq: number;
-  timestamp: string;
-};
-
-export type AgentDiagnosticsResponse = {
-  total_agents: number;
-  active_agents: number;
-  agents_with_active_executions: number;
-  timestamp: string;
-};
-
 const _stringFormatToDataTypeMap: Partial<Record<string, DataType>> = {
   date: DataType.DATE,
   time: DataType.TIME,

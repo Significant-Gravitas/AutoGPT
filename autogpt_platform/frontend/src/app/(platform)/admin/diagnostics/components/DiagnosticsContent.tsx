@@ -1,11 +1,5 @@
 "use client";
 
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import {
-  ExecutionDiagnosticsResponse,
-  AgentDiagnosticsResponse,
-} from "@/lib/autogpt-server-api/types";
-import { useEffect, useState } from "react";
 import {
   Card,
   CardContent,
@@ -14,58 +8,32 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { RefreshCw } from "lucide-react";
+import { ArrowClockwise } from "@phosphor-icons/react";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { useDiagnosticsContent } from "./useDiagnosticsContent";
 
 export function DiagnosticsContent() {
-  const api = useBackendAPI();
-  const [executionData, setExecutionData] =
-    useState<ExecutionDiagnosticsResponse | null>(null);
-  const [agentData, setAgentData] = useState<AgentDiagnosticsResponse | null>(
-    null,
-  );
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { executionData, agentData, isLoading, isError, error, refresh } =
+    useDiagnosticsContent();
 
-  const fetchDiagnostics = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [execData, agData] = await Promise.all([
-        api.getExecutionDiagnosticsAdmin(),
-        api.getAgentDiagnosticsAdmin(),
-      ]);
-      setExecutionData(execData);
-      setAgentData(agData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load data");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchDiagnostics();
-  }, []);
-
-  if (loading && !executionData && !agentData) {
+  if (isLoading && !executionData && !agentData) {
     return (
       <div className="flex h-64 items-center justify-center">
         <div className="text-center">
-          <RefreshCw className="mx-auto h-8 w-8 animate-spin text-gray-400" />
+          <ArrowClockwise className="mx-auto h-8 w-8 animate-spin text-gray-400" />
           <p className="mt-2 text-gray-500">Loading diagnostics...</p>
         </div>
       </div>
     );
   }
 
-  if (error) {
+  if (isError) {
     return (
-      <div className="rounded-md bg-red-50 p-4">
-        <p className="text-red-800">Error: {error}</p>
-        <Button onClick={fetchDiagnostics} className="mt-2">
-          Retry
-        </Button>
-      </div>
+      <ErrorCard
+        httpError={error as any}
+        onRetry={refresh}
+        context="diagnostics"
+      />
     );
   }
 
@@ -79,13 +47,13 @@ export function DiagnosticsContent() {
           </p>
         </div>
         <Button
-          onClick={fetchDiagnostics}
-          disabled={loading}
+          onClick={refresh}
+          disabled={isLoading}
           variant="outline"
           size="sm"
         >
-          <RefreshCw
-            className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`}
+          <ArrowClockwise
+            className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
           />
           Refresh
         </Button>
