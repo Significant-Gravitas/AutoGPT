@@ -17,10 +17,10 @@ import {
   FormItem,
   FormLabel,
 } from "@/components/__legacy__/ui/form";
-import { getBehaveAs } from "@/lib/utils";
 import { WarningOctagonIcon } from "@phosphor-icons/react/dist/ssr";
 import { LoadingSignup } from "./components/LoadingSignup";
 import { useSignupPage } from "./useSignupPage";
+import { environment } from "@/services/environment";
 
 export default function SignupPage() {
   const {
@@ -196,7 +196,7 @@ export default function SignupPage() {
           type="signup"
           message={feedback}
           isError={!!feedback}
-          behaveAs={getBehaveAs()}
+          behaveAs={environment.getBehaveAs()}
         />
 
         <AuthCard.BottomText

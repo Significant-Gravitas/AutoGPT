@@ -3,12 +3,6 @@ import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Key, storage } from "@/services/storage/local-storage";
-import {
-  getAgptServerApiUrl,
-  getAgptWsServerUrl,
-  getSupabaseUrl,
-  getSupabaseAnonKey,
-} from "@/lib/env-config";
 import * as Sentry from "@sentry/nextjs";
 import type {
   AddUserCreditsResponse,
@@ -73,9 +67,9 @@ import type {
   UserPasswordCredentials,
   UsersBalanceHistoryResponse,
 } from "./types";
-import { isServerSide } from "../utils/is-server-side";
+import { environment } from "@/services/environment";
 
-const isClient = !isServerSide();
+const isClient = environment.isClientSide();
 
 export default class BackendAPI {
   private baseUrl: string;
@@ -93,8 +87,8 @@ export default class BackendAPI {
   heartbeatTimeoutID: number | null = null;
 
   constructor(
-    baseUrl: string = getAgptServerApiUrl(),
-    wsUrl: string = getAgptWsServerUrl(),
+    baseUrl: string = environment.getAGPTServerApiUrl(),
+    wsUrl: string = environment.getAGPTWsServerUrl(),
   ) {
     this.baseUrl = baseUrl;
     this.wsUrl = wsUrl;
@@ -102,9 +96,13 @@ export default class BackendAPI {
 
   private async getSupabaseClient(): Promise<SupabaseClient | null> {
     return isClient
-      ? createBrowserClient(getSupabaseUrl(), getSupabaseAnonKey(), {
-          isSingleton: true,
-        })
+      ? createBrowserClient(
+          environment.getSupabaseUrl(),
+          environment.getSupabaseAnonKey(),
+          {
+            isSingleton: true,
+          },
+        )
       : await getServerSupabase();
   }
 
