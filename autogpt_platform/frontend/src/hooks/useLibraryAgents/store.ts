@@ -6,7 +6,7 @@ import {
   type getV2ListLibraryAgentsResponse,
 } from "@/app/api/__generated__/endpoints/library/library";
 
-type AgentInfo = {
+export type AgentInfo = {
   name: string;
   description: string;
   library_agent_id?: string;
@@ -27,12 +27,11 @@ type CachedAgents = {
   lastUpdatedAt: number;
 };
 
-async function fetchAllLibraryAgents(): Promise<AgentInfo[]> {
+async function fetchAllLibraryAgents() {
   const pageSize = 100;
   let page = 1;
   const all: AgentInfo[] = [];
 
-  // Fetch first page to get pagination info
   let res: getV2ListLibraryAgentsResponse | undefined;
   try {
     res = await getV2ListLibraryAgents({ page, page_size: pageSize });
@@ -58,7 +57,6 @@ async function fetchAllLibraryAgents(): Promise<AgentInfo[]> {
 
   const totalPages = pagination?.total_pages ?? 1;
 
-  // Fetch remaining pages sequentially to keep it simple
   for (page = 2; page <= totalPages; page += 1) {
     try {
       const next = await getV2ListLibraryAgents({ page, page_size: pageSize });
@@ -80,7 +78,6 @@ async function fetchAllLibraryAgents(): Promise<AgentInfo[]> {
       Sentry.captureException(err, {
         tags: { context: "library_agents_fetch" },
       });
-      // continue to attempt other pages
     }
   }
 
@@ -92,8 +89,8 @@ function persistCache(cached: CachedAgents) {
     storage.set(Key.LIBRARY_AGENTS_CACHE, JSON.stringify(cached));
   } catch (error) {
     // Ignore cache failures
+    // eslint-disable-next-line no-console
     console.error("Failed to persist library agents cache", error);
-
     Sentry.captureException(error, {
       tags: { context: "library_agents_cache_persist" },
     });
@@ -110,7 +107,7 @@ function readCache(): CachedAgents | undefined {
   }
 }
 
-export const useAgentStore = create<AgentStore>((set, get) => ({
+export const useLibraryAgentsStore = create<AgentStore>((set, get) => ({
   agents: [],
   lastUpdatedAt: undefined,
   isRefreshing: false,

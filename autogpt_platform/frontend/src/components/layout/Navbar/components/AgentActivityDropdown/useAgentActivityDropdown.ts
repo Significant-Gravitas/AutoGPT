@@ -9,17 +9,12 @@ import {
   categorizeExecutions,
   handleExecutionUpdate,
 } from "./helpers";
-import { useAgentStore, buildAgentInfoMap } from "./store";
-
-type AgentInfoMap = Map<
-  string,
-  { name: string; description: string; library_agent_id?: string }
->;
+import { useLibraryAgents } from "@/hooks/useLibraryAgents/useLibraryAgents";
 
 export function useAgentActivityDropdown() {
   const [isOpen, setIsOpen] = useState(false);
-
   const [api] = useState(() => new BackendAPI());
+  const { agentInfoMap } = useLibraryAgents();
 
   const [notifications, setNotifications] = useState<NotificationState>({
     activeExecutions: [],
@@ -29,9 +24,6 @@ export function useAgentActivityDropdown() {
   });
 
   const [isConnected, setIsConnected] = useState(false);
-  const [agentInfoMap, setAgentInfoMap] = useState<AgentInfoMap>(new Map());
-
-  const { agents, loadFromCache, refreshAll } = useAgentStore();
 
   const {
     data: executions,
@@ -40,23 +32,6 @@ export function useAgentActivityDropdown() {
   } = useGetV1ListAllExecutions({
     query: { select: (res) => (res.status === 200 ? res.data : null) },
   });
-
-  // Load cached immediately on mount
-  useEffect(() => {
-    loadFromCache();
-    const timer = setTimeout(() => {
-      void refreshAll().then(() => {
-        const latest = useAgentStore.getState().agents;
-        if (latest && latest.length) setAgentInfoMap(buildAgentInfoMap(latest));
-      });
-    }, 5000);
-    return () => clearTimeout(timer);
-  }, [loadFromCache, refreshAll]);
-
-  // Build map whenever agents in store change
-  useEffect(() => {
-    if (agents && agents.length) setAgentInfoMap(buildAgentInfoMap(agents));
-  }, [agents]);
 
   // Handle real-time execution updates
   const handleExecutionEvent = useCallback(

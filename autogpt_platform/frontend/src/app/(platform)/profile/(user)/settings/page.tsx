@@ -5,7 +5,7 @@ import {
 } from "@/app/api/__generated__/endpoints/auth/auth";
 import { SettingsForm } from "@/app/(platform)/profile/(user)/settings/components/SettingsForm/SettingsForm";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { useTimezoneDetection } from "@/hooks/useTimezoneDetection";
+import { useTimezoneDetection } from "@/app/(platform)/profile/(user)/settings/useTimezoneDetection";
 import * as React from "react";
 import SettingsLoading from "./loading";
 import { redirect } from "next/navigation";
@@ -28,6 +28,7 @@ export default function SettingsPage() {
         },
       },
     });
+
   useTimezoneDetection(timezone);
 
   const { user, isUserLoading } = useSupabase();
