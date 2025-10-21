@@ -5,12 +5,12 @@ from functools import wraps
 from typing import Any, Awaitable, Callable, TypeVar
 
 import ldclient
-from autogpt_libs.utils.cache import cached
 from fastapi import HTTPException
 from ldclient import Context, LDClient
 from ldclient.config import Config
 from typing_extensions import ParamSpec
 
+from backend.util.cache import cached
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -35,6 +35,7 @@ class Flag(str, Enum):
     AI_ACTIVITY_STATUS = "ai-agent-execution-summary"
     BETA_BLOCKS = "beta-blocks"
     AGENT_ACTIVITY = "agent-activity"
+    ENABLE_PLATFORM_PAYMENT = "enable-platform-payment"
 
 
 def is_configured() -> bool:
@@ -62,9 +63,9 @@ def initialize_launchdarkly() -> None:
     config = Config(sdk_key)
     ldclient.set_config(config)
 
+    global _is_initialized
+    _is_initialized = True
     if ldclient.get().is_initialized():
-        global _is_initialized
-        _is_initialized = True
         logger.info("LaunchDarkly client initialized successfully")
     else:
         logger.error("LaunchDarkly client failed to initialize")
@@ -217,7 +218,8 @@ def feature_flag(
 
                 if not get_client().is_initialized():
                     logger.warning(
-                        f"LaunchDarkly not initialized, using default={default}"
+                        "LaunchDarkly not initialized, "
+                        f"using default {flag_key}={repr(default)}"
                     )
                     is_enabled = default
                 else:
@@ -231,8 +233,9 @@ def feature_flag(
                     else:
                         # Log warning and use default for non-boolean values
                         logger.warning(
-                            f"Feature flag {flag_key} returned non-boolean value: {flag_value} (type: {type(flag_value).__name__}). "
-                            f"Using default={default}"
+                            f"Feature flag {flag_key} returned non-boolean value: "
+                            f"{repr(flag_value)} (type: {type(flag_value).__name__}). "
+                            f"Using default value {repr(default)}"
                         )
                         is_enabled = default
 

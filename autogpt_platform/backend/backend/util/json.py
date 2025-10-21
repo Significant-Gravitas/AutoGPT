@@ -1,31 +1,20 @@
-import json
+import logging
 import re
-from typing import Any, Type, TypeGuard, TypeVar, overload
+from typing import Any, Type, TypeVar, overload
 
 import jsonschema
 import orjson
-from fastapi.encoders import jsonable_encoder
+from fastapi.encoders import jsonable_encoder as to_dict
 from prisma import Json
-from pydantic import BaseModel
 
+from .truncate import truncate
 from .type import type_match
+
+logger = logging.getLogger(__name__)
 
 # Precompiled regex to remove PostgreSQL-incompatible control characters
 # Removes \u0000-\u0008, \u000B-\u000C, \u000E-\u001F, \u007F (keeps tab \u0009, newline \u000A, carriage return \u000D)
 POSTGRES_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]")
-
-# Comprehensive regex to remove all PostgreSQL-incompatible control character sequences in JSON
-# Handles both Unicode escapes (\\u0000-\\u0008, \\u000B-\\u000C, \\u000E-\\u001F, \\u007F)
-# and JSON single-char escapes (\\b, \\f) while preserving legitimate file paths
-POSTGRES_JSON_ESCAPES = re.compile(
-    r"\\u000[0-8]|\\u000[bB]|\\u000[cC]|\\u00[0-1][0-9a-fA-F]|\\u007[fF]|(?<!\\)\\[bf](?!\\)"
-)
-
-
-def to_dict(data) -> dict:
-    if isinstance(data, BaseModel):
-        data = data.model_dump()
-    return jsonable_encoder(data)
 
 
 def dumps(
@@ -116,38 +105,57 @@ def validate_with_jsonschema(
         return str(e)
 
 
-def is_list_of_basemodels(value: object) -> TypeGuard[list[BaseModel]]:
-    return isinstance(value, list) and all(
-        isinstance(item, BaseModel) for item in value
-    )
+def _sanitize_string(value: str) -> str:
+    """Remove PostgreSQL-incompatible control characters from string."""
+    return POSTGRES_CONTROL_CHARS.sub("", value)
 
 
-def convert_pydantic_to_json(output_data: Any) -> Any:
-    if isinstance(output_data, BaseModel):
-        return output_data.model_dump()
-    if is_list_of_basemodels(output_data):
-        return [item.model_dump() for item in output_data]
-    return output_data
+def sanitize_json(data: Any) -> Any:
+    try:
+        # Use two-pass approach for consistent string sanitization:
+        # 1. First convert to basic JSON-serializable types (handles Pydantic models)
+        # 2. Then sanitize strings in the result
+        basic_result = to_dict(data)
+        return to_dict(basic_result, custom_encoder={str: _sanitize_string})
+    except Exception as e:
+        # Log the failure and fall back to string representation
+        logger.error(
+            "SafeJson fallback to string representation due to serialization error: %s (%s). "
+            "Data type: %s, Data preview: %s",
+            type(e).__name__,
+            truncate(str(e), 200),
+            type(data).__name__,
+            truncate(str(data), 100),
+        )
+
+        # Ultimate fallback: convert to string representation and sanitize
+        return _sanitize_string(str(data))
 
 
-def SafeJson(data: Any) -> Json:
+class SafeJson(Json):
     """
     Safely serialize data and return Prisma's Json type.
-    Sanitizes null bytes to prevent PostgreSQL 22P05 errors.
+    Sanitizes control characters to prevent PostgreSQL 22P05 errors.
+
+    This function:
+    1. Converts Pydantic models to dicts (recursively using to_dict)
+    2. Recursively removes PostgreSQL-incompatible control characters from strings
+    3. Returns a Prisma Json object safe for database storage
+
+    Uses to_dict (jsonable_encoder) with a custom encoder to handle both Pydantic
+    conversion and control character sanitization in a two-pass approach.
+
+    Args:
+        data: Input data to sanitize and convert to Json
+
+    Returns:
+        Prisma Json object with control characters removed
+
+    Examples:
+        >>> SafeJson({"text": "Hello\\x00World"})  # null char removed
+        >>> SafeJson({"path": "C:\\\\temp"})  # backslashes preserved
+        >>> SafeJson({"data": "Text\\\\u0000here"})  # literal backslash-u preserved
     """
-    if isinstance(data, BaseModel):
-        json_string = data.model_dump_json(
-            warnings="error",
-            exclude_none=True,
-            fallback=lambda v: None,
-        )
-    else:
-        json_string = dumps(data, default=lambda v: None)
 
-    # Remove PostgreSQL-incompatible control characters in JSON string
-    # Single comprehensive regex handles all control character sequences
-    sanitized_json = POSTGRES_JSON_ESCAPES.sub("", json_string)
-
-    # Remove any remaining raw control characters (fallback safety net)
-    sanitized_json = POSTGRES_CONTROL_CHARS.sub("", sanitized_json)
-    return Json(json.loads(sanitized_json))
+    def __init__(self, data: Any):
+        super().__init__(sanitize_json(data))

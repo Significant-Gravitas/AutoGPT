@@ -1,6 +1,5 @@
 import { useTurnstile } from "@/hooks/useTurnstile";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { BehaveAs, getBehaveAs } from "@/lib/utils";
 import { LoginProvider, signupFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
@@ -8,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { environment } from "@/services/environment";
 
 export function useSignupPage() {
   const { supabase, user, isUserLoading } = useSupabase();
@@ -19,7 +19,7 @@ export function useSignupPage() {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
 
-  const isCloudEnv = getBehaveAs() === BehaveAs.CLOUD;
+  const isCloudEnv = environment.isCloud();
   const isVercelPreview = process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
 
   const turnstile = useTurnstile({
@@ -70,6 +70,13 @@ export function useSignupPage() {
         const { error } = await response.json();
         setIsGoogleLoading(false);
         resetCaptcha();
+
+        // Check for waitlist error
+        if (error === "not_allowed") {
+          setShowNotAllowedModal(true);
+          return;
+        }
+
         toast({
           title: error || "Failed to start OAuth flow",
           variant: "destructive",

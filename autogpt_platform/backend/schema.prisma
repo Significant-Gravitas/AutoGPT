@@ -5,10 +5,11 @@ datasource db {
 }
 
 generator client {
-  provider             = "prisma-client-py"
-  recursive_type_depth = -1
-  interface            = "asyncio"
-  previewFeatures      = ["views"]
+  provider               = "prisma-client-py"
+  recursive_type_depth   = -1
+  interface              = "asyncio"
+  previewFeatures        = ["views", "fullTextSearch"]
+  partial_type_generator = "backend/data/partial_types.py"
 }
 
 // User model to mirror Auth provider users
@@ -45,6 +46,7 @@ model User {
   AnalyticsDetails     AnalyticsDetails[]
   AnalyticsMetrics     AnalyticsMetrics[]
   CreditTransactions   CreditTransaction[]
+  UserBalance          UserBalance?
 
   AgentPresets  AgentPreset[]
   LibraryAgents LibraryAgent[]
@@ -663,6 +665,7 @@ view StoreAgent {
   sub_heading      String
   description      String
   categories       String[]
+  search           Unsupported("tsvector")? @default(dbgenerated("''::tsvector"))
   runs             Int
   rating           Float
   versions         String[]
@@ -746,7 +749,7 @@ model StoreListing {
   slug String
 
   // Allow this agent to be used during onboarding
-  useForOnboarding   Boolean @default(false)
+  useForOnboarding Boolean @default(false)
 
   // The currently active version that should be shown to users
   activeVersionId String?              @unique
@@ -796,6 +799,8 @@ model StoreListingVersion {
   isDeleted   Boolean @default(false)
   // Old versions can be made unavailable by the author if desired
   isAvailable Boolean @default(true)
+
+  search Unsupported("tsvector")? @default(dbgenerated("''::tsvector"))
 
   // Version workflow state
   submissionStatus SubmissionStatus @default(DRAFT)
@@ -885,6 +890,16 @@ model APIKey {
 
   @@index([head, name])
   @@index([userId, status])
+}
+
+model UserBalance {
+  userId    String   @id
+  balance   Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 enum APIKeyStatus {
