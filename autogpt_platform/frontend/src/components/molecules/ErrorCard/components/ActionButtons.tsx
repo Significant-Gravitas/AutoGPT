@@ -22,7 +22,7 @@ export function ActionButtons({
       {onRetry && (
         <Button onClick={onRetry} variant="outline" size="small">
           <ArrowClockwise size={16} weight="bold" />
-          Try Again
+          <span className="sentry-unmask">Try Again</span>
         </Button>
       )}
 
@@ -32,7 +32,7 @@ export function ActionButtons({
         size="small"
       >
         <Bug size={16} weight="bold" />
-        Report Error
+        <span className="sentry-unmask">Report Error</span>
       </Button>
 
       <Button
@@ -44,7 +44,7 @@ export function ActionButtons({
         rel="noopener noreferrer"
       >
         <DiscordLogo size={16} weight="fill" />
-        Get Help
+        <span className="sentry-unmask">Get Help</span>
       </Button>
     </div>
   );

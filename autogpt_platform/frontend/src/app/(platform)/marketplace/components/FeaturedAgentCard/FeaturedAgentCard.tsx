@@ -34,7 +34,7 @@ export const FeaturedAgentCard = ({
         <CardTitle className="line-clamp-2 text-base sm:text-xl">
           {agent.agent_name}
         </CardTitle>
-        <CardDescription className="text-sm">
+        <CardDescription className="sentry-unmask text-sm">
           By {agent.creator}
         </CardDescription>
       </CardHeader>
@@ -61,7 +61,7 @@ export const FeaturedAgentCard = ({
         </div>
       </CardContent>
       <CardFooter className="flex items-center justify-between">
-        <div className="font-semibold">
+        <div className="sentry-unmask font-semibold">
           {agent.runs?.toLocaleString() ?? "0"} runs
         </div>
         <div className="flex items-center gap-1.5">

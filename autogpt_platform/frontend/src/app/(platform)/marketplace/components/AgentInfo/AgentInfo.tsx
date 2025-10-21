@@ -56,7 +56,7 @@ export const AgentInfo = ({
 
       {/* Creator */}
       <div className="mb-3 flex w-full items-center gap-1.5 lg:mb-4">
-        <div className="text-base font-normal text-neutral-800 dark:text-neutral-200 sm:text-lg lg:text-xl">
+        <div className="sentry-unmask text-base font-normal text-neutral-800 dark:text-neutral-200 sm:text-lg lg:text-xl">
           by
         </div>
         <Link
@@ -85,7 +85,7 @@ export const AgentInfo = ({
             onClick={handleLibraryAction}
             disabled={isAddingAgentToLibrary}
           >
-            <span className="justify-start font-sans text-sm font-medium leading-snug text-primary-foreground">
+            <span className="sentry-unmask justify-start font-sans text-sm font-medium leading-snug text-primary-foreground">
               {libraryAgent ? "See runs" : "Add to library"}
             </span>
           </button>
@@ -99,7 +99,7 @@ export const AgentInfo = ({
           onClick={handleDownload}
           disabled={isDownloadingAgent}
         >
-          <div className="justify-start text-center font-sans text-sm font-medium leading-snug text-zinc-800">
+          <div className="sentry-unmask justify-start text-center font-sans text-sm font-medium leading-snug text-zinc-800">
             Download agent
           </div>
         </button>
@@ -113,7 +113,7 @@ export const AgentInfo = ({
           </span>
           <div className="flex gap-0.5">{StarRatingIcons(rating)}</div>
         </div>
-        <div className="whitespace-nowrap text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
+        <div className="sentry-unmask whitespace-nowrap text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
           {runs.toLocaleString()} runs
         </div>
       </div>
@@ -123,7 +123,7 @@ export const AgentInfo = ({
 
       {/* Description Section */}
       <div className="mb-4 w-full lg:mb-[36px]">
-        <div className="decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
+        <div className="sentry-unmask decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
           Description
         </div>
         <div
@@ -136,7 +136,7 @@ export const AgentInfo = ({
 
       {/* Categories */}
       <div className="mb-4 flex w-full flex-col gap-1.5 sm:gap-2 lg:mb-[36px]">
-        <div className="decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
+        <div className="sentry-unmask decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
           Categories
         </div>
         <div className="flex flex-wrap gap-1.5 sm:gap-2">
@@ -153,13 +153,13 @@ export const AgentInfo = ({
 
       {/* Version History */}
       <div className="flex w-full flex-col gap-0.5 sm:gap-1">
-        <div className="decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
+        <div className="sentry-unmask decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
           Version history
         </div>
-        <div className="decoration-skip-ink-none text-base font-normal leading-6 text-neutral-600 underline-offset-[from-font] dark:text-neutral-400">
+        <div className="sentry-unmask decoration-skip-ink-none text-base font-normal leading-6 text-neutral-600 underline-offset-[from-font] dark:text-neutral-400">
           Last updated {lastUpdated}
         </div>
-        <div className="text-xs text-neutral-600 dark:text-neutral-400 sm:text-sm">
+        <div className="sentry-unmask text-xs text-neutral-600 dark:text-neutral-400 sm:text-sm">
           Version {version}
         </div>
       </div>

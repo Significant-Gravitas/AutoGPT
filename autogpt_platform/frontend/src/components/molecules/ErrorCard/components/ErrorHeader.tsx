@@ -9,7 +9,7 @@ export function ErrorHeader() {
         <Warning size={24} weight="fill" className="text-red-400" />
       </div>
       <div>
-        <Text variant="large-semibold" className="text-zinc-800">
+        <Text variant="large-semibold" className="sentry-unmask text-zinc-800">
           Something went wrong
         </Text>
       </div>

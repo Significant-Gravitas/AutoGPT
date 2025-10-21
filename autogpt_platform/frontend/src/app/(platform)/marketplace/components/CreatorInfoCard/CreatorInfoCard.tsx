@@ -59,7 +59,7 @@ export const CreatorInfoCard = ({
         <div className="flex w-full flex-col items-start justify-start gap-3">
           <div className="h-px w-full bg-neutral-700 dark:bg-neutral-300" />
           <div className="flex flex-col items-start justify-start gap-2.5">
-            <div className="w-full text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
+            <div className="sentry-unmask w-full text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
               Top categories
             </div>
             <div
@@ -86,7 +86,7 @@ export const CreatorInfoCard = ({
           <div className="h-px w-full bg-neutral-700 dark:bg-neutral-300" />
           <div className="flex w-full flex-col items-start justify-between gap-4 sm:flex-row sm:gap-0">
             <div className="flex w-full flex-col items-start justify-start gap-2.5 sm:w-[164px]">
-              <div className="w-full text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
+              <div className="sentry-unmask w-full text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
                 Average rating
               </div>
               <div className="inline-flex items-center gap-2">
@@ -103,10 +103,10 @@ export const CreatorInfoCard = ({
               </div>
             </div>
             <div className="flex w-full flex-col items-start justify-start gap-2.5 sm:w-[164px]">
-              <div className="w-full text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
+              <div className="sentry-unmask w-full text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
                 Number of runs
               </div>
-              <div className="text-[18px] font-semibold leading-[28px] text-neutral-800 dark:text-neutral-200">
+              <div className="sentry-unmask text-[18px] font-semibold leading-[28px] text-neutral-800 dark:text-neutral-200">
                 {new Intl.NumberFormat().format(totalRuns)} runs
               </div>
             </div>

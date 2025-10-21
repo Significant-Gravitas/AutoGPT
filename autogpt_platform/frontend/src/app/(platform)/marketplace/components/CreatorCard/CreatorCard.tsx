@@ -47,7 +47,7 @@ export const CreatorCard = ({
         <p className="text-sm font-normal leading-normal text-neutral-600 dark:text-neutral-400">
           {bio}
         </p>
-        <div className="text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
+        <div className="sentry-unmask text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
           {agentsUploaded} agents
         </div>
       </div>

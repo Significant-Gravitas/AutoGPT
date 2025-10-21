@@ -25,7 +25,7 @@ export const FeaturedSection = ({ featuredAgents }: FeaturedSectionProps) => {
 
   return (
     <section className="w-full">
-      <h2 className="mb-8 font-poppins text-2xl font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
+      <h2 className="sentry-unmask mb-8 font-poppins text-2xl font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
         Featured agents
       </h2>
 
