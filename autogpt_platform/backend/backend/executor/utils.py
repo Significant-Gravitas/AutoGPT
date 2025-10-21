@@ -42,7 +42,7 @@ from backend.util.clients import (
     get_integration_credentials_store,
 )
 from backend.util.exceptions import GraphValidationError, NotFoundError
-from backend.util.logging import TruncatedLogger
+from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
 from backend.util.type import convert
 
@@ -99,7 +99,11 @@ class LogMetadata(TruncatedLogger):
             "node_id": node_id,
             "block_name": block_name,
         }
-        prefix = f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|neid:{node_eid}|{block_name}]"
+        prefix = (
+            "[ExecutionManager]"
+            if is_structured_logging_enabled()
+            else f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|neid:{node_eid}|{block_name}]"  # noqa
+        )
         super().__init__(
             logger,
             max_length=max_length,
