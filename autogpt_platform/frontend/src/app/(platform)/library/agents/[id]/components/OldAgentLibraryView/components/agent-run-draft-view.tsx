@@ -43,6 +43,7 @@ import {
 
 import { AgentStatus, AgentStatusChip } from "./agent-status-chip";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
+import { analytics } from "@/services/analytics";
 
 export function AgentRunDraftView({
   graph,
@@ -188,6 +189,11 @@ export function AgentRunDraftView({
         .executeGraph(graph.id, graph.version, inputValues, inputCredentials)
         .catch(toastOnFail("execute agent"));
 
+      analytics.sendDatafastEvent("run_agent", {
+        name: graph.name,
+        id: graph.id,
+      });
+
       if (newRun && onRun) onRun(newRun.id);
     } else {
       await api
@@ -197,6 +203,12 @@ export function AgentRunDraftView({
     }
     // Mark run agent onboarding step as completed
     completeOnboardingStep("MARKETPLACE_RUN_AGENT");
+
+    analytics.sendDatafastEvent("run_agent", {
+      name: graph.name,
+      id: graph.id,
+    });
+
     if (runCount > 0) {
       completeOnboardingStep("RE_RUN_AGENT");
     }
@@ -372,6 +384,12 @@ export function AgentRunDraftView({
           credentials: inputCredentials,
         })
         .catch(toastOnFail("set up agent run schedule"));
+
+      analytics.sendDatafastEvent("schedule_agent", {
+        name: graph.name,
+        id: graph.id,
+        cronExpression: cronExpression,
+      });
 
       if (schedule && onCreateSchedule) onCreateSchedule(schedule);
     },
