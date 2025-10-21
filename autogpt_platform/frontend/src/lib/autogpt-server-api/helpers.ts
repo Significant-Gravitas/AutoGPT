@@ -1,7 +1,6 @@
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { Key, storage } from "@/services/storage/local-storage";
-import { getAgptServerApiUrl } from "@/lib/env-config";
-import { isServerSide } from "../utils/is-server-side";
+import { environment } from "@/services/environment";
 
 import { GraphValidationErrorResponse } from "./types";
 
@@ -57,7 +56,7 @@ export function buildClientUrl(path: string): string {
 }
 
 export function buildServerUrl(path: string): string {
-  return `${getAgptServerApiUrl()}${path}`;
+  return `${environment.getAGPTServerApiUrl()}${path}`;
 }
 
 export function buildUrlWithQuery(
@@ -197,7 +196,7 @@ function isAuthenticationError(
 }
 
 function isLogoutInProgress(): boolean {
-  if (isServerSide()) return false;
+  if (environment.isServerSide()) return false;
 
   try {
     // Check if logout was recently triggered
