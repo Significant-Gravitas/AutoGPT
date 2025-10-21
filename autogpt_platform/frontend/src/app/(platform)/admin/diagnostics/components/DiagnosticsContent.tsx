@@ -152,34 +152,6 @@ export function DiagnosticsContent() {
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
                     <p className="text-sm font-medium text-gray-500">
-                      Total Agents
-                    </p>
-                    <p className="text-3xl font-bold">
-                      {agentData.total_agents}
-                    </p>
-                  </div>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-100">
-                    <div className="h-6 w-6 rounded-full bg-purple-500"></div>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between rounded-lg border p-4">
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">
-                      Active Agents
-                    </p>
-                    <p className="text-3xl font-bold">
-                      {agentData.active_agents}
-                    </p>
-                  </div>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-indigo-100">
-                    <div className="h-6 w-6 rounded-full bg-indigo-500"></div>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between rounded-lg border p-4">
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">
                       Agents with Active Executions
                     </p>
                     <p className="text-3xl font-bold">

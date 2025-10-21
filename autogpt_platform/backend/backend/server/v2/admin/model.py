@@ -28,7 +28,5 @@ class ExecutionDiagnosticsResponse(BaseModel):
 class AgentDiagnosticsResponse(BaseModel):
     """Response model for agent diagnostics"""
 
-    total_agents: int
-    active_agents: int
     agents_with_active_executions: int
     timestamp: str

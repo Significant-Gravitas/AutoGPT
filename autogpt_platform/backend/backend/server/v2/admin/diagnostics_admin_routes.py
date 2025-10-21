@@ -72,33 +72,6 @@ def get_rabbitmq_queue_depth() -> int:
         return -1
 
 
-async def get_total_agents_count() -> int:
-    """Get the total count of agents in the system."""
-    try:
-        count = await AgentGraph.prisma().count(
-            where={"isDeleted": False}
-        )
-        return count
-    except Exception as e:
-        logger.error(f"Error getting total agents count: {e}")
-        raise
-
-
-async def get_active_agents_count() -> int:
-    """Get the count of agents that are currently active (not deleted or archived)."""
-    try:
-        count = await AgentGraph.prisma().count(
-            where={
-                "isDeleted": False,
-                "isActive": True,
-            }
-        )
-        return count
-    except Exception as e:
-        logger.error(f"Error getting active agents count: {e}")
-        raise
-
-
 async def get_agents_with_active_executions_count() -> int:
     """Get the count of unique agents that have running or queued executions."""
     try:
@@ -167,28 +140,21 @@ async def get_agent_diagnostics():
     Get diagnostic information about agents.
 
     Returns:
-        - total_agents: Total number of non-deleted agents
-        - active_agents: Number of active agents
         - agents_with_active_executions: Number of unique agents with running/queued executions
         - timestamp: Current timestamp
     """
     try:
         logger.info("Getting agent diagnostics")
 
-        total_count = await get_total_agents_count()
-        active_count = await get_active_agents_count()
         active_executions_count = await get_agents_with_active_executions_count()
 
         response = AgentDiagnosticsResponse(
-            total_agents=total_count,
-            active_agents=active_count,
             agents_with_active_executions=active_executions_count,
             timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
         logger.info(
-            f"Agent diagnostics: total={total_count}, "
-            f"active={active_count}, with_active_executions={active_executions_count}"
+            f"Agent diagnostics: with_active_executions={active_executions_count}"
         )
 
         return response
