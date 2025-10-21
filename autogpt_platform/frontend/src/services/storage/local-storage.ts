@@ -7,6 +7,7 @@ export enum Key {
   COPIED_FLOW_DATA = "copied-flow-data",
   SHEPHERD_TOUR = "shepherd-tour",
   WALLET_LAST_SEEN_CREDITS = "wallet-last-seen-credits",
+  LIBRARY_AGENTS_CACHE = "library-agents-cache",
 }
 
 function get(key: Key) {
