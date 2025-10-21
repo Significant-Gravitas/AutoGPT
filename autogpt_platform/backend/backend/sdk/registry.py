@@ -13,11 +13,9 @@ from backend.data.model import Credentials
 from backend.integrations.oauth.base import BaseOAuthHandler
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks._base import BaseWebhooksManager
-from backend.sdk.db import upsert_providers_change_bulk
-from backend.sdk.provider import ProviderRegister
 
 if TYPE_CHECKING:
-    from backend.sdk.provider import Provider, ProviderRegister
+    from backend.sdk.provider import Provider
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +57,6 @@ class AutoRegistry:
     _webhook_managers: Dict[str, Type[BaseWebhooksManager]] = {}
     _block_configurations: Dict[Type[Block], BlockConfiguration] = {}
     _api_key_mappings: Dict[str, str] = {}  # provider -> env_var_name
-    _provider_registry: Dict[str, ProviderRegister] = {}
 
     @classmethod
     def register_provider(cls, provider: "Provider") -> None:
@@ -67,7 +64,6 @@ class AutoRegistry:
         with cls._lock:
             cls._providers[provider.name] = provider
 
-            cls._provider_registry[provider.name] = provider.register
             # Register OAuth handler if provided
             if provider.oauth_config:
                 # Dynamically set PROVIDER_NAME if not already set
@@ -167,7 +163,7 @@ class AutoRegistry:
             cls._api_key_mappings.clear()
 
     @classmethod
-    async def patch_integrations(cls) -> None:
+    def patch_integrations(cls) -> None:
         """Patch existing integration points to use AutoRegistry."""
         # OAuth handlers are handled by SDKAwareHandlersDict in oauth/__init__.py
         # No patching needed for OAuth handlers
@@ -217,73 +213,6 @@ class AutoRegistry:
 
                 creds_store: Any = backend.integrations.credentials_store
 
-            if "backend.integrations.providers" in sys.modules:
-                providers: Any = sys.modules["backend.integrations.providers"]
-            else:
-                import backend.integrations.providers
-
-                providers: Any = backend.integrations.providers
-
-            legacy_oauth_providers = {
-                providers.ProviderName.DISCORD.value: ProviderRegister(
-                    name=providers.ProviderName.DISCORD.value,
-                    with_oauth=True,
-                    client_id_env_var="DISCORD_CLIENT_ID",
-                    client_secret_env_var="DISCORD_CLIENT_SECRET",
-                ),
-                providers.ProviderName.GITHUB.value: ProviderRegister(
-                    name=providers.ProviderName.GITHUB.value,
-                    with_oauth=True,
-                    client_id_env_var="GITHUB_CLIENT_ID",
-                    client_secret_env_var="GITHUB_CLIENT_SECRET",
-                ),
-                providers.ProviderName.GOOGLE.value: ProviderRegister(
-                    name=providers.ProviderName.GOOGLE.value,
-                    with_oauth=True,
-                    client_id_env_var="GOOGLE_CLIENT_ID",
-                    client_secret_env_var="GOOGLE_CLIENT_SECRET",
-                ),
-                providers.ProviderName.NOTION.value: ProviderRegister(
-                    name=providers.ProviderName.NOTION.value,
-                    with_oauth=True,
-                    client_id_env_var="NOTION_CLIENT_ID",
-                    client_secret_env_var="NOTION_CLIENT_SECRET",
-                ),
-                providers.ProviderName.TWITTER.value: ProviderRegister(
-                    name=providers.ProviderName.TWITTER.value,
-                    with_oauth=True,
-                    client_id_env_var="TWITTER_CLIENT_ID",
-                    client_secret_env_var="TWITTER_CLIENT_SECRET",
-                ),
-                providers.ProviderName.TODOIST.value: ProviderRegister(
-                    name=providers.ProviderName.TODOIST.value,
-                    with_oauth=True,
-                    client_id_env_var="TODOIST_CLIENT_ID",
-                    client_secret_env_var="TODOIST_CLIENT_SECRET",
-                ),
-            }
-
-            if hasattr(creds_store, "DEFAULT_CREDENTIALS"):
-                DEFAULT_CREDENTIALS = creds_store.DEFAULT_CREDENTIALS
-                for item in DEFAULT_CREDENTIALS:
-                    new_cred = ProviderRegister(
-                        name=item.provider,
-                        with_api_key=True,
-                        api_key_env_var=item.api_key_env_var,
-                    )
-                    if item.provider in legacy_oauth_providers:
-                        new_cred.with_oauth = True
-                        new_cred.client_id_env_var = legacy_oauth_providers[
-                            item.provider
-                        ].client_id_env_var
-                        new_cred.client_secret_env_var = legacy_oauth_providers[
-                            item.provider
-                        ].client_secret_env_var
-
-                    cls._provider_registry[item.provider] = new_cred
-
-            await upsert_providers_change_bulk(providers=cls._provider_registry)
-
             if hasattr(creds_store, "IntegrationCredentialsStore"):
                 store_class = creds_store.IntegrationCredentialsStore
                 if hasattr(store_class, "get_all_creds"):
@@ -308,6 +237,5 @@ class AutoRegistry:
                     logger.info(
                         "Successfully patched IntegrationCredentialsStore.get_all_creds"
                     )
-
         except Exception as e:
             logging.warning(f"Failed to patch credentials store: {e}")
