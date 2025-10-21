@@ -12,6 +12,7 @@ import {
 import * as Sentry from "@sentry/nextjs";
 import type {
   AddUserCreditsResponse,
+  AgentDiagnosticsResponse,
   AnalyticsDetails,
   AnalyticsMetrics,
   APIKey,
@@ -26,6 +27,7 @@ import type {
   CredentialsDeleteResponse,
   CredentialsMetaInput,
   CredentialsMetaResponse,
+  ExecutionDiagnosticsResponse,
   Graph,
   GraphCreatable,
   GraphExecution,
@@ -647,6 +649,14 @@ export default class BackendAPI {
     const url = `/store/admin/submissions/download/${storeListingVersionId}`;
 
     return this._get(url);
+  }
+
+  getExecutionDiagnosticsAdmin(): Promise<ExecutionDiagnosticsResponse> {
+    return this._get("/admin/diagnostics/executions");
+  }
+
+  getAgentDiagnosticsAdmin(): Promise<AgentDiagnosticsResponse> {
+    return this._get("/admin/diagnostics/agents");
   }
 
   ////////////////////////////////////////
