@@ -4,6 +4,7 @@ import os
 import threading
 import time
 from functools import wraps
+from typing import Literal
 from uuid import uuid4
 
 from tenacity import (
@@ -43,8 +44,14 @@ def should_send_alert(func_name: str, exception: Exception, context: str = "") -
 
 
 def send_rate_limited_discord_alert(
-    func_name: str, exception: Exception, context: str, alert_msg: str, channel=None,
-    correlation_id: str | None = None, severity: str = 'critical', extra_attributes: dict | None = None
+    func_name: str,
+    exception: Exception,
+    context: str,
+    alert_msg: str,
+    channel=None,
+    correlation_id: str | None = None,
+    severity: Literal["warning", "critical", "minor"] = "critical",
+    extra_attributes: dict | None = None,
 ) -> bool:
     """
     Send a Discord alert with rate limiting.
@@ -64,8 +71,8 @@ def send_rate_limited_discord_alert(
             channel=channel or DiscordChannel.PLATFORM,
             correlation_id=correlation_id,
             severity=severity,
-            status='open',
-            extra_attributes=extra_attributes or {}
+            status="open",
+            extra_attributes=extra_attributes or {},
         )
         return True
 
@@ -83,7 +90,9 @@ def _send_critical_retry_alert(
     error_type = type(exception).__name__
 
     # Create correlation ID based on context, function name, and error type
-    correlation_id = f"retry_failure_{context}_{func_name}_{error_type}".replace(" ", "_").replace(":", "")
+    correlation_id = f"retry_failure_{context}_{func_name}_{error_type}".replace(
+        " ", "_"
+    ).replace(":", "")
 
     if send_rate_limited_discord_alert(
         func_name,
@@ -94,14 +103,14 @@ def _send_critical_retry_alert(
         f"Error: {error_type}: {exception}\n\n"
         f"This operation is about to fail permanently. Investigate immediately.",
         correlation_id=correlation_id,
-        severity='critical',
+        severity="critical",
         extra_attributes={
-            'function_name': func_name,
-            'attempt_number': str(attempt_number),
-            'max_attempts': str(EXCESSIVE_RETRY_THRESHOLD),
-            'error_type': error_type,
-            'context': context or 'none',
-        }
+            "function_name": func_name,
+            "attempt_number": str(attempt_number),
+            "max_attempts": str(EXCESSIVE_RETRY_THRESHOLD),
+            "error_type": error_type,
+            "context": context or "none",
+        },
     ):
         logger.critical(
             f"CRITICAL ALERT SENT: Operation {func_name} at attempt {attempt_number}"
@@ -207,7 +216,11 @@ def conn_retry(
             if attempt_number == EXCESSIVE_RETRY_THRESHOLD:
                 error_type = type(exception).__name__
                 # Create correlation ID for infrastructure issues
-                correlation_id = f"infrastructure_{resource_name}_{action_name}_{func_name}".replace(" ", "_")
+                correlation_id = (
+                    f"infrastructure_{resource_name}_{action_name}_{func_name}".replace(
+                        " ", "_"
+                    )
+                )
 
                 if send_rate_limited_discord_alert(
                     func_name,
@@ -221,15 +234,15 @@ def conn_retry(
                     f"Error: {error_type}: {str(exception)[:200]}{'...' if len(str(exception)) > 200 else ''}\n\n"
                     f"Infrastructure component is approaching failure threshold. Investigate immediately.",
                     correlation_id=correlation_id,
-                    severity='critical',
+                    severity="critical",
                     extra_attributes={
-                        'resource_name': resource_name,
-                        'action_name': action_name,
-                        'function_name': func_name,
-                        'attempt_number': str(attempt_number),
-                        'max_attempts': str(max_retry + 1),
-                        'error_type': error_type,
-                    }
+                        "resource_name": resource_name,
+                        "action_name": action_name,
+                        "function_name": func_name,
+                        "attempt_number": str(attempt_number),
+                        "max_attempts": str(max_retry + 1),
+                        "error_type": error_type,
+                    },
                 ):
                     logger.critical(
                         f"INFRASTRUCTURE ALERT SENT: {resource_name} at {attempt_number} attempts"

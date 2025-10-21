@@ -33,7 +33,12 @@ from backend.data.user import (
 from backend.notifications.email import EmailSender
 from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
-from backend.util.metrics import AllQuietAlert, DiscordChannel, discord_send_alert, send_allquiet_alert
+from backend.util.metrics import (
+    AllQuietAlert,
+    DiscordChannel,
+    discord_send_alert,
+    send_allquiet_alert,
+)
 from backend.util.retry import continuous_retry
 from backend.util.service import (
     AppService,
@@ -427,8 +432,8 @@ class NotificationManager(AppService):
         content: str,
         channel: DiscordChannel = DiscordChannel.PLATFORM,
         correlation_id: str | None = None,
-        severity: Literal['warning', 'critical', 'minor'] = 'warning',
-        status: Literal['resolved', 'open'] = 'open',
+        severity: Literal["warning", "critical", "minor"] = "warning",
+        status: Literal["resolved", "open"] = "open",
         extra_attributes: dict[str, str] | None = None,
     ):
         """Send both Discord and AllQuiet alerts for system events."""
@@ -438,10 +443,18 @@ class NotificationManager(AppService):
         # Send AllQuiet alert if correlation_id is provided
         if correlation_id:
             # Extract title from content (first line or first sentence)
-            lines = content.split('\n')
+            lines = content.split("\n")
             title = lines[0] if lines else content[:100]
             # Remove Discord formatting from title
-            title = title.replace('**', '').replace('🚨', '').replace('⚠️', '').replace('❌', '').replace('✅', '').replace('📊', '').strip()
+            title = (
+                title.replace("**", "")
+                .replace("🚨", "")
+                .replace("⚠️", "")
+                .replace("❌", "")
+                .replace("✅", "")
+                .replace("📊", "")
+                .strip()
+            )
 
             alert = AllQuietAlert(
                 severity=severity,
