@@ -40,7 +40,7 @@ Sentry.init({
 
   enableLogs: true,
   integrations: [
-    Sentry.captureConsoleIntegration(),
+    Sentry.captureConsoleIntegration({ levels: ["fatal", "error", "warn"] }),
     Sentry.extraErrorDataIntegration(),
   ],
 });
