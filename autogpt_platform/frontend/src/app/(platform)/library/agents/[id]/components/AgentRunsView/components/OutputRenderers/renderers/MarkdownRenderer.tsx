@@ -50,7 +50,7 @@ function isVideoUrl(url: string): boolean {
     ) {
       return true;
     }
-  } catch (e) {
+  } catch {
     // If URL parsing fails, treat as not a Vimeo URL.
   }
   return videoExtensions.some((ext) => url.toLowerCase().includes(ext));
