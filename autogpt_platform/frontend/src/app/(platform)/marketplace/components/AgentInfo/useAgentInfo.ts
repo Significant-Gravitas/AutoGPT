@@ -5,6 +5,7 @@ import * as Sentry from "@sentry/nextjs";
 import { useGetV2DownloadAgentFile } from "@/app/api/__generated__/endpoints/store/store";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { analytics } from "@/services/analytics";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 
 interface UseAgentInfoProps {
   storeListingVersionId: string;
@@ -36,13 +37,11 @@ export const useAgentInfo = ({ storeListingVersionId }: UseAgentInfoProps) => {
     isAddingAgentFirstTime: boolean;
   }) => {
     try {
-      const { data, status } = await addMarketplaceAgentToLibrary({
+      const { data: response } = await addMarketplaceAgentToLibrary({
         data: { store_listing_version_id: storeListingVersionId },
       });
 
-      if (status !== 201) {
-        throw new Error("Failed to add agent to library");
-      }
+      const data = response as LibraryAgent;
 
       if (isAddingAgentFirstTime) {
         completeStep("MARKETPLACE_ADD_AGENT");
