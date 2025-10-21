@@ -11,6 +11,22 @@ import {
 } from "@/lib/utils";
 import * as Sentry from "@sentry/nextjs";
 
+// Workaround for Sentry httpClientIntegration bug with URL objects
+// Sentry's httpClientIntegration (v10.15.0) doesn't properly handle URL objects
+// passed to fetch(), causing "url.includes is not a function" errors.
+// This wrapper converts URL objects to strings before Sentry's instrumentation processes them.
+if (typeof window !== "undefined" && window.fetch) {
+  const originalFetch = window.fetch;
+  window.fetch = function (input: RequestInfo | URL, init?: RequestInit) {
+    // Convert URL objects to strings for Sentry compatibility
+    let processedInput: RequestInfo | URL = input;
+    if (input instanceof URL) {
+      processedInput = input.toString();
+    }
+    return originalFetch.call(this, processedInput, init);
+  };
+}
+
 const isProdOrDev = [AppEnv.PROD, AppEnv.DEV].includes(getAppEnv());
 
 const isCloud = getBehaveAs() === BehaveAs.CLOUD;
