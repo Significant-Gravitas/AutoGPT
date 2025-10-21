@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from abc import ABC, abstractmethod
 from typing import Any, AsyncGenerator, Generator, Generic, Optional, TypeVar
 
@@ -13,6 +14,9 @@ from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 config = Settings().config
+
+# Check if we should use in-memory implementations
+USE_IN_MEMORY = config.standalone_mode or os.getenv("STANDALONE_MODE", "").lower() in ("true", "1", "yes")
 
 
 M = TypeVar("M", bound=BaseModel)
@@ -98,15 +102,36 @@ class _EventPayloadWrapper(BaseModel, Generic[M]):
 
 
 class RedisEventBus(BaseRedisEventBus[M], ABC):
+    def __init__(self):
+        if USE_IN_MEMORY:
+            from backend.data.inmemory_event_bus import InMemorySyncEventBus
+            # Copy over the abstract properties to the in-memory implementation
+            self._in_memory_bus = type(
+                self.__class__.__name__,
+                (InMemorySyncEventBus,),
+                {"event_bus_name": property(lambda s: self.event_bus_name), "Model": self.Model}
+            )()
+            logger.info(f"Using in-memory event bus for {self.event_bus_name} (standalone mode)")
+        else:
+            self._in_memory_bus = None
+
     @property
     def connection(self) -> redis.Redis:
         return redis.get_redis()
 
     def publish_event(self, event: M, channel_key: str):
+        if self._in_memory_bus:
+            self._in_memory_bus.publish_event(event, channel_key)
+            return
+
         message, full_channel_name = self._serialize_message(event, channel_key)
         self.connection.publish(full_channel_name, message)
 
     def listen_events(self, channel_key: str) -> Generator[M, None, None]:
+        if self._in_memory_bus:
+            yield from self._in_memory_bus.listen_events(channel_key)
+            return
+
         pubsub, full_channel_name = self._get_pubsub_channel(
             self.connection, channel_key
         )
@@ -123,16 +148,38 @@ class RedisEventBus(BaseRedisEventBus[M], ABC):
 
 
 class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
+    def __init__(self):
+        if USE_IN_MEMORY:
+            from backend.data.inmemory_event_bus import InMemoryAsyncEventBus
+            # Copy over the abstract properties to the in-memory implementation
+            self._in_memory_bus = type(
+                self.__class__.__name__,
+                (InMemoryAsyncEventBus,),
+                {"event_bus_name": property(lambda s: self.event_bus_name), "Model": self.Model}
+            )()
+            logger.info(f"Using in-memory async event bus for {self.event_bus_name} (standalone mode)")
+        else:
+            self._in_memory_bus = None
+
     @property
     async def connection(self) -> redis.AsyncRedis:
         return await redis.get_redis_async()
 
     async def publish_event(self, event: M, channel_key: str):
+        if self._in_memory_bus:
+            await self._in_memory_bus.publish_event(event, channel_key)
+            return
+
         message, full_channel_name = self._serialize_message(event, channel_key)
         connection = await self.connection
         await connection.publish(full_channel_name, message)
 
     async def listen_events(self, channel_key: str) -> AsyncGenerator[M, None]:
+        if self._in_memory_bus:
+            async for event in self._in_memory_bus.listen_events(channel_key):
+                yield event
+            return
+
         pubsub, full_channel_name = self._get_pubsub_channel(
             await self.connection, channel_key
         )
@@ -150,6 +197,9 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
     async def wait_for_event(
         self, channel_key: str, timeout: Optional[float] = None
     ) -> M | None:
+        if self._in_memory_bus:
+            return await self._in_memory_bus.wait_for_event(channel_key, timeout)
+
         try:
             return await asyncio.wait_for(
                 anext(aiter(self.listen_events(channel_key))), timeout

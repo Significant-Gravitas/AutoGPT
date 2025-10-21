@@ -7,6 +7,7 @@ from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 
 from backend.util.retry import conn_retry
+from backend.util.settings import Settings
 
 load_dotenv()
 
@@ -16,9 +17,18 @@ PASSWORD = os.getenv("REDIS_PASSWORD", None)
 
 logger = logging.getLogger(__name__)
 
+# Check if we should use in-memory implementations
+_settings = Settings()
+USE_IN_MEMORY = _settings.config.standalone_mode or os.getenv("STANDALONE_MODE", "").lower() in ("true", "1", "yes")
+
 
 @conn_retry("Redis", "Acquiring connection")
 def connect() -> Redis:
+    if USE_IN_MEMORY:
+        from backend.data.inmemory_redis import InMemoryRedis
+        logger.info("Using in-memory Redis client (standalone mode)")
+        return InMemoryRedis()
+
     c = Redis(
         host=HOST,
         port=PORT,
@@ -41,6 +51,11 @@ def get_redis() -> Redis:
 
 @conn_retry("AsyncRedis", "Acquiring connection")
 async def connect_async() -> AsyncRedis:
+    if USE_IN_MEMORY:
+        from backend.data.inmemory_redis import InMemoryAsyncRedis
+        logger.info("Using in-memory async Redis client (standalone mode)")
+        return InMemoryAsyncRedis()
+
     c = AsyncRedis(
         host=HOST,
         port=PORT,

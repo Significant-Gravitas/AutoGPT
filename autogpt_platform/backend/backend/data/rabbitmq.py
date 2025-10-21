@@ -1,4 +1,5 @@
 import logging
+import os
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Awaitable, Optional
@@ -13,6 +14,10 @@ from backend.util.retry import conn_retry, func_retry
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
+
+# Check if we should use in-memory implementations
+_settings = Settings()
+USE_IN_MEMORY = _settings.config.standalone_mode or os.getenv("STANDALONE_MODE", "").lower() in ("true", "1", "yes")
 
 # RabbitMQ Connection Constants
 # These constants solve specific connection stability issues observed in production
@@ -88,6 +93,9 @@ class RabbitMQBase(ABC):
         self._connection = None
         self._channel = None
 
+        # Check if we should use in-memory implementation
+        self._use_in_memory = USE_IN_MEMORY
+
     @property
     def is_connected(self) -> bool:
         """Check if we have a valid connection"""
@@ -117,16 +125,33 @@ class RabbitMQBase(ABC):
 class SyncRabbitMQ(RabbitMQBase):
     """Synchronous RabbitMQ client"""
 
+    def __init__(self, config: RabbitMQConfig):
+        super().__init__(config)
+        if self._use_in_memory:
+            from backend.data.inmemory_queue import InMemorySyncRabbitMQ
+            self._in_memory_client = InMemorySyncRabbitMQ(config)
+            logger.info("Using in-memory RabbitMQ client (standalone mode)")
+        else:
+            self._in_memory_client = None
+
     @property
     def is_connected(self) -> bool:
+        if self._in_memory_client:
+            return self._in_memory_client.is_connected
         return bool(self._connection and self._connection.is_open)
 
     @property
     def is_ready(self) -> bool:
+        if self._in_memory_client:
+            return self._in_memory_client.is_ready
         return bool(self.is_connected and self._channel and self._channel.is_open)
 
     @conn_retry("RabbitMQ", "Acquiring connection")
     def connect(self) -> None:
+        if self._in_memory_client:
+            self._in_memory_client.connect()
+            return
+
         if self.is_connected:
             return
 
@@ -150,6 +175,10 @@ class SyncRabbitMQ(RabbitMQBase):
         self.declare_infrastructure()
 
     def disconnect(self) -> None:
+        if self._in_memory_client:
+            self._in_memory_client.disconnect()
+            return
+
         if self._channel:
             if self._channel.is_open:
                 self._channel.close()
@@ -161,6 +190,10 @@ class SyncRabbitMQ(RabbitMQBase):
 
     def declare_infrastructure(self) -> None:
         """Declare exchanges and queues for this service"""
+        if self._in_memory_client:
+            self._in_memory_client.declare_infrastructure()
+            return
+
         if not self.is_ready:
             self.connect()
 
@@ -200,6 +233,10 @@ class SyncRabbitMQ(RabbitMQBase):
         properties: Optional[BasicProperties] = None,
         mandatory: bool = True,
     ) -> None:
+        if self._in_memory_client:
+            self._in_memory_client.publish_message(routing_key, message, exchange, properties, mandatory)
+            return
+
         if not self.is_ready:
             self.connect()
 
@@ -214,7 +251,10 @@ class SyncRabbitMQ(RabbitMQBase):
             mandatory=mandatory,
         )
 
-    def get_channel(self) -> pika.adapters.blocking_connection.BlockingChannel:
+    def get_channel(self):
+        if self._in_memory_client:
+            return self._in_memory_client.get_channel()
+
         if not self.is_ready:
             self.connect()
         if self._channel is None:
@@ -225,16 +265,33 @@ class SyncRabbitMQ(RabbitMQBase):
 class AsyncRabbitMQ(RabbitMQBase):
     """Asynchronous RabbitMQ client"""
 
+    def __init__(self, config: RabbitMQConfig):
+        super().__init__(config)
+        if self._use_in_memory:
+            from backend.data.inmemory_queue import InMemoryAsyncRabbitMQ
+            self._in_memory_client = InMemoryAsyncRabbitMQ(config)
+            logger.info("Using in-memory async RabbitMQ client (standalone mode)")
+        else:
+            self._in_memory_client = None
+
     @property
     def is_connected(self) -> bool:
+        if self._in_memory_client:
+            return self._in_memory_client.is_connected
         return bool(self._connection and not self._connection.is_closed)
 
     @property
     def is_ready(self) -> bool:
+        if self._in_memory_client:
+            return self._in_memory_client.is_ready
         return bool(self.is_connected and self._channel and not self._channel.is_closed)
 
     @conn_retry("AsyncRabbitMQ", "Acquiring async connection")
     async def connect(self):
+        if self._in_memory_client:
+            await self._in_memory_client.connect()
+            return
+
         if self.is_connected:
             return
 
@@ -253,6 +310,10 @@ class AsyncRabbitMQ(RabbitMQBase):
         await self.declare_infrastructure()
 
     async def disconnect(self):
+        if self._in_memory_client:
+            await self._in_memory_client.disconnect()
+            return
+
         if self._channel:
             await self._channel.close()
             self._channel = None
@@ -262,6 +323,10 @@ class AsyncRabbitMQ(RabbitMQBase):
 
     async def declare_infrastructure(self):
         """Declare exchanges and queues for this service"""
+        if self._in_memory_client:
+            await self._in_memory_client.declare_infrastructure()
+            return
+
         if not self.is_ready:
             await self.connect()
 
@@ -299,6 +364,10 @@ class AsyncRabbitMQ(RabbitMQBase):
         exchange: Optional[Exchange] = None,
         persistent: bool = True,
     ) -> None:
+        if self._in_memory_client:
+            await self._in_memory_client.publish_message(routing_key, message, exchange, persistent)
+            return
+
         if not self.is_ready:
             await self.connect()
 
@@ -322,7 +391,10 @@ class AsyncRabbitMQ(RabbitMQBase):
             routing_key=routing_key,
         )
 
-    async def get_channel(self) -> aio_pika.abc.AbstractChannel:
+    async def get_channel(self):
+        if self._in_memory_client:
+            return await self._in_memory_client.get_channel()
+
         if not self.is_ready:
             await self.connect()
         if self._channel is None:

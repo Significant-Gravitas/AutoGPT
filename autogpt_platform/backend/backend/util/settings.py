@@ -316,6 +316,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Whether to enable example blocks in production",
     )
 
+    standalone_mode: bool = Field(
+        default=False,
+        description="Whether to run in standalone mode without external dependencies (Redis, RabbitMQ, Supabase). Uses in-memory implementations instead.",
+    )
+
     cloud_storage_cleanup_interval_hours: int = Field(
         default=6,
         ge=1,
