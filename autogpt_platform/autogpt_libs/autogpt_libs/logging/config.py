@@ -179,11 +179,6 @@ def configure_logging(force_cloud_logging: bool = False) -> None:
 
     # Configure the root logger
     logging.basicConfig(
-        format=(
-            DEBUG_LOG_FORMAT
-            if config.level == logging.DEBUG and not structured_logging
-            else SIMPLE_LOG_FORMAT
-        ),
         level=config.level,
         handlers=log_handlers,
     )
