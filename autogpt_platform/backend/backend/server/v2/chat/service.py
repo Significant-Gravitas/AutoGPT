@@ -17,6 +17,7 @@ from backend.server.v2.chat.models import (
     StreamError,
     StreamEnd,
     ResponseType,
+    StreamBaseResponse,
 )
 import logging
 
@@ -74,7 +75,7 @@ async def stream_chat_completion(
         session_id=session_id,
         user_id=user_id,
     ):
-        yield chunk
+        yield chunk.to_sse()
 
 
 async def stream_chat_response(
@@ -82,7 +83,7 @@ async def stream_chat_response(
     tools: list[ChatCompletionToolParam],
     session_id: str,
     user_id: str | None,
-) -> AsyncGenerator[str, None]:
+) -> AsyncGenerator[StreamBaseResponse, None]:
     """
     Pure streaming function for OpenAI chat completions with tool calling.
 
@@ -140,7 +141,7 @@ async def stream_chat_response(
                             content=delta.content,
                             timestamp=datetime.now(UTC).isoformat(),
                         )
-                        yield text_response.to_sse()
+                        yield text_response
 
                     # Handle tool calls
                     if delta.tool_calls:
@@ -180,7 +181,7 @@ async def stream_chat_response(
                                 tool_name=tool_calls[idx]["function"]["name"],
                                 arguments=tool_calls[idx]["function"]["arguments"],
                                 timestamp=datetime.now(UTC).isoformat(),
-                            ).to_sse()
+                            )
 
                             tool_execution_response: StreamToolResponse = (
                                 await execute_tool(
@@ -190,12 +191,12 @@ async def stream_chat_response(
                                     session_id=session_id or "",
                                 )
                             )
-                            yield tool_execution_response.to_sse()
+                            yield tool_execution_response
 
             logger.info(f"Stream complete. Finish reason: {finish_reason}")
             yield StreamEnd(
                 timestamp=datetime.now(UTC).isoformat(),
-            ).to_sse()
+            )
 
         except Exception as e:
             logger.error(f"Error in stream: {e!s}", exc_info=True)
@@ -203,8 +204,8 @@ async def stream_chat_response(
                 message=str(e),
                 timestamp=datetime.now(UTC).isoformat(),
             )
-            yield error_response.to_sse()
+            yield error_response
             yield StreamEnd(
                 timestamp=datetime.now(UTC).isoformat(),
-            ).to_sse()
+            )
             return
