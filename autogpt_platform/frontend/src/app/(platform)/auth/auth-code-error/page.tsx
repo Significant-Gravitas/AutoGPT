@@ -1,13 +1,13 @@
 "use client";
 
-import { isServerSide } from "@/lib/utils/is-server-side";
 import { useEffect, useState } from "react";
-import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Card } from "@/components/atoms/Card/Card";
 import { WaitlistErrorContent } from "@/components/auth/WaitlistErrorContent";
-import { isWaitlistErrorFromParams } from "@/app/api/auth/utils";
+import { isWaitlistError } from "@/app/api/auth/utils";
 import { useRouter } from "next/navigation";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { environment } from "@/services/environment";
 
 export default function AuthErrorPage() {
   const [errorType, setErrorType] = useState<string | null>(null);
@@ -17,7 +17,7 @@ export default function AuthErrorPage() {
 
   useEffect(() => {
     // This code only runs on the client side
-    if (!isServerSide()) {
+    if (!environment.isServerSide()) {
       const hash = window.location.hash.substring(1); // Remove the leading '#'
       const params = new URLSearchParams(hash);
 
@@ -38,12 +38,9 @@ export default function AuthErrorPage() {
   }
 
   // Check if this is a waitlist/not allowed error
-  const isWaitlistError = isWaitlistErrorFromParams(
-    errorCode,
-    errorDescription,
-  );
+  const isWaitlistErr = isWaitlistError(errorCode, errorDescription);
 
-  if (isWaitlistError) {
+  if (isWaitlistErr) {
     return (
       <div className="flex h-screen items-center justify-center">
         <Card className="w-full max-w-md p-8">
@@ -56,34 +53,25 @@ export default function AuthErrorPage() {
     );
   }
 
-  // Default error display for other types of errors
+  // Use ErrorCard for consistent error display
+  const errorMessage = errorDescription
+    ? `${errorDescription}. If this error persists, please contact support at contact@agpt.co`
+    : "An authentication error occurred. Please contact support at contact@agpt.co";
+
   return (
-    <div className="flex h-screen items-center justify-center">
-      <Card className="w-full max-w-md p-8">
-        <div className="flex flex-col items-center gap-6">
-          <Text variant="h3">Authentication Error</Text>
-          <div className="flex flex-col gap-2 text-center">
-            {errorType && (
-              <Text variant="body">
-                <strong>Error Type:</strong> {errorType}
-              </Text>
-            )}
-            {errorCode && (
-              <Text variant="body">
-                <strong>Error Code:</strong> {errorCode}
-              </Text>
-            )}
-            {errorDescription && (
-              <Text variant="body">
-                <strong>Description:</strong> {errorDescription}
-              </Text>
-            )}
-          </div>
-          <Button variant="primary" onClick={() => router.push("/login")}>
-            Back to Login
-          </Button>
-        </div>
-      </Card>
+    <div className="flex h-screen items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        <ErrorCard
+          responseError={{
+            message: errorMessage,
+            detail: errorCode
+              ? `Error code: ${errorCode}${errorType ? ` (${errorType})` : ""}`
+              : undefined,
+          }}
+          context="authentication"
+          onRetry={() => router.push("/login")}
+        />
+      </div>
     </div>
   );
 }

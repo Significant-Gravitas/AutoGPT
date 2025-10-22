@@ -1,10 +1,11 @@
 import { usePostV2AddMarketplaceAgent } from "@/app/api/__generated__/endpoints/library/library";
-import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useRouter } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
 import { useGetV2DownloadAgentFile } from "@/app/api/__generated__/endpoints/store/store";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
+import { analytics } from "@/services/analytics";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 
 interface UseAgentInfoProps {
   storeListingVersionId: string;
@@ -16,29 +17,9 @@ export const useAgentInfo = ({ storeListingVersionId }: UseAgentInfoProps) => {
   const { completeStep } = useOnboarding();
 
   const {
-    mutate: addMarketplaceAgentToLibrary,
+    mutateAsync: addMarketplaceAgentToLibrary,
     isPending: isAddingAgentToLibrary,
-  } = usePostV2AddMarketplaceAgent({
-    mutation: {
-      onSuccess: ({ data }) => {
-        completeStep("MARKETPLACE_ADD_AGENT");
-        router.push(`/library/agents/${(data as LibraryAgent).id}`);
-        toast({
-          title: "Agent Added",
-          description: "Redirecting to your library...",
-          duration: 2000,
-        });
-      },
-      onError: (error) => {
-        Sentry.captureException(error);
-        toast({
-          title: "Error",
-          description: "Failed to add agent to library. Please try again.",
-          variant: "destructive",
-        });
-      },
-    },
-  });
+  } = usePostV2AddMarketplaceAgent();
 
   const { refetch: downloadAgent, isFetching: isDownloadingAgent } =
     useGetV2DownloadAgentFile(storeListingVersionId, {
@@ -50,13 +31,46 @@ export const useAgentInfo = ({ storeListingVersionId }: UseAgentInfoProps) => {
       },
     });
 
-  const handleLibraryAction = async () => {
-    addMarketplaceAgentToLibrary({
-      data: { store_listing_version_id: storeListingVersionId },
-    });
+  const handleLibraryAction = async ({
+    isAddingAgentFirstTime,
+  }: {
+    isAddingAgentFirstTime: boolean;
+  }) => {
+    try {
+      const { data: response } = await addMarketplaceAgentToLibrary({
+        data: { store_listing_version_id: storeListingVersionId },
+      });
+
+      const data = response as LibraryAgent;
+
+      if (isAddingAgentFirstTime) {
+        completeStep("MARKETPLACE_ADD_AGENT");
+
+        analytics.sendDatafastEvent("add_to_library", {
+          name: data.name,
+          id: data.id,
+        });
+      }
+
+      router.push(`/library/agents/${data.id}`);
+
+      toast({
+        title: "Agent Added",
+        description: "Redirecting to your library...",
+        duration: 2000,
+      });
+    } catch (error) {
+      Sentry.captureException(error);
+
+      toast({
+        title: "Error",
+        description: "Failed to add agent to library. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleDownload = async () => {
+  const handleDownload = async (agentId: string, agentName: string) => {
     try {
       const { data: file } = await downloadAgent();
 
@@ -73,6 +87,11 @@ export const useAgentInfo = ({ storeListingVersionId }: UseAgentInfoProps) => {
       document.body.removeChild(a);
 
       window.URL.revokeObjectURL(url);
+
+      analytics.sendDatafastEvent("download_agent", {
+        name: agentName,
+        id: agentId,
+      });
 
       toast({
         title: "Download Complete",

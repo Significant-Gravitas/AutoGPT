@@ -1,8 +1,8 @@
 "use client";
 
 import { DEFAULT_SEARCH_TERMS } from "@/app/(platform)/marketplace/components/HeroSection/helpers";
-import { BehaveAs, getBehaveAs } from "@/lib/utils";
 import { useFlags } from "launchdarkly-react-client-sdk";
+import { environment } from "../environment";
 
 export enum Flag {
   BETA_BLOCKS = "beta-blocks",
@@ -51,7 +51,7 @@ const mockFlags = {
 export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] | null {
   const currentFlags = useFlags<FlagValues>();
   const flagValue = currentFlags[flag];
-  const isCloud = getBehaveAs() === BehaveAs.CLOUD;
+  const isCloud = environment.isCloud();
 
   if ((isPwMockEnabled && !isCloud) || flagValue === undefined) {
     return mockFlags[flag];

@@ -3,12 +3,12 @@ import {
   makeAuthenticatedFileUpload,
   makeAuthenticatedRequest,
 } from "@/lib/autogpt-server-api/helpers";
-import { getAgptServerBaseUrl } from "@/lib/env-config";
+import { environment } from "@/services/environment";
 import { NextRequest, NextResponse } from "next/server";
 
 function buildBackendUrl(path: string[], queryString: string): string {
   const backendPath = path.join("/");
-  return `${getAgptServerBaseUrl()}/${backendPath}${queryString}`;
+  return `${environment.getAGPTServerBaseUrl()}/${backendPath}${queryString}`;
 }
 
 async function handleJsonRequest(
