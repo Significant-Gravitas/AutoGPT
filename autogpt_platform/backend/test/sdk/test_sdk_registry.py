@@ -25,7 +25,6 @@ from backend.sdk import (
     Provider,
     ProviderBuilder,
 )
-from backend.sdk.provider import ProviderRegister
 
 
 class TestAutoRegistry:
@@ -40,7 +39,6 @@ class TestAutoRegistry:
         # Create a test provider
         provider = Provider(
             name="test_provider",
-            register=ProviderRegister(name="test_provider"),
             oauth_handler=None,
             webhook_manager=None,
             default_credentials=[],
@@ -80,7 +78,6 @@ class TestAutoRegistry:
                 default_credentials=[],
                 base_costs=[],
                 supported_auth_types={"oauth2"},
-                register=ProviderRegister(name="oauth_provider"),
             )
 
             AutoRegistry.register_provider(provider)
@@ -98,7 +95,6 @@ class TestAutoRegistry:
 
         provider = Provider(
             name="webhook_provider",
-            register=ProviderRegister(name="webhook_provider"),
             oauth_handler=None,
             webhook_manager=TestWebhookManager,
             default_credentials=[],
@@ -132,7 +128,6 @@ class TestAutoRegistry:
 
         provider = Provider(
             name="test_provider",
-            register=ProviderRegister(name="test_provider"),
             oauth_handler=None,
             webhook_manager=None,
             default_credentials=[cred1, cred2],
@@ -199,7 +194,6 @@ class TestAutoRegistry:
         ):
             provider1 = Provider(
                 name="provider1",
-                register=ProviderRegister(name="provider1"),
                 oauth_config=OAuthConfig(
                     oauth_handler=TestOAuth1,
                     client_id_env_var="TEST_CLIENT_ID",
@@ -213,7 +207,6 @@ class TestAutoRegistry:
 
             provider2 = Provider(
                 name="provider2",
-                register=ProviderRegister(name="provider2"),
                 oauth_config=OAuthConfig(
                     oauth_handler=TestOAuth2,
                     client_id_env_var="TEST_CLIENT_ID",
@@ -260,7 +253,6 @@ class TestAutoRegistry:
         # Add some registrations
         provider = Provider(
             name="test_provider",
-            register=ProviderRegister(name="test_provider"),
             oauth_handler=None,
             webhook_manager=None,
             default_credentials=[],
@@ -290,8 +282,7 @@ class TestAutoRegistryPatching:
         AutoRegistry.clear()
 
     @patch("backend.integrations.webhooks.load_webhook_managers")
-    @pytest.mark.asyncio
-    async def test_webhook_manager_patching(self, mock_load_managers):
+    def test_webhook_manager_patching(self, mock_load_managers):
         """Test that webhook managers are patched into the system."""
         # Set up the mock to return an empty dict
         mock_load_managers.return_value = {}
@@ -303,7 +294,6 @@ class TestAutoRegistryPatching:
         # Register a provider with webhooks
         provider = Provider(
             name="webhook_provider",
-            register=ProviderRegister(name="webhook_provider"),
             oauth_handler=None,
             webhook_manager=TestWebhookManager,
             default_credentials=[],
@@ -320,8 +310,8 @@ class TestAutoRegistryPatching:
         with patch.dict(
             "sys.modules", {"backend.integrations.webhooks": mock_webhooks}
         ):
-            # Apply patches - now async
-            await AutoRegistry.patch_integrations()
+            # Apply patches
+            AutoRegistry.patch_integrations()
 
             # Call the patched function
             result = mock_webhooks.load_webhook_managers()
