@@ -456,13 +456,17 @@ class NotificationManager(AppService):
                 .strip()
             )
 
+            # Add channel to extra attributes for better filtering in AllQuiet
+            all_attributes = extra_attributes or {}
+            all_attributes["channel"] = channel.value
+
             alert = AllQuietAlert(
                 severity=severity,
                 status=status,
                 title=title[:100],  # Limit title length
                 description=content,
                 correlation_id=correlation_id,
-                extra_attributes=extra_attributes or {},
+                extra_attributes=all_attributes,
             )
             try:
                 await send_allquiet_alert(alert)
