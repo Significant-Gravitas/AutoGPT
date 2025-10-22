@@ -4,9 +4,11 @@ import concurrent.futures
 import inspect
 import logging
 import os
+import sys
 import threading
 import time
 from abc import ABC, abstractmethod
+from contextlib import asynccontextmanager
 from functools import update_wrapper
 from typing import (
     Any,
@@ -179,6 +181,7 @@ EXCEPTION_MAPPING = {
 
 class AppService(BaseAppService, ABC):
     fastapi_app: FastAPI
+    http_server: uvicorn.Server
     log_level: str = "info"
     _shutting_down: bool = False
 
@@ -262,7 +265,7 @@ class AppService(BaseAppService, ABC):
             f"[{self.service_name}] Starting RPC server at http://{api_host}:{self.get_port()}"
         )
 
-        server = uvicorn.Server(
+        self.http_server = uvicorn.Server(
             uvicorn.Config(
                 self.fastapi_app,
                 host=api_host,
@@ -271,27 +274,53 @@ class AppService(BaseAppService, ABC):
                 log_level=self.log_level,
             )
         )
-        self.shared_event_loop.run_until_complete(server.serve())
+        self.shared_event_loop.run_until_complete(self.http_server.serve())
+
+    def _self_terminate(self, signum: int, frame):
+        """Handle SIGTERM with a grace period to allow request handlers to finish"""
+        logger.info(f"[{self.service_name}] 🛑 Starting HTTP server graceful shutdown")
+        if not self.cleaned_up:
+            self.cleaned_up = True
+            self.http_server.handle_exit(
+                signum, frame
+            )  # stop accepting new connections
+        else:
+            # Expedite shutdown on second SIGTERM
+            self.llprint(
+                f"[{self.service_name}] Received exit signal {signum}, but cleanup is already underway."
+            )
+            sys.exit(0)
 
     def cleanup(self):
-        """Override to set shutdown flag during cleanup phase."""
-        logger.info(f"[{self.service_name}] 🛑 Entering graceful shutdown")
-        self._shutting_down = True
+        """Cleanup with double-call protection."""
+        if hasattr(self, "_cleanup_called"):
+            logger.debug(f"[{self.service_name}] Cleanup already called, skipping")
+            return
+
+        self._cleanup_called = True
+        logger.info(f"[{self.service_name}] 🧹 Running cleanup")
         super().cleanup()
 
     async def health_check(self) -> str:
-        """
-        A method to check the health of the process.
-        Fails during shutdown to prevent k8s from routing new requests.
-        """
-        if self._shutting_down:
-            raise UnhealthyServiceError("Service is shutting down")
+        """A method to check the health of the process."""
         return "OK"
 
     def run(self):
         sentry_init()
         super().run()
-        self.fastapi_app = FastAPI()
+
+        @asynccontextmanager
+        async def lifespan(app: FastAPI):
+            # Startup
+
+            yield
+
+            # Shutdown - this runs when FastAPI is shutting down
+            logger.info("🛑 FastAPI has finished; service can shut down")
+            self.cleanup()
+            sys.exit(0)
+
+        self.fastapi_app = FastAPI(lifespan=lifespan)
 
         # Add Prometheus instrumentation to all services
         try:
@@ -310,22 +339,6 @@ class AppService(BaseAppService, ABC):
             logger.error(
                 f"Failed to instrument {self.service_name} with Prometheus: {e}"
             )
-
-        @self.fastapi_app.middleware("http")
-        async def shutdown_middleware(request: Request, call_next):
-            # During shutdown:
-            # - Allow health checks so k8s can detect we're unhealthy.
-            # - Reject other requests.
-            if self._shutting_down and request.url.path not in [
-                "/health_check",
-                "/health_check_async",
-            ]:
-                return responses.JSONResponse(
-                    status_code=503,
-                    content={"detail": "Service is shutting down"},
-                )
-
-            return await call_next(request)
 
         # Register the exposed API routes.
         for attr_name, attr in vars(type(self)).items():
