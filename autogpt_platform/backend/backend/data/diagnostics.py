@@ -8,11 +8,14 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from prisma.enums import AgentExecutionStatus
-from prisma.models import AgentGraphExecution, AgentGraph, User
+from prisma.models import AgentGraphExecution
 from pydantic import BaseModel
 
 from backend.data.rabbitmq import SyncRabbitMQ
-from backend.executor.utils import create_execution_queue_config, GRAPH_EXECUTION_QUEUE_NAME
+from backend.executor.utils import (
+    GRAPH_EXECUTION_QUEUE_NAME,
+    create_execution_queue_config,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +75,7 @@ async def get_execution_diagnostics() -> ExecutionDiagnosticsSummary:
             running_count=running_count,
             queued_db_count=queued_db_count,
             rabbitmq_queue_depth=rabbitmq_queue_depth,
-            timestamp=datetime.now(timezone.utc).isoformat()
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
     except Exception as e:
         logger.error(f"Error getting execution diagnostics: {e}")
@@ -99,7 +102,7 @@ async def get_agent_diagnostics() -> AgentDiagnosticsSummary:
 
         return AgentDiagnosticsSummary(
             agents_with_active_executions=len(executions),
-            timestamp=datetime.now(timezone.utc).isoformat()
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
     except Exception as e:
         logger.error(f"Error getting agent diagnostics: {e}")
@@ -121,8 +124,7 @@ def get_rabbitmq_queue_depth() -> int:
 
         # Use passive queue_declare to get queue info without modifying it
         method_frame = rabbitmq._channel.queue_declare(
-            queue=GRAPH_EXECUTION_QUEUE_NAME,
-            passive=True
+            queue=GRAPH_EXECUTION_QUEUE_NAME, passive=True
         )
 
         message_count = method_frame.method.message_count
@@ -138,8 +140,7 @@ def get_rabbitmq_queue_depth() -> int:
 
 
 async def get_running_executions_details(
-    limit: int = 100,
-    offset: int = 0
+    limit: int = 100, offset: int = 0
 ) -> List[RunningExecutionDetail]:
     """
     Get detailed information about running executions.
@@ -164,22 +165,26 @@ async def get_running_executions_details(
             },
             take=limit,
             skip=offset,
-            order={"createdAt": "desc"}
+            order={"createdAt": "desc"},
         )
 
         results = []
         for exec in executions:
-            results.append(RunningExecutionDetail(
-                execution_id=exec.id,
-                graph_id=exec.agentGraphId,
-                graph_name=exec.AgentGraph.name if exec.AgentGraph else "Unknown",
-                graph_version=exec.agentGraphVersion,
-                user_id=exec.userId,
-                user_email=exec.User.email if exec.User else None,
-                status=exec.executionStatus.value,
-                started_at=exec.startedAt,
-                queue_status=exec.queueStatus if hasattr(exec, 'queueStatus') else None,
-            ))
+            results.append(
+                RunningExecutionDetail(
+                    execution_id=exec.id,
+                    graph_id=exec.agentGraphId,
+                    graph_name=exec.AgentGraph.name if exec.AgentGraph else "Unknown",
+                    graph_version=exec.agentGraphVersion,
+                    user_id=exec.userId,
+                    user_email=exec.User.email if exec.User else None,
+                    status=exec.executionStatus.value,
+                    started_at=exec.startedAt,
+                    queue_status=(
+                        exec.queueStatus if hasattr(exec, "queueStatus") else None
+                    ),
+                )
+            )
 
         return results
     except Exception as e:
@@ -209,7 +214,7 @@ async def stop_execution(execution_id: str, admin_user_id: str) -> bool:
                 "executionStatus": AgentExecutionStatus.FAILED,
                 "error": "Execution stopped by admin",
                 "updatedAt": datetime.now(timezone.utc),
-            }
+            },
         )
 
         return result is not None
@@ -231,19 +236,23 @@ async def stop_executions_bulk(execution_ids: List[str], admin_user_id: str) -> 
         Number of executions successfully stopped
     """
     try:
-        logger.info(f"Admin user {admin_user_id} stopping {len(execution_ids)} executions")
+        logger.info(
+            f"Admin user {admin_user_id} stopping {len(execution_ids)} executions"
+        )
 
         # Update all executions to FAILED status
         result = await AgentGraphExecution.prisma().update_many(
             where={
                 "id": {"in": execution_ids},
-                "executionStatus": {"in": [AgentExecutionStatus.RUNNING, AgentExecutionStatus.QUEUED]}
+                "executionStatus": {
+                    "in": [AgentExecutionStatus.RUNNING, AgentExecutionStatus.QUEUED]
+                },
             },
             data={
                 "executionStatus": AgentExecutionStatus.FAILED,
                 "error": "Execution stopped by admin",
                 "updatedAt": datetime.now(timezone.utc),
-            }
+            },
         )
 
         return result

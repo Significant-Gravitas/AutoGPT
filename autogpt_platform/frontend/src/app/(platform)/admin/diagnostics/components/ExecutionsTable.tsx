@@ -54,9 +54,9 @@ export function ExecutionsTable({ onRefresh }: ExecutionsTableProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
   const [showStopDialog, setShowStopDialog] = useState(false);
-  const [stopTarget, setStopTarget] = useState<
-    "single" | "selected" | "all"
-  >("single");
+  const [stopTarget, setStopTarget] = useState<"single" | "selected" | "all">(
+    "single",
+  );
   const [singleStopId, setSingleStopId] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
@@ -70,7 +70,7 @@ export function ExecutionsTable({ onRefresh }: ExecutionsTableProps) {
         `${apiUrl}/admin/diagnostics/executions/running?limit=${pageSize}&offset=${offset}`,
         {
           credentials: "include",
-        }
+        },
       );
 
       if (!response.ok) {
@@ -116,7 +116,7 @@ export function ExecutionsTable({ onRefresh }: ExecutionsTableProps) {
 
   const confirmStop = (
     target: "single" | "selected" | "all",
-    singleId?: string
+    singleId?: string,
   ) => {
     setStopTarget(target);
     setSingleStopId(singleId || null);
@@ -270,7 +270,7 @@ export function ExecutionsTable({ onRefresh }: ExecutionsTableProps) {
                           onCheckedChange={(checked) =>
                             handleSelectExecution(
                               execution.execution_id,
-                              checked as boolean
+                              checked as boolean,
                             )
                           }
                         />
@@ -310,7 +310,9 @@ export function ExecutionsTable({ onRefresh }: ExecutionsTableProps) {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => confirmStop("single", execution.execution_id)}
+                          onClick={() =>
+                            confirmStop("single", execution.execution_id)
+                          }
                           disabled={isStopping}
                         >
                           <Stop className="h-4 w-4" />

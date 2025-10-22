@@ -1,22 +1,22 @@
 import logging
-from typing import List, Optional
+from typing import List
 
 from autogpt_libs.auth import requires_admin_user
 from autogpt_libs.auth.models import User as AuthUser
-from fastapi import APIRouter, Depends, HTTPException, Security
+from fastapi import APIRouter, HTTPException, Security
 from pydantic import BaseModel
 
 from backend.data.diagnostics import (
-    get_execution_diagnostics,
+    RunningExecutionDetail,
     get_agent_diagnostics,
+    get_execution_diagnostics,
     get_running_executions_details,
     stop_execution,
     stop_executions_bulk,
-    RunningExecutionDetail,
 )
 from backend.server.v2.admin.model import (
-    ExecutionDiagnosticsResponse,
     AgentDiagnosticsResponse,
+    ExecutionDiagnosticsResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -30,22 +30,26 @@ router = APIRouter(
 
 class RunningExecutionsListResponse(BaseModel):
     """Response model for list of running executions"""
+
     executions: List[RunningExecutionDetail]
     total: int
 
 
 class StopExecutionRequest(BaseModel):
     """Request model for stopping a single execution"""
+
     execution_id: str
 
 
 class StopExecutionsRequest(BaseModel):
     """Request model for stopping multiple executions"""
+
     execution_ids: List[str]
 
 
 class StopExecutionResponse(BaseModel):
     """Response model for stop execution operations"""
+
     success: bool
     stopped_count: int = 0
     message: str
@@ -148,13 +152,11 @@ async def list_running_executions(
 
         # Get total count for pagination
         from backend.data.diagnostics import get_execution_diagnostics as get_diag
+
         diagnostics = await get_diag()
         total = diagnostics.running_count + diagnostics.queued_db_count
 
-        return RunningExecutionsListResponse(
-            executions=executions,
-            total=total
-        )
+        return RunningExecutionsListResponse(executions=executions, total=total)
     except Exception as e:
         logger.exception(f"Error listing running executions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -186,7 +188,11 @@ async def stop_single_execution(
         return StopExecutionResponse(
             success=success,
             stopped_count=1 if success else 0,
-            message="Execution stopped successfully" if success else "Failed to stop execution"
+            message=(
+                "Execution stopped successfully"
+                if success
+                else "Failed to stop execution"
+            ),
         )
     except Exception as e:
         logger.exception(f"Error stopping execution: {e}")
@@ -219,7 +225,7 @@ async def stop_multiple_executions(
         return StopExecutionResponse(
             success=stopped_count > 0,
             stopped_count=stopped_count,
-            message=f"Stopped {stopped_count} of {len(request.execution_ids)} executions"
+            message=f"Stopped {stopped_count} of {len(request.execution_ids)} executions",
         )
     except Exception as e:
         logger.exception(f"Error stopping multiple executions: {e}")

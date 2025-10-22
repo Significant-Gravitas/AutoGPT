@@ -5,7 +5,6 @@ import sentry_sdk
 from pydantic import SecretStr
 from sentry_sdk.integrations.anthropic import AnthropicIntegration
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
-from sentry_sdk.integrations.launchdarkly import LaunchDarklyIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 
 # from backend.util.feature_flag import get_client, is_configured
