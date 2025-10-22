@@ -106,7 +106,6 @@ class TextFormatter:
             template = self.env.from_string(template_str)
             return template.render(values or {}, **kwargs)
         except TemplateError as e:
-            logger.warning(f"Template rendering error: {e}")
             raise ValueError(e) from e
 
     def format_email(
