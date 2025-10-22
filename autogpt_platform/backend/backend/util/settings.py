@@ -15,6 +15,17 @@ from backend.util.data import get_data_path
 
 T = TypeVar("T", bound=BaseSettings)
 
+_SERVICE_NAME = "MainProcess"
+
+
+def get_service_name():
+    return _SERVICE_NAME
+
+
+def set_service_name(name: str):
+    global _SERVICE_NAME
+    _SERVICE_NAME = name
+
 
 class AppEnvironment(str, Enum):
     LOCAL = "local"
@@ -148,6 +159,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=60 * 60,
         description="Time in seconds for how far back to check for the late executions.",
     )
+    max_concurrent_graph_executions_per_user: int = Field(
+        default=25,
+        ge=1,
+        le=1000,
+        description="Maximum number of concurrent graph executions allowed per user per graph.",
+    )
 
     block_error_rate_threshold: float = Field(
         default=0.5,
@@ -248,6 +265,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="localhost",
         description="The host for the RabbitMQ server",
     )
+
     rabbitmq_port: int = Field(
         default=5672,
         description="The port for the RabbitMQ server",
@@ -256,6 +274,21 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     rabbitmq_vhost: str = Field(
         default="/",
         description="The vhost for the RabbitMQ server",
+    )
+
+    redis_host: str = Field(
+        default="localhost",
+        description="The host for the Redis server",
+    )
+
+    redis_port: int = Field(
+        default=6379,
+        description="The port for the Redis server",
+    )
+
+    redis_password: str = Field(
+        default="",
+        description="The password for the Redis server (empty string if no password)",
     )
 
     postmark_sender_email: str = Field(

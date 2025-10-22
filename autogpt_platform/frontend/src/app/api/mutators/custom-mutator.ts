@@ -1,21 +1,21 @@
 import {
+  ApiError,
   createRequestHeaders,
   getServerAuthToken,
 } from "@/lib/autogpt-server-api/helpers";
-import { isServerSide } from "@/lib/utils/is-server-side";
-import { getAgptServerBaseUrl } from "@/lib/env-config";
 
 import { transformDates } from "./date-transformer";
+import { environment } from "@/services/environment";
 
 const FRONTEND_BASE_URL =
   process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "http://localhost:3000";
 const API_PROXY_BASE_URL = `${FRONTEND_BASE_URL}/api/proxy`; // Sending request via nextjs Server
 
 const getBaseUrl = (): string => {
-  if (!isServerSide()) {
+  if (!environment.isServerSide()) {
     return API_PROXY_BASE_URL;
   } else {
-    return getAgptServerBaseUrl();
+    return environment.getAGPTServerBaseUrl();
   }
 };
 
@@ -76,7 +76,7 @@ export const customMutator = async <
   // The caching in React Query in our system depends on the url, so the base_url could be different for the server and client sides.
   const fullUrl = `${baseUrl}${url}${queryString}`;
 
-  if (isServerSide()) {
+  if (environment.isServerSide()) {
     try {
       const token = await getServerAuthToken();
       const authHeaders = createRequestHeaders(token, !!data, contentType);
@@ -93,17 +93,17 @@ export const customMutator = async <
     body: data,
   });
 
-  // Error handling for server-side requests
-  // We do not need robust error handling for server-side requests; we only need to log the error message and throw the error.
-  // What happens if the server-side request fails?
-  // 1. The error will be logged in the terminal, then.
-  // 2. The error will be thrown, so the cached data for this particular queryKey will be empty, then.
-  // 3. The client-side will send the request again via the proxy. If it fails again, the error will be handled on the client side.
-  // 4. If the request succeeds on the server side, the data will be cached, and the client will use it instead of sending a request to the proxy.
+  if (!response.ok) {
+    const response_data = await getBody<any>(response);
+    const errorMessage =
+      response_data?.detail || response_data?.message || response.statusText;
 
-  if (!response.ok && isServerSide()) {
-    console.error("Request failed on server side", response, fullUrl);
-    throw new Error(`Request failed with status ${response.status}`);
+    console.error(
+      `Request failed ${environment.isServerSide() ? "on server" : "on client"}`,
+      { status: response.status, url: fullUrl, data: response_data },
+    );
+
+    throw new ApiError(errorMessage, response.status, response_data);
   }
 
   const response_data = await getBody<T["data"]>(response);

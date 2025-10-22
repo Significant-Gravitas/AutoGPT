@@ -1,23 +1,22 @@
 import { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
-// Need to replace these icons with phosphor icons
+import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
 import {
-  FaDiscord,
-  FaMedium,
-  FaGithub,
-  FaGoogle,
-  FaHubspot,
-  FaTwitter,
-} from "react-icons/fa";
-import { GoogleLogoIcon, KeyIcon, NotionLogoIcon } from "@phosphor-icons/react";
+  GoogleLogoIcon,
+  KeyholeIcon,
+  NotionLogoIcon,
+  DiscordLogoIcon,
+  MediumLogoIcon,
+  GithubLogoIcon,
+  TwitterLogoIcon,
+  Icon,
+} from "@phosphor-icons/react";
 
 export const filterCredentialsByProvider = (
   credentials: CredentialsMetaResponse[] | undefined,
-  provider: string[],
+  provider: string,
 ) => {
   const filtered =
-    credentials?.filter((credential) =>
-      provider.includes(credential.provider),
-    ) ?? [];
+    credentials?.filter((credential) => provider === credential.provider) ?? [];
   return {
     credentials: filtered,
     exists: filtered.length > 0,
@@ -25,7 +24,6 @@ export const filterCredentialsByProvider = (
 };
 
 export function toDisplayName(provider: string): string {
-  console.log("provider", provider);
   // Special cases that need manual handling
   const specialCases: Record<string, string> = {
     aiml_api: "AI/ML",
@@ -56,46 +54,81 @@ export function isCredentialFieldSchema(schema: any): boolean {
   );
 }
 
-export const providerIcons: Partial<
-  Record<string, React.FC<{ className?: string }>>
-> = {
-  aiml_api: KeyIcon,
-  anthropic: KeyIcon,
-  apollo: KeyIcon,
-  e2b: KeyIcon,
-  github: FaGithub,
+export const providerIcons: Partial<Record<string, Icon>> = {
+  aiml_api: KeyholeIcon,
+  anthropic: KeyholeIcon,
+  apollo: KeyholeIcon,
+  e2b: KeyholeIcon,
+  github: GithubLogoIcon,
   google: GoogleLogoIcon,
-  groq: KeyIcon,
-  http: KeyIcon,
+  groq: KeyholeIcon,
+  http: KeyholeIcon,
   notion: NotionLogoIcon,
-  nvidia: KeyIcon,
-  discord: FaDiscord,
-  d_id: KeyIcon,
-  google_maps: FaGoogle,
-  jina: KeyIcon,
-  ideogram: KeyIcon,
-  linear: KeyIcon,
-  medium: FaMedium,
-  mem0: KeyIcon,
-  ollama: KeyIcon,
-  openai: KeyIcon,
-  openweathermap: KeyIcon,
-  open_router: KeyIcon,
-  llama_api: KeyIcon,
-  pinecone: KeyIcon,
-  enrichlayer: KeyIcon,
-  slant3d: KeyIcon,
-  screenshotone: KeyIcon,
-  smtp: KeyIcon,
-  replicate: KeyIcon,
-  reddit: KeyIcon,
-  fal: KeyIcon,
-  revid: KeyIcon,
-  twitter: FaTwitter,
-  unreal_speech: KeyIcon,
-  exa: KeyIcon,
-  hubspot: FaHubspot,
-  smartlead: KeyIcon,
-  todoist: KeyIcon,
-  zerobounce: KeyIcon,
+  nvidia: KeyholeIcon,
+  discord: DiscordLogoIcon,
+  d_id: KeyholeIcon,
+  google_maps: GoogleLogoIcon,
+  jina: KeyholeIcon,
+  ideogram: KeyholeIcon,
+  linear: KeyholeIcon,
+  medium: MediumLogoIcon,
+  mem0: KeyholeIcon,
+  ollama: KeyholeIcon,
+  openai: KeyholeIcon,
+  openweathermap: KeyholeIcon,
+  open_router: KeyholeIcon,
+  llama_api: KeyholeIcon,
+  pinecone: KeyholeIcon,
+  enrichlayer: KeyholeIcon,
+  slant3d: KeyholeIcon,
+  screenshotone: KeyholeIcon,
+  smtp: KeyholeIcon,
+  replicate: KeyholeIcon,
+  reddit: KeyholeIcon,
+  fal: KeyholeIcon,
+  revid: KeyholeIcon,
+  twitter: TwitterLogoIcon,
+  unreal_speech: KeyholeIcon,
+  exa: KeyholeIcon,
+  hubspot: KeyholeIcon,
+  smartlead: KeyholeIcon,
+  todoist: KeyholeIcon,
+  zerobounce: KeyholeIcon,
+};
+
+export const getCredentialProviderFromSchema = (
+  formData: Record<string, any>,
+  schema: BlockIOCredentialsSubSchema,
+) => {
+  const discriminator = schema.discriminator;
+  const discriminatorMapping = schema.discriminator_mapping;
+  const discriminatorValues = schema.discriminator_values;
+  const providers = schema.credentials_provider;
+
+  const discriminatorValue = [
+    discriminator ? formData[discriminator] : null,
+    ...(discriminatorValues || []),
+  ].find(Boolean);
+
+  const discriminatedProvider = discriminatorMapping
+    ? discriminatorMapping[discriminatorValue]
+    : null;
+
+  if (providers.length > 1) {
+    if (!discriminator) {
+      throw new Error(
+        "Multi-provider credential input requires discriminator!",
+      );
+    }
+    if (!discriminatedProvider) {
+      console.warn(
+        `Missing discriminator value from '${discriminator}': ` +
+          "hiding credentials input until it is set.",
+      );
+      return null;
+    }
+    return discriminatedProvider;
+  } else {
+    return providers[0];
+  }
 };

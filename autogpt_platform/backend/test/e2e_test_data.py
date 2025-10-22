@@ -749,10 +749,11 @@ class TestDataCreator:
         """Add credits to users."""
         print("Adding credits to users...")
 
-        credit_model = get_user_credit_model()
-
         for user in self.users:
             try:
+                # Get user-specific credit model
+                credit_model = await get_user_credit_model(user["id"])
+
                 # Skip credits for disabled credit model to avoid errors
                 if (
                     hasattr(credit_model, "__class__")

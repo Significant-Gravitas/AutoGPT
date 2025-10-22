@@ -4,13 +4,13 @@ import mimetypes
 from pathlib import Path
 from typing import Any
 
-import aiohttp
 import discord
 from pydantic import SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import APIKeyCredentials, SchemaField
 from backend.util.file import store_media_file
+from backend.util.request import Requests
 from backend.util.type import MediaFileType
 
 from ._auth import (
@@ -114,10 +114,9 @@ class ReadDiscordMessagesBlock(Block):
             if message.attachments:
                 attachment = message.attachments[0]  # Process the first attachment
                 if attachment.filename.endswith((".txt", ".py")):
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(attachment.url) as response:
-                            file_content = response.text()
-                            self.output_data += f"\n\nFile from user: {attachment.filename}\nContent: {file_content}"
+                    response = await Requests().get(attachment.url)
+                    file_content = response.text()
+                    self.output_data += f"\n\nFile from user: {attachment.filename}\nContent: {file_content}"
 
             await client.close()
 
@@ -171,11 +170,11 @@ class SendDiscordMessageBlock(Block):
             description="The content of the message to send"
         )
         channel_name: str = SchemaField(
-            description="The name of the channel the message will be sent to"
+            description="Channel ID or channel name to send the message to"
         )
         server_name: str = SchemaField(
-            description="The name of the server where the channel is located",
-            advanced=True,  # Optional field for server name
+            description="Server name (only needed if using channel name)",
+            advanced=True,
             default="",
         )
 
@@ -231,25 +230,49 @@ class SendDiscordMessageBlock(Block):
         @client.event
         async def on_ready():
             print(f"Logged in as {client.user}")
-            for guild in client.guilds:
-                if server_name and guild.name != server_name:
-                    continue
-                for channel in guild.text_channels:
-                    if channel.name == channel_name:
-                        # Split message into chunks if it exceeds 2000 characters
-                        chunks = self.chunk_message(message_content)
-                        last_message = None
-                        for chunk in chunks:
-                            last_message = await channel.send(chunk)
-                        result["status"] = "Message sent"
-                        result["message_id"] = (
-                            str(last_message.id) if last_message else ""
-                        )
-                        result["channel_id"] = str(channel.id)
-                        await client.close()
-                        return
+            channel = None
 
-            result["status"] = "Channel not found"
+            # Try to parse as channel ID first
+            try:
+                channel_id = int(channel_name)
+                channel = client.get_channel(channel_id)
+            except ValueError:
+                # Not a valid ID, will try name lookup
+                pass
+
+            # If not found by ID (or not an ID), try name lookup
+            if not channel:
+                for guild in client.guilds:
+                    if server_name and guild.name != server_name:
+                        continue
+                    for ch in guild.text_channels:
+                        if ch.name == channel_name:
+                            channel = ch
+                            break
+                    if channel:
+                        break
+
+            if not channel:
+                result["status"] = f"Channel not found: {channel_name}"
+                await client.close()
+                return
+
+            # Type check - ensure it's a text channel that can send messages
+            if not hasattr(channel, "send"):
+                result["status"] = (
+                    f"Channel {channel_name} cannot receive messages (not a text channel)"
+                )
+                await client.close()
+                return
+
+            # Split message into chunks if it exceeds 2000 characters
+            chunks = self.chunk_message(message_content)
+            last_message = None
+            for chunk in chunks:
+                last_message = await channel.send(chunk)  # type: ignore
+            result["status"] = "Message sent"
+            result["message_id"] = str(last_message.id) if last_message else ""
+            result["channel_id"] = str(channel.id)
             await client.close()
 
         await client.start(token)
@@ -675,16 +698,15 @@ class SendDiscordFileBlock(Block):
 
                 elif file.startswith(("http://", "https://")):
                     # URL - download the file
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(file) as response:
-                            file_bytes = await response.read()
+                    response = await Requests().get(file)
+                    file_bytes = response.content
 
-                            # Try to get filename from URL if not provided
-                            if not filename:
-                                from urllib.parse import urlparse
+                    # Try to get filename from URL if not provided
+                    if not filename:
+                        from urllib.parse import urlparse
 
-                                path = urlparse(file).path
-                                detected_filename = Path(path).name or "download"
+                        path = urlparse(file).path
+                        detected_filename = Path(path).name or "download"
                 else:
                     # Local file path - read from stored media file
                     # This would be a path from a previous block's output

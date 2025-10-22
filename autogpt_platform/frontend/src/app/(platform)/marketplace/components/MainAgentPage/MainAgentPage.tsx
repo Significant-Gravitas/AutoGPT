@@ -82,6 +82,7 @@ export const MainAgentPage = ({ params }: MainAgentPageProps) => {
           <div className="w-full md:w-auto md:shrink-0">
             <AgentInfo
               user={user}
+              agentId={agent.active_version_id ?? "–"}
               name={agent.agent_name}
               creator={agent.creator}
               shortDescription={agent.sub_heading}
@@ -92,7 +93,7 @@ export const MainAgentPage = ({ params }: MainAgentPageProps) => {
               lastUpdated={agent.last_updated.toISOString()}
               version={agent.versions[agent.versions.length - 1]}
               storeListingVersionId={agent.store_listing_version_id}
-              libraryAgent={libraryAgent}
+              isAgentAddedToLibrary={Boolean(libraryAgent)}
             />
           </div>
           <AgentImages

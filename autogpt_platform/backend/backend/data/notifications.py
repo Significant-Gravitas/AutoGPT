@@ -15,7 +15,7 @@ from prisma.types import (
 # from backend.notifications.models import NotificationEvent
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
-from backend.server.v2.store.exceptions import DatabaseError
+from backend.util.exceptions import DatabaseError
 from backend.util.json import SafeJson
 from backend.util.logging import TruncatedLogger
 

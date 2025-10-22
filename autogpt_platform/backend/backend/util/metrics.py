@@ -3,13 +3,17 @@ from enum import Enum
 
 import sentry_sdk
 from pydantic import SecretStr
+from sentry_sdk.integrations import DidNotEnable
 from sentry_sdk.integrations.anthropic import AnthropicIntegration
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
+from sentry_sdk.integrations.launchdarkly import LaunchDarklyIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 
+from backend.util import feature_flag
 from backend.util.settings import Settings
 
 settings = Settings()
+logger = logging.getLogger(__name__)
 
 
 class DiscordChannel(str, Enum):
@@ -19,6 +23,12 @@ class DiscordChannel(str, Enum):
 
 def sentry_init():
     sentry_dsn = settings.secrets.sentry_dsn
+    integrations = []
+    if feature_flag.is_configured():
+        try:
+            integrations.append(LaunchDarklyIntegration(feature_flag.get_client()))
+        except DidNotEnable as e:
+            logger.error(f"Error enabling LaunchDarklyIntegration for Sentry: {e}")
     sentry_sdk.init(
         dsn=sentry_dsn,
         traces_sample_rate=1.0,
@@ -31,7 +41,8 @@ def sentry_init():
             AnthropicIntegration(
                 include_prompts=False,
             ),
-        ],
+        ]
+        + integrations,
     )
 
 

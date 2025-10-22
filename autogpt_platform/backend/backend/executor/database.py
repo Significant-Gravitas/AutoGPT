@@ -9,6 +9,7 @@ from backend.data.execution import (
     get_execution_kv_data,
     get_graph_execution_meta,
     get_graph_executions,
+    get_graph_executions_count,
     get_latest_node_execution,
     get_node_execution,
     get_node_executions,
@@ -38,6 +39,7 @@ from backend.data.notifications import (
 )
 from backend.data.user import (
     get_active_user_ids_in_timerange,
+    get_user_by_id,
     get_user_email_by_id,
     get_user_email_verification,
     get_user_integrations,
@@ -56,7 +58,6 @@ from backend.util.service import (
 from backend.util.settings import Config
 
 config = Config()
-_user_credit_model = get_user_credit_model()
 logger = logging.getLogger(__name__)
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -65,15 +66,16 @@ R = TypeVar("R")
 async def _spend_credits(
     user_id: str, cost: int, metadata: UsageTransactionMetadata
 ) -> int:
-    return await _user_credit_model.spend_credits(user_id, cost, metadata)
+    user_credit_model = await get_user_credit_model(user_id)
+    return await user_credit_model.spend_credits(user_id, cost, metadata)
 
 
 async def _get_credits(user_id: str) -> int:
-    return await _user_credit_model.get_credits(user_id)
+    user_credit_model = await get_user_credit_model(user_id)
+    return await user_credit_model.get_credits(user_id)
 
 
 class DatabaseManager(AppService):
-
     def run_service(self) -> None:
         logger.info(f"[{self.service_name}] ⏳ Connecting to Database...")
         self.run_and_wait(db.connect())
@@ -113,6 +115,7 @@ class DatabaseManager(AppService):
 
     # Executions
     get_graph_executions = _(get_graph_executions)
+    get_graph_executions_count = _(get_graph_executions_count)
     get_graph_execution_meta = _(get_graph_execution_meta)
     create_graph_execution = _(create_graph_execution)
     get_node_execution = _(get_node_execution)
@@ -144,6 +147,7 @@ class DatabaseManager(AppService):
 
     # User Comms - async
     get_active_user_ids_in_timerange = _(get_active_user_ids_in_timerange)
+    get_user_by_id = _(get_user_by_id)
     get_user_email_by_id = _(get_user_email_by_id)
     get_user_email_verification = _(get_user_email_verification)
     get_user_notification_preference = _(get_user_notification_preference)
@@ -183,6 +187,7 @@ class DatabaseManagerClient(AppServiceClient):
 
     # Executions
     get_graph_executions = _(d.get_graph_executions)
+    get_graph_executions_count = _(d.get_graph_executions_count)
     get_graph_execution_meta = _(d.get_graph_execution_meta)
     get_node_executions = _(d.get_node_executions)
     update_node_execution_status = _(d.update_node_execution_status)
@@ -228,6 +233,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_node = d.get_node
     get_node_execution = d.get_node_execution
     get_node_executions = d.get_node_executions
+    get_user_by_id = d.get_user_by_id
     get_user_integrations = d.get_user_integrations
     upsert_execution_input = d.upsert_execution_input
     upsert_execution_output = d.upsert_execution_output

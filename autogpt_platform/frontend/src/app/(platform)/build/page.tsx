@@ -6,7 +6,7 @@ import FlowEditor from "@/app/(platform)/build/components/legacy-builder/Flow/Fl
 import { GraphID } from "@/lib/autogpt-server-api/types";
 import { useSearchParams } from "next/navigation";
 import { useEffect } from "react";
-import { Flow } from "./components/FlowEditor/Flow";
+import { Flow } from "./components/FlowEditor/Flow/Flow";
 import { BuilderViewTabs } from "./components/BuilderViewTabs/BuilderViewTabs";
 import { useBuilderView } from "./components/BuilderViewTabs/useBuilderViewTabs";
 

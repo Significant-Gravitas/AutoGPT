@@ -2,18 +2,11 @@
 // The config you add here will be used whenever a users loads a page in their browser.
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
-import {
-  AppEnv,
-  BehaveAs,
-  getAppEnv,
-  getBehaveAs,
-  getEnvironmentStr,
-} from "@/lib/utils";
+import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 
-const isProdOrDev = [AppEnv.PROD, AppEnv.DEV].includes(getAppEnv());
-
-const isCloud = getBehaveAs() === BehaveAs.CLOUD;
+const isProdOrDev = environment.isProd() || environment.isDev();
+const isCloud = environment.isCloud();
 const isDisabled = process.env.DISABLE_SENTRY === "true";
 
 const shouldEnable = !isDisabled && isProdOrDev && isCloud;
@@ -21,7 +14,7 @@ const shouldEnable = !isDisabled && isProdOrDev && isCloud;
 Sentry.init({
   dsn: "https://fe4e4aa4a283391808a5da396da20159@o4505260022104064.ingest.us.sentry.io/4507946746380288",
 
-  environment: getEnvironmentStr(),
+  environment: environment.getEnvironmentStr(),
 
   enabled: shouldEnable,
 

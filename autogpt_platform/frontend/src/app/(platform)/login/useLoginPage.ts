@@ -1,14 +1,13 @@
 import { useTurnstile } from "@/hooks/useTurnstile";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { BehaveAs, getBehaveAs } from "@/lib/utils";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
-import { login, providerLogin } from "./actions";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { environment } from "@/services/environment";
 
 export function useLoginPage() {
   const { supabase, user, isUserLoading } = useSupabase();
@@ -19,7 +18,7 @@ export function useLoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
-  const isCloudEnv = getBehaveAs() === BehaveAs.CLOUD;
+  const isCloudEnv = environment.isCloud();
   const isVercelPreview = process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
 
   const turnstile = useTurnstile({
@@ -60,18 +59,32 @@ export function useLoginPage() {
     }
 
     try {
-      const error = await providerLogin(provider);
-      if (error) throw error;
-      setFeedback(null);
+      const response = await fetch("/api/auth/provider", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider }),
+      });
+
+      if (!response.ok) {
+        const { error } = await response.json();
+        if (error === "not_allowed") {
+          setShowNotAllowedModal(true);
+        } else {
+          setFeedback(error || "Failed to start OAuth flow");
+        }
+        resetCaptcha();
+        setIsGoogleLoading(false);
+        return;
+      }
+
+      const { url } = await response.json();
+      if (url) window.location.href = url as string;
     } catch (error) {
       resetCaptcha();
       setIsGoogleLoading(false);
-      const errorString = JSON.stringify(error);
-      if (errorString.includes("not_allowed")) {
-        setShowNotAllowedModal(true);
-      } else {
-        setFeedback(errorString);
-      }
+      setFeedback(
+        error instanceof Error ? error.message : "Failed to start OAuth flow",
+      );
     }
   }
 
@@ -99,21 +112,49 @@ export function useLoginPage() {
       return;
     }
 
-    const error = await login(data, turnstile.token as string);
-    await supabase?.auth.refreshSession();
-    setIsLoading(false);
-    if (error) {
-      toast({
-        title: error,
-        variant: "destructive",
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: data.email,
+          password: data.password,
+          turnstileToken: turnstile.token,
+        }),
       });
 
+      const result = await response.json();
+
+      if (!response.ok) {
+        toast({
+          title: result?.error || "Login failed",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        resetCaptcha();
+        turnstile.reset();
+        return;
+      }
+
+      await supabase?.auth.refreshSession();
+      setIsLoading(false);
+      setFeedback(null);
+
+      const next =
+        (result?.next as string) || (result?.onboarding ? "/onboarding" : "/");
+      if (next) router.push(next);
+    } catch (error) {
+      toast({
+        title:
+          error instanceof Error
+            ? error.message
+            : "Unexpected error during login",
+        variant: "destructive",
+      });
+      setIsLoading(false);
       resetCaptcha();
-      // Always reset the turnstile on any error
       turnstile.reset();
-      return;
     }
-    setFeedback(null);
   }
 
   return {
