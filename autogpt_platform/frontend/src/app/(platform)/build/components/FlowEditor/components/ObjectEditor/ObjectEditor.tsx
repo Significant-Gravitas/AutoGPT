@@ -147,6 +147,7 @@ export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
                     type="button"
                     variant="secondary"
                     size="small"
+                    className="min-w-10"
                     onClick={() => removeProperty(key)}
                     disabled={disabled}
                   >

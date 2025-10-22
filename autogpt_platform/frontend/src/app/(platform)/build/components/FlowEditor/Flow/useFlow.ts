@@ -12,12 +12,20 @@ import { useEffect, useMemo } from "react";
 import { convertNodesPlusBlockInfoIntoCustomNodes } from "../../helper";
 import { useEdgeStore } from "../../../stores/edgeStore";
 import { GetV1GetExecutionDetails200 } from "@/app/api/__generated__/models/getV1GetExecutionDetails200";
+import { useGraphStore } from "../../../stores/graphStore";
+import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 
 export const useFlow = () => {
   const addNodes = useNodeStore(useShallow((state) => state.addNodes));
   const addLinks = useEdgeStore(useShallow((state) => state.addLinks));
   const updateNodeStatus = useNodeStore(
     useShallow((state) => state.updateNodeStatus),
+  );
+  const updateNodeExecutionResult = useNodeStore(
+    useShallow((state) => state.updateNodeExecutionResult),
+  );
+  const setIsGraphRunning = useGraphStore(
+    useShallow((state) => state.setIsGraphRunning),
   );
   const [{ flowID, flowVersion, flowExecutionID }] = useQueryStates({
     flowID: parseAsString,
@@ -87,7 +95,13 @@ export const useFlow = () => {
       addLinks(graph.links);
     }
 
-    // adding node execution details in nodes
+    // update graph running status
+    const isRunning =
+      executionDetails?.status === AgentExecutionStatus.RUNNING ||
+      executionDetails?.status === AgentExecutionStatus.QUEUED;
+    setIsGraphRunning(isRunning);
+
+    // update node execution status in nodes
     if (
       executionDetails &&
       "node_executions" in executionDetails &&
@@ -95,6 +109,17 @@ export const useFlow = () => {
     ) {
       executionDetails.node_executions.forEach((nodeExecution) => {
         updateNodeStatus(nodeExecution.node_id, nodeExecution.status);
+      });
+    }
+
+    // update node execution results in nodes
+    if (
+      executionDetails &&
+      "node_executions" in executionDetails &&
+      executionDetails.node_executions
+    ) {
+      executionDetails.node_executions.forEach((nodeExecution) => {
+        updateNodeExecutionResult(nodeExecution.node_id, nodeExecution);
       });
     }
   }, [customNodes, addNodes, graph?.links, executionDetails, updateNodeStatus]);

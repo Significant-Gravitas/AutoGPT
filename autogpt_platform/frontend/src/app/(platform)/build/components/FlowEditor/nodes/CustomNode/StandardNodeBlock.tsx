@@ -11,6 +11,7 @@ import { NodeBadges } from "./components/NodeBadges";
 import { NodeExecutionBadge } from "./components/NodeExecutionBadge";
 import { nodeStyleBasedOnStatus } from "./helpers";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import { NodeDataRenderer } from "./components/NodeDataRenderer";
 
 type StandardNodeBlockType = {
   data: CustomNodeData;
@@ -30,7 +31,7 @@ export const StandardNodeBlock = ({
   return (
     <div
       className={cn(
-        "z-12 rounded-xl shadow-lg shadow-slate-900/5 ring-1 ring-slate-200/60 backdrop-blur-sm",
+        "z-12 max-w-[370px] rounded-xl shadow-lg shadow-slate-900/5 ring-1 ring-slate-200/60 backdrop-blur-sm",
         selected && "shadow-2xl ring-2 ring-slate-200",
         status && nodeStyleBasedOnStatus[status],
       )}
@@ -76,6 +77,8 @@ export const StandardNodeBlock = ({
         </div>
         {/* Output Handles */}
         <OutputHandler outputSchema={data.outputSchema} nodeId={nodeId} />
+
+        <NodeDataRenderer nodeId={nodeId} />
       </div>
       {status && <NodeExecutionBadge status={status} />}
     </div>

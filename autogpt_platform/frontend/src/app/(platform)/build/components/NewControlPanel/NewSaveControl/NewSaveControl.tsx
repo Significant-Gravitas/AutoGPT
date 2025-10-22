@@ -19,7 +19,9 @@ import { Input } from "@/components/atoms/Input/Input";
 import { Button } from "@/components/atoms/Button/Button";
 
 export const NewSaveControl = () => {
-  const { form, onSubmit, isLoading, graphVersion } = useNewSaveControl();
+  const { form, onSubmit, isLoading, graphVersion } = useNewSaveControl({
+    showToast: true,
+  });
   const { saveControlOpen, setSaveControlOpen } = useControlPanelStore();
   return (
     <Popover onOpenChange={setSaveControlOpen}>

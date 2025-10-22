@@ -5,6 +5,7 @@ import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import { convertBlockInfoIntoCustomNodeData } from "../components/helper";
 import { Node } from "@/app/api/__generated__/models/node";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutionResult";
 
 type NodeStore = {
   nodes: CustomNode[];
@@ -26,6 +27,12 @@ type NodeStore = {
 
   updateNodeStatus: (nodeId: string, status: AgentExecutionStatus) => void;
   getNodeStatus: (nodeId: string) => AgentExecutionStatus | undefined;
+
+  updateNodeExecutionResult: (
+    nodeId: string,
+    result: NodeExecutionResult,
+  ) => void;
+  getNodeExecutionResult: (nodeId: string) => NodeExecutionResult | undefined;
 };
 
 export const useNodeStore = create<NodeStore>((set, get) => ({
@@ -116,5 +123,18 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
   },
   getNodeStatus: (nodeId: string) => {
     return get().nodes.find((n) => n.id === nodeId)?.data?.status;
+  },
+
+  updateNodeExecutionResult: (nodeId: string, result: NodeExecutionResult) => {
+    set((state) => ({
+      nodes: state.nodes.map((n) =>
+        n.id === nodeId
+          ? { ...n, data: { ...n.data, nodeExecutionResult: result } }
+          : n,
+      ),
+    }));
+  },
+  getNodeExecutionResult: (nodeId: string) => {
+    return get().nodes.find((n) => n.id === nodeId)?.data?.nodeExecutionResult;
   },
 }));
