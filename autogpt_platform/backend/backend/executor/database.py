@@ -39,6 +39,7 @@ from backend.data.notifications import (
 )
 from backend.data.user import (
     get_active_user_ids_in_timerange,
+    get_user_by_id,
     get_user_email_by_id,
     get_user_email_verification,
     get_user_integrations,
@@ -57,7 +58,6 @@ from backend.util.service import (
 from backend.util.settings import Config
 
 config = Config()
-_user_credit_model = get_user_credit_model()
 logger = logging.getLogger(__name__)
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -66,11 +66,13 @@ R = TypeVar("R")
 async def _spend_credits(
     user_id: str, cost: int, metadata: UsageTransactionMetadata
 ) -> int:
-    return await _user_credit_model.spend_credits(user_id, cost, metadata)
+    user_credit_model = await get_user_credit_model(user_id)
+    return await user_credit_model.spend_credits(user_id, cost, metadata)
 
 
 async def _get_credits(user_id: str) -> int:
-    return await _user_credit_model.get_credits(user_id)
+    user_credit_model = await get_user_credit_model(user_id)
+    return await user_credit_model.get_credits(user_id)
 
 
 class DatabaseManager(AppService):
@@ -145,6 +147,7 @@ class DatabaseManager(AppService):
 
     # User Comms - async
     get_active_user_ids_in_timerange = _(get_active_user_ids_in_timerange)
+    get_user_by_id = _(get_user_by_id)
     get_user_email_by_id = _(get_user_email_by_id)
     get_user_email_verification = _(get_user_email_verification)
     get_user_notification_preference = _(get_user_notification_preference)
@@ -230,6 +233,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_node = d.get_node
     get_node_execution = d.get_node_execution
     get_node_executions = d.get_node_executions
+    get_user_by_id = d.get_user_by_id
     get_user_integrations = d.get_user_integrations
     upsert_execution_input = d.upsert_execution_input
     upsert_execution_output = d.upsert_execution_output

@@ -5,14 +5,15 @@ import { InfoIcon, AlertTriangleIcon, XCircleIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const alertVariants = cva(
-  "relative w-full rounded-lg border border-neutral-200 px-4 py-3 text-sm [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-[12px] [&>svg]:text-neutral-950 [&>svg~*]:pl-7",
+  "relative w-full rounded-lg border border-zinc-200 px-4 py-3 text-sm [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-1/2 [&>svg]:-translate-y-1/2 [&>svg]:text-zinc-800 [&>svg~*]:pl-7",
   {
     variants: {
       variant: {
-        default: "bg-white text-neutral-950 [&>svg]:text-blue-500",
+        default: "bg-white text-zinc-800 [&>svg]:text-purple-500",
         warning:
-          "bg-white border-orange-500/50 text-orange-600 [&>svg]:text-orange-500",
-        error: "bg-white border-red-500/50 text-red-500 [&>svg]:text-red-500",
+          "bg-[#FFF3E680] border-yellow-300 text-zinc-800 [&>svg]:text-orange-600",
+        error:
+          "bg-[#FDECEC80] border-red-300 text-zinc-800 [&>svg]:text-red-500",
       },
     },
     defaultVariants: {
@@ -45,7 +46,7 @@ const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
         className={cn(alertVariants({ variant: currentVariant }), className)}
         {...props}
       >
-        <IconComponent className="h-4 w-4" />
+        <IconComponent className="h-[1.125rem] w-[1.125rem]" />
         {children}
       </div>
     );
