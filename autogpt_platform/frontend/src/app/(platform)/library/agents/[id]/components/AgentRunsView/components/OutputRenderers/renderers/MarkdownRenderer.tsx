@@ -42,8 +42,16 @@ function isVideoUrl(url: string): boolean {
   if (url.includes("youtube.com/watch") || url.includes("youtu.be/")) {
     return true;
   }
-  if (url.includes("vimeo.com/")) {
-    return true;
+  try {
+    const parsed = new URL(url);
+    if (
+      parsed.hostname === "vimeo.com" ||
+      parsed.hostname === "www.vimeo.com"
+    ) {
+      return true;
+    }
+  } catch {
+    // If URL parsing fails, treat as not a Vimeo URL.
   }
   return videoExtensions.some((ext) => url.toLowerCase().includes(ext));
 }

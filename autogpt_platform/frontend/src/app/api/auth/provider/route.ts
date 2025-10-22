@@ -33,7 +33,7 @@ export async function POST(request: Request) {
 
     if (error) {
       // Check for waitlist/allowlist error
-      if (isWaitlistError(error)) {
+      if (isWaitlistError(error?.code, error?.message)) {
         logWaitlistError("OAuth Provider", error.message);
         return NextResponse.json({ error: "not_allowed" }, { status: 403 });
       }

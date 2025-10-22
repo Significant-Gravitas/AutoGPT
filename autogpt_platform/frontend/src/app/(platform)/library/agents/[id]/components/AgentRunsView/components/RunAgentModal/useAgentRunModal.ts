@@ -17,6 +17,7 @@ import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecu
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
+import { analytics } from "@/services/analytics";
 
 export type RunVariant =
   | "manual"
@@ -78,6 +79,10 @@ export function useAgentRunModal(
               agent.graph_id,
             ).queryKey,
           });
+          analytics.sendDatafastEvent("run_agent", {
+            name: agent.name,
+            id: agent.graph_id,
+          });
           setIsOpen(false);
         }
       },
@@ -104,6 +109,11 @@ export function useAgentRunModal(
             queryKey: getGetV1ListExecutionSchedulesForAGraphQueryKey(
               agent.graph_id,
             ),
+          });
+          analytics.sendDatafastEvent("schedule_agent", {
+            name: agent.name,
+            id: agent.graph_id,
+            cronExpression: cronExpression,
           });
           setIsOpen(false);
         }

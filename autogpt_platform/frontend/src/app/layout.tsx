@@ -6,13 +6,12 @@ import "./globals.css";
 
 import { Providers } from "@/app/providers";
 import TallyPopupSimple from "@/components/molecules/TallyPoup/TallyPopup";
-import { GoogleAnalytics } from "@/services/analytics/google-analytics";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
 import { headers } from "next/headers";
-import Script from "next/script";
+import { SetupAnalytics } from "@/services/analytics";
 
 export const metadata: Metadata = {
   title: "AutoGPT Platform",
@@ -26,7 +25,7 @@ export default async function RootLayout({
 }>) {
   const headersList = await headers();
   const host = headersList.get("host") || "";
-  const isPlatformDomain = host === "platform.agpt.co";
+
   return (
     <html
       lang="en"
@@ -34,17 +33,12 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        <GoogleAnalytics
-          gaId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-FH2XK2W4GN"} // This is the measurement Id for the Google Analytics dev project
+        <SetupAnalytics
+          host={host}
+          ga={{
+            gaId: process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-FH2XK2W4GN",
+          }}
         />
-        {isPlatformDomain && (
-          <Script
-            strategy="afterInteractive"
-            data-website-id="dfid_g5wtBIiHUwSkWKcGz80lu"
-            data-domain="agpt.co"
-            src="https://datafa.st/js/script.js"
-          />
-        )}
       </head>
       <body>
         <Providers
