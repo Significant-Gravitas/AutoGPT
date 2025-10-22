@@ -1,7 +1,7 @@
 import Shepherd from "shepherd.js";
 import "shepherd.js/dist/css/shepherd.css";
-import { sendGAEvent } from "@/services/analytics/google-analytics";
 import { Key, storage } from "@/services/storage/local-storage";
+import { analytics } from "@/services/analytics";
 
 export const startTutorial = (
   emptyNodeList: (forceEmpty: boolean) => boolean,
@@ -555,7 +555,7 @@ export const startTutorial = (
       "use client";
       console.debug("sendTutorialStep");
 
-      sendGAEvent("event", "tutorial_step_shown", { value: step.id });
+      analytics.sendGAEvent("event", "tutorial_step_shown", { value: step.id });
     });
   }
 
