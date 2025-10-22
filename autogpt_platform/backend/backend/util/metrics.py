@@ -59,6 +59,7 @@ class AllQuietAlert(BaseModel):
     title: str | None = None
     description: str | None = None
     correlation_id: str | None = None
+    channel: str | None = None  # Discord channel (platform or product)
     extra_attributes: dict[str, str] = Field(default_factory=dict)
     environment: str = (
         f"app:{settings.config.app_env.value}-behave:{settings.config.behave_as.value}"
