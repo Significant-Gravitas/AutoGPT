@@ -180,6 +180,7 @@ EXCEPTION_MAPPING = {
 class AppService(BaseAppService, ABC):
     fastapi_app: FastAPI
     log_level: str = "info"
+    _shutting_down: bool = False
 
     def set_log_level(self, log_level: str):
         """Set the uvicorn log level. Returns self for chaining."""
@@ -272,10 +273,19 @@ class AppService(BaseAppService, ABC):
         )
         self.shared_event_loop.run_until_complete(server.serve())
 
+    def cleanup(self):
+        """Override to set shutdown flag during cleanup phase."""
+        logger.info(f"[{self.service_name}] 🛑 Entering graceful shutdown")
+        self._shutting_down = True
+        super().cleanup()
+
     async def health_check(self) -> str:
         """
         A method to check the health of the process.
+        Fails during shutdown to prevent k8s from routing new requests.
         """
+        if self._shutting_down:
+            raise UnhealthyServiceError("Service is shutting down")
         return "OK"
 
     def run(self):
@@ -300,6 +310,22 @@ class AppService(BaseAppService, ABC):
             logger.error(
                 f"Failed to instrument {self.service_name} with Prometheus: {e}"
             )
+
+        @self.fastapi_app.middleware("http")
+        async def shutdown_middleware(request: Request, call_next):
+            # During shutdown:
+            # - Allow health checks so k8s can detect we're unhealthy.
+            # - Reject other requests.
+            if self._shutting_down and request.url.path not in [
+                "/health_check",
+                "/health_check_async",
+            ]:
+                return responses.JSONResponse(
+                    status_code=503,
+                    content={"detail": "Service is shutting down"},
+                )
+
+            return await call_next(request)
 
         # Register the exposed API routes.
         for attr_name, attr in vars(type(self)).items():
