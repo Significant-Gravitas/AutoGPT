@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowClockwise } from "@phosphor-icons/react";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useDiagnosticsContent } from "./useDiagnosticsContent";
+import { ExecutionsTable } from "./ExecutionsTable";
 
 export function DiagnosticsContent() {
   const { executionData, agentData, isLoading, isError, error, refresh } =
@@ -215,6 +216,9 @@ export function DiagnosticsContent() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Add Executions Table */}
+      <ExecutionsTable onRefresh={refresh} />
     </div>
   );
 }
