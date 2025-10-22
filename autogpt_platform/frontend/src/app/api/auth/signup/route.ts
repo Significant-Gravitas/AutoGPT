@@ -30,6 +30,7 @@ export async function POST(request: Request) {
       turnstileToken ?? "",
       "signup",
     );
+
     if (!captchaOk) {
       return NextResponse.json(
         { error: "CAPTCHA verification failed. Please try again." },
@@ -48,8 +49,7 @@ export async function POST(request: Request) {
     const { data, error } = await supabase.auth.signUp(parsed.data);
 
     if (error) {
-      // Check for waitlist/allowlist error
-      if (isWaitlistError(error)) {
+      if (isWaitlistError(error?.code, error?.message)) {
         logWaitlistError("Signup", error.message);
         return NextResponse.json({ error: "not_allowed" }, { status: 403 });
       }
