@@ -190,11 +190,10 @@ class AppService(BaseAppService, ABC):
     def _handle_internal_http_error(status_code: int = 500, log_error: bool = True):
         def handler(request: Request, exc: Exception):
             if log_error:
-                if status_code == 500:
-                    log = logger.exception
-                else:
-                    log = logger.error
-                log(f"{request.method} {request.url.path} failed: {exc}")
+                logger.error(
+                    f"{request.method} {request.url.path} failed: {exc}",
+                    exc_info=exc if status_code == 500 else None,
+                )
             return responses.JSONResponse(
                 status_code=status_code,
                 content=RemoteCallError(
