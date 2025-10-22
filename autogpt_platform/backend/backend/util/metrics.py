@@ -72,11 +72,9 @@ async def send_allquiet_alert(alert: AllQuietAlert):
         logging.warning("AllQuiet webhook URL not configured")
         return
 
-    import httpx
+    from backend.util.request import Requests
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(hook_url, json=alert.model_dump())
-        response.raise_for_status()
+    response = await Requests().post(hook_url, json=alert.model_dump())
 
 
 async def discord_send_alert(
