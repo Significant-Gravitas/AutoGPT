@@ -30,6 +30,8 @@ export const useRunGraph = () => {
           });
         },
         onError: (error) => {
+          setIsGraphRunning(false);
+
           toast({
             title: (error.detail as string) ?? "An unexpected error occurred.",
             description: "An unexpected error occurred.",

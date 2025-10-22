@@ -128,6 +128,7 @@ export const useFlow = () => {
     return () => {
       useNodeStore.getState().setNodes([]);
       useEdgeStore.getState().setConnections([]);
+      setIsGraphRunning(false);
     };
   }, []);
 
