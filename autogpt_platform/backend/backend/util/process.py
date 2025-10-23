@@ -19,7 +19,7 @@ class AppProcess(ABC):
     """
 
     process: Optional[Process] = None
-    cleaned_up = False
+    _shutting_down: bool = False
 
     if "forkserver" in get_all_start_methods():
         set_start_method("forkserver", force=True)
@@ -76,8 +76,10 @@ class AppProcess(ABC):
                 except Exception:
                     pass  # Silently ignore if Sentry isn't available
         finally:
+            logger.info(f"[{self.service_name}] 🧹 Running cleanup")
             self.cleanup()
-            logger.info(f"[{self.service_name}] Terminated.")
+            logger.info(f"[{self.service_name}] ✅ Cleanup done")
+            logger.info(f"[{self.service_name}] 🛑 Terminated")
 
     @staticmethod
     def llprint(message: str):
@@ -88,8 +90,8 @@ class AppProcess(ABC):
         os.write(sys.stdout.fileno(), (message + "\n").encode())
 
     def _self_terminate(self, signum: int, frame):
-        if not self.cleaned_up:
-            self.cleaned_up = True
+        if not self._shutting_down:
+            self._shutting_down = True
             sys.exit(0)
         else:
             self.llprint(

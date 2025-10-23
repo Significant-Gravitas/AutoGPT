@@ -248,7 +248,7 @@ class Scheduler(AppService):
             raise UnhealthyServiceError("Scheduler is still initializing")
 
         # Check if we're in the middle of cleanup
-        if self.cleaned_up:
+        if self._shutting_down:
             return await super().health_check()
 
         # Normal operation - check if scheduler is running
