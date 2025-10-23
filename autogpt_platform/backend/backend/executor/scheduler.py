@@ -155,6 +155,14 @@ async def _execute_graph(**kwargs):
                 f"Graph execution {graph_exec.id} took {elapsed:.2f}s to create/publish - "
                 f"this is unusually slow and may indicate resource contention"
             )
+    except NotAuthorizedError as e:
+        elapsed = asyncio.get_event_loop().time() - start_time
+        logger.warning(
+            f"Scheduled execution blocked for deleted/archived graph {args.graph_id} "
+            f"(user {args.user_id}) after {elapsed:.2f}s: {e}"
+        )
+        # Schedule cleanup will be handled by the library deletion process
+        # No need to create a failed execution for this case
     except Exception as e:
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.error(

@@ -1102,6 +1102,37 @@ async def delete_graph(graph_id: str, user_id: str) -> int:
     return entries_count
 
 
+async def is_graph_in_user_library(
+    graph_id: str, user_id: str, graph_version: Optional[int] = None
+) -> bool:
+    """
+    Check if a graph is accessible in a user's library (not deleted/archived).
+
+    Args:
+        graph_id: The ID of the graph to check
+        user_id: The ID of the user
+        graph_version: Optional specific version to check
+
+    Returns:
+        bool: True if the graph is in the user's library and not deleted/archived
+    """
+    from prisma.models import LibraryAgent
+    from prisma.types import LibraryAgentWhereInput
+
+    where_clause: LibraryAgentWhereInput = {
+        "userId": user_id,
+        "agentGraphId": graph_id,
+        "isDeleted": False,
+        "isArchived": False,
+    }
+
+    if graph_version is not None:
+        where_clause["agentGraphVersion"] = graph_version
+
+    count = await LibraryAgent.prisma().count(where=where_clause)
+    return count > 0
+
+
 async def create_graph(graph: Graph, user_id: str) -> GraphModel:
     async with transaction() as tx:
         await __create_graph(tx, graph, user_id)

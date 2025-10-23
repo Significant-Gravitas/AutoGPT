@@ -41,7 +41,11 @@ from backend.util.clients import (
     get_database_manager_async_client,
     get_integration_credentials_store,
 )
-from backend.util.exceptions import GraphValidationError, NotFoundError
+from backend.util.exceptions import (
+    GraphValidationError,
+    NotAuthorizedError,
+    NotFoundError,
+)
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
 from backend.util.type import convert
@@ -512,6 +516,16 @@ async def validate_and_construct_node_execution_input(
     )
     if not graph:
         raise NotFoundError(f"Graph #{graph_id} not found.")
+
+    # Validate that the graph is accessible in the user's library
+    # This prevents execution of deleted/archived agents
+    if not await gdb.is_graph_in_user_library(
+        graph_id=graph_id, user_id=user_id, graph_version=graph.version
+    ):
+        logger.warning(
+            f"User {user_id} attempted to execute deleted/archived graph {graph_id}"
+        )
+        raise NotAuthorizedError(f"Graph #{graph_id} is not accessible in your library")
 
     nodes_input_masks = _merge_nodes_input_masks(
         (

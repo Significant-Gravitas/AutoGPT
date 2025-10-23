@@ -46,7 +46,11 @@ from backend.data.user import (
     get_user_notification_preference,
     update_user_integrations,
 )
-from backend.server.v2.library.db import add_store_agent_to_library, list_library_agents
+from backend.server.v2.library.db import (
+    add_store_agent_to_library,
+    is_graph_in_user_library,
+    list_library_agents,
+)
 from backend.server.v2.store.db import get_store_agent_details, get_store_agents
 from backend.util.service import (
     AppService,
@@ -168,6 +172,7 @@ class DatabaseManager(AppService):
     # Library
     list_library_agents = _(list_library_agents)
     add_store_agent_to_library = _(add_store_agent_to_library)
+    is_graph_in_user_library = _(is_graph_in_user_library)
 
     # Store
     get_store_agents = _(get_store_agents)
@@ -211,6 +216,7 @@ class DatabaseManagerClient(AppServiceClient):
     # Library
     list_library_agents = _(d.list_library_agents)
     add_store_agent_to_library = _(d.add_store_agent_to_library)
+    is_graph_in_user_library = _(d.is_graph_in_user_library)
 
     # Store
     get_store_agents = _(d.get_store_agents)
@@ -266,6 +272,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # Library
     list_library_agents = d.list_library_agents
     add_store_agent_to_library = d.add_store_agent_to_library
+    is_graph_in_user_library = d.is_graph_in_user_library
 
     # Store
     get_store_agents = d.get_store_agents

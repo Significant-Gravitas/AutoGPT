@@ -237,6 +237,23 @@ async def update_webhook(
     return Webhook.from_db(_updated_webhook)
 
 
+async def find_webhooks_by_graph_id(graph_id: str, user_id: str) -> list[Webhook]:
+    """
+    Find all webhooks that trigger nodes in a specific graph for a user.
+
+    Args:
+        graph_id: The ID of the graph
+        user_id: The ID of the user
+
+    Returns:
+        list[Webhook]: List of webhooks associated with the graph
+    """
+    webhooks = await IntegrationWebhook.prisma().find_many(
+        where={"userId": user_id, "AgentNodes": {"some": {"agentGraphId": graph_id}}}
+    )
+    return [Webhook.from_db(webhook) for webhook in webhooks]
+
+
 async def delete_webhook(user_id: str, webhook_id: str) -> None:
     deleted = await IntegrationWebhook.prisma().delete_many(
         where={"id": webhook_id, "userId": user_id}
