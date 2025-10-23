@@ -10,7 +10,6 @@ import OnboardingAgentCard from "../components/OnboardingAgentCard";
 import { useEffect, useState } from "react";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { StoreAgentDetails } from "@/lib/autogpt-server-api";
-import { finishOnboarding } from "../6-congrats/actions";
 import { isEmptyOrWhitespace } from "@/lib/utils";
 import { useOnboarding } from "../../../../providers/onboarding/onboarding-provider";
 
@@ -21,9 +20,6 @@ export default function Page() {
 
   useEffect(() => {
     api.getOnboardingAgents().then((agents) => {
-      if (agents.length < 2) {
-        finishOnboarding();
-      }
       setAgents(agents);
     });
   }, [api, setAgents]);

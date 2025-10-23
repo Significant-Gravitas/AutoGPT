@@ -105,6 +105,7 @@ export const CredentialsInput: FC<{
   onSelectCredentials: (newValue?: CredentialsMetaInput) => void;
   siblingInputs?: Record<string, any>;
   hideIfSingleCredentialAvailable?: boolean;
+  onLoaded?: (loaded: boolean) => void;
 }> = ({
   schema,
   className,
@@ -112,6 +113,7 @@ export const CredentialsInput: FC<{
   onSelectCredentials,
   siblingInputs,
   hideIfSingleCredentialAvailable = true,
+  onLoaded,
 }) => {
   const [isAPICredentialsModalOpen, setAPICredentialsModalOpen] =
     useState(false);
@@ -128,6 +130,13 @@ export const CredentialsInput: FC<{
 
   const api = useBackendAPI();
   const credentials = useCredentials(schema, siblingInputs);
+
+  // Report loaded state to parent
+  useEffect(() => {
+    if (onLoaded) {
+      onLoaded(Boolean(credentials && credentials.isLoading === false));
+    }
+  }, [credentials, onLoaded]);
 
   // Deselect credentials if they do not exist (e.g. provider was changed)
   useEffect(() => {
