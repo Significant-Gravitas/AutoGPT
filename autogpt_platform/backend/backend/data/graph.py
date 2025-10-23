@@ -5,12 +5,19 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal, Optional, cast
 
 from prisma.enums import SubmissionStatus
-from prisma.models import AgentGraph, AgentNode, AgentNodeLink, StoreListingVersion
+from prisma.models import (
+    AgentGraph,
+    AgentNode,
+    AgentNodeLink,
+    LibraryAgent,
+    StoreListingVersion,
+)
 from prisma.types import (
     AgentGraphCreateInput,
     AgentGraphWhereInput,
     AgentNodeCreateInput,
     AgentNodeLinkCreateInput,
+    LibraryAgentWhereInput,
     StoreListingVersionWhereInput,
 )
 from pydantic import BaseModel, Field, create_model
@@ -30,6 +37,7 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
+from backend.util.exceptions import GraphNotInLibraryError
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 
@@ -1120,10 +1128,6 @@ async def validate_graph_execution_permissions(
         GraphNotInLibraryError: If the graph is not in the user's library (deleted/archived)
         NotAuthorizedError: If the user lacks execution permissions for other reasons
     """
-    from prisma.models import LibraryAgent
-    from prisma.types import LibraryAgentWhereInput
-
-    from backend.util.exceptions import GraphNotInLibraryError
 
     # Step 1: Check library membership (raises specific GraphNotInLibraryError)
     where_clause: LibraryAgentWhereInput = {
