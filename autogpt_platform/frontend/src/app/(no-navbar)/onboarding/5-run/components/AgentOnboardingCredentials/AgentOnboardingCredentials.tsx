@@ -1,7 +1,7 @@
 import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
 import { CredentialsMetaInput } from "@/app/api/__generated__/models/credentialsMetaInput";
 import { GraphMeta } from "@/app/api/__generated__/models/graphMeta";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { getSchemaDefaultCredentials } from "../../helpers";
 import { areAllCredentialsSet, getCredentialFields } from "./helpers";
 
@@ -23,10 +23,6 @@ export function AgentOnboardingCredentials(props: Props) {
 
   const fields = getCredentialFields(props.agent);
   const required = Object.keys(fields || {}).length > 0;
-
-  useEffect(() => {
-    props.onLoadingChange(false);
-  }, []);
 
   if (!required) return null;
 
