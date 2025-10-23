@@ -41,11 +41,7 @@ from backend.util.clients import (
     get_database_manager_async_client,
     get_integration_credentials_store,
 )
-from backend.util.exceptions import (
-    GraphNotInLibraryError,
-    GraphValidationError,
-    NotFoundError,
-)
+from backend.util.exceptions import GraphValidationError, NotFoundError
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
 from backend.util.type import convert
@@ -520,35 +516,11 @@ async def validate_and_construct_node_execution_input(
     # Validate that the user has permission to execute this graph
     # This checks both library membership and execution permissions,
     # raising specific exceptions for appropriate error handling
-    if hasattr(gdb, "validate_graph_execution_permissions"):
-        # Use the new consolidated function that raises specific exceptions
-        await gdb.validate_graph_execution_permissions(
-            graph_id=graph_id,
-            user_id=user_id,
-            graph_version=graph.version,
-        )
-    else:
-        # Fallback for older database clients - implement basic library check
-        from prisma.models import LibraryAgent
-        from prisma.types import LibraryAgentWhereInput
-
-        where_clause: LibraryAgentWhereInput = {
-            "userId": user_id,
-            "agentGraphId": graph_id,
-            "isDeleted": False,
-            "isArchived": False,
-        }
-        if graph.version is not None:
-            where_clause["agentGraphVersion"] = graph.version
-
-        count = await LibraryAgent.prisma().count(where=where_clause)
-        if count == 0:
-            logger.warning(
-                f"User {user_id} attempted to execute deleted/archived graph {graph_id}"
-            )
-            raise GraphNotInLibraryError(
-                f"Graph #{graph_id} is not accessible in your library"
-            )
+    await gdb.validate_graph_execution_permissions(
+        graph_id=graph_id,
+        user_id=user_id,
+        graph_version=graph.version,
+    )
 
     nodes_input_masks = _merge_nodes_input_masks(
         (
