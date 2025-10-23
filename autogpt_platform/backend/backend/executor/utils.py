@@ -42,8 +42,8 @@ from backend.util.clients import (
     get_integration_credentials_store,
 )
 from backend.util.exceptions import (
+    GraphNotInLibraryError,
     GraphValidationError,
-    NotAuthorizedError,
     NotFoundError,
 )
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
@@ -525,7 +525,9 @@ async def validate_and_construct_node_execution_input(
         logger.warning(
             f"User {user_id} attempted to execute deleted/archived graph {graph_id}"
         )
-        raise NotAuthorizedError(f"Graph #{graph_id} is not accessible in your library")
+        raise GraphNotInLibraryError(
+            f"Graph #{graph_id} is not accessible in your library"
+        )
 
     nodes_input_masks = _merge_nodes_input_masks(
         (

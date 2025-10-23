@@ -1,7 +1,6 @@
-import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Annotated, Awaitable, List, Literal
+from typing import TYPE_CHECKING, Annotated, List, Literal
 
 from autogpt_libs.auth import get_user_id
 from fastapi import (
@@ -46,7 +45,12 @@ from backend.server.integrations.models import (
     get_all_provider_names,
 )
 from backend.server.v2.library.db import set_preset_webhook, update_preset
-from backend.util.exceptions import MissingConfigError, NeedConfirmation, NotFoundError
+from backend.util.exceptions import (
+    GraphNotInLibraryError,
+    MissingConfigError,
+    NeedConfirmation,
+    NotFoundError,
+)
 from backend.util.settings import Settings
 
 if TYPE_CHECKING:
@@ -369,23 +373,36 @@ async def webhook_ingress_generic(
     if not (webhook.triggered_nodes or webhook.triggered_presets):
         return
 
-    executions: list[Awaitable] = []
     await complete_webhook_trigger_step(user_id)
 
+    # Process triggered nodes with error handling
     for node in webhook.triggered_nodes:
         logger.debug(f"Webhook-attached node: {node}")
         if not node.is_triggered_by_event_type(event_type):
             logger.debug(f"Node #{node.id} doesn't trigger on event {event_type}")
             continue
         logger.debug(f"Executing graph #{node.graph_id} node #{node.id}")
-        executions.append(
-            add_graph_execution(
+        try:
+            await add_graph_execution(
                 user_id=webhook.user_id,
                 graph_id=node.graph_id,
                 graph_version=node.graph_version,
                 nodes_input_masks={node.id: {"payload": payload}},
             )
-        )
+        except GraphNotInLibraryError as e:
+            logger.warning(
+                f"Webhook {webhook_id} execution blocked for deleted/archived graph {node.graph_id} (node {node.id}): {e}"
+            )
+            # Clean up orphaned webhook trigger for this graph
+            await _cleanup_orphaned_webhook_for_graph(
+                node.graph_id, webhook.user_id, webhook_id
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to execute graph {node.graph_id} via webhook {webhook_id}: {type(e).__name__}: {e}"
+            )
+
+    # Process triggered presets with error handling
     for preset in webhook.triggered_presets:
         logger.debug(f"Webhook-attached preset: {preset}")
         if not preset.is_active:
@@ -415,8 +432,8 @@ async def webhook_ingress_generic(
             continue
         logger.debug(f"Executing preset #{preset.id} for webhook #{webhook.id}")
 
-        executions.append(
-            add_graph_execution(
+        try:
+            await add_graph_execution(
                 user_id=webhook.user_id,
                 graph_id=preset.graph_id,
                 preset_id=preset.id,
@@ -426,8 +443,18 @@ async def webhook_ingress_generic(
                     trigger_node.id: {**preset.inputs, "payload": payload}
                 },
             )
-        )
-    asyncio.gather(*executions)
+        except GraphNotInLibraryError as e:
+            logger.warning(
+                f"Webhook {webhook_id} execution blocked for deleted/archived graph {preset.graph_id} (preset {preset.id}): {e}"
+            )
+            # Clean up orphaned webhook trigger for this graph
+            await _cleanup_orphaned_webhook_for_graph(
+                preset.graph_id, webhook.user_id, webhook_id
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to execute preset {preset.id} via webhook {webhook_id}: {type(e).__name__}: {e}"
+            )
 
 
 @router.post("/webhooks/{webhook_id}/ping")
@@ -494,6 +521,90 @@ async def remove_all_webhooks_for_credentials(
         )
         if not success:
             logger.warning(f"Webhook #{webhook.id} failed to prune")
+
+
+async def _cleanup_orphaned_webhook_for_graph(
+    graph_id: str, user_id: str, webhook_id: str
+) -> None:
+    """
+    Clean up orphaned webhook connections for a specific graph when execution fails with GraphNotInLibraryError.
+    This happens when an agent is deleted but webhook triggers still exist.
+    """
+    try:
+        webhook = await get_webhook(webhook_id, include_relations=True)
+        if not webhook or webhook.user_id != user_id:
+            logger.warning(
+                f"Webhook {webhook_id} not found or doesn't belong to user {user_id}"
+            )
+            return
+
+        nodes_removed = 0
+        presets_removed = 0
+
+        # Remove triggered nodes that belong to the deleted graph
+        for node in webhook.triggered_nodes:
+            if node.graph_id == graph_id:
+                try:
+                    await set_node_webhook(node.id, None)
+                    nodes_removed += 1
+                    logger.info(
+                        f"Removed orphaned webhook trigger from node {node.id} in deleted/archived graph {graph_id}"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to remove webhook trigger from node {node.id}: {e}"
+                    )
+
+        # Remove triggered presets that belong to the deleted graph
+        for preset in webhook.triggered_presets:
+            if preset.graph_id == graph_id:
+                try:
+                    await set_preset_webhook(user_id, preset.id, None)
+                    presets_removed += 1
+                    logger.info(
+                        f"Removed orphaned webhook trigger from preset {preset.id} for deleted/archived graph {graph_id}"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to remove webhook trigger from preset {preset.id}: {e}"
+                    )
+
+        if nodes_removed > 0 or presets_removed > 0:
+            logger.info(
+                f"Cleaned up orphaned webhook {webhook_id}: removed {nodes_removed} nodes and {presets_removed} presets for deleted/archived graph {graph_id}"
+            )
+
+            # Check if webhook has any remaining triggers, if not, prune it
+            updated_webhook = await get_webhook(webhook_id, include_relations=True)
+            if (
+                not updated_webhook.triggered_nodes
+                and not updated_webhook.triggered_presets
+            ):
+                try:
+                    webhook_manager = get_webhook_manager(
+                        ProviderName(webhook.provider)
+                    )
+                    credentials = (
+                        await creds_manager.get(user_id, webhook.credentials_id)
+                        if webhook.credentials_id
+                        else None
+                    )
+                    success = await webhook_manager.prune_webhook_if_dangling(
+                        user_id, webhook.id, credentials
+                    )
+                    if success:
+                        logger.info(
+                            f"Pruned orphaned webhook {webhook_id} with no remaining triggers"
+                        )
+                    else:
+                        logger.warning(f"Failed to prune orphaned webhook {webhook_id}")
+                except Exception as e:
+                    logger.error(f"Failed to prune orphaned webhook {webhook_id}: {e}")
+
+    except Exception as e:
+        logger.error(
+            f"Failed to cleanup orphaned webhook {webhook_id} for graph {graph_id}: {e}"
+        )
 
 
 def _get_provider_oauth_handler(

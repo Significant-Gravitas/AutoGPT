@@ -17,6 +17,12 @@ class NotAuthorizedError(ValueError):
     """The user is not authorized to perform the requested operation"""
 
 
+class GraphNotInLibraryError(NotAuthorizedError):
+    """Raised when attempting to execute a graph that is not in the user's library (deleted/archived)."""
+
+    pass
+
+
 class InsufficientBalanceError(ValueError):
     user_id: str
     message: str

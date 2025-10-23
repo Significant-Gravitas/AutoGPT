@@ -545,34 +545,6 @@ async def update_library_agent(
         raise DatabaseError("Failed to update library agent") from e
 
 
-async def is_graph_in_user_library(
-    graph_id: str, user_id: str, graph_version: Optional[int] = None
-) -> bool:
-    """
-    Check if a graph is accessible in a user's library (not deleted/archived).
-
-    Args:
-        graph_id: The ID of the graph to check
-        user_id: The ID of the user
-        graph_version: Optional specific version to check
-
-    Returns:
-        bool: True if the graph is in the user's library and not deleted/archived
-    """
-    where_clause: prisma.types.LibraryAgentWhereInput = {
-        "userId": user_id,
-        "agentGraphId": graph_id,
-        "isDeleted": False,
-        "isArchived": False,
-    }
-
-    if graph_version is not None:
-        where_clause["agentGraphVersion"] = graph_version
-
-    count = await prisma.models.LibraryAgent.prisma().count(where=where_clause)
-    return count > 0
-
-
 async def _cleanup_schedules_for_graph(graph_id: str, user_id: str) -> None:
     """
     Clean up all schedules for a specific graph and user.
