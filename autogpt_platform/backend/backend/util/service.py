@@ -136,6 +136,8 @@ class BaseAppService(AppProcess, ABC):
 
     def cleanup(self):
         """
+        **💡 Overriding `AppService.lifespan` may be a more convenient option.**
+
         Implement this method on a subclass to do post-execution cleanup,
         e.g. disconnecting from a database or terminating child processes.
 
@@ -327,7 +329,19 @@ class AppService(BaseAppService, ABC):
 
     @asynccontextmanager
     async def lifespan(self, app: FastAPI):
-        """The FastAPI/Uvicorn server's lifespan manager, used for setup and shutdown"""
+        """
+        The FastAPI/Uvicorn server's lifespan manager, used for setup and shutdown.
+
+        You can extend and use this in a subclass like:
+        ```
+        @asynccontextmanager
+        async def lifespan(self, app: FastAPI):
+            async with super().lifespan(app):
+                await db.connect()
+                yield
+                await db.disconnect()
+        ```
+        """
         # Startup - this runs before Uvicorn starts accepting connections
 
         yield

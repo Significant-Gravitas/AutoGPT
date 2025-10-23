@@ -20,19 +20,10 @@ from backend.util.service import (
 TEST_SERVICE_PORT = 8765
 
 
-def wait_for_service_ready(service_client_type, timeout_seconds=30):
-    """Helper method to wait for a service to be ready using health check with retry."""
-    client = get_service_client(service_client_type, request_retry=True)
-    client.health_check()  # This will retry until service is ready
-
-
 class ServiceTest(AppService):
     def __init__(self):
         super().__init__()
         self.fail_count = 0
-
-    def cleanup(self):
-        pass
 
     @classmethod
     def get_port(cls) -> int:
@@ -43,9 +34,16 @@ class ServiceTest(AppService):
         result = super().__enter__()
 
         # Wait for the service to be ready
-        wait_for_service_ready(ServiceTestClient)
+        self.wait_until_ready()
 
         return result
+
+    def wait_until_ready(self, timeout_seconds: int = 5):
+        """Helper method to wait for a service to be ready using health check with retry."""
+        client = get_service_client(
+            ServiceTestClient, call_timeout=timeout_seconds, request_retry=True
+        )
+        client.health_check()  # This will retry until service is ready\
 
     @expose
     def add(self, a: int, b: int) -> int:
