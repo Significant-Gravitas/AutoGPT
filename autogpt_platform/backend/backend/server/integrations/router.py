@@ -401,6 +401,7 @@ async def webhook_ingress_generic(
             logger.error(
                 f"Failed to execute graph {node.graph_id} via webhook {webhook_id}: {type(e).__name__}: {e}"
             )
+            # Continue processing other nodes - webhook should be resilient to individual failures
 
     # Process triggered presets with error handling
     for preset in webhook.triggered_presets:
@@ -455,6 +456,7 @@ async def webhook_ingress_generic(
             logger.error(
                 f"Failed to execute preset {preset.id} via webhook {webhook_id}: {type(e).__name__}: {e}"
             )
+            # Continue processing other presets - webhook should be resilient to individual failures
 
 
 @router.post("/webhooks/{webhook_id}/ping")
