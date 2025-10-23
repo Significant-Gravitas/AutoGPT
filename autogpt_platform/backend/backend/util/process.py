@@ -65,7 +65,8 @@ class AppProcess(ABC):
             self.run()
         except BaseException as e:
             logger.warning(
-                f"[{self.service_name}] 🛑 Termination request: {type(e).__name__}"
+                f"[{self.service_name}] 🛑 Terminating because of {type(e).__name__}: {e}",  # noqa
+                exc_info=e if not isinstance(e, SystemExit) else None,
             )
             # Send error to Sentry before cleanup
             if not isinstance(e, (KeyboardInterrupt, SystemExit)):

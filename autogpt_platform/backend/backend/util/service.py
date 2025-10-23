@@ -4,6 +4,7 @@ import concurrent.futures
 import inspect
 import logging
 import os
+import signal
 import sys
 import threading
 import time
@@ -119,6 +120,9 @@ class BaseAppService(AppProcess, ABC):
         logger.info(f"[{self.service_name}] 🛑 Main thread stopped")
 
     def run_and_wait(self, coro: Coroutine[Any, Any, T]) -> T:
+        if not self.shared_event_loop.is_running():
+            return self.shared_event_loop.run_until_complete(coro)
+
         return asyncio.run_coroutine_threadsafe(coro, self.shared_event_loop).result()
 
     def run(self):
@@ -280,16 +284,21 @@ class AppService(BaseAppService, ABC):
 
     def _self_terminate(self, signum: int, frame):
         """Pass SIGTERM to Uvicorn so it can shut down gracefully"""
-        logger.info(f"[{self.service_name}] 🛑 Entering RPC server graceful shutdown")
+        signame = signal.Signals(signum).name
         if not self._shutting_down:
             self._shutting_down = True
+            logger.info(
+                f"[{self.service_name}] 🛑 Received {signame} ({signum}) - "
+                "Entering RPC server graceful shutdown"
+            )
             self.http_server.handle_exit(signum, frame)  # stop accepting connections
 
             # NOTE: Actually stopping the process is triggered by FastAPI's lifespan 👇🏼
         else:
             # Expedite shutdown on second SIGTERM
             self.llprint(
-                f"[{self.service_name}] Received exit signal {signum}, but cleanup is already underway."
+                f"[{self.service_name}] 🛑🛑 Received {signame} ({signum}), "
+                "but shutdown is already underway. Terminating..."
             )
             sys.exit(0)
 
