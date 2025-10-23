@@ -132,6 +132,7 @@ class BaseAppService(AppProcess, ABC):
 
     def run(self):
         self.shared_event_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.shared_event_loop)
         self._halt_event = threading.Event()
 
     def cleanup(self):
