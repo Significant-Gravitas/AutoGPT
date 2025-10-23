@@ -606,6 +606,8 @@ async def _cleanup_webhooks_for_graph(graph_id: str, user_id: str) -> None:
 async def delete_library_agent(
     library_agent_id: str, user_id: str, soft_delete: bool = True
 ) -> None:
+    from backend.data.db import transaction
+
     # First get the agent to find the graph_id for cleanup
     library_agent = await prisma.models.LibraryAgent.prisma().find_unique(
         where={"id": library_agent_id}, include={"AgentGraph": True}
@@ -616,22 +618,27 @@ async def delete_library_agent(
 
     graph_id = library_agent.agentGraphId
 
-    # Delete the library agent
-    if soft_delete:
-        deleted_count = await prisma.models.LibraryAgent.prisma().update_many(
-            where={"id": library_agent_id, "userId": user_id}, data={"isDeleted": True}
-        )
-    else:
-        deleted_count = await prisma.models.LibraryAgent.prisma().delete_many(
-            where={"id": library_agent_id, "userId": user_id}
-        )
+    # Use transaction to prevent race condition between deletion and cleanup
+    async with transaction():
+        # Clean up associated schedules and webhooks BEFORE deleting the agent
+        # This prevents race conditions where executions could start after agent deletion
+        # but before cleanup completes
+        await _cleanup_schedules_for_graph(graph_id=graph_id, user_id=user_id)
+        await _cleanup_webhooks_for_graph(graph_id=graph_id, user_id=user_id)
 
-    if deleted_count < 1:
-        raise NotFoundError(f"Library agent #{library_agent_id} not found")
+        # Delete the library agent after cleanup
+        if soft_delete:
+            deleted_count = await prisma.models.LibraryAgent.prisma().update_many(
+                where={"id": library_agent_id, "userId": user_id},
+                data={"isDeleted": True},
+            )
+        else:
+            deleted_count = await prisma.models.LibraryAgent.prisma().delete_many(
+                where={"id": library_agent_id, "userId": user_id}
+            )
 
-    # Clean up associated schedules and webhooks
-    await _cleanup_schedules_for_graph(graph_id=graph_id, user_id=user_id)
-    await _cleanup_webhooks_for_graph(graph_id=graph_id, user_id=user_id)
+        if deleted_count < 1:
+            raise NotFoundError(f"Library agent #{library_agent_id} not found")
 
     logger.info(
         f"Deleted library agent {library_agent_id} and cleaned up schedules/webhooks for graph {graph_id}"

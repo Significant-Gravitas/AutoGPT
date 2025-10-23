@@ -239,7 +239,7 @@ async def update_webhook(
 
 async def find_webhooks_by_graph_id(graph_id: str, user_id: str) -> list[Webhook]:
     """
-    Find all webhooks that trigger nodes in a specific graph for a user.
+    Find all webhooks that trigger nodes OR presets in a specific graph for a user.
 
     Args:
         graph_id: The ID of the graph
@@ -248,9 +248,21 @@ async def find_webhooks_by_graph_id(graph_id: str, user_id: str) -> list[Webhook
     Returns:
         list[Webhook]: List of webhooks associated with the graph
     """
-    webhooks = await IntegrationWebhook.prisma().find_many(
-        where={"userId": user_id, "AgentNodes": {"some": {"agentGraphId": graph_id}}}
-    )
+    # Find webhooks that trigger either:
+    # 1. Nodes directly in this graph, OR
+    # 2. Presets that reference this graph
+    from prisma.types import IntegrationWebhookWhereInput
+
+    where_clause: IntegrationWebhookWhereInput = {
+        "userId": user_id,
+        "OR": [
+            # Webhooks that trigger nodes in this graph
+            {"AgentNodes": {"some": {"agentGraphId": graph_id}}},
+            # Webhooks that trigger presets for this graph
+            {"AgentPresets": {"some": {"agentGraphId": graph_id}}},
+        ],
+    }
+    webhooks = await IntegrationWebhook.prisma().find_many(where=where_clause)
     return [Webhook.from_db(webhook) for webhook in webhooks]
 
 

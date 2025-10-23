@@ -517,17 +517,27 @@ async def validate_and_construct_node_execution_input(
     if not graph:
         raise NotFoundError(f"Graph #{graph_id} not found.")
 
-    # Validate that the graph is accessible in the user's library
-    # This prevents execution of deleted/archived agents
-    if not await gdb.is_graph_in_user_library(
-        graph_id=graph_id, user_id=user_id, graph_version=graph.version
-    ):
-        logger.warning(
-            f"User {user_id} attempted to execute deleted/archived graph {graph_id}"
+    # Validate that the user has permission to execute this graph
+    # This checks both library membership and execution permissions,
+    # raising specific exceptions for appropriate error handling
+    if hasattr(gdb, "validate_graph_execution_permissions"):
+        # Use the new consolidated function that raises specific exceptions
+        await gdb.validate_graph_execution_permissions(
+            graph_id=graph_id,
+            user_id=user_id,
+            graph_version=graph.version,
         )
-        raise GraphNotInLibraryError(
-            f"Graph #{graph_id} is not accessible in your library"
-        )
+    else:
+        # Fallback for older database clients - maintain backward compatibility
+        if not await gdb.is_graph_in_user_library(
+            graph_id=graph_id, user_id=user_id, graph_version=graph.version
+        ):
+            logger.warning(
+                f"User {user_id} attempted to execute deleted/archived graph {graph_id}"
+            )
+            raise GraphNotInLibraryError(
+                f"Graph #{graph_id} is not accessible in your library"
+            )
 
     nodes_input_masks = _merge_nodes_input_masks(
         (

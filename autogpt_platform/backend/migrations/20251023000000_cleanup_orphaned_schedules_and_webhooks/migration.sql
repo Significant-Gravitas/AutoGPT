@@ -2,28 +2,44 @@
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_library_agent_user_graph_active ON "LibraryAgent"("userId", "agentGraphId", "isDeleted", "isArchived");
 
 -- Clean up orphaned APScheduler jobs for graphs not in users' libraries
--- APScheduler stores jobs in the apscheduler_jobs table with job kwargs as JSON
+-- WARNING: This migration assumes APScheduler stores job_state as JSON, but APScheduler
+-- typically stores pickled binary data. If this migration fails with JSON parsing errors,
+-- use the Python script approach in cleanup_orphaned_resources.py instead.
 -- We need to extract the graph_id and user_id from the job_state->kwargs->graph_id and job_state->kwargs->user_id fields
 
 -- First, create a temporary view to identify orphaned schedule jobs
-CREATE TEMPORARY VIEW orphaned_schedule_jobs AS
-SELECT 
-    aj.id,
-    (aj.job_state::json->'kwargs'->>'graph_id') as graph_id,
-    (aj.job_state::json->'kwargs'->>'user_id') as user_id
-FROM apscheduler_jobs aj
-WHERE 
-    -- Only process jobs that have the graph execution structure
-    aj.job_state::json->'kwargs' ? 'graph_id' 
-    AND aj.job_state::json->'kwargs' ? 'user_id'
-    -- Check if the graph is NOT in the user's library (deleted/archived)
-    AND NOT EXISTS (
-        SELECT 1 FROM "LibraryAgent" la 
-        WHERE la."userId" = (aj.job_state::json->'kwargs'->>'user_id')
-        AND la."agentGraphId" = (aj.job_state::json->'kwargs'->>'graph_id')
-        AND la."isDeleted" = false 
-        AND la."isArchived" = false
-    );
+-- This will fail gracefully if job_state is not JSON-parseable
+DO $$
+BEGIN
+    -- Attempt to create the view for JSON-based job data
+    EXECUTE '
+    CREATE TEMPORARY VIEW orphaned_schedule_jobs AS
+    SELECT 
+        aj.id,
+        (aj.job_state::json->''kwargs''->>''graph_id'') as graph_id,
+        (aj.job_state::json->''kwargs''->>''user_id'') as user_id
+    FROM apscheduler_jobs aj
+    WHERE 
+        -- Only process jobs that have the graph execution structure
+        aj.job_state::json->''kwargs'' ? ''graph_id'' 
+        AND aj.job_state::json->''kwargs'' ? ''user_id''
+        -- Check if the graph is NOT in the user''s library (deleted/archived)
+        AND NOT EXISTS (
+            SELECT 1 FROM "LibraryAgent" la 
+            WHERE la."userId" = (aj.job_state::json->''kwargs''->>''user_id'')
+            AND la."agentGraphId" = (aj.job_state::json->''kwargs''->>''graph_id'')
+            AND la."isDeleted" = false 
+            AND la."isArchived" = false
+        )';
+EXCEPTION
+    WHEN OTHERS THEN
+        -- If JSON parsing fails, create an empty view and log a warning
+        RAISE NOTICE 'APScheduler job_state is not JSON-parseable. Skipping schedule cleanup.';
+        RAISE NOTICE 'Use the Python script cleanup_orphaned_resources.py for pickled data.';
+        CREATE TEMPORARY VIEW orphaned_schedule_jobs AS
+        SELECT '' as id, '' as graph_id, '' as user_id WHERE false;
+END
+$$;
 
 -- Log the orphaned schedules we're about to clean up
 DO $$

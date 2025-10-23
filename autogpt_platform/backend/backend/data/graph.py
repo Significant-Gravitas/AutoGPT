@@ -1102,23 +1102,30 @@ async def delete_graph(graph_id: str, user_id: str) -> int:
     return entries_count
 
 
-async def is_graph_in_user_library(
+async def validate_graph_execution_permissions(
     graph_id: str, user_id: str, graph_version: Optional[int] = None
-) -> bool:
+) -> None:
     """
-    Check if a graph is accessible in a user's library (not deleted/archived).
+    Validate that a user has permission to execute a specific graph.
+
+    This function performs comprehensive authorization checks and raises specific
+    exceptions for different types of failures to enable appropriate error handling.
 
     Args:
         graph_id: The ID of the graph to check
         user_id: The ID of the user
         graph_version: Optional specific version to check
 
-    Returns:
-        bool: True if the graph is in the user's library and not deleted/archived
+    Raises:
+        GraphNotInLibraryError: If the graph is not in the user's library (deleted/archived)
+        NotAuthorizedError: If the user lacks execution permissions for other reasons
     """
     from prisma.models import LibraryAgent
     from prisma.types import LibraryAgentWhereInput
 
+    from backend.util.exceptions import GraphNotInLibraryError
+
+    # Step 1: Check library membership (raises specific GraphNotInLibraryError)
     where_clause: LibraryAgentWhereInput = {
         "userId": user_id,
         "agentGraphId": graph_id,
@@ -1130,7 +1137,83 @@ async def is_graph_in_user_library(
         where_clause["agentGraphVersion"] = graph_version
 
     count = await LibraryAgent.prisma().count(where=where_clause)
-    return count > 0
+    if count == 0:
+        raise GraphNotInLibraryError(
+            f"Graph #{graph_id} is not accessible in your library"
+        )
+
+    # Step 2: Check execution-specific permissions (raises generic NotAuthorizedError)
+    # Additional authorization checks beyond library membership:
+    # 1. Check if user has execution credits (future)
+    # 2. Check if graph is suspended/disabled (future)
+    # 3. Check rate limiting rules (future)
+    # 4. Check organization-level permissions (future)
+
+    # For now, library membership is sufficient for execution permission
+    # Future enhancements can add more granular permission checks here
+    # When adding new checks, raise NotAuthorizedError for non-library issues
+
+
+# Backward compatibility functions - these delegate to the new consolidated function
+# but provide boolean returns for callers that expect them
+
+
+async def is_graph_in_user_library(
+    graph_id: str, user_id: str, graph_version: Optional[int] = None
+) -> bool:
+    """
+    Check if a graph is accessible in a user's library (not deleted/archived).
+
+    DEPRECATED: Use validate_graph_execution_permissions() for execution validation.
+    This function is maintained for backward compatibility with non-execution use cases.
+
+    Args:
+        graph_id: The ID of the graph to check
+        user_id: The ID of the user
+        graph_version: Optional specific version to check
+
+    Returns:
+        bool: True if the graph is in the user's library and not deleted/archived
+    """
+    try:
+        await validate_graph_execution_permissions(graph_id, user_id, graph_version)
+        return True
+    except Exception:
+        return False
+
+
+async def can_user_execute_graph(
+    graph_id: str,
+    user_id: str,
+    graph_version: Optional[int] = None,
+    assume_library_access: bool = False,
+) -> bool:
+    """
+    Check if a user has execution permissions for a specific graph.
+
+    DEPRECATED: Use validate_graph_execution_permissions() for execution validation.
+    This function is maintained for backward compatibility.
+
+    Args:
+        graph_id: The ID of the graph to check
+        user_id: The ID of the user
+        graph_version: Optional specific version to check
+        assume_library_access: If True, skips library membership check (assumes already validated)
+
+    Returns:
+        bool: True if the user can execute the graph
+    """
+    try:
+        if assume_library_access:
+            # If library access is assumed, we can't use the consolidated function
+            # since it always checks library membership. For now, just return True
+            # as execution permissions beyond library membership aren't implemented yet.
+            return True
+        else:
+            await validate_graph_execution_permissions(graph_id, user_id, graph_version)
+            return True
+    except Exception:
+        return False
 
 
 async def create_graph(graph: Graph, user_id: str) -> GraphModel:
