@@ -266,6 +266,39 @@ async def find_webhooks_by_graph_id(graph_id: str, user_id: str) -> list[Webhook
     return [Webhook.from_db(webhook) for webhook in webhooks]
 
 
+async def unlink_webhook_from_graph(
+    webhook_id: str, graph_id: str, user_id: str
+) -> None:
+    """
+    Unlink a webhook from all nodes and presets in a specific graph.
+    If the webhook has no remaining triggers, it will be automatically deleted.
+
+    Args:
+        webhook_id: The ID of the webhook
+        graph_id: The ID of the graph to unlink from
+        user_id: The ID of the user (for authorization)
+    """
+    from prisma.models import AgentNode, AgentPreset
+
+    # Unlink all nodes in this graph from the webhook
+    await AgentNode.prisma().update_many(
+        where={"agentGraphId": graph_id, "webhookId": webhook_id},
+        data={"webhookId": None},
+    )
+
+    # Unlink all presets for this graph from the webhook
+    await AgentPreset.prisma().update_many(
+        where={"agentGraphId": graph_id, "webhookId": webhook_id, "userId": user_id},
+        data={"webhookId": None},
+    )
+
+    # Check if webhook still has any triggers
+    webhook = await get_webhook(webhook_id, include_relations=True)
+    if webhook and not webhook.triggered_nodes and not webhook.triggered_presets:
+        # Webhook has no remaining triggers, delete it
+        await delete_webhook(user_id, webhook_id)
+
+
 async def delete_webhook(user_id: str, webhook_id: str) -> None:
     deleted = await IntegrationWebhook.prisma().delete_many(
         where={"id": webhook_id, "userId": user_id}

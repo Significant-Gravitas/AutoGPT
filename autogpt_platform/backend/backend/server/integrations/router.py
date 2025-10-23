@@ -560,7 +560,8 @@ async def _cleanup_orphaned_webhook_for_graph(
                     await set_node_webhook(node.id, None)
                     nodes_removed += 1
                     logger.info(
-                        f"Removed orphaned webhook trigger from node {node.id} in deleted/archived graph {graph_id}"
+                        f"Removed orphaned webhook trigger from node {node.id} "
+                        f"in deleted/archived graph {graph_id}"
                     )
                 except Exception as e:
                     logger.error(
@@ -574,16 +575,20 @@ async def _cleanup_orphaned_webhook_for_graph(
                     await set_preset_webhook(user_id, preset.id, None)
                     presets_removed += 1
                     logger.info(
-                        f"Removed orphaned webhook trigger from preset {preset.id} for deleted/archived graph {graph_id}"
+                        f"Removed orphaned webhook trigger from preset {preset.id} "
+                        f"for deleted/archived graph {graph_id}"
                     )
                 except Exception as e:
                     logger.error(
-                        f"Failed to remove webhook trigger from preset {preset.id}: {e}"
+                        f"Failed to remove webhook trigger from "
+                        f"preset {preset.id}: {e}"
                     )
 
         if nodes_removed > 0 or presets_removed > 0:
             logger.info(
-                f"Cleaned up orphaned webhook {webhook_id}: removed {nodes_removed} nodes and {presets_removed} presets for deleted/archived graph {graph_id}"
+                f"Cleaned up orphaned webhook #{webhook_id}: "
+                f"removed {nodes_removed} nodes and {presets_removed} presets "
+                f"for deleted/archived graph #{graph_id}"
             )
 
             # Check if webhook has any remaining triggers, if not, prune it
@@ -606,16 +611,20 @@ async def _cleanup_orphaned_webhook_for_graph(
                     )
                     if success:
                         logger.info(
-                            f"Pruned orphaned webhook {webhook_id} with no remaining triggers"
+                            f"Pruned orphaned webhook #{webhook_id} "
+                            f"with no remaining triggers"
                         )
                     else:
-                        logger.warning(f"Failed to prune orphaned webhook {webhook_id}")
+                        logger.warning(
+                            f"Failed to prune orphaned webhook #{webhook_id}"
+                        )
                 except Exception as e:
-                    logger.error(f"Failed to prune orphaned webhook {webhook_id}: {e}")
+                    logger.error(f"Failed to prune orphaned webhook #{webhook_id}: {e}")
 
     except Exception as e:
         logger.error(
-            f"Failed to cleanup orphaned webhook {webhook_id} for graph {graph_id}: {e}"
+            f"Failed to cleanup orphaned webhook #{webhook_id} "
+            f"for graph #{graph_id}: {e}"
         )
 
 

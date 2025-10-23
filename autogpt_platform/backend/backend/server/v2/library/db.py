@@ -545,6 +545,44 @@ async def update_library_agent(
         raise DatabaseError("Failed to update library agent") from e
 
 
+async def delete_library_agent(
+    library_agent_id: str, user_id: str, soft_delete: bool = True
+) -> None:
+    # First get the agent to find the graph_id for cleanup
+    library_agent = await prisma.models.LibraryAgent.prisma().find_unique(
+        where={"id": library_agent_id}, include={"AgentGraph": True}
+    )
+
+    if not library_agent or library_agent.userId != user_id:
+        raise NotFoundError(f"Library agent #{library_agent_id} not found")
+
+    graph_id = library_agent.agentGraphId
+
+    # Clean up associated schedules and webhooks BEFORE deleting the agent
+    # This prevents executions from starting after agent deletion
+    await _cleanup_schedules_for_graph(graph_id=graph_id, user_id=user_id)
+    await _cleanup_webhooks_for_graph(graph_id=graph_id, user_id=user_id)
+
+    # Delete the library agent after cleanup
+    if soft_delete:
+        deleted_count = await prisma.models.LibraryAgent.prisma().update_many(
+            where={"id": library_agent_id, "userId": user_id},
+            data={"isDeleted": True},
+        )
+    else:
+        deleted_count = await prisma.models.LibraryAgent.prisma().delete_many(
+            where={"id": library_agent_id, "userId": user_id}
+        )
+
+    if deleted_count < 1:
+        raise NotFoundError(f"Library agent #{library_agent_id} not found")
+
+    logger.info(
+        f"Deleted library agent {library_agent_id} and cleaned up "
+        f"schedules/webhooks for graph {graph_id}"
+    )
+
+
 async def _cleanup_schedules_for_graph(graph_id: str, user_id: str) -> None:
     """
     Clean up all schedules for a specific graph and user.
@@ -567,7 +605,8 @@ async def _cleanup_schedules_for_graph(graph_id: str, user_id: str) -> None:
                 logger.info(f"Deleted schedule {schedule.id} for graph {graph_id}")
             except Exception as e:
                 logger.error(
-                    f"Failed to delete schedule {schedule.id} for graph {graph_id}: {e}"
+                    f"Failed to delete schedule {schedule.id} "
+                    f"for graph {graph_id}: {e}"
                 )
 
     except Exception as e:
@@ -576,7 +615,8 @@ async def _cleanup_schedules_for_graph(graph_id: str, user_id: str) -> None:
 
 async def _cleanup_webhooks_for_graph(graph_id: str, user_id: str) -> None:
     """
-    Clean up all webhooks for a specific graph and user.
+    Clean up webhook connections for a specific graph and user.
+    Unlinks webhooks from this graph and deletes them if no other triggers remain.
 
     Args:
         graph_id: The ID of the graph
@@ -590,59 +630,19 @@ async def _cleanup_webhooks_for_graph(graph_id: str, user_id: str) -> None:
 
         for webhook in webhooks:
             try:
-                await integrations_db.delete_webhook(
-                    user_id=user_id, webhook_id=webhook.id
+                # Unlink webhook from this graph's nodes and presets
+                await integrations_db.unlink_webhook_from_graph(
+                    webhook_id=webhook.id, graph_id=graph_id, user_id=user_id
                 )
-                logger.info(f"Deleted webhook {webhook.id} for graph {graph_id}")
+                logger.info(f"Unlinked webhook {webhook.id} from graph {graph_id}")
             except Exception as e:
                 logger.error(
-                    f"Failed to delete webhook {webhook.id} for graph {graph_id}: {e}"
+                    f"Failed to unlink webhook {webhook.id} "
+                    f"from graph {graph_id}: {e}"
                 )
 
     except Exception as e:
         logger.error(f"Failed to cleanup webhooks for graph {graph_id}: {e}")
-
-
-async def delete_library_agent(
-    library_agent_id: str, user_id: str, soft_delete: bool = True
-) -> None:
-    from backend.data.db import transaction
-
-    # First get the agent to find the graph_id for cleanup
-    library_agent = await prisma.models.LibraryAgent.prisma().find_unique(
-        where={"id": library_agent_id}, include={"AgentGraph": True}
-    )
-
-    if not library_agent or library_agent.userId != user_id:
-        raise NotFoundError(f"Library agent #{library_agent_id} not found")
-
-    graph_id = library_agent.agentGraphId
-
-    # Use transaction to prevent race condition between deletion and cleanup
-    async with transaction():
-        # Clean up associated schedules and webhooks BEFORE deleting the agent
-        # This prevents race conditions where executions could start after agent deletion
-        # but before cleanup completes
-        await _cleanup_schedules_for_graph(graph_id=graph_id, user_id=user_id)
-        await _cleanup_webhooks_for_graph(graph_id=graph_id, user_id=user_id)
-
-        # Delete the library agent after cleanup
-        if soft_delete:
-            deleted_count = await prisma.models.LibraryAgent.prisma().update_many(
-                where={"id": library_agent_id, "userId": user_id},
-                data={"isDeleted": True},
-            )
-        else:
-            deleted_count = await prisma.models.LibraryAgent.prisma().delete_many(
-                where={"id": library_agent_id, "userId": user_id}
-            )
-
-        if deleted_count < 1:
-            raise NotFoundError(f"Library agent #{library_agent_id} not found")
-
-    logger.info(
-        f"Deleted library agent {library_agent_id} and cleaned up schedules/webhooks for graph {graph_id}"
-    )
 
 
 async def delete_library_agent_by_graph_id(graph_id: str, user_id: str) -> None:
