@@ -43,7 +43,15 @@ export function WaitlistErrorContent({
           exact same email address you used when signing up.
         </Text>
         <Text variant="small" className="text-center text-muted-foreground">
-          If you&apos;re not sure which email you used or need help,{" "}
+          If you&apos;re not sure which email you used or need help, contact us
+          at{" "}
+          <a
+            href="mailto:contact@agpt.co"
+            className="underline hover:text-foreground"
+          >
+            contact@agpt.co
+          </a>{" "}
+          or{" "}
           <a
             href="https://discord.gg/autogpt"
             target="_blank"
