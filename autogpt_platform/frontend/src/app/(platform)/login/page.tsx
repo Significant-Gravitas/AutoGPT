@@ -30,11 +30,7 @@ export default function LoginPage() {
     handleCloseNotAllowedModal,
   } = useLoginPage();
 
-  if (user) {
-    return;
-  }
-
-  if (isUserLoading) {
+  if (isUserLoading || user) {
     return <LoadingLogin />;
   }
 
