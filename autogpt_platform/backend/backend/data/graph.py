@@ -1158,37 +1158,6 @@ async def validate_graph_execution_permissions(
     # When adding new checks, raise NotAuthorizedError for non-library issues
 
 
-# Backward compatibility functions - these delegate to the new consolidated function
-# but provide boolean returns for callers that expect them
-
-
-# DEPRECATED - Use validate_graph_execution_permissions() instead
-async def is_graph_in_user_library(
-    graph_id: str, user_id: str, graph_version: Optional[int] = None
-) -> bool:
-    """DEPRECATED: Use validate_graph_execution_permissions() instead."""
-    try:
-        await validate_graph_execution_permissions(graph_id, user_id, graph_version)
-        return True
-    except Exception:
-        return False
-
-
-# DEPRECATED - Use validate_graph_execution_permissions() instead
-async def can_user_execute_graph(
-    graph_id: str,
-    user_id: str,
-    graph_version: Optional[int] = None,
-    assume_library_access: bool = False,
-) -> bool:
-    """DEPRECATED: Use validate_graph_execution_permissions() instead."""
-    try:
-        await validate_graph_execution_permissions(graph_id, user_id, graph_version)
-        return True
-    except Exception:
-        return False
-
-
 async def create_graph(graph: Graph, user_id: str) -> GraphModel:
     async with transaction() as tx:
         await __create_graph(tx, graph, user_id)

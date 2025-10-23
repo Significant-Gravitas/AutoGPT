@@ -23,12 +23,10 @@ from backend.data.execution import (
 )
 from backend.data.generate_data import get_user_execution_summary_data
 from backend.data.graph import (
-    can_user_execute_graph,
     get_connected_output_nodes,
     get_graph,
     get_graph_metadata,
     get_node,
-    is_graph_in_user_library,
     validate_graph_execution_permissions,
 )
 from backend.data.notifications import (
@@ -171,8 +169,6 @@ class DatabaseManager(AppService):
     # Library
     list_library_agents = _(list_library_agents)
     add_store_agent_to_library = _(add_store_agent_to_library)
-    is_graph_in_user_library = _(is_graph_in_user_library)
-    can_user_execute_graph = _(can_user_execute_graph)
     validate_graph_execution_permissions = _(validate_graph_execution_permissions)
 
     # Store
@@ -217,8 +213,6 @@ class DatabaseManagerClient(AppServiceClient):
     # Library
     list_library_agents = _(d.list_library_agents)
     add_store_agent_to_library = _(d.add_store_agent_to_library)
-    is_graph_in_user_library = _(d.is_graph_in_user_library)
-    can_user_execute_graph = _(d.can_user_execute_graph)
     validate_graph_execution_permissions = _(d.validate_graph_execution_permissions)
 
     # Store
@@ -275,8 +269,6 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # Library
     list_library_agents = d.list_library_agents
     add_store_agent_to_library = d.add_store_agent_to_library
-    is_graph_in_user_library = d.is_graph_in_user_library
-    can_user_execute_graph = d.can_user_execute_graph
     validate_graph_execution_permissions = d.validate_graph_execution_permissions
 
     # Store

@@ -528,10 +528,21 @@ async def validate_and_construct_node_execution_input(
             graph_version=graph.version,
         )
     else:
-        # Fallback for older database clients - maintain backward compatibility
-        if not await gdb.is_graph_in_user_library(
-            graph_id=graph_id, user_id=user_id, graph_version=graph.version
-        ):
+        # Fallback for older database clients - implement basic library check
+        from prisma.models import LibraryAgent
+        from prisma.types import LibraryAgentWhereInput
+
+        where_clause: LibraryAgentWhereInput = {
+            "userId": user_id,
+            "agentGraphId": graph_id,
+            "isDeleted": False,
+            "isArchived": False,
+        }
+        if graph.version is not None:
+            where_clause["agentGraphVersion"] = graph.version
+
+        count = await LibraryAgent.prisma().count(where=where_clause)
+        if count == 0:
             logger.warning(
                 f"User {user_id} attempted to execute deleted/archived graph {graph_id}"
             )
