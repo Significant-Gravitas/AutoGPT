@@ -278,19 +278,27 @@ async def unlink_webhook_from_graph(
         graph_id: The ID of the graph to unlink from
         user_id: The ID of the user (for authorization)
     """
+    from backend.data.graph import set_node_webhook
+    from backend.server.v2.library.db import set_preset_webhook
     from prisma.models import AgentNode, AgentPreset
 
-    # Unlink all nodes in this graph from the webhook
-    await AgentNode.prisma().update_many(
-        where={"agentGraphId": graph_id, "webhookId": webhook_id},
-        data={"webhookId": None},
+    # Find all nodes in this graph that use this webhook
+    nodes = await AgentNode.prisma().find_many(
+        where={"agentGraphId": graph_id, "webhookId": webhook_id}
     )
 
-    # Unlink all presets for this graph from the webhook
-    await AgentPreset.prisma().update_many(
-        where={"agentGraphId": graph_id, "webhookId": webhook_id, "userId": user_id},
-        data={"webhookId": None},
+    # Unlink webhook from each node
+    for node in nodes:
+        await set_node_webhook(node.id, None)
+
+    # Find all presets for this graph that use this webhook
+    presets = await AgentPreset.prisma().find_many(
+        where={"agentGraphId": graph_id, "webhookId": webhook_id, "userId": user_id}
     )
+
+    # Unlink webhook from each preset
+    for preset in presets:
+        await set_preset_webhook(user_id, preset.id, None)
 
     # Check if webhook still has any triggers
     webhook = await get_webhook(webhook_id, include_relations=True)
