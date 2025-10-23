@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Annotated, List, Literal
@@ -375,12 +376,13 @@ async def webhook_ingress_generic(
 
     await complete_webhook_trigger_step(user_id)
 
-    # Process triggered nodes with error handling
-    for node in webhook.triggered_nodes:
+    # Process triggered nodes and presets concurrently for better performance
+    async def execute_node_trigger(node):
+        """Execute a webhook-triggered node."""
         logger.debug(f"Webhook-attached node: {node}")
         if not node.is_triggered_by_event_type(event_type):
             logger.debug(f"Node #{node.id} doesn't trigger on event {event_type}")
-            continue
+            return
         logger.debug(f"Executing graph #{node.graph_id} node #{node.id}")
         try:
             await add_graph_execution(
@@ -401,14 +403,14 @@ async def webhook_ingress_generic(
             logger.error(
                 f"Failed to execute graph {node.graph_id} via webhook {webhook_id}: {type(e).__name__}: {e}"
             )
-            # Continue processing other nodes - webhook should be resilient to individual failures
+            # Continue processing - webhook should be resilient to individual failures
 
-    # Process triggered presets with error handling
-    for preset in webhook.triggered_presets:
+    async def execute_preset_trigger(preset):
+        """Execute a webhook-triggered preset."""
         logger.debug(f"Webhook-attached preset: {preset}")
         if not preset.is_active:
             logger.debug(f"Preset #{preset.id} is inactive")
-            continue
+            return
 
         graph = await get_graph(preset.graph_id, preset.graph_version, webhook.user_id)
         if not graph:
@@ -419,7 +421,7 @@ async def webhook_ingress_generic(
             )
             logger.info(f"Automatically deactivating broken preset #{preset.id}")
             await update_preset(preset.user_id, preset.id, is_active=False)
-            continue
+            return
         if not (trigger_node := graph.webhook_input_node):
             # NOTE: this should NEVER happen, but we log and handle it gracefully
             logger.error(
@@ -427,10 +429,10 @@ async def webhook_ingress_generic(
                 f"#{preset.graph_id} v{preset.graph_version} has no webhook input node"
             )
             await set_preset_webhook(preset.user_id, preset.id, None)
-            continue
+            return
         if not trigger_node.block.is_triggered_by_event_type(preset.inputs, event_type):
             logger.debug(f"Preset #{preset.id} doesn't trigger on event {event_type}")
-            continue
+            return
         logger.debug(f"Executing preset #{preset.id} for webhook #{webhook.id}")
 
         try:
@@ -456,7 +458,15 @@ async def webhook_ingress_generic(
             logger.error(
                 f"Failed to execute preset {preset.id} via webhook {webhook_id}: {type(e).__name__}: {e}"
             )
-            # Continue processing other presets - webhook should be resilient to individual failures
+            # Continue processing - webhook should be resilient to individual failures
+
+    # Execute all triggers concurrently for better performance
+    tasks = []
+    tasks.extend(execute_node_trigger(node) for node in webhook.triggered_nodes)
+    tasks.extend(execute_preset_trigger(preset) for preset in webhook.triggered_presets)
+
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 @router.post("/webhooks/{webhook_id}/ping")
