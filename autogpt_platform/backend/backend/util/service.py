@@ -279,7 +279,7 @@ class AppService(BaseAppService, ABC):
         self.shared_event_loop.run_until_complete(self.http_server.serve())
 
     def _self_terminate(self, signum: int, frame):
-        """Pass SIGTERM to Uvicorn to handle graceful shutdown"""
+        """Pass SIGTERM to Uvicorn so it can shut down gracefully"""
         logger.info(f"[{self.service_name}] 🛑 Entering RPC server graceful shutdown")
         if not self._shutting_down:
             self._shutting_down = True
@@ -294,8 +294,8 @@ class AppService(BaseAppService, ABC):
             sys.exit(0)
 
     @asynccontextmanager
-    async def _lifespan(self, app: FastAPI):
-        """The FastAPI/Uvicorn server's lifespan manager"""
+    async def lifespan(self, app: FastAPI):
+        """The FastAPI/Uvicorn server's lifespan manager, used for setup and shutdown"""
         # Startup - this runs before Uvicorn starts accepting connections
 
         yield
@@ -312,7 +312,7 @@ class AppService(BaseAppService, ABC):
         sentry_init()
         super().run()
 
-        self.fastapi_app = FastAPI(lifespan=self._lifespan)
+        self.fastapi_app = FastAPI(lifespan=self.lifespan)
 
         # Add Prometheus instrumentation to all services
         try:
