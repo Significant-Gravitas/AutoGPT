@@ -1,5 +1,6 @@
 import logging
-from typing import Callable, Concatenate, ParamSpec, TypeVar, cast
+from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
 
 from backend.data import db
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
@@ -57,6 +58,9 @@ from backend.util.service import (
 )
 from backend.util.settings import Config
 
+if TYPE_CHECKING:
+    from fastapi import FastAPI
+
 config = Config()
 logger = logging.getLogger(__name__)
 P = ParamSpec("P")
@@ -76,15 +80,17 @@ async def _get_credits(user_id: str) -> int:
 
 
 class DatabaseManager(AppService):
-    def run_service(self) -> None:
-        logger.info(f"[{self.service_name}] ⏳ Connecting to Database...")
-        self.run_and_wait(db.connect())
-        super().run_service()
+    @asynccontextmanager
+    async def lifespan(self, app: "FastAPI"):
+        async with super().lifespan(app):
+            logger.info(f"[{self.service_name}] ⏳ Connecting to Database...")
+            await db.connect()
 
-    def cleanup(self):
-        super().cleanup()
-        logger.info(f"[{self.service_name}] ⏳ Disconnecting Database...")
-        self.run_and_wait(db.disconnect())
+            logger.info(f"[{self.service_name}] ✅ Ready")
+            yield
+
+            logger.info(f"[{self.service_name}] ⏳ Disconnecting Database...")
+            await db.disconnect()
 
     async def health_check(self) -> str:
         if not db.is_connected():

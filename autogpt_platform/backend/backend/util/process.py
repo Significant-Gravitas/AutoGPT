@@ -20,6 +20,7 @@ class AppProcess(ABC):
 
     process: Optional[Process] = None
     _shutting_down: bool = False
+    _cleaned_up: bool = False
 
     if "forkserver" in get_all_start_methods():
         set_start_method("forkserver", force=True)
@@ -43,7 +44,6 @@ class AppProcess(ABC):
     def service_name(self) -> str:
         return self.__class__.__name__
 
-    @abstractmethod
     def cleanup(self):
         """
         Implement this method on a subclass to do post-execution cleanup,
@@ -77,9 +77,11 @@ class AppProcess(ABC):
                 except Exception:
                     pass  # Silently ignore if Sentry isn't available
         finally:
-            logger.info(f"[{self.service_name}] 🧹 Running cleanup")
-            self.cleanup()
-            logger.info(f"[{self.service_name}] ✅ Cleanup done")
+            if not self._cleaned_up:
+                self._cleaned_up = True
+                logger.info(f"[{self.service_name}] 🧹 Running cleanup")
+                self.cleanup()
+                logger.info(f"[{self.service_name}] ✅ Cleanup done")
             logger.info(f"[{self.service_name}] 🛑 Terminated")
 
     @staticmethod

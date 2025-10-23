@@ -115,19 +115,35 @@ class BaseAppService(AppProcess, ABC):
         return target_host
 
     def run_service(self) -> None:
+        # HACK: run the main event loop outside the main thread to disable Uvicorn's
+        # internal signal handlers, since there is no config option for this :(
+        shared_asyncio_thread = threading.Thread(target=self._run_shared_event_loop)
+        shared_asyncio_thread.start()
+        shared_asyncio_thread.join()
+
+    def _run_shared_event_loop(self) -> None:
         while not self._halt_event.is_set():
-            time.sleep(5)
-        logger.info(f"[{self.service_name}] 🛑 Main thread stopped")
+            self.shared_event_loop.run_until_complete(asyncio.sleep(5))
+
+        logger.info(f"[{self.service_name}] 🛑 Shared event loop stopped")
 
     def run_and_wait(self, coro: Coroutine[Any, Any, T]) -> T:
-        if not self.shared_event_loop.is_running():
-            return self.shared_event_loop.run_until_complete(coro)
-
         return asyncio.run_coroutine_threadsafe(coro, self.shared_event_loop).result()
 
     def run(self):
         self.shared_event_loop = asyncio.get_event_loop()
         self._halt_event = threading.Event()
+
+    def cleanup(self):
+        """
+        Implement this method on a subclass to do post-execution cleanup,
+        e.g. disconnecting from a database or terminating child processes.
+
+        **Note:** if you override this method in a subclass, it must call
+        `super().cleanup()` *at the end*!
+        """
+        self._halt_event.set()  # stop main thread
+        super().cleanup()
 
 
 class RemoteCallError(BaseModel):
@@ -280,7 +296,14 @@ class AppService(BaseAppService, ABC):
                 log_level=self.log_level,
             )
         )
-        self.shared_event_loop.run_until_complete(self.http_server.serve())
+        self.run_and_wait(self.http_server.serve())
+
+        # Perform clean-up when the server exits
+        if not self._cleaned_up:
+            self._cleaned_up = True
+            logger.info(f"[{self.service_name}] 🧹 Running cleanup")
+            self.cleanup()
+            logger.info(f"[{self.service_name}] ✅ Cleanup done")
 
     def _self_terminate(self, signum: int, frame):
         """Pass SIGTERM to Uvicorn so it can shut down gracefully"""
@@ -296,7 +319,7 @@ class AppService(BaseAppService, ABC):
             # NOTE: Actually stopping the process is triggered by FastAPI's lifespan 👇🏼
         else:
             # Expedite shutdown on second SIGTERM
-            self.llprint(
+            logger.info(
                 f"[{self.service_name}] 🛑🛑 Received {signame} ({signum}), "
                 "but shutdown is already underway. Terminating..."
             )
@@ -311,7 +334,6 @@ class AppService(BaseAppService, ABC):
 
         # Shutdown - this runs when FastAPI/Uvicorn shuts down
         logger.info(f"[{self.service_name}] ✅ FastAPI has finished")
-        self._halt_event.set()  # stop main thread
 
     async def health_check(self) -> str:
         """A method to check the health of the process."""
