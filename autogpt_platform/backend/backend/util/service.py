@@ -131,7 +131,7 @@ class BaseAppService(AppProcess, ABC):
         return asyncio.run_coroutine_threadsafe(coro, self.shared_event_loop).result()
 
     def run(self):
-        self.shared_event_loop = asyncio.get_event_loop()
+        self.shared_event_loop = asyncio.new_event_loop()
         self._halt_event = threading.Event()
 
     def cleanup(self):

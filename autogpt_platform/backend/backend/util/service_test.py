@@ -1,7 +1,7 @@
 import asyncio
+import contextlib
 import time
 from functools import cached_property
-from multiprocessing import Process
 from unittest.mock import Mock
 
 import httpx
@@ -542,11 +542,34 @@ class TestGracefulShutdownService(AppService):
         self.request_log.append(f"cleanup completed at {time.time()}")
 
 
-def run_test_graceful_shutdown_service():
+@pytest.fixture(scope="function")
+async def test_service():
     """Run the test service in a separate process"""
 
     service = TestGracefulShutdownService()
-    service.start()
+    service.start(background=True)
+
+    base_url = f"http://localhost:{service.get_port()}"
+
+    await wait_until_service_ready(base_url)
+    yield service, base_url
+
+    service.stop()
+
+
+async def wait_until_service_ready(base_url: str, timeout: float = 10):
+    start_time = time.time()
+    while time.time() - start_time <= timeout:
+        async with httpx.AsyncClient(timeout=5) as client:
+            with contextlib.suppress(httpx.ConnectError):
+                response = await client.get(f"{base_url}/health_check", timeout=5)
+
+                if response.status_code == 200 and response.json() == "OK":
+                    return
+
+        await asyncio.sleep(0.5)
+
+    raise RuntimeError(f"Service at {base_url} not available after {timeout} seconds")
 
 
 async def send_slow_request(base_url: str) -> dict:
@@ -558,112 +581,76 @@ async def send_slow_request(base_url: str) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_graceful_shutdown():
+async def test_graceful_shutdown(test_service):
     """Test that AppService handles graceful shutdown correctly"""
+    service, test_service_url = test_service
 
-    # Start the service in a separate process
-    service_process = Process(target=run_test_graceful_shutdown_service)
-    service_process.start()
+    # Start a slow request that should complete even after shutdown
+    slow_task = asyncio.create_task(send_slow_request(test_service_url))
 
+    # Give the slow request time to start
+    await asyncio.sleep(1)
+
+    # Send SIGTERM to the service process
+    shutdown_start_time = time.time()
+    service.process.terminate()  # This sends SIGTERM
+
+    # Wait a moment for shutdown to start
+    await asyncio.sleep(0.5)
+
+    # Try to send a new request - should be rejected or connection refused
     try:
-        # Wait for service to start up
-        await asyncio.sleep(3)
+        async with httpx.AsyncClient(timeout=5) as client:
+            response = await client.post(f"{test_service_url}/fast_endpoint", json={})
+            # Should get 503 Service Unavailable during shutdown
+            assert response.status_code == 503
+            assert "shutting down" in response.json()["detail"].lower()
+    except httpx.ConnectError:
+        # Connection refused is also acceptable - server stopped accepting
+        pass
 
-        base_url = "http://localhost:18999"
+    # The slow request should still complete successfully
+    slow_result = await slow_task
+    assert slow_result["message"] == "completed"
+    assert slow_result["duration"] >= 4.5  # Should have taken ~5 seconds
 
-        # Verify service is running
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.get(f"{base_url}/health_check")
-            assert response.status_code == 200
-            assert response.json() == "OK"
+    # Wait for the service to fully shut down
+    service.process.join(timeout=15)
+    shutdown_end_time = time.time()
 
-        # Start a slow request that should complete even after shutdown
-        slow_task = asyncio.create_task(send_slow_request(base_url))
+    # Verify the service actually terminated
+    assert not service.process.is_alive()
 
-        # Give the slow request time to start
-        await asyncio.sleep(1)
+    # Verify shutdown took reasonable time (slow request + delay + cleanup)
+    shutdown_duration = shutdown_end_time - shutdown_start_time
+    assert 5 <= shutdown_duration <= 12  # ~5s request + 0-5s delay + buffer
 
-        # Send SIGTERM to the service process
-        shutdown_start_time = time.time()
-        service_process.terminate()  # This sends SIGTERM
-
-        # Wait a moment for shutdown to start
-        await asyncio.sleep(0.5)
-
-        # Try to send a new request - should be rejected or connection refused
-        try:
-            async with httpx.AsyncClient(timeout=5) as client:
-                response = await client.post(f"{base_url}/fast_endpoint", json={})
-                # Should get 503 Service Unavailable during shutdown
-                assert response.status_code == 503
-                assert "shutting down" in response.json()["detail"].lower()
-        except httpx.ConnectError:
-            # Connection refused is also acceptable - server stopped accepting
-            pass
-
-        # The slow request should still complete successfully
-        slow_result = await slow_task
-        assert slow_result["message"] == "completed"
-        assert slow_result["duration"] >= 4.5  # Should have taken ~5 seconds
-
-        # Wait for the service to fully shut down
-        service_process.join(timeout=15)
-        shutdown_end_time = time.time()
-
-        # Verify the service actually terminated
-        assert not service_process.is_alive()
-
-        # Verify shutdown took reasonable time (slow request + delay + cleanup)
-        shutdown_duration = shutdown_end_time - shutdown_start_time
-        assert 5 <= shutdown_duration <= 12  # ~5s request + 0-5s delay + buffer
-
-        print(f"Shutdown took {shutdown_duration:.2f} seconds")
-        print(f"Slow request completed in: {slow_result['duration']:.2f} seconds")
-
-    finally:
-        # Cleanup: make sure service process is terminated
-        if service_process.is_alive():
-            service_process.kill()
-            service_process.join()
+    print(f"Shutdown took {shutdown_duration:.2f} seconds")
+    print(f"Slow request completed in: {slow_result['duration']:.2f} seconds")
 
 
 @pytest.mark.asyncio
-async def test_health_check_during_shutdown():
+async def test_health_check_during_shutdown(test_service):
     """Test that health checks behave correctly during shutdown"""
+    service, test_service_url = test_service
 
-    # Start the service
-    service_process = Process(target=run_test_graceful_shutdown_service)
-    service_process.start()
+    # Health check should pass initially
+    async with httpx.AsyncClient(timeout=5) as client:
+        response = await client.get(f"{test_service_url}/health_check")
+        assert response.status_code == 200
 
+    # Send SIGTERM
+    service.process.terminate()
+
+    # Wait for shutdown to begin
+    await asyncio.sleep(1)
+
+    # Health check should now fail or connection should be refused
     try:
-        # Wait for service to start
-        await asyncio.sleep(3)
-
-        base_url = "http://localhost:18999"
-
-        # Health check should pass initially
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(f"{base_url}/health_check")
-            assert response.status_code == 200
-
-        # Send SIGTERM
-        service_process.terminate()
-
-        # Wait for shutdown to begin
-        await asyncio.sleep(1)
-
-        # Health check should now fail or connection should be refused
-        try:
-            async with httpx.AsyncClient(timeout=5) as client:
-                response = await client.get(f"{base_url}/health_check")
-                # Could either get 503, 500 (unhealthy), or connection error
-                assert response.status_code in [500, 503]
-        except (httpx.ConnectError, httpx.ReadTimeout):
-            # Connection refused/timeout is also acceptable
-            pass
-
-    finally:
-        # Cleanup
-        if service_process.is_alive():
-            service_process.kill()
-            service_process.join()
+        async with httpx.AsyncClient(timeout=5) as client:
+            response = await client.get(f"{test_service_url}/health_check")
+            # Could either get 503, 500 (unhealthy), or connection error
+            assert response.status_code in [500, 503]
+    except (httpx.ConnectError, httpx.ConnectTimeout):
+        # Connection refused/timeout is also acceptable
+        pass
