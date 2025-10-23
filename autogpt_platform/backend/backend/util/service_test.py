@@ -639,7 +639,7 @@ async def test_health_check_during_shutdown():
 
     try:
         # Wait for service to start
-        await asyncio.sleep(2)
+        await asyncio.sleep(3)
 
         base_url = "http://localhost:18999"
 
@@ -663,8 +663,6 @@ async def test_health_check_during_shutdown():
         except (httpx.ConnectError, httpx.ReadTimeout):
             # Connection refused/timeout is also acceptable
             pass
-
-        print("✅ Health check during shutdown test passed!")
 
     finally:
         # Cleanup
