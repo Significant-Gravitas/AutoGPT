@@ -1162,23 +1162,11 @@ async def validate_graph_execution_permissions(
 # but provide boolean returns for callers that expect them
 
 
+# DEPRECATED - Use validate_graph_execution_permissions() instead
 async def is_graph_in_user_library(
     graph_id: str, user_id: str, graph_version: Optional[int] = None
 ) -> bool:
-    """
-    Check if a graph is accessible in a user's library (not deleted/archived).
-
-    DEPRECATED: Use validate_graph_execution_permissions() for execution validation.
-    This function is maintained for backward compatibility with non-execution use cases.
-
-    Args:
-        graph_id: The ID of the graph to check
-        user_id: The ID of the user
-        graph_version: Optional specific version to check
-
-    Returns:
-        bool: True if the graph is in the user's library and not deleted/archived
-    """
+    """DEPRECATED: Use validate_graph_execution_permissions() instead."""
     try:
         await validate_graph_execution_permissions(graph_id, user_id, graph_version)
         return True
@@ -1186,36 +1174,17 @@ async def is_graph_in_user_library(
         return False
 
 
+# DEPRECATED - Use validate_graph_execution_permissions() instead
 async def can_user_execute_graph(
     graph_id: str,
     user_id: str,
     graph_version: Optional[int] = None,
     assume_library_access: bool = False,
 ) -> bool:
-    """
-    Check if a user has execution permissions for a specific graph.
-
-    DEPRECATED: Use validate_graph_execution_permissions() for execution validation.
-    This function is maintained for backward compatibility.
-
-    Args:
-        graph_id: The ID of the graph to check
-        user_id: The ID of the user
-        graph_version: Optional specific version to check
-        assume_library_access: If True, skips library membership check (assumes already validated)
-
-    Returns:
-        bool: True if the user can execute the graph
-    """
+    """DEPRECATED: Use validate_graph_execution_permissions() instead."""
     try:
-        if assume_library_access:
-            # If library access is assumed, we can't use the consolidated function
-            # since it always checks library membership. For now, just return True
-            # as execution permissions beyond library membership aren't implemented yet.
-            return True
-        else:
-            await validate_graph_execution_permissions(graph_id, user_id, graph_version)
-            return True
+        await validate_graph_execution_permissions(graph_id, user_id, graph_version)
+        return True
     except Exception:
         return False
 
