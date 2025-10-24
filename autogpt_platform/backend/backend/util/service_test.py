@@ -612,7 +612,7 @@ async def test_graceful_shutdown(test_service):
     # The slow request should still complete successfully
     slow_result = await slow_task
     assert slow_result["message"] == "completed"
-    assert slow_result["duration"] >= 4.5  # Should have taken ~5 seconds
+    assert 4.9 < slow_result["duration"] < 5.5  # Should have taken ~5 seconds
 
     # Wait for the service to fully shut down
     service.process.join(timeout=15)
@@ -621,9 +621,9 @@ async def test_graceful_shutdown(test_service):
     # Verify the service actually terminated
     assert not service.process.is_alive()
 
-    # Verify shutdown took reasonable time (slow request + delay + cleanup)
+    # Verify shutdown took reasonable time (slow request - 1s + cleanup)
     shutdown_duration = shutdown_end_time - shutdown_start_time
-    assert 5 <= shutdown_duration <= 12  # ~5s request + 0-5s delay + buffer
+    assert 4 <= shutdown_duration <= 6  # ~5s request - 1s + buffer
 
     print(f"Shutdown took {shutdown_duration:.2f} seconds")
     print(f"Slow request completed in: {slow_result['duration']:.2f} seconds")
