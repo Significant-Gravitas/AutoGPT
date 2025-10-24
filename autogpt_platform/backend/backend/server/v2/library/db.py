@@ -577,10 +577,7 @@ async def delete_library_agent(
     if deleted_count < 1:
         raise NotFoundError(f"Library agent #{library_agent_id} not found")
 
-    logger.info(
-        f"Deleted library agent {library_agent_id} and cleaned up "
-        f"schedules/webhooks for graph {graph_id}"
-    )
+    logger.info(f"Deleted library agent #{library_agent_id}")
 
 
 async def _cleanup_schedules_for_graph(graph_id: str, user_id: str) -> None:

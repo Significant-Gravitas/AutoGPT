@@ -278,9 +278,10 @@ async def unlink_webhook_from_graph(
         graph_id: The ID of the graph to unlink from
         user_id: The ID of the user (for authorization)
     """
+    from prisma.models import AgentNode, AgentPreset
+
     from backend.data.graph import set_node_webhook
     from backend.server.v2.library.db import set_preset_webhook
-    from prisma.models import AgentNode, AgentPreset
 
     # Find all nodes in this graph that use this webhook
     nodes = await AgentNode.prisma().find_many(

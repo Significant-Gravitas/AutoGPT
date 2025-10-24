@@ -17,14 +17,16 @@ from fastapi import (
 from pydantic import BaseModel, Field, SecretStr
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWAY
 
-from backend.data.graph import get_graph, set_node_webhook
+from backend.data.graph import NodeModel, get_graph, set_node_webhook
 from backend.data.integrations import (
     WebhookEvent,
+    WebhookWithRelations,
     get_all_webhooks_by_creds,
     get_webhook,
     publish_webhook_event,
     wait_for_webhook_event,
 )
+from backend.server.v2.library.model import LibraryAgentPreset
 from backend.data.model import (
     Credentials,
     CredentialsType,
@@ -329,6 +331,105 @@ async def delete_credentials(
 # ------------------------- WEBHOOK STUFF -------------------------- #
 
 
+async def _execute_webhook_node_trigger(
+    node: NodeModel,
+    webhook: WebhookWithRelations,
+    webhook_id: str,
+    event_type: str,
+    payload: dict,
+) -> None:
+    """Execute a webhook-triggered node."""
+    logger.debug(f"Webhook-attached node: {node}")
+    if not node.is_triggered_by_event_type(event_type):
+        logger.debug(f"Node #{node.id} doesn't trigger on event {event_type}")
+        return
+    logger.debug(f"Executing graph #{node.graph_id} node #{node.id}")
+    try:
+        await add_graph_execution(
+            user_id=webhook.user_id,
+            graph_id=node.graph_id,
+            graph_version=node.graph_version,
+            nodes_input_masks={node.id: {"payload": payload}},
+        )
+    except GraphNotInLibraryError as e:
+        logger.warning(
+            f"Webhook #{webhook_id} execution blocked for "
+            f"deleted/archived graph #{node.graph_id} (node #{node.id}): {e}"
+        )
+        # Clean up orphaned webhook trigger for this graph
+        await _cleanup_orphaned_webhook_for_graph(
+            node.graph_id, webhook.user_id, webhook_id
+        )
+    except Exception as e:
+        logger.error(
+            f"Failed to execute graph #{node.graph_id} via webhook #{webhook_id}: "
+            f"{type(e).__name__}: {e}"
+        )
+        # Continue processing - webhook should be resilient to individual failures
+
+
+async def _execute_webhook_preset_trigger(
+    preset: LibraryAgentPreset,
+    webhook: WebhookWithRelations,
+    webhook_id: str,
+    event_type: str,
+    payload: dict,
+) -> None:
+    """Execute a webhook-triggered preset."""
+    logger.debug(f"Webhook-attached preset: {preset}")
+    if not preset.is_active:
+        logger.debug(f"Preset #{preset.id} is inactive")
+        return
+
+    graph = await get_graph(preset.graph_id, preset.graph_version, webhook.user_id)
+    if not graph:
+        logger.error(
+            f"User #{webhook.user_id} has preset #{preset.id} for graph "
+            f"#{preset.graph_id} v{preset.graph_version}, "
+            "but no access to the graph itself."
+        )
+        logger.info(f"Automatically deactivating broken preset #{preset.id}")
+        await update_preset(preset.user_id, preset.id, is_active=False)
+        return
+    if not (trigger_node := graph.webhook_input_node):
+        # NOTE: this should NEVER happen, but we log and handle it gracefully
+        logger.error(
+            f"Preset #{preset.id} is triggered by webhook #{webhook.id}, but graph "
+            f"#{preset.graph_id} v{preset.graph_version} has no webhook input node"
+        )
+        await set_preset_webhook(preset.user_id, preset.id, None)
+        return
+    if not trigger_node.block.is_triggered_by_event_type(preset.inputs, event_type):
+        logger.debug(f"Preset #{preset.id} doesn't trigger on event {event_type}")
+        return
+    logger.debug(f"Executing preset #{preset.id} for webhook #{webhook.id}")
+
+    try:
+        await add_graph_execution(
+            user_id=webhook.user_id,
+            graph_id=preset.graph_id,
+            preset_id=preset.id,
+            graph_version=preset.graph_version,
+            graph_credentials_inputs=preset.credentials,
+            nodes_input_masks={trigger_node.id: {**preset.inputs, "payload": payload}},
+        )
+    except GraphNotInLibraryError as e:
+        logger.warning(
+            f"Webhook #{webhook_id} execution blocked for "
+            f"deleted/archived graph #{preset.graph_id} (preset #{preset.id}): {e}"
+        )
+        # Clean up orphaned webhook trigger for this graph
+        await _cleanup_orphaned_webhook_for_graph(
+            preset.graph_id, webhook.user_id, webhook_id
+        )
+    except Exception as e:
+        logger.error(
+            f"Failed to execute preset #{preset.id} via webhook #{webhook_id}: "
+            f"{type(e).__name__}: {e}"
+        )
+        # Continue processing - webhook should be resilient to individual failures
+
+
 # ⚠️ Note
 # No user auth check because this endpoint is for webhook ingress and relies on
 # validation by the provider-specific `WebhooksManager`.
@@ -376,94 +477,18 @@ async def webhook_ingress_generic(
 
     await complete_webhook_trigger_step(user_id)
 
-    # Process triggered nodes and presets concurrently for better performance
-    async def execute_node_trigger(node):
-        """Execute a webhook-triggered node."""
-        logger.debug(f"Webhook-attached node: {node}")
-        if not node.is_triggered_by_event_type(event_type):
-            logger.debug(f"Node #{node.id} doesn't trigger on event {event_type}")
-            return
-        logger.debug(f"Executing graph #{node.graph_id} node #{node.id}")
-        try:
-            await add_graph_execution(
-                user_id=webhook.user_id,
-                graph_id=node.graph_id,
-                graph_version=node.graph_version,
-                nodes_input_masks={node.id: {"payload": payload}},
-            )
-        except GraphNotInLibraryError as e:
-            logger.warning(
-                f"Webhook {webhook_id} execution blocked for deleted/archived graph {node.graph_id} (node {node.id}): {e}"
-            )
-            # Clean up orphaned webhook trigger for this graph
-            await _cleanup_orphaned_webhook_for_graph(
-                node.graph_id, webhook.user_id, webhook_id
-            )
-        except Exception as e:
-            logger.error(
-                f"Failed to execute graph {node.graph_id} via webhook {webhook_id}: {type(e).__name__}: {e}"
-            )
-            # Continue processing - webhook should be resilient to individual failures
-
-    async def execute_preset_trigger(preset):
-        """Execute a webhook-triggered preset."""
-        logger.debug(f"Webhook-attached preset: {preset}")
-        if not preset.is_active:
-            logger.debug(f"Preset #{preset.id} is inactive")
-            return
-
-        graph = await get_graph(preset.graph_id, preset.graph_version, webhook.user_id)
-        if not graph:
-            logger.error(
-                f"User #{webhook.user_id} has preset #{preset.id} for graph "
-                f"#{preset.graph_id} v{preset.graph_version}, "
-                "but no access to the graph itself."
-            )
-            logger.info(f"Automatically deactivating broken preset #{preset.id}")
-            await update_preset(preset.user_id, preset.id, is_active=False)
-            return
-        if not (trigger_node := graph.webhook_input_node):
-            # NOTE: this should NEVER happen, but we log and handle it gracefully
-            logger.error(
-                f"Preset #{preset.id} is triggered by webhook #{webhook.id}, but graph "
-                f"#{preset.graph_id} v{preset.graph_version} has no webhook input node"
-            )
-            await set_preset_webhook(preset.user_id, preset.id, None)
-            return
-        if not trigger_node.block.is_triggered_by_event_type(preset.inputs, event_type):
-            logger.debug(f"Preset #{preset.id} doesn't trigger on event {event_type}")
-            return
-        logger.debug(f"Executing preset #{preset.id} for webhook #{webhook.id}")
-
-        try:
-            await add_graph_execution(
-                user_id=webhook.user_id,
-                graph_id=preset.graph_id,
-                preset_id=preset.id,
-                graph_version=preset.graph_version,
-                graph_credentials_inputs=preset.credentials,
-                nodes_input_masks={
-                    trigger_node.id: {**preset.inputs, "payload": payload}
-                },
-            )
-        except GraphNotInLibraryError as e:
-            logger.warning(
-                f"Webhook {webhook_id} execution blocked for deleted/archived graph {preset.graph_id} (preset {preset.id}): {e}"
-            )
-            # Clean up orphaned webhook trigger for this graph
-            await _cleanup_orphaned_webhook_for_graph(
-                preset.graph_id, webhook.user_id, webhook_id
-            )
-        except Exception as e:
-            logger.error(
-                f"Failed to execute preset {preset.id} via webhook {webhook_id}: {type(e).__name__}: {e}"
-            )
-            # Continue processing - webhook should be resilient to individual failures
-
     # Execute all triggers concurrently for better performance
     tasks = []
-    tasks.extend(execute_node_trigger(node) for node in webhook.triggered_nodes)
-    tasks.extend(execute_preset_trigger(preset) for preset in webhook.triggered_presets)
+    tasks.extend(
+        _execute_webhook_node_trigger(node, webhook, webhook_id, event_type, payload)
+        for node in webhook.triggered_nodes
+    )
+    tasks.extend(
+        _execute_webhook_preset_trigger(
+            preset, webhook, webhook_id, event_type, payload
+        )
+        for preset in webhook.triggered_presets
+    )
 
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
