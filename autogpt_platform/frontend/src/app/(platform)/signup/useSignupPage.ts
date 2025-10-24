@@ -59,6 +59,7 @@ export function useSignupPage() {
       resetCaptcha();
       return;
     }
+
     try {
       const response = await fetch("/api/auth/provider", {
         method: "POST",
@@ -71,7 +72,6 @@ export function useSignupPage() {
         setIsGoogleLoading(false);
         resetCaptcha();
 
-        // Check for waitlist error
         if (error === "not_allowed") {
           setShowNotAllowedModal(true);
           return;
@@ -149,6 +149,7 @@ export function useSignupPage() {
           setShowNotAllowedModal(true);
           return;
         }
+
         toast({
           title: result?.error || "Signup failed",
           variant: "destructive",
