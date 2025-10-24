@@ -15,7 +15,6 @@ from backend.server.v2.chat.data import (
     upsert_chat_session,
 )
 from backend.server.v2.chat.models import (
-    ResponseType,
     StreamBaseResponse,
     StreamEnd,
     StreamError,
@@ -23,31 +22,13 @@ from backend.server.v2.chat.models import (
     StreamToolCall,
     StreamToolExecutionResult,
 )
+from backend.server.v2.chat.tools import execute_tool, tools
 from backend.util.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
 
 config = backend.server.v2.chat.config.ChatConfig()
 client = AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
-
-
-async def execute_tool(
-    tool_name: str,
-    parameters: dict[str, Any],
-    user_id: str | None,
-    session_id: str,
-) -> StreamToolExecutionResult:
-    """
-    TODO: Implement tool execution.
-    """
-    return StreamToolExecutionResult(
-        type=ResponseType.TOOL_RESPONSE,
-        tool_id=tool_name,
-        tool_name=tool_name,
-        result="",
-        success=True,
-        timestamp=datetime.now(UTC).isoformat(),
-    )
 
 
 async def create_chat_session(
@@ -125,7 +106,7 @@ async def stream_chat_completion(
     try:
         async for chunk in _stream_chat_chunks(
             session=session,
-            tools=[],
+            tools=tools,
         ):
 
             if isinstance(chunk, StreamTextChunk):
@@ -289,8 +270,9 @@ async def _stream_chat_chunks(
 
                             tool_execution_response: StreamToolExecutionResult = (
                                 await execute_tool(
-                                    tool_calls[idx]["function"]["name"],
-                                    tool_calls[idx]["function"]["arguments"],
+                                    tool_name=tool_calls[idx]["function"]["name"],
+                                    parameters=tool_calls[idx]["function"]["arguments"],
+                                    tool_call_id=tool_calls[idx]["id"],
                                     user_id=session.user_id,
                                     session_id=session.session_id,
                                 )
