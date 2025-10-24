@@ -6,7 +6,6 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from backend.data.model import CredentialsMetaInput
-from backend.server.v2.chat.models import StreamBaseResponse
 
 
 class ResponseType(str, Enum):

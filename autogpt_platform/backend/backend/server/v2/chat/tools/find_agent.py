@@ -47,7 +47,7 @@ class FindAgentTool(BaseTool):
         user_id: str | None,
         session_id: str,
         **kwargs,
-    ) -> ToolResponseBase: 
+    ) -> ToolResponseBase:
         """Search for agents in the marketplace.
 
         Args:
@@ -74,14 +74,12 @@ class FindAgentTool(BaseTool):
                 search_query=query,
                 page_size=5,
             )
-            
+
             logger.info(f"Find agents tool found {len(store_results.agents)} agents")
             agents = []
             for agent in store_results.agents:
                 agent_id = f"{agent.creator}/{agent.slug}"
-                logger.info(
-                    f"Building agent ID = {agent_id}"
-                )
+                logger.info(f"Building agent ID = {agent_id}")
                 agents.append(
                     AgentInfo(
                         id=agent_id,
@@ -90,10 +88,10 @@ class FindAgentTool(BaseTool):
                         source="marketplace",
                         in_library=False,
                         creator=agent.creator,
-                        category="general", 
+                        category="general",
                         rating=agent.rating,
                         runs=agent.runs,
-                        is_featured=False,  
+                        is_featured=False,
                     ),
                 )
 
@@ -139,9 +137,9 @@ if __name__ == "__main__":
         await prisma.Prisma().connect()
         agents = await find_agent_tool.execute(
             tool_call_id="tool_call_id",
-            query="Linkedin", 
-            user_id="user", 
-            session_id="session"
+            query="Linkedin",
+            user_id="user",
+            session_id="session",
         )
         print(agents)
         await prisma.Prisma().disconnect()

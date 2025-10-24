@@ -1,11 +1,13 @@
-from .find_agent import FindAgentTool
+from typing import TYPE_CHECKING, Any
+
+from openai.types.chat import ChatCompletionToolParam
+
 # from .get_agent_details import GetAgentDetailsTool
 # from .get_required_setup_info import GetRequiredSetupInfoTool
 # from .setup_agent import SetupAgentTool
 # from .run_agent import RunAgentTool
 from .base import BaseTool
-from openai.types.chat import ChatCompletionToolParam
-from typing import TYPE_CHECKING, Any
+from .find_agent import FindAgentTool
 
 if TYPE_CHECKING:
     from backend.server.v2.chat.models import StreamToolExecutionResult
@@ -34,7 +36,7 @@ async def execute_tool(
     session_id: str,
     tool_call_id: str,
 ) -> "StreamToolExecutionResult":
-    
+
     tool_map: dict[str, BaseTool] = {
         "find_agent": find_agent_tool,
         # "get_agent_details": get_agent_details_tool,
@@ -44,4 +46,6 @@ async def execute_tool(
     }
     if tool_name not in tool_map:
         raise ValueError(f"Tool {tool_name} not found")
-    return await tool_map[tool_name].execute(user_id, session_id, tool_call_id, **parameters)
+    return await tool_map[tool_name].execute(
+        user_id, session_id, tool_call_id, **parameters
+    )

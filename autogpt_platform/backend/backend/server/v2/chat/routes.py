@@ -22,10 +22,6 @@ optional_bearer = HTTPBearer(auto_error=False)
 
 router = APIRouter(
     tags=["chat"],
-    responses={
-        404: {"description": "Resource not found"},
-        401: {"description": "Unauthorized"},
-    },
 )
 
 
@@ -216,5 +212,5 @@ async def health_check() -> dict:
     return {
         "status": "healthy",
         "service": "chat",
-        "version": "2.0",
+        "version": "0.1.0",
     }

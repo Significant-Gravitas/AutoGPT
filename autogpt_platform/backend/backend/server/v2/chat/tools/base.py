@@ -1,13 +1,16 @@
 """Base classes and shared utilities for chat tools."""
 
-from typing import Any
 import logging
+from typing import Any
+
 from openai.types.chat import ChatCompletionToolParam
 
-from .models import ErrorResponse, NeedLoginResponse, ToolResponseBase
 from backend.server.v2.chat.models import StreamToolExecutionResult
 
+from .models import ErrorResponse, NeedLoginResponse, ToolResponseBase
+
 logger = logging.getLogger(__name__)
+
 
 class BaseTool:
     """Base class for all chat tools."""
@@ -62,7 +65,9 @@ class BaseTool:
 
         """
         if self.requires_auth and not user_id:
-            logger.error(f"Attempted tool call for {self.name} but user not authenticated")
+            logger.error(
+                f"Attempted tool call for {self.name} but user not authenticated"
+            )
             return StreamToolExecutionResult(
                 tool_id=tool_call_id,
                 tool_name=self.name,
