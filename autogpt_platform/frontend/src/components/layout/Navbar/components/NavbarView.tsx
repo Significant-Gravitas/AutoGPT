@@ -45,7 +45,7 @@ export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
         </div>
 
         {/* Right section */}
-        <div className="hidden flex-1 items-center justify-end gap-4 md:flex">
+        <div className="flex flex-1 items-center justify-end gap-4">
           {isLoggedIn ? (
             <div className="flex items-center gap-4">
               <AgentActivityDropdown />
