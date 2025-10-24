@@ -121,8 +121,6 @@ class BaseAppService(AppProcess, ABC):
         shared_asyncio_thread.join()
 
     def _run_shared_event_loop(self) -> None:
-        asyncio.set_event_loop(self.shared_event_loop)
-
         try:
             self.shared_event_loop.run_forever()
         finally:
@@ -134,6 +132,7 @@ class BaseAppService(AppProcess, ABC):
 
     def run(self):
         self.shared_event_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.shared_event_loop)
 
     def cleanup(self):
         """
