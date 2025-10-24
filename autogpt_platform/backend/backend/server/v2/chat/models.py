@@ -12,6 +12,7 @@ class ResponseType(str, Enum):
     TOOL_RESPONSE = "tool_response"
     LOGIN_NEEDED = "login_needed"
     ERROR = "error"
+    USAGE = "usage"
     STREAM_END = "stream_end"
 
 
@@ -68,6 +69,15 @@ class StreamLoginNeeded(StreamBaseResponse):
     required_action: str = Field(
         default="login", description="Required action (login/signup)"
     )
+
+
+class StreamUsage(StreamBaseResponse):
+    """Error response."""
+
+    type: ResponseType = ResponseType.USAGE
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
 
 
 class StreamError(StreamBaseResponse):

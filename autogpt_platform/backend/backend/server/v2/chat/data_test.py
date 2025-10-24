@@ -3,6 +3,7 @@ import pytest
 from backend.server.v2.chat.data import (
     ChatMessage,
     ChatSession,
+    Usage,
     get_chat_session,
     upsert_chat_session,
 )
@@ -35,6 +36,7 @@ messages = [
 async def test_chatsession_serialization_deserialization():
     s = ChatSession.new(user_id="abc123")
     s.messages = messages
+    s.usage = [Usage(prompt_tokens=100, completion_tokens=200, total_tokens=300)]
     serialized = s.model_dump_json()
     s2 = ChatSession.model_validate_json(serialized)
     assert s2.model_dump() == s.model_dump()

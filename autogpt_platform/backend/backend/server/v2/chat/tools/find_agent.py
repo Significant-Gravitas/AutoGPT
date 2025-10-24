@@ -12,6 +12,7 @@ from backend.server.v2.chat.tools.models import (
     ToolResponseBase,
 )
 from backend.server.v2.store import db as store_db
+from backend.util.exceptions import DatabaseError, NotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +68,7 @@ class FindAgentTool(BaseTool):
                 message="Please provide a search query",
                 session_id=session_id,
             )
-
+        agents = []
         try:
             logger.info(f"Searching marketplace for: {query}")
             store_results = await store_db.get_store_agents(
@@ -76,7 +77,6 @@ class FindAgentTool(BaseTool):
             )
 
             logger.info(f"Find agents tool found {len(store_results.agents)} agents")
-            agents = []
             for agent in store_results.agents:
                 agent_id = f"{agent.creator}/{agent.slug}"
                 logger.info(f"Building agent ID = {agent_id}")
@@ -94,35 +94,37 @@ class FindAgentTool(BaseTool):
                         is_featured=False,
                     ),
                 )
-
-            if not agents:
-                return NoResultsResponse(
-                    message=f"No agents found matching '{query}'. Try different keywords or browse the marketplace.",
-                    session_id=session_id,
-                    suggestions=[
-                        "Try more general terms",
-                        "Browse categories in the marketplace",
-                        "Check spelling",
-                    ],
-                )
-
-            # Return formatted carousel
-            title = f"Found {len(agents)} agent{'s' if len(agents) != 1 else ''} for '{query}'"
-            return AgentCarouselResponse(
-                message=title,
-                title=title,
-                agents=agents,
-                count=len(agents),
-                session_id=session_id,
-            )
-
-        except Exception as e:
+        except NotFoundError:
+            pass
+        except DatabaseError as e:
             logger.error(f"Error searching agents: {e}", exc_info=True)
             return ErrorResponse(
                 message="Failed to search for agents. Please try again.",
                 error=str(e),
                 session_id=session_id,
             )
+        if not agents:
+            return NoResultsResponse(
+                message=f"No agents found matching '{query}'. Try different keywords or browse the marketplace.",
+                session_id=session_id,
+                suggestions=[
+                    "Try more general terms",
+                    "Browse categories in the marketplace",
+                    "Check spelling",
+                ],
+            )
+
+        # Return formatted carousel
+        title = (
+            f"Found {len(agents)} agent{'s' if len(agents) != 1 else ''} for '{query}'"
+        )
+        return AgentCarouselResponse(
+            message=title,
+            title=title,
+            agents=agents,
+            count=len(agents),
+            session_id=session_id,
+        )
 
 
 if __name__ == "__main__":
@@ -131,7 +133,7 @@ if __name__ == "__main__":
     import prisma
 
     find_agent_tool = FindAgentTool()
-    print(find_agent_tool.parameters)
+    print(find_agent_tool.as_openai_tool())
 
     async def main():
         await prisma.Prisma().connect()

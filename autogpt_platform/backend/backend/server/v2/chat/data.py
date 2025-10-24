@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import UTC, datetime
 
@@ -20,6 +21,7 @@ from pydantic import BaseModel
 from backend.server.v2.chat.config import ChatConfig
 from backend.util.cache import async_redis
 
+logger = logging.getLogger(__name__)
 config = ChatConfig()
 
 
@@ -33,10 +35,17 @@ class ChatMessage(BaseModel):
     function_call: dict | None = None
 
 
+class Usage(BaseModel):
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+
+
 class ChatSession(BaseModel):
     session_id: str
     user_id: str | None
     messages: list[ChatMessage]
+    usage: list[Usage]
     started_at: datetime
     updated_at: datetime
 
@@ -46,6 +55,7 @@ class ChatSession(BaseModel):
             session_id=str(uuid.uuid4()),
             user_id=user_id,
             messages=[],
+            usage=[],
             started_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
         )
@@ -135,11 +145,15 @@ async def get_chat_session(
     raw_session: bytes = await async_redis.get(redis_key)
 
     if not raw_session:
+        logger.warning(f"Session {session_id} not found")
         return None
 
     session = ChatSession.model_validate_json(raw_session)
 
     if session.user_id != user_id:
+        logger.warning(
+            f"Session {session_id} user id mismatch: {session.user_id} != {user_id}"
+        )
         return None
 
     return session
