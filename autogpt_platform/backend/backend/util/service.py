@@ -118,6 +118,7 @@ class BaseAppService(AppProcess, ABC):
         # internal signal handlers, since there is no config option for this :(
         shared_asyncio_thread = threading.Thread(
             target=self._run_shared_event_loop,
+            daemon=True,
             name=f"{self.service_name}-shared-event-loop",
         )
         shared_asyncio_thread.start()
