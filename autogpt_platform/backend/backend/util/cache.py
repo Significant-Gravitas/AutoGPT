@@ -20,6 +20,7 @@ from functools import wraps
 from typing import Any, Callable, ParamSpec, Protocol, TypeVar, cast, runtime_checkable
 
 from redis import ConnectionPool, Redis
+from redis.asyncio import Redis as AsyncRedis, ConnectionPool as AsyncConnectionPool
 
 from backend.util.retry import conn_retry
 from backend.util.settings import Settings
@@ -60,6 +61,17 @@ def _get_cache_pool() -> ConnectionPool:
 
 
 redis = Redis(connection_pool=_get_cache_pool())
+
+async_redis = AsyncRedis(connection_pool=AsyncConnectionPool(
+    host=settings.config.redis_host,
+    port=settings.config.redis_port,
+    password=settings.config.redis_password or None,
+    decode_responses=False,  # Binary mode for pickle
+    max_connections=50,
+    socket_keepalive=True,
+    socket_connect_timeout=5,
+    retry_on_timeout=True,
+))
 
 
 @dataclass

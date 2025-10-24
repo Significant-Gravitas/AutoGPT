@@ -20,6 +20,9 @@ class ChatConfig(BaseSettings):
         description="Base URL for API (e.g., for OpenRouter)",
     )
 
+    # Session TTL Configuration - 12 hours
+    session_ttl: int = Field(default=43200, description="Session TTL in seconds")
+    
     # System Prompt Configuration
     system_prompt_path: str = Field(
         default="prompts/chat_system.md",
