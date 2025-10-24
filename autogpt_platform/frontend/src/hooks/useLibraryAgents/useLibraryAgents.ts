@@ -10,11 +10,8 @@ export function useLibraryAgents() {
   useEffect(() => {
     if (!initialized) {
       loadFromCache();
-      const timer = setTimeout(() => {
-        void refreshAll();
-      }, 5000);
+      void refreshAll();
       initialized = true;
-      return () => clearTimeout(timer);
     }
   }, [loadFromCache, refreshAll]);
 

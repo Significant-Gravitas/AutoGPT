@@ -5,13 +5,9 @@ import {
   getV2ListLibraryAgents,
   type getV2ListLibraryAgentsResponse,
 } from "@/app/api/__generated__/endpoints/library/library";
+import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 
-export type AgentInfo = {
-  name: string;
-  description: string;
-  library_agent_id?: string;
-  graph_id?: string | null;
-};
+export type AgentInfo = LibraryAgent;
 
 type AgentStore = {
   agents: AgentInfo[];
@@ -23,14 +19,14 @@ type AgentStore = {
 };
 
 type CachedAgents = {
-  agents: AgentInfo[];
+  agents: LibraryAgent[];
   lastUpdatedAt: number;
 };
 
 async function fetchAllLibraryAgents() {
   const pageSize = 100;
   let page = 1;
-  const all: AgentInfo[] = [];
+  const all: LibraryAgent[] = [];
 
   let res: getV2ListLibraryAgentsResponse | undefined;
   try {
@@ -43,17 +39,7 @@ async function fetchAllLibraryAgents() {
   if (!res || res.status !== 200) return all;
 
   const { agents, pagination } = res.data;
-  all.push(
-    ...agents.map(
-      (a): AgentInfo => ({
-        name:
-          a.name || (a.graph_id ? `Agent ${a.graph_id.slice(0, 8)}` : "Agent"),
-        description: a.description || "",
-        library_agent_id: a.id,
-        graph_id: a.graph_id,
-      }),
-    ),
-  );
+  all.push(...agents);
 
   const totalPages = pagination?.total_pages ?? 1;
 
@@ -61,18 +47,7 @@ async function fetchAllLibraryAgents() {
     try {
       const next = await getV2ListLibraryAgents({ page, page_size: pageSize });
       if (next.status === 200) {
-        all.push(
-          ...next.data.agents.map(
-            (a): AgentInfo => ({
-              name:
-                a.name ||
-                (a.graph_id ? `Agent ${a.graph_id.slice(0, 8)}` : "Agent"),
-              description: a.description || "",
-              library_agent_id: a.id,
-              graph_id: a.graph_id,
-            }),
-          ),
-        );
+        all.push(...next.data.agents);
       }
     } catch (err) {
       Sentry.captureException(err, {
@@ -140,11 +115,12 @@ export function buildAgentInfoMap(agents: AgentInfo[]) {
     { name: string; description: string; library_agent_id?: string }
   >();
   agents.forEach((a) => {
-    if (a.graph_id && a.library_agent_id) {
+    if (a.graph_id && a.id) {
       map.set(a.graph_id, {
-        name: a.name,
-        description: a.description,
-        library_agent_id: a.library_agent_id,
+        name:
+          a.name || (a.graph_id ? `Agent ${a.graph_id.slice(0, 8)}` : "Agent"),
+        description: a.description || "",
+        library_agent_id: a.id,
       });
     }
   });
