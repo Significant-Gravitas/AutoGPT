@@ -1019,7 +1019,7 @@ class NotificationManager(AppService):
 
     def run_service(self):
         # Queue the main _run_service task
-        self.shared_event_loop.create_task(self._run_service())
+        asyncio.run_coroutine_threadsafe(self._run_service(), self.shared_event_loop)
 
         # Start the main event loop
         super().run_service()

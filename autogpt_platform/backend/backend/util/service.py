@@ -93,7 +93,6 @@ def expose(func: C) -> C:
 # --------------------------------------------------
 class BaseAppService(AppProcess, ABC):
     shared_event_loop: asyncio.AbstractEventLoop
-    _halt_event: threading.Event
 
     @classmethod
     @abstractmethod
@@ -122,18 +121,19 @@ class BaseAppService(AppProcess, ABC):
         shared_asyncio_thread.join()
 
     def _run_shared_event_loop(self) -> None:
-        while not self._halt_event.is_set():
-            self.shared_event_loop.run_until_complete(asyncio.sleep(5))
+        asyncio.set_event_loop(self.shared_event_loop)
 
-        logger.info(f"[{self.service_name}] 🛑 Shared event loop stopped")
+        try:
+            self.shared_event_loop.run_forever()
+        finally:
+            logger.info(f"[{self.service_name}] 🛑 Shared event loop stopped")
+            self.shared_event_loop.close()  # ensure held resources are released
 
     def run_and_wait(self, coro: Coroutine[Any, Any, T]) -> T:
         return asyncio.run_coroutine_threadsafe(coro, self.shared_event_loop).result()
 
     def run(self):
         self.shared_event_loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.shared_event_loop)
-        self._halt_event = threading.Event()
 
     def cleanup(self):
         """
@@ -145,7 +145,9 @@ class BaseAppService(AppProcess, ABC):
         **Note:** if you override this method in a subclass, it must call
         `super().cleanup()` *at the end*!
         """
-        self._halt_event.set()  # stop main thread
+        # Stop the shared event loop to allow resource clean-up
+        self.shared_event_loop.call_soon_threadsafe(self.shared_event_loop.stop)
+
         super().cleanup()
 
 
@@ -207,7 +209,7 @@ EXCEPTION_MAPPING = {
 
 class AppService(BaseAppService, ABC):
     fastapi_app: FastAPI
-    http_server: uvicorn.Server
+    http_server: uvicorn.Server | None = None
     log_level: str = "info"
 
     def set_log_level(self, log_level: str):
@@ -317,7 +319,8 @@ class AppService(BaseAppService, ABC):
                 f"[{self.service_name}] 🛑 Received {signame} ({signum}) - "
                 "Entering RPC server graceful shutdown"
             )
-            self.http_server.handle_exit(signum, frame)  # stop accepting connections
+            if self.http_server:
+                self.http_server.handle_exit(signum, frame)  # stop accepting requests
 
             # NOTE: Actually stopping the process is triggered by FastAPI's lifespan 👇🏼
         else:
