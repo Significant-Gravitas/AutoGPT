@@ -750,3 +750,115 @@ class ExaCancelWebsetBlock(Block):
             yield "webset_id", ""
             yield "status", ""
             yield "success", "false"
+
+
+class WebsetItem(BaseModel):
+    """Model for individual webset items"""
+    id: str = Field(description="The unique identifier for the Webset Item")
+    object: str = Field(description="The object type", default="webset_item")
+    source: str = Field(description="The source of the item (search or import)")
+    source_id: Annotated[str, Field(alias="sourceId", description="The unique identifier for the source")]
+    webset_id: Annotated[str, Field(alias="websetId", description="The unique identifier for the Webset this item belongs to")]
+    properties: dict = Field(
+        description="The properties of the item (person, company, article, etc.)"
+    )
+    evaluations: list[dict] = Field(
+        description="The criteria evaluations of the item",
+        default_factory=list,
+    )
+    enrichments: Optional[list[dict]] = Field(
+        description="The enrichments results of the Webset item",
+        default=None,
+    )
+    created_at: Annotated[str, Field(alias="createdAt", description="The date and time the item was created")]
+    updated_at: Annotated[str, Field(alias="updatedAt", description="The date and time the item was last updated")]
+
+
+class ExaGetWebsetItemsBlock(Block):
+    """Block for retrieving items from a Webset"""
+
+    class Input(BlockSchema):
+        credentials: CredentialsMetaInput = exa.credentials_field(
+            description="The Exa integration requires an API Key."
+        )
+        webset_id: str = SchemaField(
+            description="The ID or external ID of the Webset to get items from",
+            placeholder="webset-id-or-external-id",
+        )
+        cursor: Optional[str] = SchemaField(
+            default=None,
+            description="The cursor to paginate through the results",
+            advanced=True,
+        )
+        limit: int = SchemaField(
+            default=20,
+            description="The number of results to return (1-100)",
+            ge=1,
+            le=100,
+            advanced=True,
+        )
+        source_id: Optional[str] = SchemaField(
+            default=None,
+            description="The ID of the source to filter items by",
+            advanced=True,
+        )
+
+    class Output(BlockSchema):
+        items: list[dict] = SchemaField(
+            description="List of webset items",
+            default_factory=list,
+        )
+        has_more: bool = SchemaField(
+            description="Whether there are more items to paginate through",
+            default=False,
+        )
+        next_cursor: Optional[str] = SchemaField(
+            description="The cursor to paginate through the next set of items",
+            default=None,
+        )
+        error: str = SchemaField(
+            description="Error message if the request failed",
+            default="",
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="8b7c4d3a-9f5e-4c2b-8a1d-6e9f0b3c4d5e",
+            description="Get items from an Exa Webset with pagination support",
+            categories={BlockCategory.SEARCH},
+            input_schema=ExaGetWebsetItemsBlock.Input,
+            output_schema=ExaGetWebsetItemsBlock.Output,
+        )
+
+    async def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
+        url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/items"
+        headers = {
+            "x-api-key": credentials.api_key.get_secret_value(),
+        }
+
+        params: dict[str, Any] = {
+            "limit": input_data.limit,
+        }
+        if input_data.cursor:
+            params["cursor"] = input_data.cursor
+        if input_data.source_id:
+            params["sourceId"] = input_data.source_id
+
+        try:
+            response = await Requests().get(url, headers=headers, params=params)
+            data = response.json()
+
+            # Extract items from the response
+            items = data.get("data", [])
+
+            # Return the results
+            yield "items", items
+            yield "has_more", data.get("hasMore", False)
+            yield "next_cursor", data.get("nextCursor")
+
+        except Exception as e:
+            yield "error", str(e)
+            yield "items", []
+            yield "has_more", False
