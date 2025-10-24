@@ -10,7 +10,6 @@ import { NodeCost } from "./components/NodeCost";
 import { NodeBadges } from "./components/NodeBadges";
 import { NodeExecutionBadge } from "./components/NodeExecutionBadge";
 import { nodeStyleBasedOnStatus } from "./helpers";
-import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { NodeDataRenderer } from "./components/NodeDataRenderer";
 
 type StandardNodeBlockType = {

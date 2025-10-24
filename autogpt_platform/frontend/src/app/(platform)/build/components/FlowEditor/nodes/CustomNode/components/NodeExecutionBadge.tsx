@@ -1,5 +1,6 @@
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { Badge } from "@/components/__legacy__/ui/badge";
+import { LoadingSpinner } from "@/components/__legacy__/ui/loading";
 import { cn } from "@/lib/utils";
 
 const statusStyles: Record<AgentExecutionStatus, string> = {
@@ -18,8 +19,13 @@ export const NodeExecutionBadge = ({
 }) => {
   return (
     <div className="flex items-center justify-end rounded-b-xl py-2 pr-4">
-      <Badge className={cn(statusStyles[status], "rounded-full bg-white")}>
+      <Badge
+        className={cn(statusStyles[status], "gap-2 rounded-full bg-white")}
+      >
         {status}
+        {status === AgentExecutionStatus.RUNNING && (
+          <LoadingSpinner className="size-4" />
+        )}
       </Badge>
     </div>
   );

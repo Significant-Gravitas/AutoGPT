@@ -18,7 +18,6 @@ export const RunGraph = () => {
       size="large"
       className={cn(
         "relative min-w-44 border-none bg-gradient-to-r from-purple-500 to-pink-500 text-lg",
-        isGraphRunning && "border-none bg-red-500",
       )}
       onClick={() => runGraph()}
     >

@@ -20,26 +20,25 @@ export const useRunGraph = () => {
     flowExecutionID: parseAsString,
   });
 
-  const { mutateAsync: executeGraph, isPending: isExecuting } =
-    usePostV1ExecuteGraphAgent({
-      mutation: {
-        onSuccess: (response) => {
-          const { id } = response.data as GraphExecutionMeta;
-          setQueryStates({
-            flowExecutionID: id,
-          });
-        },
-        onError: (error) => {
-          setIsGraphRunning(false);
-
-          toast({
-            title: (error.detail as string) ?? "An unexpected error occurred.",
-            description: "An unexpected error occurred.",
-            variant: "destructive",
-          });
-        },
+  const { mutateAsync: executeGraph } = usePostV1ExecuteGraphAgent({
+    mutation: {
+      onSuccess: (response) => {
+        const { id } = response.data as GraphExecutionMeta;
+        setQueryStates({
+          flowExecutionID: id,
+        });
       },
-    });
+      onError: (error) => {
+        setIsGraphRunning(false);
+
+        toast({
+          title: (error.detail as string) ?? "An unexpected error occurred.",
+          description: "An unexpected error occurred.",
+          variant: "destructive",
+        });
+      },
+    },
+  });
 
   const runGraph = async () => {
     setIsGraphRunning(true);
