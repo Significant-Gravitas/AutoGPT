@@ -102,15 +102,11 @@ class AgentDetails(BaseModel):
     id: str
     name: str
     description: str
-    version: int
-    is_latest: bool = True
     in_library: bool = False
-    is_marketplace: bool = False
     inputs: dict[str, Any] = {}
     credentials: list[CredentialsMetaInput] = []
     execution_options: ExecutionOptions = Field(default_factory=ExecutionOptions)
     trigger_info: dict[str, Any] | None = None
-    stats: dict[str, Any] | None = None
 
 
 class AgentDetailsResponse(ToolResponseBase):
