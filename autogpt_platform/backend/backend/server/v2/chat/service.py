@@ -23,6 +23,7 @@ from backend.server.v2.chat.models import (
     StreamToolCall,
     StreamToolExecutionResult,
 )
+from backend.util.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +50,43 @@ async def execute_tool(
     )
 
 
+async def create_chat_session(
+    user_id: str | None,
+) -> ChatSession:
+    """
+    Create a new chat session.
+    """
+    return ChatSession.new(user_id)
+
+
+async def get_session(
+    session_id: str,
+    user_id: str | None,
+) -> ChatSession | None:
+    """
+    Get a chat session by ID.
+    """
+    return await get_chat_session(session_id, user_id)
+
+
+async def assign_user_to_session(
+    session_id: str,
+    user_id: str,
+) -> ChatSession:
+    """
+    Assign a user to a chat session.
+    """
+    session = await get_chat_session(session_id, None)
+    if not session:
+        raise NotFoundError(f"Session {session_id} not found")
+    session.user_id = user_id
+    return await upsert_chat_session(session)
+
+
 async def stream_chat_completion(
     session_id: str,
     user_message: str,
     user_id: str | None,
-    max_messages: int = 50,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """Main entry point for streaming chat completions with database handling.
 
@@ -77,6 +110,11 @@ async def stream_chat_completion(
     if not session:
         session = ChatSession.new(user_id)
 
+    session.messages.append(ChatMessage(role="user", content=user_message))
+
+    if len(session.messages) > config.max_context_messages:
+        raise ValueError(f"Max messages exceeded: {config.max_context_messages}")
+
     assistant_repsonse = ChatMessage(
         role="assistant",
         content="",
@@ -85,7 +123,7 @@ async def stream_chat_completion(
     has_yielded_end = False
     has_yielded_error = False
     try:
-        async for chunk in stream_chat_response(
+        async for chunk in _stream_chat_chunks(
             session=session,
             tools=[],
         ):
@@ -146,7 +184,7 @@ async def stream_chat_completion(
         await upsert_chat_session(session)
 
 
-async def stream_chat_response(
+async def _stream_chat_chunks(
     session: ChatSession,
     tools: list[ChatCompletionToolParam],
 ) -> AsyncGenerator[StreamBaseResponse, None]:
