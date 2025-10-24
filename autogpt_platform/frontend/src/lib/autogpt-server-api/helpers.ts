@@ -40,12 +40,11 @@ export function buildRequestUrl(
   method: string,
   payload?: Record<string, any>,
 ): string {
-  let url = baseUrl + path;
+  const url = baseUrl + path;
   const payloadAsQuery = ["GET", "DELETE"].includes(method);
 
   if (payloadAsQuery && payload) {
-    const queryParams = new URLSearchParams(payload);
-    url += `?${queryParams.toString()}`;
+    return buildUrlWithQuery(url, payload);
   }
 
   return url;
@@ -61,12 +60,23 @@ export function buildServerUrl(path: string): string {
 
 export function buildUrlWithQuery(
   url: string,
-  payload?: Record<string, any>,
+  query?: Record<string, any>,
 ): string {
-  if (!payload) return url;
+  if (!query) return url;
 
-  const queryParams = new URLSearchParams(payload);
-  return `${url}?${queryParams.toString()}`;
+  // Filter out undefined values to prevent them from being included as "undefined" strings
+  const filteredQuery = Object.entries(query).reduce(
+    (acc, [key, value]) => {
+      if (value !== undefined) {
+        acc[key] = value;
+      }
+      return acc;
+    },
+    {} as Record<string, any>,
+  );
+
+  const queryParams = new URLSearchParams(filteredQuery);
+  return queryParams.size > 0 ? `${url}?${queryParams.toString()}` : url;
 }
 
 export async function handleFetchError(response: Response): Promise<ApiError> {

@@ -92,10 +92,6 @@ function areFeatureFlagsEnabled() {
   return process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "enabled";
 }
 
-function areAnalyticsEnabled(host: string) {
-  return host.includes("platform.agpt.co");
-}
-
 export const environment = {
   // Generic
   getEnvironmentStr,
@@ -115,6 +111,5 @@ export const environment = {
   isCloud,
   isLocal,
   isCAPTCHAEnabled,
-  areAnalyticsEnabled,
   areFeatureFlagsEnabled,
 };
