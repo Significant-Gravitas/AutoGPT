@@ -1,25 +1,28 @@
+import logging
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from typing import Any
-from datetime import datetime, UTC
 
+import orjson
 from openai import AsyncOpenAI
-from openai.types.chat import (
-    ChatCompletionChunk,
-    ChatCompletionMessageParam,
-    ChatCompletionToolParam,
-)
+from openai.types.chat import ChatCompletionChunk, ChatCompletionToolParam
 
 import backend.server.v2.chat.config
+from backend.server.v2.chat.data import (
+    ChatMessage,
+    ChatSession,
+    get_chat_session,
+    upsert_chat_session,
+)
 from backend.server.v2.chat.models import (
-    StreamTextChunk,
-    StreamToolCall,
-    StreamToolResponse,
-    StreamError,
-    StreamEnd,
     ResponseType,
     StreamBaseResponse,
+    StreamEnd,
+    StreamError,
+    StreamTextChunk,
+    StreamToolCall,
+    StreamToolExecutionResult,
 )
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -32,11 +35,11 @@ async def execute_tool(
     parameters: dict[str, Any],
     user_id: str | None,
     session_id: str,
-) -> StreamToolResponse:
+) -> StreamToolExecutionResult:
     """
     TODO: Implement tool execution.
     """
-    return StreamToolResponse(
+    return StreamToolExecutionResult(
         type=ResponseType.TOOL_RESPONSE,
         tool_id=tool_name,
         tool_name=tool_name,
@@ -51,7 +54,7 @@ async def stream_chat_completion(
     user_message: str,
     user_id: str | None,
     max_messages: int = 50,
-) -> AsyncGenerator[str, None]:
+) -> AsyncGenerator[StreamBaseResponse, None]:
     """Main entry point for streaming chat completions with database handling.
 
     This function handles all database operations and delegates streaming
@@ -68,21 +71,84 @@ async def stream_chat_completion(
         SSE formatted JSON strings with response data
 
     """
-    # TODO: Implement this function once db operations are implemented
-    async for chunk in stream_chat_response(
-        messages=[],
-        tools=[],
-        session_id=session_id,
-        user_id=user_id,
-    ):
-        yield chunk.to_sse()
+
+    session = await get_chat_session(session_id, user_id)
+
+    if not session:
+        session = ChatSession.new(user_id)
+
+    assistant_repsonse = ChatMessage(
+        role="assistant",
+        content="",
+    )
+
+    has_yielded_end = False
+    has_yielded_error = False
+    try:
+        async for chunk in stream_chat_response(
+            session=session,
+            tools=[],
+        ):
+
+            if isinstance(chunk, StreamTextChunk):
+                assistant_repsonse.content += chunk.content
+                yield chunk
+            elif isinstance(chunk, StreamToolCall):
+                tool_call_response = ChatMessage(
+                    role="assistant",
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": chunk.tool_id,
+                            "type": "function",
+                            "function": {
+                                "name": chunk.tool_name,
+                                "arguments": chunk.arguments,
+                            },
+                        }
+                    ],
+                )
+                session.messages.append(tool_call_response)
+            elif isinstance(chunk, StreamToolExecutionResult):
+                session.messages.append(
+                    ChatMessage(
+                        role="tool",
+                        content=orjson.dumps(chunk.result).decode("utf-8"),
+                        tool_call_id=chunk.tool_id,
+                    )
+                )
+            elif isinstance(chunk, StreamEnd):
+                has_yielded_end = True
+                yield chunk
+            elif isinstance(chunk, StreamError):
+                has_yielded_error = True
+                yield chunk
+            else:
+                logger.error(f"Unknown chunk type: {type(chunk)}", exc_info=True)
+    except Exception as e:
+        logger.error(f"Error in stream: {e!s}", exc_info=True)
+        if not has_yielded_error:
+            error_response = StreamError(
+                message=str(e),
+                timestamp=datetime.now(UTC).isoformat(),
+            )
+            yield error_response
+        if not has_yielded_end:
+            yield StreamEnd(
+                timestamp=datetime.now(UTC).isoformat(),
+            )
+            has_yielded_end = True
+
+    finally:
+        # We always upsert the session even if an error occurs
+        # So we dont lose track of tool call executions
+        session.messages.append(assistant_repsonse)
+        await upsert_chat_session(session)
 
 
 async def stream_chat_response(
-    messages: list[ChatCompletionMessageParam],
+    session: ChatSession,
     tools: list[ChatCompletionToolParam],
-    session_id: str,
-    user_id: str | None,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """
     Pure streaming function for OpenAI chat completions with tool calling.
@@ -110,7 +176,7 @@ async def stream_chat_response(
             # Create the stream with proper types
             stream = await client.chat.completions.create(
                 model=model,
-                messages=messages,
+                messages=session.to_openai_messages(),
                 tools=tools,
                 tool_choice="auto",
                 stream=True,
@@ -183,12 +249,12 @@ async def stream_chat_response(
                                 timestamp=datetime.now(UTC).isoformat(),
                             )
 
-                            tool_execution_response: StreamToolResponse = (
+                            tool_execution_response: StreamToolExecutionResult = (
                                 await execute_tool(
                                     tool_calls[idx]["function"]["name"],
                                     tool_calls[idx]["function"]["arguments"],
-                                    user_id=user_id,
-                                    session_id=session_id or "",
+                                    user_id=session.user_id,
+                                    session_id=session.session_id,
                                 )
                             )
                             yield tool_execution_response

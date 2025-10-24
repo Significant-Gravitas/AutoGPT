@@ -1,24 +1,25 @@
-import json
-from pydantic import BaseModel
-from datetime import datetime, UTC
-
-
-from backend.util.cache import async_redis
-from backend.server.v2.chat.config import ChatConfig
-from backend.util.exceptions import NotFoundError
+import uuid
+from datetime import UTC, datetime
 
 from openai.types.chat import (
-    ChatCompletionMessageParam,
-    ChatCompletionDeveloperMessageParam,
-    ChatCompletionSystemMessageParam,
-    ChatCompletionUserMessageParam,
     ChatCompletionAssistantMessageParam,
-    ChatCompletionToolMessageParam,
+    ChatCompletionDeveloperMessageParam,
     ChatCompletionFunctionMessageParam,
+    ChatCompletionMessageParam,
+    ChatCompletionSystemMessageParam,
+    ChatCompletionToolMessageParam,
+    ChatCompletionUserMessageParam,
 )
-from openai.types.chat.chat_completion_message_tool_call_param import Function, ChatCompletionMessageToolCallParam
 from openai.types.chat.chat_completion_assistant_message_param import FunctionCall
-import uuid
+from openai.types.chat.chat_completion_message_tool_call_param import (
+    ChatCompletionMessageToolCallParam,
+    Function,
+)
+from pydantic import BaseModel
+
+from backend.server.v2.chat.config import ChatConfig
+from backend.util.cache import async_redis
+
 config = ChatConfig()
 
 
@@ -38,9 +39,9 @@ class ChatSession(BaseModel):
     messages: list[ChatMessage]
     started_at: datetime
     updated_at: datetime
-    
+
     @staticmethod
-    def new(user_id: str | None) -> 'ChatSession':
+    def new(user_id: str | None) -> "ChatSession":
         return ChatSession(
             session_id=str(uuid.uuid4()),
             user_id=user_id,
@@ -83,22 +84,24 @@ class ChatSession(BaseModel):
                 )
                 if message.function_call:
                     m["function_call"] = FunctionCall(
-                            arguments=message.function_call["arguments"],
-                            name=message.function_call["name"],
-                        )
+                        arguments=message.function_call["arguments"],
+                        name=message.function_call["name"],
+                    )
                 if message.refusal:
                     m["refusal"] = message.refusal
                 if message.tool_calls:
                     t: list[ChatCompletionMessageToolCallParam] = []
                     for tool_call in message.tool_calls:
-                        t.append(ChatCompletionMessageToolCallParam(
-                            id=tool_call["id"],
-                            type="function",
-                            function=Function(
-                                arguments=tool_call["arguments"],
-                                name=tool_call["name"],
-                            ),
-                        ))
+                        t.append(
+                            ChatCompletionMessageToolCallParam(
+                                id=tool_call["id"],
+                                type="function",
+                                function=Function(
+                                    arguments=tool_call["arguments"],
+                                    name=tool_call["name"],
+                                ),
+                            )
+                        )
                     m["tool_calls"] = t
                 if message.name:
                     m["name"] = message.name
@@ -112,11 +115,13 @@ class ChatSession(BaseModel):
                     )
                 )
             elif message.role == "function":
-                messages.append(ChatCompletionFunctionMessageParam(
-                    role="function",
-                    content=message.content,
-                    name=message.name or "",
-                ))
+                messages.append(
+                    ChatCompletionFunctionMessageParam(
+                        role="function",
+                        content=message.content,
+                        name=message.name or "",
+                    )
+                )
         return messages
 
 
@@ -151,7 +156,7 @@ async def upsert_chat_session(
         redis_key, config.session_ttl, session.model_dump_json()
     )
 
-    if resp != True:
+    if not resp:
         raise Exception(f"Failed to update chat session: {resp}")
 
     return session

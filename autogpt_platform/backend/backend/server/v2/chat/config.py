@@ -22,7 +22,7 @@ class ChatConfig(BaseSettings):
 
     # Session TTL Configuration - 12 hours
     session_ttl: int = Field(default=43200, description="Session TTL in seconds")
-    
+
     # System Prompt Configuration
     system_prompt_path: str = Field(
         default="prompts/chat_system.md",
@@ -33,7 +33,7 @@ class ChatConfig(BaseSettings):
     max_context_messages: int = Field(
         default=50, ge=1, le=200, description="Maximum context messages"
     )
-    
+
     stream_timeout: int = Field(default=300, description="Stream timeout in seconds")
 
     @field_validator("api_key", mode="before")

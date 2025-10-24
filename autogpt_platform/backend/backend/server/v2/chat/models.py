@@ -21,10 +21,10 @@ class StreamBaseResponse(BaseModel):
     type: ResponseType
     timestamp: str | None = None
 
-
     def to_sse(self) -> str:
         """Convert to SSE format."""
         return f"data: {self.model_dump_json()}\n\n"
+
 
 class StreamTextChunk(StreamBaseResponse):
     """Streaming text content from the assistant."""
@@ -44,7 +44,7 @@ class StreamToolCall(StreamBaseResponse):
     )
 
 
-class StreamToolResponse(StreamBaseResponse):
+class StreamToolExecutionResult(StreamBaseResponse):
     """Tool execution result."""
 
     type: ResponseType = ResponseType.TOOL_RESPONSE
@@ -79,6 +79,7 @@ class StreamError(StreamBaseResponse):
     details: dict[str, Any] | None = Field(
         default=None, description="Additional error details"
     )
+
 
 class StreamEnd(StreamBaseResponse):
     """End of stream marker."""
