@@ -40,6 +40,10 @@ export default function Page() {
     handleCredentialsLoadingChange,
   } = useOnboardingRunStep();
 
+  if (error) {
+    return <ErrorCard responseError={error} />;
+  }
+
   if (!ready) {
     return (
       <div className="flex flex-col gap-4">
@@ -47,10 +51,6 @@ export default function Page() {
         <Skeleton className="h-10 w-full" />
       </div>
     );
-  }
-
-  if (error) {
-    return <ErrorCard responseError={error} />;
   }
 
   return (
