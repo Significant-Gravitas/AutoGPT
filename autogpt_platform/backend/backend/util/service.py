@@ -116,7 +116,10 @@ class BaseAppService(AppProcess, ABC):
     def run_service(self) -> None:
         # HACK: run the main event loop outside the main thread to disable Uvicorn's
         # internal signal handlers, since there is no config option for this :(
-        shared_asyncio_thread = threading.Thread(target=self._run_shared_event_loop)
+        shared_asyncio_thread = threading.Thread(
+            target=self._run_shared_event_loop,
+            name=f"{self.service_name}-shared-event-loop",
+        )
         shared_asyncio_thread.start()
         shared_asyncio_thread.join()
 
@@ -314,14 +317,23 @@ class AppService(BaseAppService, ABC):
         signame = signal.Signals(signum).name
         if not self._shutting_down:
             self._shutting_down = True
-            logger.info(
-                f"[{self.service_name}] 🛑 Received {signame} ({signum}) - "
-                "Entering RPC server graceful shutdown"
-            )
             if self.http_server:
+                logger.info(
+                    f"[{self.service_name}] 🛑 Received {signame} ({signum}) - "
+                    "Entering RPC server graceful shutdown"
+                )
                 self.http_server.handle_exit(signum, frame)  # stop accepting requests
 
-            # NOTE: Actually stopping the process is triggered by FastAPI's lifespan 👇🏼
+                # NOTE: Actually stopping the process is triggered by:
+                # 1. The call to self.cleanup() at the end of __start_fastapi() 👆🏼
+                # 2. BaseAppService.cleanup() stopping the shared event loop
+            else:
+                logger.warning(
+                    f"[{self.service_name}] {signame} received before HTTP server init."
+                    " Terminating..."
+                )
+                sys.exit(0)
+
         else:
             # Expedite shutdown on second SIGTERM
             logger.info(
@@ -403,7 +415,11 @@ class AppService(BaseAppService, ABC):
         )
 
         # Start the FastAPI server in a separate thread.
-        api_thread = threading.Thread(target=self.__start_fastapi, daemon=True)
+        api_thread = threading.Thread(
+            target=self.__start_fastapi,
+            daemon=True,
+            name=f"{self.service_name}-http-server",
+        )
         api_thread.start()
 
         # Run the main service loop (blocking).
