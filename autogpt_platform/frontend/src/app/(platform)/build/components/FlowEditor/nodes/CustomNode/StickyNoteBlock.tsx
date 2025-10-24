@@ -42,7 +42,7 @@ export const StickyNoteBlock = ({ data, id }: StickyNoteBlockType) => {
       style={{ transform: `rotate(${angle}deg)` }}
     >
       <Text variant="h3" className="tracking-tight text-slate-800">
-        Notes #{id}
+        Notes #{id.split("-")[0]}
       </Text>
       <FormCreator
         jsonSchema={preprocessInputSchema(data.inputSchema)}

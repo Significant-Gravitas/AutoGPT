@@ -25,7 +25,11 @@ const formSchema = z.object({
 
 type SaveableGraphFormValues = z.infer<typeof formSchema>;
 
-export const useNewSaveControl = () => {
+export const useNewSaveControl = ({
+  showToast = true,
+}: {
+  showToast?: boolean;
+}) => {
   const { setSaveControlOpen } = useControlPanelStore();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -60,9 +64,11 @@ export const useNewSaveControl = () => {
             flowID: data.id,
             flowVersion: data.version,
           });
-          toast({
-            title: "All changes saved successfully!",
-          });
+          if (showToast) {
+            toast({
+              title: "All changes saved successfully!",
+            });
+          }
         },
         onError: (error) => {
           toast({
@@ -88,9 +94,11 @@ export const useNewSaveControl = () => {
             flowID: data.id,
             flowVersion: data.version,
           });
-          toast({
-            title: "All changes saved successfully!",
-          });
+          if (showToast) {
+            toast({
+              title: "All changes saved successfully!",
+            });
+          }
           queryClient.invalidateQueries({
             queryKey: getGetV1GetSpecificGraphQueryKey(data.id),
           });
@@ -113,6 +121,41 @@ export const useNewSaveControl = () => {
     },
   });
 
+  const onSubmit = async (values: SaveableGraphFormValues | undefined) => {
+    const graphNodes = useNodeStore.getState().getBackendNodes();
+    const graphLinks = useEdgeStore.getState().getBackendLinks();
+
+    if (graph && graph.id) {
+      const data: Graph = {
+        id: graph.id,
+        name:
+          values?.name || graph.name || `New Agent ${new Date().toISOString()}`,
+        description: values?.description ?? graph.description ?? "",
+        nodes: graphNodes,
+        links: graphLinks,
+      };
+      if (graphsEquivalent(graph, data)) {
+        if (showToast) {
+          toast({
+            title: "No changes to save",
+            description: "The graph is the same as the saved version.",
+            variant: "default",
+          });
+        }
+        return;
+      }
+      await updateGraph({ graphId: graph.id, data: data });
+    } else {
+      const data: Graph = {
+        name: values?.name || `New Agent ${new Date().toISOString()}`,
+        description: values?.description || "",
+        nodes: graphNodes,
+        links: graphLinks,
+      };
+      await createNewGraph({ data: { graph: data } });
+    }
+  };
+
   // Handle Ctrl+S / Cmd+S keyboard shortcut
   useEffect(() => {
     const handleKeyDown = async (event: KeyboardEvent) => {
@@ -127,7 +170,7 @@ export const useNewSaveControl = () => {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [form]);
+  }, [onSubmit]);
 
   useEffect(() => {
     if (graph) {
@@ -137,38 +180,6 @@ export const useNewSaveControl = () => {
       });
     }
   }, [graph, form]);
-
-  const onSubmit = async (values: SaveableGraphFormValues) => {
-    const graphNodes = useNodeStore.getState().getBackendNodes();
-    const graphLinks = useEdgeStore.getState().getBackendLinks();
-
-    if (graph && graph.id) {
-      const data: Graph = {
-        id: graph.id,
-        name: values.name,
-        description: values.description,
-        nodes: graphNodes,
-        links: graphLinks,
-      };
-      if (graphsEquivalent(graph, data)) {
-        toast({
-          title: "No changes to save",
-          description: "The graph is the same as the saved version.",
-          variant: "default",
-        });
-        return;
-      }
-      await updateGraph({ graphId: graph.id, data: data });
-    } else {
-      const data: Graph = {
-        name: values.name,
-        description: values.description,
-        nodes: graphNodes,
-        links: graphLinks,
-      };
-      await createNewGraph({ data: { graph: data } });
-    }
-  };
 
   return {
     form,
