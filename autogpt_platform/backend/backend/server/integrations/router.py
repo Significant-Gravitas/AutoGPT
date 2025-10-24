@@ -26,7 +26,6 @@ from backend.data.integrations import (
     publish_webhook_event,
     wait_for_webhook_event,
 )
-from backend.server.v2.library.model import LibraryAgentPreset
 from backend.data.model import (
     Credentials,
     CredentialsType,
@@ -48,6 +47,7 @@ from backend.server.integrations.models import (
     get_all_provider_names,
 )
 from backend.server.v2.library.db import set_preset_webhook, update_preset
+from backend.server.v2.library.model import LibraryAgentPreset
 from backend.util.exceptions import (
     GraphNotInLibraryError,
     MissingConfigError,
