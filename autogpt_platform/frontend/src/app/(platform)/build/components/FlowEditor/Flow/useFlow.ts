@@ -1,5 +1,8 @@
 import { useGetV2GetSpecificBlocks } from "@/app/api/__generated__/endpoints/default/default";
-import { useGetV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
+  useGetV1GetExecutionDetails,
+  useGetV1GetSpecificGraph,
+} from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
@@ -8,15 +11,38 @@ import { useShallow } from "zustand/react/shallow";
 import { useEffect, useMemo } from "react";
 import { convertNodesPlusBlockInfoIntoCustomNodes } from "../../helper";
 import { useEdgeStore } from "../../../stores/edgeStore";
+import { GetV1GetExecutionDetails200 } from "@/app/api/__generated__/models/getV1GetExecutionDetails200";
+import { useGraphStore } from "../../../stores/graphStore";
+import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 
 export const useFlow = () => {
   const addNodes = useNodeStore(useShallow((state) => state.addNodes));
   const addLinks = useEdgeStore(useShallow((state) => state.addLinks));
-
-  const [{ flowID, flowVersion }] = useQueryStates({
+  const updateNodeStatus = useNodeStore(
+    useShallow((state) => state.updateNodeStatus),
+  );
+  const updateNodeExecutionResult = useNodeStore(
+    useShallow((state) => state.updateNodeExecutionResult),
+  );
+  const setIsGraphRunning = useGraphStore(
+    useShallow((state) => state.setIsGraphRunning),
+  );
+  const [{ flowID, flowVersion, flowExecutionID }] = useQueryStates({
     flowID: parseAsString,
     flowVersion: parseAsInteger,
+    flowExecutionID: parseAsString,
   });
+
+  const { data: executionDetails } = useGetV1GetExecutionDetails(
+    flowID || "",
+    flowExecutionID || "",
+    {
+      query: {
+        select: (res) => res.data as GetV1GetExecutionDetails200,
+        enabled: !!flowID && !!flowExecutionID,
+      },
+    },
+  );
 
   const { data: graph, isLoading: isGraphLoading } = useGetV1GetSpecificGraph(
     flowID ?? "",
@@ -57,21 +83,52 @@ export const useFlow = () => {
   }, [nodes, blocks]);
 
   useEffect(() => {
+    // adding nodes
     if (customNodes.length > 0) {
       useNodeStore.getState().setNodes([]);
       addNodes(customNodes);
     }
 
+    // adding links
     if (graph?.links) {
       useEdgeStore.getState().setConnections([]);
       addLinks(graph.links);
     }
-  }, [customNodes, addNodes, graph?.links]);
+
+    // update graph running status
+    const isRunning =
+      executionDetails?.status === AgentExecutionStatus.RUNNING ||
+      executionDetails?.status === AgentExecutionStatus.QUEUED;
+    setIsGraphRunning(isRunning);
+
+    // update node execution status in nodes
+    if (
+      executionDetails &&
+      "node_executions" in executionDetails &&
+      executionDetails.node_executions
+    ) {
+      executionDetails.node_executions.forEach((nodeExecution) => {
+        updateNodeStatus(nodeExecution.node_id, nodeExecution.status);
+      });
+    }
+
+    // update node execution results in nodes
+    if (
+      executionDetails &&
+      "node_executions" in executionDetails &&
+      executionDetails.node_executions
+    ) {
+      executionDetails.node_executions.forEach((nodeExecution) => {
+        updateNodeExecutionResult(nodeExecution.node_id, nodeExecution);
+      });
+    }
+  }, [customNodes, addNodes, graph?.links, executionDetails, updateNodeStatus]);
 
   useEffect(() => {
     return () => {
       useNodeStore.getState().setNodes([]);
       useEdgeStore.getState().setConnections([]);
+      setIsGraphRunning(false);
     };
   }, []);
 
