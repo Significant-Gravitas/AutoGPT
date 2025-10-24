@@ -1,6 +1,6 @@
 from backend.server.v2.chat.data import ChatMessage, ChatSession, get_chat_session, upsert_chat_session
 import pytest
-
+from datetime import datetime, UTC
 messages = [
         ChatMessage(
             content="Hello, how are you?",
@@ -29,11 +29,8 @@ messages = [
 
 @pytest.mark.asyncio
 async def test_chatsession_serialization_deserialization():
-    s = ChatSession(
-        session_id="s1",
-        user_id="u123",
-        messages=messages,
-    )
+    s = ChatSession.new(user_id="abc123")
+    s.messages = messages
     serialized = s.model_dump_json()
     s2 = ChatSession.model_validate_json(serialized)
     assert s2.model_dump() == s.model_dump()
@@ -41,16 +38,26 @@ async def test_chatsession_serialization_deserialization():
 
 @pytest.mark.asyncio
 async def test_chatsession_redis_storage():
-    s = await upsert_chat_session(
-        session_id="s1",
-        user_id="u123",
-        messages=messages,
-    )
+    
+    s = ChatSession.new(user_id=None)
+    s.messages = messages
+    
+    s = await upsert_chat_session(s)
     
     s2 = await get_chat_session(
-        session_id="s1",
-        user_id="u123",
+        session_id=s.session_id,
+        user_id=s.user_id,
     )
     
     assert s2 == s
     
+@pytest.mark.asyncio
+async def test_chatsession_redis_storage_user_id_mismatch():
+    
+    s = ChatSession.new(user_id="abc123")
+    s.messages = messages
+    s = await upsert_chat_session(s)
+    
+    s2 = await get_chat_session(s.session_id, None)
+    
+    assert s2 is None

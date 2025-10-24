@@ -1,10 +1,24 @@
 import json
 from pydantic import BaseModel
+from datetime import datetime, UTC
+
 
 from backend.util.cache import async_redis
 from backend.server.v2.chat.config import ChatConfig
 from backend.util.exceptions import NotFoundError
 
+from openai.types.chat import (
+    ChatCompletionMessageParam,
+    ChatCompletionDeveloperMessageParam,
+    ChatCompletionSystemMessageParam,
+    ChatCompletionUserMessageParam,
+    ChatCompletionAssistantMessageParam,
+    ChatCompletionToolMessageParam,
+    ChatCompletionFunctionMessageParam,
+)
+from openai.types.chat.chat_completion_message_tool_call_param import Function, ChatCompletionMessageToolCallParam
+from openai.types.chat.chat_completion_assistant_message_param import FunctionCall
+import uuid
 config = ChatConfig()
 
 
@@ -17,96 +31,127 @@ class ChatMessage(BaseModel):
     tool_calls: list[dict] | None = None
     function_call: dict | None = None
 
+
 class ChatSession(BaseModel):
     session_id: str
     user_id: str | None
     messages: list[ChatMessage]
+    started_at: datetime
+    updated_at: datetime
     
+    @staticmethod
+    def new(user_id: str | None) -> 'ChatSession':
+        return ChatSession(
+            session_id=str(uuid.uuid4()),
+            user_id=user_id,
+            messages=[],
+            started_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+
+    def to_openai_messages(self) -> list[ChatCompletionMessageParam]:
+        messages = []
+        for message in self.messages:
+            if message.role == "developer":
+                m = ChatCompletionDeveloperMessageParam(
+                    role="developer",
+                    content=message.content,
+                )
+                if message.name:
+                    m["name"] = message.name
+                messages.append(m)
+            elif message.role == "system":
+                m = ChatCompletionSystemMessageParam(
+                    role="system",
+                    content=message.content,
+                )
+                if message.name:
+                    m["name"] = message.name
+                messages.append(m)
+            elif message.role == "user":
+                m = ChatCompletionUserMessageParam(
+                    role="user",
+                    content=message.content,
+                )
+                if message.name:
+                    m["name"] = message.name
+                messages.append(m)
+            elif message.role == "assistant":
+                m = ChatCompletionAssistantMessageParam(
+                    role="assistant",
+                    content=message.content,
+                )
+                if message.function_call:
+                    m["function_call"] = FunctionCall(
+                            arguments=message.function_call["arguments"],
+                            name=message.function_call["name"],
+                        )
+                if message.refusal:
+                    m["refusal"] = message.refusal
+                if message.tool_calls:
+                    t: list[ChatCompletionMessageToolCallParam] = []
+                    for tool_call in message.tool_calls:
+                        t.append(ChatCompletionMessageToolCallParam(
+                            id=tool_call["id"],
+                            type="function",
+                            function=Function(
+                                arguments=tool_call["arguments"],
+                                name=tool_call["name"],
+                            ),
+                        ))
+                    m["tool_calls"] = t
+                if message.name:
+                    m["name"] = message.name
+                messages.append(m)
+            elif message.role == "tool":
+                messages.append(
+                    ChatCompletionToolMessageParam(
+                        role="tool",
+                        content=message.content,
+                        tool_call_id=message.tool_call_id or "",
+                    )
+                )
+            elif message.role == "function":
+                messages.append(ChatCompletionFunctionMessageParam(
+                    role="function",
+                    content=message.content,
+                    name=message.name or "",
+                ))
+        return messages
+
+
 async def get_chat_session(
     session_id: str,
-    user_id: str,
-) -> ChatSession:
+    user_id: str | None,
+) -> ChatSession | None:
     """Get a chat session by ID."""
     redis_key = f"chat:session:{session_id}"
 
-        
-    raw_session: bytes = await async_redis.get(
-        redis_key
-    )
-    
+    raw_session: bytes = await async_redis.get(redis_key)
+
     if not raw_session:
-        raise NotFoundError(f"Chat session not found session_id: {session_id}")
-    
-    return ChatSession.model_validate_json(raw_session)
+        return None
 
+    session = ChatSession.model_validate_json(raw_session)
 
-async def upsert_chat_session(
-    session_id: str,
-    user_id: str,
-    messages: list[ChatMessage],
-) -> ChatSession:
-    """Update a chat session with the given messages."""
-    session = ChatSession(
-        session_id=session_id,
-        user_id=user_id,
-        messages=messages,
-    )
-    
-    redis_key = f"chat:session:{session_id}"
-    
-    resp = await async_redis.setex(
-        redis_key,
-        config.session_ttl,
-        session.model_dump_json()
-    )
-    
-    if resp != True:
-        raise Exception(f"Failed to update chat session: {resp}")
-    
+    if session.user_id != user_id:
+        return None
+
     return session
 
 
-async def test_chatsession_serialization_deserialization():
-    # Example messages using correct types
-    messages = [
-        ChatMessage(
-            content="Hello, how are you?",
-            role="user"
-        ),
-        ChatMessage(
-            content="I'm fine, thank you!",
-            role="assistant",
-            tool_calls=[{
-                "id": "t123",
-                "type": "function",
-                "function": {
-                    "name": "get_weather",
-                    "arguments": "{\"city\": \"New York\"}"
-                }
-            }]
-        ),
-        ChatMessage(
-            content="I'm using the tool to get the weather",
-            role="tool",
-            tool_call_id="t123"
-        ),
-    ]
+async def upsert_chat_session(
+    session: ChatSession,
+) -> ChatSession:
+    """Update a chat session with the given messages."""
 
-    s = await upsert_chat_session(
-        session_id="s1",
-        user_id="u123",
-        messages=messages,
-    )
-    
-    s2 = await get_chat_session(
-        session_id="s1",
-        user_id="u123",
-    )
-    
-    assert s2 == s
+    redis_key = f"chat:session:{session.session_id}"
 
-    
-if __name__ == "__main__":
-    import asyncio
-    asyncio.run(test_chatsession_serialization_deserialization())
-    print("ChatSession serialization/deserialization test passed.")
+    resp = await async_redis.setex(
+        redis_key, config.session_ttl, session.model_dump_json()
+    )
+
+    if resp != True:
+        raise Exception(f"Failed to update chat session: {resp}")
+
+    return session
