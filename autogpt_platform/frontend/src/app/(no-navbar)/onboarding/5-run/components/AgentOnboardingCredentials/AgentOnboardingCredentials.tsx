@@ -41,7 +41,6 @@ export function AgentOnboardingCredentials(props: Props) {
     props.onValidationChange(isValid);
   }
 
-  if (!required) return null;
 
   return (
     <>
