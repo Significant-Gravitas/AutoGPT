@@ -521,6 +521,14 @@ async def test_store_listing_graph(server: SpinTestServer):
         ),
         user_id=admin_user.id,
     )
+
+    # Add the approved store listing to the admin user's library so they can execute it
+    from backend.server.v2.library.db import add_store_agent_to_library
+
+    await add_store_agent_to_library(
+        store_listing_version_id=slv_id, user_id=admin_user.id
+    )
+
     alt_test_user = admin_user
 
     data = {"input_1": "Hello", "input_2": "World"}
