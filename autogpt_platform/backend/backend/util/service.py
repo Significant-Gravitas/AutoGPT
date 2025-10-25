@@ -4,9 +4,12 @@ import concurrent.futures
 import inspect
 import logging
 import os
+import signal
+import sys
 import threading
 import time
 from abc import ABC, abstractmethod
+from contextlib import asynccontextmanager
 from functools import update_wrapper
 from typing import (
     Any,
@@ -111,14 +114,44 @@ class BaseAppService(AppProcess, ABC):
         return target_host
 
     def run_service(self) -> None:
-        while True:
-            time.sleep(10)
+        # HACK: run the main event loop outside the main thread to disable Uvicorn's
+        # internal signal handlers, since there is no config option for this :(
+        shared_asyncio_thread = threading.Thread(
+            target=self._run_shared_event_loop,
+            daemon=True,
+            name=f"{self.service_name}-shared-event-loop",
+        )
+        shared_asyncio_thread.start()
+        shared_asyncio_thread.join()
+
+    def _run_shared_event_loop(self) -> None:
+        try:
+            self.shared_event_loop.run_forever()
+        finally:
+            logger.info(f"[{self.service_name}] 🛑 Shared event loop stopped")
+            self.shared_event_loop.close()  # ensure held resources are released
 
     def run_and_wait(self, coro: Coroutine[Any, Any, T]) -> T:
         return asyncio.run_coroutine_threadsafe(coro, self.shared_event_loop).result()
 
     def run(self):
-        self.shared_event_loop = asyncio.get_event_loop()
+        self.shared_event_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.shared_event_loop)
+
+    def cleanup(self):
+        """
+        **💡 Overriding `AppService.lifespan` may be a more convenient option.**
+
+        Implement this method on a subclass to do post-execution cleanup,
+        e.g. disconnecting from a database or terminating child processes.
+
+        **Note:** if you override this method in a subclass, it must call
+        `super().cleanup()` *at the end*!
+        """
+        # Stop the shared event loop to allow resource clean-up
+        self.shared_event_loop.call_soon_threadsafe(self.shared_event_loop.stop)
+
+        super().cleanup()
 
 
 class RemoteCallError(BaseModel):
@@ -179,6 +212,7 @@ EXCEPTION_MAPPING = {
 
 class AppService(BaseAppService, ABC):
     fastapi_app: FastAPI
+    http_server: uvicorn.Server | None = None
     log_level: str = "info"
 
     def set_log_level(self, log_level: str):
@@ -190,11 +224,10 @@ class AppService(BaseAppService, ABC):
     def _handle_internal_http_error(status_code: int = 500, log_error: bool = True):
         def handler(request: Request, exc: Exception):
             if log_error:
-                if status_code == 500:
-                    log = logger.exception
-                else:
-                    log = logger.error
-                log(f"{request.method} {request.url.path} failed: {exc}")
+                logger.error(
+                    f"{request.method} {request.url.path} failed: {exc}",
+                    exc_info=exc if status_code == 500 else None,
+                )
             return responses.JSONResponse(
                 status_code=status_code,
                 content=RemoteCallError(
@@ -256,13 +289,13 @@ class AppService(BaseAppService, ABC):
 
             return sync_endpoint
 
-    @conn_retry("FastAPI server", "Starting FastAPI server")
+    @conn_retry("FastAPI server", "Running FastAPI server")
     def __start_fastapi(self):
         logger.info(
             f"[{self.service_name}] Starting RPC server at http://{api_host}:{self.get_port()}"
         )
 
-        server = uvicorn.Server(
+        self.http_server = uvicorn.Server(
             uvicorn.Config(
                 self.fastapi_app,
                 host=api_host,
@@ -271,18 +304,76 @@ class AppService(BaseAppService, ABC):
                 log_level=self.log_level,
             )
         )
-        self.shared_event_loop.run_until_complete(server.serve())
+        self.run_and_wait(self.http_server.serve())
+
+        # Perform clean-up when the server exits
+        if not self._cleaned_up:
+            self._cleaned_up = True
+            logger.info(f"[{self.service_name}] 🧹 Running cleanup")
+            self.cleanup()
+            logger.info(f"[{self.service_name}] ✅ Cleanup done")
+
+    def _self_terminate(self, signum: int, frame):
+        """Pass SIGTERM to Uvicorn so it can shut down gracefully"""
+        signame = signal.Signals(signum).name
+        if not self._shutting_down:
+            self._shutting_down = True
+            if self.http_server:
+                logger.info(
+                    f"[{self.service_name}] 🛑 Received {signame} ({signum}) - "
+                    "Entering RPC server graceful shutdown"
+                )
+                self.http_server.handle_exit(signum, frame)  # stop accepting requests
+
+                # NOTE: Actually stopping the process is triggered by:
+                # 1. The call to self.cleanup() at the end of __start_fastapi() 👆🏼
+                # 2. BaseAppService.cleanup() stopping the shared event loop
+            else:
+                logger.warning(
+                    f"[{self.service_name}] {signame} received before HTTP server init."
+                    " Terminating..."
+                )
+                sys.exit(0)
+
+        else:
+            # Expedite shutdown on second SIGTERM
+            logger.info(
+                f"[{self.service_name}] 🛑🛑 Received {signame} ({signum}), "
+                "but shutdown is already underway. Terminating..."
+            )
+            sys.exit(0)
+
+    @asynccontextmanager
+    async def lifespan(self, app: FastAPI):
+        """
+        The FastAPI/Uvicorn server's lifespan manager, used for setup and shutdown.
+
+        You can extend and use this in a subclass like:
+        ```
+        @asynccontextmanager
+        async def lifespan(self, app: FastAPI):
+            async with super().lifespan(app):
+                await db.connect()
+                yield
+                await db.disconnect()
+        ```
+        """
+        # Startup - this runs before Uvicorn starts accepting connections
+
+        yield
+
+        # Shutdown - this runs when FastAPI/Uvicorn shuts down
+        logger.info(f"[{self.service_name}] ✅ FastAPI has finished")
 
     async def health_check(self) -> str:
-        """
-        A method to check the health of the process.
-        """
+        """A method to check the health of the process."""
         return "OK"
 
     def run(self):
         sentry_init()
         super().run()
-        self.fastapi_app = FastAPI()
+
+        self.fastapi_app = FastAPI(lifespan=self.lifespan)
 
         # Add Prometheus instrumentation to all services
         try:
@@ -325,7 +416,11 @@ class AppService(BaseAppService, ABC):
         )
 
         # Start the FastAPI server in a separate thread.
-        api_thread = threading.Thread(target=self.__start_fastapi, daemon=True)
+        api_thread = threading.Thread(
+            target=self.__start_fastapi,
+            daemon=True,
+            name=f"{self.service_name}-http-server",
+        )
         api_thread.start()
 
         # Run the main service loop (blocking).

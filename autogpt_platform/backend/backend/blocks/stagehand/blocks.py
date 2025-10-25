@@ -1,6 +1,7 @@
 import logging
 import signal
 import threading
+import warnings
 from contextlib import contextmanager
 from enum import Enum
 
@@ -24,6 +25,13 @@ from backend.sdk import (
     BlockSchema,
     CredentialsMetaInput,
     SchemaField,
+)
+
+# Suppress false positive cleanup warning of litellm (a dependency of stagehand)
+warnings.filterwarnings(
+    "ignore",
+    message="coroutine 'close_litellm_async_clients' was never awaited",
+    category=RuntimeWarning,
 )
 
 # Store the original method

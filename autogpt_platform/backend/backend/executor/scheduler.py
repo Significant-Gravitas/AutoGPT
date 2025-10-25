@@ -248,7 +248,7 @@ class Scheduler(AppService):
             raise UnhealthyServiceError("Scheduler is still initializing")
 
         # Check if we're in the middle of cleanup
-        if self.cleaned_up:
+        if self._shutting_down:
             return await super().health_check()
 
         # Normal operation - check if scheduler is running
@@ -375,7 +375,6 @@ class Scheduler(AppService):
         super().run_service()
 
     def cleanup(self):
-        super().cleanup()
         if self.scheduler:
             logger.info("⏳ Shutting down scheduler...")
             self.scheduler.shutdown(wait=True)
@@ -390,7 +389,7 @@ class Scheduler(AppService):
             logger.info("⏳ Waiting for event loop thread to finish...")
             _event_loop_thread.join(timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS)
 
-        logger.info("Scheduler cleanup complete.")
+        super().cleanup()
 
     @expose
     def add_graph_execution_schedule(
