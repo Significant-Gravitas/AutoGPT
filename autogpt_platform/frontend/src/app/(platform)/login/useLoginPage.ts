@@ -162,7 +162,7 @@ export function useLoginPage() {
     feedback,
     turnstile,
     captchaKey,
-    isLoggedIn: !!user,
+    user,
     isLoading,
     isCloudEnv,
     isUserLoading,
