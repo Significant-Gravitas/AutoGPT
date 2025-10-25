@@ -73,6 +73,15 @@ async def get_store_agents(
         f"Getting store agents. featured={featured}, creators={creators}, sorted_by={sorted_by}, search={search_query}, category={category}, page={page}"
     )
 
+    sanitized_creators = []
+    if creators:
+        for c in creators:
+            sanitized_creators.append(sanitize_query(c))
+
+    sanitized_category = None
+    if category:
+        sanitized_category = sanitize_query(category)
+
     try:
         # If search_query is provided, use full-text search
         if search_query:
@@ -98,10 +107,10 @@ async def get_store_agents(
             if featured:
                 filter_conditions.append("featured = true")
             if creators:
-                creator_list = "','".join(creators)
+                creator_list = "','".join(sanitized_creators)
                 filter_conditions.append(f"creator_username IN ('{creator_list}')")
             if category:
-                filter_conditions.append(f"'{category}' = ANY(categories)")
+                filter_conditions.append(f"'{sanitized_category}' = ANY(categories)")
 
             where_filter = (
                 " AND ".join(filter_conditions) if filter_conditions else "1=1"
@@ -191,9 +200,9 @@ async def get_store_agents(
             if featured:
                 where_clause["featured"] = featured
             if creators:
-                where_clause["creator_username"] = {"in": creators}
-            if category:
-                where_clause["categories"] = {"has": category}
+                where_clause["creator_username"] = {"in": sanitized_creators}
+            if sanitized_category:
+                where_clause["categories"] = {"has": sanitized_category}
 
             order_by = []
             if sorted_by == "rating":
