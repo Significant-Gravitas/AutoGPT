@@ -49,15 +49,17 @@ export function EmptyAgentRuns({
           </div>
 
           <div className="flex flex-col gap-4">
-            <Text variant="h4">You don’t have any runs</Text>
-            <Text variant="large">
-              Get started with creating a run, and you’ll see information here
+            <Text variant="h4" className="sentry-unmask">
+              You don&apos;t have any runs
+            </Text>
+            <Text variant="large" className="sentry-unmask">
+              Get started with creating a run, and you&apos;ll see information here
             </Text>
           </div>
           <RunAgentModal
             triggerSlot={
               <Button variant="primary" size="large" className="w-full">
-                <PlusIcon size={20} /> New Run
+                <PlusIcon size={20} /> <span className="sentry-unmask">New Run</span>
               </Button>
             }
             agent={agent}

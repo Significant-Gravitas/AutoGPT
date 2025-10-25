@@ -80,7 +80,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
             {agentName}
           </h3>
           {!hideAvatar && creatorName && (
-            <p className="mt-3 truncate font-sans text-xl font-normal text-neutral-600 dark:text-neutral-400">
+            <p className="sentry-unmask mt-3 truncate font-sans text-xl font-normal text-neutral-600 dark:text-neutral-400">
               by {creatorName}
             </p>
           )}
@@ -99,7 +99,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
         {/* Fourth Section: Stats Row - aligned to bottom */}
         <div className="mt-5 w-full">
           <div className="flex items-center justify-between">
-            <div className="text-lg font-semibold text-neutral-800 dark:text-neutral-200">
+            <div className="sentry-unmask text-lg font-semibold text-neutral-800 dark:text-neutral-200">
               {runs.toLocaleString()} runs
             </div>
             <div className="flex items-center gap-2">

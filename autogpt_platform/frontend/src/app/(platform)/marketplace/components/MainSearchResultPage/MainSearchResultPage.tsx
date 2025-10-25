@@ -55,7 +55,7 @@ export const MainSearchResultPage = ({
       <div className="mx-auto min-h-screen max-w-[1440px] px-10 lg:min-w-[1440px]">
         <div className="mt-8 flex items-center">
           <div className="flex-1">
-            <h2 className="text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
+            <h2 className="sentry-unmask text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
               Results for:
             </h2>
             <h1 className="font-poppins text-2xl font-semibold leading-[32px] text-neutral-800 dark:text-neutral-100">
@@ -99,10 +99,10 @@ export const MainSearchResultPage = ({
           </>
         ) : (
           <div className="mt-20 flex flex-col items-center justify-center">
-            <h3 className="mb-2 text-xl font-medium text-neutral-600 dark:text-neutral-300">
+            <h3 className="sentry-unmask mb-2 text-xl font-medium text-neutral-600 dark:text-neutral-300">
               No results found
             </h3>
-            <p className="text-neutral-500 dark:text-neutral-400">
+            <p className="sentry-unmask text-neutral-500 dark:text-neutral-400">
               Try adjusting your search terms or filters
             </p>
           </div>
