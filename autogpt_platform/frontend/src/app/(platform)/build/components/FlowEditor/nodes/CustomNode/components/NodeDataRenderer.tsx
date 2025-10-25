@@ -1,19 +1,18 @@
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { beautifyString } from "@/lib/utils";
-import {
-  ArrowSquareInIcon,
-  CaretDownIcon,
-  CopyIcon,
-  InfoIcon,
-} from "@phosphor-icons/react";
+import { beautifyString, cn } from "@/lib/utils";
+import { CaretDownIcon, CopyIcon, CheckIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 
 import { useShallow } from "zustand/react/shallow";
+import { NodeDataViewer } from "./NodeDataViewer";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 
 export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
   const [isExpanded, setIsExpanded] = useState(true);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const nodeExecutionResult = useNodeStore(
     useShallow((state) => state.getNodeExecutionResult(nodeId)),
@@ -28,6 +27,26 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
   if (!nodeExecutionResult || Object.keys(data).length === 0) {
     return null;
   }
+
+  const handleCopy = async (key: string, value: any) => {
+    try {
+      const text = JSON.stringify(value, null, 2);
+      await navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      toast({
+        title: "Copied to clipboard!",
+        duration: 2000,
+      });
+      setTimeout(() => setCopiedKey(null), 2000);
+    } catch (error) {
+      console.error("Failed to copy:", error);
+      toast({
+        title: "Failed to copy",
+        variant: "destructive",
+        duration: 2000,
+      });
+    }
+  };
 
   //  Need to Fix - when we are on build page and try to rerun the graph again, it gives error
 
@@ -76,33 +95,35 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                   </Text>
                   <div className="relative">
                     <Text
-                      variant="small"
+                      variant="small-medium"
                       className="rounded-xlarge bg-zinc-50 p-3 text-slate-700"
                     >
-                      {JSON.stringify(value, null, 2)}
+                      {JSON.stringify(value, null, 2).slice(0, 100)}
+                      {JSON.stringify(value, null, 2).length > 100 && "..."}
                     </Text>
                     <div className="mt-1 flex justify-end gap-1">
                       {/* TODO: Add tooltip for each button and also make all these blocks working */}
+                      <NodeDataViewer
+                        data={value}
+                        pinName={key}
+                        execId={nodeExecutionResult.node_exec_id}
+                      />
+
                       <Button
                         variant="secondary"
                         size="small"
-                        className="h-fit min-w-0 gap-1.5 p-2 text-black hover:text-slate-900"
+                        onClick={() => handleCopy(key, value)}
+                        className={cn(
+                          "h-fit min-w-0 gap-1.5 p-2 text-black hover:text-slate-900",
+                          copiedKey === key &&
+                            "border-green-400 bg-green-100 hover:border-green-400 hover:bg-green-200",
+                        )}
                       >
-                        <InfoIcon size={16} />
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="small"
-                        className="h-fit min-w-0 gap-1.5 p-2 text-black hover:text-slate-900"
-                      >
-                        <ArrowSquareInIcon size={16} />
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="small"
-                        className="h-fit min-w-0 gap-1.5 p-2 text-black hover:text-slate-900"
-                      >
-                        <CopyIcon size={16} />
+                        {copiedKey === key ? (
+                          <CheckIcon size={12} className="text-green-600" />
+                        ) : (
+                          <CopyIcon size={12} />
+                        )}
                       </Button>
                     </div>
                   </div>
