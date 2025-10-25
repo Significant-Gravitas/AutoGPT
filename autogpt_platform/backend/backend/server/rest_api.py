@@ -298,28 +298,27 @@ class AgentServer(backend.util.service.AppProcess):
             allow_methods=["*"],  # Allows all methods
             allow_headers=["*"],  # Allows all headers
         )
-        config = backend.util.settings.Config()
-
-        # Configure uvicorn with performance optimizations from Kludex FastAPI tips
-        uvicorn_config = {
-            "app": server_app,
-            "host": config.agent_api_host,
-            "port": config.agent_api_port,
-            "log_config": None,
-            # Use httptools for HTTP parsing (if available)
-            "http": "httptools",
-            # Only use uvloop on Unix-like systems (not supported on Windows)
-            "loop": "uvloop" if platform.system() != "Windows" else "auto",
-        }
 
         # Only add debug in local environment (not supported in all uvicorn versions)
-        if config.app_env == backend.util.settings.AppEnvironment.LOCAL:
+        if settings.config.app_env == backend.util.settings.AppEnvironment.LOCAL:
             import os
 
             # Enable asyncio debug mode via environment variable
             os.environ["PYTHONASYNCIODEBUG"] = "1"
 
-        uvicorn.run(**uvicorn_config)
+        # Configure uvicorn with performance optimizations from Kludex FastAPI tips
+        uvicorn.run(
+            app=server_app,
+            host=settings.config.agent_api_host,
+            port=settings.config.agent_api_port,
+            log_config=None,
+            # Use httptools for HTTP parsing (if available)
+            http="httptools",
+            # Only use uvloop on Unix-like systems (not supported on Windows)
+            loop="uvloop" if platform.system() != "Windows" else "auto",
+            # Disable WebSockets since this service doesn't have any WebSocket endpoints
+            ws="none",
+        )
 
     @staticmethod
     async def test_execute_graph(
