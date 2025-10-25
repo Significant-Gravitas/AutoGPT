@@ -1,4 +1,6 @@
 from datetime import datetime
+from enum import Enum
+from typing import Optional
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -12,7 +14,33 @@ from backend.sdk import (
 )
 
 from ._config import exa
-from .helpers import ContentSettings
+from .helpers import (
+    ContentSettings,
+    CostDollars,
+    ExaSearchResults,
+    add_optional_fields,
+    format_date_fields,
+    process_contents_settings,
+)
+
+
+class ExaSearchTypes(Enum):
+    KEYWORD = "keyword"
+    NEURAL = "neural"
+    FAST = "fast"
+    AUTO = "auto"
+
+
+class ExaSearchCategories(Enum):
+    COMPANY = "company"
+    RESEARCH_PAPER = "research paper"
+    NEWS = "news"
+    PDF = "pdf"
+    GITHUB = "github"
+    TWEET = "tweet"
+    PERSONAL_SITE = "personal site"
+    LINKEDIN_PROFILE = "linkedin profile"
+    FINANCIAL_REPORT = "financial report"
 
 
 class ExaSearchBlock(Block):
@@ -21,12 +49,18 @@ class ExaSearchBlock(Block):
             description="The Exa integration requires an API Key."
         )
         query: str = SchemaField(description="The search query")
-        use_auto_prompt: bool = SchemaField(
-            description="Whether to use autoprompt", default=True, advanced=True
+        type: ExaSearchTypes = SchemaField(
+            description="Type of search", default=ExaSearchTypes.AUTO, advanced=True
         )
-        type: str = SchemaField(description="Type of search", default="", advanced=True)
-        category: str = SchemaField(
-            description="Category to search within", default="", advanced=True
+        category: ExaSearchCategories | None = SchemaField(
+            description="Category to search within: company, research paper, news, pdf, github, tweet, personal site, linkedin profile, financial report",
+            default=None,
+            advanced=True,
+        )
+        user_location: str | None = SchemaField(
+            description="The two-letter ISO country code of the user (e.g., 'US')",
+            default=None,
+            advanced=True,
         )
         number_of_results: int = SchemaField(
             description="Number of results to return", default=10, advanced=True
@@ -39,17 +73,17 @@ class ExaSearchBlock(Block):
             default_factory=list,
             advanced=True,
         )
-        start_crawl_date: datetime = SchemaField(
-            description="Start date for crawled content"
+        start_crawl_date: datetime | None = SchemaField(
+            description="Start date for crawled content", advanced=True, default=None
         )
-        end_crawl_date: datetime = SchemaField(
-            description="End date for crawled content"
+        end_crawl_date: datetime | None = SchemaField(
+            description="End date for crawled content", advanced=True, default=None
         )
-        start_published_date: datetime = SchemaField(
-            description="Start date for published content"
+        start_published_date: datetime | None = SchemaField(
+            description="Start date for published content", advanced=True, default=None
         )
-        end_published_date: datetime = SchemaField(
-            description="End date for published content"
+        end_published_date: datetime | None = SchemaField(
+            description="End date for published content", advanced=True, default=None
         )
         include_text: list[str] = SchemaField(
             description="Text patterns to include", default_factory=list, advanced=True
@@ -62,10 +96,31 @@ class ExaSearchBlock(Block):
             default=ContentSettings(),
             advanced=True,
         )
+        moderation: bool = SchemaField(
+            description="Enable content moderation to filter unsafe content from search results",
+            default=False,
+            advanced=True,
+        )
 
     class Output(BlockSchema):
-        results: list = SchemaField(
-            description="List of search results", default_factory=list
+        results: list[ExaSearchResults] = SchemaField(
+            description="List of search results"
+        )
+        result: ExaSearchResults = SchemaField(
+            description="Single search result",
+        )
+        context: str = SchemaField(
+            description="A formatted string of the search results ready for LLMs.",
+        )
+        search_type: str = SchemaField(
+            description="For auto searches, indicates which search type was selected."
+        )
+        request_id: str = SchemaField(description="Unique identifier for the request")
+        resolved_search_type: str = SchemaField(
+            description="The search type that was actually used for this request (neural or keyword)"
+        )
+        cost_dollars: Optional[CostDollars] = SchemaField(
+            description="Cost breakdown for the request", default=None
         )
         error: str = SchemaField(
             description="Error message if the request failed",
@@ -91,43 +146,74 @@ class ExaSearchBlock(Block):
 
         payload = {
             "query": input_data.query,
-            "useAutoprompt": input_data.use_auto_prompt,
             "numResults": input_data.number_of_results,
-            "contents": input_data.contents.model_dump(),
         }
 
+        # Handle contents field with helper function
+        content_settings = process_contents_settings(input_data.contents)
+        if content_settings:
+            payload["contents"] = content_settings
+
+        # Handle date fields with helper function
         date_field_mapping = {
             "start_crawl_date": "startCrawlDate",
             "end_crawl_date": "endCrawlDate",
             "start_published_date": "startPublishedDate",
             "end_published_date": "endPublishedDate",
         }
+        payload.update(format_date_fields(input_data, date_field_mapping))
 
-        # Add dates if they exist
-        for input_field, api_field in date_field_mapping.items():
-            value = getattr(input_data, input_field, None)
+        # Handle enum fields separately since they need special processing
+        for field_name, api_field in [("type", "type"), ("category", "category")]:
+            value = getattr(input_data, field_name, None)
             if value:
-                payload[api_field] = value.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+                payload[api_field] = value.value if hasattr(value, "value") else value
 
+        # Handle other optional fields
         optional_field_mapping = {
-            "type": "type",
-            "category": "category",
+            "user_location": "userLocation",
             "include_domains": "includeDomains",
             "exclude_domains": "excludeDomains",
             "include_text": "includeText",
             "exclude_text": "excludeText",
         }
+        add_optional_fields(input_data, optional_field_mapping, payload)
 
-        # Add other fields
-        for input_field, api_field in optional_field_mapping.items():
-            value = getattr(input_data, input_field)
-            if value:  # Only add non-empty values
-                payload[api_field] = value
+        # Add moderation field
+        if input_data.moderation:
+            payload["moderation"] = input_data.moderation
+
+        # Always enable context for LLM-ready output
+        payload["context"] = True
 
         try:
             response = await Requests().post(url, headers=headers, json=payload)
             data = response.json()
-            # Extract just the results array from the response
+
+            # Extract all response fields
             yield "results", data.get("results", [])
+            for result in data.get("results", []):
+                yield "result", result
+
+            # Yield context if present
+            if "context" in data:
+                yield "context", data["context"]
+
+            # Yield search type if present
+            if "searchType" in data:
+                yield "search_type", data["searchType"]
+
+            # Yield request ID if present
+            if "requestId" in data:
+                yield "request_id", data["requestId"]
+
+            # Yield resolved search type if present
+            if "resolvedSearchType" in data:
+                yield "resolved_search_type", data["resolvedSearchType"]
+
+            # Yield cost information if present
+            if "costDollars" in data:
+                yield "cost_dollars", data["costDollars"]
+
         except Exception as e:
             yield "error", str(e)

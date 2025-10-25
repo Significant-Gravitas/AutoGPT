@@ -1,51 +1,46 @@
+from typing import Optional
+
+from pydantic import BaseModel
+
 from backend.sdk import (
     APIKeyCredentials,
-    BaseModel,
     Block,
     BlockCategory,
     BlockOutput,
     BlockSchema,
     CredentialsMetaInput,
+    MediaFileType,
     Requests,
     SchemaField,
 )
 
 from ._config import exa
+from .helpers import CostDollars
 
 
-class CostBreakdown(BaseModel):
-    keywordSearch: float
-    neuralSearch: float
-    contentText: float
-    contentHighlight: float
-    contentSummary: float
+class AnswerCitation(BaseModel):
+    """Citation model for answer endpoint."""
 
-
-class SearchBreakdown(BaseModel):
-    search: float
-    contents: float
-    breakdown: CostBreakdown
-
-
-class PerRequestPrices(BaseModel):
-    neuralSearch_1_25_results: float
-    neuralSearch_26_100_results: float
-    neuralSearch_100_plus_results: float
-    keywordSearch_1_100_results: float
-    keywordSearch_100_plus_results: float
-
-
-class PerPagePrices(BaseModel):
-    contentText: float
-    contentHighlight: float
-    contentSummary: float
-
-
-class CostDollars(BaseModel):
-    total: float
-    breakDown: list[SearchBreakdown]
-    perRequestPrices: PerRequestPrices
-    perPagePrices: PerPagePrices
+    id: str = SchemaField(description="The temporary ID for the document")
+    url: str = SchemaField(description="The URL of the search result")
+    title: Optional[str] = SchemaField(
+        description="The title of the search result", default=None
+    )
+    author: Optional[str] = SchemaField(
+        description="The author of the content", default=None
+    )
+    publishedDate: Optional[str] = SchemaField(
+        description="An estimate of the creation date", default=None
+    )
+    text: Optional[str] = SchemaField(
+        description="The full text content of the source", default=None
+    )
+    image: Optional[MediaFileType] = SchemaField(
+        description="The URL of the image associated with the result", default=None
+    )
+    favicon: Optional[MediaFileType] = SchemaField(
+        description="The URL of the favicon for the domain", default=None
+    )
 
 
 class ExaAnswerBlock(Block):
@@ -58,27 +53,23 @@ class ExaAnswerBlock(Block):
             placeholder="What is the latest valuation of SpaceX?",
         )
         text: bool = SchemaField(
-            default=False,
-            description="If true, the response includes full text content in the search results",
-            advanced=True,
-        )
-        model: str = SchemaField(
-            default="exa",
-            description="The search model to use (exa or exa-pro)",
-            placeholder="exa",
-            advanced=True,
+            description="Include full text content in the search results used for the answer",
+            default=True,
         )
 
     class Output(BlockSchema):
         answer: str = SchemaField(
             description="The generated answer based on search results"
         )
-        citations: list[dict] = SchemaField(
+        citations: list[AnswerCitation] = SchemaField(
             description="Search results used to generate the answer",
             default_factory=list,
         )
-        cost_dollars: CostDollars = SchemaField(
-            description="Cost breakdown of the request"
+        citation: AnswerCitation = SchemaField(
+            description="Individual citation from the answer"
+        )
+        cost_dollars: Optional[CostDollars] = SchemaField(
+            description="Cost breakdown for the request", default=None
         )
         error: str = SchemaField(
             description="Error message if the request failed", default=""
@@ -102,20 +93,32 @@ class ExaAnswerBlock(Block):
             "x-api-key": credentials.api_key.get_secret_value(),
         }
 
-        # Build the payload
         payload = {
             "query": input_data.query,
             "text": input_data.text,
-            "model": input_data.model,
+            # We don't support streaming in blocks
+            "stream": False,
         }
 
         try:
             response = await Requests().post(url, headers=headers, json=payload)
             data = response.json()
 
-            yield "answer", data.get("answer", "")
-            yield "citations", data.get("citations", [])
-            yield "cost_dollars", data.get("costDollars", {})
+            # Yield the answer
+            if "answer" in data:
+                yield "answer", data["answer"]
+
+            # Yield citations as a list
+            if "citations" in data:
+                yield "citations", data["citations"]
+
+                # Also yield individual citations
+                for citation in data["citations"]:
+                    yield "citation", citation
+
+            # Yield cost information if present
+            if "costDollars" in data:
+                yield "cost_dollars", data["costDollars"]
 
         except Exception as e:
             yield "error", str(e)
