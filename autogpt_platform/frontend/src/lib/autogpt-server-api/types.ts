@@ -1060,6 +1060,7 @@ export type AddUserCreditsResponse = {
   new_balance: number;
   transaction_key: string;
 };
+
 const _stringFormatToDataTypeMap: Partial<Record<string, DataType>> = {
   date: DataType.DATE,
   time: DataType.TIME,

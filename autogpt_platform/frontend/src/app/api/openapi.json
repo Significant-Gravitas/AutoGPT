@@ -3857,6 +3857,58 @@
         }
       }
     },
+    "/api/admin/diagnostics/executions": {
+      "get": {
+        "tags": ["v2", "admin", "diagnostics", "admin"],
+        "summary": "Get Execution Diagnostics",
+        "operationId": "getV2Get execution diagnostics",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionDiagnosticsResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/admin/diagnostics/agents": {
+      "get": {
+        "tags": ["v2", "admin", "diagnostics", "admin"],
+        "summary": "Get Agent Diagnostics",
+        "operationId": "getV2Get agent diagnostics",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentDiagnosticsResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
     "/api/library/presets": {
       "get": {
         "tags": ["v2", "presets"],
@@ -4889,6 +4941,25 @@
         "required": ["new_balance", "transaction_key"],
         "title": "AddUserCreditsResponse"
       },
+      "AgentDiagnosticsResponse": {
+        "properties": {
+          "total_agents": { "type": "integer", "title": "Total Agents" },
+          "active_agents": { "type": "integer", "title": "Active Agents" },
+          "agents_with_active_executions": {
+            "type": "integer",
+            "title": "Agents With Active Executions"
+          },
+          "timestamp": { "type": "string", "title": "Timestamp" }
+        },
+        "type": "object",
+        "required": [
+          "total_agents",
+          "active_agents",
+          "agents_with_active_executions",
+          "timestamp"
+        ],
+        "title": "AgentDiagnosticsResponse"
+      },
       "AgentExecutionStatus": {
         "type": "string",
         "enum": [
@@ -5519,6 +5590,31 @@
         "type": "object",
         "required": ["version_counts"],
         "title": "DeleteGraphResponse"
+      },
+      "ExecutionDiagnosticsResponse": {
+        "properties": {
+          "running_executions": {
+            "type": "integer",
+            "title": "Running Executions"
+          },
+          "queued_executions_db": {
+            "type": "integer",
+            "title": "Queued Executions Db"
+          },
+          "queued_executions_rabbitmq": {
+            "type": "integer",
+            "title": "Queued Executions Rabbitmq"
+          },
+          "timestamp": { "type": "string", "title": "Timestamp" }
+        },
+        "type": "object",
+        "required": [
+          "running_executions",
+          "queued_executions_db",
+          "queued_executions_rabbitmq",
+          "timestamp"
+        ],
+        "title": "ExecutionDiagnosticsResponse"
       },
       "Document": {
         "properties": {

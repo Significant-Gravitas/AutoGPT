@@ -24,6 +24,7 @@ import backend.integrations.webhooks.utils
 import backend.server.routers.postmark.postmark
 import backend.server.routers.v1
 import backend.server.v2.admin.credit_admin_routes
+import backend.server.v2.admin.diagnostics_admin_routes
 import backend.server.v2.admin.store_admin_routes
 import backend.server.v2.builder
 import backend.server.v2.builder.routes
@@ -260,6 +261,11 @@ app.include_router(
     backend.server.v2.admin.credit_admin_routes.router,
     tags=["v2", "admin"],
     prefix="/api/credits",
+)
+app.include_router(
+    backend.server.v2.admin.diagnostics_admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api",
 )
 app.include_router(
     backend.server.v2.library.routes.router, tags=["v2"], prefix="/api/library"
