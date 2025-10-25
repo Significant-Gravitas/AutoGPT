@@ -1,4 +1,7 @@
-import { usePostV2AddMarketplaceAgent } from "@/app/api/__generated__/endpoints/library/library";
+import {
+  getGetV2ListLibraryAgentsQueryKey,
+  usePostV2AddMarketplaceAgent,
+} from "@/app/api/__generated__/endpoints/library/library";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useRouter } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
@@ -6,6 +9,7 @@ import { useGetV2DownloadAgentFile } from "@/app/api/__generated__/endpoints/sto
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { analytics } from "@/services/analytics";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface UseAgentInfoProps {
   storeListingVersionId: string;
@@ -15,6 +19,7 @@ export const useAgentInfo = ({ storeListingVersionId }: UseAgentInfoProps) => {
   const { toast } = useToast();
   const router = useRouter();
   const { completeStep } = useOnboarding();
+  const queryClient = useQueryClient();
 
   const {
     mutateAsync: addMarketplaceAgentToLibrary,
@@ -45,6 +50,10 @@ export const useAgentInfo = ({ storeListingVersionId }: UseAgentInfoProps) => {
 
       if (isAddingAgentFirstTime) {
         completeStep("MARKETPLACE_ADD_AGENT");
+
+        await queryClient.invalidateQueries({
+          queryKey: getGetV2ListLibraryAgentsQueryKey(),
+        });
 
         analytics.sendDatafastEvent("add_to_library", {
           name: data.name,
