@@ -593,11 +593,6 @@ def is_block_auth_configured(
             f"Block {block_cls.__name__} has only optional credential inputs"
             " - will work without credentials configured"
         )
-    if len(credential_inputs) > 1:
-        logger.warning(
-            f"Block {block_cls.__name__} has multiple credential inputs: "
-            f"{', '.join(credential_inputs.keys())}"
-        )
 
     # Check if the credential inputs for this block are correctly configured
     for field_name, field_info in credential_inputs.items():

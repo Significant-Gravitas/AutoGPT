@@ -66,7 +66,6 @@ class CloudStorageHandler:
             connector=aiohttp.TCPConnector(
                 limit=100,  # Connection pool limit
                 force_close=False,  # Reuse connections
-                enable_cleanup_closed=True,
             )
         )
 
