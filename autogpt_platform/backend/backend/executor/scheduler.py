@@ -181,29 +181,26 @@ async def _cleanup_orphaned_schedules_for_graph(graph_id: str, user_id: str) -> 
     Clean up orphaned schedules for a specific graph when execution fails with GraphNotInLibraryError.
     This happens when an agent is deleted but schedules still exist.
     """
-    try:
-        # Use scheduler client to access the scheduler service
-        scheduler_client = get_scheduler_client()
+    # Use scheduler client to access the scheduler service
+    scheduler_client = get_scheduler_client()
 
-        # Find all schedules for this graph and user
-        schedules = await scheduler_client.get_execution_schedules(
-            graph_id=graph_id, user_id=user_id
-        )
+    # Find all schedules for this graph and user
+    schedules = await scheduler_client.get_execution_schedules(
+        graph_id=graph_id, user_id=user_id
+    )
 
-        for schedule in schedules:
-            try:
-                await scheduler_client.delete_schedule(
-                    schedule_id=schedule.id, user_id=user_id
-                )
-                logger.info(
-                    f"Cleaned up orphaned schedule {schedule.id} for deleted/archived graph {graph_id}"
-                )
-            except Exception as e:
-                logger.error(
-                    f"Failed to delete orphaned schedule {schedule.id} for graph {graph_id}: {e}"
-                )
-    except Exception as e:
-        logger.error(f"Failed to cleanup orphaned schedules for graph {graph_id}: {e}")
+    for schedule in schedules:
+        try:
+            await scheduler_client.delete_schedule(
+                schedule_id=schedule.id, user_id=user_id
+            )
+            logger.info(
+                f"Cleaned up orphaned schedule {schedule.id} for deleted/archived graph {graph_id}"
+            )
+        except Exception:
+            logger.exception(
+                f"Failed to delete orphaned schedule {schedule.id} for graph {graph_id}"
+            )
 
 
 def cleanup_expired_files():

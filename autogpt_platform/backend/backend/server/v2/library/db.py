@@ -577,8 +577,6 @@ async def delete_library_agent(
     if deleted_count < 1:
         raise NotFoundError(f"Library agent #{library_agent_id} not found")
 
-    logger.info(f"Deleted library agent #{library_agent_id}")
-
 
 async def _cleanup_schedules_for_graph(graph_id: str, user_id: str) -> None:
     """
@@ -588,26 +586,21 @@ async def _cleanup_schedules_for_graph(graph_id: str, user_id: str) -> None:
         graph_id: The ID of the graph
         user_id: The ID of the user
     """
-    try:
-        scheduler_client = get_scheduler_client()
-        schedules = await scheduler_client.get_execution_schedules(
-            graph_id=graph_id, user_id=user_id
-        )
+    scheduler_client = get_scheduler_client()
+    schedules = await scheduler_client.get_execution_schedules(
+        graph_id=graph_id, user_id=user_id
+    )
 
-        for schedule in schedules:
-            try:
-                await scheduler_client.delete_schedule(
-                    schedule_id=schedule.id, user_id=user_id
-                )
-                logger.info(f"Deleted schedule {schedule.id} for graph {graph_id}")
-            except Exception as e:
-                logger.error(
-                    f"Failed to delete schedule {schedule.id} "
-                    f"for graph {graph_id}: {e}"
-                )
-
-    except Exception as e:
-        logger.error(f"Failed to cleanup schedules for graph {graph_id}: {e}")
+    for schedule in schedules:
+        try:
+            await scheduler_client.delete_schedule(
+                schedule_id=schedule.id, user_id=user_id
+            )
+            logger.info(f"Deleted schedule {schedule.id} for graph {graph_id}")
+        except Exception:
+            logger.exception(
+                f"Failed to delete schedule {schedule.id} for graph {graph_id}"
+            )
 
 
 async def _cleanup_webhooks_for_graph(graph_id: str, user_id: str) -> None:
@@ -619,27 +612,22 @@ async def _cleanup_webhooks_for_graph(graph_id: str, user_id: str) -> None:
         graph_id: The ID of the graph
         user_id: The ID of the user
     """
-    try:
-        # Find all webhooks that trigger nodes in this graph
-        webhooks = await integrations_db.find_webhooks_by_graph_id(
-            graph_id=graph_id, user_id=user_id
-        )
+    # Find all webhooks that trigger nodes in this graph
+    webhooks = await integrations_db.find_webhooks_by_graph_id(
+        graph_id=graph_id, user_id=user_id
+    )
 
-        for webhook in webhooks:
-            try:
-                # Unlink webhook from this graph's nodes and presets
-                await integrations_db.unlink_webhook_from_graph(
-                    webhook_id=webhook.id, graph_id=graph_id, user_id=user_id
-                )
-                logger.info(f"Unlinked webhook {webhook.id} from graph {graph_id}")
-            except Exception as e:
-                logger.error(
-                    f"Failed to unlink webhook {webhook.id} "
-                    f"from graph {graph_id}: {e}"
-                )
-
-    except Exception as e:
-        logger.error(f"Failed to cleanup webhooks for graph {graph_id}: {e}")
+    for webhook in webhooks:
+        try:
+            # Unlink webhook from this graph's nodes and presets
+            await integrations_db.unlink_webhook_from_graph(
+                webhook_id=webhook.id, graph_id=graph_id, user_id=user_id
+            )
+            logger.info(f"Unlinked webhook {webhook.id} from graph {graph_id}")
+        except Exception:
+            logger.exception(
+                f"Failed to unlink webhook {webhook.id} from graph {graph_id}"
+            )
 
 
 async def delete_library_agent_by_graph_id(graph_id: str, user_id: str) -> None:

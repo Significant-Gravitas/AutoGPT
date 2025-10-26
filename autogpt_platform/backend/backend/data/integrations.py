@@ -271,7 +271,8 @@ async def unlink_webhook_from_graph(
 ) -> None:
     """
     Unlink a webhook from all nodes and presets in a specific graph.
-    If the webhook has no remaining triggers, it will be automatically deleted.
+    If the webhook has no remaining triggers, it will be automatically deleted
+    and deregistered with the provider.
 
     Args:
         webhook_id: The ID of the webhook
@@ -281,6 +282,8 @@ async def unlink_webhook_from_graph(
     from prisma.models import AgentNode, AgentPreset
 
     from backend.data.graph import set_node_webhook
+    from backend.integrations.creds_manager import IntegrationCredentialsManager
+    from backend.integrations.webhooks import get_webhook_manager
     from backend.server.v2.library.db import set_preset_webhook
 
     # Find all nodes in this graph that use this webhook
@@ -304,8 +307,22 @@ async def unlink_webhook_from_graph(
     # Check if webhook still has any triggers
     webhook = await get_webhook(webhook_id, include_relations=True)
     if webhook and not webhook.triggered_nodes and not webhook.triggered_presets:
-        # Webhook has no remaining triggers, delete it
-        await delete_webhook(user_id, webhook_id)
+        # Webhook has no remaining triggers, deregister with provider and delete
+        webhook_manager = get_webhook_manager(webhook.provider)
+        creds_manager = IntegrationCredentialsManager()
+        credentials = (
+            await creds_manager.get(user_id, webhook.credentials_id)
+            if webhook.credentials_id
+            else None
+        )
+        success = await webhook_manager.prune_webhook_if_dangling(
+            user_id, webhook.id, credentials
+        )
+        if not success:
+            logger.warning(
+                f"Failed to deregister webhook #{webhook_id} with provider, "
+                "but it was unlinked from graph #{graph_id}"
+            )
 
 
 async def delete_webhook(user_id: str, webhook_id: str) -> None:

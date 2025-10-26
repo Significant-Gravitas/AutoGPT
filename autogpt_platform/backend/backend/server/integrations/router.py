@@ -360,10 +360,9 @@ async def _execute_webhook_node_trigger(
         await _cleanup_orphaned_webhook_for_graph(
             node.graph_id, webhook.user_id, webhook_id
         )
-    except Exception as e:
-        logger.error(
-            f"Failed to execute graph #{node.graph_id} via webhook #{webhook_id}: "
-            f"{type(e).__name__}: {e}"
+    except Exception:
+        logger.exception(
+            f"Failed to execute graph #{node.graph_id} via webhook #{webhook_id}"
         )
         # Continue processing - webhook should be resilient to individual failures
 
@@ -422,10 +421,9 @@ async def _execute_webhook_preset_trigger(
         await _cleanup_orphaned_webhook_for_graph(
             preset.graph_id, webhook.user_id, webhook_id
         )
-    except Exception as e:
-        logger.error(
-            f"Failed to execute preset #{preset.id} via webhook #{webhook_id}: "
-            f"{type(e).__name__}: {e}"
+    except Exception:
+        logger.exception(
+            f"Failed to execute preset #{preset.id} via webhook #{webhook_id}"
         )
         # Continue processing - webhook should be resilient to individual failures
 
@@ -588,9 +586,9 @@ async def _cleanup_orphaned_webhook_for_graph(
                         f"Removed orphaned webhook trigger from node {node.id} "
                         f"in deleted/archived graph {graph_id}"
                     )
-                except Exception as e:
-                    logger.error(
-                        f"Failed to remove webhook trigger from node {node.id}: {e}"
+                except Exception:
+                    logger.exception(
+                        f"Failed to remove webhook trigger from node {node.id}"
                     )
 
         # Remove triggered presets that belong to the deleted graph
@@ -603,10 +601,9 @@ async def _cleanup_orphaned_webhook_for_graph(
                         f"Removed orphaned webhook trigger from preset {preset.id} "
                         f"for deleted/archived graph {graph_id}"
                     )
-                except Exception as e:
-                    logger.error(
-                        f"Failed to remove webhook trigger from "
-                        f"preset {preset.id}: {e}"
+                except Exception:
+                    logger.exception(
+                        f"Failed to remove webhook trigger from preset {preset.id}"
                     )
 
         if nodes_removed > 0 or presets_removed > 0:
@@ -643,13 +640,12 @@ async def _cleanup_orphaned_webhook_for_graph(
                         logger.warning(
                             f"Failed to prune orphaned webhook #{webhook_id}"
                         )
-                except Exception as e:
-                    logger.error(f"Failed to prune orphaned webhook #{webhook_id}: {e}")
+                except Exception:
+                    logger.exception(f"Failed to prune orphaned webhook #{webhook_id}")
 
-    except Exception as e:
-        logger.error(
-            f"Failed to cleanup orphaned webhook #{webhook_id} "
-            f"for graph #{graph_id}: {e}"
+    except Exception:
+        logger.exception(
+            f"Failed to cleanup orphaned webhook #{webhook_id} for graph #{graph_id}"
         )
 
 
