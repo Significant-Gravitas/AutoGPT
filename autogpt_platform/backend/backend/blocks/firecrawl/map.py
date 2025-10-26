@@ -26,6 +26,10 @@ class FirecrawlMapWebsiteBlock(Block):
         results: list[dict[str, Any]] = SchemaField(
             description="List of search results with url, title, and description"
         )
+        error: str = SchemaField(
+            description="Error message if the map failed",
+            default="",
+        )
 
     def __init__(self):
         super().__init__(
@@ -39,22 +43,25 @@ class FirecrawlMapWebsiteBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        app = FirecrawlApp(api_key=credentials.api_key.get_secret_value())
+        try:
+            app = FirecrawlApp(api_key=credentials.api_key.get_secret_value())
 
-        # Sync call
-        map_result = app.map(
-            url=input_data.url,
-        )
+            # Sync call
+            map_result = app.map(
+                url=input_data.url,
+            )
 
-        # Convert SearchResult objects to dicts
-        results_data = [
-            {
-                "url": link.url,
-                "title": link.title,
-                "description": link.description,
-            }
-            for link in map_result.links
-        ]
+            # Convert SearchResult objects to dicts
+            results_data = [
+                {
+                    "url": link.url,
+                    "title": link.title,
+                    "description": link.description,
+                }
+                for link in map_result.links
+            ]
 
-        yield "links", [link.url for link in map_result.links]
-        yield "results", results_data
+            yield "links", [link.url for link in map_result.links]
+            yield "results", results_data
+        except Exception as e:
+            yield "error", f"Map failed: {str(e)}"

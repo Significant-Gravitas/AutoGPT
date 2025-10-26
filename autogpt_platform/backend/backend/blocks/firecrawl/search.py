@@ -38,6 +38,10 @@ class FirecrawlSearchBlock(Block):
     class Output(BlockSchema):
         data: dict[str, Any] = SchemaField(description="The result of the search")
         site: dict[str, Any] = SchemaField(description="The site of the search")
+        error: str = SchemaField(
+            description="Error message if the search failed",
+            default="",
+        )
 
     def __init__(self):
         super().__init__(
@@ -51,19 +55,22 @@ class FirecrawlSearchBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        app = FirecrawlApp(api_key=credentials.api_key.get_secret_value())
+        try:
+            app = FirecrawlApp(api_key=credentials.api_key.get_secret_value())
 
-        # Sync call
-        scrape_result = app.search(
-            input_data.query,
-            limit=input_data.limit,
-            scrape_options=ScrapeOptions(
-                formats=convert_to_format_options(input_data.formats) or None,
-                max_age=input_data.max_age,
-                wait_for=input_data.wait_for,
-            ),
-        )
-        yield "data", scrape_result
-        if hasattr(scrape_result, "web") and scrape_result.web:
-            for site in scrape_result.web:
-                yield "site", site
+            # Sync call
+            scrape_result = app.search(
+                input_data.query,
+                limit=input_data.limit,
+                scrape_options=ScrapeOptions(
+                    formats=convert_to_format_options(input_data.formats) or None,
+                    max_age=input_data.max_age,
+                    wait_for=input_data.wait_for,
+                ),
+            )
+            yield "data", scrape_result
+            if hasattr(scrape_result, "web") and scrape_result.web:
+                for site in scrape_result.web:
+                    yield "site", site
+        except Exception as e:
+            yield "error", f"Search failed: {str(e)}"

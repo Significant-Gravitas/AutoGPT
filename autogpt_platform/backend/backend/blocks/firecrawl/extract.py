@@ -39,6 +39,10 @@ class FirecrawlExtractBlock(Block):
 
     class Output(BlockSchema):
         data: dict[str, Any] = SchemaField(description="The result of the crawl")
+        error: str = SchemaField(
+            description="Error message if the extract failed",
+            default="",
+        )
 
     def __init__(self):
         super().__init__(
@@ -52,13 +56,16 @@ class FirecrawlExtractBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        app = FirecrawlApp(api_key=credentials.api_key.get_secret_value())
+        try:
+            app = FirecrawlApp(api_key=credentials.api_key.get_secret_value())
 
-        extract_result = app.extract(
-            urls=input_data.urls,
-            prompt=input_data.prompt,
-            schema=input_data.output_schema,
-            enable_web_search=input_data.enable_web_search,
-        )
+            extract_result = app.extract(
+                urls=input_data.urls,
+                prompt=input_data.prompt,
+                schema=input_data.output_schema,
+                enable_web_search=input_data.enable_web_search,
+            )
 
-        yield "data", extract_result.data
+            yield "data", extract_result.data
+        except Exception as e:
+            yield "error", f"Extract failed: {str(e)}"
