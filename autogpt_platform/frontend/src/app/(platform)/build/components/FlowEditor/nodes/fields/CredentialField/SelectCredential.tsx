@@ -13,6 +13,7 @@ import { providerIcons } from "./helpers";
 type SelectCredentialProps = {
   credentials: CredentialsMetaResponse[];
   value?: string;
+  defaultValue?: string;
   onChange: (credentialId: string) => void;
   disabled?: boolean;
   label?: string;
@@ -67,7 +68,7 @@ export const SelectCredential: React.FC<SelectCredentialProps> = ({
       <Select
         label={label}
         id="select-credential"
-        wrapperClassName="!mb-0 flex-1"
+        wrapperClassName="!mb-0 flex-1 !max-w-[90%]"
         value={value}
         onValueChange={onChange}
         options={options}
@@ -77,8 +78,12 @@ export const SelectCredential: React.FC<SelectCredentialProps> = ({
         hideLabel
       />
       <Link href={`/profile/integrations`}>
-        <Button variant="outline" size="icon" className="h-8 w-8 p-0">
-          <ArrowSquareOutIcon className="h-4 w-4" />
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-8 w-8 border-zinc-300 p-0"
+        >
+          <ArrowSquareOutIcon className="h-4 w-4 text-zinc-600" />
         </Button>
       </Link>
     </div>

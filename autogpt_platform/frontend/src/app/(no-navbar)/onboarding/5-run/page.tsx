@@ -13,13 +13,24 @@ import {
 } from "@/components/__legacy__/ui/card";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { GraphMeta, StoreAgentDetails } from "@/lib/autogpt-server-api";
+import type { InputValues } from "./types";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { cn } from "@/lib/utils";
 import { Play } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { RunAgentInputs } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/RunAgentInputs/RunAgentInputs";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
+import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
+import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
+import {
+  areAllCredentialsSet,
+  computeInitialAgentInputs,
+  getAgentCredentialsInputFields,
+  isRunDisabled,
+  getSchemaDefaultCredentials,
+  sanitizeCredentials,
+} from "./helpers";
 
 export default function Page() {
   const { state, updateState, setStep } = useOnboarding(
@@ -30,13 +41,16 @@ export default function Page() {
   const [agent, setAgent] = useState<GraphMeta | null>(null);
   const [storeAgent, setStoreAgent] = useState<StoreAgentDetails | null>(null);
   const [runningAgent, setRunningAgent] = useState(false);
+  const [inputCredentials, setInputCredentials] = useState<
+    Record<string, CredentialsMetaInput | undefined>
+  >({});
   const { toast } = useToast();
   const router = useRouter();
   const api = useBackendAPI();
 
   useEffect(() => {
     setStep(5);
-  }, [setStep]);
+  }, []);
 
   useEffect(() => {
     if (!state?.selectedStoreListingVersionId) {
@@ -49,40 +63,36 @@ export default function Page() {
       });
     api
       .getGraphMetaByStoreListingVersionID(state.selectedStoreListingVersionId)
-      .then((agent) => {
-        setAgent(agent);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const update: { [key: string]: any } = {};
-        // Set default values from schema
-        Object.entries(agent.input_schema.properties).forEach(
-          ([key, value]) => {
-            // Skip if already set
-            if (state.agentInput && state.agentInput[key]) {
-              update[key] = state.agentInput[key];
-              return;
-            }
-            update[key] = value.type !== "null" ? value.default || "" : "";
-          },
+      .then((meta) => {
+        setAgent(meta);
+        const update = computeInitialAgentInputs(
+          meta,
+          (state.agentInput as unknown as InputValues) || null,
         );
-        updateState({
-          agentInput: update,
-        });
+        updateState({ agentInput: update });
       });
   }, [api, setAgent, updateState, state?.selectedStoreListingVersionId]);
 
-  const setAgentInput = useCallback(
-    (key: string, value: string) => {
-      updateState({
-        agentInput: {
-          ...state?.agentInput,
-          [key]: value,
-        },
-      });
-    },
-    [state?.agentInput, updateState],
+  const agentCredentialsInputFields = getAgentCredentialsInputFields(agent);
+
+  const credentialsRequired =
+    Object.keys(agentCredentialsInputFields || {}).length > 0;
+
+  const allCredentialsAreSet = areAllCredentialsSet(
+    agentCredentialsInputFields,
+    inputCredentials,
   );
 
-  const runAgent = useCallback(async () => {
+  function setAgentInput(key: string, value: string) {
+    updateState({
+      agentInput: {
+        ...state?.agentInput,
+        [key]: value,
+      },
+    });
+  }
+
+  async function runAgent() {
     if (!agent) {
       return;
     }
@@ -95,6 +105,7 @@ export default function Page() {
         libraryAgent.graph_id,
         libraryAgent.graph_version,
         state?.agentInput || {},
+        sanitizeCredentials(inputCredentials),
       );
       updateState({
         onboardingAgentExecutionId: runID,
@@ -111,7 +122,7 @@ export default function Page() {
       });
       setRunningAgent(false);
     }
-  }, [api, agent, router, state?.agentInput, storeAgent, updateState, toast]);
+  }
 
   const runYourAgent = (
     <div className="ml-[104px] w-[481px] pl-5">
@@ -221,6 +232,30 @@ export default function Page() {
               <span className="mt-4 text-base font-normal leading-normal text-zinc-600">
                 When you&apos;re done, click <b>Run Agent</b>.
               </span>
+              {Object.entries(agentCredentialsInputFields || {}).map(
+                ([key, inputSubSchema]) => (
+                  <div key={key} className="mt-4">
+                    <CredentialsInput
+                      schema={inputSubSchema}
+                      selectedCredentials={
+                        inputCredentials[key] ??
+                        getSchemaDefaultCredentials(inputSubSchema)
+                      }
+                      onSelectCredentials={(value) =>
+                        setInputCredentials((prev) => ({
+                          ...prev,
+                          [key]: value,
+                        }))
+                      }
+                      siblingInputs={
+                        (state?.agentInput || undefined) as
+                          | Record<string, any>
+                          | undefined
+                      }
+                    />
+                  </div>
+                ),
+              )}
               <Card className="agpt-box mt-4">
                 <CardHeader>
                   <CardTitle className="font-poppins text-lg">Input</CardTitle>
@@ -250,13 +285,14 @@ export default function Page() {
                 variant="violet"
                 className="mt-8 w-[136px]"
                 loading={runningAgent}
-                disabled={
-                  Object.values(state?.agentInput || {}).some(
-                    (value) => String(value).trim() === "",
-                  ) ||
-                  !agent ||
-                  runningAgent
-                }
+                disabled={isRunDisabled({
+                  agent,
+                  isRunning: runningAgent,
+                  agentInputs:
+                    (state?.agentInput as unknown as InputValues) || null,
+                  credentialsRequired,
+                  credentialsSatisfied: allCredentialsAreSet,
+                })}
                 onClick={runAgent}
                 icon={<Play className="mr-2" size={18} />}
               >

@@ -116,6 +116,7 @@ export function useAgentInfoStep({
       toast({
         title: "Submit Agent Error",
         description:
+          (error instanceof Error ? error.message : undefined) ||
           "An error occurred while submitting the agent. Please try again.",
         duration: 3000,
         variant: "destructive",

@@ -2,6 +2,7 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  productionBrowserSourceMaps: true,
   images: {
     domains: [
       "images.unsplash.com",
@@ -73,6 +74,14 @@ export default isDevelopmentBuild
       // No need to hide source maps from generated client bundles
       // since the source is public anyway :)
       hideSourceMaps: false,
+
+      // This helps Sentry with sourcemaps... https://docs.sentry.io/platforms/javascript/guides/nextjs/sourcemaps/
+      sourcemaps: {
+        disable: false, // Source maps are enabled by default
+        assets: ["**/*.js", "**/*.js.map"], // Specify which files to upload
+        ignore: ["**/node_modules/**"], // Files to exclude
+        deleteSourcemapsAfterUpload: true, // Security: delete after upload
+      },
 
       // Automatically tree-shake Sentry logger statements to reduce bundle size
       disableLogger: true,

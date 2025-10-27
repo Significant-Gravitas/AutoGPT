@@ -43,12 +43,12 @@ export const AnyOfField = ({
   onBlur,
   onFocus,
 }: FieldProps) => {
-  const fieldKey = generateHandleId(idSchema.$id ?? "");
+  const handleId = generateHandleId(idSchema.$id ?? "");
   const updatedFormContexrt = { ...formContext, fromAnyOf: true };
 
   const { nodeId } = updatedFormContexrt;
   const { isInputConnected } = useEdgeStore();
-  const isConnected = isInputConnected(nodeId, fieldKey);
+  const isConnected = isInputConnected(nodeId, handleId);
   const {
     isNullableType,
     nonNull,
@@ -127,7 +127,11 @@ export const AnyOfField = ({
       <div className="flex flex-col">
         <div className="flex items-center justify-between gap-2">
           <div className="-ml-2 flex items-center gap-1">
-            <NodeHandle id={fieldKey} isConnected={isConnected} side="left" />
+            <NodeHandle
+              handleId={handleId}
+              isConnected={isConnected}
+              side="left"
+            />
             <Text variant="body">
               {name.charAt(0).toUpperCase() + name.slice(1)}
             </Text>
@@ -151,7 +155,7 @@ export const AnyOfField = ({
   return (
     <div className="flex flex-col">
       <div className="-mb-3 -ml-2 flex items-center gap-1">
-        <NodeHandle id={fieldKey} isConnected={isConnected} side="left" />
+        <NodeHandle handleId={handleId} isConnected={isConnected} side="left" />
         <Text variant="body">
           {name.charAt(0).toUpperCase() + name.slice(1)}
         </Text>

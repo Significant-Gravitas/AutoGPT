@@ -13,6 +13,7 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { getTypeDisplayInfo } from "./helpers";
+import { generateHandleId } from "../handlers/helpers";
 
 export const OutputHandler = ({
   outputSchema,
@@ -23,7 +24,7 @@ export const OutputHandler = ({
 }) => {
   const { isOutputConnected } = useEdgeStore();
   const properties = outputSchema?.properties || {};
-  const [isOutputVisible, setIsOutputVisible] = useState(false);
+  const [isOutputVisible, setIsOutputVisible] = useState(true);
 
   return (
     <div className="flex flex-col items-end justify-between gap-2 rounded-b-xl border-t border-slate-200/50 bg-white py-3.5">
@@ -34,7 +35,7 @@ export const OutputHandler = ({
       >
         <Text
           variant="body"
-          className="flex items-center gap-2 font-medium text-slate-700"
+          className="flex items-center gap-2 !font-semibold text-slate-700"
         >
           Output{" "}
           <CaretDownIcon
@@ -76,7 +77,12 @@ export const OutputHandler = ({
                 <Text variant="small" as="span" className={colorClass}>
                   ({displayType})
                 </Text>
-                <NodeHandle id={key} isConnected={isConnected} side="right" />
+
+                <NodeHandle
+                  handleId={generateHandleId(key)}
+                  isConnected={isConnected}
+                  side="right"
+                />
               </div>
             ) : null;
           })}

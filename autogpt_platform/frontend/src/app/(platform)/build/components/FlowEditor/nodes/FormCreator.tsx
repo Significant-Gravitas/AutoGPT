@@ -20,9 +20,17 @@ export const FormCreator = React.memo(
     uiType: BlockUIType;
   }) => {
     const updateNodeData = useNodeStore((state) => state.updateNodeData);
+    const getHardCodedValues = useNodeStore(
+      (state) => state.getHardCodedValues,
+    );
     const handleChange = ({ formData }: any) => {
+      if ("credentials" in formData && !formData.credentials?.id) {
+        delete formData.credentials;
+      }
       updateNodeData(nodeId, { hardcodedValues: formData });
     };
+
+    const initialValues = getHardCodedValues(nodeId);
 
     return (
       <Form
@@ -34,6 +42,7 @@ export const FormCreator = React.memo(
         formContext={{ nodeId: nodeId, uiType: uiType }}
         onChange={handleChange}
         uiSchema={uiSchema}
+        formData={initialValues}
       />
     );
   },

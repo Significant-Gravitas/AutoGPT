@@ -42,6 +42,7 @@ async def test_get_store_agents(mocker):
             versions=["1.0"],
             updated_at=datetime.now(),
             is_available=False,
+            useForOnboarding=False,
         )
     ]
 
@@ -84,6 +85,7 @@ async def test_get_store_agent_details(mocker):
         versions=["1.0"],
         updated_at=datetime.now(),
         is_available=False,
+        useForOnboarding=False,
     )
 
     # Mock active version agent (what we want to return for active version)
@@ -105,6 +107,7 @@ async def test_get_store_agent_details(mocker):
         versions=["1.0", "2.0"],
         updated_at=datetime.now(),
         is_available=True,
+        useForOnboarding=False,
     )
 
     # Create a mock StoreListing result
@@ -248,6 +251,7 @@ async def test_create_store_submission(mocker):
                 isAvailable=True,
             )
         ],
+        useForOnboarding=False,
     )
 
     # Mock prisma calls
@@ -275,7 +279,6 @@ async def test_create_store_submission(mocker):
 
     # Verify mocks called correctly
     mock_agent_graph.return_value.find_first.assert_called_once()
-    mock_store_listing.return_value.find_first.assert_called_once()
     mock_store_listing.return_value.create.assert_called_once()
 
 

@@ -18,14 +18,9 @@ export function AgentActivityDropdown() {
     recentFailures,
     isOpen,
     setIsOpen,
-    isAgentActivityEnabled,
   } = useAgentActivityDropdown();
 
   const activeCount = activeExecutions.length;
-
-  if (!isAgentActivityEnabled) {
-    return null;
-  }
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>

@@ -1,7 +1,11 @@
 from typing import Type
 
 from backend.blocks.ai_music_generator import AIMusicGeneratorBlock
-from backend.blocks.ai_shortform_video_block import AIShortformVideoCreatorBlock
+from backend.blocks.ai_shortform_video_block import (
+    AIAdMakerVideoCreatorBlock,
+    AIScreenshotToVideoAdBlock,
+    AIShortformVideoCreatorBlock,
+)
 from backend.blocks.apollo.organization import SearchOrganizationsBlock
 from backend.blocks.apollo.people import SearchPeopleBlock
 from backend.blocks.apollo.person import GetPersonDetailBlock
@@ -69,6 +73,7 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.CLAUDE_4_1_OPUS: 21,
     LlmModel.CLAUDE_4_OPUS: 21,
     LlmModel.CLAUDE_4_SONNET: 5,
+    LlmModel.CLAUDE_4_5_HAIKU: 4,
     LlmModel.CLAUDE_4_5_SONNET: 9,
     LlmModel.CLAUDE_3_7_SONNET: 5,
     LlmModel.CLAUDE_3_5_SONNET: 4,
@@ -322,7 +327,31 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
     ],
     AIShortformVideoCreatorBlock: [
         BlockCost(
-            cost_amount=50,
+            cost_amount=307,
+            cost_filter={
+                "credentials": {
+                    "id": revid_credentials.id,
+                    "provider": revid_credentials.provider,
+                    "type": revid_credentials.type,
+                }
+            },
+        )
+    ],
+    AIAdMakerVideoCreatorBlock: [
+        BlockCost(
+            cost_amount=714,
+            cost_filter={
+                "credentials": {
+                    "id": revid_credentials.id,
+                    "provider": revid_credentials.provider,
+                    "type": revid_credentials.type,
+                }
+            },
+        )
+    ],
+    AIScreenshotToVideoAdBlock: [
+        BlockCost(
+            cost_amount=612,
             cost_filter={
                 "credentials": {
                     "id": revid_credentials.id,

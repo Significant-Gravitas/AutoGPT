@@ -13,7 +13,7 @@ import idna
 from aiohttp import FormData, abc
 from tenacity import retry, retry_if_result, wait_exponential_jitter
 
-from backend.util.json import json
+from backend.util.json import loads
 
 # Retry status codes for which we will automatically retry the request
 THROTTLE_RETRY_STATUS_CODES: set[int] = {429, 500, 502, 503, 504, 408}
@@ -259,7 +259,7 @@ class Response:
         """
         Parse the body as JSON and return the resulting Python object.
         """
-        return json.loads(
+        return loads(
             self.content.decode(encoding or "utf-8", errors="replace"), **kwargs
         )
 
