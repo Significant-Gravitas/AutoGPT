@@ -32,6 +32,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
+import { useQueryClient } from "@tanstack/react-query";
+import { getGetV2ListLibraryAgentsQueryKey } from "@/app/api/__generated__/endpoints/library/library";
 
 export default function useAgentGraph(
   flowID?: GraphID,
@@ -44,6 +46,7 @@ export default function useAgentGraph(
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const api = useBackendAPI();
+  const queryClient = useQueryClient();
 
   const [isScheduling, setIsScheduling] = useState(false);
   const [savedAgent, setSavedAgent] = useState<Graph | null>(null);
@@ -755,6 +758,11 @@ export default function useAgentGraph(
     setIsSaving(true);
     try {
       await _saveAgent();
+
+      await queryClient.invalidateQueries({
+        queryKey: getGetV2ListLibraryAgentsQueryKey(),
+      });
+
       completeStep("BUILDER_SAVE_AGENT");
     } catch (error) {
       const errorMessage =
