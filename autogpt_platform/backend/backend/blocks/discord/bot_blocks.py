@@ -31,20 +31,14 @@ TEST_CREDENTIALS_INPUT = TEST_BOT_CREDENTIALS_INPUT
 class ThreadArchiveDuration(str, Enum):
     """Discord thread auto-archive duration options"""
 
-    ONE_HOUR = "1 hour"
-    ONE_DAY = "1 day"
-    THREE_DAYS = "3 days"
-    ONE_WEEK = "1 week"
+    ONE_HOUR = "60"
+    ONE_DAY = "1440"
+    THREE_DAYS = "4320"
+    ONE_WEEK = "10080"
 
     def to_minutes(self) -> int:
         """Convert the duration string to minutes for Discord API"""
-        mapping = {
-            "1 hour": 60,
-            "1 day": 1440,
-            "3 days": 4320,
-            "1 week": 10080,
-        }
-        return mapping[self.value]
+        return int(self.value)
 
 
 class ReadDiscordMessagesBlock(Block):
@@ -1185,8 +1179,13 @@ class DiscordChannelInfoBlock(Block):
 class CreateDiscordThreadBlock(Block):
     class Input(BlockSchema):
         credentials: DiscordCredentials = DiscordCredentialsField()
-        channel_id: str = SchemaField(
-            description="The Discord channel ID where the thread will be created (e.g., '123456789012345678')"
+        channel_name: str = SchemaField(
+            description="Channel ID or channel name to create the thread in"
+        )
+        server_name: str = SchemaField(
+            description="Server name (only needed if using channel name)",
+            advanced=True,
+            default="",
         )
         thread_name: str = SchemaField(description="The name of the thread to create")
         is_private: bool = SchemaField(
@@ -1217,7 +1216,7 @@ class CreateDiscordThreadBlock(Block):
             description="Creates a new thread in a Discord channel.",
             categories={BlockCategory.SOCIAL},
             test_input={
-                "channel_id": "123456789012345678",
+                "channel_name": "general",
                 "thread_name": "Test Thread",
                 "is_private": False,
                 "auto_archive_duration": ThreadArchiveDuration.ONE_HOUR,
@@ -1241,7 +1240,8 @@ class CreateDiscordThreadBlock(Block):
     async def create_thread(
         self,
         token: str,
-        channel_id: str,
+        channel_name: str,
+        server_name: str | None,
         thread_name: str,
         is_private: bool,
         auto_archive_duration: ThreadArchiveDuration,
@@ -1256,22 +1256,56 @@ class CreateDiscordThreadBlock(Block):
 
         @client.event
         async def on_ready():
-            # Fetch channel by ID
+            channel = None
+
+            # Try to parse as channel ID first
             try:
-                channel = await client.fetch_channel(int(channel_id))
+                channel_id = int(channel_name)
+                try:
+                    channel = await client.fetch_channel(channel_id)
+                except discord.errors.NotFound:
+                    result["status"] = f"Channel with ID {channel_id} not found"
+                    await client.close()
+                    return
+                except discord.errors.Forbidden:
+                    result["status"] = f"Bot does not have permission to view channel {channel_id}"
+                    await client.close()
+                    return
             except ValueError:
-                result["status"] = f"Invalid channel ID format: {channel_id}"
-                await client.close()
-                return
-            except discord.errors.NotFound:
-                result["status"] = f"Channel with ID {channel_id} not found"
+                # Not an ID, treat as channel name
+                # Collect all matching channels to detect duplicates
+                matching_channels = []
+                for guild in client.guilds:
+                    # Skip guilds if server_name is provided and doesn't match
+                    if server_name and server_name.strip() and guild.name != server_name:
+                        continue
+                    for ch in guild.text_channels:
+                        if ch.name == channel_name:
+                            matching_channels.append(ch)
+
+                if not matching_channels:
+                    result["status"] = f"Channel not found: {channel_name}"
+                    await client.close()
+                    return
+                elif len(matching_channels) > 1:
+                    result["status"] = (
+                        f"Multiple channels named '{channel_name}' found. "
+                        "Please specify server_name to disambiguate."
+                    )
+                    await client.close()
+                    return
+                else:
+                    channel = matching_channels[0]
+
+            if not channel:
+                result["status"] = "Failed to resolve channel"
                 await client.close()
                 return
 
             # Type check - ensure it's a text channel that can create threads
             if not hasattr(channel, "create_thread"):
                 result["status"] = (
-                    f"Channel {channel_id} cannot create threads (not a text channel)"
+                    f"Channel {channel_name} cannot create threads (not a text channel)"
                 )
                 await client.close()
                 return
@@ -1281,14 +1315,12 @@ class CreateDiscordThreadBlock(Block):
 
             try:
                 # Create the thread using discord.py 2.0+ API
-                # For discord.py 2.0+, using type parameter with ChannelType is the correct approach
                 thread_type = (
                     discord.ChannelType.private_thread
                     if is_private
                     else discord.ChannelType.public_thread
                 )
 
-                # Convert duration string to minutes for Discord API
                 # Cast to the specific Literal type that discord.py expects
                 duration_minutes = cast(
                     Literal[60, 1440, 4320, 10080], auto_archive_duration.to_minutes()
@@ -1328,7 +1360,8 @@ class CreateDiscordThreadBlock(Block):
         try:
             result = await self.create_thread(
                 token=credentials.api_key.get_secret_value(),
-                channel_id=input_data.channel_id,
+                channel_name=input_data.channel_name,
+                server_name=input_data.server_name or None,
                 thread_name=input_data.thread_name,
                 is_private=input_data.is_private,
                 auto_archive_duration=input_data.auto_archive_duration,
@@ -1343,5 +1376,3 @@ class CreateDiscordThreadBlock(Block):
 
         except discord.errors.LoginFailure as login_err:
             raise ValueError(f"Login error occurred: {login_err}")
-        except Exception as e:
-            raise ValueError(f"An error occurred: {e}")
