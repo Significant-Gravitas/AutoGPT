@@ -170,7 +170,9 @@ async def test_get_input_schema(server: SpinTestServer, snapshot: Snapshot):
         in_key_a: Any = SchemaField(title="Key A", default="A", advanced=True)
         in_key_b: Any = SchemaField(title="in_key_b", advanced=False)
 
-    class ExpectedOutputSchema(BlockSchemaOutput):
+    class ExpectedOutputSchema(BlockSchema):
+        # Note: Graph output schemas are dynamically generated and don't inherit
+        # from BlockSchemaOutput, so we use BlockSchema as the base instead
         out_key: Any = SchemaField(
             description="This is an output key",
             title="out_key",
