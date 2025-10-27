@@ -241,15 +241,31 @@ export const CustomNode = React.memo(
       [handleTitleSave, data.metadata],
     );
 
+    // Basic display title without agent info
     const displayTitle =
       customTitle ||
       beautifyString(data.blockType?.replace(/Block$/, "") || data.title);
-      const agentTitle = data.hardcodedValues?.agent_name
-      ? data.hardcodedValues.agent_name 
-      :localAgent?.name
-      ? '${localAgent.name}${localAgent.version ? ` v${localAgent.version}` : ""}'.trim()
+
+    // Agent title with version if available
+    const agentTitle = data.uiType === BlockUIType.AGENT && (data.hardcodedValues?.agent_name || localAgent?.name)
+      ? `${data.hardcodedValues?.agent_name || localAgent?.name}${data.hardcodedValues?.agent_version ? ` v${data.hardcodedValues.agent_version}` : ""}`
       : null;
-      const finalDisplayTitle = customTitle || agentTitle || displayTitle;
+
+    // Final title prioritizing custom title > agent title > display title
+    const finalDisplayTitle = customTitle || agentTitle || displayTitle;
+
+    // Handle agent state management
+    const agentFromInput = data.hardcodedValues?.agent_id
+      ? {
+          id: data.hardcodedValues.agent_id,
+          name: data.hardcodedValues.agent_name || "Agent Executor",
+          version: data.hardcodedValues.agent_version || "",
+        }
+      : null;
+
+    if(agentFromInput && !localAgent) {
+      setLocalAgent(agentFromInput);
+    }
 
     useEffect(() => {
       isInitialSetup.current = false;
@@ -525,16 +541,16 @@ export const CustomNode = React.memo(
     );
     const updateAgentInBlock = useCallback((agent:any) =>{
       if(!agent?.id) return;
-      const title = agent.name
-      ? '${agent.name}${agent.version ? ` v${agent.version}` : ""}'.trim()
-      : "Agent Executor";
+      const agentName = agent.name ? agent.name : "Agent Executor";
+      const version = agent.version || "";
+      const title = version ? `${agentName} v${version}` : agentName;
       const newHardcodedValues = {
         ...data.hardcodedValues,
         agent_id: agent.id,
-        agent_name: title,
-        agent_version: agent.version || "",
+        agent_name: agentName,  // Store just the name without version
+        agent_version: version,
       }
-      setLocalAgent({id:agent.id,name:agent.name,version:agent.version});
+      setLocalAgent({id:agent.id, name:agentName, version:version});
       setHardcodedValues(newHardcodedValues);
     },[data.hardcodedValues, setHardcodedValues]);
 
@@ -873,12 +889,12 @@ export const CustomNode = React.memo(
                     <TooltipTrigger asChild>
                       <h3 className="font-roboto sentry-unmask cursor-default text-lg">
                         <TextRenderer
-                          value={displayTitle}
+                          value={finalDisplayTitle}
                           truncateLengthLimit={80}
                         />
                       </h3>
                     </TooltipTrigger>
-                    {customTitle && (
+                    {(customTitle || agentTitle) && (
                       <TooltipContent>
                         <p>
                           Type:{" "}
@@ -984,14 +1000,6 @@ export const CustomNode = React.memo(
                 ) : (
                   data.inputSchema &&
                   generateInputHandles(data.inputSchema, data.uiType)
-                )}
-                {data.uiType === BlockUIType.AGENT && (
-                  <div className ="mt-4">
-                    <AgentSelector
-                      selectedAgent={localAgent}
-                      onAgentSelect={updateAgentInBlock}
-                    />
-                  </div>
                 )}
               </div>
             </div>
