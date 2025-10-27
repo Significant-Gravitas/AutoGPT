@@ -29,12 +29,14 @@ interface NodeDataViewerProps {
   data: any;
   pinName: string;
   execId?: string;
+  isViewMoreData?: boolean;
 }
 
 export const NodeDataViewer: FC<NodeDataViewerProps> = ({
   data,
   pinName,
   execId = "N/A",
+  isViewMoreData = false,
 }) => {
   const { toast } = useToast();
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
@@ -149,7 +151,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
   };
 
   return (
-    <Dialog>
+    <Dialog styling={{ width: "600px" }}>
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -157,9 +159,9 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
               <Button
                 variant="secondary"
                 size="small"
-                className="h-fit min-w-0 gap-1.5 p-2 text-black hover:text-slate-900"
+                className="h-fit min-w-0 gap-1.5 border border-zinc-200 p-2 text-black hover:text-slate-900"
               >
-                <ArrowsOutSimpleIcon size={12} />
+                <ArrowsOutSimpleIcon size={isViewMoreData ? 16 : 12} />
               </Button>
             </Dialog.Trigger>
           </TooltipTrigger>
@@ -214,10 +216,10 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                         metadata={item.metadata}
                         renderer={item.renderer}
                       />
-                      <div className="absolute right-4 top-4 flex gap-3">
+                      <div className="absolute right-3 top-3 flex gap-3">
                         <Button
-                          variant="ghost"
-                          className="min-w-0 p-0"
+                          variant="secondary"
+                          className="min-w-0 p-1"
                           size="icon"
                           onClick={() => handleCopyItem(index)}
                           aria-label="Copy item"
@@ -229,9 +231,9 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                           )}
                         </Button>
                         <Button
-                          variant="ghost"
+                          variant="secondary"
                           size="icon"
-                          className="min-w-0 p-0"
+                          className="min-w-0 p-1"
                           onClick={() => handleDownloadItem(index)}
                           aria-label="Download item"
                         >

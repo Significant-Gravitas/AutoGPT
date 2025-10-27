@@ -10,7 +10,7 @@ import { NodeCost } from "./components/NodeCost";
 import { NodeBadges } from "./components/NodeBadges";
 import { NodeExecutionBadge } from "./components/NodeExecutionBadge";
 import { nodeStyleBasedOnStatus } from "./helpers";
-import { NodeDataRenderer } from "./components/NodeDataRenderer";
+import { NodeDataRenderer } from "./components/NodeOutput/NodeOutput";
 
 type StandardNodeBlockType = {
   data: CustomNodeData;
