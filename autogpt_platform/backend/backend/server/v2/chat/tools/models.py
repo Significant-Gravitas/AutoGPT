@@ -177,7 +177,6 @@ class SetupInfo(BaseModel):
 
     agent_id: str
     agent_name: str
-    version: int
     requirements: dict[str, list[Any]] = Field(
         default_factory=lambda: {
             "credentials": [],
