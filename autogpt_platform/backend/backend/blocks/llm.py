@@ -1591,7 +1591,7 @@ class AIConversationBlock(AIBlockBase):
             ),
             credentials=credentials,
         )
-        yield "response", response
+        yield "response", response["response"]
         yield "prompt", self.prompt
 
 
