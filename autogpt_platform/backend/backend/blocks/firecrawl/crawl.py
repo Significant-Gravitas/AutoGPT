@@ -55,6 +55,10 @@ class FirecrawlCrawlBlock(Block):
         change_tracking: dict[str, Any] = SchemaField(
             description="The change tracking of the crawl"
         )
+        error: str = SchemaField(
+            description="Error message if the crawl failed",
+            default="",
+        )
 
     def __init__(self):
         super().__init__(
