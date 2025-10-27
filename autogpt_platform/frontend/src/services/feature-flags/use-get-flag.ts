@@ -39,7 +39,7 @@ const mockFlags = {
   [Flag.NEW_BLOCK_MENU]: false,
   [Flag.NEW_AGENT_RUNS]: false,
   [Flag.GRAPH_SEARCH]: true,
-  [Flag.ENABLE_ENHANCED_OUTPUT_HANDLING]: true,
+  [Flag.ENABLE_ENHANCED_OUTPUT_HANDLING]: false,
   [Flag.NEW_FLOW_EDITOR]: false,
   [Flag.BUILDER_VIEW_SWITCH]: false,
   [Flag.SHARE_EXECUTION_RESULTS]: false,
