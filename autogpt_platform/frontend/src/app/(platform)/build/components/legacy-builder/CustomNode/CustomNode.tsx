@@ -64,6 +64,7 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import { Switch } from "@/components/atoms/Switch/Switch";
+import {useDebounce} from "react-use";
 
 export type ConnectionData = Array<{
   edge_id: string;
@@ -116,6 +117,7 @@ export const CustomNode = React.memo(
     const [customTitle, setCustomTitle] = useState(
       data.metadata?.customized_name || "",
     );
+    const [localAgent, setLocalAgent] = useState<any>(null);
     const [isTitleHovered, setIsTitleHovered] = useState(false);
     const titleInputRef = useRef<HTMLInputElement>(null);
     const { updateNodeData, deleteElements, addNodes, getNode } = useReactFlow<
@@ -134,6 +136,20 @@ export const CustomNode = React.memo(
       data.inputSchema = data.hardcodedValues?.input_schema || {};
       data.outputSchema = data.hardcodedValues?.output_schema || {};
       subGraphID = data.hardcodedValues?.graph_id || subGraphID;
+      const agentFromInput = data.hardcodedValues?.agent_id
+      ?{
+        id:data.hardcodedValues.agent_id,
+        name: data.hardcodedValues.agent_name || "Agent Executor",
+        version: data.hardcodedValues.agent_version || "",
+      }
+      : null;
+
+      if(agentFromInput && !localAgent) {
+        setLocalAgent(agentFromInput);
+      }
+
+      
+        
     }
 
     if (!builderContext) {
@@ -228,6 +244,12 @@ export const CustomNode = React.memo(
     const displayTitle =
       customTitle ||
       beautifyString(data.blockType?.replace(/Block$/, "") || data.title);
+      const agentTitle = data.hardcodedValues?.agent_name
+      ? data.hardcodedValues.agent_name 
+      :localAgent?.name
+      ? '${localAgent.name}${localAgent.version ? ` v${localAgent.version}` : ""}'.trim()
+      : null;
+      const finalDisplayTitle = customTitle || agentTitle || displayTitle;
 
     useEffect(() => {
       isInitialSetup.current = false;
@@ -243,6 +265,13 @@ export const CustomNode = React.memo(
         setHardcodedValues(
           fillDefaults(data.hardcodedValues, data.inputSchema),
         );
+      }
+      if(data.uiType === BlockUIType.AGENT && data.hardcodedValues?.agent_id ){
+        setLocalAgent({
+          id:data.hardcodedValues.agent_id,
+          name: data.hardcodedValues.agent_name || "Agent Executor",
+          version: data.hardcodedValues.agent_version || "",
+        });
       }
     }, []);
 
@@ -494,6 +523,20 @@ export const CustomNode = React.memo(
       },
       [data.hardcodedValues, id, setHardcodedValues, data.errors, setErrors],
     );
+    const updateAgentInBlock = useCallback((agent:any) =>{
+      if(!agent?.id) return;
+      const title = agent.name
+      ? '${agent.name}${agent.version ? ` v${agent.version}` : ""}'.trim()
+      : "Agent Executor";
+      const newHardcodedValues = {
+        ...data.hardcodedValues,
+        agent_id: agent.id,
+        agent_name: title,
+        agent_version: agent.version || "",
+      }
+      setLocalAgent({id:agent.id,name:agent.name,version:agent.version});
+      setHardcodedValues(newHardcodedValues);
+    },[data.hardcodedValues, setHardcodedValues]);
 
     const isInputHandleConnected = (key: string) => {
       return (
@@ -942,6 +985,14 @@ export const CustomNode = React.memo(
                   data.inputSchema &&
                   generateInputHandles(data.inputSchema, data.uiType)
                 )}
+                {data.uiType === BlockUIType.AGENT && (
+                  <div className ="mt-4">
+                    <AgentSelector
+                      selectedAgent={localAgent}
+                      onAgentSelect={updateAgentInBlock}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           ) : (
@@ -1073,6 +1124,6 @@ export const CustomNode = React.memo(
   },
   (prevProps, nextProps) => {
     // Only re-render if the 'data' prop has changed
-    return prevProps.data === nextProps.data;
+    return prevProps.data === nextProps.data && prevProps.id === nextProps.id;
   },
 );
