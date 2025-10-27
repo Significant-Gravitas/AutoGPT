@@ -298,25 +298,16 @@ async def unlink_webhook_from_graph(
     for preset in presets:
         await set_preset_webhook(user_id, preset.id, None)
 
-    # Check if webhook still has any triggers
-    webhook = await get_webhook(webhook_id, include_relations=True)
-    if webhook and not webhook.triggered_nodes and not webhook.triggered_presets:
-        # Webhook has no remaining triggers, deregister with provider and delete
-        webhook_manager = get_webhook_manager(webhook.provider)
-        creds_manager = IntegrationCredentialsManager()
-        credentials = (
-            await creds_manager.get(user_id, webhook.credentials_id)
-            if webhook.credentials_id
-            else None
-        )
-        success = await webhook_manager.prune_webhook_if_dangling(
-            user_id, webhook.id, credentials
-        )
-        if not success:
-            logger.warning(
-                f"Failed to deregister webhook #{webhook_id} with provider, "
-                "but it was unlinked from graph #{graph_id}"
-            )
+    # Check if webhook needs cleanup (prune_webhook_if_dangling handles the trigger check)
+    webhook = await get_webhook(webhook_id, include_relations=False)
+    webhook_manager = get_webhook_manager(webhook.provider)
+    creds_manager = IntegrationCredentialsManager()
+    credentials = (
+        await creds_manager.get(user_id, webhook.credentials_id)
+        if webhook.credentials_id
+        else None
+    )
+    await webhook_manager.prune_webhook_if_dangling(user_id, webhook.id, credentials)
 
 
 async def delete_webhook(user_id: str, webhook_id: str) -> None:
