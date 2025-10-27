@@ -20,9 +20,11 @@ export function useOnboardingRunStep() {
   const [agent, setAgent] = useState<GraphMeta | null>(null);
   const [storeAgent, setStoreAgent] = useState<StoreAgentDetails | null>(null);
   const [runningAgent, setRunningAgent] = useState(false);
+
   const [inputCredentials, setInputCredentials] = useState<
     Record<string, CredentialsMetaInput>
   >({});
+
   const [credentialsValid, setCredentialsValid] = useState(true);
   const [credentialsLoaded, setCredentialsLoaded] = useState(false);
 
@@ -69,20 +71,6 @@ export function useOnboardingRunStep() {
       onboarding.updateState({ agentInput: update });
     }
   }, [graphMetaQuery.data]);
-
-  function handleCredentialsChange(
-    credentials: Record<string, CredentialsMetaInput>,
-  ) {
-    setInputCredentials(credentials);
-  }
-
-  function handleCredentialsValidationChange(isValid: boolean) {
-    setCredentialsValid(isValid);
-  }
-
-  function handleCredentialsLoadingChange(isLoading: boolean) {
-    setCredentialsLoaded(!isLoading);
-  }
 
   function handleNewRun() {
     if (!onboarding.state) return;
@@ -167,8 +155,8 @@ export function useOnboardingRunStep() {
     handleSetAgentInput,
     handleRunAgent,
     handleNewRun,
-    handleCredentialsChange,
-    handleCredentialsValidationChange,
-    handleCredentialsLoadingChange,
+    handleCredentialsChange: setInputCredentials,
+    handleCredentialsValidationChange: setCredentialsValid,
+    handleCredentialsLoadingChange: (v: boolean) => setCredentialsLoaded(!v),
   };
 }

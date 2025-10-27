@@ -1,6 +1,6 @@
 import { CredentialsMetaInput } from "@/app/api/__generated__/models/credentialsMetaInput";
 import { GraphMeta } from "@/app/api/__generated__/models/graphMeta";
-import type { AgentCredentialsFields } from "./types";
+import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api/types";
 
 export function getCredentialFields(
   agent: GraphMeta | null,
@@ -17,6 +17,11 @@ export function getCredentialFields(
 
   return agent.credentials_input_schema.properties as AgentCredentialsFields;
 }
+
+export type AgentCredentialsFields = Record<
+  string,
+  BlockIOCredentialsSubSchema
+>;
 
 export function areAllCredentialsSet(
   fields: AgentCredentialsFields,

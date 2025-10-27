@@ -41,7 +41,6 @@ export function AgentOnboardingCredentials(props: Props) {
     props.onValidationChange(isValid);
   }
 
-
   return (
     <>
       {Object.entries(fields).map(([key, inputSubSchema]) => (
