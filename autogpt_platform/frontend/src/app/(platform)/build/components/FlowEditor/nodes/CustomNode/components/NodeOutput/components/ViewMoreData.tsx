@@ -6,7 +6,8 @@ import { ContentRenderer } from "./ContentRenderer";
 import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { useState } from "react";
-import { NodeDataViewer } from "./NodeDataViewer";
+import { NodeDataViewer } from "./NodeDataViewer/NodeDataViewer";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 
 export const ViewMoreData = ({
   outputData,
@@ -16,6 +17,7 @@ export const ViewMoreData = ({
   execId?: string;
 }) => {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const handleCopy = (key: string, value: any) => {
     const textToCopy =
@@ -25,6 +27,15 @@ export const ViewMoreData = ({
     navigator.clipboard.writeText(textToCopy);
     setCopiedKey(key);
     setTimeout(() => setCopiedKey(null), 2000);
+  };
+
+  const copyExecutionId = () => {
+    navigator.clipboard.writeText(execId || "N/A").then(() => {
+      toast({
+        title: "Execution ID copied to clipboard!",
+        duration: 2000,
+      });
+    });
   };
 
   return (
@@ -43,6 +54,26 @@ export const ViewMoreData = ({
           <Text variant="h4" className="text-slate-900">
             Complete Output Data
           </Text>
+
+          <div className="flex items-center gap-2">
+            <Text variant="body" className="text-slate-600">
+              Execution ID:
+            </Text>
+            <Text
+              variant="body-medium"
+              className="rounded-full border border-gray-300 bg-gray-50 px-2 py-1 font-mono text-xs"
+            >
+              {execId}
+            </Text>
+            <Button
+              variant="ghost"
+              size="small"
+              onClick={copyExecutionId}
+              className="h-6 w-6 min-w-0 p-0"
+            >
+              <CopyIcon size={14} />
+            </Button>
+          </div>
 
           <ScrollArea className="h-full">
             <div className="flex flex-col gap-4">

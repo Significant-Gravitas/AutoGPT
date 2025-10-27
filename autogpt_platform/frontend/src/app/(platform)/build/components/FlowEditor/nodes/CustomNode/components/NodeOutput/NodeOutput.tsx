@@ -7,7 +7,7 @@ import {
   CheckIcon,
   CaretLineDownIcon,
 } from "@phosphor-icons/react";
-import { NodeDataViewer } from "./components/NodeDataViewer";
+import { NodeDataViewer } from "./components/NodeDataViewer/NodeDataViewer";
 import { ContentRenderer } from "./components/ContentRenderer";
 import { useNodeOutput } from "./useNodeOutput";
 import { ViewMoreData } from "./components/ViewMoreData";
