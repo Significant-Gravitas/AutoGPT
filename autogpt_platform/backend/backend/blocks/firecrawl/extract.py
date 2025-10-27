@@ -39,6 +39,10 @@ class FirecrawlExtractBlock(Block):
 
     class Output(BlockSchema):
         data: dict[str, Any] = SchemaField(description="The result of the crawl")
+        error: str = SchemaField(
+            description="Error message if the extraction failed",
+            default="",
+        )
 
     def __init__(self):
         super().__init__(

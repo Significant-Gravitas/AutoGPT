@@ -26,6 +26,10 @@ class FirecrawlMapWebsiteBlock(Block):
         results: list[dict[str, Any]] = SchemaField(
             description="List of search results with url, title, and description"
         )
+        error: str = SchemaField(
+            description="Error message if the map failed",
+            default="",
+        )
 
     def __init__(self):
         super().__init__(
