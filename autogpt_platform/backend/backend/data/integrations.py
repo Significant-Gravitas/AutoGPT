@@ -1,7 +1,7 @@
 import logging
 from typing import AsyncGenerator, Literal, Optional, overload
 
-from prisma.models import IntegrationWebhook
+from prisma.models import AgentNode, AgentPreset, IntegrationWebhook
 from prisma.types import (
     IntegrationWebhookCreateInput,
     IntegrationWebhookUpdateInput,
@@ -15,7 +15,9 @@ from backend.data.includes import (
     INTEGRATION_WEBHOOK_INCLUDE,
     MAX_INTEGRATION_WEBHOOKS_FETCH,
 )
+from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
+from backend.integrations.webhooks import get_webhook_manager
 from backend.integrations.webhooks.utils import webhook_ingress_url
 from backend.server.v2.library.model import LibraryAgentPreset
 from backend.util.exceptions import NotFoundError
@@ -248,11 +250,6 @@ async def find_webhooks_by_graph_id(graph_id: str, user_id: str) -> list[Webhook
     Returns:
         list[Webhook]: List of webhooks associated with the graph
     """
-    # Find webhooks that trigger either:
-    # 1. Nodes directly in this graph, OR
-    # 2. Presets that reference this graph
-    from prisma.types import IntegrationWebhookWhereInput
-
     where_clause: IntegrationWebhookWhereInput = {
         "userId": user_id,
         "OR": [
@@ -279,11 +276,8 @@ async def unlink_webhook_from_graph(
         graph_id: The ID of the graph to unlink from
         user_id: The ID of the user (for authorization)
     """
-    from prisma.models import AgentNode, AgentPreset
-
+    # Avoid circular imports
     from backend.data.graph import set_node_webhook
-    from backend.integrations.creds_manager import IntegrationCredentialsManager
-    from backend.integrations.webhooks import get_webhook_manager
     from backend.server.v2.library.db import set_preset_webhook
 
     # Find all nodes in this graph that use this webhook
