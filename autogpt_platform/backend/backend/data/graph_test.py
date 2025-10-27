@@ -9,7 +9,7 @@ from pytest_snapshot.plugin import Snapshot
 import backend.server.v2.store.model as store
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
-from backend.data.block import BlockSchemaInput, BlockSchemaOutput
+from backend.data.block import BlockSchema, BlockSchemaInput
 from backend.data.graph import Graph, Link, Node
 from backend.data.model import SchemaField
 from backend.data.user import DEFAULT_USER_ID
