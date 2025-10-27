@@ -10,6 +10,7 @@ from backend.sdk import (
     BlockCategory,
     BlockOutput,
     BlockSchema,
+    BlockSchemaInput,
     CredentialsMetaInput,
     SchemaField,
 )
@@ -31,7 +32,7 @@ class AirtableListRecordsBlock(Block):
     Lists records from an Airtable table with optional filtering, sorting, and pagination.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
@@ -137,7 +138,7 @@ class AirtableGetRecordBlock(Block):
     Retrieves a single record from an Airtable table by its ID.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
@@ -217,7 +218,7 @@ class AirtableCreateRecordsBlock(Block):
     Creates one or more records in an Airtable table.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
@@ -290,7 +291,7 @@ class AirtableUpdateRecordsBlock(Block):
     Updates one or more existing records in an Airtable table.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
@@ -339,7 +340,7 @@ class AirtableDeleteRecordsBlock(Block):
     Deletes one or more records from an Airtable table.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )

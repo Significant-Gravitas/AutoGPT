@@ -4,7 +4,13 @@ from urllib.parse import quote
 from pydantic import SecretStr
 
 from backend.blocks.helpers.http import GetRequest
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockSchemaInput,
+)
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -15,7 +21,7 @@ from backend.integrations.providers import ProviderName
 
 
 class GetWikipediaSummaryBlock(Block, GetRequest):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         topic: str = SchemaField(description="The topic to fetch the summary for")
 
     class Output(BlockSchema):
@@ -61,7 +67,7 @@ TEST_CREDENTIALS_INPUT = {
 
 
 class GetWeatherInformationBlock(Block, GetRequest):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         location: str = SchemaField(
             description="Location to get weather information for"
         )

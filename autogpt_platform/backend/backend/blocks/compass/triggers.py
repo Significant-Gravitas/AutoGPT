@@ -6,6 +6,7 @@ from backend.data.block import (
     BlockManualWebhookConfig,
     BlockOutput,
     BlockSchema,
+    BlockSchemaInput,
 )
 from backend.data.model import SchemaField
 from backend.integrations.providers import ProviderName
@@ -27,7 +28,7 @@ class TranscriptionDataModel(BaseModel):
 
 
 class CompassAITriggerBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         payload: TranscriptionDataModel = SchemaField(hidden=True)
 
     class Output(BlockSchema):

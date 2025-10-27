@@ -32,6 +32,7 @@ from backend.sdk import (
     BlockCategory,
     BlockOutput,
     BlockSchema,
+    BlockSchemaInput,
     CredentialsMetaInput,
     Requests,
     SchemaField,
@@ -104,7 +105,7 @@ class Webset(BaseModel):
 
 
 class ExaCreateWebsetBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -404,7 +405,7 @@ class ExaCreateWebsetBlock(Block):
 
 
 class ExaUpdateWebsetBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -475,7 +476,7 @@ class ExaUpdateWebsetBlock(Block):
 
 
 class ExaListWebsetsBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -550,7 +551,7 @@ class ExaListWebsetsBlock(Block):
 
 
 class ExaGetWebsetBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -637,7 +638,7 @@ class ExaGetWebsetBlock(Block):
 
 
 class ExaDeleteWebsetBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -695,7 +696,7 @@ class ExaDeleteWebsetBlock(Block):
 
 
 class ExaCancelWebsetBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )

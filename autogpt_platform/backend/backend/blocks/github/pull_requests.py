@@ -2,7 +2,13 @@ import re
 
 from typing_extensions import TypedDict
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockSchemaInput,
+)
 from backend.data.model import SchemaField
 
 from ._api import get_api
@@ -16,7 +22,7 @@ from ._auth import (
 
 
 class GithubListPullRequestsBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
@@ -108,7 +114,7 @@ class GithubListPullRequestsBlock(Block):
 
 
 class GithubMakePullRequestBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
@@ -209,7 +215,7 @@ class GithubMakePullRequestBlock(Block):
 
 
 class GithubReadPullRequestBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         pr_url: str = SchemaField(
             description="URL of the GitHub pull request",
@@ -325,7 +331,7 @@ class GithubReadPullRequestBlock(Block):
 
 
 class GithubAssignPRReviewerBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         pr_url: str = SchemaField(
             description="URL of the GitHub pull request",
@@ -392,7 +398,7 @@ class GithubAssignPRReviewerBlock(Block):
 
 
 class GithubUnassignPRReviewerBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         pr_url: str = SchemaField(
             description="URL of the GitHub pull request",
@@ -459,7 +465,7 @@ class GithubUnassignPRReviewerBlock(Block):
 
 
 class GithubListPRReviewersBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         pr_url: str = SchemaField(
             description="URL of the GitHub pull request",

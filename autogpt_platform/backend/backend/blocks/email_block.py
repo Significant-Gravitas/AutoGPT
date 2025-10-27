@@ -5,7 +5,13 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, SecretStr
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockSchemaInput,
+)
 from backend.data.model import (
     CredentialsField,
     CredentialsMetaInput,
@@ -51,7 +57,7 @@ class SMTPConfig(BaseModel):
 
 
 class SendEmailBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         to_email: str = SchemaField(
             description="Recipient email address", placeholder="recipient@example.com"
         )

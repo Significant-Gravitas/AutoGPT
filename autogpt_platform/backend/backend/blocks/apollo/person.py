@@ -6,14 +6,20 @@ from backend.blocks.apollo._auth import (
     ApolloCredentialsInput,
 )
 from backend.blocks.apollo.models import Contact, EnrichPersonRequest
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockSchemaInput,
+)
 from backend.data.model import CredentialsField, SchemaField
 
 
 class GetPersonDetailBlock(Block):
     """Get detailed person data with Apollo API, including email reveal"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         person_id: str = SchemaField(
             description="Apollo person ID to enrich (most accurate method)",
             default="",

@@ -9,6 +9,8 @@ from backend.sdk import (
     BlockCategory,
     BlockOutput,
     BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
     UserPasswordCredentials,
@@ -45,7 +47,7 @@ class KeywordSuggestion(BlockSchema):
 class DataForSeoKeywordSuggestionsBlock(Block):
     """Block for getting keyword suggestions from DataForSEO Labs."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = dataforseo.credentials_field(
             description="DataForSEO credentials (username and password)"
         )
@@ -77,7 +79,7 @@ class DataForSeoKeywordSuggestionsBlock(Block):
             le=3000,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         suggestions: List[KeywordSuggestion] = SchemaField(
             description="List of keyword suggestions with metrics"
         )
@@ -90,7 +92,6 @@ class DataForSeoKeywordSuggestionsBlock(Block):
         seed_keyword: str = SchemaField(
             description="The seed keyword used for the query"
         )
-        error: str = SchemaField(description="Error message if the API call failed")
 
     def __init__(self):
         super().__init__(
@@ -213,12 +214,12 @@ class DataForSeoKeywordSuggestionsBlock(Block):
 class KeywordSuggestionExtractorBlock(Block):
     """Extracts individual fields from a KeywordSuggestion object."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         suggestion: KeywordSuggestion = SchemaField(
             description="The keyword suggestion object to extract fields from"
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         keyword: str = SchemaField(description="The keyword suggestion")
         search_volume: Optional[int] = SchemaField(
             description="Monthly search volume", default=None

@@ -6,7 +6,13 @@ from typing import Any
 import feedparser
 import pydantic
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockSchemaInput,
+)
 from backend.data.model import SchemaField
 from backend.util.request import Requests
 
@@ -21,7 +27,7 @@ class RSSEntry(pydantic.BaseModel):
 
 
 class ReadRSSFeedBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         rss_url: str = SchemaField(
             description="The URL of the RSS feed to read",
             placeholder="https://example.com/rss",

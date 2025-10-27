@@ -8,6 +8,7 @@ from backend.sdk import (
     BlockCategory,
     BlockOutput,
     BlockSchema,
+    BlockSchemaInput,
     CredentialsMetaInput,
     Requests,
     SchemaField,
@@ -23,7 +24,7 @@ class AirtableListSchemaBlock(Block):
     fields, and views.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
@@ -66,7 +67,7 @@ class AirtableCreateTableBlock(Block):
     Creates a new table in an Airtable base with specified fields and views.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
@@ -109,7 +110,7 @@ class AirtableUpdateTableBlock(Block):
     Updates an existing table's properties such as name or description.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
@@ -157,7 +158,7 @@ class AirtableCreateFieldBlock(Block):
     Adds a new field (column) to an existing Airtable table.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
@@ -209,7 +210,7 @@ class AirtableUpdateFieldBlock(Block):
     Updates an existing field's properties in an Airtable table.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )

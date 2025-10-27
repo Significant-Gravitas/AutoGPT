@@ -4,6 +4,7 @@ from backend.sdk import (
     BlockCategory,
     BlockOutput,
     BlockSchema,
+    BlockSchemaInput,
     BlockType,
     BlockWebhookConfig,
     CredentialsMetaInput,
@@ -32,7 +33,7 @@ class AirtableWebhookTriggerBlock(Block):
     Thin wrapper just forwards the payloads one at a time to the next block.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )

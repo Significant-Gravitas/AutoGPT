@@ -3,6 +3,7 @@ from backend.sdk import (
     BlockCategory,
     BlockOutput,
     BlockSchema,
+    BlockSchemaInput,
     Credentials,
     CredentialsMetaInput,
     SchemaField,
@@ -17,7 +18,7 @@ class WordPressCreatePostBlock(Block):
     Creates a new post on a WordPress.com site or Jetpack-enabled site and publishes it.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = wordpress.credentials_field()
         site: str = SchemaField(
             description="Site ID or domain (e.g., 'myblog.wordpress.com' or '123456789')"

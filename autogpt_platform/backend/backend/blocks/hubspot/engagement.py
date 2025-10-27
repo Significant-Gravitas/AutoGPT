@@ -5,13 +5,19 @@ from backend.blocks.hubspot._auth import (
     HubSpotCredentialsField,
     HubSpotCredentialsInput,
 )
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockSchemaInput,
+)
 from backend.data.model import SchemaField
 from backend.util.request import Requests
 
 
 class HubSpotEngagementBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: HubSpotCredentialsInput = HubSpotCredentialsField()
         operation: str = SchemaField(
             description="Operation to perform (send_email, track_engagement)",

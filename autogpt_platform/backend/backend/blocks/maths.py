@@ -2,7 +2,13 @@ import operator
 from enum import Enum
 from typing import Any
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockSchemaInput,
+)
 from backend.data.model import SchemaField
 
 
@@ -15,7 +21,7 @@ class Operation(Enum):
 
 
 class CalculatorBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         operation: Operation = SchemaField(
             description="Choose the math operation you want to perform",
             placeholder="Select an operation",
@@ -85,7 +91,7 @@ class CalculatorBlock(Block):
 
 
 class CountItemsBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         collection: Any = SchemaField(
             description="Enter the collection you want to count. This can be a list, dictionary, string, or any other iterable.",
             placeholder="For example: [1, 2, 3] or {'a': 1, 'b': 2} or 'hello'",

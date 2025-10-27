@@ -3,13 +3,19 @@ from backend.blocks.hubspot._auth import (
     HubSpotCredentialsField,
     HubSpotCredentialsInput,
 )
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockSchemaInput,
+)
 from backend.data.model import SchemaField
 from backend.util.request import Requests
 
 
 class HubSpotContactBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: HubSpotCredentialsInput = HubSpotCredentialsField()
         operation: str = SchemaField(
             description="Operation to perform (create, update, get)", default="get"

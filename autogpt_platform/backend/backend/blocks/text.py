@@ -4,7 +4,13 @@ from typing import Any
 
 import regex  # Has built-in timeout support
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockSchemaInput,
+)
 from backend.data.model import SchemaField
 from backend.util import json, text
 from backend.util.file import get_exec_file_path, store_media_file
@@ -14,7 +20,7 @@ formatter = text.TextFormatter()
 
 
 class MatchTextPatternBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         text: Any = SchemaField(description="Text to match")
         match: str = SchemaField(description="Pattern (Regex) to match")
         data: Any = SchemaField(description="Data to be forwarded to output")
@@ -68,7 +74,7 @@ class MatchTextPatternBlock(Block):
 
 
 class ExtractTextInformationBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         text: Any = SchemaField(description="Text to parse")
         pattern: str = SchemaField(description="Pattern (Regex) to parse")
         group: int = SchemaField(description="Group number to extract", default=0)
@@ -237,7 +243,7 @@ class ExtractTextInformationBlock(Block):
 
 
 class FillTextTemplateBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         values: dict[str, Any] = SchemaField(
             description="Values (dict) to be used in format. These values can be used by putting them in double curly braces in the format template. e.g. {{value_name}}.",
         )
@@ -287,7 +293,7 @@ class FillTextTemplateBlock(Block):
 
 
 class CombineTextsBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         input: list[str] = SchemaField(description="text input to combine")
         delimiter: str = SchemaField(
             description="Delimiter to combine texts", default=""
@@ -319,7 +325,7 @@ class CombineTextsBlock(Block):
 
 
 class TextSplitBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         text: str = SchemaField(description="The text to split.")
         delimiter: str = SchemaField(description="The delimiter to split the text by.")
         strip: bool = SchemaField(
@@ -359,7 +365,7 @@ class TextSplitBlock(Block):
 
 
 class TextReplaceBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         text: str = SchemaField(description="The text to replace.")
         old: str = SchemaField(description="The old text to replace.")
         new: str = SchemaField(description="The new text to replace with.")
@@ -387,7 +393,7 @@ class TextReplaceBlock(Block):
 
 
 class FileReadBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         file_input: MediaFileType = SchemaField(
             description="The file to read from (URL, data URI, or local path)"
         )

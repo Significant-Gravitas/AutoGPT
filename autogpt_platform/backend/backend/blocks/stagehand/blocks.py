@@ -23,6 +23,7 @@ from backend.sdk import (
     BlockCategory,
     BlockOutput,
     BlockSchema,
+    BlockSchemaInput,
     CredentialsMetaInput,
     SchemaField,
 )
@@ -126,7 +127,7 @@ class StagehandRecommendedLlmModel(str, Enum):
 
 
 class StagehandObserveBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         # Browserbase credentials (Stagehand provider) or raw API key
         stagehand_credentials: CredentialsMetaInput = (
             stagehand_provider.credentials_field(
@@ -219,7 +220,7 @@ class StagehandObserveBlock(Block):
 
 
 class StagehandActBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         # Browserbase credentials (Stagehand provider) or raw API key
         stagehand_credentials: CredentialsMetaInput = (
             stagehand_provider.credentials_field(
@@ -319,7 +320,7 @@ class StagehandActBlock(Block):
 
 
 class StagehandExtractBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         # Browserbase credentials (Stagehand provider) or raw API key
         stagehand_credentials: CredentialsMetaInput = (
             stagehand_provider.credentials_field(

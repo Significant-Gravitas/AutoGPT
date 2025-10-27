@@ -3,7 +3,13 @@ from typing import Any, Literal
 
 from pinecone import Pinecone, ServerlessSpec
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockSchemaInput,
+)
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -27,7 +33,7 @@ def PineconeCredentialsField() -> PineconeCredentialsInput:
 
 
 class PineconeInitBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: PineconeCredentialsInput = PineconeCredentialsField()
         index_name: str = SchemaField(description="Name of the Pinecone index")
         dimension: int = SchemaField(
@@ -83,7 +89,7 @@ class PineconeInitBlock(Block):
 
 
 class PineconeQueryBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: PineconeCredentialsInput = PineconeCredentialsField()
         query_vector: list = SchemaField(description="Query vector")
         namespace: str = SchemaField(
@@ -166,7 +172,7 @@ class PineconeQueryBlock(Block):
 
 
 class PineconeInsertBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: PineconeCredentialsInput = PineconeCredentialsField()
         index: str = SchemaField(description="Initialized Pinecone index")
         chunks: list = SchemaField(description="List of text chunks to ingest")

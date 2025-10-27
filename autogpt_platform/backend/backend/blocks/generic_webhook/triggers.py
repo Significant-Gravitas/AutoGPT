@@ -4,6 +4,7 @@ from backend.sdk import (
     BlockManualWebhookConfig,
     BlockOutput,
     BlockSchema,
+    BlockSchemaInput,
     ProviderBuilder,
     ProviderName,
     SchemaField,
@@ -19,7 +20,7 @@ generic_webhook = (
 
 
 class GenericWebhookTriggerBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         payload: dict = SchemaField(hidden=True, default_factory=dict)
         constants: dict = SchemaField(
             description="The constants to be set when the block is put on the graph",

@@ -8,7 +8,13 @@ from typing import Literal
 import aiofiles
 from pydantic import SecretStr
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockSchemaInput,
+)
 from backend.data.model import (
     CredentialsField,
     CredentialsMetaInput,
@@ -62,7 +68,7 @@ class HttpMethod(Enum):
 
 
 class SendWebRequestBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         url: str = SchemaField(
             description="The URL to send the request to",
             placeholder="https://api.example.com",

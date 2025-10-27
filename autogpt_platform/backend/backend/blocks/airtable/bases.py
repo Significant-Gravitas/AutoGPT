@@ -10,6 +10,7 @@ from backend.sdk import (
     BlockCategory,
     BlockOutput,
     BlockSchema,
+    BlockSchemaInput,
     CredentialsMetaInput,
     SchemaField,
 )
@@ -23,7 +24,7 @@ class AirtableCreateBaseBlock(Block):
     Creates a new base in an Airtable workspace, or returns existing base if one with the same name exists.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
@@ -118,7 +119,7 @@ class AirtableListBasesBlock(Block):
     Lists all bases in an Airtable workspace that the user has access to.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )

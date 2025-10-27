@@ -2,7 +2,13 @@ import os
 import re
 from typing import Type
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockSchemaInput,
+)
 from backend.data.model import SchemaField
 
 
@@ -15,7 +21,7 @@ class BlockInstallationBlock(Block):
         for development purposes only.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         code: str = SchemaField(
             description="Python code of the block to be installed",
         )

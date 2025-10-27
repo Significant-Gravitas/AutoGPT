@@ -9,6 +9,8 @@ from backend.sdk import (
     BlockCategory,
     BlockOutput,
     BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
     UserPasswordCredentials,
@@ -45,7 +47,7 @@ class RelatedKeyword(BlockSchema):
 class DataForSeoRelatedKeywordsBlock(Block):
     """Block for getting related keywords from DataForSEO Labs."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = dataforseo.credentials_field(
             description="DataForSEO credentials (username and password)"
         )
@@ -85,7 +87,7 @@ class DataForSeoRelatedKeywordsBlock(Block):
             le=4,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         related_keywords: List[RelatedKeyword] = SchemaField(
             description="List of related keywords with metrics"
         )
@@ -98,7 +100,6 @@ class DataForSeoRelatedKeywordsBlock(Block):
         seed_keyword: str = SchemaField(
             description="The seed keyword used for the query"
         )
-        error: str = SchemaField(description="Error message if the API call failed")
 
     def __init__(self):
         super().__init__(
@@ -231,12 +232,12 @@ class DataForSeoRelatedKeywordsBlock(Block):
 class RelatedKeywordExtractorBlock(Block):
     """Extracts individual fields from a RelatedKeyword object."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         related_keyword: RelatedKeyword = SchemaField(
             description="The related keyword object to extract fields from"
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         keyword: str = SchemaField(description="The related keyword")
         search_volume: Optional[int] = SchemaField(
             description="Monthly search volume", default=None

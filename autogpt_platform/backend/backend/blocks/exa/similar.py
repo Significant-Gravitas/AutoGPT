@@ -7,6 +7,7 @@ from backend.sdk import (
     BlockCategory,
     BlockOutput,
     BlockSchema,
+    BlockSchemaInput,
     CredentialsMetaInput,
     Requests,
     SchemaField,
@@ -17,7 +18,7 @@ from .helpers import ContentSettings
 
 
 class ExaFindSimilarBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )

@@ -6,7 +6,13 @@ from typing import Literal
 from pydantic import SecretStr
 from replicate.client import Client as ReplicateClient
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -54,7 +60,7 @@ class NormalizationStrategy(str, Enum):
 
 
 class AIMusicGeneratorBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.REPLICATE], Literal["api_key"]
         ] = CredentialsField(
@@ -107,9 +113,8 @@ class AIMusicGeneratorBlock(Block):
             title="Normalization Strategy",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: str = SchemaField(description="URL of the generated audio file")
-        error: str = SchemaField(description="Error message if the model run failed")
 
     def __init__(self):
         super().__init__(

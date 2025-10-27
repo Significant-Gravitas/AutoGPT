@@ -10,6 +10,7 @@ from backend.sdk import (
     BlockCategory,
     BlockOutput,
     BlockSchema,
+    BlockSchemaInput,
     CredentialsMetaInput,
     SchemaField,
 )
@@ -23,7 +24,7 @@ class BaasBotJoinMeetingBlock(Block):
     Deploy a bot immediately or at a scheduled start_time to join and record a meeting.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = baas.credentials_field(
             description="Meeting BaaS API credentials"
         )
@@ -103,7 +104,7 @@ class BaasBotLeaveMeetingBlock(Block):
     Force the bot to exit the call.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = baas.credentials_field(
             description="Meeting BaaS API credentials"
         )
@@ -138,7 +139,7 @@ class BaasBotFetchMeetingDataBlock(Block):
     Pull MP4 URL, transcript & metadata for a completed meeting.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = baas.credentials_field(
             description="Meeting BaaS API credentials"
         )
@@ -185,7 +186,7 @@ class BaasBotDeleteRecordingBlock(Block):
     Purge MP4 + transcript data for privacy or storage management.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = baas.credentials_field(
             description="Meeting BaaS API credentials"
         )

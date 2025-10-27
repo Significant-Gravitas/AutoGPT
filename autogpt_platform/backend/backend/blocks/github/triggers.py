@@ -9,6 +9,7 @@ from backend.data.block import (
     BlockCategory,
     BlockOutput,
     BlockSchema,
+    BlockSchemaInput,
     BlockWebhookConfig,
 )
 from backend.data.model import SchemaField
@@ -26,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 # --8<-- [start:GithubTriggerExample]
 class GitHubTriggerBase:
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo: str = SchemaField(
             description=(

@@ -1,7 +1,13 @@
 import logging
 from typing import Any, Literal
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockSchemaInput,
+)
 from backend.data.model import SchemaField
 from backend.util.clients import get_database_manager_async_client
 
@@ -22,7 +28,7 @@ def get_storage_key(key: str, scope: StorageScope, graph_id: str) -> str:
 class PersistInformationBlock(Block):
     """Block for persisting key-value data for the current user with configurable scope"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         key: str = SchemaField(description="Key to store the information under")
         value: Any = SchemaField(description="Value to store")
         scope: StorageScope = SchemaField(
@@ -90,7 +96,7 @@ class PersistInformationBlock(Block):
 class RetrieveInformationBlock(Block):
     """Block for retrieving key-value data for the current user with configurable scope"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         key: str = SchemaField(description="Key to retrieve the information for")
         scope: StorageScope = SchemaField(
             description="Scope of persistence: within_agent (shared across all runs of this agent) or across_agents (shared across all agents for this user)",

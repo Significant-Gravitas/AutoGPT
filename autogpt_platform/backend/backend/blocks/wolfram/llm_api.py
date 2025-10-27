@@ -5,6 +5,7 @@ from backend.sdk import (
     BlockCostType,
     BlockOutput,
     BlockSchema,
+    BlockSchemaInput,
     CredentialsMetaInput,
     ProviderBuilder,
     SchemaField,
@@ -25,7 +26,7 @@ class AskWolframBlock(Block):
     Ask Wolfram Alpha a question.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = wolfram.credentials_field(
             description="Wolfram Alpha API credentials"
         )

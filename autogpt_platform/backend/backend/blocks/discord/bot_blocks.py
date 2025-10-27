@@ -7,7 +7,13 @@ from typing import Any
 import discord
 from pydantic import SecretStr
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockSchemaInput,
+)
 from backend.data.model import APIKeyCredentials, SchemaField
 from backend.util.file import store_media_file
 from backend.util.request import Requests
@@ -28,7 +34,7 @@ TEST_CREDENTIALS_INPUT = TEST_BOT_CREDENTIALS_INPUT
 
 
 class ReadDiscordMessagesBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: DiscordCredentials = DiscordCredentialsField()
 
     class Output(BlockSchema):
@@ -164,7 +170,7 @@ class ReadDiscordMessagesBlock(Block):
 
 
 class SendDiscordMessageBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: DiscordCredentials = DiscordCredentialsField()
         message_content: str = SchemaField(
             description="The content of the message to send"
@@ -310,7 +316,7 @@ class SendDiscordMessageBlock(Block):
 
 
 class SendDiscordDMBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: DiscordCredentials = DiscordCredentialsField()
         user_id: str = SchemaField(
             description="The Discord user ID to send the DM to (e.g., '123456789012345678')"
@@ -399,7 +405,7 @@ class SendDiscordDMBlock(Block):
 
 
 class SendDiscordEmbedBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: DiscordCredentials = DiscordCredentialsField()
         channel_identifier: str = SchemaField(
             description="Channel ID or channel name to send the embed to"
@@ -586,7 +592,7 @@ class SendDiscordEmbedBlock(Block):
 
 
 class SendDiscordFileBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: DiscordCredentials = DiscordCredentialsField()
         channel_identifier: str = SchemaField(
             description="Channel ID or channel name to send the file to"
@@ -788,7 +794,7 @@ class SendDiscordFileBlock(Block):
 
 
 class ReplyToDiscordMessageBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: DiscordCredentials = DiscordCredentialsField()
         channel_id: str = SchemaField(
             description="The channel ID where the message to reply to is located"
@@ -913,7 +919,7 @@ class ReplyToDiscordMessageBlock(Block):
 
 
 class DiscordUserInfoBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: DiscordCredentials = DiscordCredentialsField()
         user_id: str = SchemaField(
             description="The Discord user ID to get information about"
@@ -1030,7 +1036,7 @@ class DiscordUserInfoBlock(Block):
 
 
 class DiscordChannelInfoBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: DiscordCredentials = DiscordCredentialsField()
         channel_identifier: str = SchemaField(
             description="Channel name or channel ID to look up"

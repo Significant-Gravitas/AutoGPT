@@ -3,13 +3,19 @@ from backend.blocks.jina._auth import (
     JinaCredentialsField,
     JinaCredentialsInput,
 )
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockSchemaInput,
+)
 from backend.data.model import SchemaField
 from backend.util.request import Requests
 
 
 class JinaChunkingBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         texts: list = SchemaField(description="List of texts to chunk")
 
         credentials: JinaCredentialsInput = JinaCredentialsField()

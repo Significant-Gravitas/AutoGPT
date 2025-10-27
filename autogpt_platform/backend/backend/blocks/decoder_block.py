@@ -1,11 +1,17 @@
 import codecs
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockSchemaInput,
+)
 from backend.data.model import SchemaField
 
 
 class TextDecoderBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         text: str = SchemaField(
             description="A string containing escaped characters to be decoded",
             placeholder='Your entire text block with \\n and \\" escaped characters',

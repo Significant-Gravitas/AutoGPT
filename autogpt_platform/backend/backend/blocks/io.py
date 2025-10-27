@@ -2,7 +2,14 @@ import copy
 from datetime import date, time
 from typing import Any, Optional
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockSchemaInput,
+    BlockType,
+)
 from backend.data.model import SchemaField
 from backend.util.file import store_media_file
 from backend.util.mock import MockObject
@@ -22,7 +29,7 @@ class AgentInputBlock(Block):
     It Outputs the value passed as input.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         name: str = SchemaField(description="The name of the input.")
         value: Any = SchemaField(
             description="The value to be passed as input.",
@@ -109,7 +116,7 @@ class AgentOutputBlock(Block):
         If formatting fails or no `format` is provided, the raw `value` is output.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         value: Any = SchemaField(
             description="The value to be recorded as output.",
             default=None,

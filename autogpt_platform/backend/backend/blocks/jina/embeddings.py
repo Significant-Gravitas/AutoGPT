@@ -3,13 +3,19 @@ from backend.blocks.jina._auth import (
     JinaCredentialsField,
     JinaCredentialsInput,
 )
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockSchemaInput,
+)
 from backend.data.model import SchemaField
 from backend.util.request import Requests
 
 
 class JinaEmbeddingBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         texts: list = SchemaField(description="List of texts to embed")
         credentials: JinaCredentialsInput = JinaCredentialsField()
         model: str = SchemaField(

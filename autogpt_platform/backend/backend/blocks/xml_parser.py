@@ -1,12 +1,12 @@
 from gravitasml.parser import Parser
 from gravitasml.token import tokenize
 
-from backend.data.block import Block, BlockOutput, BlockSchema
+from backend.data.block import Block, BlockOutput, BlockSchema, BlockSchemaInput
 from backend.data.model import SchemaField
 
 
 class XMLParserBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         input_xml: str = SchemaField(description="input xml to be parsed")
 
     class Output(BlockSchema):

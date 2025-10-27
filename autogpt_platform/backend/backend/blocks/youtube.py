@@ -5,12 +5,18 @@ from youtube_transcript_api._errors import NoTranscriptFound
 from youtube_transcript_api._transcripts import FetchedTranscript
 from youtube_transcript_api.formatters import TextFormatter
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockSchemaInput,
+)
 from backend.data.model import SchemaField
 
 
 class TranscribeYoutubeVideoBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         youtube_url: str = SchemaField(
             title="YouTube URL",
             description="The URL of the YouTube video to transcribe",

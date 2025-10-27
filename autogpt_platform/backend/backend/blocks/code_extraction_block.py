@@ -1,11 +1,17 @@
 import re
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockSchemaInput,
+)
 from backend.data.model import SchemaField
 
 
 class CodeExtractionBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         text: str = SchemaField(
             description="Text containing code blocks to extract (e.g., AI response)",
             placeholder="Enter text containing code blocks",

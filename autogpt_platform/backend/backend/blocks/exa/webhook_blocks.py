@@ -10,6 +10,7 @@ from backend.sdk import (
     BlockCategory,
     BlockOutput,
     BlockSchema,
+    BlockSchemaInput,
     BlockType,
     BlockWebhookConfig,
     CredentialsMetaInput,
@@ -84,7 +85,7 @@ class ExaWebsetWebhookBlock(Block):
     including creation, updates, searches, and exports.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="Exa API credentials for webhook management"
         )

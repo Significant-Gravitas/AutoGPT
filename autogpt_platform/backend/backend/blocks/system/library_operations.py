@@ -3,7 +3,13 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockSchemaInput,
+)
 from backend.data.model import SchemaField
 from backend.util.clients import get_database_manager_async_client
 
@@ -30,7 +36,7 @@ class AddToLibraryFromStoreBlock(Block):
     This enables users to easily import agents from the marketplace into their personal collection.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         store_listing_version_id: str = SchemaField(
             description="The ID of the store listing version to add to library"
         )
@@ -134,7 +140,7 @@ class ListLibraryAgentsBlock(Block):
     Block that lists all agents in the user's library.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         search_query: str | None = SchemaField(
             description="Optional search query to filter agents", default=None
         )

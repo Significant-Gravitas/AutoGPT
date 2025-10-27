@@ -9,6 +9,7 @@ from backend.sdk import (
     BlockCategory,
     BlockOutput,
     BlockSchema,
+    BlockSchemaInput,
     CredentialsMetaInput,
     SchemaField,
 )
@@ -18,7 +19,7 @@ from ._format_utils import convert_to_format_options
 
 
 class FirecrawlScrapeBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = firecrawl.credentials_field()
         url: str = SchemaField(description="The URL to crawl")
         limit: int = SchemaField(description="The number of pages to crawl", default=10)

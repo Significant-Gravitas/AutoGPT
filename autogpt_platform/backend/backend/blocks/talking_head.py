@@ -3,7 +3,13 @@ from typing import Literal
 
 from pydantic import SecretStr
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -29,7 +35,7 @@ TEST_CREDENTIALS_INPUT = {
 
 
 class CreateTalkingAvatarVideoBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.D_ID], Literal["api_key"]
         ] = CredentialsField(
@@ -70,9 +76,8 @@ class CreateTalkingAvatarVideoBlock(Block):
             description="Interval between polling attempts in seconds", default=10, ge=5
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         video_url: str = SchemaField(description="The URL of the created video")
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(

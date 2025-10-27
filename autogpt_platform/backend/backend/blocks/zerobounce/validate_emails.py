@@ -14,7 +14,13 @@ from backend.blocks.zerobounce._auth import (
     ZeroBounceCredentials,
     ZeroBounceCredentialsInput,
 )
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockSchemaInput,
+)
 from backend.data.model import CredentialsField, SchemaField
 
 
@@ -82,7 +88,7 @@ class Response(BaseModel):
 class ValidateEmailsBlock(Block):
     """Search for people in Apollo"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         email: str = SchemaField(
             description="Email to validate",
         )

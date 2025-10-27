@@ -8,6 +8,7 @@ from backend.sdk import (
     BlockCategory,
     BlockOutput,
     BlockSchema,
+    BlockSchemaInput,
     CredentialsMetaInput,
     SchemaField,
 )
@@ -16,7 +17,7 @@ from ._config import firecrawl
 
 
 class FirecrawlMapWebsiteBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = firecrawl.credentials_field()
 
         url: str = SchemaField(description="The website url to map")

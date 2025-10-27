@@ -4,7 +4,13 @@ from typing import Iterator, Literal
 import praw
 from pydantic import BaseModel, SecretStr
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockSchemaInput,
+)
 from backend.data.model import (
     CredentialsField,
     CredentialsMetaInput,
@@ -76,7 +82,7 @@ def get_praw(creds: RedditCredentials) -> praw.Reddit:
 
 
 class GetRedditPostsBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         subreddit: str = SchemaField(
             description="Subreddit name, excluding the /r/ prefix",
             default="writingprompts",
@@ -194,7 +200,7 @@ class GetRedditPostsBlock(Block):
 
 
 class PostRedditCommentBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: RedditCredentialsInput = RedditCredentialsField()
         data: RedditComment = SchemaField(description="Reddit comment")
 

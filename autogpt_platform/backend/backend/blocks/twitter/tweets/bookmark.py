@@ -26,7 +26,13 @@ from backend.blocks.twitter._types import (
     TweetUserFieldsFilter,
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 
 
@@ -35,7 +41,7 @@ class TwitterBookmarkTweetBlock(Block):
     Bookmark a tweet on Twitter
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
             ["tweet.read", "bookmark.write", "users.read", "offline.access"]
         )
@@ -45,9 +51,8 @@ class TwitterBookmarkTweetBlock(Block):
             placeholder="Enter tweet ID",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(description="Whether the bookmark was successful")
-        error: str = SchemaField(description="Error message if the bookmark failed")
 
     def __init__(self):
         super().__init__(
@@ -123,7 +128,7 @@ class TwitterGetBookmarkedTweetsBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         # Common Outputs that user commonly uses
         id: list[str] = SchemaField(description="All Tweet IDs")
         text: list[str] = SchemaField(description="All Tweet texts")
@@ -139,8 +144,6 @@ class TwitterGetBookmarkedTweetsBlock(Block):
             description="Provides metadata such as pagination info (next_token) or result counts"
         )
         next_token: str = SchemaField(description="Next token for pagination")
-
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -308,7 +311,7 @@ class TwitterRemoveBookmarkTweetBlock(Block):
     Remove a bookmark for a tweet on Twitter
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
             ["tweet.read", "bookmark.write", "users.read", "offline.access"]
         )
@@ -318,7 +321,7 @@ class TwitterRemoveBookmarkTweetBlock(Block):
             placeholder="Enter tweet ID",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(
             description="Whether the bookmark was successfully removed"
         )

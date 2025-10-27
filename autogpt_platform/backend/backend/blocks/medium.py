@@ -3,7 +3,13 @@ from typing import List, Literal
 
 from pydantic import SecretStr
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockSchemaInput,
+)
 from backend.data.model import (
     APIKeyCredentials,
     BlockSecret,
@@ -37,7 +43,7 @@ class PublishToMediumStatus(str, Enum):
 
 
 class PublishToMediumBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         author_id: BlockSecret = SecretField(
             key="medium_author_id",
             description="""The Medium AuthorID of the user. You can get this by calling the /me endpoint of the Medium API.\n\ncurl -H "Authorization: Bearer YOUR_ACCESS_TOKEN" https://api.medium.com/v1/me" the response will contain the authorId field.""",
