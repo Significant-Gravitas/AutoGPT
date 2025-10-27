@@ -8,7 +8,6 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
     BlockSchemaOutput,
     CredentialsMetaInput,
@@ -20,7 +19,7 @@ from ._api import DataForSeoClient
 from ._config import dataforseo
 
 
-class RelatedKeyword(BlockSchema):
+class RelatedKeyword(BlockSchemaInput):
     """Schema for a related keyword result."""
 
     keyword: str = SchemaField(description="The related keyword")

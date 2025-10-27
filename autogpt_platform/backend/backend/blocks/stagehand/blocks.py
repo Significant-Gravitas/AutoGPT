@@ -22,8 +22,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
 )
@@ -160,7 +160,7 @@ class StagehandObserveBlock(Block):
             default=45000,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         selector: str = SchemaField(description="XPath selector to locate element.")
         description: str = SchemaField(description="Human-readable description")
         method: str | None = SchemaField(description="Suggested action method")
@@ -261,7 +261,7 @@ class StagehandActBlock(Block):
             default=60000,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(
             description="Whether the action was completed successfully"
         )
@@ -353,7 +353,7 @@ class StagehandExtractBlock(Block):
             default=45000,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         extraction: str = SchemaField(description="Extracted data from the page.")
 
     def __init__(self):

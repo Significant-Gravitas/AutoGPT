@@ -8,7 +8,6 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
     BlockSchemaOutput,
     CredentialsMetaInput,
@@ -20,7 +19,7 @@ from ._api import DataForSeoClient
 from ._config import dataforseo
 
 
-class KeywordSuggestion(BlockSchema):
+class KeywordSuggestion(BlockSchemaInput):
     """Schema for a keyword suggestion result."""
 
     keyword: str = SchemaField(description="The keyword suggestion")

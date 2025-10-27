@@ -9,8 +9,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
 
@@ -23,7 +23,7 @@ class TranscribeYoutubeVideoBlock(Block):
             placeholder="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         video_id: str = SchemaField(description="The extracted YouTube video ID")
         transcript: str = SchemaField(description="The transcribed text of the video")
         error: str = SchemaField(

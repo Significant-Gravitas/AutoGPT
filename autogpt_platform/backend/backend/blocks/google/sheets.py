@@ -9,7 +9,6 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
     BlockSchemaOutput,
 )
@@ -202,7 +201,7 @@ class BatchOperationType(str, Enum):
     CLEAR = "clear"
 
 
-class BatchOperation(BlockSchema):
+class BatchOperation(BlockSchemaInput):
     type: BatchOperationType = SchemaField(
         description="The type of operation to perform"
     )

@@ -11,8 +11,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.execution import UserContext
 from backend.data.model import SchemaField
@@ -147,7 +147,7 @@ class GetCurrentTimeBlock(Block):
             default=TimeStrftimeFormat(discriminator="strftime"),
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         time: str = SchemaField(
             description="Current time in the specified format (default: %H:%M:%S)"
         )
@@ -242,7 +242,7 @@ class GetCurrentDateBlock(Block):
             default=DateStrftimeFormat(discriminator="strftime"),
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         date: str = SchemaField(
             description="Current date in the specified format (default: YYYY-MM-DD)"
         )
@@ -348,7 +348,7 @@ class GetCurrentDateAndTimeBlock(Block):
             default=StrftimeFormat(discriminator="strftime"),
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         date_time: str = SchemaField(
             description="Current date and time in the specified format (default: YYYY-MM-DD HH:MM:SS)"
         )
@@ -448,7 +448,7 @@ class CountdownTimerBlock(Block):
             default=1,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         output_message: Any = SchemaField(
             description="Message after the timer finishes"
         )

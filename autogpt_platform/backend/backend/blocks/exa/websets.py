@@ -31,8 +31,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     Requests,
     SchemaField,
@@ -220,7 +220,7 @@ class ExaCreateWebsetBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         webset: Webset = SchemaField(
             description="The unique identifier for the created webset"
         )
@@ -418,7 +418,7 @@ class ExaUpdateWebsetBlock(Block):
             description="Key-value pairs to associate with this webset (set to null to clear)",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         webset_id: str = SchemaField(description="The unique identifier for the webset")
         status: str = SchemaField(description="The status of the webset")
         external_id: Optional[str] = SchemaField(
@@ -498,7 +498,7 @@ class ExaListWebsetsBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         websets: list[Webset] = SchemaField(
             description="List of websets", default_factory=list
         )
@@ -560,7 +560,7 @@ class ExaGetWebsetBlock(Block):
             placeholder="webset-id-or-external-id",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         webset_id: str = SchemaField(description="The unique identifier for the webset")
         status: str = SchemaField(description="The status of the webset")
         external_id: Optional[str] = SchemaField(
@@ -647,7 +647,7 @@ class ExaDeleteWebsetBlock(Block):
             placeholder="webset-id-or-external-id",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         webset_id: str = SchemaField(
             description="The unique identifier for the deleted webset"
         )
@@ -705,7 +705,7 @@ class ExaCancelWebsetBlock(Block):
             placeholder="webset-id-or-external-id",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         webset_id: str = SchemaField(description="The unique identifier for the webset")
         status: str = SchemaField(
             description="The status of the webset after cancellation"

@@ -9,8 +9,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import (
     CredentialsField,
@@ -73,7 +73,7 @@ class SendEmailBlock(Block):
         )
         credentials: SMTPCredentialsInput = SMTPCredentialsField()
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         status: str = SchemaField(description="Status of the email sending operation")
         error: str = SchemaField(
             description="Error message if the email sending failed"

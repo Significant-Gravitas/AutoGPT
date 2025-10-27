@@ -5,8 +5,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
 from backend.util.type import convert
@@ -46,7 +46,7 @@ class ConditionBlock(Block):
             default=None,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: bool = SchemaField(
             description="The result of the condition evaluation (True or False)"
         )
@@ -137,7 +137,7 @@ class IfInputMatchesBlock(Block):
             default=None,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: bool = SchemaField(
             description="The result of the condition evaluation (True or False)"
         )

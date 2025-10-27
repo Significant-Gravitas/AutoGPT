@@ -6,8 +6,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
 
@@ -37,7 +37,7 @@ class CalculatorBlock(Block):
             default=False,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: float = SchemaField(description="The result of your calculation")
 
     def __init__(self):
@@ -97,7 +97,7 @@ class CountItemsBlock(Block):
             placeholder="For example: [1, 2, 3] or {'a': 1, 'b': 2} or 'hello'",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         count: int = SchemaField(description="The number of items in the collection")
 
     def __init__(self):

@@ -4,8 +4,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import ContributorDetails, SchemaField
 from backend.util.file import get_exec_file_path, store_media_file
@@ -58,7 +58,7 @@ class ReadSpreadsheetBlock(Block):
             default=False,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         row: dict[str, str] = SchemaField(
             description="The data produced from each row in the spreadsheet"
         )

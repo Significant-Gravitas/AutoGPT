@@ -4,8 +4,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
 
@@ -17,7 +17,7 @@ class CodeExtractionBlock(Block):
             placeholder="Enter text containing code blocks",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         html: str = SchemaField(description="Extracted HTML code")
         css: str = SchemaField(description="Extracted CSS code")
         javascript: str = SchemaField(description="Extracted JavaScript code")

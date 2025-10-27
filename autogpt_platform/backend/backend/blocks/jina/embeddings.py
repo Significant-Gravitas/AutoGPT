@@ -7,8 +7,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
 from backend.util.request import Requests
@@ -23,7 +23,7 @@ class JinaEmbeddingBlock(Block):
             default="jina-embeddings-v2-base-en",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         embeddings: list = SchemaField(description="List of embeddings")
 
     def __init__(self):

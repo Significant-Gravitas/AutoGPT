@@ -10,7 +10,12 @@ from backend.blocks.llm import (
     LLMResponse,
     llm_call,
 )
-from backend.data.block import BlockCategory, BlockOutput, BlockSchema, BlockSchemaInput
+from backend.data.block import (
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import APIKeyCredentials, NodeExecutionStats, SchemaField
 
 
@@ -50,7 +55,7 @@ class AIConditionBlock(AIBlockBase):
         )
         credentials: AICredentials = AICredentialsField()
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: bool = SchemaField(
             description="The result of the AI condition evaluation (True or False)"
         )

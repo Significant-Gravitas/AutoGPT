@@ -7,8 +7,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
 from backend.util.request import Requests
@@ -28,7 +28,7 @@ class HubSpotCompanyBlock(Block):
             description="Company domain for get/update operations", default=""
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         company: dict = SchemaField(description="Company information")
         status: str = SchemaField(description="Operation status")
 

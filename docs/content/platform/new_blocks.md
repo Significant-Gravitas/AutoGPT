@@ -42,10 +42,10 @@ Follow these steps to create and test a new block:
    Example:
 
    ```python
-   class Input(BlockSchema):
+   class Input(BlockSchemaInput):
        topic: str  # The topic to get the Wikipedia summary for
 
-   class Output(BlockSchema):
+   class Output(BlockSchemaOutput):
        summary: str  # The summary of the topic from Wikipedia
        error: str  # Any error message if the request fails, error field needs to be named `error`.
    ```
@@ -180,7 +180,7 @@ from backend.integrations.providers import ProviderName
 
 # API Key auth:
 class BlockWithAPIKeyAuth(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         # Note that the type hint below is require or you will get a type error.
         # The first argument is the provider name, the second is the credential type.
         credentials: CredentialsMetaInput[
@@ -203,7 +203,7 @@ class BlockWithAPIKeyAuth(Block):
 
 # OAuth:
 class BlockWithOAuth(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         # Note that the type hint below is require or you will get a type error.
         # The first argument is the provider name, the second is the credential type.
         credentials: CredentialsMetaInput[
@@ -226,7 +226,7 @@ class BlockWithOAuth(Block):
 
 # API Key auth + OAuth:
 class BlockWithAPIKeyAndOAuth(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         # Note that the type hint below is require or you will get a type error.
         # The first argument is the provider name, the second is the credential type.
         credentials: CredentialsMetaInput[

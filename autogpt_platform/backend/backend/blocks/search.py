@@ -8,8 +8,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import (
     APIKeyCredentials,
@@ -24,7 +24,7 @@ class GetWikipediaSummaryBlock(Block, GetRequest):
     class Input(BlockSchemaInput):
         topic: str = SchemaField(description="The topic to fetch the summary for")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         summary: str = SchemaField(description="The summary of the given topic")
         error: str = SchemaField(
             description="Error message if the summary cannot be retrieved"
@@ -82,7 +82,7 @@ class GetWeatherInformationBlock(Block, GetRequest):
             description="Whether to use Celsius or Fahrenheit for temperature",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         temperature: str = SchemaField(
             description="Temperature in the specified location"
         )

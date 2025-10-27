@@ -10,8 +10,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
 from backend.util.request import Requests
@@ -46,7 +46,7 @@ class ReadRSSFeedBlock(Block):
             default=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         entry: RSSEntry = SchemaField(description="The RSS item")
         entries: list[RSSEntry] = SchemaField(description="List of all RSS entries")
 

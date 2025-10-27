@@ -8,8 +8,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
 from backend.util import json, text
@@ -29,7 +29,7 @@ class MatchTextPatternBlock(Block):
         )
         dot_all: bool = SchemaField(description="Dot matches all", default=True)
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         positive: Any = SchemaField(description="Output data if match is found")
         negative: Any = SchemaField(description="Output data if match is not found")
 
@@ -84,7 +84,7 @@ class ExtractTextInformationBlock(Block):
         dot_all: bool = SchemaField(description="Dot matches all", default=True)
         find_all: bool = SchemaField(description="Find all matches", default=False)
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         positive: str = SchemaField(description="Extracted text")
         negative: str = SchemaField(description="Original text")
         matched_results: list[str] = SchemaField(description="List of matched results")
@@ -256,7 +256,7 @@ class FillTextTemplateBlock(Block):
             description="Whether to escape special characters in the inserted values to be HTML-safe. Enable for HTML output, disable for plain text.",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         output: str = SchemaField(description="Formatted text")
 
     def __init__(self):
@@ -299,7 +299,7 @@ class CombineTextsBlock(Block):
             description="Delimiter to combine texts", default=""
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         output: str = SchemaField(description="Combined text")
 
     def __init__(self):
@@ -332,7 +332,7 @@ class TextSplitBlock(Block):
             description="Whether to strip the text.", default=True
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         texts: list[str] = SchemaField(
             description="The text split into a list of strings."
         )
@@ -370,7 +370,7 @@ class TextReplaceBlock(Block):
         old: str = SchemaField(description="The old text to replace.")
         new: str = SchemaField(description="The new text to replace with.")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         output: str = SchemaField(description="The text with the replaced text.")
 
     def __init__(self):
@@ -423,7 +423,7 @@ class FileReadBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         content: str = SchemaField(
             description="File content, yielded as individual chunks when delimiter or size limits are applied"
         )

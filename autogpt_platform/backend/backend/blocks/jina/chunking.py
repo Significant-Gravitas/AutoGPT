@@ -7,8 +7,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
 from backend.util.request import Requests
@@ -26,7 +26,7 @@ class JinaChunkingBlock(Block):
             description="Whether to return token information", default=False
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         chunks: list = SchemaField(description="List of chunked texts")
         tokens: list = SchemaField(
             description="List of token information for each chunk",

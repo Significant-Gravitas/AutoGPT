@@ -5,8 +5,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
 from backend.util.clients import get_database_manager_async_client
@@ -36,7 +36,7 @@ class PersistInformationBlock(Block):
             default="within_agent",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         value: Any = SchemaField(description="Value that was stored")
 
     def __init__(self):
@@ -106,7 +106,7 @@ class RetrieveInformationBlock(Block):
             description="Default value to return if key is not found", default=None
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         value: Any = SchemaField(description="Retrieved value or default value")
 
     def __init__(self):

@@ -6,8 +6,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import OAuth2Credentials, SchemaField
 
@@ -32,7 +32,7 @@ class DiscordGetCurrentUserBlock(Block):
             ["identify"]
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         user_id: str = SchemaField(description="The authenticated user's Discord ID")
         username: str = SchemaField(description="The user's username")
         avatar_url: str = SchemaField(description="URL to the user's avatar image")

@@ -7,8 +7,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import (
     APIKeyCredentials,
@@ -49,7 +49,7 @@ class PineconeInitBlock(Block):
             description="Region for serverless", default="us-east-1"
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         index: str = SchemaField(description="Name of the initialized Pinecone index")
         message: str = SchemaField(description="Status message")
 
@@ -108,7 +108,7 @@ class PineconeQueryBlock(Block):
         host: str = SchemaField(description="Host for pinecone", default="")
         idx_name: str = SchemaField(description="Index name for pinecone")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         results: Any = SchemaField(description="Query results from Pinecone")
         combined_results: Any = SchemaField(
             description="Combined results from Pinecone"
@@ -187,7 +187,7 @@ class PineconeInsertBlock(Block):
             default_factory=dict,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         upsert_response: str = SchemaField(
             description="Response from Pinecone upsert operation"
         )

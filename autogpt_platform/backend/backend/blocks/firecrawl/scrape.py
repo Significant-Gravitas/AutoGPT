@@ -8,8 +8,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
 )
@@ -39,7 +39,7 @@ class FirecrawlScrapeBlock(Block):
             description="The format of the crawl", default=[ScrapeFormat.MARKDOWN]
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         data: dict[str, Any] = SchemaField(description="The result of the crawl")
         markdown: str = SchemaField(description="The markdown of the crawl")
         html: str = SchemaField(description="The html of the crawl")

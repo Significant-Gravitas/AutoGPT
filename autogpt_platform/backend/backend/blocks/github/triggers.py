@@ -8,8 +8,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
     BlockWebhookConfig,
 )
 from backend.data.model import SchemaField
@@ -41,7 +41,7 @@ class GitHubTriggerBase:
         payload: dict = SchemaField(hidden=True, default_factory=dict)
         # --8<-- [end:example-payload-field]
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         payload: dict = SchemaField(
             description="The complete webhook payload that was received from GitHub. "
             "Includes information about the affected resource (e.g. pull request), "

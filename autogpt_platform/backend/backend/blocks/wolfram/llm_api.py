@@ -4,8 +4,8 @@ from backend.sdk import (
     BlockCategory,
     BlockCostType,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     ProviderBuilder,
     SchemaField,
@@ -32,7 +32,7 @@ class AskWolframBlock(Block):
         )
         question: str = SchemaField(description="The question to ask")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         answer: str = SchemaField(description="The answer to the question")
 
     def __init__(self):

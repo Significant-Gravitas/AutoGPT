@@ -14,8 +14,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import CredentialsField, SchemaField
 
@@ -75,7 +75,7 @@ To find IDs, identify the values for organization_id when you call this endpoint
             description="Apollo credentials",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         organizations: list[Organization] = SchemaField(
             description="List of organizations found",
             default_factory=list,

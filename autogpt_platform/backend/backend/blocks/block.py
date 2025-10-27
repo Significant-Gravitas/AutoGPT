@@ -6,8 +6,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
 
@@ -26,7 +26,7 @@ class BlockInstallationBlock(Block):
             description="Python code of the block to be installed",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: str = SchemaField(
             description="Success message if the block is installed successfully",
         )

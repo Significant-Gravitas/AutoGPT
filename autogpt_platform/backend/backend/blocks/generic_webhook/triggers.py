@@ -3,8 +3,8 @@ from backend.sdk import (
     BlockCategory,
     BlockManualWebhookConfig,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
     ProviderBuilder,
     ProviderName,
     SchemaField,
@@ -27,7 +27,7 @@ class GenericWebhookTriggerBlock(Block):
             default_factory=dict,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         payload: dict = SchemaField(
             description="The complete webhook payload that was received from the generic webhook."
         )

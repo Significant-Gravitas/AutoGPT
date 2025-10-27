@@ -9,8 +9,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
 )
@@ -36,7 +36,7 @@ class FirecrawlSearchBlock(Block):
             description="Returns the content of the search if specified", default=[]
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         data: dict[str, Any] = SchemaField(description="The result of the search")
         site: dict[str, Any] = SchemaField(description="The site of the search")
 

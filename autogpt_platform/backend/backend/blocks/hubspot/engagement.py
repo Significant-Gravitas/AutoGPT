@@ -9,8 +9,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
 from backend.util.request import Requests
@@ -35,7 +35,7 @@ class HubSpotEngagementBlock(Block):
             default=30,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: dict = SchemaField(description="Operation result")
         status: str = SchemaField(description="Operation status")
 

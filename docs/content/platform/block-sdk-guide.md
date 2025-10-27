@@ -55,6 +55,8 @@ from backend.sdk import (
     BlockCategory,
     BlockOutput,
     BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
 )
@@ -62,7 +64,7 @@ from ._config import my_provider
 
 
 class MyBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         # Define input fields
         credentials: CredentialsMetaInput = my_provider.credentials_field(
             description="API credentials for My Provider"
@@ -80,7 +82,7 @@ class MyBlock(Block):
             advanced=True  # Hidden by default in UI
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         # Define output fields
         results: list = SchemaField(description="List of results")
         count: int = SchemaField(description="Total count")

@@ -6,8 +6,8 @@ from backend.data.block import (
     BlockCategory,
     BlockInput,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
     BlockType,
     get_block,
 )
@@ -53,7 +53,7 @@ class AgentExecutorBlock(Block):
         def get_mismatch_error(cls, data: BlockInput) -> str | None:
             return validate_with_jsonschema(cls.get_input_schema(data), data)
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         pass
 
     def __init__(self):

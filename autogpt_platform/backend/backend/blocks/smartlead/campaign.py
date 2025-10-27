@@ -20,8 +20,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import CredentialsField, SchemaField
 
@@ -37,7 +37,7 @@ class CreateCampaignBlock(Block):
             description="SmartLead credentials",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         id: int = SchemaField(
             description="The ID of the created campaign",
         )
@@ -129,7 +129,7 @@ class AddLeadToCampaignBlock(Block):
             description="SmartLead credentials",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         campaign_id: int = SchemaField(
             description="The ID of the campaign the lead was added to (passed through)",
         )
@@ -261,7 +261,7 @@ class SaveCampaignSequencesBlock(Block):
             description="SmartLead credentials",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         data: dict | str | None = SchemaField(
             description="Data from the API",
             default=None,

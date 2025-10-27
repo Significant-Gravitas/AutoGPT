@@ -3,8 +3,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
     BlockType,
     BlockWebhookConfig,
     CredentialsMetaInput,
@@ -44,7 +44,7 @@ class AirtableWebhookTriggerBlock(Block):
             description="Airtable webhook event filter"
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         payload: WebhookPayload = SchemaField(description="Airtable webhook payload")
 
     def __init__(self):

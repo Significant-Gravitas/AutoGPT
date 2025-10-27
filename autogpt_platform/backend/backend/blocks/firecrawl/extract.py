@@ -9,8 +9,8 @@ from backend.sdk import (
     BlockCost,
     BlockCostType,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
     cost,
@@ -38,7 +38,7 @@ class FirecrawlExtractBlock(Block):
             default=False,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         data: dict[str, Any] = SchemaField(description="The result of the crawl")
 
     def __init__(self):

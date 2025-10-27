@@ -6,8 +6,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     Requests,
     SchemaField,
@@ -66,7 +66,7 @@ class ExaFindSimilarBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         results: list[Any] = SchemaField(
             description="List of similar documents with title, URL, published date, author, and score",
             default_factory=list,

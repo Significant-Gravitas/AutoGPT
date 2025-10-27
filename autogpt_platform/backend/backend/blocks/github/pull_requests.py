@@ -6,8 +6,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
 
@@ -29,7 +29,7 @@ class GithubListPullRequestsBlock(Block):
             placeholder="https://github.com/owner/repo",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         class PRItem(TypedDict):
             title: str
             url: str
@@ -141,7 +141,7 @@ class GithubMakePullRequestBlock(Block):
             placeholder="Enter the base branch",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         number: int = SchemaField(description="Number of the created pull request")
         url: str = SchemaField(description="URL of the created pull request")
         error: str = SchemaField(
@@ -227,7 +227,7 @@ class GithubReadPullRequestBlock(Block):
             advanced=False,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         title: str = SchemaField(description="Title of the pull request")
         body: str = SchemaField(description="Body of the pull request")
         author: str = SchemaField(description="User who created the pull request")
@@ -342,7 +342,7 @@ class GithubAssignPRReviewerBlock(Block):
             placeholder="Enter the reviewer's username",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         status: str = SchemaField(
             description="Status of the reviewer assignment operation"
         )
@@ -409,7 +409,7 @@ class GithubUnassignPRReviewerBlock(Block):
             placeholder="Enter the reviewer's username",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         status: str = SchemaField(
             description="Status of the reviewer unassignment operation"
         )
@@ -472,7 +472,7 @@ class GithubListPRReviewersBlock(Block):
             placeholder="https://github.com/owner/repo/pull/1",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         class ReviewerItem(TypedDict):
             username: str
             url: str

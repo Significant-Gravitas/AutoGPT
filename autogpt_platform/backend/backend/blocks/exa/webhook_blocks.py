@@ -9,8 +9,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
     BlockType,
     BlockWebhookConfig,
     CredentialsMetaInput,
@@ -105,7 +105,7 @@ class ExaWebsetWebhookBlock(Block):
             description="Webhook payload data", default={}, hidden=True
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         event_type: str = SchemaField(description="Type of event that occurred")
         event_id: str = SchemaField(description="Unique identifier for this event")
         webset_id: str = SchemaField(description="ID of the affected webset")

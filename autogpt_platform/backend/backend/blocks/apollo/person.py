@@ -10,8 +10,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import CredentialsField, SchemaField
 
@@ -74,7 +74,7 @@ class GetPersonDetailBlock(Block):
             description="Apollo credentials",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         contact: Contact = SchemaField(
             description="Enriched contact information",
         )

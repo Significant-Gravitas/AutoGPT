@@ -12,8 +12,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import (
     CredentialsField,
@@ -99,7 +99,7 @@ class SendWebRequestBlock(Block):
             default_factory=list,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         response: object = SchemaField(description="The response from the server")
         client_error: object = SchemaField(description="Errors on 4xx status codes")
         server_error: object = SchemaField(description="Errors on 5xx status codes")

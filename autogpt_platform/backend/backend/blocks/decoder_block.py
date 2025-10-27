@@ -4,8 +4,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
 
@@ -17,7 +17,7 @@ class TextDecoderBlock(Block):
             placeholder='Your entire text block with \\n and \\" escaped characters',
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         decoded_text: str = SchemaField(
             description="The decoded text with escape sequences processed"
         )

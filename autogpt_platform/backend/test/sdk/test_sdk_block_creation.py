@@ -15,7 +15,8 @@ from backend.sdk import (
     BlockCategory,
     BlockCostType,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     OAuth2Credentials,
     ProviderBuilder,
@@ -36,11 +37,11 @@ class TestBasicBlockCreation:
         class SimpleBlock(Block):
             """A simple test block."""
 
-            class Input(BlockSchema):
+            class Input(BlockSchemaInput):
                 text: str = SchemaField(description="Input text")
                 count: int = SchemaField(description="Repeat count", default=1)
 
-            class Output(BlockSchema):
+            class Output(BlockSchemaOutput):
                 result: str = SchemaField(description="Output result")
 
             def __init__(self):
@@ -77,13 +78,13 @@ class TestBasicBlockCreation:
         class APIBlock(Block):
             """A block that requires API credentials."""
 
-            class Input(BlockSchema):
+            class Input(BlockSchemaInput):
                 credentials: CredentialsMetaInput = test_api.credentials_field(
                     description="API credentials for test service",
                 )
                 query: str = SchemaField(description="API query")
 
-            class Output(BlockSchema):
+            class Output(BlockSchemaOutput):
                 response: str = SchemaField(description="API response")
                 authenticated: bool = SchemaField(description="Was authenticated")
 
@@ -141,10 +142,10 @@ class TestBasicBlockCreation:
         class MultiOutputBlock(Block):
             """Block with multiple outputs."""
 
-            class Input(BlockSchema):
+            class Input(BlockSchemaInput):
                 text: str = SchemaField(description="Input text")
 
-            class Output(BlockSchema):
+            class Output(BlockSchemaOutput):
                 uppercase: str = SchemaField(description="Uppercase version")
                 lowercase: str = SchemaField(description="Lowercase version")
                 length: int = SchemaField(description="Text length")
@@ -189,13 +190,13 @@ class TestBlockWithProvider:
         class TestServiceBlock(Block):
             """Block for test service."""
 
-            class Input(BlockSchema):
+            class Input(BlockSchemaInput):
                 credentials: CredentialsMetaInput = test_service.credentials_field(
                     description="Test service credentials",
                 )
                 action: str = SchemaField(description="Action to perform")
 
-            class Output(BlockSchema):
+            class Output(BlockSchemaOutput):
                 result: str = SchemaField(description="Action result")
                 provider_name: str = SchemaField(description="Provider used")
 
@@ -254,7 +255,7 @@ class TestComplexBlockScenarios:
         class OptionalFieldBlock(Block):
             """Block with optional fields."""
 
-            class Input(BlockSchema):
+            class Input(BlockSchemaInput):
                 required_field: str = SchemaField(description="Required field")
                 optional_field: Optional[str] = SchemaField(
                     description="Optional field",
@@ -265,7 +266,7 @@ class TestComplexBlockScenarios:
                     default="default value",
                 )
 
-            class Output(BlockSchema):
+            class Output(BlockSchemaOutput):
                 has_optional: bool = SchemaField(description="Has optional value")
                 optional_value: Optional[str] = SchemaField(
                     description="Optional value"
@@ -321,13 +322,13 @@ class TestComplexBlockScenarios:
         class ComplexBlock(Block):
             """Block with complex types."""
 
-            class Input(BlockSchema):
+            class Input(BlockSchemaInput):
                 items: list[str] = SchemaField(description="List of items")
                 mapping: dict[str, int] = SchemaField(
                     description="String to int mapping"
                 )
 
-            class Output(BlockSchema):
+            class Output(BlockSchemaOutput):
                 item_count: int = SchemaField(description="Number of items")
                 total_value: int = SchemaField(description="Sum of mapping values")
                 combined: list[str] = SchemaField(description="Combined results")
@@ -375,14 +376,14 @@ class TestComplexBlockScenarios:
         class ErrorHandlingBlock(Block):
             """Block that demonstrates error handling."""
 
-            class Input(BlockSchema):
+            class Input(BlockSchemaInput):
                 value: int = SchemaField(description="Input value")
                 should_error: bool = SchemaField(
                     description="Whether to trigger an error",
                     default=False,
                 )
 
-            class Output(BlockSchema):
+            class Output(BlockSchemaOutput):
                 result: int = SchemaField(description="Result")
                 error_message: Optional[str] = SchemaField(
                     description="Error if any", default=None
@@ -458,14 +459,14 @@ class TestAuthenticationVariants:
         class OAuthScopedBlock(Block):
             """Block requiring OAuth2 with specific scopes."""
 
-            class Input(BlockSchema):
+            class Input(BlockSchemaInput):
                 credentials: CredentialsMetaInput = oauth_provider.credentials_field(
                     description="OAuth2 credentials with scopes",
                     scopes=["read:user", "write:data"],
                 )
                 resource: str = SchemaField(description="Resource to access")
 
-            class Output(BlockSchema):
+            class Output(BlockSchemaOutput):
                 data: str = SchemaField(description="Retrieved data")
                 scopes_used: list[str] = SchemaField(
                     description="Scopes that were used"
@@ -548,14 +549,14 @@ class TestAuthenticationVariants:
         class MixedAuthBlock(Block):
             """Block supporting multiple authentication methods."""
 
-            class Input(BlockSchema):
+            class Input(BlockSchemaInput):
                 credentials: CredentialsMetaInput = mixed_provider.credentials_field(
                     description="API key or OAuth2 credentials",
                     supported_credential_types=["api_key", "oauth2"],
                 )
                 operation: str = SchemaField(description="Operation to perform")
 
-            class Output(BlockSchema):
+            class Output(BlockSchemaOutput):
                 result: str = SchemaField(description="Operation result")
                 auth_type: str = SchemaField(description="Authentication type used")
                 auth_details: dict[str, Any] = SchemaField(description="Auth details")
@@ -674,7 +675,7 @@ class TestAuthenticationVariants:
         class MultiCredentialBlock(Block):
             """Block requiring credentials from multiple services."""
 
-            class Input(BlockSchema):
+            class Input(BlockSchemaInput):
                 primary_credentials: CredentialsMetaInput = (
                     primary_provider.credentials_field(
                         description="Primary service API key"
@@ -690,7 +691,7 @@ class TestAuthenticationVariants:
                     default=True,
                 )
 
-            class Output(BlockSchema):
+            class Output(BlockSchemaOutput):
                 primary_data: str = SchemaField(description="Data from primary service")
                 secondary_data: str = SchemaField(
                     description="Data from secondary service"
@@ -793,7 +794,7 @@ class TestAuthenticationVariants:
         class ScopeValidationBlock(Block):
             """Block that validates OAuth scopes."""
 
-            class Input(BlockSchema):
+            class Input(BlockSchemaInput):
                 credentials: CredentialsMetaInput = scoped_provider.credentials_field(
                     description="OAuth credentials with specific scopes",
                     scopes=["user:read", "user:write"],  # Required scopes
@@ -803,7 +804,7 @@ class TestAuthenticationVariants:
                     default=False,
                 )
 
-            class Output(BlockSchema):
+            class Output(BlockSchemaOutput):
                 allowed_operations: list[str] = SchemaField(
                     description="Operations allowed with current scopes"
                 )

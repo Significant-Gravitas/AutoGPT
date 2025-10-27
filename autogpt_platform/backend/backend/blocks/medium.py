@@ -7,8 +7,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import (
     APIKeyCredentials,
@@ -90,7 +90,7 @@ class PublishToMediumBlock(Block):
             description="The Medium integration can be used with any API key with sufficient permissions for the blocks it is used on.",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         post_id: str = SchemaField(description="The ID of the created Medium post")
         post_url: str = SchemaField(description="The URL of the created Medium post")
         published_at: int = SchemaField(

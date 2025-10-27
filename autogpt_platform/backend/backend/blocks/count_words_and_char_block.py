@@ -2,8 +2,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
 
@@ -16,7 +16,7 @@ class WordCharacterCountBlock(Block):
             advanced=False,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         word_count: int = SchemaField(description="Number of words in the input text")
         character_count: int = SchemaField(
             description="Number of characters in the input text"

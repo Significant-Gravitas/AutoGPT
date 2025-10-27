@@ -14,8 +14,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
 from backend.util.request import ClientResponseError, Requests
@@ -42,7 +42,7 @@ class AIVideoGeneratorBlock(Block):
         )
         credentials: FalCredentialsInput = FalCredentialsField()
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         video_url: str = SchemaField(description="The URL of the generated video.")
         error: str = SchemaField(
             description="Error message if video generation failed."

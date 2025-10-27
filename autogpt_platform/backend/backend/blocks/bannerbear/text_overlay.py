@@ -11,7 +11,6 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
     BlockSchemaOutput,
     CredentialsMetaInput,
@@ -29,7 +28,7 @@ TEST_CREDENTIALS = APIKeyCredentials(
 )
 
 
-class TextModification(BlockSchema):
+class TextModification(BlockSchemaInput):
     name: str = SchemaField(
         description="The name of the layer to modify in the template"
     )

@@ -18,8 +18,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import CredentialsField, SchemaField
 
@@ -100,7 +100,7 @@ class ValidateEmailsBlock(Block):
             description="ZeroBounce credentials",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         response: Response = SchemaField(
             description="Response from ZeroBounce",
         )

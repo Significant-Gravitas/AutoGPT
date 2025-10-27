@@ -18,8 +18,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import CredentialsField, SchemaField
 
@@ -115,7 +115,7 @@ class SearchPeopleBlock(Block):
             description="Apollo credentials",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         people: list[Contact] = SchemaField(
             description="List of people found",
             default_factory=list,

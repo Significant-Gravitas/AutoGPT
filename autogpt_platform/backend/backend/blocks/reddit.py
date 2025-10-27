@@ -8,8 +8,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import (
     CredentialsField,
@@ -100,7 +100,7 @@ class GetRedditPostsBlock(Block):
             description="Number of posts to fetch", default=10
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         post: RedditPost = SchemaField(description="Reddit post")
         posts: list[RedditPost] = SchemaField(description="List of all Reddit posts")
 
@@ -204,7 +204,7 @@ class PostRedditCommentBlock(Block):
         credentials: RedditCredentialsInput = RedditCredentialsField()
         data: RedditComment = SchemaField(description="Reddit comment")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         comment_id: str = SchemaField(description="Posted comment ID")
 
     def __init__(self):

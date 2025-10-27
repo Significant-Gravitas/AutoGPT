@@ -9,8 +9,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
     BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
 )
@@ -66,7 +66,7 @@ class AirtableListRecordsBlock(Block):
             default=False,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         records: list[dict] = SchemaField(description="Array of record objects")
         offset: Optional[str] = SchemaField(
             description="Offset for next page (null if no more records)", default=None
@@ -154,7 +154,7 @@ class AirtableGetRecordBlock(Block):
             default=False,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         id: str = SchemaField(description="The record ID")
         fields: dict = SchemaField(description="The record fields")
         created_time: str = SchemaField(description="The record created time")
@@ -240,7 +240,7 @@ class AirtableCreateRecordsBlock(Block):
             default=None,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         records: list[dict] = SchemaField(description="Array of created record objects")
         details: dict = SchemaField(description="Details of the created records")
 
@@ -307,7 +307,7 @@ class AirtableUpdateRecordsBlock(Block):
             default=None,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         records: list[dict] = SchemaField(description="Array of updated record objects")
 
     def __init__(self):
@@ -352,7 +352,7 @@ class AirtableDeleteRecordsBlock(Block):
             description="Array of upto 10 record IDs to delete"
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         records: list[dict] = SchemaField(description="Array of deletion results")
 
     def __init__(self):
