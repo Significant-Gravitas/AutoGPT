@@ -6,6 +6,7 @@ import ReactMarkdown from "react-markdown";
 import type { GraphID } from "@/lib/autogpt-server-api/types";
 import { askOtto } from "@/app/(platform)/build/actions";
 import { cn } from "@/lib/utils";
+import { environment } from "@/services/environment";
 
 interface Message {
   type: "user" | "assistant";
@@ -129,7 +130,7 @@ export default function OttoChatWidget({
   };
 
   // Don't render the chat widget if we're not on the build page or in local mode
-  if (process.env.NEXT_PUBLIC_BEHAVE_AS !== "CLOUD") {
+  if (environment.isLocal()) {
     return null;
   }
 

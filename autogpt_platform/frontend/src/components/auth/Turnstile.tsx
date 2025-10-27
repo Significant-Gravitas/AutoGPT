@@ -1,6 +1,6 @@
 "use client";
 import { cn } from "@/lib/utils";
-import { isServerSide } from "@/lib/utils/is-server-side";
+import { environment } from "@/services/environment";
 import { useEffect, useRef, useState } from "react";
 
 export interface TurnstileProps {
@@ -32,7 +32,7 @@ export function Turnstile({
 
   // Load the Turnstile script
   useEffect(() => {
-    if (isServerSide() || !shouldRender) return;
+    if (environment.isServerSide() || !shouldRender) return;
 
     // Skip if already loaded
     if (window.turnstile) {

@@ -1,15 +1,15 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getCookieSettings, isAdminPage, isProtectedPage } from "./helpers";
-import { getSupabaseUrl, getSupabaseAnonKey } from "../env-config";
+import { environment } from "@/services/environment";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
   });
 
-  const supabaseUrl = getSupabaseUrl();
-  const supabaseKey = getSupabaseAnonKey();
+  const supabaseUrl = environment.getSupabaseUrl();
+  const supabaseKey = environment.getSupabaseAnonKey();
   const isAvailable = Boolean(supabaseUrl && supabaseKey);
 
   if (!isAvailable) {

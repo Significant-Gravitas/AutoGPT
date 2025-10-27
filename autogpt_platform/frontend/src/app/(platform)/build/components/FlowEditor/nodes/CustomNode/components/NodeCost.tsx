@@ -4,6 +4,7 @@ import useCredits from "@/hooks/useCredits";
 import { CoinIcon } from "@phosphor-icons/react";
 import { isCostFilterMatch } from "../../../../helper";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
+import { useShallow } from "zustand/react/shallow";
 
 export const NodeCost = ({
   blockCosts,
@@ -13,9 +14,10 @@ export const NodeCost = ({
   nodeId: string;
 }) => {
   const { formatCredits } = useCredits();
-  const hardcodedValues = useNodeStore((state) =>
-    state.getHardCodedValues(nodeId),
+  const hardcodedValues = useNodeStore(
+    useShallow((state) => state.getHardCodedValues(nodeId)),
   );
+
   const blockCost =
     blockCosts &&
     blockCosts.find((cost) =>

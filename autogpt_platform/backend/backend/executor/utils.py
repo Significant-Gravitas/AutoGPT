@@ -34,6 +34,7 @@ from backend.data.graph import GraphModel, Node
 from backend.data.model import CredentialsMetaInput
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.data.user import get_user_by_id
+from backend.util.cache import cached
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_async_execution_queue,
@@ -41,11 +42,12 @@ from backend.util.clients import (
     get_integration_credentials_store,
 )
 from backend.util.exceptions import GraphValidationError, NotFoundError
-from backend.util.logging import TruncatedLogger
+from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
 from backend.util.type import convert
 
 
+@cached(maxsize=1000, ttl_seconds=3600)
 async def get_user_context(user_id: str) -> UserContext:
     """
     Get UserContext for a user, always returns a valid context with timezone.
@@ -53,7 +55,11 @@ async def get_user_context(user_id: str) -> UserContext:
     """
     user_context = UserContext(timezone="UTC")  # Default to UTC
     try:
-        user = await get_user_by_id(user_id)
+        if prisma.is_connected():
+            user = await get_user_by_id(user_id)
+        else:
+            user = await get_database_manager_async_client().get_user_by_id(user_id)
+
         if user and user.timezone and user.timezone != "not-set":
             user_context.timezone = user.timezone
             logger.debug(f"Retrieved user context: timezone={user.timezone}")
@@ -93,7 +99,11 @@ class LogMetadata(TruncatedLogger):
             "node_id": node_id,
             "block_name": block_name,
         }
-        prefix = f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|neid:{node_eid}|{block_name}]"
+        prefix = (
+            "[ExecutionManager]"
+            if is_structured_logging_enabled()
+            else f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|neid:{node_eid}|{block_name}]"  # noqa
+        )
         super().__init__(
             logger,
             max_length=max_length,

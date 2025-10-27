@@ -347,6 +347,9 @@ class APIKeyCredentials(_BaseCredentials):
     """Unix timestamp (seconds) indicating when the API key expires (if at all)"""
 
     def auth_header(self) -> str:
+        # Linear API keys should not have Bearer prefix
+        if self.provider == "linear":
+            return self.api_key.get_secret_value()
         return f"Bearer {self.api_key.get_secret_value()}"
 
 

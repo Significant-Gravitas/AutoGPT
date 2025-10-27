@@ -1,6 +1,5 @@
 import { useTurnstile } from "@/hooks/useTurnstile";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { BehaveAs, getBehaveAs } from "@/lib/utils";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
@@ -8,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { environment } from "@/services/environment";
 
 export function useLoginPage() {
   const { supabase, user, isUserLoading } = useSupabase();
@@ -18,7 +18,7 @@ export function useLoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
-  const isCloudEnv = getBehaveAs() === BehaveAs.CLOUD;
+  const isCloudEnv = environment.isCloud();
   const isVercelPreview = process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
 
   const turnstile = useTurnstile({
@@ -67,7 +67,7 @@ export function useLoginPage() {
 
       if (!response.ok) {
         const { error } = await response.json();
-        if (typeof error === "string" && error.includes("not_allowed")) {
+        if (error === "not_allowed") {
           setShowNotAllowedModal(true);
         } else {
           setFeedback(error || "Failed to start OAuth flow");

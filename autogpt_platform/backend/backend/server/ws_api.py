@@ -329,7 +329,3 @@ class WebsocketServer(AppProcess):
             port=Config().websocket_server_port,
             log_config=None,
         )
-
-    def cleanup(self):
-        super().cleanup()
-        logger.info(f"[{self.service_name}] ⏳ Shutting down WebSocket Server...")
