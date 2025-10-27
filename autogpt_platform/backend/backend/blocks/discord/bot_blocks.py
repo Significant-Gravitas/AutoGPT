@@ -1268,7 +1268,9 @@ class CreateDiscordThreadBlock(Block):
                     await client.close()
                     return
                 except discord.errors.Forbidden:
-                    result["status"] = f"Bot does not have permission to view channel {channel_id}"
+                    result["status"] = (
+                        f"Bot does not have permission to view channel {channel_id}"
+                    )
                     await client.close()
                     return
             except ValueError:
@@ -1277,7 +1279,11 @@ class CreateDiscordThreadBlock(Block):
                 matching_channels = []
                 for guild in client.guilds:
                     # Skip guilds if server_name is provided and doesn't match
-                    if server_name and server_name.strip() and guild.name != server_name:
+                    if (
+                        server_name
+                        and server_name.strip()
+                        and guild.name != server_name
+                    ):
                         continue
                     for ch in guild.text_channels:
                         if ch.name == channel_name:
