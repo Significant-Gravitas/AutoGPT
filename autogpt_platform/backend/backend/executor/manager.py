@@ -1714,6 +1714,8 @@ class ExecutionManager(AppProcess):
 
         logger.info(f"{prefix} ✅ Finished GraphExec cleanup")
 
+        super().cleanup()
+
 
 # ------- UTILITIES ------- #
 

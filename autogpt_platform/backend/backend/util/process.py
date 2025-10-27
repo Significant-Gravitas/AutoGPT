@@ -19,7 +19,8 @@ class AppProcess(ABC):
     """
 
     process: Optional[Process] = None
-    cleaned_up = False
+    _shutting_down: bool = False
+    _cleaned_up: bool = False
 
     if "forkserver" in get_all_start_methods():
         set_start_method("forkserver", force=True)
@@ -43,7 +44,6 @@ class AppProcess(ABC):
     def service_name(self) -> str:
         return self.__class__.__name__
 
-    @abstractmethod
     def cleanup(self):
         """
         Implement this method on a subclass to do post-execution cleanup,
@@ -65,7 +65,8 @@ class AppProcess(ABC):
             self.run()
         except BaseException as e:
             logger.warning(
-                f"[{self.service_name}] Termination request: {type(e).__name__}; {e} executing cleanup."
+                f"[{self.service_name}] 🛑 Terminating because of {type(e).__name__}: {e}",  # noqa
+                exc_info=e if not isinstance(e, SystemExit) else None,
             )
             # Send error to Sentry before cleanup
             if not isinstance(e, (KeyboardInterrupt, SystemExit)):
@@ -76,8 +77,12 @@ class AppProcess(ABC):
                 except Exception:
                     pass  # Silently ignore if Sentry isn't available
         finally:
-            self.cleanup()
-            logger.info(f"[{self.service_name}] Terminated.")
+            if not self._cleaned_up:
+                self._cleaned_up = True
+                logger.info(f"[{self.service_name}] 🧹 Running cleanup")
+                self.cleanup()
+                logger.info(f"[{self.service_name}] ✅ Cleanup done")
+            logger.info(f"[{self.service_name}] 🛑 Terminated")
 
     @staticmethod
     def llprint(message: str):
@@ -88,8 +93,8 @@ class AppProcess(ABC):
         os.write(sys.stdout.fileno(), (message + "\n").encode())
 
     def _self_terminate(self, signum: int, frame):
-        if not self.cleaned_up:
-            self.cleaned_up = True
+        if not self._shutting_down:
+            self._shutting_down = True
             sys.exit(0)
         else:
             self.llprint(
