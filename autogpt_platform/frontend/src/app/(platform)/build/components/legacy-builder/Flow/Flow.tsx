@@ -64,7 +64,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import RunnerUIWrapper, { RunnerUIWrapperRef } from "../RunnerUIWrapper";
 import OttoChatWidget from "@/app/(platform)/build/components/legacy-builder/OttoChatWidget";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { useCopyPaste } from "../../../../../../hooks/useCopyPaste";
+import { useCopyPaste } from "../useCopyPaste";
 import NewControlPanel from "@/app/(platform)/build/components/NewControlPanel/NewControlPanel";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { BuildActionBar } from "../BuildActionBar";
