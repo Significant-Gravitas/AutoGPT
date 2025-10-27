@@ -62,7 +62,7 @@ export const ArrayEditorWidget = ({
                     <Button
                       type="button"
                       variant="secondary"
-                      className="relative top-2 min-w-0"
+                      className="relative top-5 min-w-0"
                       size="small"
                       onClick={element.onDropIndexClick(element.index)}
                     >
