@@ -6,6 +6,8 @@ import { StickyNoteBlock } from "./StickyNoteBlock";
 import { BlockInfoCategoriesItem } from "@/app/api/__generated__/models/blockInfoCategoriesItem";
 import { StandardNodeBlock } from "./StandardNodeBlock";
 import { BlockCost } from "@/app/api/__generated__/models/blockCost";
+import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutionResult";
 
 export type CustomNodeData = {
   hardcodedValues: {
@@ -17,6 +19,8 @@ export type CustomNodeData = {
   outputSchema: RJSFSchema;
   uiType: BlockUIType;
   block_id: string;
+  status?: AgentExecutionStatus;
+  nodeExecutionResult?: NodeExecutionResult;
   // TODO : We need better type safety for the following backend fields.
   costs: BlockCost[];
   categories: BlockInfoCategoriesItem[];
