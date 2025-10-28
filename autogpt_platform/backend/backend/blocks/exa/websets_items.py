@@ -20,14 +20,8 @@ from backend.sdk import (
 
 from ._config import exa
 
-
-class WebsetItem(Dict[str, Any]):
-    """
-    Represents a webset item with its properties.
-    Using Dict to allow flexible schema based on entity type.
-    """
-
-    pass
+# Using type alias for flexible webset item structure
+WebsetItem = Dict[str, Any]
 
 
 class ExaGetWebsetItemBlock(Block):
@@ -88,40 +82,30 @@ class ExaGetWebsetItemBlock(Block):
             "x-api-key": credentials.api_key.get_secret_value(),
         }
 
-        try:
-            response = await Requests().get(url, headers=headers)
-            data = response.json()
+        response = await Requests().get(url, headers=headers)
+        data = response.json()
 
-            # Extract common fields
-            yield "item_id", data.get("id", "")
-            yield "url", data.get("url", "")
-            yield "title", data.get("title", "")
-            yield "content", data.get("content", "")
+        # Extract common fields
+        yield "item_id", data.get("id", "")
+        yield "url", data.get("url", "")
+        yield "title", data.get("title", "")
+        yield "content", data.get("content", "")
 
-            # Entity-specific data will vary based on entity type
-            entity_data = {}
-            for key in ["company", "person", "article", "researchPaper", "custom"]:
-                if key in data:
-                    entity_data = data[key]
-                    break
+        # Entity-specific data will vary based on entity type
+        entity_data = {}
+        for key in ["company", "person", "article", "researchPaper", "custom"]:
+            if key in data:
+                entity_data = data[key]
+                break
 
-            yield "entity_data", entity_data
-            yield "enrichments", data.get("enrichments", {})
-            yield "verification_status", data.get("verificationStatus", "")
-            yield "created_at", data.get("createdAt", "")
-            yield "updated_at", data.get("updatedAt", "")
+        yield "entity_data", entity_data
+        yield "enrichments", data.get("enrichments", {})
+        yield "verification_status", data.get("verificationStatus", "")
+        yield "created_at", data.get("createdAt", "")
+        yield "updated_at", data.get("updatedAt", "")
 
-        except Exception as e:
-            yield "error", str(e)
-            yield "item_id", ""
-            yield "url", ""
-            yield "title", ""
-            yield "content", ""
-            yield "entity_data", {}
-            yield "enrichments", {}
-            yield "verification_status", ""
-            yield "created_at", ""
-            yield "updated_at", ""
+        # Let all exceptions propagate naturally
+        # The API will return appropriate HTTP errors for invalid item IDs
 
 
 class ExaListWebsetItemsBlock(Block):
@@ -208,35 +192,31 @@ class ExaListWebsetItemsBlock(Block):
         if input_data.cursor:
             params["cursor"] = input_data.cursor
 
-        try:
-            # If wait_for_items is True, poll until items are available
-            if input_data.wait_for_items:
-                items_data = await self._wait_for_items(
-                    url, headers, params, input_data.wait_timeout
-                )
-            else:
-                response = await Requests().get(url, headers=headers, params=params)
-                items_data = response.json()
+        # If wait_for_items is True, poll until items are available
+        if input_data.wait_for_items:
+            items_data = await self._wait_for_items(
+                url, headers, params, input_data.wait_timeout
+            )
+        else:
+            response = await Requests().get(url, headers=headers, params=params)
+            items_data = response.json()
 
-            items = items_data.get("data", [])
-            pagination = items_data.get("pagination", {})
+        items = items_data.get("data", [])
+        pagination = items_data.get("pagination", {})
 
-            # Yield the full list
-            yield "items", items
+        # Yield the full list
+        yield "items", items
 
-            # Also yield individual items for easier chaining
-            for item in items:
-                yield "item", item
+        # Also yield individual items for easier chaining
+        for item in items:
+            yield "item", item
 
-            # Pagination metadata
-            yield "total_count", pagination.get("total")
-            yield "has_more", items_data.get("hasMore", False)
-            yield "next_cursor", items_data.get("nextCursor")
+        # Pagination metadata
+        yield "total_count", pagination.get("total")
+        yield "has_more", items_data.get("hasMore", False)
+        yield "next_cursor", items_data.get("nextCursor")
 
-        except Exception as e:
-            yield "error", str(e)
-            yield "items", []
-            yield "has_more", False
+        # Let all exceptions propagate naturally
 
     async def _wait_for_items(
         self, url: str, headers: dict, params: dict, timeout: int
@@ -312,23 +292,19 @@ class ExaDeleteWebsetItemBlock(Block):
             "x-api-key": credentials.api_key.get_secret_value(),
         }
 
-        try:
-            response = await Requests().delete(url, headers=headers)
+        response = await Requests().delete(url, headers=headers)
 
-            # API typically returns 204 No Content on successful deletion
-            if response.status_code in [200, 204]:
-                yield "item_id", input_data.item_id
-                yield "success", "true"
-            else:
-                data = response.json()
-                yield "item_id", input_data.item_id
-                yield "success", "false"
-                yield "error", data.get("message", "Deletion failed")
-
-        except Exception as e:
-            yield "error", str(e)
+        # API typically returns 204 No Content on successful deletion
+        if response.status in [200, 204]:
+            yield "item_id", input_data.item_id
+            yield "success", "true"
+        else:
+            data = response.json()
             yield "item_id", input_data.item_id
             yield "success", "false"
+            yield "error", data.get("message", "Deletion failed")
+
+        # Let all exceptions propagate naturally
 
 
 class ExaBulkWebsetItemsBlock(Block):
@@ -399,71 +375,66 @@ class ExaBulkWebsetItemsBlock(Block):
             "x-api-key": credentials.api_key.get_secret_value(),
         }
 
-        try:
-            all_items = []
-            cursor = None
-            has_more = True
-            batch_size = min(100, input_data.max_items)  # API limit per request
+        all_items = []
+        cursor = None
+        has_more = True
+        batch_size = min(100, input_data.max_items)  # API limit per request
 
-            while has_more and len(all_items) < input_data.max_items:
-                # Build URL and params for this batch
-                url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/items"
-                params: dict[str, Any] = {
-                    "limit": min(batch_size, input_data.max_items - len(all_items)),
-                }
-                if cursor:
-                    params["cursor"] = cursor
+        while has_more and len(all_items) < input_data.max_items:
+            # Build URL and params for this batch
+            url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/items"
+            params: dict[str, Any] = {
+                "limit": min(batch_size, input_data.max_items - len(all_items)),
+            }
+            if cursor:
+                params["cursor"] = cursor
 
-                # Add field filters if requested
-                if not input_data.include_enrichments:
-                    params["exclude"] = "enrichments"
-                if not input_data.include_content:
-                    if "exclude" in params:
-                        params["exclude"] += ",content"
-                    else:
-                        params["exclude"] = "content"
+            # Add field filters if requested
+            if not input_data.include_enrichments:
+                params["exclude"] = "enrichments"
+            if not input_data.include_content:
+                if "exclude" in params:
+                    params["exclude"] += ",content"
+                else:
+                    params["exclude"] = "content"
 
-                # Fetch this batch
-                response = await Requests().get(url, headers=headers, params=params)
-                data = response.json()
+            # Fetch this batch
+            response = await Requests().get(url, headers=headers, params=params)
+            data = response.json()
 
-                items = data.get("data", [])
-                all_items.extend(items)
+            items = data.get("data", [])
+            all_items.extend(items)
 
-                # Check if there are more items
-                has_more = data.get("hasMore", False)
-                cursor = data.get("nextCursor")
+            # Check if there are more items
+            has_more = data.get("hasMore", False)
+            cursor = data.get("nextCursor")
 
-                # Stop if we've reached the max_items limit
-                if len(all_items) >= input_data.max_items:
-                    break
+            # Stop if we've reached the max_items limit
+            if len(all_items) >= input_data.max_items:
+                break
 
-            # Truncate if we got more than requested
-            truncated = len(all_items) > input_data.max_items
-            if truncated:
-                all_items = all_items[: input_data.max_items]
+        # Truncate if we got more than requested
+        truncated = len(all_items) > input_data.max_items
+        if truncated:
+            all_items = all_items[: input_data.max_items]
 
-            # Get total count if available
-            total_in_webset = None
-            if "pagination" in data:
-                total_in_webset = data["pagination"].get("total")
+        # Get total count if available
+        total_in_webset = None
+        if "pagination" in data:
+            total_in_webset = data["pagination"].get("total")
 
-            # Yield results
-            yield "items", all_items
+        # Yield results
+        yield "items", all_items
 
-            # Yield individual items for chaining
-            for item in all_items:
-                yield "item", item
+        # Yield individual items for chaining
+        for item in all_items:
+            yield "item", item
 
-            yield "total_retrieved", len(all_items)
-            yield "total_in_webset", total_in_webset
-            yield "truncated", truncated or has_more
+        yield "total_retrieved", len(all_items)
+        yield "total_in_webset", total_in_webset
+        yield "truncated", truncated or has_more
 
-        except Exception as e:
-            yield "error", str(e)
-            yield "items", []
-            yield "total_retrieved", 0
-            yield "truncated", False
+        # Let all exceptions propagate naturally
 
 
 class ExaWebsetItemsSummaryBlock(Block):
@@ -523,66 +494,59 @@ class ExaWebsetItemsSummaryBlock(Block):
             "x-api-key": credentials.api_key.get_secret_value(),
         }
 
-        try:
-            # First get webset details
-            webset_url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}"
-            webset_response = await Requests().get(webset_url, headers=headers)
-            webset_data = webset_response.json()
+        # First get webset details
+        webset_url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}"
+        webset_response = await Requests().get(webset_url, headers=headers)
+        webset_data = webset_response.json()
 
-            # Get entity type from searches
-            entity_type = "unknown"
-            if webset_data.get("searches"):
-                first_search = (
-                    webset_data["searches"][0] if webset_data["searches"] else {}
-                )
-                entity_type = first_search.get("entity", {}).get("type", "unknown")
+        # Get entity type from searches
+        entity_type = "unknown"
+        if webset_data.get("searches"):
+            first_search = webset_data["searches"][0] if webset_data["searches"] else {}
+            entity_type = first_search.get("entity", {}).get("type", "unknown")
 
-            # Get enrichment columns
-            enrichment_columns = []
-            if webset_data.get("enrichments"):
-                enrichment_columns = [
-                    e.get("title", e.get("description", ""))
-                    for e in webset_data["enrichments"]
-                ]
+        # Get enrichment columns
+        enrichment_columns = []
+        if webset_data.get("enrichments"):
+            enrichment_columns = [
+                e.get("title", e.get("description", ""))
+                for e in webset_data["enrichments"]
+            ]
 
-            # Get sample items if requested
-            sample_items = []
-            if input_data.sample_size > 0:
-                items_url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/items"
-                params = {"limit": input_data.sample_size}
-                items_response = await Requests().get(
-                    items_url, headers=headers, params=params
-                )
-                items_data = items_response.json()
-                sample_items = items_data.get("data", [])
+        # Get sample items if requested
+        sample_items = []
+        if input_data.sample_size > 0:
+            items_url = (
+                f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/items"
+            )
+            params = {"limit": input_data.sample_size}
+            items_response = await Requests().get(
+                items_url, headers=headers, params=params
+            )
+            items_data = items_response.json()
+            sample_items = items_data.get("data", [])
 
-            # Calculate verification stats from sample
-            verification_stats = {}
-            if sample_items:
-                for item in sample_items:
-                    status = item.get("verificationStatus", "unknown")
-                    verification_stats[status] = verification_stats.get(status, 0) + 1
+        # Calculate verification stats from sample
+        verification_stats = {}
+        if sample_items:
+            for item in sample_items:
+                status = item.get("verificationStatus", "unknown")
+                verification_stats[status] = verification_stats.get(status, 0) + 1
 
-            # Get total count
-            total_items = 0
-            if sample_items and "pagination" in items_data:
-                total_items = items_data["pagination"].get("total", len(sample_items))
-            else:
-                # Estimate from webset status
-                for search in webset_data.get("searches", []):
-                    progress = search.get("progress", {})
-                    total_items += progress.get("found", 0)
+        # Get total count
+        total_items = 0
+        if sample_items and "pagination" in items_data:
+            total_items = items_data["pagination"].get("total", len(sample_items))
+        else:
+            # Estimate from webset status
+            for search in webset_data.get("searches", []):
+                progress = search.get("progress", {})
+                total_items += progress.get("found", 0)
 
-            yield "total_items", total_items
-            yield "entity_type", entity_type
-            yield "sample_items", sample_items
-            yield "enrichment_columns", enrichment_columns
-            yield "verification_stats", verification_stats
+        yield "total_items", total_items
+        yield "entity_type", entity_type
+        yield "sample_items", sample_items
+        yield "enrichment_columns", enrichment_columns
+        yield "verification_stats", verification_stats
 
-        except Exception as e:
-            yield "error", str(e)
-            yield "total_items", 0
-            yield "entity_type", ""
-            yield "sample_items", []
-            yield "enrichment_columns", []
-            yield "verification_stats", {}
+        # Let all exceptions propagate naturally

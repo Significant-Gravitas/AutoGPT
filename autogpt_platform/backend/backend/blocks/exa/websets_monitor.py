@@ -1,0 +1,590 @@
+"""
+Exa Websets Monitor Management Blocks
+
+This module provides blocks for creating and managing monitors that automatically
+keep websets updated with fresh data on a schedule.
+"""
+
+from enum import Enum
+from typing import Any, Optional
+
+from backend.sdk import (
+    APIKeyCredentials,
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    CredentialsMetaInput,
+    Requests,
+    SchemaField,
+)
+
+from ._config import exa
+
+
+class MonitorStatus(str, Enum):
+    """Status of a monitor."""
+
+    ENABLED = "enabled"
+    DISABLED = "disabled"
+    PAUSED = "paused"
+
+
+class MonitorBehaviorType(str, Enum):
+    """Type of behavior for a monitor."""
+
+    SEARCH = "search"  # Run new searches
+    REFRESH = "refresh"  # Refresh existing items
+
+
+class SearchBehavior(str, Enum):
+    """How search results interact with existing items."""
+
+    APPEND = "append"
+    OVERRIDE = "override"
+
+
+class ExaCreateMonitorBlock(Block):
+    """Create a monitor to automatically keep a webset updated on a schedule."""
+
+    class Input(BlockSchema):
+        credentials: CredentialsMetaInput = exa.credentials_field(
+            description="The Exa integration requires an API Key."
+        )
+        webset_id: str = SchemaField(
+            description="The ID or external ID of the Webset to monitor",
+            placeholder="webset-id-or-external-id",
+        )
+
+        # Schedule configuration
+        cron_expression: str = SchemaField(
+            description="Cron expression for scheduling (5 fields, max once per day)",
+            placeholder="0 9 * * 1",  # Every Monday at 9 AM
+        )
+        timezone: str = SchemaField(
+            default="Etc/UTC",
+            description="IANA timezone for the schedule",
+            placeholder="America/New_York",
+            advanced=True,
+        )
+
+        # Behavior configuration
+        behavior_type: MonitorBehaviorType = SchemaField(
+            default=MonitorBehaviorType.SEARCH,
+            description="Type of monitor behavior (search for new items or refresh existing)",
+        )
+
+        # Search configuration (for SEARCH behavior)
+        search_query: Optional[str] = SchemaField(
+            default=None,
+            description="Search query for finding new items (required for search behavior)",
+            placeholder="AI startups that raised funding in the last week",
+        )
+        search_count: int = SchemaField(
+            default=10,
+            description="Number of items to find in each search",
+            ge=1,
+            le=100,
+        )
+        search_criteria: list[str] = SchemaField(
+            default_factory=list,
+            description="Criteria that items must meet",
+            advanced=True,
+        )
+        search_behavior: SearchBehavior = SchemaField(
+            default=SearchBehavior.APPEND,
+            description="How new results interact with existing items",
+            advanced=True,
+        )
+        entity_type: Optional[str] = SchemaField(
+            default=None,
+            description="Type of entity to search for (company, person, etc.)",
+            advanced=True,
+        )
+
+        # Refresh configuration (for REFRESH behavior)
+        refresh_content: bool = SchemaField(
+            default=True,
+            description="Refresh content from source URLs (for refresh behavior)",
+            advanced=True,
+        )
+        refresh_enrichments: bool = SchemaField(
+            default=True,
+            description="Re-run enrichments on items (for refresh behavior)",
+            advanced=True,
+        )
+
+        # Metadata
+        metadata: Optional[dict] = SchemaField(
+            default=None,
+            description="Metadata to attach to the monitor",
+            advanced=True,
+        )
+
+    class Output(BlockSchema):
+        monitor_id: str = SchemaField(
+            description="The unique identifier for the created monitor"
+        )
+        webset_id: str = SchemaField(description="The webset this monitor belongs to")
+        status: str = SchemaField(description="Status of the monitor")
+        behavior_type: str = SchemaField(description="Type of monitor behavior")
+        next_run_at: Optional[str] = SchemaField(
+            description="When the monitor will next run",
+            default=None,
+        )
+        cron_expression: str = SchemaField(description="The schedule cron expression")
+        timezone: str = SchemaField(description="The timezone for scheduling")
+        created_at: str = SchemaField(description="When the monitor was created")
+        error: str = SchemaField(
+            description="Error message if the creation failed",
+            default="",
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="f8a9b0c1-d2e3-4567-890a-bcdef1234567",
+            description="Create automated monitors to keep websets updated with fresh data on a schedule",
+            categories={BlockCategory.SEARCH},
+            input_schema=ExaCreateMonitorBlock.Input,
+            output_schema=ExaCreateMonitorBlock.Output,
+            test_input={
+                "webset_id": "test-webset",
+                "cron_expression": "0 9 * * 1",
+                "behavior_type": MonitorBehaviorType.SEARCH,
+                "search_query": "AI startups",
+                "search_count": 10,
+            },
+            test_output=[
+                ("monitor_id", str),
+                ("webset_id", "test-webset"),
+                ("status", "enabled"),
+                ("behavior_type", "search"),
+                ("cron_expression", "0 9 * * 1"),
+                ("timezone", "Etc/UTC"),
+                ("created_at", str),
+            ],
+            test_mock={
+                "requests": lambda: {
+                    "post": lambda url, **kwargs: type(
+                        "Response",
+                        (),
+                        {
+                            "json": lambda: {
+                                "id": "monitor-123",
+                                "status": "enabled",
+                                "websetId": "test-webset",
+                                "behavior": {"type": "search"},
+                                "cadence": {"cron": "0 9 * * 1", "timezone": "Etc/UTC"},
+                                "createdAt": "2024-01-01T00:00:00Z",
+                            }
+                        },
+                    )()
+                },
+            },
+        )
+
+    async def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
+        url = "https://api.exa.ai/websets/v0/monitors"
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": credentials.api_key.get_secret_value(),
+        }
+
+        # Build the payload
+        payload = {
+            "websetId": input_data.webset_id,
+            "cadence": {
+                "cron": input_data.cron_expression,
+                "timezone": input_data.timezone,
+            },
+        }
+
+        # Build behavior configuration based on type
+        if input_data.behavior_type == MonitorBehaviorType.SEARCH:
+            behavior_config = {
+                "query": input_data.search_query or "",
+                "count": input_data.search_count,
+                "behavior": input_data.search_behavior.value,
+            }
+
+            if input_data.search_criteria:
+                behavior_config["criteria"] = [
+                    {"description": c} for c in input_data.search_criteria
+                ]
+
+            if input_data.entity_type:
+                behavior_config["entity"] = {"type": input_data.entity_type}
+
+            payload["behavior"] = {
+                "type": "search",
+                "config": behavior_config,
+            }
+        else:
+            # REFRESH behavior
+            payload["behavior"] = {
+                "type": "refresh",
+                "config": {
+                    "content": input_data.refresh_content,
+                    "enrichments": input_data.refresh_enrichments,
+                },
+            }
+
+        # Add metadata if provided
+        if input_data.metadata:
+            payload["metadata"] = input_data.metadata
+
+        try:
+            response = await Requests().post(url, headers=headers, json=payload)
+            data = response.json()
+
+            yield "monitor_id", data.get("id", "")
+            yield "webset_id", data.get("websetId", "")
+            yield "status", data.get("status", "")
+
+            behavior = data.get("behavior", {})
+            yield "behavior_type", behavior.get("type", "")
+
+            yield "next_run_at", data.get("nextRunAt")
+
+            cadence = data.get("cadence", {})
+            yield "cron_expression", cadence.get("cron", "")
+            yield "timezone", cadence.get("timezone", "")
+
+            yield "created_at", data.get("createdAt", "")
+
+        except ValueError as e:
+            # Re-raise user input validation errors
+            raise ValueError(f"Failed to create monitor: {e}") from e
+        # Let all other exceptions propagate naturally
+
+
+class ExaGetMonitorBlock(Block):
+    """Get the details and status of a monitor."""
+
+    class Input(BlockSchema):
+        credentials: CredentialsMetaInput = exa.credentials_field(
+            description="The Exa integration requires an API Key."
+        )
+        monitor_id: str = SchemaField(
+            description="The ID of the monitor to retrieve",
+            placeholder="monitor-id",
+        )
+
+    class Output(BlockSchema):
+        monitor_id: str = SchemaField(
+            description="The unique identifier for the monitor"
+        )
+        webset_id: str = SchemaField(description="The webset this monitor belongs to")
+        status: str = SchemaField(description="Current status of the monitor")
+        behavior_type: str = SchemaField(description="Type of monitor behavior")
+        behavior_config: dict = SchemaField(
+            description="Configuration for the monitor behavior",
+            default_factory=dict,
+        )
+        cron_expression: str = SchemaField(description="The schedule cron expression")
+        timezone: str = SchemaField(description="The timezone for scheduling")
+        next_run_at: Optional[str] = SchemaField(
+            description="When the monitor will next run",
+            default=None,
+        )
+        last_run: Optional[dict] = SchemaField(
+            description="Information about the last run",
+            default=None,
+        )
+        created_at: str = SchemaField(description="When the monitor was created")
+        updated_at: str = SchemaField(description="When the monitor was last updated")
+        metadata: dict = SchemaField(
+            description="Metadata attached to the monitor",
+            default_factory=dict,
+        )
+        error: str = SchemaField(
+            description="Error message if the request failed",
+            default="",
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="a9b0c1d2-e3f4-5678-901b-cdef23456789",
+            description="Get the details and status of a webset monitor",
+            categories={BlockCategory.SEARCH},
+            input_schema=ExaGetMonitorBlock.Input,
+            output_schema=ExaGetMonitorBlock.Output,
+        )
+
+    async def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
+        url = f"https://api.exa.ai/websets/v0/monitors/{input_data.monitor_id}"
+        headers = {
+            "x-api-key": credentials.api_key.get_secret_value(),
+        }
+
+        response = await Requests().get(url, headers=headers)
+        data = response.json()
+
+        yield "monitor_id", data.get("id", "")
+        yield "webset_id", data.get("websetId", "")
+        yield "status", data.get("status", "")
+
+        behavior = data.get("behavior", {})
+        yield "behavior_type", behavior.get("type", "")
+        yield "behavior_config", behavior.get("config", {})
+
+        cadence = data.get("cadence", {})
+        yield "cron_expression", cadence.get("cron", "")
+        yield "timezone", cadence.get("timezone", "")
+
+        yield "next_run_at", data.get("nextRunAt")
+        yield "last_run", data.get("lastRun")
+        yield "created_at", data.get("createdAt", "")
+        yield "updated_at", data.get("updatedAt", "")
+        yield "metadata", data.get("metadata", {})
+
+        # Let all exceptions propagate naturally
+        # The API will return appropriate HTTP errors for invalid monitor IDs
+
+
+class ExaUpdateMonitorBlock(Block):
+    """Update a monitor's configuration."""
+
+    class Input(BlockSchema):
+        credentials: CredentialsMetaInput = exa.credentials_field(
+            description="The Exa integration requires an API Key."
+        )
+        monitor_id: str = SchemaField(
+            description="The ID of the monitor to update",
+            placeholder="monitor-id",
+        )
+        status: Optional[MonitorStatus] = SchemaField(
+            default=None,
+            description="New status for the monitor",
+        )
+        cron_expression: Optional[str] = SchemaField(
+            default=None,
+            description="New cron expression for scheduling",
+        )
+        timezone: Optional[str] = SchemaField(
+            default=None,
+            description="New timezone for the schedule",
+            advanced=True,
+        )
+        metadata: Optional[dict] = SchemaField(
+            default=None,
+            description="New metadata for the monitor",
+            advanced=True,
+        )
+
+    class Output(BlockSchema):
+        monitor_id: str = SchemaField(
+            description="The unique identifier for the monitor"
+        )
+        status: str = SchemaField(description="Updated status of the monitor")
+        next_run_at: Optional[str] = SchemaField(
+            description="When the monitor will next run",
+            default=None,
+        )
+        updated_at: str = SchemaField(description="When the monitor was updated")
+        success: str = SchemaField(
+            description="Whether the update was successful",
+            default="true",
+        )
+        error: str = SchemaField(
+            description="Error message if the update failed",
+            default="",
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="b0c1d2e3-f4a5-6789-012c-def345678901",
+            description="Update a monitor's status, schedule, or metadata",
+            categories={BlockCategory.SEARCH},
+            input_schema=ExaUpdateMonitorBlock.Input,
+            output_schema=ExaUpdateMonitorBlock.Output,
+        )
+
+    async def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
+        url = f"https://api.exa.ai/websets/v0/monitors/{input_data.monitor_id}"
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": credentials.api_key.get_secret_value(),
+        }
+
+        # Build update payload
+        payload = {}
+
+        if input_data.status is not None:
+            payload["status"] = input_data.status.value
+
+        if input_data.cron_expression is not None or input_data.timezone is not None:
+            cadence = {}
+            if input_data.cron_expression:
+                cadence["cron"] = input_data.cron_expression
+            if input_data.timezone:
+                cadence["timezone"] = input_data.timezone
+            payload["cadence"] = cadence
+
+        if input_data.metadata is not None:
+            payload["metadata"] = input_data.metadata
+
+        try:
+            response = await Requests().patch(url, headers=headers, json=payload)
+            data = response.json()
+
+            yield "monitor_id", data.get("id", "")
+            yield "status", data.get("status", "")
+            yield "next_run_at", data.get("nextRunAt")
+            yield "updated_at", data.get("updatedAt", "")
+            yield "success", "true"
+
+        except ValueError as e:
+            # Re-raise user input validation errors
+            raise ValueError(f"Failed to update monitor: {e}") from e
+        # Let all other exceptions propagate naturally
+
+
+class ExaDeleteMonitorBlock(Block):
+    """Delete a monitor from a webset."""
+
+    class Input(BlockSchema):
+        credentials: CredentialsMetaInput = exa.credentials_field(
+            description="The Exa integration requires an API Key."
+        )
+        monitor_id: str = SchemaField(
+            description="The ID of the monitor to delete",
+            placeholder="monitor-id",
+        )
+
+    class Output(BlockSchema):
+        monitor_id: str = SchemaField(description="The ID of the deleted monitor")
+        success: str = SchemaField(
+            description="Whether the deletion was successful",
+            default="true",
+        )
+        error: str = SchemaField(
+            description="Error message if the deletion failed",
+            default="",
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="c1d2e3f4-a5b6-7890-123d-ef4567890123",
+            description="Delete a monitor from a webset",
+            categories={BlockCategory.SEARCH},
+            input_schema=ExaDeleteMonitorBlock.Input,
+            output_schema=ExaDeleteMonitorBlock.Output,
+        )
+
+    async def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
+        url = f"https://api.exa.ai/websets/v0/monitors/{input_data.monitor_id}"
+        headers = {
+            "x-api-key": credentials.api_key.get_secret_value(),
+        }
+
+        response = await Requests().delete(url, headers=headers)
+
+        if response.status_code in [200, 204]:
+            yield "monitor_id", input_data.monitor_id
+            yield "success", "true"
+        else:
+            data = response.json()
+            yield "monitor_id", input_data.monitor_id
+            yield "success", "false"
+            yield "error", data.get("message", "Deletion failed")
+
+        # Let all exceptions propagate naturally
+        # The API will return appropriate HTTP errors for invalid operations
+
+
+class ExaListMonitorsBlock(Block):
+    """List all monitors with pagination."""
+
+    class Input(BlockSchema):
+        credentials: CredentialsMetaInput = exa.credentials_field(
+            description="The Exa integration requires an API Key."
+        )
+        webset_id: Optional[str] = SchemaField(
+            default=None,
+            description="Filter monitors by webset ID",
+            placeholder="webset-id",
+        )
+        limit: int = SchemaField(
+            default=25,
+            description="Number of monitors to return",
+            ge=1,
+            le=100,
+        )
+        cursor: Optional[str] = SchemaField(
+            default=None,
+            description="Cursor for pagination",
+            advanced=True,
+        )
+
+    class Output(BlockSchema):
+        monitors: list[dict] = SchemaField(
+            description="List of monitors",
+            default_factory=list,
+        )
+        monitor: dict = SchemaField(
+            description="Individual monitor (yielded for each monitor)",
+            default_factory=dict,
+        )
+        has_more: bool = SchemaField(
+            description="Whether there are more monitors to paginate through",
+            default=False,
+        )
+        next_cursor: Optional[str] = SchemaField(
+            description="Cursor for the next page of results",
+            default=None,
+        )
+        error: str = SchemaField(
+            description="Error message if the request failed",
+            default="",
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="d2e3f4a5-b6c7-8901-234e-f56789012345",
+            description="List all monitors with optional webset filtering",
+            categories={BlockCategory.SEARCH},
+            input_schema=ExaListMonitorsBlock.Input,
+            output_schema=ExaListMonitorsBlock.Output,
+        )
+
+    async def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
+        url = "https://api.exa.ai/websets/v0/monitors"
+        headers = {
+            "x-api-key": credentials.api_key.get_secret_value(),
+        }
+
+        params: dict[str, Any] = {
+            "limit": input_data.limit,
+        }
+        if input_data.cursor:
+            params["cursor"] = input_data.cursor
+        if input_data.webset_id:
+            params["websetId"] = input_data.webset_id
+
+        response = await Requests().get(url, headers=headers, params=params)
+        data = response.json()
+
+        monitors = data.get("data", [])
+
+        # Yield the full list
+        yield "monitors", monitors
+
+        # Also yield individual monitors for easier chaining
+        for monitor in monitors:
+            yield "monitor", monitor
+
+        yield "has_more", data.get("hasMore", False)
+        yield "next_cursor", data.get("nextCursor")
+
+        # Let all exceptions propagate naturally

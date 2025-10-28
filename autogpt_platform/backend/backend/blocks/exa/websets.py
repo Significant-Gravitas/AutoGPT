@@ -444,9 +444,10 @@ class ExaCreateWebsetBlock(Block):
             else:
                 yield "webset", webset_result
 
-        except Exception as e:
-            yield "error", str(e)
-            yield "webset", Webset(id="", status=None)
+        except ValueError as e:
+            # Re-raise user input validation errors
+            raise ValueError(f"Invalid webset configuration: {e}") from e
+        # Let all other exceptions (network, auth, rate limits) propagate naturally
 
     async def _poll_for_completion(
         self, webset_id: str, api_key: str, timeout: int
@@ -542,11 +543,10 @@ class ExaUpdateWebsetBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}"
-        headers = {
-            "Content-Type": "application/json",
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        url = ExaApiUrls.webset(input_data.webset_id)
+        headers = build_headers(
+            credentials.api_key.get_secret_value(), include_content_type=True
+        )
 
         # Build the payload
         payload = {}
@@ -563,12 +563,10 @@ class ExaUpdateWebsetBlock(Block):
             yield "metadata", data.get("metadata", {})
             yield "updated_at", data.get("updatedAt", "")
 
-        except Exception as e:
-            yield "error", str(e)
-            yield "webset_id", ""
-            yield "status", ""
-            yield "metadata", {}
-            yield "updated_at", ""
+        except ValueError as e:
+            # Re-raise user input validation errors
+            raise ValueError(f"Failed to update webset: {e}") from e
+        # Let all other exceptions (network, auth, rate limits) propagate naturally
 
 
 class ExaListWebsetsBlock(Block):
@@ -621,10 +619,8 @@ class ExaListWebsetsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = "https://api.exa.ai/websets/v0/websets"
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        url = ExaApiUrls.websets()
+        headers = build_headers(credentials.api_key.get_secret_value())
 
         params: dict[str, Any] = {
             "limit": input_data.limit,
@@ -632,18 +628,14 @@ class ExaListWebsetsBlock(Block):
         if input_data.cursor:
             params["cursor"] = input_data.cursor
 
-        try:
-            response = await Requests().get(url, headers=headers, params=params)
-            data = response.json()
+        response = await Requests().get(url, headers=headers, params=params)
+        data = response.json()
 
-            yield "websets", data.get("data", [])
-            yield "has_more", data.get("hasMore", False)
-            yield "next_cursor", data.get("nextCursor")
+        yield "websets", data.get("data", [])
+        yield "has_more", data.get("hasMore", False)
+        yield "next_cursor", data.get("nextCursor")
 
-        except Exception as e:
-            yield "error", str(e)
-            yield "websets", []
-            yield "has_more", False
+        # Let all exceptions propagate naturally - no user-fixable errors here
 
 
 class ExaGetWebsetBlock(Block):
@@ -706,31 +698,22 @@ class ExaGetWebsetBlock(Block):
             "x-api-key": credentials.api_key.get_secret_value(),
         }
 
-        try:
-            response = await Requests().get(url, headers=headers)
-            data = response.json()
+        response = await Requests().get(url, headers=headers)
+        data = response.json()
 
-            yield "webset_id", data.get("id", "")
-            yield "status", data.get("status", "")
-            yield "external_id", data.get("externalId")
-            yield "searches", data.get("searches", [])
-            yield "enrichments", data.get("enrichments", [])
-            yield "monitors", data.get("monitors", [])
-            yield "items", data.get("items")
-            yield "metadata", data.get("metadata", {})
-            yield "created_at", data.get("createdAt", "")
-            yield "updated_at", data.get("updatedAt", "")
+        yield "webset_id", data.get("id", "")
+        yield "status", data.get("status", "")
+        yield "external_id", data.get("externalId")
+        yield "searches", data.get("searches", [])
+        yield "enrichments", data.get("enrichments", [])
+        yield "monitors", data.get("monitors", [])
+        yield "items", data.get("items")
+        yield "metadata", data.get("metadata", {})
+        yield "created_at", data.get("createdAt", "")
+        yield "updated_at", data.get("updatedAt", "")
 
-        except Exception as e:
-            yield "error", str(e)
-            yield "webset_id", ""
-            yield "status", ""
-            yield "searches", []
-            yield "enrichments", []
-            yield "monitors", []
-            yield "metadata", {}
-            yield "created_at", ""
-            yield "updated_at", ""
+        # Let all exceptions propagate naturally
+        # The API will return appropriate HTTP errors for invalid webset IDs
 
 
 class ExaDeleteWebsetBlock(Block):
@@ -775,20 +758,16 @@ class ExaDeleteWebsetBlock(Block):
             "x-api-key": credentials.api_key.get_secret_value(),
         }
 
-        try:
-            response = await Requests().delete(url, headers=headers)
-            data = response.json()
+        response = await Requests().delete(url, headers=headers)
+        data = response.json()
 
-            yield "webset_id", data.get("id", "")
-            yield "external_id", data.get("externalId")
-            yield "status", data.get("status", "")
-            yield "success", "true"
+        yield "webset_id", data.get("id", "")
+        yield "external_id", data.get("externalId")
+        yield "status", data.get("status", "")
+        yield "success", "true"
 
-        except Exception as e:
-            yield "error", str(e)
-            yield "webset_id", ""
-            yield "status", ""
-            yield "success", "false"
+        # Let all exceptions propagate naturally
+        # The API will return appropriate HTTP errors for invalid operations
 
 
 class ExaCancelWebsetBlock(Block):
@@ -833,20 +812,16 @@ class ExaCancelWebsetBlock(Block):
             "x-api-key": credentials.api_key.get_secret_value(),
         }
 
-        try:
-            response = await Requests().post(url, headers=headers)
-            data = response.json()
+        response = await Requests().post(url, headers=headers)
+        data = response.json()
 
-            yield "webset_id", data.get("id", "")
-            yield "status", data.get("status", "")
-            yield "external_id", data.get("externalId")
-            yield "success", "true"
+        yield "webset_id", data.get("id", "")
+        yield "status", data.get("status", "")
+        yield "external_id", data.get("externalId")
+        yield "success", "true"
 
-        except Exception as e:
-            yield "error", str(e)
-            yield "webset_id", ""
-            yield "status", ""
-            yield "success", "false"
+        # Let all exceptions propagate naturally
+        # The API will return appropriate HTTP errors for invalid operations
 
 
 class ExaPreviewWebsetBlock(Block):
@@ -972,10 +947,303 @@ class ExaPreviewWebsetBlock(Block):
             yield "interpretation", interpretation
             yield "suggestions", suggestions
 
-        except Exception as e:
-            yield "error", str(e)
-            yield "entity_type", ""
-            yield "criteria", []
-            yield "enrichment_columns", []
-            yield "interpretation", ""
-            yield "suggestions", []
+        except ValueError as e:
+            # Re-raise user input validation errors
+            raise ValueError(f"Invalid preview query: {e}") from e
+        # Let all other exceptions propagate naturally
+
+
+class ExaWebsetStatusBlock(Block):
+    """Get a quick status overview of a webset without fetching all details."""
+
+    class Input(BlockSchema):
+        credentials: CredentialsMetaInput = exa.credentials_field(
+            description="The Exa integration requires an API Key."
+        )
+        webset_id: str = SchemaField(
+            description="The ID or external ID of the Webset",
+            placeholder="webset-id-or-external-id",
+        )
+
+    class Output(BlockSchema):
+        webset_id: str = SchemaField(description="The webset identifier")
+        status: str = SchemaField(
+            description="Current status (idle, running, paused, etc.)"
+        )
+        item_count: int = SchemaField(
+            description="Total number of items in the webset",
+            default=0,
+        )
+        search_count: int = SchemaField(
+            description="Number of searches performed",
+            default=0,
+        )
+        enrichment_count: int = SchemaField(
+            description="Number of enrichments configured",
+            default=0,
+        )
+        monitor_count: int = SchemaField(
+            description="Number of monitors configured",
+            default=0,
+        )
+        last_updated: str = SchemaField(description="When the webset was last updated")
+        is_processing: bool = SchemaField(
+            description="Whether any operations are currently running",
+            default=False,
+        )
+        error: str = SchemaField(
+            description="Error message if the request failed",
+            default="",
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="e3f4a5b6-c7d8-9012-3456-789abcdef012",
+            description="Get a quick status overview of a webset",
+            categories={BlockCategory.SEARCH},
+            input_schema=ExaWebsetStatusBlock.Input,
+            output_schema=ExaWebsetStatusBlock.Output,
+        )
+
+    async def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
+        headers = {
+            "x-api-key": credentials.api_key.get_secret_value(),
+        }
+
+        # Get webset details
+        url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}"
+        response = await Requests().get(url, headers=headers)
+        data = response.json()
+
+        status = data.get("status", "unknown")
+        is_processing = status in ["running", "pending"]
+
+        # Count items
+        items_url = (
+            f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/items"
+        )
+        items_response = await Requests().get(
+            items_url, headers=headers, params={"limit": 1}
+        )
+        items_data = items_response.json()
+
+        item_count = 0
+        if "pagination" in items_data:
+            item_count = items_data["pagination"].get("total", 0)
+        elif "data" in items_data:
+            item_count = len(items_data["data"])
+
+        # Count searches, enrichments, monitors
+        search_count = len(data.get("searches", []))
+        enrichment_count = len(data.get("enrichments", []))
+        monitor_count = len(data.get("monitors", []))
+
+        yield "webset_id", data.get("id", input_data.webset_id)
+        yield "status", status
+        yield "item_count", item_count
+        yield "search_count", search_count
+        yield "enrichment_count", enrichment_count
+        yield "monitor_count", monitor_count
+        yield "last_updated", data.get("updatedAt", "")
+        yield "is_processing", is_processing
+
+        # Let all exceptions propagate naturally
+        # The API will return appropriate HTTP errors for invalid webset IDs
+
+
+class ExaWebsetSummaryBlock(Block):
+    """Get a comprehensive summary of a webset including samples and statistics."""
+
+    class Input(BlockSchema):
+        credentials: CredentialsMetaInput = exa.credentials_field(
+            description="The Exa integration requires an API Key."
+        )
+        webset_id: str = SchemaField(
+            description="The ID or external ID of the Webset",
+            placeholder="webset-id-or-external-id",
+        )
+        include_sample_items: bool = SchemaField(
+            default=True,
+            description="Include sample items in the summary",
+        )
+        sample_size: int = SchemaField(
+            default=3,
+            description="Number of sample items to include",
+            ge=0,
+            le=10,
+        )
+        include_search_details: bool = SchemaField(
+            default=True,
+            description="Include details about searches",
+        )
+        include_enrichment_details: bool = SchemaField(
+            default=True,
+            description="Include details about enrichments",
+        )
+
+    class Output(BlockSchema):
+        webset_id: str = SchemaField(description="The webset identifier")
+        title: Optional[str] = SchemaField(
+            description="Title of the webset if available",
+            default=None,
+        )
+        status: str = SchemaField(description="Current status")
+        entity_type: str = SchemaField(description="Type of entities in the webset")
+        total_items: int = SchemaField(
+            description="Total number of items",
+            default=0,
+        )
+        sample_items: list[dict] = SchemaField(
+            description="Sample items from the webset",
+            default_factory=list,
+        )
+        search_summary: dict = SchemaField(
+            description="Summary of searches performed",
+            default_factory=dict,
+        )
+        enrichment_summary: dict = SchemaField(
+            description="Summary of enrichments applied",
+            default_factory=dict,
+        )
+        monitor_summary: dict = SchemaField(
+            description="Summary of monitors configured",
+            default_factory=dict,
+        )
+        statistics: dict = SchemaField(
+            description="Various statistics about the webset",
+            default_factory=dict,
+        )
+        created_at: str = SchemaField(description="When the webset was created")
+        updated_at: str = SchemaField(description="When the webset was last updated")
+        error: str = SchemaField(
+            description="Error message if the request failed",
+            default="",
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="f4a5b6c7-d8e9-0123-4567-89abcdef0123",
+            description="Get a comprehensive summary of a webset with samples and statistics",
+            categories={BlockCategory.SEARCH},
+            input_schema=ExaWebsetSummaryBlock.Input,
+            output_schema=ExaWebsetSummaryBlock.Output,
+        )
+
+    async def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
+        headers = {
+            "x-api-key": credentials.api_key.get_secret_value(),
+        }
+
+        # Get webset details
+        url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}"
+        response = await Requests().get(url, headers=headers)
+        data = response.json()
+
+        # Extract basic info
+        webset_id = data.get("id", input_data.webset_id)
+        status = data.get("status", "unknown")
+
+        # Determine entity type from searches
+        entity_type = "unknown"
+        searches = data.get("searches", [])
+        if searches:
+            first_search = searches[0]
+            entity = first_search.get("entity", {})
+            entity_type = entity.get("type", "unknown")
+
+        # Get sample items if requested
+        sample_items = []
+        total_items = 0
+
+        if input_data.include_sample_items and input_data.sample_size > 0:
+            items_url = (
+                f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/items"
+            )
+            items_response = await Requests().get(
+                items_url, headers=headers, params={"limit": input_data.sample_size}
+            )
+            items_data = items_response.json()
+            sample_items = items_data.get("data", [])
+
+            if "pagination" in items_data:
+                total_items = items_data["pagination"].get("total", len(sample_items))
+            else:
+                total_items = len(sample_items)
+
+        # Build search summary
+        search_summary = {}
+        if input_data.include_search_details and searches:
+            search_summary = {
+                "total_searches": len(searches),
+                "completed_searches": sum(
+                    1 for s in searches if s.get("status") == "completed"
+                ),
+                "total_items_found": sum(
+                    s.get("progress", {}).get("found", 0) for s in searches
+                ),
+                "queries": [
+                    s.get("query", "") for s in searches[:3]
+                ],  # First 3 queries
+            }
+
+        # Build enrichment summary
+        enrichment_summary = {}
+        enrichments = data.get("enrichments", [])
+        if input_data.include_enrichment_details and enrichments:
+            enrichment_summary = {
+                "total_enrichments": len(enrichments),
+                "completed_enrichments": sum(
+                    1 for e in enrichments if e.get("status") == "completed"
+                ),
+                "enrichment_types": list(
+                    set(e.get("format", "text") for e in enrichments)
+                ),
+                "titles": [
+                    e.get("title", e.get("description", ""))[:50]
+                    for e in enrichments[:3]
+                ],
+            }
+
+        # Build monitor summary
+        monitors = data.get("monitors", [])
+        monitor_summary = {
+            "total_monitors": len(monitors),
+            "active_monitors": sum(1 for m in monitors if m.get("status") == "enabled"),
+        }
+
+        if monitors:
+            next_runs = [m.get("nextRunAt") for m in monitors if m.get("nextRunAt")]
+            if next_runs:
+                monitor_summary["next_run"] = min(next_runs)
+
+        # Build statistics
+        statistics = {
+            "total_operations": len(searches) + len(enrichments),
+            "is_processing": status in ["running", "pending"],
+            "has_monitors": len(monitors) > 0,
+            "avg_items_per_search": (
+                search_summary.get("total_items_found", 0) / len(searches)
+                if searches
+                else 0
+            ),
+        }
+
+        yield "webset_id", webset_id
+        yield "title", data.get("title")
+        yield "status", status
+        yield "entity_type", entity_type
+        yield "total_items", total_items
+        yield "sample_items", sample_items
+        yield "search_summary", search_summary
+        yield "enrichment_summary", enrichment_summary
+        yield "monitor_summary", monitor_summary
+        yield "statistics", statistics
+        yield "created_at", data.get("createdAt", "")
+        yield "updated_at", data.get("updatedAt", "")
+
+        # Let all exceptions propagate naturally
+        # The API will return appropriate HTTP errors for invalid webset IDs

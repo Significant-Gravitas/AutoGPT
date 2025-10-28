@@ -152,7 +152,7 @@ Key models (defined in `/backend/schema.prisma`):
 
 **Adding a new block:**
 
-Follow the comprehensive [Block SDK Guide](../../../docs/content/platform/block-sdk-guide.md) which covers:
+Follow the comprehensive [Block SDK Guide](../docs/content/platform/block-sdk-guide.md) which covers:
 - Provider configuration with `ProviderBuilder`
 - Block schema definition
 - Authentication (API keys, OAuth, webhooks)
@@ -170,6 +170,8 @@ Quick steps:
 
 Note: when making many new blocks analyze the interfaces for each of these blocks and picture if they would go well together in a graph based editor or would they struggle to connect productively?
 ex: do the inputs and outputs tie well together?
+
+If you get any pushback or hit complex block conditions check the new_blocks guide in the docs.
 
 **Modifying the API:**
 

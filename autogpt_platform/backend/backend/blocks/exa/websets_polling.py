@@ -159,21 +159,15 @@ class ExaWaitForWebsetBlock(Block):
             elapsed = time.time() - start_time
 
             # Get last known status
-            try:
-                response = await Requests().get(
-                    f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}",
-                    headers=headers,
-                )
-                data = response.json()
-                final_status = data.get("status", "unknown")
-                search_progress = self._extract_search_progress(data)
-                enrichment_progress = self._extract_enrichment_progress(data)
-                item_count = await self._get_item_count(input_data.webset_id, headers)
-            except:
-                final_status = "unknown"
-                search_progress = {}
-                enrichment_progress = {}
-                item_count = 0
+            response = await Requests().get(
+                f"https://api.exa.AI/websets/v0/websets/{input_data.webset_id}",
+                headers=headers,
+            )
+            data = response.json()
+            final_status = data.get("status", "unknown")
+            search_progress = self._extract_search_progress(data)
+            enrichment_progress = self._extract_enrichment_progress(data)
+            item_count = await self._get_item_count(input_data.webset_id, headers)
 
             yield "webset_id", input_data.webset_id
             yield "final_status", final_status
@@ -184,15 +178,12 @@ class ExaWaitForWebsetBlock(Block):
                 yield "enrichment_progress", enrichment_progress
             yield "timed_out", True
 
-        except Exception as e:
-            yield "error", str(e)
-            yield "webset_id", input_data.webset_id
-            yield "final_status", ""
-            yield "elapsed_time", time.time() - start_time
-            yield "item_count", 0
-            yield "search_progress", {}
-            yield "enrichment_progress", {}
-            yield "timed_out", False
+        except asyncio.TimeoutError:
+            # This is expected - we hit our timeout limit
+            raise ValueError(
+                f"Polling timed out after {input_data.timeout} seconds"
+            ) from None
+        # Let all other exceptions propagate naturally
 
     def _extract_search_progress(self, webset_data: dict) -> dict:
         """Extract search progress information from webset data."""
@@ -242,7 +233,7 @@ class ExaWaitForWebsetBlock(Block):
 
             # Fall back to counting items
             return len(data.get("data", []))
-        except:
+        except Exception:
             return 0
 
 
@@ -369,14 +360,10 @@ class ExaWaitForSearchBlock(Block):
             elapsed = time.time() - start_time
 
             # Get last known status
-            try:
-                response = await Requests().get(url, headers=headers)
-                data = response.json()
-                final_status = data.get("status", "unknown")
-                progress = data.get("progress", {})
-            except:
-                final_status = "unknown"
-                progress = {}
+            response = await Requests().get(url, headers=headers)
+            data = response.json()
+            final_status = data.get("status", "unknown")
+            progress = data.get("progress", {})
 
             yield "search_id", input_data.search_id
             yield "final_status", final_status
@@ -387,16 +374,12 @@ class ExaWaitForSearchBlock(Block):
             yield "recall_info", {}
             yield "timed_out", True
 
-        except Exception as e:
-            yield "error", str(e)
-            yield "search_id", input_data.search_id
-            yield "final_status", ""
-            yield "items_found", 0
-            yield "items_analyzed", 0
-            yield "completion_percentage", 0
-            yield "elapsed_time", time.time() - start_time
-            yield "recall_info", {}
-            yield "timed_out", False
+        except asyncio.TimeoutError:
+            # This is expected - we hit our timeout limit
+            raise ValueError(
+                f"Search polling timed out after {input_data.timeout} seconds"
+            ) from None
+        # Let all other exceptions propagate naturally
 
 
 class ExaWaitForEnrichmentBlock(Block):
@@ -524,14 +507,10 @@ class ExaWaitForEnrichmentBlock(Block):
             elapsed = time.time() - start_time
 
             # Get last known status
-            try:
-                response = await Requests().get(url, headers=headers)
-                data = response.json()
-                final_status = data.get("status", "unknown")
-                title = data.get("title", data.get("description", ""))
-            except:
-                final_status = "unknown"
-                title = ""
+            response = await Requests().get(url, headers=headers)
+            data = response.json()
+            final_status = data.get("status", "unknown")
+            title = data.get("title", data.get("description", ""))
 
             yield "enrichment_id", input_data.enrichment_id
             yield "final_status", final_status
@@ -541,51 +520,44 @@ class ExaWaitForEnrichmentBlock(Block):
             yield "sample_data", []
             yield "timed_out", True
 
-        except Exception as e:
-            yield "error", str(e)
-            yield "enrichment_id", input_data.enrichment_id
-            yield "final_status", ""
-            yield "items_enriched", 0
-            yield "enrichment_title", ""
-            yield "elapsed_time", time.time() - start_time
-            yield "sample_data", []
-            yield "timed_out", False
+        except asyncio.TimeoutError:
+            # This is expected - we hit our timeout limit
+            raise ValueError(
+                f"Enrichment polling timed out after {input_data.timeout} seconds"
+            ) from None
+        # Let all other exceptions propagate naturally
 
     async def _get_sample_enrichments(
         self, webset_id: str, enrichment_id: str, headers: dict
     ) -> tuple[list[dict], int]:
         """Get sample enriched data and count."""
-        try:
-            # Get a few items to see enrichment results
-            url = f"https://api.exa.ai/websets/v0/websets/{webset_id}/items"
-            response = await Requests().get(url, headers=headers, params={"limit": 5})
-            data = response.json()
+        # Get a few items to see enrichment results
+        url = f"https://api.exa.ai/websets/v0/websets/{webset_id}/items"
+        response = await Requests().get(url, headers=headers, params={"limit": 5})
+        data = response.json()
 
-            items = data.get("data", [])
-            sample_data = []
-            enriched_count = 0
+        items = data.get("data", [])
+        sample_data = []
+        enriched_count = 0
 
-            for item in items:
-                enrichments = item.get("enrichments", {})
-                if enrichment_id in enrichments:
-                    enriched_count += 1
-                    sample_data.append(
-                        {
-                            "item_id": item.get("id"),
-                            "item_title": item.get("title", ""),
-                            "enrichment_data": enrichments[enrichment_id],
-                        }
-                    )
+        for item in items:
+            enrichments = item.get("enrichments", {})
+            if enrichment_id in enrichments:
+                enriched_count += 1
+                sample_data.append(
+                    {
+                        "item_id": item.get("id"),
+                        "item_title": item.get("title", ""),
+                        "enrichment_data": enrichments[enrichment_id],
+                    }
+                )
 
-            # Get total count if available
-            if "pagination" in data:
-                # This is an estimate - would need to check all items for accurate count
-                total_items = data["pagination"].get("total", 0)
-                if enriched_count > 0 and len(items) > 0:
-                    # Estimate based on sample
-                    enriched_count = int(total_items * (enriched_count / len(items)))
+        # Get total count if available
+        if "pagination" in data:
+            # This is an estimate - would need to check all items for accurate count
+            total_items = data["pagination"].get("total", 0)
+            if enriched_count > 0 and len(items) > 0:
+                # Estimate based on sample
+                enriched_count = int(total_items * (enriched_count / len(items)))
 
-            return sample_data, enriched_count
-
-        except Exception:
-            return [], 0
+        return sample_data, enriched_count

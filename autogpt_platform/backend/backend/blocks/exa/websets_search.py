@@ -300,13 +300,10 @@ class ExaCreateWebsetSearchBlock(Block):
                 yield "query", input_data.query
                 yield "expected_results", expected_results
 
-        except Exception as e:
-            yield "error", str(e)
-            yield "search_id", ""
-            yield "webset_id", input_data.webset_id
-            yield "status", ""
-            yield "query", input_data.query
-            yield "expected_results", {}
+        except ValueError as e:
+            # Re-raise user input validation errors
+            raise ValueError(f"Failed to create search: {e}") from e
+        # Let all other exceptions propagate naturally
 
     async def _poll_for_completion(
         self, webset_id: str, search_id: str, api_key: str, timeout: int
@@ -323,21 +320,17 @@ class ExaCreateWebsetSearchBlock(Block):
         headers = {"x-api-key": api_key}
 
         while time.time() - start_time < timeout:
-            try:
-                response = await Requests().get(url, headers=headers)
-                data = response.json()
+            response = await Requests().get(url, headers=headers)
+            data = response.json()
 
-                status = data.get("status", "")
-                progress = data.get("progress", {})
+            status = data.get("status", "")
+            progress = data.get("progress", {})
 
-                if status in ["completed", "failed", "canceled"]:
-                    return progress.get("found", 0)
+            if status in ["completed", "failed", "canceled"]:
+                return progress.get("found", 0)
 
-                await asyncio.sleep(interval)
-                interval = min(interval * 1.5, max_interval)
-
-            except Exception:
-                await asyncio.sleep(interval)
+            await asyncio.sleep(interval)
+            interval = min(interval * 1.5, max_interval)
 
         return 0
 
@@ -411,61 +404,50 @@ class ExaGetWebsetSearchBlock(Block):
             "x-api-key": credentials.api_key.get_secret_value(),
         }
 
-        try:
-            response = await Requests().get(url, headers=headers)
-            data = response.json()
+        response = await Requests().get(url, headers=headers)
+        data = response.json()
 
-            # Extract entity information
-            entity = data.get("entity", {})
-            entity_type = entity.get("type", "unknown")
+        # Extract entity information
+        entity = data.get("entity", {})
+        entity_type = entity.get("type", "unknown")
 
-            # Extract progress information
-            progress = data.get("progress", {})
-            progress_info = {
-                "found": progress.get("found", 0),
-                "analyzed": progress.get("analyzed", 0),
-                "completion": progress.get("completion", 0),
-                "time_left": progress.get("timeLeft", 0),
+        # Extract progress information
+        progress = data.get("progress", {})
+        progress_info = {
+            "found": progress.get("found", 0),
+            "analyzed": progress.get("analyzed", 0),
+            "completion": progress.get("completion", 0),
+            "time_left": progress.get("timeLeft", 0),
+        }
+
+        # Extract recall information
+        recall_data = {}
+        if "recall" in data:
+            recall = data["recall"]
+            expected = recall.get("expected", {})
+            recall_data = {
+                "expected_total": expected.get("total", 0),
+                "confidence": expected.get("confidence", ""),
+                "min_expected": expected.get("bounds", {}).get("min", 0),
+                "max_expected": expected.get("bounds", {}).get("max", 0),
+                "reasoning": recall.get("reasoning", ""),
             }
 
-            # Extract recall information
-            recall_data = {}
-            if "recall" in data:
-                recall = data["recall"]
-                expected = recall.get("expected", {})
-                recall_data = {
-                    "expected_total": expected.get("total", 0),
-                    "confidence": expected.get("confidence", ""),
-                    "min_expected": expected.get("bounds", {}).get("min", 0),
-                    "max_expected": expected.get("bounds", {}).get("max", 0),
-                    "reasoning": recall.get("reasoning", ""),
-                }
+        yield "search_id", data.get("id", "")
+        yield "status", data.get("status", "")
+        yield "query", data.get("query", "")
+        yield "entity_type", entity_type
+        yield "criteria", data.get("criteria", [])
+        yield "progress", progress_info
+        yield "recall", recall_data
+        yield "created_at", data.get("createdAt", "")
+        yield "updated_at", data.get("updatedAt", "")
+        yield "canceled_at", data.get("canceledAt")
+        yield "canceled_reason", data.get("canceledReason")
+        yield "metadata", data.get("metadata", {})
 
-            yield "search_id", data.get("id", "")
-            yield "status", data.get("status", "")
-            yield "query", data.get("query", "")
-            yield "entity_type", entity_type
-            yield "criteria", data.get("criteria", [])
-            yield "progress", progress_info
-            yield "recall", recall_data
-            yield "created_at", data.get("createdAt", "")
-            yield "updated_at", data.get("updatedAt", "")
-            yield "canceled_at", data.get("canceledAt")
-            yield "canceled_reason", data.get("canceledReason")
-            yield "metadata", data.get("metadata", {})
-
-        except Exception as e:
-            yield "error", str(e)
-            yield "search_id", ""
-            yield "status", ""
-            yield "query", ""
-            yield "entity_type", ""
-            yield "criteria", []
-            yield "progress", {}
-            yield "recall", {}
-            yield "created_at", ""
-            yield "updated_at", ""
-            yield "metadata", {}
+        # Let all exceptions propagate naturally
+        # The API will return appropriate HTTP errors for invalid search IDs
 
 
 class ExaCancelWebsetSearchBlock(Block):
@@ -528,32 +510,31 @@ class ExaCancelWebsetSearchBlock(Block):
             headers["Content-Type"] = "application/json"
             payload = {"reason": input_data.reason}
 
-        try:
-            if payload:
-                response = await Requests().post(url, headers=headers, json=payload)
-            else:
-                response = await Requests().post(url, headers=headers)
+        if payload:
+            response = await Requests().post(url, headers=headers, json=payload)
+        else:
+            response = await Requests().post(url, headers=headers)
 
-            data = response.json()
-
-            # Get the search details to see how many items were found
-            search_url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/searches/{input_data.search_id}"
-            search_response = await Requests().get(
-                search_url, headers={"x-api-key": headers["x-api-key"]}
+        data = response.json()
+        if not response.ok:
+            raise ValueError(
+                f"Failed to cancel search: {data.get('message', 'Unknown error')}"
             )
-            search_data = search_response.json()
 
-            progress = search_data.get("progress", {})
-            items_found = progress.get("found", 0)
+        # Get the search details to see how many items were found
+        search_url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/searches/{input_data.search_id}"
+        search_response = await Requests().get(
+            search_url, headers={"x-api-key": headers["x-api-key"]}
+        )
+        search_data = search_response.json()
 
-            yield "search_id", input_data.search_id
-            yield "status", search_data.get("status", "canceled")
-            yield "items_found_before_cancel", items_found
-            yield "success", "true"
+        progress = search_data.get("progress", {})
+        items_found = progress.get("found", 0)
 
-        except Exception as e:
-            yield "error", str(e)
-            yield "search_id", input_data.search_id
-            yield "status", ""
-            yield "items_found_before_cancel", 0
-            yield "success", "false"
+        yield "search_id", input_data.search_id
+        yield "status", search_data.get("status", "canceled")
+        yield "items_found_before_cancel", items_found
+        yield "success", "true"
+
+        # Let all exceptions propagate naturally
+        # The API will return appropriate HTTP errors for invalid operations

@@ -193,15 +193,10 @@ class ExaCreateEnrichmentBlock(Block):
                 yield "format", input_data.format.value
                 yield "instructions", instructions
 
-        except Exception as e:
-            yield "error", str(e)
-            yield "enrichment_id", ""
-            yield "webset_id", input_data.webset_id
-            yield "status", ""
-            yield "title", ""
-            yield "description", input_data.description
-            yield "format", input_data.format.value
-            yield "instructions", ""
+        except ValueError as e:
+            # Re-raise user input validation errors
+            raise ValueError(f"Failed to create enrichment: {e}") from e
+        # Let all other exceptions propagate naturally
 
     async def _poll_for_completion(
         self, webset_id: str, enrichment_id: str, api_key: str, timeout: int
@@ -218,35 +213,29 @@ class ExaCreateEnrichmentBlock(Block):
         headers = {"x-api-key": api_key}
 
         while time.time() - start_time < timeout:
-            try:
-                response = await Requests().get(url, headers=headers)
-                data = response.json()
+            response = await Requests().get(url, headers=headers)
+            data = response.json()
 
-                status = data.get("status", "")
+            status = data.get("status", "")
 
-                if status in ["completed", "failed", "canceled"]:
-                    # Try to count enriched items
-                    items_url = (
-                        f"https://api.exa.ai/websets/v0/websets/{webset_id}/items"
-                    )
-                    items_response = await Requests().get(
-                        items_url, headers=headers, params={"limit": 100}
-                    )
-                    items_data = items_response.json()
+            if status in ["completed", "failed", "canceled"]:
+                # Try to count enriched items
+                items_url = f"https://api.exa.ai/websets/v0/websets/{webset_id}/items"
+                items_response = await Requests().get(
+                    items_url, headers=headers, params={"limit": 100}
+                )
+                items_data = items_response.json()
 
-                    enriched_count = 0
-                    for item in items_data.get("data", []):
-                        enrichments = item.get("enrichments", {})
-                        if enrichment_id in enrichments:
-                            enriched_count += 1
+                enriched_count = 0
+                for item in items_data.get("data", []):
+                    enrichments = item.get("enrichments", {})
+                    if enrichment_id in enrichments:
+                        enriched_count += 1
 
-                    return enriched_count
+                return enriched_count
 
-                await asyncio.sleep(interval)
-                interval = min(interval * 1.5, max_interval)
-
-            except Exception:
-                await asyncio.sleep(interval)
+            await asyncio.sleep(interval)
+            interval = min(interval * 1.5, max_interval)
 
         return 0
 
@@ -314,38 +303,27 @@ class ExaGetEnrichmentBlock(Block):
             "x-api-key": credentials.api_key.get_secret_value(),
         }
 
-        try:
-            response = await Requests().get(url, headers=headers)
-            data = response.json()
+        response = await Requests().get(url, headers=headers)
+        data = response.json()
 
-            # Extract options if present
-            options = []
-            if data.get("options"):
-                options = [opt.get("label", "") for opt in data["options"]]
+        # Extract options if present
+        options = []
+        if data.get("options"):
+            options = [opt.get("label", "") for opt in data["options"]]
 
-            yield "enrichment_id", data.get("id", "")
-            yield "status", data.get("status", "")
-            yield "title", data.get("title", "")
-            yield "description", data.get("description", "")
-            yield "format", data.get("format", "")
-            yield "options", options
-            yield "instructions", data.get("instructions", "")
-            yield "created_at", data.get("createdAt", "")
-            yield "updated_at", data.get("updatedAt", "")
-            yield "metadata", data.get("metadata", {})
+        yield "enrichment_id", data.get("id", "")
+        yield "status", data.get("status", "")
+        yield "title", data.get("title", "")
+        yield "description", data.get("description", "")
+        yield "format", data.get("format", "")
+        yield "options", options
+        yield "instructions", data.get("instructions", "")
+        yield "created_at", data.get("createdAt", "")
+        yield "updated_at", data.get("updatedAt", "")
+        yield "metadata", data.get("metadata", {})
 
-        except Exception as e:
-            yield "error", str(e)
-            yield "enrichment_id", ""
-            yield "status", ""
-            yield "title", ""
-            yield "description", ""
-            yield "format", ""
-            yield "options", []
-            yield "instructions", ""
-            yield "created_at", ""
-            yield "updated_at", ""
-            yield "metadata", {}
+        # Let all exceptions propagate naturally
+        # The API will return appropriate HTTP errors for invalid enrichment IDs
 
 
 class ExaUpdateEnrichmentBlock(Block):
@@ -441,14 +419,10 @@ class ExaUpdateEnrichmentBlock(Block):
             yield "format", data.get("format", "")
             yield "success", "true"
 
-        except Exception as e:
-            yield "error", str(e)
-            yield "enrichment_id", input_data.enrichment_id
-            yield "status", ""
-            yield "title", ""
-            yield "description", ""
-            yield "format", ""
-            yield "success", "false"
+        except ValueError as e:
+            # Re-raise user input validation errors
+            raise ValueError(f"Failed to update enrichment: {e}") from e
+        # Let all other exceptions propagate naturally
 
 
 class ExaDeleteEnrichmentBlock(Block):
@@ -495,23 +469,20 @@ class ExaDeleteEnrichmentBlock(Block):
             "x-api-key": credentials.api_key.get_secret_value(),
         }
 
-        try:
-            response = await Requests().delete(url, headers=headers)
+        response = await Requests().delete(url, headers=headers)
 
-            # API typically returns 204 No Content on successful deletion
-            if response.status_code in [200, 204]:
-                yield "enrichment_id", input_data.enrichment_id
-                yield "success", "true"
-            else:
-                data = response.json()
-                yield "enrichment_id", input_data.enrichment_id
-                yield "success", "false"
-                yield "error", data.get("message", "Deletion failed")
-
-        except Exception as e:
-            yield "error", str(e)
+        # API typically returns 204 No Content on successful deletion
+        if response.status_code in [200, 204]:
+            yield "enrichment_id", input_data.enrichment_id
+            yield "success", "true"
+        else:
+            data = response.json()
             yield "enrichment_id", input_data.enrichment_id
             yield "success", "false"
+            yield "error", data.get("message", "Deletion failed")
+
+        # Let all exceptions propagate naturally
+        # The API will return appropriate HTTP errors for invalid operations
 
 
 class ExaCancelEnrichmentBlock(Block):
@@ -565,35 +536,28 @@ class ExaCancelEnrichmentBlock(Block):
             "x-api-key": credentials.api_key.get_secret_value(),
         }
 
-        try:
-            response = await Requests().post(url, headers=headers)
-            data = response.json()
+        response = await Requests().post(url, headers=headers)
+        data = response.json()
 
-            # Try to estimate how many items were enriched before cancellation
-            items_enriched = 0
-            try:
-                items_url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/items"
-                items_response = await Requests().get(
-                    items_url, headers=headers, params={"limit": 100}
-                )
-                items_data = items_response.json()
+        # Try to estimate how many items were enriched before cancellation
+        items_enriched = 0
+        items_url = (
+            f"https://api.exa.AI/websets/v0/websets/{input_data.webset_id}/items"
+        )
+        items_response = await Requests().get(
+            items_url, headers=headers, params={"limit": 100}
+        )
+        items_data = items_response.json()
 
-                for item in items_data.get("data", []):
-                    enrichments = item.get("enrichments", {})
-                    if input_data.enrichment_id in enrichments:
-                        items_enriched += 1
+        for item in items_data.get("data", []):
+            enrichments = item.get("enrichments", {})
+            if input_data.enrichment_id in enrichments:
+                items_enriched += 1
 
-            except:
-                pass
+        yield "enrichment_id", input_data.enrichment_id
+        yield "status", data.get("status", "canceled")
+        yield "items_enriched_before_cancel", items_enriched
+        yield "success", "true"
 
-            yield "enrichment_id", input_data.enrichment_id
-            yield "status", data.get("status", "canceled")
-            yield "items_enriched_before_cancel", items_enriched
-            yield "success", "true"
-
-        except Exception as e:
-            yield "error", str(e)
-            yield "enrichment_id", input_data.enrichment_id
-            yield "status", ""
-            yield "items_enriched_before_cancel", 0
-            yield "success", "false"
+        # Let all exceptions propagate naturally
+        # The API will return appropriate HTTP errors for invalid operations
