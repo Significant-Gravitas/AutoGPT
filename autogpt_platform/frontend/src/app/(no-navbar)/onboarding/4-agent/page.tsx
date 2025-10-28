@@ -66,12 +66,15 @@ export default function Page() {
                 agents[0]?.store_listing_version_id
               : false
           }
-          onClick={() =>
-            updateState({
-              selectedStoreListingVersionId: agents[0].store_listing_version_id,
-              agentInput: {},
-            })
-          }
+          onClick={() => {
+            if (agents[0]) {
+              updateState({
+                selectedStoreListingVersionId:
+                  agents[0].store_listing_version_id,
+                agentInput: {},
+              });
+            }
+          }}
         />
         <OnboardingAgentCard
           agent={agents[1]}
@@ -81,11 +84,14 @@ export default function Page() {
                 agents[1]?.store_listing_version_id
               : false
           }
-          onClick={() =>
-            updateState({
-              selectedStoreListingVersionId: agents[1].store_listing_version_id,
-            })
-          }
+          onClick={() => {
+            if (agents[1]) {
+              updateState({
+                selectedStoreListingVersionId:
+                  agents[1].store_listing_version_id,
+              });
+            }
+          }}
         />
       </div>
 
