@@ -38,8 +38,8 @@ from prisma.types import (
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 from pydantic.fields import Field
 
-from backend.server.v2.store.exceptions import DatabaseError
 from backend.util import type as type_utils
+from backend.util.exceptions import DatabaseError
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 from backend.util.retry import func_retry

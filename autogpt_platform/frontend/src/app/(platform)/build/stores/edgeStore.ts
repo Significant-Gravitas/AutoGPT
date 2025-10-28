@@ -23,6 +23,7 @@ type EdgeStore = {
   getNodeConnections: (nodeId: string) => Connection[];
   isInputConnected: (nodeId: string, handle: string) => boolean;
   isOutputConnected: (nodeId: string, handle: string) => boolean;
+  getBackendLinks: () => Link[];
   addLinks: (links: Link[]) => void;
 
   getAllHandleIdsOfANode: (nodeId: string) => string[];

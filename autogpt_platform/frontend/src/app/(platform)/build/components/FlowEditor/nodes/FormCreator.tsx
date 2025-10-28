@@ -24,6 +24,9 @@ export const FormCreator = React.memo(
       (state) => state.getHardCodedValues,
     );
     const handleChange = ({ formData }: any) => {
+      if ("credentials" in formData && !formData.credentials?.id) {
+        delete formData.credentials;
+      }
       updateNodeData(nodeId, { hardcodedValues: formData });
     };
 

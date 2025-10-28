@@ -20,7 +20,7 @@ from backend.data.includes import AGENT_PRESET_INCLUDE, library_agent_include
 from backend.data.model import CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import on_graph_activate
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import DatabaseError, NotFoundError
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 from backend.util.settings import Config
@@ -61,11 +61,11 @@ async def list_library_agents(
 
     if page < 1 or page_size < 1:
         logger.warning(f"Invalid pagination: page={page}, page_size={page_size}")
-        raise store_exceptions.DatabaseError("Invalid pagination input")
+        raise DatabaseError("Invalid pagination input")
 
     if search_term and len(search_term.strip()) > 100:
         logger.warning(f"Search term too long: {repr(search_term)}")
-        raise store_exceptions.DatabaseError("Search term is too long")
+        raise DatabaseError("Search term is too long")
 
     where_clause: prisma.types.LibraryAgentWhereInput = {
         "userId": user_id,
@@ -143,7 +143,7 @@ async def list_library_agents(
 
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error fetching library agents: {e}")
-        raise store_exceptions.DatabaseError("Failed to fetch library agents") from e
+        raise DatabaseError("Failed to fetch library agents") from e
 
 
 async def list_favorite_library_agents(
@@ -172,7 +172,7 @@ async def list_favorite_library_agents(
 
     if page < 1 or page_size < 1:
         logger.warning(f"Invalid pagination: page={page}, page_size={page_size}")
-        raise store_exceptions.DatabaseError("Invalid pagination input")
+        raise DatabaseError("Invalid pagination input")
 
     where_clause: prisma.types.LibraryAgentWhereInput = {
         "userId": user_id,
@@ -229,9 +229,7 @@ async def list_favorite_library_agents(
 
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error fetching favorite library agents: {e}")
-        raise store_exceptions.DatabaseError(
-            "Failed to fetch favorite library agents"
-        ) from e
+        raise DatabaseError("Failed to fetch favorite library agents") from e
 
 
 async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent:
@@ -273,7 +271,7 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
 
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error fetching library agent: {e}")
-        raise store_exceptions.DatabaseError("Failed to fetch library agent") from e
+        raise DatabaseError("Failed to fetch library agent") from e
 
 
 async def get_library_agent_by_store_version_id(
@@ -338,7 +336,7 @@ async def get_library_agent_by_graph_id(
         return library_model.LibraryAgent.from_db(agent, sub_graphs=sub_graphs)
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error fetching library agent by graph ID: {e}")
-        raise store_exceptions.DatabaseError("Failed to fetch library agent") from e
+        raise DatabaseError("Failed to fetch library agent") from e
 
 
 async def add_generated_agent_image(
@@ -479,9 +477,7 @@ async def update_agent_version_in_library(
         )
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error updating agent version in library: {e}")
-        raise store_exceptions.DatabaseError(
-            "Failed to update agent version in library"
-        ) from e
+        raise DatabaseError("Failed to update agent version in library") from e
 
 
 async def update_library_agent(
@@ -544,7 +540,7 @@ async def update_library_agent(
         )
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error updating library agent: {str(e)}")
-        raise store_exceptions.DatabaseError("Failed to update library agent") from e
+        raise DatabaseError("Failed to update library agent") from e
 
 
 async def delete_library_agent(
@@ -572,7 +568,7 @@ async def delete_library_agent_by_graph_id(graph_id: str, user_id: str) -> None:
         )
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error deleting library agent: {e}")
-        raise store_exceptions.DatabaseError("Failed to delete library agent") from e
+        raise DatabaseError("Failed to delete library agent") from e
 
 
 async def add_store_agent_to_library(
@@ -663,7 +659,7 @@ async def add_store_agent_to_library(
         raise
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error adding agent to library: {e}")
-        raise store_exceptions.DatabaseError("Failed to add agent to library") from e
+        raise DatabaseError("Failed to add agent to library") from e
 
 
 ##############################################
@@ -697,7 +693,7 @@ async def list_presets(
         logger.warning(
             "Invalid pagination input: page=%d, page_size=%d", page, page_size
         )
-        raise store_exceptions.DatabaseError("Invalid pagination parameters")
+        raise DatabaseError("Invalid pagination parameters")
 
     query_filter: prisma.types.AgentPresetWhereInput = {
         "userId": user_id,
@@ -733,7 +729,7 @@ async def list_presets(
 
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error getting presets: {e}")
-        raise store_exceptions.DatabaseError("Failed to fetch presets") from e
+        raise DatabaseError("Failed to fetch presets") from e
 
 
 async def get_preset(
@@ -763,7 +759,7 @@ async def get_preset(
         return library_model.LibraryAgentPreset.from_db(preset)
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error getting preset: {e}")
-        raise store_exceptions.DatabaseError("Failed to fetch preset") from e
+        raise DatabaseError("Failed to fetch preset") from e
 
 
 async def create_preset(
@@ -813,7 +809,7 @@ async def create_preset(
         return library_model.LibraryAgentPreset.from_db(new_preset)
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error creating preset: {e}")
-        raise store_exceptions.DatabaseError("Failed to create preset") from e
+        raise DatabaseError("Failed to create preset") from e
 
 
 async def create_preset_from_graph_execution(
@@ -951,7 +947,7 @@ async def update_preset(
         return library_model.LibraryAgentPreset.from_db(updated)
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error updating preset: {e}")
-        raise store_exceptions.DatabaseError("Failed to update preset") from e
+        raise DatabaseError("Failed to update preset") from e
 
 
 async def set_preset_webhook(
@@ -997,7 +993,7 @@ async def delete_preset(user_id: str, preset_id: str) -> None:
         )
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error deleting preset: {e}")
-        raise store_exceptions.DatabaseError("Failed to delete preset") from e
+        raise DatabaseError("Failed to delete preset") from e
 
 
 async def fork_library_agent(
@@ -1025,7 +1021,7 @@ async def fork_library_agent(
         # TODO: once we have open/closed sourced agents this needs to be enabled ~kcze
         # + update library/agents/[id]/page.tsx agent actions
         # if not original_agent.can_access_graph:
-        #     raise store_exceptions.DatabaseError(
+        #     raise DatabaseError(
         #         f"User {user_id} cannot access library agent graph {library_agent_id}"
         #     )
 
@@ -1039,4 +1035,4 @@ async def fork_library_agent(
         return (await create_library_agent(new_graph, user_id))[0]
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error cloning library agent: {e}")
-        raise store_exceptions.DatabaseError("Failed to fork library agent") from e
+        raise DatabaseError("Failed to fork library agent") from e

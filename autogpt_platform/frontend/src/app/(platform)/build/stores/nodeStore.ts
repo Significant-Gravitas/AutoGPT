@@ -1,8 +1,11 @@
 import { create } from "zustand";
 import { NodeChange, applyNodeChanges } from "@xyflow/react";
-import { CustomNode } from "../components/FlowEditor/nodes/CustomNode";
+import { CustomNode } from "../components/FlowEditor/nodes/CustomNode/CustomNode";
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import { convertBlockInfoIntoCustomNodeData } from "../components/helper";
+import { Node } from "@/app/api/__generated__/models/node";
+import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutionResult";
 
 type NodeStore = {
   nodes: CustomNode[];
@@ -19,6 +22,17 @@ type NodeStore = {
   getShowAdvanced: (nodeId: string) => boolean;
   addNodes: (nodes: CustomNode[]) => void;
   getHardCodedValues: (nodeId: string) => Record<string, any>;
+  convertCustomNodeToBackendNode: (node: CustomNode) => Node;
+  getBackendNodes: () => Node[];
+
+  updateNodeStatus: (nodeId: string, status: AgentExecutionStatus) => void;
+  getNodeStatus: (nodeId: string) => AgentExecutionStatus | undefined;
+
+  updateNodeExecutionResult: (
+    nodeId: string,
+    result: NodeExecutionResult,
+  ) => void;
+  getNodeExecutionResult: (nodeId: string) => NodeExecutionResult | undefined;
 };
 
 export const useNodeStore = create<NodeStore>((set, get) => ({
@@ -83,5 +97,44 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     return (
       get().nodes.find((n) => n.id === nodeId)?.data?.hardcodedValues || {}
     );
+  },
+  convertCustomNodeToBackendNode: (node: CustomNode) => {
+    return {
+      id: node.id,
+      block_id: node.data.block_id,
+      input_default: node.data.hardcodedValues,
+      metadata: {
+        // TODO: Add more metadata
+        position: node.position,
+      },
+    };
+  },
+  getBackendNodes: () => {
+    return get().nodes.map((node) =>
+      get().convertCustomNodeToBackendNode(node),
+    );
+  },
+  updateNodeStatus: (nodeId: string, status: AgentExecutionStatus) => {
+    set((state) => ({
+      nodes: state.nodes.map((n) =>
+        n.id === nodeId ? { ...n, data: { ...n.data, status } } : n,
+      ),
+    }));
+  },
+  getNodeStatus: (nodeId: string) => {
+    return get().nodes.find((n) => n.id === nodeId)?.data?.status;
+  },
+
+  updateNodeExecutionResult: (nodeId: string, result: NodeExecutionResult) => {
+    set((state) => ({
+      nodes: state.nodes.map((n) =>
+        n.id === nodeId
+          ? { ...n, data: { ...n.data, nodeExecutionResult: result } }
+          : n,
+      ),
+    }));
+  },
+  getNodeExecutionResult: (nodeId: string) => {
+    return get().nodes.find((n) => n.id === nodeId)?.data?.nodeExecutionResult;
   },
 }));

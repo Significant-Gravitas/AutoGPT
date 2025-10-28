@@ -8,7 +8,7 @@ from fastapi.responses import Response
 import backend.server.v2.library.db as library_db
 import backend.server.v2.library.model as library_model
 import backend.server.v2.store.exceptions as store_exceptions
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import DatabaseError, NotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -221,7 +221,7 @@ async def add_marketplace_agent_to_library(
             "to add to library"
         )
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    except store_exceptions.DatabaseError as e:
+    except DatabaseError as e:
         logger.error(f"Database error while adding agent to library: {e}", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -275,7 +275,7 @@ async def update_library_agent(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
         ) from e
-    except store_exceptions.DatabaseError as e:
+    except DatabaseError as e:
         logger.error(f"Database error while updating library agent: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

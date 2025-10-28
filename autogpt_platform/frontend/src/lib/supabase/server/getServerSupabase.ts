@@ -1,6 +1,6 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { getCookieSettings } from "../helpers";
-import { getSupabaseUrl, getSupabaseAnonKey } from "../../env-config";
+import { environment } from "@/services/environment";
 
 type Cookies = { name: string; value: string; options?: CookieOptions }[];
 
@@ -12,8 +12,8 @@ export async function getServerSupabase() {
 
   try {
     const supabase = createServerClient(
-      getSupabaseUrl(),
-      getSupabaseAnonKey(),
+      environment.getSupabaseUrl(),
+      environment.getSupabaseAnonKey(),
       {
         cookies: {
           getAll() {

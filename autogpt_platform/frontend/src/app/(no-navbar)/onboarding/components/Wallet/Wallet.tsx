@@ -19,6 +19,7 @@ import WalletRefill from "./components/WalletRefill";
 import { OnboardingStep } from "@/lib/autogpt-server-api";
 import { storage, Key as StorageKey } from "@/services/storage/local-storage";
 import { WalletIcon } from "@phosphor-icons/react";
+import { useGetFlag, Flag } from "@/services/feature-flags/use-get-flag";
 
 export interface Task {
   id: OnboardingStep;
@@ -40,6 +41,7 @@ export interface TaskGroup {
 
 export default function Wallet() {
   const { state, updateState } = useOnboarding();
+  const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
 
   const groups = useMemo<TaskGroup[]>(() => {
     return [
@@ -379,9 +381,7 @@ export default function Wallet() {
         </div>
         <ScrollArea className="max-h-[85vh] overflow-y-auto">
           {/* Top ups */}
-          {process.env.NEXT_PUBLIC_SHOW_BILLING_PAGE === "true" && (
-            <WalletRefill />
-          )}
+          {isPaymentEnabled && <WalletRefill />}
           {/* Tasks */}
           <p className="mx-1 my-3 font-sans text-xs font-normal text-zinc-400">
             Complete the following tasks to earn more credits!
