@@ -100,33 +100,49 @@ async def get_store_agents(
 
             offset = (page - 1) * page_size
 
-            # Build filter conditions
-            filter_conditions = []
-            filter_conditions.append("is_available = true")
+            # Whitelist allowed order_by columns
+            ALLOWED_ORDER_BY = {
+                "rating": "rating DESC, rank DESC",
+                "runs": "runs DESC, rank DESC",
+                "name": "agent_name ASC, rank DESC",
+            }
 
-            if featured:
-                filter_conditions.append("featured = true")
-            if creators:
-                creator_list = "','".join(sanitized_creators)
-                filter_conditions.append(f"creator_username IN ('{creator_list}')")
-            if category:
-                filter_conditions.append(f"'{sanitized_category}' = ANY(categories)")
-
-            where_filter = (
-                " AND ".join(filter_conditions) if filter_conditions else "1=1"
-            )
-
-            # Build ORDER BY clause
-            if sorted_by == "rating":
-                order_by_clause = "rating DESC, rank DESC"
-            elif sorted_by == "runs":
-                order_by_clause = "runs DESC, rank DESC"
-            elif sorted_by == "name":
-                order_by_clause = "agent_name ASC, rank DESC"
+            # Validate and get order clause
+            if sorted_by and sorted_by in ALLOWED_ORDER_BY:
+                order_by_clause = ALLOWED_ORDER_BY[sorted_by]
             else:
                 order_by_clause = "rank DESC, updated_at DESC"
 
-            # Execute full-text search query
+            # Build WHERE conditions and parameters list
+            where_parts: list[str] = []
+            params: list[typing.Any] = [search_term]  # $1 - search term
+            param_index = 2  # Start at $2 for next parameter
+
+            # Always filter for available agents
+            where_parts.append("is_available = true")
+
+            if featured:
+                where_parts.append("featured = true")
+
+            if creators and sanitized_creators:
+                # Use ANY with array parameter
+                where_parts.append(f"creator_username = ANY(${param_index})")
+                params.append(sanitized_creators)
+                param_index += 1
+
+            if category and sanitized_category:
+                where_parts.append(f"${param_index} = ANY(categories)")
+                params.append(sanitized_category)
+                param_index += 1
+
+            sql_where_clause: str = " AND ".join(where_parts) if where_parts else "1=1"
+
+            # Add pagination params
+            params.extend([page_size, offset])
+            limit_param = f"${param_index}"
+            offset_param = f"${param_index + 1}"
+
+            # Execute full-text search query with parameterized values
             sql_query = f"""
                 SELECT
                     slug,
@@ -144,29 +160,31 @@ async def get_store_agents(
                     updated_at,
                     ts_rank_cd(search, query) AS rank
                 FROM "StoreAgent",
-                    plainto_tsquery('english', '{search_term}') AS query
-                WHERE {where_filter} 
+                    plainto_tsquery('english', $1) AS query
+                WHERE {sql_where_clause}
                     AND search @@ query
-                ORDER BY rank DESC, {order_by_clause}
-                LIMIT {page_size} OFFSET {offset}
+                ORDER BY {order_by_clause}
+                LIMIT {limit_param} OFFSET {offset_param}
             """
 
-            # Count query for pagination
+            # Count query for pagination - only uses search term parameter
             count_query = f"""
                 SELECT COUNT(*) as count
                 FROM "StoreAgent",
-                    plainto_tsquery('english', '{search_term}') AS query
-                WHERE {where_filter} 
+                    plainto_tsquery('english', $1) AS query
+                WHERE {sql_where_clause}
                     AND search @@ query
             """
 
-            # Execute both queries
+            # Execute both queries with parameters
             agents = await prisma.client.get_client().query_raw(
-                query=typing.cast(typing.LiteralString, sql_query)
+                typing.cast(typing.LiteralString, sql_query), *params
             )
 
+            # For count, use params without pagination (last 2 params)
+            count_params = params[:-2]
             count_result = await prisma.client.get_client().query_raw(
-                query=typing.cast(typing.LiteralString, count_query)
+                typing.cast(typing.LiteralString, count_query), *count_params
             )
 
             total = count_result[0]["count"] if count_result else 0
