@@ -1562,7 +1562,9 @@ class AIConversationBlock(AIBlockBase):
                 ("prompt", list),
             ],
             test_mock={
-                "llm_call": lambda *args, **kwargs: "The 2020 World Series was played at Globe Life Field in Arlington, Texas."
+                "llm_call": lambda *args, **kwargs: dict(
+                    response="The 2020 World Series was played at Globe Life Field in Arlington, Texas."
+                )
             },
         )
 
