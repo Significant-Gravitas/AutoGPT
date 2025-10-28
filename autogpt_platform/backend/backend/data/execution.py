@@ -634,6 +634,25 @@ async def get_graph_execution(
     )
 
 
+async def get_child_graph_executions(
+    parent_exec_id: str,
+) -> list[GraphExecution]:
+    """
+    Get all child executions of a parent execution.
+
+    Args:
+        parent_exec_id: Parent graph execution ID
+
+    Returns:
+        List of child graph executions
+    """
+    children = await AgentGraphExecution.prisma().find_many(
+        where={"parentGraphExecutionId": parent_exec_id, "isDeleted": False}
+    )
+
+    return [GraphExecution.from_db(child) for child in children]
+
+
 async def create_graph_execution(
     graph_id: str,
     graph_version: int,

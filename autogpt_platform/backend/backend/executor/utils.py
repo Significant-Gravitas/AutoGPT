@@ -612,33 +612,23 @@ class CancelExecutionEvent(BaseModel):
     graph_exec_id: str
 
 
-async def _get_child_executions(
-    db: "DatabaseManagerAsyncClient", parent_exec_id: str
-) -> list["GraphExecution"]:
+async def _get_child_executions(parent_exec_id: str) -> list["GraphExecution"]:
     """
-    Get all child executions of a parent execution.
+    Get all child executions of a parent execution using the execution_db pattern.
 
     Args:
-        db: Database client
         parent_exec_id: Parent graph execution ID
 
     Returns:
         List of child graph executions
     """
+    from backend.data import execution as execution_db_module
     from backend.data.db import prisma
 
     if not prisma.is_connected():
         return []
 
-    from backend.data.db import AgentGraphExecution
-
-    children = await AgentGraphExecution.prisma().find_many(
-        where={"parentGraphExecutionId": parent_exec_id}
-    )
-
-    from backend.data.execution import GraphExecution
-
-    return [GraphExecution.from_db(child) for child in children]
+    return await execution_db_module.get_child_graph_executions(parent_exec_id)
 
 
 async def stop_graph_execution(
@@ -668,7 +658,7 @@ async def stop_graph_execution(
 
     # First, find and stop all child executions if cascading
     if cascade:
-        children = await _get_child_executions(db, graph_exec_id)
+        children = await _get_child_executions(graph_exec_id)
         logger.info(
             f"Stopping {len(children)} child executions of execution {graph_exec_id}"
         )

@@ -70,7 +70,7 @@ class AgentExecutorBlock(Block):
         from backend.executor import utils as execution_utils
 
         # Get parent graph execution ID from kwargs (passed by executor)
-        parent_graph_exec_id = kwargs.get("graph_exec_id")
+        parent_graph_exec_id = kwargs.get("parent_graph_exec_id")
 
         graph_exec = await execution_utils.add_graph_execution(
             graph_id=input_data.graph_id,
