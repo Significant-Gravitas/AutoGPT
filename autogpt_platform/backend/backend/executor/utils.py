@@ -25,7 +25,7 @@ from backend.data.db import prisma
 from backend.data.dynamic_fields import merge_execution_input
 from backend.data.execution import (
     ExecutionStatus,
-    GraphExecution,
+    GraphExecutionMeta,
     GraphExecutionStats,
     GraphExecutionWithNodes,
     NodesInputMasks,
@@ -613,7 +613,7 @@ class CancelExecutionEvent(BaseModel):
     graph_exec_id: str
 
 
-async def _get_child_executions(parent_exec_id: str) -> list["GraphExecution"]:
+async def _get_child_executions(parent_exec_id: str) -> list["GraphExecutionMeta"]:
     """
     Get all child executions of a parent execution using the execution_db pattern.
 
@@ -626,12 +626,11 @@ async def _get_child_executions(parent_exec_id: str) -> list["GraphExecution"]:
     from backend.data.db import prisma
 
     if prisma.is_connected():
-        return await execution_db.get_child_graph_executions(parent_exec_id)
+        edb = execution_db
     else:
-        # Database manager doesn't support child execution queries yet
-        # In distributed mode, cascading stop is less critical since executions
-        # are managed by the central database service
-        return []
+        edb = get_database_manager_async_client()
+
+    return await edb.get_child_graph_executions(parent_exec_id)
 
 
 async def stop_graph_execution(

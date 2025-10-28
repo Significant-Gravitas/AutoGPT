@@ -636,7 +636,7 @@ async def get_graph_execution(
 
 async def get_child_graph_executions(
     parent_exec_id: str,
-) -> list[GraphExecution]:
+) -> list[GraphExecutionMeta]:
     """
     Get all child executions of a parent execution.
 
@@ -650,7 +650,7 @@ async def get_child_graph_executions(
         where={"parentGraphExecutionId": parent_exec_id, "isDeleted": False}
     )
 
-    return [GraphExecution.from_db(child) for child in children]
+    return [GraphExecutionMeta.from_db(child) for child in children]
 
 
 async def create_graph_execution(
