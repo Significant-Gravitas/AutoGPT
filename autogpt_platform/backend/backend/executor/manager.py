@@ -1495,9 +1495,36 @@ class ExecutionManager(AppProcess):
         graph_exec_id = graph_exec_entry.graph_exec_id
         user_id = graph_exec_entry.user_id
         graph_id = graph_exec_entry.graph_id
+        parent_graph_exec_id = graph_exec_entry.parent_graph_exec_id
+
         logger.info(
             f"[{self.service_name}] Received RUN for graph_exec_id={graph_exec_id}, user_id={user_id}"
+            + (f", parent={parent_graph_exec_id}" if parent_graph_exec_id else "")
         )
+
+        # Check if parent execution is already terminated (prevents orphaned child executions)
+        if parent_graph_exec_id:
+            try:
+                parent_exec = get_db_client().get_graph_execution_meta(
+                    execution_id=parent_graph_exec_id,
+                    user_id=user_id,
+                )
+                if parent_exec and parent_exec.status == ExecutionStatus.TERMINATED:
+                    logger.info(
+                        f"[{self.service_name}] Skipping execution {graph_exec_id} - parent {parent_graph_exec_id} is TERMINATED"
+                    )
+                    # Mark this child as terminated since parent was stopped
+                    get_db_client().update_graph_execution_stats(
+                        graph_exec_id=graph_exec_id,
+                        status=ExecutionStatus.TERMINATED,
+                    )
+                    _ack_message(reject=False, requeue=False)
+                    return
+            except Exception as e:
+                logger.warning(
+                    f"[{self.service_name}] Could not check parent status for {graph_exec_id}: {e}"
+                )
+                # Continue execution if parent check fails (don't block on errors)
 
         # Check user rate limit before processing
         try:
