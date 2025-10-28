@@ -25,6 +25,7 @@ from backend.data.db import prisma
 from backend.data.dynamic_fields import merge_execution_input
 from backend.data.execution import (
     ExecutionStatus,
+    GraphExecution,
     GraphExecutionStats,
     GraphExecutionWithNodes,
     NodesInputMasks,
